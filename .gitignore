@@ -1,0 +1,17 @@
+# Claude Code - local only
+.claude/settings.local.json
+CLAUDE.local.md
+
+# Environment
+.env
+.env.local
+deploy/**/.env
+deploy/**/secrets/
+
+# Secrets
+*.pem
+*.key
+
+# macOS
+.DS_Store
+**/.DS_Store

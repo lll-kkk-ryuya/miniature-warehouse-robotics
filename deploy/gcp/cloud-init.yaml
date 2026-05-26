@@ -1,0 +1,40 @@
+#cloud-config
+# Cloud-init for Hermes Gateway VM on GCP e2-micro (Ubuntu 24.04)
+# Runs on first boot to prepare a minimal Python environment + 2GB swap.
+# RAM is only 1GB, so swap is mandatory.
+
+package_update: true
+package_upgrade: true
+
+packages:
+  - python3.12
+  - python3-pip
+  - python3-venv
+  - pipx
+  - git
+  - curl
+  - ufw
+  - chrony
+
+# 2GB swap file (RAM is 1GB on e2-micro)
+swap:
+  filename: /swapfile
+  size: 2147483648  # 2 GiB in bytes
+  maxsize: 2147483648
+
+write_files:
+  - path: /etc/sysctl.d/99-swappiness.conf
+    content: |
+      vm.swappiness=10
+
+runcmd:
+  # Apply swappiness
+  - sysctl -p /etc/sysctl.d/99-swappiness.conf
+  # Time sync (LLM API signing is time-sensitive)
+  - systemctl enable --now chrony
+  # pipx path for all users
+  - echo 'export PATH=$PATH:/root/.local/bin' >> /etc/profile.d/pipx.sh
+  # Mark cloud-init completion for verification
+  - touch /var/log/hermes-init-done
+
+final_message: "Hermes VM ready. Uptime: $UPTIME"
