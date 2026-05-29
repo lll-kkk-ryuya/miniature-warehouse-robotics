@@ -57,6 +57,82 @@ hermes init
 hermes gateway
 ```
 
+---
+
+## 継続的デプロイ (CD) — main → VM 自動反映
+
+`main` の Hermes Gateway **設定** (`SOUL.md` / `config.yaml`) を push したら、
+GitHub Actions が自動で VM へ反映し、`hermes-gateway` を再起動する。
+
+### 何が CD 対象で、何が対象でないか
+
+| 対象 | 仕組み |
+|------|--------|
+| **bot 自身の設定** (`SOUL.md` / `config.yaml`) | 本 CD。repo が source of truth → push で VM へ |
+| **bot のリポジトリ知識** (docs / コード本体) | CD 不要。bot は GitHub MCP で `main` を**ライブ参照**するため常に最新 |
+| **シークレット** (`~/.hermes/.env`) | CD 対象外。手動で VM 上のみに置く (コミット禁止) |
+| **Hermes 本体バージョン** | CD 対象外。`pipx upgrade hermes-agent` を手動 (破壊的更新リスクのため自動追従しない) |
+
+> **重要**: `SOUL.md` / `config.yaml` は **repo 側を編集**して push する。
+> VM 上で直接編集しても次回デプロイで上書きされる (`SOUL.md` 冒頭にも明記)。
+> VM 上で `hermes config set` 等を使った場合は、その差分を repo に取り込むこと。
+
+### ファイル構成
+
+| パス | 用途 |
+|------|------|
+| `deploy/hermes/gcp/config.yaml` | Gateway 設定 (repo 管理の正本)。秘密値は含まず `${ENV}` 参照のみ |
+| `deploy/hermes/gcp/SOUL.md` | bot ペルソナ / コアプロンプト |
+| `deploy/hermes/gcp/deploy.sh` | デプロイ本体 (ローカル・CI 共通で使える) |
+| `deploy/hermes/.env.example` | `.env` の変数名テンプレ (実値はコミット禁止) |
+| `.github/workflows/deploy-hermes-gcp.yml` | CD ワークフロー |
+
+### トリガ
+
+- `main` への push で上記いずれかが変化したとき
+- Actions タブから手動実行 (`workflow_dispatch`)
+
+### 必要な GitHub Secrets (設定済み)
+
+| Secret | 値 |
+|--------|----|
+| `GCP_VM_SSH_KEY` | CI 専用 ed25519 **秘密鍵** (ユーザー個人鍵とは別) |
+| `GCP_VM_HOST` | VM 外部 IP (現在 `34.4.104.112`) |
+| `GCP_VM_USER` | SSH ユーザー (`systemctl` 用に passwordless sudo) |
+| `GCP_VM_KNOWN_HOSTS` | VM ホスト鍵 (MITM 防止のため固定) |
+
+CI 鍵の公開鍵は VM の `~/.ssh/authorized_keys` に登録済み。鍵をローテートする場合:
+```bash
+ssh-keygen -t ed25519 -f /tmp/hermes_cd_key -N "" -C "hermes-cd-github-actions"
+# VM の authorized_keys から古い hermes-cd-github-actions 行を削除し、新公開鍵を追記
+gh secret set GCP_VM_SSH_KEY < /tmp/hermes_cd_key
+shred -u /tmp/hermes_cd_key   # 秘密鍵はローカルに残さない
+```
+
+### 手動デプロイ (CI を介さず Mac から)
+
+```bash
+GCP_VM_HOST=34.4.104.112 GCP_VM_USER=kawaguchiryuya \
+  bash deploy/hermes/gcp/deploy.sh
+# ssh-agent / ~/.ssh の既定鍵を使う。CI 鍵を使うなら SSH_KEY=... を渡す
+```
+
+`deploy.sh` は **差分があるファイルのみ**更新し、更新時だけ
+タイムスタンプ付きバックアップ (`~/.hermes/backups/<ts>/`) を取ってから
+`hermes-gateway` を再起動し、`/health` で起動確認する。
+
+### IP 変動の注意
+
+外部 IP はエフェメラル (VM 再起動で変わりうる)。変わったら:
+```bash
+NEW_IP=$(gcloud compute instances list --format="value(EXTERNAL_IP)")
+printf '%s' "$NEW_IP" | gh secret set GCP_VM_HOST
+ssh-keyscan -t ed25519 "$NEW_IP" | gh secret set GCP_VM_KNOWN_HOSTS
+```
+頻繁に再起動するなら静的 IP 予約を検討 (起動中の VM に紐付く限り無料)。
+
+---
+
 ## 課金リスク監視
 
 予算アラート (月額 100 円) を必ず設定:
