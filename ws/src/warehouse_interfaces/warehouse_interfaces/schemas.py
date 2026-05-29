@@ -46,18 +46,38 @@ class RobotState(_Model):
 
 
 class RobotSnapshot(_Model):
-    """Per-robot raw state written by State Cache (pre-computation)."""
+    """Per-robot raw state written by State Cache (pre-computation).
+
+    ``obstacle_distance`` is the nearest-obstacle distance [m] State Cache
+    aggregates from ``/bot{n}/scan``; it shares the name of Situation's
+    ``RobotState.obstacle_distance`` so the LLM Bridge needs no field rename when
+    enriching (doc mode-a/08a). ``battery`` is a percentage in [0, 100].
+    """
 
     position: Position
     velocity: Velocity
     heading: float
     status: str
     battery: int
-    nearest_obstacle_m: float | None = None
+    obstacle_distance: float | None = None
+
+    @field_validator("battery")
+    @classmethod
+    def _battery_in_range(cls, value: int) -> int:
+        if not 0 <= value <= 100:
+            raise ValueError(f"battery {value} out of range [0, 100]")
+        return value
+
+    @field_validator("obstacle_distance")
+    @classmethod
+    def _obstacle_non_negative(cls, value: float | None) -> float | None:
+        if value is not None and value < 0:
+            raise ValueError(f"obstacle_distance {value} must be >= 0")
+        return value
 
 
 class StateSnapshot(_Model):
-    """Aggregated raw state that State Cache writes to ``state.json`` (doc12 §4).
+    """Aggregated raw state that State Cache writes to ``state.json`` (doc12 State Cache).
 
     The LLM Bridge reads this and builds a ``Situation`` (adding the computed
     ``predicted_position_3s`` and ``obstacle_ahead`` per doc mode-a/08a). This is
