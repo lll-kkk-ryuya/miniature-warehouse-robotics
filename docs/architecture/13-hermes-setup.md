@@ -127,8 +127,9 @@ LANGFUSE_HOST=https://cloud.langfuse.com   # セルフホスト時は差替
 # Warehouse MCP Server (子プロセスへ渡される)
 # ───────────────────────────────────────────────
 WAREHOUSE_STATE_CACHE_PATH=/tmp/warehouse/state.json
-WAREHOUSE_AUDIT_LOG_PATH=/var/log/warehouse/audit.jsonl
-WAREHOUSE_CONFIG_PATH=/etc/warehouse/config.yaml
+WAREHOUSE_AUDIT_LOG_PATH=/tmp/warehouse/audit.jsonl
+WAREHOUSE_CONFIG_PATH=config/warehouse.yaml
+# ※ 上記は dev 既定（16-repository-and-conventions.md §4）。本番(Jetson)は systemd RuntimeDirectory=warehouse で /run/warehouse/ に切替
 ```
 
 > **API_SERVER_KEY の生成**: `openssl rand -hex 32` で生成し `.env` に貼る。LLM Bridge Node の `Authorization: Bearer <key>` ヘッダで使用。
@@ -154,8 +155,9 @@ LANGFUSE_SECRET_KEY=
 LANGFUSE_HOST=https://cloud.langfuse.com
 
 WAREHOUSE_STATE_CACHE_PATH=/tmp/warehouse/state.json
-WAREHOUSE_AUDIT_LOG_PATH=/var/log/warehouse/audit.jsonl
-WAREHOUSE_CONFIG_PATH=/etc/warehouse/config.yaml
+WAREHOUSE_AUDIT_LOG_PATH=/tmp/warehouse/audit.jsonl
+WAREHOUSE_CONFIG_PATH=config/warehouse.yaml
+# ※ 上記は dev 既定（16-repository-and-conventions.md §4）。本番(Jetson)は systemd RuntimeDirectory=warehouse で /run/warehouse/ に切替
 ```
 
 `.gitignore` に `**/.env` を必ず追加する。
@@ -237,7 +239,7 @@ mcp_servers:
 
 Hermes 外、Warehouse MCP Server / LLM Bridge Node が読む設定。
 
-`/etc/warehouse/config.yaml`:
+`config/warehouse.yaml`（`$WAREHOUSE_CONFIG_PATH`、dev既定。本番は `/run/warehouse/`。16 §4）:
 
 ```yaml
 # ───────────────────────────────────────────────
@@ -451,7 +453,7 @@ Phase 4 では Langfuse ダッシュボードで 4社のメトリクス（成功
 ### 7.3 Audit Log との分離
 
 - **Langfuse**: LLM レイヤのトレース（Hermes が出力）
-- **Command Audit Log**: ロボット制御レイヤのトレース（Warehouse MCP Server が `/var/log/warehouse/audit.jsonl` に出力）
+- **Command Audit Log**: ロボット制御レイヤのトレース（Warehouse MCP Server が `$WAREHOUSE_AUDIT_LOG_PATH`、dev既定 `/tmp/warehouse/audit.jsonl` に出力。16 §4）
 
 両者は独立。Langfuse 障害時もロボット側の audit は継続する。
 
