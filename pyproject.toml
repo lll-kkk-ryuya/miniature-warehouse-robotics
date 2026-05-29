@@ -1,6 +1,6 @@
 # Project-wide Python tooling for miniature-warehouse-robotics.
 # Applies to all ament_python packages under ws/src/ and standalone scripts.
-# Design: docs/architecture/19-dev-quality-and-testing.md
+# Design: docs/architecture/20-dev-quality-and-testing.md
 [project]
 name = "miniature-warehouse-robotics"
 version = "0.0.0"
