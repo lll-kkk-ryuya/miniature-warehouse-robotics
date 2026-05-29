@@ -107,13 +107,14 @@ LOCATIONS = {
     "berth_A":          {"x": 0.2, "y": 0.8},
     "berth_B":          {"x": 0.7, "y": 0.8},
     "shipping_station": {"x": 0.2, "y": 0.1},
-    "berth_charge_1":   {"x": 1.2, "y": 0.1},   # bot1 充電ステーション
-    "berth_charge_2":   {"x": 1.5, "y": 0.1},   # bot2 充電ステーション
+    "charging_station": {"x": 1.2, "y": 0.1},   # 2台共有（同時充電不可・先着順）
+    "retreat_A":        {"x": 0.45, "y": 0.85}, # 通路A yield 退避先
+    "retreat_B":        {"x": 0.95, "y": 0.85}, # 通路B yield 退避先
 }
 ```
 
 ※座標はジオラマの実測後に確定する。
-※このテーブルのキーは `13-hermes-setup.md §3.3 config.yaml` の `locations`（Policy Gate の known_locations 検証用）と**完全に一致させること**。充電ステーションはロボットごとに `berth_charge_1` / `berth_charge_2` の2箇所（旧 `charging_station` 単一表記は廃止）。
+※このテーブルのキーは `13-hermes-setup.md §3.3 config.yaml` の `locations`（Policy Gate の known_locations 検証用）と**完全に一致させること**。充電ステーションは1箇所（`charging_station`、2台共有・先着順、物理ジオラマ `04-diorama-layout.md` と一致）。`yield` の `retreat_to` はこの LOCATIONS のキー（`retreat_A`/`retreat_B`）を渡す（WAYPOINTS ではなく LOCATIONS で解決され、Policy Gate の known_locations でも検証される）。
 
 ## サイクル設計
 

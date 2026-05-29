@@ -442,7 +442,7 @@ MCP tool 定義例（全7ツール共通で `gen_id` を required に）:
 }
 ```
 
-共有ストレージは Mac/Docker 開発時はファイル（`/tmp/gen_store.txt`）、Jetson 本番時は `multiprocessing.Value(ctypes.c_int)` / Redis のいずれか（**Phase 1 で選定**）。
+共有ストレージは Mac/Docker 開発時はファイル（`/tmp/warehouse/gen_store`）、Jetson 本番時は `multiprocessing.Value(ctypes.c_int)` / Redis のいずれか（**Phase 1 で選定**）。
 
 #### なぜ HTTP ヘッダ方式（X-Bridge-Gen）にしなかったか
 

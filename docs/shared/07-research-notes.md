@@ -190,7 +190,7 @@
 
 | ID | リスク |
 |----|--------|
-| R-11 | /tmp/warehouse_state.json の tmpfs 設定 |
+| R-11 | /tmp/warehouse/state.json の tmpfs 設定 |
 | R-19 | Jetson Orin Nano Super の在庫リスク |
 | R-23 | predicted_position_3s 線形外挿の限界（壁の向こうを予測） |
 | R-24 | 3モード維持のテスト工数（3倍） |

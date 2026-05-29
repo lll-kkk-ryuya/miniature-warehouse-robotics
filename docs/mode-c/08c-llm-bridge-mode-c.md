@@ -20,7 +20,7 @@ Mode CではOpen-RMFが交通管理を担当し、Claude（LLM）はタスク割
 │                                                            │
 │  State Cache Node（別プロセス、100ms周期）                   │
 │  ├── /bot{n}/odom, amcl_pose, battery 購読                 │
-│  └── → /tmp/warehouse_state.json（atomic write）           │
+│  └── → /tmp/warehouse/state.json（atomic write）           │
 │                                                            │
 │  Emergency Guardian（別プロセス、50ms周期、LLM非経由）       │
 │  └── 距離・バッテリー・blocked監視 → Nav2 cancel + cmd_vel停止│
@@ -70,8 +70,8 @@ Mode Cでは交通管理フィールドを省略し、Open-RMFからの交通状
   "traffic": {
     "mode": "open-rmf",
     "aisles": {
-      "aisle_A": {"status": "occupied", "robot": "bot1", "eta_clear_s": 4.2},
-      "aisle_B": {"status": "free"}
+      "route_A": {"status": "occupied", "robot": "bot1", "eta_clear_s": 4.2},
+      "route_B": {"status": "free"}
     },
     "conflicts": [],
     "escalation": null
@@ -248,7 +248,7 @@ Nav2（50ms）     → Open-RMF（即時）  → Claude（1-3秒）
 **注意**: 以下は実装アーキテクチャ（doc12準拠）の通信フロー。
 
 ```
-t=0.0s   LLM Bridge Node: State Cache JSON読取（/tmp/warehouse_state.json）
+t=0.0s   LLM Bridge Node: State Cache JSON読取（/tmp/warehouse/state.json）
 t=0.0s   LLM Bridge Node: emergency情報があれば付加
 t=0.1s   LLM Bridge Node: POST → Hermes Gateway
 t=0.2s   Hermes Gateway: LLM API呼出し開始

@@ -198,8 +198,8 @@ class StateCacheNode(Node):
 
     def write_cache(self):
         """atomic write でファイル書出し + トピック publish"""
-        tmp_path = "/tmp/warehouse_state.json.tmp"
-        final_path = "/tmp/warehouse_state.json"
+        tmp_path = "/tmp/warehouse/state.json.tmp"
+        final_path = "/tmp/warehouse/state.json"
 
         payload = json.dumps(self.state)
         with open(tmp_path, "w") as f:
@@ -213,7 +213,7 @@ class StateCacheNode(Node):
         self.snapshot_pub.publish(String(data=payload))
 ```
 
-> **配信2系統**: State Cache は ①`/tmp/warehouse_state.json`（atomic file、LLM Bridge / Warehouse MCP Server が読む）と ②`/state_cache/snapshot` トピック（`std_msgs/String`、キャラLLM が購読、`14-character-llm-negotiation.md` 参照）の両方に同一スナップショットを出力する。
+> **配信2系統**: State Cache は ①`/tmp/warehouse/state.json`（atomic file、LLM Bridge / Warehouse MCP Server が読む）と ②`/state_cache/snapshot` トピック（`std_msgs/String`、キャラLLM が購読、`14-character-llm-negotiation.md` 参照）の両方に同一スナップショットを出力する。
 
 ### State Cache JSON フォーマット
 
@@ -309,7 +309,7 @@ Emergency Guardian:
 State Cache Node:
   /emergency/event を受信
   state["emergency"]["active"] に追加
-  /tmp/warehouse_state.json に反映
+  /tmp/warehouse/state.json に反映
   ↓
 Warehouse MCP Server:
   次の get_fleet_status() で emergency 情報を含めてLLMに返す

@@ -122,7 +122,10 @@ sudo jetson_clocks        # クロック最大化
 - 仮に旧版が届いても Super 化可能なため、性能面でのリスクは無い
 
 #### Super モードで必要な追加投資
-- **USB-C PD 電源 45W以上**（25W安定動作のため）: Anker Nano II 45W (約3,500円) 推奨
+- **電源（重要・2026-05-29 訂正）**: Orin Nano Super Dev Kit には **19V DCバレルジャック電源が同梱**されるため、給電用の追加購入は原則不要。
+  - ⚠️ **USB-C ポートは output 専用で、Dev Kit の給電には使えない**（NVIDIA公式フォーラム: "the USB-C port on Orin nano devkit is output only, can not be used as power supply of devkit"）。給電は必ず **DCバレルジャック（入力 7–20V、同梱は19V）** を使う。
+  - ❌ 旧記載「USB-C PD 45W（Anker Nano II）推奨」は**誤りのため撤回**。Mac用USB-C充電器やUSB-C PDではDev Kitを駆動できない。
+  - MAXN SUPER（25W）で Nav2×2 + MPPI を回す場合も同梱19V電源で給電する。Mac純正70W充電器による給電は不可（USB-C のため）。
 - **NVMe M.2 2280 SSD (TLC NAND, Gen3 以上, 500GB)**: OS用、microSDより圧倒的に高速
 - **microSD 64GB A2** (初回ブート用): SanDisk Extreme 等
 

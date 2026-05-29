@@ -93,7 +93,7 @@ Claudeに渡すtraffic:
 ```python
 class SimpleTrafficManager(TrafficManager):
     def __init__(self):
-        self.aisle_locks = {}  # {"aisle_A": "bot1", "aisle_B": None}
+        self.aisle_locks = {}  # {"route_A": "bot1", "route_B": None}
 
     def submit_task(self, robot, pickup, dropoff, priority="normal"):
         route = self.plan_route(pickup, dropoff)
@@ -137,8 +137,8 @@ Claudeに渡すtraffic:
 {
   "mode": "simple",
   "aisles": {
-    "aisle_A": {"status": "occupied", "robot": "bot1"},
-    "aisle_B": {"status": "free"}
+    "route_A": {"status": "occupied", "robot": "bot1"},
+    "route_B": {"status": "free"}
   },
   "conflicts": []
 }

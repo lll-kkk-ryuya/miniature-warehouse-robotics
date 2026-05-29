@@ -23,6 +23,7 @@
 | | **予備費** | | **230,000円** |
 
 ※ 当初3台構成から2台構成に変更。LLM司令官コンセプトに集中するため。
+※ Jetson は発注実績 **45,484円**（Amazon「IoT本舗」ASIN: B0BZJTQ5YP）で確定。上表の 57,200円（スイッチサイエンス Super Dev Kit）より約12,000円安い（詳細: `02-hardware-design.md`）。給電は同梱19V DC電源を使用（USB-C給電は不可）。
 
 ## 予備費の投資優先順位
 
@@ -67,6 +68,7 @@
 | Anthropic API | Claude（LLM司令官） | APIキー取得要、従量課金 |
 | OpenAI API | ChatGPT（LLM比較検証用） | APIキー取得要、従量課金 |
 | Google AI API | Gemini（LLM比較検証用） | APIキー取得要、従量課金 |
+| xAI API | Grok（LLM比較検証用） | APIキー取得要、従量課金。モデル名・価格は要確認（`07-research-notes.md` R-30） |
 
 ### ホームセンター（コーナン/カインズ）
 

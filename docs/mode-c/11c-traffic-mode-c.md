@@ -87,13 +87,13 @@ Claudeに渡すtraffic:
 {
   "mode": "open-rmf",
   "aisles": {
-    "aisle_A": {"status": "occupied", "robot": "bot1", "eta_clear_s": 4.2},
-    "aisle_B": {"status": "free"}
+    "route_A": {"status": "occupied", "robot": "bot1", "eta_clear_s": 4.2},
+    "route_B": {"status": "free"}
   },
   "conflicts": [
     {
       "robots": ["bot1", "bot2"],
-      "location": "aisle_A",
+      "location": "route_A",
       "rmf_resolution": "bot2_wait_5s",
       "wait_remaining_s": 3.1,
       "status": "in_progress"
@@ -103,7 +103,7 @@ Claudeに渡すtraffic:
     {
       "robot": "bot2",
       "type": "wait",
-      "reason": "aisle_A occupied by bot1",
+      "reason": "route_A occupied by bot1",
       "duration_s": 5
     }
   ]

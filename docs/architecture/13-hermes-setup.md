@@ -126,7 +126,7 @@ LANGFUSE_HOST=https://cloud.langfuse.com   # セルフホスト時は差替
 # ───────────────────────────────────────────────
 # Warehouse MCP Server (子プロセスへ渡される)
 # ───────────────────────────────────────────────
-WAREHOUSE_STATE_CACHE_PATH=/tmp/warehouse_state.json
+WAREHOUSE_STATE_CACHE_PATH=/tmp/warehouse/state.json
 WAREHOUSE_AUDIT_LOG_PATH=/var/log/warehouse/audit.jsonl
 WAREHOUSE_CONFIG_PATH=/etc/warehouse/config.yaml
 ```
@@ -153,7 +153,7 @@ LANGFUSE_PUBLIC_KEY=
 LANGFUSE_SECRET_KEY=
 LANGFUSE_HOST=https://cloud.langfuse.com
 
-WAREHOUSE_STATE_CACHE_PATH=/tmp/warehouse_state.json
+WAREHOUSE_STATE_CACHE_PATH=/tmp/warehouse/state.json
 WAREHOUSE_AUDIT_LOG_PATH=/var/log/warehouse/audit.jsonl
 WAREHOUSE_CONFIG_PATH=/etc/warehouse/config.yaml
 ```
@@ -253,10 +253,10 @@ traffic_mode: "open-rmf"    # Mode C: LLM + Open-RMF (主方針)
 robots:
   - name: bot1
     namespace: /bot1
-    charging_station: berth_charge_1
+    charging_station: charging_station   # 2台共有（同時充電不可・先着順）
   - name: bot2
     namespace: /bot2
-    charging_station: berth_charge_2
+    charging_station: charging_station
 
 # ───────────────────────────────────────────────
 # 場所定義 (Policy Gate の known_locations 検証用)
@@ -268,8 +268,9 @@ locations:
   - berth_A
   - berth_B
   - shipping_station
-  - berth_charge_1
-  - berth_charge_2
+  - charging_station
+  - retreat_A
+  - retreat_B
 # ※ 08-llm-bridge-common.md の LOCATIONS テーブル（場所名→座標）とキーを一致させること
 
 # ───────────────────────────────────────────────

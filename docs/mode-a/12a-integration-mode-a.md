@@ -47,7 +47,7 @@ Warehouse MCP Server は rclpy を持たないため、Nav2 制御用の薄い B
 │                                                                │
 │  [State Cache Node 100ms]                                      │
 │        ├── /amcl_pose, /battery, /odom, /emergency/event 購読  │
-│        └── → /tmp/warehouse_state.json（atomic write）         │
+│        └── → /tmp/warehouse/state.json（atomic write）         │
 │                                                                │
 │  [VirtualScanNode 10Hz]（相手ロボット認識）                     │
 │        ├── 相手 /amcl_pose 購読                                │
@@ -99,7 +99,7 @@ Warehouse MCP Server は rclpy を持たないため、Nav2 制御用の薄い B
 │  │  State Cache Node（rclpy、100ms周期目標）              │ │
 │  │  ├── /bot{n}/amcl_pose, battery, odom 購読           │ │
 │  │  ├── /emergency/event 購読                           │ │
-│  │  └── → /tmp/warehouse_state.json（atomic write）     │ │
+│  │  └── → /tmp/warehouse/state.json（atomic write）     │ │
 │  └──────────────────────────────────────────────────────┘ │
 │                                                           │
 │  ┌──────────────────────────────────────────────────────┐ │
@@ -121,7 +121,7 @@ Warehouse MCP Server は rclpy を持たないため、Nav2 制御用の薄い B
 │  ┌───────────────────────▼──────────────────────────────┐ │
 │  │  Warehouse MCP Server（自作、rclpy不要）             │ │
 │  │  ├── Policy Gate（全コマンド検証、安全弁）            │ │
-│  │  ├── State Cache読取（/tmp/warehouse_state.json）     │ │
+│  │  ├── State Cache読取（/tmp/warehouse/state.json）     │ │
 │  │  ├── Command Audit Log（ローカルログ）                │ │
 │  │  ├── traffic_mode切替                                 │ │
 │  │  │   ├── "none"     → Nav2 Bridge経由（Mode A）       │ │
