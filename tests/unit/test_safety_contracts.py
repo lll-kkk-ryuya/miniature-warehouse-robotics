@@ -38,7 +38,7 @@ def test_speed_is_clamped(v: float, expected: float) -> None:
 @pytest.mark.safety
 @pytest.mark.parametrize("loc", sorted(KNOWN_LOCATIONS))
 def test_known_locations_accepted(loc: str) -> None:
-    assert is_known_location(loc, KNOWN_LOCATIONS)
+    assert is_known_location(loc)
 
 
 @pytest.mark.safety
@@ -48,7 +48,7 @@ def test_known_locations_accepted(loc: str) -> None:
 )
 def test_unknown_or_removed_locations_rejected(loc: str) -> None:
     # Regression guard: deprecated names must never validate.
-    assert not is_known_location(loc, KNOWN_LOCATIONS)
+    assert not is_known_location(loc)
 
 
 @pytest.mark.safety

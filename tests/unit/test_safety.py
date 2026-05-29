@@ -26,6 +26,13 @@ def test_clamp_velocity(v: float, expected: float) -> None:
 
 
 @pytest.mark.safety
+@pytest.mark.parametrize("v", [float("nan"), float("inf"), float("-inf")])
+def test_clamp_velocity_non_finite_stops(v: float) -> None:
+    # A non-finite request is unknown -> stop (0.0), never ±cap.
+    assert clamp_velocity(v) == 0.0
+
+
+@pytest.mark.safety
 @pytest.mark.parametrize(
     ("pct", "allowed"),
     [(100, True), (21, True), (20, False), (10, False)],

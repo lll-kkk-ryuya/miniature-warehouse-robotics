@@ -5,9 +5,14 @@ doc15) and the Emergency Guardian (``warehouse_safety``, 50ms reflex, doc12), so
 the speed cap / battery thresholds never diverge across lanes. Encodes
 ``.claude/rules/safety.md``. Pure stdlib — unit-testable without ROS.
 
-⚠️ These are the canonical values. Do NOT hardcode 0.3 / 20 / 10 elsewhere;
-import from here (or read tunables via ``warehouse_interfaces.config``).
+⚠️ These are the canonical HARD CAPS, not tunables: import them directly and do
+NOT hardcode 0.3 / 20 / 10 elsewhere. The config value ``safety.max_linear_velocity``
+is an environment tunable that ``warehouse_interfaces.config.load_config`` validates
+to be ≤ ``MAX_LINEAR_VELOCITY`` — config may lower the operational speed, never
+raise it above this code-enforced ceiling.
 """
+
+import math
 
 # safety.md: miniature-scale hard linear speed cap (also clamped in MCU Layer 0 + Nav2).
 MAX_LINEAR_VELOCITY: float = 0.3  # m/s
@@ -18,7 +23,13 @@ BATTERY_LOW_PCT: int = 20
 
 
 def clamp_velocity(v: float, max_speed: float = MAX_LINEAR_VELOCITY) -> float:
-    """Clamp a linear velocity magnitude to the safety cap (hard, Layer 0)."""
+    """Clamp a linear velocity magnitude to the safety cap (hard, Layer 0).
+
+    A non-finite request (NaN / ±inf) is unknown and clamped to 0.0 (stop)
+    rather than silently snapping to ±``max_speed``.
+    """
+    if not math.isfinite(v):
+        return 0.0
     return max(-max_speed, min(v, max_speed))
 
 

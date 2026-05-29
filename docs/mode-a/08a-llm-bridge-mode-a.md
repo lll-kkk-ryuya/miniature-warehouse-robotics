@@ -90,7 +90,9 @@ Mode A/BではClaude自身が交通管理を行うため、velocity、heading、
 
 `predicted_position_3s`は、Mode A/B（Open-RMFなし）でClaude自身が交通管理を行う場合の補助データ。
 
-**計算場所**: LLM Bridge Node が State Cache JSON の `pose`（position + yaw）と `velocity` から線形外挿で計算する。State Cache Node 側には含めない（Mode C では不要なフィールドのため）。同様に `obstacle_ahead` / `obstacle_distance` も LLM Bridge Node が `/bot{n}/scan` から計算する。
+**計算場所**: `predicted_position_3s` は LLM Bridge Node が State Cache JSON の `pose`（position + yaw）と `velocity` から線形外挿で計算する。State Cache Node 側には含めない（Mode C では不要なフィールドのため）。
+
+一方 `obstacle_distance`（最近傍障害物までの距離 [m]）は **State Cache Node が `/bot{n}/scan` から集約し、`StateSnapshot.robots[].obstacle_distance` として state.json に出力する**（`warehouse_interfaces.schemas.RobotSnapshot`、フィールド名は Situation の `RobotState.obstacle_distance` と一致＝L2→L1 で写し替え不要）。LLM Bridge Node はこの距離から `obstacle_ahead`（真偽値）を導出する（例: `obstacle_distance is not None and obstacle_distance < emergency_min_distance`）。
 
 ### 計算方法（線形外挿）
 
