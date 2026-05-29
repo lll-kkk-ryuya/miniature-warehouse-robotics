@@ -46,7 +46,7 @@ SSH:        ssh <username>@xxx.xxx.xxx.xxx
 ssh <username>@<external-ip> 'test -f /var/log/hermes-init-done && echo READY'
 ```
 
-`READY` と返れば、Python 3.12 + swap 2GB + pipx 準備完了。
+`READY` と返れば、Python 3.12 + venv + swap 2GB + git/curl 準備完了（install.sh 実行の前提）。
 
 ### Step 4: Hermes Gateway インストール
 
