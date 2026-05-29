@@ -1,0 +1,120 @@
+# 並列開発・分担ルール
+
+> 本ルールは複数セッション（worktree）で並行開発する際の**協調プロトコル**を定める。
+> 構造・命名は [docs/architecture/16](../../docs/architecture/16-repository-and-conventions.md)、
+> 実行手順は [docs/architecture/17](../../docs/architecture/17-development-workflow.md) を正本とし、本書は**運用規約**のみを定める。
+
+---
+
+## 1. 基本原則
+
+- **1セッション = 1 worktree = 1ブランチ = 1トラック**。同一ブランチ／同一ディレクトリを2セッションで同時に触らない。
+- **`main` は統合専用・常にクリーン**に保つ（直編集・直 push 禁止、ブランチ先行）。
+- 各セッションは root `.claude/CLAUDE.md` ＋ 自パッケージの `CLAUDE.md` ＋ 本ルールを読み、**自トラックの担当ディレクトリのみ**を編集する。
+
+### worktree の切り方
+
+```bash
+# main をクリーンにした状態で（skeleton マージ後）
+git worktree add ../mwr-<track> -b feat/<track> main
+cd ../mwr-<track> && claude        # そのブランチ専用の Opus セッション
+# 完了後
+git worktree remove ../mwr-<track>
+```
+
+---
+
+## 2. パッケージ間「依存」の扱い（2分類）
+
+依存には性質の異なる2種類があり、扱う場所を分ける。
+
+### 2.1 コード依存（build / runtime）→ `package.xml` で宣言・契約ハブに集約
+
+- **唯一の共有依存は `warehouse_interfaces`（凍結契約: pydantic schemas / `StateStore`・`GenStore` IF / 共有パス）**。
+- 各パッケージは **`warehouse_interfaces` にのみ依存**し、**他トラックの内部モジュールを import しない**（疎結合）。
+- 依存方向は一方向（`warehouse_interfaces` ← 各パッケージ）。**循環依存は禁止**。
+- 例: `warehouse_llm_bridge` は interfaces の `Situation`/`Command` schema と `StateStore` IF にのみ依存。`warehouse_state` が `StateStore` を**実装**する。両者は IF 越しにのみ結合 → 実体が無くても**偽実装（fake）で各々独立に開発・テストできる**（doc16 §11）。
+
+```
+            warehouse_interfaces  ← 凍結契約（ハブ）
+          ┌─────────┼─────────┬──────────┐
+   llm_bridge   state/safety   sim/desc   orchestrator
+   （契約を consume / produce するだけ。互いを import しない）
+```
+
+### 2.2 作業依存（順序）→ GitHub Issue の依存リンクで管理
+
+- **1トラック = 1 epic Issue**。タスクは Issue 本文のチェックリスト（出典: doc06 / doc17）。
+- 順序依存は Issue 本文に **`Depends on #N` / `Blocked by #N`** を明記。
+- ラベルで状態可視化（§3）。例: nav-traffic Issue は `Blocked by #<sim>`。
+
+---
+
+## 3. GitHub ラベル / Issue / PR 規約
+
+### ラベル体系
+
+| 種別 | ラベル | 意味 |
+|---|---|---|
+| トラック | `track:skeleton` `track:llm-bridge` `track:safety-state` `track:sim` `track:nav-traffic` `track:wo` `track:jetson` `track:firmware` `track:docs` | どの担当領域か |
+| 契約 | `contract` | `warehouse_interfaces`（凍結契約）に触れる → **全トラック影響・特別レビュー** |
+| 経路 | `critical-path` | sim→nav-traffic（全体所要を律速） |
+| 状態 | `blocked` / `ready` | 依存待ち / 着手可能 |
+
+### Issue 規約
+
+- 各トラックの epic Issue にトラックラベルを付与。
+- 依存は本文に `Depends on #N`。着手可能になったら `blocked`→`ready` に張り替え。
+
+### PR 規約
+
+- タイトルに track プレフィックス（例 `[llm-bridge] ...`）、本文に **`Closes #N`**、track ラベル付与。
+- **`main` マージ条件**: ① 契約後方互換 ② `colcon build` 通過 ③ 安全機構はユニットテスト通過（doc16 §11）。
+- マージ順は **doc17 §6**（skeleton → 独立トラック随時 → sim系 → nav-traffic → 統合E2E）。
+
+---
+
+## 4. 契約変更プロトコル（最重要のやり取り）
+
+凍結契約 `warehouse_interfaces` の変更は全トラックに波及するため、以下を厳守する。
+
+1. 契約を変える PR には **`contract` ラベル必須**。
+2. **マージ前に、依存する全トラックの Issue にコメントで予告**し、レビュー合意を得る。
+3. 契約は**安定が前提**（doc16 §3: Phase 4 まで `std_msgs/String` の JSON 文字列で運用し、頻繁な `.msg` 再ビルドを回避）。変更は**最小限・後方互換優先**。
+4. トピック名・型・JSON スキーマの「真実」は設計ドキュメント（doc03 / doc08 / doc14）。コード（pydantic）はそれを検証する側であり、**勝手にスキーマを拡張しない**。
+
+---
+
+## 5. パッケージ別 `CLAUDE.md` 規約
+
+`ws/src/warehouse_*/CLAUDE.md` を**必須**とし、worktree セッションが `cd` した瞬間に担当範囲の文脈を得られるようにする。最低限以下を含める:
+
+```markdown
+# warehouse_<pkg> — <一行責務>
+
+- **担当トラック / ブランチ**: feat/<track>
+- **Phase**: <doc06のPhase>
+- **編集境界**: このパッケージ配下のみ。他パッケージ・共有契約は触らない（変更は §4）
+- **消費する契約**: <warehouse_interfaces の schema / IF>
+- **生産する契約 / トピック**: <publish するトピック・型、実装する IF>
+- **依存**: warehouse_interfaces のみ（他トラック内部を import しない）
+- **テスト**: <偽トピック / 偽 state.json での独立検証方法。安全機構はユニット必須>
+- **設計ドキュメント**: docs/... へのリンク
+```
+
+---
+
+## 6. 衝突防止チェックリスト（doc16 §9 再掲）
+
+- 凍結済みの**トピック名・型・JSONスキーマは触らない**（変更は §4 経由）。
+- `warehouse_bringup/config/` は **1ファイル1責務**に分割 → 別担当は別ファイルのみ編集。
+- `package.xml` / `setup.py` の依存追加は**自パッケージ内のみ**。
+- URDF リンク名・センサ frame_id・footprint は skeleton で固定 → description と sim が同じものを参照。
+
+---
+
+## References
+
+- [docs/architecture/16 - リポジトリ構成と実装規約](../../docs/architecture/16-repository-and-conventions.md)
+- [docs/architecture/17 - 開発の進め方と分担](../../docs/architecture/17-development-workflow.md)
+- `.claude/rules/code-style.md` / `safety.md` / `ros2.md`
