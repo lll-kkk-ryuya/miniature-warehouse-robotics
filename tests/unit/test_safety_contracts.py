@@ -6,6 +6,7 @@ every push. They also act as a regression guard for the canonical location set
 """
 
 import pytest
+from warehouse_interfaces.locations import KNOWN_LOCATIONS
 
 from tests.contracts import (
     MAX_SPEED_MPS,
@@ -14,19 +15,10 @@ from tests.contracts import (
     is_known_location,
 )
 
-# Canonical known locations — must match docs/architecture/13-hermes-setup.md
-# §3.3 `locations` and docs/architecture/08-llm-bridge-common.md LOCATIONS.
-KNOWN_LOCATIONS = {
-    "shelf_1",
-    "shelf_2",
-    "shelf_3",
-    "berth_A",
-    "berth_B",
-    "shipping_station",
-    "charging_station",
-    "retreat_A",
-    "retreat_B",
-}
+# KNOWN_LOCATIONS now comes from the contract hub (single source of truth):
+# warehouse_interfaces.locations == doc08 LOCATIONS == doc13 §3.3 ==
+# config/warehouse.base.yaml. clamp_velocity / battery_allows_new_task stay in
+# tests.contracts until warehouse_safety / warehouse_mcp_server are implemented.
 
 
 @pytest.mark.safety
