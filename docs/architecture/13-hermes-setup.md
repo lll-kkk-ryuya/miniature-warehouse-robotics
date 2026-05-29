@@ -85,7 +85,7 @@ pip install httpx pydantic  # ROS 2 ワークスペースの requirements に追
 
 ```bash
 # 開発環境（リポジトリ直下）
-cd src/warehouse_mcp_server   # Phase 1 で作成予定の自作パッケージ
+cd ws/src/warehouse_mcp_server   # Phase 0.5 で作成予定の自作パッケージ（doc16 §2）
 pip install -e .              # editable install
 ```
 
