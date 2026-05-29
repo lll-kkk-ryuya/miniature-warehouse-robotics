@@ -10,11 +10,12 @@ packages:
   - python3.12
   - python3-pip
   - python3-venv
-  - pipx
   - git
   - curl
   - ufw
   - chrony
+  # Note: Hermes is installed via the official install.sh (git + venv),
+  # not pipx, so pipx is intentionally not provisioned (see deploy/gcp/README §Step 4).
 
 # 2GB swap file (RAM is 1GB on e2-micro)
 swap:
@@ -32,9 +33,9 @@ runcmd:
   - sysctl -p /etc/sysctl.d/99-swappiness.conf
   # Time sync (LLM API signing is time-sensitive)
   - systemctl enable --now chrony
-  # pipx path for all users
-  - echo 'export PATH=$PATH:/root/.local/bin' >> /etc/profile.d/pipx.sh
   # Mark cloud-init completion for verification
+  # (install.sh adds ~/.local/bin to the login user's PATH itself, so no
+  #  profile.d entry is provisioned here.)
   - touch /var/log/hermes-init-done
 
 final_message: "Hermes VM ready. Uptime: $UPTIME"
