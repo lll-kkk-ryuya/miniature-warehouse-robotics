@@ -1,7 +1,7 @@
 # システム統合 — Mode A/B（LLM単独 / 自作ルールベース）
 
 作成日: 2026-05-25
-原本: `docs/12-hermes-agent-integration.md`
+由来: 旧 `12-hermes-agent-integration.md` を分割・再編（同ファイルは現存しない）
 
 > **関連ドキュメント**
 > - [共通インフラストラクチャ設計](../architecture/12-infrastructure-common.md)

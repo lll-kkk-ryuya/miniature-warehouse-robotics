@@ -70,16 +70,25 @@ docs/
 │   ├── 03-software-architecture.md     ← ROS 2・micro-ROS・Nav2・SLAM・LLM連携
 │   ├── 06-implementation-phases.md     ← フェーズ別実装計画
 │   ├── 08-llm-bridge-common.md         ← LLM Bridge Node 共通設計
-│   └── 12-infrastructure-common.md     ← 共通インフラストラクチャ設計
+│   ├── 12-infrastructure-common.md     ← 共通インフラストラクチャ設計
+│   ├── 13-hermes-setup.md              ← Hermes Gateway セットアップ・運用
+│   ├── 14-character-llm-negotiation.md ← キャラLLM + 交渉プロトコル
+│   ├── 15-mcp-platform.md              ← MCPプラットフォーム・Policy Gate・競合防止
+│   ├── 16-repository-and-conventions.md ← リポジトリ構成・実装規約（実装の起点）
+│   └── 17-development-workflow.md       ← 開発の進め方と分担（実行手順書）
 ├── mode-a/
+│   ├── README.md                       ← Mode A/B 構成概要・起動手順
 │   ├── 08a-llm-bridge-mode-a.md        ← LLM Bridge Mode A/B
 │   ├── 11a-traffic-mode-a.md           ← 交通管理 Mode A/B
 │   └── 12a-integration-mode-a.md       ← システム統合 Mode A/B
 └── mode-c/
+    ├── README.md                       ← Mode C 構成概要・起動手順
     ├── 08c-llm-bridge-mode-c.md        ← LLM Bridge Mode C
     ├── 11c-traffic-mode-c.md           ← 交通管理 Mode C
     └── 12c-integration-mode-c.md       ← システム統合 Mode C
 ```
+
+> ドキュメント全体マップの正本は [`docs/README.md`](../README.md)。
 
 ## References
 
