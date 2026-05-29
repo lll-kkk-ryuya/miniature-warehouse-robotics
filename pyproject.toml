@@ -1,0 +1,43 @@
+# Project-wide Python tooling for miniature-warehouse-robotics.
+# Applies to all ament_python packages under ws/src/ and standalone scripts.
+# Design: docs/architecture/19-dev-quality-and-testing.md
+[project]
+name = "miniature-warehouse-robotics"
+version = "0.0.0"
+description = "LLM-commanded miniature warehouse robotics (dev tooling config)"
+requires-python = ">=3.10"
+
+[project.optional-dependencies]
+dev = [
+  "ruff>=0.6",
+  "pytest>=7.4",
+  "pytest-cov>=5.0",
+  "pre-commit>=3.7",
+]
+
+# ── Ruff: lint + format (replaces flake8/black/isort) ───────────────
+[tool.ruff]
+target-version = "py312"        # ROS 2 Jazzy / Ubuntu 24.04
+line-length = 100
+extend-exclude = ["ws/build", "ws/install", "ws/log", ".claude/worktrees"]
+
+[tool.ruff.lint]
+# E/W: pycodestyle(PEP8), F: pyflakes, I: isort, B: bugbear,
+# UP: pyupgrade, N: pep8-naming, SIM: flake8-simplify
+select = ["E", "F", "W", "I", "B", "UP", "N", "SIM"]
+ignore = ["E501"]               # line length is enforced by the formatter
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+# ── pytest ──────────────────────────────────────────────────────────
+[tool.pytest.ini_options]
+minversion = "7.4"
+testpaths = ["tests"]
+pythonpath = [".", "ws/src"]
+addopts = "-ra -q"
+markers = [
+  "safety: safety-critical tests (Emergency Guardian, Policy Gate, speed clamp)",
+  "unit: pure-logic unit tests (no ROS / hardware)",
+]

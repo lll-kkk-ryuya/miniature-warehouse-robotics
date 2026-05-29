@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python-quality:
+    name: Ruff + pytest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dev tools
+        run: pip install ruff pytest pytest-cov
+      - name: Ruff lint
+        run: ruff check .
+      - name: Ruff format check
+        run: ruff format --check .
+      - name: Pytest (safety + unit)
+        run: pytest
+
+  web-e2e:
+    name: Playwright (web E2E)
+    runs-on: ubuntu-latest
+    # WO画面 / rmf-web は Phase 4 で実装。UIが存在するまで無効。
+    # TODO(Phase 4): `if: false` を外し、web/** 変更時に実行する。
+    if: false
+    defaults:
+      run:
+        working-directory: web/e2e
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npx playwright test

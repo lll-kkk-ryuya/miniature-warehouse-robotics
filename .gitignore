@@ -27,5 +27,20 @@ ws/log/
 __pycache__/
 *.pyc
 
+# Python tooling (Ruff / pytest / coverage / venv)
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+.venv/
+
+# Claude Code worktrees (parallel sessions)
+.claude/worktrees/
+
+# Playwright (web E2E)
+web/e2e/node_modules/
+web/e2e/playwright-report/
+web/e2e/test-results/
+
 # PlatformIO (ESP32 firmware)
 firmware/.pio/

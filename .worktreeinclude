@@ -1,0 +1,6 @@
+# Claude Code: copy these gitignored files into new worktrees automatically.
+# (.gitignore syntax; only files that are BOTH matched here AND gitignored are copied.)
+# Lets parallel worktrees/agents inherit local secrets without re-creating them.
+.env
+.env.local
+deploy/**/.env
