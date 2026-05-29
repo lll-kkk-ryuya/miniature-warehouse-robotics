@@ -30,7 +30,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5   # Node 24 runtime (v4 deprecated 2026-06)
 
       - name: Setup SSH key & known_hosts
         run: |
