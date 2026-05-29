@@ -132,15 +132,34 @@ GCP_VM_HOST=34.4.104.112 GCP_VM_USER=kawaguchiryuya \
 タイムスタンプ付きバックアップ (`~/.hermes/backups/<ts>/`) を取ってから
 `hermes-gateway` を再起動し、`/health` で起動確認する。
 
-### IP 変動の注意
+### 外部 IP (静的予約済み)
 
-外部 IP はエフェメラル (VM 再起動で変わりうる)。変わったら:
+外部 IP は **静的予約済み** (`34.4.104.112`)。VM 再起動でも変わらないため、
+通常運用で Secrets の更新は不要。
+
+```
+予約名:        hermes-gateway-ip
+リージョン:     us-west1   (network tier: STANDARD)
+アドレス:       34.4.104.112
+状態:          IN_USE (hermes-gateway に紐付き → 起動中 VM では無料)
+```
+
+予約は 2026-05-29 に、稼働中だったエフェメラル IP を同一値のまま昇格させて作成:
+```bash
+gcloud compute addresses create hermes-gateway-ip \
+  --addresses=34.4.104.112 --region=us-west1 --network-tier=STANDARD
+```
+
+> **課金注意**: 静的 IP は **VM に紐付き、かつ VM が起動中なら無料**。
+> VM を削除/停止して IP を未使用のまま放置すると課金されるので、
+> VM を畳む際は `gcloud compute addresses delete hermes-gateway-ip --region=us-west1` で解放する。
+
+もし将来 IP を変更/再割り当てした場合のみ Secrets を更新:
 ```bash
 NEW_IP=$(gcloud compute instances list --format="value(EXTERNAL_IP)")
 printf '%s' "$NEW_IP" | gh secret set GCP_VM_HOST
 ssh-keyscan -t ed25519 "$NEW_IP" | gh secret set GCP_VM_KNOWN_HOSTS
 ```
-頻繁に再起動するなら静的 IP 予約を検討 (起動中の VM に紐付く限り無料)。
 
 ---
 
