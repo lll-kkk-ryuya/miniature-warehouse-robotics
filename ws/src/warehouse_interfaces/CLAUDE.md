@@ -10,9 +10,12 @@
 - `locations.py` — `KNOWN_LOCATIONS`（9キー）/ `is_known_location`。**Policy Gate の単一真実**。doc08＝doc13＝config/warehouse.base.yaml と一致。
 - `paths.py` — 共有パス（doc16 §4）+ `WAREHOUSE_ENV`（dev/stg/prod, doc19）。state=`/tmp/warehouse/state.json`、gen_store=`/tmp/warehouse/gen_store`、prod=`/run/warehouse/`。
 - `stores.py` — `StateStore` / `GenStore` 抽象IF + file実装（atomic write）。
+- `safety.py` — **安全定数の単一ソース**（`MAX_LINEAR_VELOCITY=0.3` / battery 閾値 / `clamp_velocity` / `battery_allows_new_task` / `battery_is_critical`）。**Policy Gate(L1) と Emergency Guardian(L2) が共用**。ハードコード禁止。
+- `config.py` — `load_config()`：`warehouse.base.yaml` + `config/<env>/warehouse.yaml` を deep-merge（doc19）。
+- `schemas.py` の `StateSnapshot`/`RobotSnapshot` — State Cache(L2) が書く生状態。LLM Bridge(L1) が読む。
 
 ## 依存
-- stdlib + **pydantic>=2** のみ（rclpy 非依存 → MCP Server からも import 可）。
+- stdlib + **pydantic>=2** + **pyyaml** のみ（rclpy 非依存 → MCP Server からも import 可）。
 
 ## テスト
 - `tests/unit/test_schemas.py` / `test_stores.py`（pure-python、CIで実行）。

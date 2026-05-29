@@ -10,7 +10,7 @@ setup(
         ("share/ament_index/resource_index/packages", [f"resource/{package_name}"]),
         (f"share/{package_name}", ["package.xml"]),
     ],
-    install_requires=["setuptools", "pydantic>=2"],
+    install_requires=["setuptools", "pydantic>=2", "pyyaml"],
     zip_safe=True,
     maintainer="kawaguchiryuya",
     maintainer_email="ryu3124ruyu@gmail.com",

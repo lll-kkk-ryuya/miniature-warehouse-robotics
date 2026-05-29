@@ -20,9 +20,9 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install dev tools
-        # pydantic: runtime dep of warehouse_interfaces (contract schemas). See
-        # pyproject [project].dependencies. Needed so pytest can import the schemas.
-        run: pip install ruff pytest pytest-cov "pydantic>=2"
+        # pydantic + pyyaml: runtime deps of warehouse_interfaces (contract schemas
+        # + config loader). See pyproject [project].dependencies. Needed for pytest.
+        run: pip install ruff pytest pytest-cov "pydantic>=2" pyyaml
       - name: Ruff lint
         run: ruff check .
       - name: Ruff format check

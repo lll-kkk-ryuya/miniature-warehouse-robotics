@@ -7,9 +7,10 @@ version = "0.0.0"
 description = "LLM-commanded miniature warehouse robotics (dev tooling config)"
 requires-python = ">=3.10"
 # Runtime dependencies shared across ws/src packages (single source).
-# pydantic: warehouse_interfaces contract schemas (situation/command/proposal).
+# pydantic: contract schemas (situation/command/proposal). pyyaml: config loader.
 dependencies = [
   "pydantic>=2",
+  "pyyaml",
 ]
 
 [project.optional-dependencies]
