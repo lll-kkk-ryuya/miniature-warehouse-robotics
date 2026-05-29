@@ -1,0 +1,53 @@
+name: Deploy Hermes Gateway (GCP)
+
+# main の Hermes Gateway 設定 (SOUL.md / config.yaml) を GCP VM へ反映する CD。
+# 対象は「bot 自身の設定」のみ。bot のリポジトリ知識は GitHub MCP で main を
+# ライブ参照しているため、この CD とは独立 (README 参照)。
+#
+# 必要な GitHub Secrets:
+#   GCP_VM_SSH_KEY    CI 専用 ed25519 秘密鍵 (VM の authorized_keys に公開鍵を登録済み)
+#   GCP_VM_HOST       VM の外部 IP (エフェメラル。変わったら更新するか静的IP予約)
+#   GCP_VM_USER       SSH ログインユーザー (systemctl 用に passwordless sudo)
+#   GCP_VM_KNOWN_HOSTS  VM のホスト鍵 (ssh-keyscan で取得、MITM 防止のため固定)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'deploy/hermes/gcp/config.yaml'
+      - 'deploy/hermes/gcp/SOUL.md'
+      - 'deploy/hermes/gcp/deploy.sh'
+      - '.github/workflows/deploy-hermes-gcp.yml'
+  workflow_dispatch: {}   # 手動実行も可能 (Actions タブから)
+
+concurrency:
+  group: deploy-hermes-gcp
+  cancel-in-progress: false   # デプロイ中の中断はしない (途中状態を避ける)
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5   # Node 24 runtime (v4 deprecated 2026-06)
+
+      - name: Setup SSH key & known_hosts
+        run: |
+          mkdir -p ~/.ssh
+          install -m 600 /dev/null ~/.ssh/deploy_key
+          printf '%s\n' "${{ secrets.GCP_VM_SSH_KEY }}" > ~/.ssh/deploy_key
+          printf '%s\n' "${{ secrets.GCP_VM_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/deploy_key ~/.ssh/known_hosts
+
+      - name: Deploy config to VM and restart gateway
+        env:
+          GCP_VM_HOST: ${{ secrets.GCP_VM_HOST }}
+          GCP_VM_USER: ${{ secrets.GCP_VM_USER }}
+          SSH_KEY: /home/runner/.ssh/deploy_key
+          SSH_KNOWN_HOSTS: /home/runner/.ssh/known_hosts
+        run: bash deploy/hermes/gcp/deploy.sh
+
+      - name: Cleanup SSH key
+        if: always()
+        run: shred -u ~/.ssh/deploy_key 2>/dev/null || rm -f ~/.ssh/deploy_key
