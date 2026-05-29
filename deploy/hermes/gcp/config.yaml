@@ -42,9 +42,12 @@ model:
   # Can also be overridden for a single invocation with the --provider flag.
   provider: "google"
   
-  # API configuration (falls back to OPENROUTER_API_KEY env var)
+  # API configuration
   # api_key: "your-key-here"  # Uncomment to set here instead of .env
-  base_url: "https://openrouter.ai/api/v1"
+  # base_url omitted: provider "google" talks to Google AI Studio via
+  # GOOGLE_API_KEY directly. A stray base_url=openrouter was removed
+  # 2026-05-29 (unused: no OPENROUTER_API_KEY is set and the gateway
+  # answers fine). See docs/architecture/18 and deploy/gcp/README.md.
 
   # Azure Foundry keyless auth example:
   # provider: "azure-foundry"
