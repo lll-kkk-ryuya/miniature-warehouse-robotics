@@ -89,8 +89,26 @@
 
 ### PR 規約
 
-- タイトルに track プレフィックス（例 `[llm-bridge] ...`）、本文に **`Closes #N`**、track ラベル付与。
-- **`main` マージ条件**: ① 契約後方互換 ② `colcon build` 通過 ③ 安全機構はユニットテスト通過（doc16 §11）。
+**原則**:
+- **ブランチ先行・`main` への直コミット/直 push 禁止**。全変更は feature ブランチ → PR → マージ。
+- **1 PR = 1トラック = 1 epic Issue**。巨大 PR は避け、レビュー可能な単位に分割する。
+- PR を出す前に **`git merge main`** で最新を取り込み、衝突を手元で解消してから提出する。
+
+**作成時の必須項目**:
+- タイトル: `[track] 要約`（命令形。例 `[llm-bridge] add commander cycle`）。
+- 本文: ①何を/なぜ ②**`Closes #N`** ③影響範囲 ④テスト結果（`colcon build` / 安全機構の unit）⑤**契約変更の有無**。
+- ラベル: **track ラベル必須**。`warehouse_interfaces`（凍結契約）に触れたら **`contract` 必須**（§4）。
+- WIP は **Draft PR**。レビュー可能になってから Ready に切替。
+
+**マージ条件（すべて満たす）**:
+1. `colcon build` 通過（理想は CI で自動検証。CI 整備は dev-tooling トラック）。
+2. 安全機構（Emergency Guardian / Policy Gate）は**ユニットテスト通過**（doc16 §11）。
+3. **契約後方互換**（破壊的なら `contract` ラベル＋依存トラック合意 §4）。
+4. レビュー承認（contract PR は依存トラックの合意必須）。
+
+**マージ後**:
+- **squash merge 推奨**（1トラックの履歴を集約）。
+- worktree とブランチを掃除（§1 破棄チェックリスト: `git worktree remove` → `git branch -d`）。
 - マージ順は **doc17 §6**（skeleton → 独立トラック随時 → sim系 → nav-traffic → 統合E2E）。
 
 ---
