@@ -242,7 +242,7 @@ MPPIを推奨する理由:
 │  Lifecycle Manager     各ノードの起動・停止管理    │
 │  Emergency Guardian    安全監視（50ms周期、LLM非経由）│
 │  State Cache Node      状態集約JSON書出し（100ms周期）│
-│  LLM Bridge Node       Hermes Gateway連携（3秒タイマー）│
+│  LLM Bridge Node       Hermes Gateway連携（Mode A:3秒/Mode C:5秒）│
 │  Hermes Gateway        LLM推論daemon（port 8642）   │
 │  Warehouse MCP Server  Policy Gate + Nav2/RMF制御   │
 │  WO Bridge Node        Webダッシュボード連携       │

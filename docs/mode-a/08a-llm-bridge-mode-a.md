@@ -6,7 +6,8 @@
 > **関連ドキュメント**:
 > - [08 - LLM Bridge 共通設計](../architecture/08-llm-bridge-common.md) -- 共通インターフェース・フォールバック・Langfuse等
 > - [08c - LLM Bridge Mode C](../mode-c/08c-llm-bridge-mode-c.md) -- LLM + Open-RMF
-> - [12 - 共通インフラ](../architecture/12-infrastructure-common.md) -- Emergency Guardian, Policy Gate等
+> - [12 - 共通基盤](../architecture/12-infrastructure-common.md) -- Emergency Guardian, State Cache
+> - [15 - MCPプラットフォーム](../architecture/15-mcp-platform.md) -- Policy Gate, Warehouse MCP Server
 > - [12a - システム統合 Mode A/B](12a-integration-mode-a.md) -- Nav2 Bridge, systemd構成
 
 ## アーキテクチャ（Mode A/B）
@@ -47,6 +48,7 @@ Mode A/BではClaude自身が交通管理を行うため、velocity、heading、
 {
   "timestamp": "2026-06-15T14:30:05",
   "turn": 42,
+  "gen_id": 142,
   "warehouse": {
     "layout": "1.8m x 0.9m, 3 shelves, 2 aisles (200mm, no passing)"
   },
@@ -143,7 +145,7 @@ Claude自身が交通管理も行うため、`via`（経由ルート）や `wait
 
 ## アクション → MCP ツール マッピング
 
-Mode A/B では、Claude の出力 JSON 内の `action` を Warehouse MCP Server のツール呼出しに変換する。6ツールの定義は `../architecture/12-infrastructure-common.md` を参照。
+Mode A/B では、Claude の出力 JSON 内の `action` を Warehouse MCP Server のツール呼出しに変換する。7ツールの定義は `../architecture/15-mcp-platform.md` を参照。
 
 ### マッピング表
 
@@ -231,6 +233,11 @@ Mode C 互換性: `via`, `action`, `duration` を無視。Open-RMF Fleet Adapter
   - 10-20%: 新規タスク割当禁止、充電ステーションへの移動を推奨
   - 20-30%: 次タスク割当禁止、充電候補として検討
 - 安全性 > 効率性（衝突回避を最優先）
+
+## 安全機構（必ず守る）
+- 状況JSON の `gen_id` フィールドを、すべての MCP tool 呼出しの `gen_id` 引数にそのまま渡してください（B-3 安全機構、`15-mcp-platform.md §2` 参照）
+- デッドロックを検出した場合（08a-llm-bridge-mode-a.md デッドロック検出アルゴリズム）、自分で解消を試みる前に `start_negotiation` ツールでキャラLLM交渉を発動できます（任意、`14-character-llm-negotiation.md` 参照）
+- `negotiation_proposal` が状況JSONに含まれていれば、その提案を検証し、安全条件（バッテリー/距離/Emergency中でない）を満たすなら採用してください
 
 ## 出力形式（必ずこのJSONで返す）
 {
@@ -378,7 +385,7 @@ Mode A/BではOpen-RMFが交通管理を行わないため、Multi-Robot Costmap
 
 LLM Bridge Node から Nav2 にゴールを送信する際は、`nav2_simple_commander` を使う。直接トピックをPublishするよりもエラーハンドリングが容易。
 
-**注意**: 以下のコード例は設計意図の説明用。実装では Warehouse MCP Server 経由に置き換わる（`../architecture/12-infrastructure-common.md` 参照）。
+**注意**: 以下のコード例は設計意図の説明用。実装では Warehouse MCP Server 経由に置き換わる（`../architecture/15-mcp-platform.md` 参照）。
 
 ```python
 # NOTE: 設計説明用。実装では Warehouse MCP Server (dispatch_task等) を使用する。

@@ -82,14 +82,25 @@
 - [ ] 2台同時走行テスト
 - [ ] LLM Bridge Node のプロトタイプ開発（Hermes Gateway ベース）
   - Hermes Gateway daemon 起動・メモリ計測
-  - Warehouse MCP Server プロトタイプ（6ツール定義 + Policy Gate）
+  - Warehouse MCP Server プロトタイプ（7ツール定義 + Policy Gate）
   - State Cache Node + Emergency Guardian のプロトタイプ
   - Claude API → Hermes Gateway で Gazebo ロボットを制御するE2Eテスト
   - Hermes Memory / Skills の3秒ループでの動作検証（Skills はタスク割当パターンに限定、交通制御スキルは禁止）
-- [ ] メモリプロファイリング: 全プロセス同時起動で `free -h` を30秒間隔×10分間記録
-  - Nav2×2 + AMCL×2 + SLAM + micro-ROS Agent + Hermes Gateway + Warehouse MCP Server + State Cache + Emergency Guardian
-  - 残りRAMが500MB未満の場合、Open-RMF導入の可否を再検討
-- [ ] Claude API応答時間の実測: 200回呼出しのp50/p95/p99レイテンシを記録
+- [ ] **メモリ検証（二段構え）**: Jetson 8GB に全スタックが収まるかを検証する
+  - **段階1: Mac Docker近似テスト（Jetson到着前にできる）**
+    - Mac M4 と Jetson はどちらも ARM64 のため、Docker のメモリ上限を絞れば擬似再現できる
+    - `docker run --memory=6g --memory-swap=6g ...` で全スタックを起動し、OOM Killer で落ちないかを確認
+    - 上限を 6GB にする理由: Jetson 8GB は JetPack(OS+CUDA+デスクトップ)が起動直後に約2〜2.5GB消費するため、アプリに使えるのは実質5.5〜6GB程度
+    - これは早期スモークテスト（早期警告）。ここで落ちる設計は実機でも確実に落ちる
+  - **段階2: Jetson実機での確定値（Jetson到着後）**
+    - 全プロセス同時起動で `free -h` を30秒間隔×10分間記録
+    - Nav2×2 + AMCL×2 + SLAM + micro-ROS Agent + Hermes Gateway + Warehouse MCP Server + State Cache + Emergency Guardian
+    - 残りRAMが500MB未満の場合、Open-RMF導入の可否を再検討
+  - **なぜ段階2が必須か（Mac近似では出ない理由）**
+    - ユニファイドメモリ: Jetson Orin Nano は CPU と GPU が 8GB を共有する。GPU処理（GPU版コストマップ/Isaac連携等）が走ると同じ8GBを食い合う。Mac のメモリ上限指定では再現できない
+    - JetPack のオーバーヘッド: OS+CUDA+デスクトップの実消費は実機でしか正確に測れない
+  - **節約策**: ヘッドレス起動（デスクトップGUIを無効化）で約0.5〜1GB浮く。RAMが厳しい場合に検討
+- [ ] Claude API応答時間の実測: 約120回呼出しのp50/p95/p99レイテンシを記録
   - p95 > 2.5秒の場合、サイクル間隔を4-5秒に変更
 
 ### 完了条件
@@ -117,11 +128,14 @@
 - [ ] RViz2 でロボット位置を可視化
 - [ ] ESP32のメモリ・CPU使用率を確認（MS200 + micro-ROS同時動作、課題T4）
 - [ ] ベースボード塗装・通路テープ貼り
+- [ ] **`gen_store` 実装方式の選定**（file / multiprocessing.Value / Redis のいずれか）— `15-mcp-platform.md §2` 参照
+- [ ] **Hermes Gateway での gen_id required 引数の動作検証**（B-3 方式のスモークテスト）
 
 ### 完了条件
 
 - Jetson から1台のロボットをROS 2で遠隔操作できる
 - RViz2 にロボットの位置が表示される
+- gen_store の読み書きが Bridge / MCP 間で動作確認できる
 
 ### リスク
 
@@ -186,6 +200,15 @@
 - [ ] シナリオ2テスト: 障害物出現→LLM判断→迂回
 - [ ] シナリオ3テスト: デッドロック発生→Claude解消
 - [ ] シナリオ4テスト: モードB（SimpleTrafficManager）での動作確認
+- [ ] **キャラLLM 実況モード実装**（Haiku、`/character/speech` publish、画面表示連動）— `14-character-llm-negotiation.md` 参照
+- [ ] **キャラLLM の出力先決定**（OBS overlay / Web UI / ターミナル）+ TTS の採否判断
+- [ ] **交渉モード Mode A 実装**: 司令官のデッドロック検出 → `/negotiation/start` (starter指定) → Bot1/Bot2 バトンパス交渉 → proposal → 司令官承認 → MCP実行
+- [ ] **交渉のターン制（`/negotiation/turn` バトンパス）実装**— 14-character-llm-negotiation.md 参照
+- [ ] **交渉連続失敗の保護**: タイムアウト後 N 回連続失敗で交渉モード一時停止（司令官独自判断にフォールバック）
+- [ ] **Emergency Guardian → /negotiation/abort 連動**実装（Emergency 時に交渉即中断）
+- [ ] gen_id (B-3: MCP tool schema の required 引数) を MCP Server に実装（`15-mcp-platform.md §2`）
+- [ ] twist_mux 導入（Emergency=100, Nav2=10）— `15-mcp-platform.md §1. cmd_vel 多重 publisher`
+- [ ] active_tasks Lock / Policy Gate atomic 実装
 
 #### Phase 3 後半（Open-RMF導入 — 主方針）
 - [ ] RMFTrafficManager 実装（モードC）
@@ -206,7 +229,7 @@
 ### リスク
 
 - 2台同時のWiFi通信で遅延が発生する場合 → チャンネル分離、通信頻度調整
-- Claude API遅延が大きい場合 → 呼出間隔を3秒→5秒に調整
+- Claude API遅延が大きい場合 → Mode A の待機時間を1秒→2秒に拡大（サイクル長 3秒→4秒）
 - Open-RMF導入が間に合わない場合 → モードA/Bで一時的に撮影し、Open-RMF完成後に再撮影
 
 ---
@@ -231,6 +254,10 @@
 - [ ] パターン2: Claude単独（モードA: none）→ 柔軟だが3秒遅延
 - [ ] パターン3: Claude + 自作ルール（モードB: simple）→ 即時排他制御
 - [ ] パターン4: Claude + Open-RMF（モードC: open-rmf）→ フル交通管理（Phase 3で実装済みの場合）
+
+#### キャラLLM Mode C 拡張
+- [ ] **交渉モード Mode C 実装**: Open-RMF エスカレーション時のみ交渉発動
+- [ ] キャラLLMはPhase 4比較対象外（演出専用、`14-character-llm-negotiation.md` 参照）
 
 #### WO統合・可視化
 - [ ] 各LLMの判断ログ記録・分析（応答速度、正確性、タスク完了時間、エラー率）

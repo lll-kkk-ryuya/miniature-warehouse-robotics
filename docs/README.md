@@ -30,8 +30,10 @@ docs/
 | [03-software-architecture](architecture/03-software-architecture.md) | ソフトウェアアーキテクチャ全体 |
 | [06-implementation-phases](architecture/06-implementation-phases.md) | 実装フェーズ計画（Phase 0-6） |
 | [08-llm-bridge-common](architecture/08-llm-bridge-common.md) | LLM Bridge共通設計（LLM Client IF, Langfuse, コスト, フォールバック） |
-| [12-infrastructure-common](architecture/12-infrastructure-common.md) | 共通インフラ（Emergency Guardian, State Cache, Hermes, Policy Gate, MCP Server） |
+| [12-infrastructure-common](architecture/12-infrastructure-common.md) | 共通基盤（Emergency Guardian, State Cache, Emergency後同期, 責務分離） |
 | [13-hermes-setup](architecture/13-hermes-setup.md) | Hermes Gateway セットアップ・運用ガイド（config.yaml/.env テンプレ、起動手順、両モード対応） |
+| [14-character-llm-negotiation](architecture/14-character-llm-negotiation.md) | キャラLLM + 交渉プロトコル設計（Mode A メイン回の中核） |
+| [15-mcp-platform](architecture/15-mcp-platform.md) | MCPプラットフォーム（Hermes Agent, Warehouse MCP Server, Policy Gate, 競合状態の防止） |
 
 ## mode-a/ — LLM単独交通管理
 
@@ -54,8 +56,22 @@ docs/
 ## モード切替
 
 ```yaml
-# config.yaml — 1行変更で切替
-traffic_mode: "open-rmf"   # Mode C: LLM + Open-RMF（主方針）
+# config.yaml — モード別設定
+traffic_mode: "open-rmf"   # Mode C: LLM + Open-RMF（技術的主方針）
 # traffic_mode: "simple"   # Mode B: LLM + 自作ルールベース
-# traffic_mode: "none"     # Mode A: LLM単独
+# traffic_mode: "none"     # Mode A: LLM単独（動画メイン回 — キャラLLM交渉が映える）
+
+# サイクル長（応答後の待機時間）
+cycle_wait_sec: 3          # Mode C: 3秒待機（応答含めて約5秒/サイクル）
+# cycle_wait_sec: 1        # Mode A: 1秒待機（応答含めて約3秒/サイクル）
+
+# キャラLLM（演出用、Mode A メイン回で実装、Mode C は Phase 4 で追加）
+character_llm:
+  enabled: true
+  model: claude-haiku-4-5
+  max_tokens: 60
+  negotiation_timeout_sec: 8
+  max_turns_per_bot: 4
 ```
+
+> **位置づけ補足**: 動画的には **Mode A がメイン回**（LLMがminicarを動かしてみたの主役）、Mode C は**実用検証回**（Open-RMFというチートを使うとこんなに上手く動く）。技術主方針としては Mode C を採用。

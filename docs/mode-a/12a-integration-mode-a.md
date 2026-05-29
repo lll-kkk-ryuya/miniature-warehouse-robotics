@@ -127,7 +127,7 @@ Warehouse MCP Server は rclpy を持たないため、Nav2 制御用の薄い B
 │  │  │   ├── "none"     → Nav2 Bridge経由（Mode A）       │ │
 │  │  │   └── "simple"   → SimpleTrafficManager            │ │
 │  │  │                     + Nav2 Bridge経由（Mode B）     │ │
-│  │  └── 6ツール（共通設計参照）                          │ │
+│  │  └── 7ツール（共通設計参照）                          │ │
 │  └───────────────────────┬──────────────────────────────┘ │
 │                          │ REST (localhost)                 │
 │  ┌───────────────────────▼──────────────────────────────┐ │
@@ -419,18 +419,20 @@ class Nav2Bridge:
 ## Mode A/B用 通信フロー・タイミング図
 
 ```
-t=0.0s   LLM Bridge Node: 3秒タイマー発火
+t=0.0s   LLM Bridge Node: サイクル開始（前回応答から1秒経過）
+t=0.0s   LLM Bridge Node: current_gen += 1, gen_store に publish
 t=0.0s   LLM Bridge Node: emergency情報があれば付加
-t=0.1s   LLM Bridge Node: POST /v1/chat/completions（Hermes Gateway）
+t=0.1s   LLM Bridge Node: POST /v1/chat/completions（Hermes Gateway, situation JSON に gen_id 同梱）
 t=0.2s   Hermes: LLM API呼出し開始
 t=1.5s   Hermes: LLM応答受信
 t=1.5s   Hermes: MCP → Warehouse MCP Server ツール呼出し
-t=1.5s   Warehouse MCP: Policy Gate 検証
+t=1.5s   Warehouse MCP: gen_id 検証 → Policy Gate 検証
 t=1.6s   Warehouse MCP: Nav2 Bridge REST API に dispatch
 t=1.6s   Nav2 Bridge: BasicNavigator → Nav2 ゴール送信
 t=1.7s   Nav2: ロボット移動開始
 t=2.0s   Hermes: run完了 → LLM Bridge Node にレスポンス返却
 t=2.0s   LLM Bridge Node: /llm/reasoning, /llm/command Publish
+t=2.0s〜3.0s  待機（1秒、Mode A は反応速度優先）
 t=3.0s   次のサイクル開始
 ```
 

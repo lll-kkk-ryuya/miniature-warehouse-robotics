@@ -403,7 +403,7 @@ Emergency Guardian（50ms, 横串） / Nav2（50ms）→ TrafficManager（数十
 レベル0のEmergency Guardianは階層と並行して常時稼働する。
 ```
 
-**Mode C との違い**: Mode C では Open-RMF が経路衝突予測まで担当するためClaudeへのエスカレーションは「タスク変更が必要な抽象的問題」に限られる。Mode A/B では交通管理判断もClaudeに上がるため、3秒遅延が安全性に影響しやすい。詳細比較は `../mode-c/11c-traffic-mode-c.md` のエスカレーション階層を参照。
+**Mode C との違い**: Mode C では Open-RMF が経路衝突予測まで担当するためClaudeへのエスカレーションは「タスク変更が必要な抽象的問題」に限られる。Mode A/B では交通管理判断もClaudeに上がるため、サイクル遅延（Mode A=3秒サイクル、応答遅延最大2.5秒）が安全性に影響しやすい。詳細比較は `../mode-c/11c-traffic-mode-c.md` のエスカレーション階層を参照。
 
 ---
 

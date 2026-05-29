@@ -89,6 +89,77 @@ Jetsonは以下2つのネットワーク接続を同時に必要とする:
 - 菱洋エレクトロは法人向け（要見積、保守付き）
 - Isaac ROS最新版（release-3.x）ではJetson Thorがメインターゲットに移行中（※未検証）
 
+### 「Super」化の仕組み — ハードウェアは旧Orin Nanoと完全同一
+
+NVIDIA が 2024年12月に発表した **Jetson Orin Nano Super** は、**旧 Orin Nano (無印) と物理的に同じ基板・モジュール**である。違いは JetPack 6.1+ で解放される **電力枠とクロックの上限**のみ。
+
+| パラメータ | 旧出荷時 (Orin Nano) | Super 化後 (MAXN_SUPER) |
+|---|---|---|
+| GPU クロック | 635 MHz | **1,020 MHz**（+60%） |
+| CPU クロック | 1.5 GHz | **1.7 GHz** |
+| メモリ帯域 | 68 GB/s | **102 GB/s**（+50%） |
+| 電力枠 | 7W / 15W | 7W / 15W / **25W** |
+| AI性能 | 40 INT8 TOPS | **67 INT8 TOPS** |
+
+#### Super 化の手順
+```bash
+# JetPack 6.1+ を導入後
+sudo nvpmodel -q          # 現在の電力モード確認
+sudo nvpmodel -m 2        # MAXN_SUPER に切り替え
+sudo jetson_clocks        # クロック最大化
+```
+
+#### Amazon 等で「無印 Orin Nano Dev Kit」表記の商品でも問題ない理由
+- **基板は同一**: NVIDIA は新しい HW を作っておらず、ソフトウェアロック解除でリブランドした
+- **JetPack 更新で 67 TOPS 出る**: 旧版が届いても、ファーム適用後は Super と完全同一性能
+- **業界慣行**: Intel TDP 設定、Tesla バッテリー解放等と同じ「シリコン共通・ソフト差別化」方式
+- **保証範囲内**: NVIDIA 公式の `nvpmodel -m 2` 手順なので問題なし
+
+#### 採用判断（2026-05-28）
+- 本案件では **Amazon「IoT本舗」販売 Orin Nano Dev Kit (ASIN: B0BZJTQ5YP, 45,484円)** を採用候補
+- スイッチサイエンス Super Dev Kit (57,200円) より約12,000円安い
+- 商品 listing 上は表示タイトルに "Super" がないことがあるが、HTMLメタタイトルでは "Super Developer Kit" と明示、比較表でも「本製品 = Super」と記載
+- 仮に旧版が届いても Super 化可能なため、性能面でのリスクは無い
+
+#### Super モードで必要な追加投資
+- **USB-C PD 電源 45W以上**（25W安定動作のため）: Anker Nano II 45W (約3,500円) 推奨
+- **NVMe M.2 2280 SSD (TLC NAND, Gen3 以上, 500GB)**: OS用、microSDより圧倒的に高速
+- **microSD 64GB A2** (初回ブート用): SanDisk Extreme 等
+
+### OS環境構築（JetPack 6.x）
+
+Jetson は「司令塔（現場の脳）」であり、実機デモ時に Nav2/AMCL/SLAM/micro-ROS Agent/LLM Bridge/Warehouse MCP Server/Emergency Guardian 等を**現場でリアルタイムに走らせる中央コンピュータ**。Mac は開発・シミュレーション専用で本番では使わない。
+
+#### 役割（Jetson上で常時動くもの）
+
+`09-navigation-internals.md §5「Jetson上で動くROS 2ノード一覧」`を参照。要約すると micro-ROS Agent / Map Server / AMCL×2 / Nav2(Planner/Controller/Recoveries/Costmap)×2 / Emergency Guardian / State Cache / LLM Bridge / Hermes Gateway / Warehouse MCP Server / WO Bridge / TF2。
+
+#### セットアップ手順（焼き込みは Jetson 到着後に実行）
+
+OS環境構築 = SSD への JetPack 焼き込み。**焼く相手（Jetson本体）が無いと実行できない**が、手順とスクリプトの**準備は到着前にできる**。到着後に「スクリプトを流すだけ」の状態にしておけば半日で完了する。
+
+| 段階 | 作業 | Jetson要否 |
+|------|------|-----------|
+| 準備（到着前にできる） | NVIDIA SDK Manager / JetPack 6.x イメージのダウンロード | 不要 |
+| 準備（到着前にできる） | ROS 2 Jazzy + 依存パッケージのインストールスクリプト作成 | 不要 |
+| 準備（到着前にできる） | 各プロセスの systemd サービス定義のたたき台 | 不要 |
+| 実行（到着後） | 同梱 KIOXIA NVMe SSD 1TB へ JetPack 6.x を焼き込み（microSDで初回ブート → SSDへ移行） | **必要** |
+| 実行（到着後） | Super 化（`sudo nvpmodel -m 2` + `sudo jetson_clocks`、上記「Super化の手順」参照） | **必要** |
+| 実行（到着後） | ROS 2 Jazzy + micro-ROS Agent インストール、メモリ検証（`06-implementation-phases.md` Phase 0.5 段階2） | **必要** |
+
+#### Jetson が無くてもできること / できないこと
+
+| 項目 | Jetsonなしで可 | Jetson必須 |
+|------|:---:|:---:|
+| Gazeboシミュレーション全般（Phase 0.5） | ✅ | — |
+| LLM Bridge / MCP Server プロトタイプ（GCP稼働中のHermes経由） | ✅ | — |
+| 8GBメモリ検証（Docker 6GB上限の近似テスト） | ✅ | — |
+| 8GBメモリ検証（確定値・ユニファイドメモリ実測） | — | ✅ |
+| エッジOS環境の焼き込み・起動 | — | ✅ |
+| 実機ロボット制御（Phase 1〜、ただしロボット本体も必要） | — | ✅ |
+
+→ Jetson の遅延はクリティカルパスにほぼ影響しない（最初の2週間 Phase 0.5 は Mac だけで完結）。
+
 ### 代替案
 
 Raspberry Pi 5（8GB、14,000〜35,200円）。AI推論不要でNav2+SLAMのみなら十分動作する。

@@ -33,7 +33,7 @@ LLMが**行わない**こと:
 
 ### Q: Jetsonに渡されるデータ構成は？
 
-3秒ごとに以下のJSON交換が行われる:
+サイクルごと（Mode A: 3秒 / Mode C: 5秒）に以下のJSON交換が行われる:
 - **Jetson → Claude**: 状況JSON（全ロボットの位置、障害物、バッテリー、未完了タスク、履歴）
 - **Claude → Jetson**: 指示JSON（reasoning + commands配列）
 
@@ -190,7 +190,7 @@ SLAM地図生成もAMCL自己位置推定も、minicar搭載のMS200を使用す
 
 | 処理 | 頻度 | 内容 |
 |------|------|------|
-| LLM Bridge | 3秒タイマー | 状況JSONをClaudeに送信し指示を受け取る |
+| LLM Bridge | Mode A: 3秒 / Mode C: 5秒サイクル | 状況JSONをClaudeに送信し指示を受け取る |
 
 ### イベント駆動（何かが起きたときだけ動作）
 
@@ -209,7 +209,7 @@ SLAM地図生成もAMCL自己位置推定も、minicar搭載のMS200を使用す
 │ AMCL ─┤       ├─ AMCL ┤       ...   ├─ AMCL ┤  5-10Hz
 │ MPPI ─┼──MPPI─┼──MPPI─┼──MPPI─...──┼──MPPI─┼  20Hz
 │                                               │
-│ LLM ─────────── 3秒タイマー ────────────────  │  0.33Hz
+│ LLM ─────── Mode A:3秒 / Mode C:5秒 ────────  │  0.33-0.2Hz
 ```
 
 **LLMだけが3秒間隔のタイマー駆動**であり、それ以外は全て常時回り続ける。これにより、LLMの応答が遅れてもAMCLとNav2が常に安全にロボットを制御し続けることができる。

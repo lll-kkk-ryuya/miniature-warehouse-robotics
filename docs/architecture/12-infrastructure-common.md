@@ -87,7 +87,7 @@ Layer 2: Open-RMF（Mode C）/ SimpleTrafficManager（Mode B）/ なし（Mode A
   └── 経路衝突予測 → 待機・迂回指示
   └── デッドロック検出・解消
 
-Layer 3: Claude / Hermes（戦略判断、3秒周期）
+Layer 3: Claude / Hermes（戦略判断、Mode A: 3秒 / Mode C: 5秒サイクル）
   └── 事後の説明・タスク再割当・復旧方針の提案
   └── LLM APIはrate limit/timeout/overloadの影響を受けるため制御deadline保証なし
 ```
@@ -130,8 +130,13 @@ class EmergencyGuardian(Node):
         # 1. Nav2 goal cancel要求
         self.nav2_cancel[bot].cancel_goal()
         # 2. cmd_vel停止（Nav2 cancel応答を待たずに直接停止要求）
+        # twist_mux 経由で優先度100の /cmd_vel/emergency に publish（詳細は「競合状態の防止」セクション）
         stop_msg = Twist()  # all zeros
-        self.cmd_vel_pubs[bot].publish(stop_msg)
+        self.cmd_vel_emergency_pubs[bot].publish(stop_msg)
+        # 3. キャラLLM交渉中なら即中断（14-character-llm-negotiation.md 参照）
+        self.negotiation_abort_pub.publish(
+            String(data=json.dumps({"reason": "emergency", "bot": bot, "event_id": event_id}))
+        )
         # 3. 構造化イベント発行
         event = {
             "event_id": f"emg-{datetime.now().strftime('%Y%m%d%H%M%S')}-{self.seq}",
@@ -267,335 +272,20 @@ def get_fleet_status(self):
 
 ---
 
-## Hermes Agent の構成
+## Hermes Agent / Warehouse MCP Server / 競合状態の防止
 
-### 動作モード
+> **このセクション群は `15-mcp-platform.md` に分離しました**。本書では Emergency Guardian / State Cache / Emergency後同期 等の「共通基盤」を扱い、MCP層（Hermes / Warehouse MCP / Policy Gate / 競合状態対策）は `15-mcp-platform.md` を参照してください。
 
-Hermes Agent は **Gateway モード**（ヘッドレスデーモン）で動作する。
-
-| モード | 用途 |
-|--------|------|
-| CLI/TUI (`hermes`) | 開発・デバッグ時の対話 |
-| **Gateway** (`hermes gateway`) | **本番運用（HTTP API、daemon化）** |
-| ACP (`hermes-acp`) | IDE統合（本PJでは不使用） |
-
-### Gateway API
-
-LLM Bridge Node は `POST /v1/chat/completions` で Hermes に状況を投入する:
-
-```python
-# LLM Bridge Node
-resp = httpx.post("http://localhost:8642/v1/chat/completions", json={
-    "messages": [
-        {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": json.dumps(situation)}
-    ],
-    "model": "hermes-agent"
-}, headers={
-    "Authorization": f"Bearer {HERMES_API_KEY}",
-    "Content-Type": "application/json"
-})
-```
-
-- `Authorization: Bearer`: API_SERVER_KEY による認証（`.env` で設定）
-- `role: system`: per-request system prompt（エフェメラル、コアプロンプトに追加）
-- ツール呼出しはサーバーサイドで実行され、最終テキストのみ返却
-
-**セッション管理**: `/v1/chat/completions` は stateless（公式仕様）。会話履歴は `messages` に含める。サーバー側の会話継続が必要な場合は `/v1/responses` の `previous_response_id` を使用する。Phase 0.5 で実際のセッション管理方式を検証する。
-
-### プロバイダー設定
-
-```yaml
-# hermes config
-providers:
-  anthropic:
-    api_key: ${ANTHROPIC_API_KEY}
-    model: claude-sonnet-4
-  openai:
-    api_key: ${OPENAI_API_KEY}
-    model: gpt-4o
-  google:
-    api_key: ${GOOGLE_API_KEY}
-    model: gemini-2.5-flash
-  xai:
-    api_key: ${XAI_API_KEY}
-    model: grok-4.3
-
-active_provider: anthropic
-```
-
-切替: `active_provider` フィールドを変更するだけ。
-
-### MCP設定（Warehouse MCP Server のみ）
-
-```yaml
-mcp_servers:
-  warehouse:
-    command: "python"
-    args: ["-m", "warehouse_mcp_server"]
-    tools:
-      include:
-        - dispatch_task
-        - cancel_task
-        - get_fleet_status
-        - get_task_queue
-        - send_to_charging
-        - escalation_response
-      prompts: false
-      resources: false
-```
-
-`tools.include` で6ツールに絞り、トークンコストを最小化する（[Hermes MCP公式](https://hermes-agent.nousresearch.com/docs/user-guide/features/mcp)）。
-
-### トークンコスト見積もり
-
-| 項目 | トークン/ターン |
-|------|---------------|
-| System Prompt | 約500 |
-| Warehouse MCP ツール定義（6個） | 約500 |
-| situation JSON（入力） | 約300 |
-| LLM応答（出力） | 約200 |
-| **合計** | **約1,500** |
-
-10分デモ（200ターン）: 約300K トークン
-
-| LLM | 推定コスト/デモ |
-|-----|----------------|
-| Claude Sonnet 4 | ~$0.45 |
-| GPT-4o | ~$0.35 |
-| Gemini 2.5 Flash | ~$0.20 |
-| Grok 4.3 | ~$0.40（※価格未確定） |
-
-全4社合計: 約$1.40/デモ。
-
-### Hermes 付加機能
-
-| 機能 | 活用 | 備考 |
-|------|------|------|
-| Memory | 「前回通路Aでデッドロックした」等の文脈記憶 | セッション横断で有効 |
-| Skills | 限定的（モードCではパターンが少ない） | モードAでの比較時に活きる |
-| Langfuse | 全LLM呼出しの自動トレース | 4社比較検証に必須 |
+| トピック | 参照先 |
+|---|---|
+| Hermes Agent 動作モード・API・プロバイダー設定・トークンコスト | [15-mcp-platform.md#hermes-agent-の構成](15-mcp-platform.md) |
+| Warehouse MCP Server ツール定義・モード切替・Mode A/B 用パラメータ | [15-mcp-platform.md#warehouse-mcp-server](15-mcp-platform.md) |
+| Policy Gate 検証ロジック・rate limiting | [15-mcp-platform.md#policy-gate](15-mcp-platform.md) |
+| Command Audit Log | [15-mcp-platform.md#command-audit-log](15-mcp-platform.md) |
+| 競合状態の防止（twist_mux / MCP gen_id / active_tasks Lock / Policy Gate atomic） | [15-mcp-platform.md#競合状態の防止](15-mcp-platform.md) |
 
 ---
 
-## Warehouse MCP Server
-
-### ツール定義（6個）
-
-```python
-# ツール1: dispatch_task
-dispatch_task(
-    pickup: str,           # 場所名（"shelf_1"等）
-    dropoff: str,          # 場所名（"berth_A"等）
-    priority: str = "normal",  # "urgent" | "normal" | "low"
-    robot: str | None = None,  # デフォルトはアロケーター割当
-    # --- Mode A/B 拡張（Mode C では無視） ---
-    via: str | None = None,        # 経由ルート名 ("route_A", "route_B" 等)
-    action: str = "deliver",       # "deliver" | "wait" | "yield"
-    duration: float | None = None  # action="wait" 時の待機秒数
-)
-# robot=None の場合、deterministic allocator が最適なロボットを選択
-# Mode C では via, action, duration は無視（Open-RMFが経路を決定）
-
-# ツール2: cancel_task
-cancel_task(
-    task_id: str  # タスクID または "current:{robot}" 形式（例: "current:bot1"）
-)
-# "current:{robot}" 指定時、Warehouse MCP Server が active_tasks[robot] から実際の task_id を解決
-
-# ツール3: get_fleet_status
-get_fleet_status()
-# → State Cache + TrafficManager からの統合情報を返却
-
-# ツール4: get_task_queue
-get_task_queue()
-# → 未割当・実行中・直近完了タスクの一覧
-
-# ツール5: send_to_charging
-send_to_charging(robot: str)
-
-# ツール6: escalation_response
-escalation_response(
-    escalation_id: str,
-    action: str,          # "reassign" | "cancel" | "retry"
-    new_robot: str | None = None,
-    reason: str = ""
-)
-```
-
-### Mode A/B 用パラメータ利用パターン
-
-Mode A/B では `dispatch_task` の拡張パラメータ（`via`, `action`, `duration`）を使用して、Open-RMF なしでの交通管理を実現する。Mode C ではこれらのパラメータは無視される（Open-RMF が経路・待機・迂回を自動処理するため）。
-
-| LLM 出力 action | MCP ツール | パラメータ | Nav2 Bridge エンドポイント |
-|-----------------|-----------|-----------|--------------------------|
-| `navigate` (via なし) | `dispatch_task` | `dropoff=目的地` | `POST /api/v1/navigate` |
-| `navigate` (via あり) | `dispatch_task` | `dropoff=目的地, via=経由ルート` | `POST /api/v1/navigate` (via付き) |
-| `wait` | `dispatch_task` | `action="wait", duration=秒数` | `POST /api/v1/wait` |
-| `yield` | `dispatch_task` | `action="yield", dropoff=退避先` | `POST /api/v1/navigate` (退避先) |
-| `stop` | `cancel_task` | `task_id="current:{robot}"` | `POST /api/v1/stop` |
-| `charge` | `send_to_charging` | `robot=対象` | `POST /api/v1/navigate` (charging_station) |
-
-**トークンコスト影響**: `dispatch_task` に3パラメータ追加で約30トークン増。6ツール合計で約530トークン/ターン（従来約500）。
-
-**`cancel_task` の `"current:{robot}"` 規約**: LLM の出力 JSON には `task_id` が含まれないため、`cancel_task("current:bot1")` と指定すると Warehouse MCP Server 内部の `active_tasks: dict[str, str]`（robot → task_id マッピング）から実際の task_id を解決する。
-
-### モード切替（TrafficManager パターン）
-
-```python
-class WarehouseMCPServer:
-    def __init__(self, config):
-        MANAGERS = {
-            "none": NoTrafficManager,       # Mode A: Nav2 Bridge経由（別プロセス）
-            "simple": SimpleTrafficManager,  # Mode B: 通路ロック + Nav2 Bridge経由（別プロセス）
-            "open-rmf": RMFTrafficManager,   # Mode C: Open-RMF API
-        }
-        self.traffic = MANAGERS[config["traffic_mode"]]()
-        self.allocator = RobotAllocator(self.traffic, config)
-        self.policy_gate = PolicyGate(self.traffic, config)
-        self.audit_log = CommandAuditLog(config)
-
-    def dispatch_task(self, pickup, dropoff, priority="normal", robot=None,
-                      via=None, action="deliver", duration=None):
-        # 1. Policy Gate（全コマンドの入口で必ず検証）
-        result = self.policy_gate.validate_dispatch(robot, pickup, dropoff, priority, action)
-        if result.rejected:
-            self.audit_log.record("dispatch_task", "rejected", result.reason)
-            return {"status": "rejected", "reason": result.reason}
-
-        # 2. ロボット割当（robot=None の場合、deterministic allocatorが決定）
-        if robot is None:
-            robot = self.allocator.select_best(pickup, dropoff, priority)
-
-        # 3. 実行（内部実装はモードとactionで異なる）
-        if action == "wait":
-            response = self.traffic.wait_robot(robot, duration)
-        elif action == "yield":
-            response = self.traffic.submit_task(robot, pickup, dropoff, priority)
-        else:
-            response = self.traffic.submit_task(robot, pickup, dropoff, priority)
-
-        # 4. Audit Log
-        self.audit_log.record("dispatch_task", "executed", response,
-                              robot=robot, action=action)
-
-        return response
-```
-
-LLM側のツール定義はモードによって変わらない。内部の実行先が透過的に切り替わる。
-
-**注意**: Open-RMF標準のタスク割当フローでは、core RMF systemがfleet adaptersにavailability/statusを問い合わせ、各fleet adapterがbidを返し、RMFがwinning bidを決定する（[Fleet Adapter Tutorial](https://osrf.github.io/ros2multirobotbook/integration_fleets_adapter_tutorial.html)）。Task Dispatcherを無効化してClaudeに直接robot指定させる設計はこの標準フローから外れるため、`robot=None`（allocator/RMF bidding任せ）をデフォルトとする。
-
-### Policy Gate
-
-全ツールの入口に必ず通す:
-
-```python
-class PolicyGate:
-    """LLMの指示を検証する安全弁。全MCPツールの入口に配置。"""
-
-    def validate_dispatch(self, robot, pickup, dropoff, priority, action="deliver"):
-        # action="wait" 時は場所名検証をスキップ（pickup/dropoff は "_wait" 予約値）
-        if action == "wait":
-            if robot is None:
-                return Reject("action='wait' requires robot specification")
-            # 場所名・同一地点チェックをスキップし、ロボット状態チェックへ進む
-        else:
-            # 場所名存在チェック
-            if pickup not in self.known_locations:
-                return Reject(f"Unknown location: {pickup}")
-            if dropoff not in self.known_locations:
-                return Reject(f"Unknown location: {dropoff}")
-
-            # 同一地点チェック
-            if pickup == dropoff:
-                return Reject("Pickup and dropoff are the same")
-
-        # ロボット状態チェック（指定時のみ）
-        if robot:
-            state = self.state_cache.get_robot(robot)
-            if state is None:
-                return Reject(f"Unknown robot: {robot}")
-            availability = state.get("availability", "ok")
-            if availability == "unavailable":
-                return Reject(f"{robot} state is unavailable (no updates >2s)")
-            if availability == "stale":
-                return Reject(f"{robot} state is stale (no updates >500ms)")
-
-            # バッテリーポリシー
-            battery = state.get("battery", 100)
-            if battery < 10:
-                return Reject(f"{robot} battery critical ({battery}%)")
-            if battery < 20:
-                return Reject(f"{robot} battery low ({battery}%), no new tasks")
-
-            # Emergency中のrobot禁止
-            if self.is_in_emergency(robot):
-                return Reject(f"{robot} is in emergency state")
-
-        # レートリミット
-        if robot and self.rate_limited(robot):
-            return Reject(f"{robot} received command too recently")
-
-        # タスク重複チェック（action="wait"/"yield" 時はスキップ）
-        if action == "deliver" and self.duplicate_task(pickup, dropoff):
-            return Reject(f"Duplicate task: {pickup} → {dropoff}")
-
-        return Accept()
-
-    def validate_cancel(self, task_id):
-        if not self.task_exists(task_id):
-            return Reject(f"Task {task_id} not found")
-        if self.task_already_completed(task_id):
-            return Reject(f"Task {task_id} already completed")
-        return Accept()
-
-    def validate_charging(self, robot):
-        state = self.state_cache.get_robot(robot)
-        if state and state.get("battery", 100) > 80:
-            return Reject(f"{robot} battery is {state['battery']}%, charging not needed")
-        return Accept()
-
-    def validate_escalation(self, escalation_id, action):
-        if not self.escalation_exists(escalation_id):
-            return Reject(f"Escalation {escalation_id} not found")
-        if self.escalation_already_resolved(escalation_id):
-            return Reject(f"Escalation {escalation_id} already resolved")
-        if action not in ["reassign", "cancel", "retry"]:
-            return Reject(f"Unknown action: {action}")
-        return Accept()
-```
-
-### Command Audit Log
-
-Langfuse（LLMトレース）とは別に、ロボット制御側のローカルログ:
-
-```python
-class CommandAuditLog:
-    """全MCPコマンドのローカルログ。Langfuseとは独立。"""
-
-    def record(self, tool, result, detail, robot=None):
-        entry = {
-            "timestamp": time.time(),
-            "tool": tool,
-            "result": result,       # "executed" | "rejected" | "error"
-            "detail": detail,
-            "robot": robot,
-            "traffic_mode": self.traffic_mode
-        }
-        # JSONLines形式でローカルファイルに追記
-        with open(self.log_path, "a") as f:
-            f.write(json.dumps(entry) + "\n")
-```
-
-記録内容:
-- Claudeが何を提案したか
-- MCPツールが何を受け取ったか
-- Policy Gateが通したか拒否したか（理由付き）
-- 実際にOpen-RMF/Nav2へ何を送ったか
-- 結果は成功したか
-
----
 
 ## Emergency後の状態同期
 
@@ -687,7 +377,7 @@ emergency/event フォーマット:
 | Emergency Guardian | ソフトウェア安全監視 | **50ms周期（目標）** | ◎ | ✕ |
 | State Cache Node | 状態集約・配信 | **100ms周期（目標）** | ◎ | ✕ |
 | Open-RMF（Mode C）/ SimpleTrafficManager（Mode B） | 交通管理・経路調整 | **イベント駆動（非LLM、ハードRT保証なし）** | ◎ | ✕ |
-| LLM Bridge Node | タイマー・ROS 2 Pub | **3秒周期** | ◎ | ✕ |
+| LLM Bridge Node | タイマー・ROS 2 Pub | **Mode A: 3秒 / Mode C: 5秒サイクル** | ◎ | ✕ |
 | Hermes Gateway | LLM推論 | **応答時間不定（API依存）** | ✕ | ◎ |
 | Warehouse MCP Server | 検証・実行 | **数十ms** | ✕ | ✕ |
 

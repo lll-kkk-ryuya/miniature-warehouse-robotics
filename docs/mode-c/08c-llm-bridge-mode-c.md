@@ -6,7 +6,8 @@
 > **関連ドキュメント**:
 > - [08 - LLM Bridge 共通設計](../architecture/08-llm-bridge-common.md) -- 共通インターフェース・フォールバック・Langfuse等
 > - [08a - LLM Bridge Mode A/B](../mode-a/08a-llm-bridge-mode-a.md) -- LLM単独交通管理
-> - [12 - 共通インフラ](../architecture/12-infrastructure-common.md) -- Emergency Guardian, Policy Gate等
+> - [12 - 共通基盤](../architecture/12-infrastructure-common.md) -- Emergency Guardian, State Cache
+> - [15 - MCPプラットフォーム](../architecture/15-mcp-platform.md) -- Policy Gate, Warehouse MCP Server
 > - [12c - システム統合 Mode C](12c-integration-mode-c.md) -- Fleet Adapter, systemd構成
 > - [11c - 交通管理 Mode C](11c-traffic-mode-c.md) -- RMFTrafficManager
 
@@ -24,7 +25,7 @@ Mode CではOpen-RMFが交通管理を担当し、Claude（LLM）はタスク割
 │  Emergency Guardian（別プロセス、50ms周期、LLM非経由）       │
 │  └── 距離・バッテリー・blocked監視 → Nav2 cancel + cmd_vel停止│
 │                                                            │
-│  LLM Bridge Node（3秒タイマー）                             │
+│  LLM Bridge Node（5秒サイクル、Mode C）                     │
 │  └── POST → Hermes Gateway                                 │
 │                                                            │
 │  Hermes Gateway（daemon, port 8642）                        │
@@ -48,6 +49,7 @@ Mode Cでは交通管理フィールドを省略し、Open-RMFからの交通状
 {
   "timestamp": "2026-06-15T14:30:05",
   "turn": 42,
+  "gen_id": 142,
   "warehouse": {
     "layout": "1.8m x 0.9m, 3 shelves, 2 aisles (200mm, no passing)"
   },
@@ -133,6 +135,11 @@ Claudeはタスク割当のみ。経路選択・衝突回避・待機指示はOp
   - 20-30%: 次タスク割当禁止、充電候補として検討
 - 交通管理（衝突回避・経路選択・待機）には関与しない — Open-RMFが自動処理する
 - escalationフィールドがnullでない場合のみ、Open-RMFが解決できなかった問題に対処する
+
+## 安全機構（必ず守る）
+- 状況JSON の `gen_id` フィールドを、すべての MCP tool 呼出しの `gen_id` 引数にそのまま渡してください（B-3 安全機構、`15-mcp-platform.md §2` 参照）
+- `escalation` が立っているときは `start_negotiation` ツールでキャラLLM交渉を発動できます（Mode C ではクライマックス演出用、任意）
+- `negotiation_proposal` が状況JSONに含まれていれば、その提案を検証し、安全条件を満たすなら採用してください
 
 ## 使用可能なアクション
 - navigate: 目的地を指定（経路はOpen-RMFが決定）

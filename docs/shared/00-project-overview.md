@@ -88,4 +88,4 @@ docs/
 - [ROS 2 Jazzy — docs.ros.org](https://docs.ros.org/en/jazzy/) — 参照日: 2026-05-21
 - [Nav2 Documentation](https://docs.nav2.org/) — 参照日: 2026-05-19
 - [Hermes Agent — GitHub](https://github.com/NousResearch/hermes-agent) — 参照日: 2026-05-23
-- [Nav2 MCP Server — GitHub](https://github.com/ajtudela/nav2_mcp_server) — 参照日: 2026-05-23（調査対象、不採用。`../architecture/12-infrastructure-common.md` 参照）
+- [Nav2 MCP Server — GitHub](https://github.com/ajtudela/nav2_mcp_server) — 参照日: 2026-05-23（調査対象、不採用。`../architecture/12-infrastructure-common.md` の Nav2 MCP Server の不採用 セクション 参照）

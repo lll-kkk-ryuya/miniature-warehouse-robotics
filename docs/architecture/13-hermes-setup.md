@@ -4,10 +4,11 @@
 対象バージョン: Hermes Agent **v0.13.x (v2026.5.7 以降)**
 
 > **位置づけ**
-> 本書は `12-infrastructure-common.md` で示した Hermes Agent Gateway 構成を、実際にインストール・起動・切替できる形に落とし込んだ手順書。設計思想ではなくオペレーションを扱う。
+> 本書は `15-mcp-platform.md` で示した Hermes Agent Gateway 構成を、実際にインストール・起動・切替できる形に落とし込んだ手順書。設計思想ではなくオペレーションを扱う。
 >
 > **関連ドキュメント**
-> - [12-infrastructure-common](12-infrastructure-common.md) — 設計思想・責務分離・Policy Gate
+> - [15-mcp-platform](15-mcp-platform.md) — Hermes / Warehouse MCP / Policy Gate / 競合状態の防止
+> - [12-infrastructure-common](12-infrastructure-common.md) — 共通基盤（Emergency / State Cache / 責務分離）
 > - [08-llm-bridge-common](08-llm-bridge-common.md) — LLM Bridge共通設計
 > - [Mode A/B](../mode-a/README.md) / [Mode C](../mode-c/README.md) — モード別構成
 
@@ -88,7 +89,7 @@ cd src/warehouse_mcp_server   # Phase 1 で作成予定の自作パッケージ
 pip install -e .              # editable install
 ```
 
-実装は本書のスコープ外。`12-infrastructure-common.md §Warehouse MCP Server` の責務定義 + Phase 1 タスクで実装する。Hermes Gateway 起動時に `command/args` の解決ができない場合は `journalctl -u hermes-gateway` でモジュール not found エラーが出る。
+実装は本書のスコープ外。`15-mcp-platform.md §Warehouse MCP Server` の責務定義 + Phase 1 タスクで実装する。Hermes Gateway 起動時に `command/args` の解決ができない場合は `journalctl -u hermes-gateway` でモジュール not found エラーが出る。
 
 ---
 
@@ -228,7 +229,7 @@ mcp_servers:
       resources: false
 ```
 
-> **トークンコスト**: `tools.include` で6ツールに絞ることで MCP の自動列挙トークンを最小化（約500トークン/ターン）。これは `feedback_mcp_token_cost` でも確認した運用方針。
+> **トークンコスト**: `tools.include` で7ツールに絞ることで MCP の自動列挙トークンを最小化（約550トークン/ターン）。これは `feedback_mcp_token_cost` でも確認した運用方針。
 
 ### 3.3 倉庫側 `config.yaml`（モードスイッチ）
 
@@ -288,7 +289,7 @@ rmf:
   api_endpoint: "http://127.0.0.1:8001"
 ```
 
-LLM Bridge Node / Warehouse MCP Server は起動時に `traffic_mode` を読み、内部の TrafficManager 実装を切替える（`12-infrastructure-common.md §Warehouse MCP Server`）。
+LLM Bridge Node / Warehouse MCP Server は起動時に `traffic_mode` を読み、内部の TrafficManager 実装を切替える（`15-mcp-platform.md §Warehouse MCP Server`）。
 
 ---
 
@@ -350,7 +351,7 @@ curl -s http://127.0.0.1:8642/v1/models \
 
 ## 5. LLM Bridge Node からの呼び出し
 
-`12-infrastructure-common.md` 記載のリクエスト形式（変更なし）。本書では運用差分のみ補足。
+`15-mcp-platform.md` 記載のリクエスト形式（変更なし）。本書では運用差分のみ補足。
 
 ### 5.1 Chat Completions（stateless、推奨）
 
@@ -571,7 +572,8 @@ Requires=warehouse-state-cache.service
 
 ### プロジェクト内関連
 
-- [12-infrastructure-common](12-infrastructure-common.md) — 設計思想・Policy Gate・State Cache
+- [15-mcp-platform](15-mcp-platform.md) — Hermes / Warehouse MCP / Policy Gate / 競合状態の防止
+- [12-infrastructure-common](12-infrastructure-common.md) — 共通基盤（Emergency / State Cache）
 - [08-llm-bridge-common](08-llm-bridge-common.md) — system prompt・situation JSON
 - [Mode A/B README](../mode-a/README.md) / [Mode C README](../mode-c/README.md)
 - [06-implementation-phases](06-implementation-phases.md) — Phase 別計画

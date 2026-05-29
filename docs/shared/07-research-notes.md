@@ -74,7 +74,7 @@
 
 | # | 課題 | 影響度 | 詳細 |
 |---|------|--------|------|
-| T3 | WiFi帯域と通信安定性 | **高** | 2台同時通信量: MS200 LiDAR(10-15Hz)×2 + odom(20-50Hz)×2 + cmd_vel(20Hz)×2 ≒ 30-40KB/s。帯域自体は余裕だが、UDP パケットロス・ジッター・テザリング遅延の実測が必要。Emergency Guardian(50ms周期) + State Cache(100ms周期) + LLM API(3秒周期)同時通信時の安定性も確認 |
+| T3 | WiFi帯域と通信安定性 | **高** | 2台同時通信量: MS200 LiDAR(10-15Hz)×2 + odom(20-50Hz)×2 + cmd_vel(20Hz)×2 ≒ 30-40KB/s。帯域自体は余裕だが、UDP パケットロス・ジッター・テザリング遅延の実測が必要。Emergency Guardian(50ms周期) + State Cache(100ms周期) + LLM API(Mode A:3秒/Mode C:5秒)同時通信時の安定性も確認 |
 | T4 | ESP32 のメモリ・CPU制約 | **中** | ESP32 SRAM 520KB中、FreeRTOS+WiFi(~150KB) + micro-ROS(~100KB) + MS200バッファ(~20KB) + モーター制御(~10KB) = ~280KB使用、残り~240KB。Yahboom公式がMS200+micro-ROSで動作確認済みなら問題ないはず。Phase 1で1台の実測で確認 |
 | T5 | micro-ROS Agent の多重化 | **中** | 1つのmicro-ROS Agent（Jetson上）が2台のESP32クライアントを同時処理できるか。仕様上は可能（UDPポートで識別）だが、2台同時の実測が必要。Phase 1で1台、Phase 2後半で2台接続して検証 |
 
@@ -97,7 +97,7 @@
 
 | # | 課題 | 影響度 | 詳細 |
 |---|------|--------|------|
-| T11 | コスト見積もりの精度 | **低** | 現在の見積もり: 200回×~$0.45（Claude Sonnet 4）。緊急時の安全対応はEmergency Guardian（50ms、LLM非経由）が担当し、LLM呼出し回数は変動しない。見積もり$0.45/デモは安定 |
+| T11 | コスト見積もりの精度 | **中** | 暫定見積もり（Phase 0.5 で実測予定）: Mode A ~$1.80/デモ（Sonnet 4、約200回、~2100 tokens/call）、Mode C ~$1.08/デモ（約120回）。tokens/call が gen_id + start_negotiation + situation 拡張で約2100 tokens に増加（2026-05-28 更新）。Phase 4 比較検証本番では4社合計 Mode A ~$5、Mode C ~$3 を見込む。Emergency Guardian（50ms、LLM非経由）は安全担当のため、LLM呼出し回数は変動しない |
 | T12 | システムプロンプトのトークン数 | **低** | 推定: ~400-500トークン。状況JSON: ~800-1200トークン。合計~1500-2000トークン/回。3秒間隔に対して応答遅延への影響は数十ms程度で無視可能 |
 
 ---
