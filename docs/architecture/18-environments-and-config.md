@@ -53,6 +53,8 @@ config/
 
 - 共通値（locations のキー、robots 構成、サイクル長の既定、速度上限）は **base に一元化**。環境差分（sim/実機、Hermes 接続先、runtime dir、traffic_mode 既定）だけを `<env>/warehouse.yaml` に書く。
 - 解決ロジックは `warehouse_interfaces` の設定ローダ（`load_config(env)`）に実装し、全ノードが同じ経路で読む（doc16 §4 の `WAREHOUSE_CONFIG_PATH` は本スキームに置換）。
+- **用語の対応**: mode-a / mode-c / shared の各ドキュメントが言う「`config.yaml`」「config.yaml の1行変更でモード切替」は、**本スキームの倉庫 config**（`warehouse.base.yaml` + `config/<env>/warehouse.yaml`）を指す。`traffic_mode` 等のキー名・1行切替の概念は不変（大量リネームは行わない）。
+- `locations` のキーは `08-llm-bridge-common.md` の LOCATIONS と完全一致させる（Policy Gate の known_locations 検証用）。
 
 ---
 

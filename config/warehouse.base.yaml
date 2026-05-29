@@ -20,14 +20,16 @@ cycle:
   mode_a_seconds: 3
   mode_c_seconds: 5
 
-# 倉庫レイアウト上の地点キー（Policy Gate 検証用。値は 08-llm-bridge-common.md の LOCATIONS と一致させる）
+# 倉庫レイアウト上の地点キー。キーは 08-llm-bridge-common.md の LOCATIONS と完全一致させる
+# （Policy Gate の known_locations 検証用）。座標は暫定値（Phase 2 地図確定後に実測で確定）。
 locations:
-  shelf_1: {}    # TODO: 座標は Phase 2（地図確定後）に設定
-  shelf_2: {}
-  shelf_3: {}
-  berth_A: {}
-  berth_B: {}
-  charging_station: {}
+  shelf_1: {x: 0.2, y: 0.3}
+  shelf_2: {x: 0.7, y: 0.3}
+  shelf_3: {x: 1.2, y: 0.3}
+  berth_A: {x: 0.2, y: 0.8}
+  berth_B: {x: 0.7, y: 0.8}
+  shipping_station: {x: 0.2, y: 0.1}
+  charging_station: {x: 1.2, y: 0.1}   # 2台共有・先着順
 
 # Hermes Gateway 接続先（環境別に上書き必須）
 hermes:
