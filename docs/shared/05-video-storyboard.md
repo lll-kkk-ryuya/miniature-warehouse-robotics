@@ -215,9 +215,9 @@ Before（AIなし）シーンや導入部では、実機映像をフル画面で
 | 平均タスク完了時間 | 29秒/回 | 35秒/回 | 32秒/回 | TBD |
 | 渋滞発生回数（10分間） | 0回 | 2回 | 1回 | TBD |
 | JSON形式エラー率 | 0% | 5% | 2% | TBD |
-| Mode A 10分デモのAPI費用（暫定推定） | ~$1.80 | ~$1.40 | ~$0.22 | ~$1.50(※推定) |
+| Mode A 10分デモのAPI費用（暫定推定） | ~$9.0 | ~$1.40 | ~$0.22 | ~$1.50(※推定) |
 
-※全て合成データ・架空値。実測で差し替える。API費用は2000 tokens/call × 200回（Mode A）または120回（Mode C）+ Warehouse MCP Server (7ツール、gen_id 機構含む) のトークンオーバーヘッド込み（`../architecture/15-mcp-platform.md` 参照）。**Mode A 4社合計 ~$5/デモ、Mode C ~$3/デモ。Phase 0.5 で実測して確定**。
+※全て合成データ・架空値。実測で差し替える。API費用は約2100 tokens/call × 200回（Mode A）または120回（Mode C）+ Warehouse MCP Server (7ツール、gen_id 機構含む) のトークンオーバーヘッド込み（`../architecture/15-mcp-platform.md` 参照）。**Claude は全 Opus 統一（$15/$75 per MTok、16-repository-and-conventions.md §7）で再計算。4社合計 Mode A ~$12/デモ、Mode C ~$7/デモ。Phase 0.5 で実測して確定**（正本: `../architecture/08-llm-bridge-common.md` コスト節 / `07-research-notes.md` T11）。
 
 ## 公開安全チェックリスト
 

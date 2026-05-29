@@ -229,6 +229,53 @@
 
 ---
 
+## 技術監査で発見した設計リスク（2026-05-29 追加）
+
+設計ドキュメントの深掘り技術監査（並列レビュー＋Web事実確認）で発見した、**実装時に破綻・危険となりうる設計レベルのリスク**。ドキュメント間の表記矛盾ではなく、工学的に「動かない/危ない」可能性のある項目。R-02/R-05/R-13/R-15 等の既存項目を具体化・格上げするものを含む。
+
+### 🔴 高（設計の前提に関わる）
+
+| ID | リスク | 詳細 | 対策 | 検証 |
+|----|--------|------|------|------|
+| R-35 | **排他制御の二重防御が両方とも穴** | (A)HTTPキャンセルはHermesの**サーバー側tool実行を止めない**可能性（公式に `/v1/runs/{id}/stop` 専用エンドポイントが存在＝接続断では止まらない設計）。(B)gen_id検証が `gen_id < cur_gen` のみで、**同一世代の重複呼出し**を弾けない（冪等性なし）。→競合防止が未達のおそれ | 各tool callに1回限りの **idempotency key(UUID)** を付与しMCP側で消費済み記録。cancelは `/stop` 明示呼出しへ（Chat Completions前提の再設計要） | Phase 0.5 |
+| R-36 | **Hermes Memory/Skills 有効化が Phase 4 比較を破壊** | 自己学習エージェントは同一プロンプトでも応答が変動 → 4社LLM公平比較の**再現性が崩壊**。`13-hermes-setup.md` の config が `memory.enabled:true / skills.enabled:true` | 比較時は **`memory.enabled:false, skills.enabled:false`** を必須化。Hermes採用の費用対効果を案D(LiteLLM等)と再評価 | Phase 4前 |
+| R-37 | **micro-ROS Agent 2台同時接続の既知不具合**（T5/R-05格上げ） | micro-ROS-Agent Issue #21: 1Agentに複数ボードをUDP接続すると**pub/subの片方しか通らない**報告。別ポートでも解消せず。**「2台協調」の根幹リスク**（従来「中」→**高**） | 2 Agentプロセス/別ポートを試行、不可なら**USB有線**。Phase 2後半→**前倒し検証** | Phase 1 |
+| R-38 | **Open-RMFが8GB Jetsonに載らない恐れ**（R-02具体化） | fleet adapter/traffic schedule の**メモリ漸増（解放されない）既知問題**（公式Discourse）。主方針 Mode C が物理的に不成立のリスク | planner cache上限/`malloc_trim` を最初から導入。載らなければ **Mode B 格下げ or Open-RMF別マシンoffload** の分岐を用意（Go/No-Goゲート化） | Phase 0.5 メモリゲート |
+
+### 🟡 中
+
+| ID | リスク | 詳細 | 対策 | 検証 |
+|----|--------|------|------|------|
+| R-39 | **Emergency Guardian 距離監視がAMCL律速** | 50ms周期でも入力 `/amcl_pose` はAMCL更新(5-10Hz)＝**実効100-200ms古い**。「50ms反射安全系」は過大表現 | 距離監視を `/scan` 直接購読に変更 or **ESP32近接(Layer0)を2台間近接の主担当**と明記 | Phase 2 |
+| R-40 | **rclpy 50ms周期がGC/GILで破綻しうる** | PythonのGCスパイクで周期が散発的に飛ぶ（実測報告あり） | Guardianで `gc.disable()`/`gc.freeze()`。長期的に**C++化を技術的負債として記録** | Phase 0.5(Jetson) |
+| R-41 | **MS200測距精度がミニチュアに不足の恐れ** | 安価2D dToF誤差±1-3cmが地図解像度1cm・通路片側余裕25mmと同オーダー → AMCL収束困難・壁を数セルぶれて認識 | Phase2で**測距誤差を実測**し地図解像度を誤差の2-3倍へ。余裕不足なら通路幅を再設計 | Phase 2 |
+| R-42 | **200mm通路×150mm車体でinflation余裕ゼロ** | 標準Nav2 inflationでは通行可能幅が中央1点に収束し追従不能。`11a` の `ROBOT_RADIUS=0.1`(直径200mm)は車体150mmと矛盾し通路を塞ぐ | **非標準inflation**(壁直近のみ高コスト)。`ROBOT_RADIUS`を実測75mmへ | Phase 2 |
+| R-43 | **LaserScanのmicro-ROS UDP転送(MTU/fragmentation)** | 360°/0.4°=900点×float≒3.6KB/scan、UDP MTU 512B、2台分常時送出 | scan点数ダウンサンプル(0.4°→1-2°)、Reliable/MTU設定、最悪USB有線 | Phase 1(T3併せ) |
+| R-44 | **free_fleetがESP32 micro-ROS構成に不適合** | free_fleet clientの置き場所がない（ロボットがESP32のため）。標準ユースケースとずれる | `rmf_fleet_adapter` **EasyFullControl** で自作adapterがNav2 namespaceを直接駆動する方が素直。free_fleet採用是非をPhase3冒頭で判断 | Phase 3後半 |
+| R-45 | **LLM比較がモデル格差混在** | Claude(Opus) / GPT-4o / Gemini 2.5 **Flash** / Grok でフラッグシップ級とFlash級が混在 → 速度・コスト・正確性比較がミスリード | 比較は**同格モデルで揃える**方針を決定 | Phase 4設計時 |
+| R-46 | **BLOCKED_TIMEOUTがサイクル長に未連動** | `BLOCKED_TIMEOUT=10秒` は「3サイクル(9秒)余裕」前提だが、p95>2.5sでサイクルが4-5秒に延びると余裕計算が破綻 | `BLOCKED_TIMEOUT` を**サイクル長の関数**(例 max(10, 3×cycle))にしレイテンシ実測後再計算 | Phase 0.5 |
+| R-47 | **キャラLLM交渉のターン制ハング/proposal陳腐化** | `/negotiation/turn` 取りこぼしで最大8秒停止。proposalが±2世代(最大10秒前=0.3m/sで3m相当)で陳腐化したまま反映の危険 | turnを **Reliable+TransientLocal QoS** + seq/nonce検証。proposalに状態スナップショット同梱し陳腐化時は破棄 | Phase 3 |
+| R-48 | **DDS discovery over WiFi のマルチキャスト問題** | マルチホスト(Isaac/RViz別マシン)時、WiFiがマルチキャストをドロップしdiscovery不成立・断続 | **Discovery Server / ユニキャスト初期ピア**設定、`ROS_DOMAIN_ID`固定 | Phase 5/撮影時 |
+
+### 🟢 低／解決済み
+
+| ID | リスク | 状態 |
+|----|--------|------|
+| R-49 | **DWB→MPPI「yaml 1行」は不正確** | pluginの型指定は1行だが**パラメータブロック全体の差し替え＋再チューニング**が必要。doc記述に注記推奨。MPPIチューニング工数を独立計上 |
+| R-50 | **Policy Gate は速度を強制しない**（責務所在の明確化） | 一部doc記述「Policy Gateで≤0.3m/s強制」は誤り。速度上限は **ESP32(Layer0)+Nav2 param** の責務。安全保証の所在を統一（誤認するとMCU実装漏れに気づけない） |
+| R-51 | **Jetson給電は USB-C 不可・DCバレルジャック必須** | ✅ **解決済み(2026-05-29)**。NVIDIA公式「USB-Cはoutput専用」。Super Dev Kitは19V DC電源同梱で追加投資不要。`02-hardware-design.md` 修正済み |
+| R-52 | **gen_store の `multiprocessing.Value` はプロセス間共有不可** | ✅ **解決済み**。Bridge↔MCPは別プロセスツリーのため `multiprocessing.Value` 不可。`16-repository-and-conventions.md §6` で **file方式(暫定)** に確定 |
+
+### 技術監査ソース（2026-05-29）
+
+- [micro-ROS-Agent Issue #21（複数ボード単一Agent）](https://github.com/micro-ROS/micro-ROS-Agent/issues/21) — 参照日: 2026-05-29
+- [Open-RMF: Memory growth in fleet adapter and traffic schedule](https://discourse.openrobotics.org/t/memory-growth-in-fleet-adapter-and-traffic-schedule-664/44530/1) — 参照日: 2026-05-29
+- [Barkhausen Institut: Soft Realtime Performance of Rclpy](https://www.barkhauseninstitut.org/research/lab-1/our-blog/posts/soft-realtime-performance-of-rclpy) — 参照日: 2026-05-29
+- [Hermes Agent — API Server (run stop endpoint)](https://hermes-agent.nousresearch.com/docs/user-guide/features/api-server) — 参照日: 2026-05-29
+- [Jetson Orin Nano Dev Kit Getting Started（19V電源同梱）](https://developer.nvidia.com/embedded/learn/get-started-jetson-orin-nano-devkit) — 参照日: 2026-05-29
+
+---
+
 ## References
 
 - [Jetson Orin Nano Super Developer Kit — NVIDIA](https://www.nvidia.com/en-us/autonomous-machines/embedded-systems/jetson-orin/nano-super-developer-kit/) — 参照日: 2026-05-19
