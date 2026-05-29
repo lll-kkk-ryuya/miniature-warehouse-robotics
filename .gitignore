@@ -4,11 +4,14 @@
 .claude/*.lock
 CLAUDE.local.md
 
-# Environment
+# Environment / secrets（実体 .env はコミット禁止・.env.example のみ追跡）
 .env
 .env.local
+**/.env
+config/**/.env
 deploy/**/.env
 deploy/**/secrets/
+!**/.env.example
 
 # Secrets
 *.pem

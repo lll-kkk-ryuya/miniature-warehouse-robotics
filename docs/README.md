@@ -36,6 +36,7 @@ docs/
 | [15-mcp-platform](architecture/15-mcp-platform.md) | MCPプラットフォーム（Hermes Agent, Warehouse MCP Server, Policy Gate, 競合状態の防止） |
 | [16-repository-and-conventions](architecture/16-repository-and-conventions.md) | リポジトリ構成・パッケージ命名・msg型・gen_store・モデル方針・ブランチ戦略（実装の起点） |
 | [17-development-workflow](architecture/17-development-workflow.md) | 開発の進め方と分担（worktree並列の実行手順書・契約凍結・依存グラフ・マージ順） |
+| [18-environments-and-config](architecture/18-environments-and-config.md) | 環境分離 dev/stg/prod（軸A: config/secrets切替・WAREHOUSE_ENV・base+overlay・prodはタグ） |
 
 ## mode-a/ — LLM単独交通管理
 

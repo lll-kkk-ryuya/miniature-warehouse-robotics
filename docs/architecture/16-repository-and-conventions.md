@@ -106,9 +106,9 @@ doc03 では `/llm/situation` `/llm/command` `/wo/mission` を「カスタム（
 | 状態スナップショット | `/tmp/warehouse/state.json` | State Cache Node | LLM Bridge | `tmp`→`os.replace` の atomic write |
 | gen_store | `/tmp/warehouse/gen_store` | LLM Bridge | Warehouse MCP Server | §6 参照 |
 | Command Audit Log | `$WAREHOUSE_AUDIT_LOG_PATH`（既定 `/tmp/warehouse/audit.jsonl`） | MCP Server | 分析 | JSON Lines 追記 |
-| 倉庫 config | `$WAREHOUSE_CONFIG_PATH`（既定 `config/warehouse.yaml`） | — | 全ノード | YAML |
+| 倉庫 config | `config/warehouse.base.yaml` + `config/$WAREHOUSE_ENV/warehouse.yaml`（base+overlay） | — | 全ノード | YAML |
 
-- 実行時ディレクトリは `/tmp/warehouse/`（開発）。本番（Jetson）は systemd の `RuntimeDirectory=warehouse`（`/run/warehouse/`）等に環境変数で切替可能にする。
+- **環境分離（dev/stg/prod）は `WAREHOUSE_ENV` で切替**。config は base+overlay で解決し、runtime dir（dev=`/tmp/warehouse/` / prod=`/run/warehouse/`）も環境別。詳細は **[doc18 - 環境分離と設定](18-environments-and-config.md)**（旧 `$WAREHOUSE_CONFIG_PATH` 単一ファイル方式を置換）。
 - アクセスは抽象インターフェース越し（例 `StateStore` / `GenStore`）にし、実体（file / Redis 等）を Phase 進行で差し替えられるようにする。
 
 ---

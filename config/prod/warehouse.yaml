@@ -1,0 +1,15 @@
+# prod 環境差分（Jetson 実機 + 実ロボット2台 / 本番 GCP Hermes）。本番デモ撮影用。
+# ⚠️ 使用前に Emergency Guardian / 速度上限 0.3m/s のテスト通過が必須（.claude/rules/safety.md）。
+# 接続先 secrets は config/prod/.env（gitignore。本番キーをコミットしない）。
+
+runtime:
+  use_simulation: false       # 実機
+  runtime_dir: /run/warehouse # systemd RuntimeDirectory=warehouse
+
+hermes:
+  base_url: "http://34.4.104.112:8642"   # 本番 GCP Hermes Gateway
+
+# 本番は Open-RMF（Mode C）を主方針とする
+traffic_mode: open-rmf
+rmf:
+  enabled: true

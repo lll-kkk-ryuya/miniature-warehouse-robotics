@@ -1,0 +1,14 @@
+# stg 環境差分（クラウド統合: RunPod Isaac / staging GCP Hermes）。統合検証・撮影前リハ用。
+# 接続先 secrets は config/stg/.env（gitignore）。
+
+runtime:
+  use_simulation: true        # Isaac Sim / cloud sim
+  runtime_dir: /tmp/warehouse
+
+hermes:
+  base_url: ""                # TODO: staging GCP Hermes の URL を設定
+
+# 統合検証では Mode C（Open-RMF）も試す
+traffic_mode: open-rmf
+rmf:
+  enabled: true

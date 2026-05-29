@@ -1,0 +1,43 @@
+# 全環境共通のデフォルト（唯一の真実の土台）。環境差分は config/<env>/warehouse.yaml で上書き。
+# スキーマの正本: docs/architecture/13-hermes-setup.md §3.3 / docs/architecture/08-llm-bridge-common.md
+# 解決順: このファイル → config/$WAREHOUSE_ENV/warehouse.yaml → 環境変数（後勝ち）
+
+# 交通管理モード（none=Mode A / simple=Mode B / open-rmf=Mode C）。既定は env 側で上書き
+traffic_mode: none
+
+# ロボット構成（namespace は /bot1 /bot2）
+robots:
+  - id: bot1
+  - id: bot2
+
+# 速度・安全（ミニチュアスケール。Layer0/1 で強制。.claude/rules/safety.md）
+safety:
+  max_linear_velocity: 0.3   # m/s 上限（厳守）
+  emergency_min_distance: 0.15  # m（2台間。TODO: Phase 2 実測で確定）
+
+# LLM サイクル長（秒）。Mode A=3 / Mode C=5（doc03）
+cycle:
+  mode_a_seconds: 3
+  mode_c_seconds: 5
+
+# 倉庫レイアウト上の地点キー（Policy Gate 検証用。値は 08-llm-bridge-common.md の LOCATIONS と一致させる）
+locations:
+  shelf_1: {}    # TODO: 座標は Phase 2（地図確定後）に設定
+  shelf_2: {}
+  shelf_3: {}
+  berth_A: {}
+  berth_B: {}
+  charging_station: {}
+
+# Hermes Gateway 接続先（環境別に上書き必須）
+hermes:
+  base_url: ""   # 環境側で設定
+  # token は secrets（config/<env>/.env）から注入
+
+# Nav2 Bridge（Mode A/B 実行先）
+nav2_bridge:
+  base_url: "http://localhost:8080"
+
+# Open-RMF（Mode C。dev では無効が既定）
+rmf:
+  enabled: false
