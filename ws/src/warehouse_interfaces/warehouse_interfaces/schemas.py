@@ -45,6 +45,29 @@ class RobotState(_Model):
     obstacle_distance: float | None = None
 
 
+class RobotSnapshot(_Model):
+    """Per-robot raw state written by State Cache (pre-computation)."""
+
+    position: Position
+    velocity: Velocity
+    heading: float
+    status: str
+    battery: int
+    nearest_obstacle_m: float | None = None
+
+
+class StateSnapshot(_Model):
+    """Aggregated raw state that State Cache writes to ``state.json`` (doc12 §4).
+
+    The LLM Bridge reads this and builds a ``Situation`` (adding the computed
+    ``predicted_position_3s`` and ``obstacle_ahead`` per doc mode-a/08a). This is
+    the L2(producer) ↔ L1(consumer) contract; change via rules §4 (contract).
+    """
+
+    timestamp: str
+    robots: dict[str, RobotSnapshot]
+
+
 class PendingTask(_Model):
     model_config = ConfigDict(extra="ignore", populate_by_name=True)
 
