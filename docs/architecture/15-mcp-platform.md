@@ -56,7 +56,7 @@ resp = httpx.post("http://localhost:8642/v1/chat/completions", json={
 providers:
   anthropic:
     api_key: ${ANTHROPIC_API_KEY}
-    model: claude-sonnet-4
+    model: claude-opus-4-8    # 最新世代Opus（全Claude Opus統一、16 §7）
   openai:
     api_key: ${OPENAI_API_KEY}
     model: gpt-4o
@@ -109,12 +109,12 @@ mcp_servers:
 
 | LLM | Mode A (~200回) | Mode C (~120回) |
 |-----|----------------|-----------------|
-| Claude Sonnet 4 ($3/$15 per MTok) | ~$1.80 | ~$1.08 |
+| Claude Opus（最新世代、$15/$75 per MTok） | ~$9.0 | ~$5.4 |
 | GPT-4o ($2.50/$10) | ~$1.40 | ~$0.84 |
 | Gemini 2.5 Flash ($0.30/$2.50) | ~$0.22 | ~$0.13 |
 | Grok 4.3（価格未確定、推定）| ~$1.50 | ~$0.90 |
 
-4社合計: **Mode A ~$5/デモ、Mode C ~$3/デモ**（暫定値、Phase 0.5 実測後に確定）。詳細は `08-llm-bridge-common.md` のコスト見積もりセクション参照。
+4社合計: **Mode A ~$12/デモ、Mode C ~$7/デモ**（暫定値、Phase 0.5 実測後に確定。Claude を Opus 単価で再計算、16 §7）。詳細は `08-llm-bridge-common.md` のコスト見積もりセクション参照。
 
 ### Hermes 付加機能
 

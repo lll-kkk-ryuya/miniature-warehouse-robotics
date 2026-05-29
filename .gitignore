@@ -17,3 +17,15 @@ deploy/**/secrets/
 # macOS
 .DS_Store
 **/.DS_Store
+
+# ROS 2 colcon 生成物 (doc16 §8)
+ws/build/
+ws/install/
+ws/log/
+
+# Python
+__pycache__/
+*.pyc
+
+# PlatformIO (ESP32 firmware)
+firmware/.pio/

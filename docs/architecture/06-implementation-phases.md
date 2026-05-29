@@ -200,7 +200,7 @@
 - [ ] シナリオ2テスト: 障害物出現→LLM判断→迂回
 - [ ] シナリオ3テスト: デッドロック発生→Claude解消
 - [ ] シナリオ4テスト: モードB（SimpleTrafficManager）での動作確認
-- [ ] **キャラLLM 実況モード実装**（Haiku、`/character/speech` publish、画面表示連動）— `14-character-llm-negotiation.md` 参照
+- [ ] **キャラLLM 実況モード実装**（Opus、`/character/speech` publish、画面表示連動）— `14-character-llm-negotiation.md` 参照
 - [ ] **キャラLLM の出力先決定**（OBS overlay / Web UI / ターミナル）+ TTS の採否判断
 - [ ] **交渉モード Mode A 実装**: 司令官のデッドロック検出 → `/negotiation/start` (starter指定) → Bot1/Bot2 バトンパス交渉 → proposal → 司令官承認 → MCP実行
 - [ ] **交渉のターン制（`/negotiation/turn` バトンパス）実装**— 14-character-llm-negotiation.md 参照

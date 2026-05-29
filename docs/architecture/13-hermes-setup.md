@@ -177,7 +177,7 @@ active_provider: anthropic    # anthropic | openai | google | xai
 providers:
   anthropic:
     api_key: ${ANTHROPIC_API_KEY}
-    model: claude-sonnet-4    # 比較対象。コスト/速度のバランス重視
+    model: claude-opus-4-8    # 最新世代Opus（全Claude Opus統一、16-repository-and-conventions.md §7）
   openai:
     api_key: ${OPENAI_API_KEY}
     model: gpt-4o

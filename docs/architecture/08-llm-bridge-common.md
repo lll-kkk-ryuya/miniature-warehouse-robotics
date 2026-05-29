@@ -42,7 +42,7 @@ class LLMClient(ABC):
 class ClaudeClient(LLMClient):
     def decide(self, situation: dict) -> dict:
         response = self.client.messages.create(
-            model="claude-sonnet-4",
+            model="claude-opus-4-8",  # 最新世代Opus（全Claude Opus統一、16-repository-and-conventions.md §7。新リリース時に更新）
             max_tokens=1024,
             system=SYSTEM_PROMPT,
             messages=[{"role": "user", "content": json.dumps(situation)}]
@@ -374,16 +374,16 @@ session_name = f"demo_{llm_name}_{scenario}_{datetime}"
 
 | LLM | モデル | 入力単価 | 出力単価 | Mode A 1デモ (~200回) | Mode C 1デモ (~120回) |
 |---|---|---|---|---|---|
-| Claude | Sonnet 4 | $3/MTok | $15/MTok | **~$1.80** | **~$1.08** |
+| Claude | Opus（最新世代） | $15/MTok | $75/MTok | **~$9.0** | **~$5.4** |
 | ChatGPT | GPT-4o | $2.50/MTok | $10/MTok | ~$1.40 | ~$0.84 |
 | Gemini | 2.5 Flash | $0.30/MTok | $2.50/MTok | ~$0.22 | ~$0.13 |
 | Grok | 4.3 | 未確定 | 未確定 | ~$1.50（推定） | ~$0.90 |
 
-4社合計: **Mode A ~$5/デモ、Mode C ~$3/デモ**（実測前の暫定推定値）。
+4社合計: **Mode A ~$12/デモ、Mode C ~$7/デモ**（実測前の暫定推定値。Claude を Opus 単価で再計算、16-repository-and-conventions.md §7）。
 
-> ⚠️ **注意**: 以前は1呼出あたり ~600 tokens で試算していたが、MCP tool 定義 (約550 tokens) と gen_id 機構の追加で実質約 2000 tokens に増えた。Phase 0.5 (Gazebo) で実測してから本数値を確定する。Phase 4 の 4社比較本番では **$20-30 / 1セット (4社) の予算枠**を確保しておくこと。
+> ⚠️ **注意**: 以前は1呼出あたり ~600 tokens で試算していたが、MCP tool 定義 (約550 tokens) と gen_id 機構の追加で実質約 2000 tokens に増えた。Phase 0.5 (Gazebo) で実測してから本数値を確定する。Phase 4 の 4社比較本番では **$40-50 / 1セット (4社) の予算枠**を確保しておくこと（Claude を Opus 単価で再計算したため上方修正、16-repository-and-conventions.md §7）。
 
-別途、キャラLLM（Haiku、Bot1/Bot2）のコストは Sonnet 4 の約1/10で別計上（Phase 4 比較対象外）。詳細は `15-mcp-platform.md` 参照。
+別途、キャラLLM（Opus、Bot1/Bot2）のコストを別計上（Phase 4 比較対象外）。旧 Haiku 設計から全 Claude Opus 統一に変更したため、キャラLLM もトークン単価は司令官と同じ Opus 単価。応答テンポへの影響は要実測（`16-repository-and-conventions.md` §7 検討事項）。詳細は `15-mcp-platform.md` 参照。
 
 **注意**: Gemini 2.5 Flash は**2026年10月16日**に非推奨化（2026-05-26調査で確認。当初「6月」としていたのは gemini-2.0-flash の話）。後継は `gemini-3.5-flash`（$1.50/$9.00/MTok、約5倍高価）。安価代替として `gemini-3.1-flash-lite`（$0.25/$1.50/MTok）が利用可能。移行はモデル名1行変更のみ。Phase 4まで2.5-flashで問題なし。
 

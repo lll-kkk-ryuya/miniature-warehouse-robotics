@@ -4,11 +4,10 @@
   "permissions": {
     "allow": [
       "Read(docs/**)",
-      "Read(src/**)",
+      "Read(ws/**)",
       "Read(config/**)",
-      "Read(sim/**)",
       "Read(firmware/**)",
-      "Read(scripts/**)",
+      "Read(deploy/**)",
       "Bash(colcon build *)",
       "Bash(colcon test *)",
       "Bash(ros2 launch *)",

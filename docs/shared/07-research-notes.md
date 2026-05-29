@@ -44,7 +44,7 @@
 
 | # | 事項 | 影響度 | 確認方法 |
 |---|------|--------|---------|
-| 14 | Claude API（Sonnet）の応答速度（JSON構造化出力時） | 高 | Phase 0.5 で実測 |
+| 14 | Claude API（Opus）の応答速度（JSON構造化出力時） | 高 | Phase 0.5 で実測 |
 | 15 | ChatGPT API（GPT-4o）の応答速度・JSON安定性 | 高 | Phase 4 で実測 |
 | 16 | Gemini API（2.5 Flash）の応答速度・JSON安定性 | 中 | Phase 4 で実測 |
 | 17 | LLMの判断遅延がロボット走行に与える影響（3秒間隔で十分か） | 高 | Phase 0.5 Gazeboで検証 |
@@ -97,7 +97,7 @@
 
 | # | 課題 | 影響度 | 詳細 |
 |---|------|--------|------|
-| T11 | コスト見積もりの精度 | **中** | 暫定見積もり（Phase 0.5 で実測予定）: Mode A ~$1.80/デモ（Sonnet 4、約200回、~2100 tokens/call）、Mode C ~$1.08/デモ（約120回）。tokens/call が gen_id + start_negotiation + situation 拡張で約2100 tokens に増加（2026-05-28 更新）。Phase 4 比較検証本番では4社合計 Mode A ~$5、Mode C ~$3 を見込む。Emergency Guardian（50ms、LLM非経由）は安全担当のため、LLM呼出し回数は変動しない |
+| T11 | コスト見積もりの精度 | **中** | 暫定見積もり（Phase 0.5 で実測予定）: Mode A ~$9.0/デモ（Opus、約200回、~2100 tokens/call）、Mode C ~$5.4/デモ（約120回）。tokens/call が gen_id + start_negotiation + situation 拡張で約2100 tokens に増加（2026-05-28 更新）。全 Claude Opus 統一で Sonnet 単価から約5倍に上方修正（2026-05-29、16-repository-and-conventions.md §7）。Phase 4 比較検証本番では4社合計 Mode A ~$12、Mode C ~$7 を見込む。Emergency Guardian（50ms、LLM非経由）は安全担当のため、LLM呼出し回数は変動しない |
 | T12 | システムプロンプトのトークン数 | **低** | 推定: ~400-500トークン。状況JSON: ~800-1200トークン。合計~1500-2000トークン/回。3秒間隔に対して応答遅延への影響は数十ms程度で無視可能 |
 
 ---

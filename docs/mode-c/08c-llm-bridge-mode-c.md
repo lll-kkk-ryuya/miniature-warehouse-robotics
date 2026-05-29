@@ -256,7 +256,7 @@ t=1.5s   Hermes Gateway: LLM応答受信 → MCP → Warehouse MCP Server ツー
 t=1.5s   Warehouse MCP Server: Policy Gate検証 → Open-RMF/Nav2へ実行
 t=2.0s   Hermes Gateway: run完了 → LLM Bridge Node にレスポンス返却
 t=2.0s   LLM Bridge Node: /llm/reasoning, /llm/command Publish
-t=3.0s   次のサイクル開始
+t=5.0s   次のサイクル開始（Mode C: 応答後3秒待機 → サイクル長 ~5秒）
 
 （並行して常時動作: Emergency Guardian 50ms周期、State Cache Node 100ms周期）
 ```
