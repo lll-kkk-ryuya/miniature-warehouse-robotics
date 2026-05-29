@@ -20,8 +20,8 @@
 - WiFi: テザリング or ルーター（micro-ROS + LLM API同時通信）
 
 ## Model Policy
-- 常に claude-opus-4-7 を使用する
-- Agent tool（subagent）を起動する際は必ず `model: "opus"` を指定する
+- 常に Opus（最新世代）を使用する。モデル指定は `opus` エイリアスを用い、特定バージョンに固定しない
+- `.claude/agents/` の全エージェントおよび Agent tool（subagent）起動時は必ず `model: "opus"` を指定する
 - haiku や sonnet へのダウングレードは行わない
 
 ## Language & Communication

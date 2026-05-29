@@ -1,8 +1,8 @@
 ---
 name: hardware-integrator
 description: ハードウェア統合・micro-ROS・Jetson設定を担当するエージェント
-model: sonnet
-mode: acceptEdits
+model: opus
+permissionMode: acceptEdits
 ---
 
 # Hardware Integrator Agent

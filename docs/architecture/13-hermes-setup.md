@@ -225,11 +225,13 @@ mcp_servers:
         - get_task_queue
         - send_to_charging
         - escalation_response
+        - start_negotiation   # Phase 3 で追加（キャラLLM交渉、14-character-llm-negotiation.md 参照）
       prompts: false
       resources: false
 ```
 
 > **トークンコスト**: `tools.include` で7ツールに絞ることで MCP の自動列挙トークンを最小化（約550トークン/ターン）。これは `feedback_mcp_token_cost` でも確認した運用方針。
+> **段階導入**: `start_negotiation` はキャラLLM交渉（Phase 3）で初めて使用する。Phase 0.5〜2 のプロトタイプ時点では残り6ツールで運用してよい。
 
 ### 3.3 倉庫側 `config.yaml`（モードスイッチ）
 
@@ -265,8 +267,10 @@ locations:
   - shelf_3
   - berth_A
   - berth_B
+  - shipping_station
   - berth_charge_1
   - berth_charge_2
+# ※ 08-llm-bridge-common.md の LOCATIONS テーブル（場所名→座標）とキーを一致させること
 
 # ───────────────────────────────────────────────
 # Hermes Gateway 接続情報 (LLM Bridge Node が読む)
@@ -280,13 +284,13 @@ hermes:
 # Mode A/B のみで使う Nav2 Bridge エンドポイント
 # ───────────────────────────────────────────────
 nav2_bridge:
-  endpoint: "http://127.0.0.1:9001"
+  endpoint: "http://127.0.0.1:8645"   # 12a-integration-mode-a.md の Nav2 Bridge 実装ポートと一致
 
 # ───────────────────────────────────────────────
 # Mode C のみで使う Open-RMF エンドポイント
 # ───────────────────────────────────────────────
 rmf:
-  api_endpoint: "http://127.0.0.1:8001"
+  api_endpoint: "http://127.0.0.1:8000"   # rmf-web API Server のデフォルトポート（12c-integration-mode-c.md と一致）
 ```
 
 LLM Bridge Node / Warehouse MCP Server は起動時に `traffic_mode` を読み、内部の TrafficManager 実装を切替える（`15-mcp-platform.md §Warehouse MCP Server`）。

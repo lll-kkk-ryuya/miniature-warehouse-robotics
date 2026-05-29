@@ -322,18 +322,18 @@ predicted_position_3s が同一地点に収束している場合は、
 ```
 t=0s   Claude: bot1=blocked, bot2=blocked, 距離0.3m, heading差3.1rad
          → デッドロック検出
-         → bot2 (low priority) に yield(retreat_to="route_B_start")
+         → bot2 (low priority) に yield(retreat_to="retreat_B")
          → bot1 に wait(duration=5)
 
 t=0-1s Warehouse MCP Server:
-         dispatch_task(action="yield", robot="bot2", dropoff="route_B_start")
+         dispatch_task(action="yield", robot="bot2", dropoff="retreat_B")
          dispatch_task(action="wait", robot="bot1", duration=5)
 
 t=1-3s Nav2 Bridge:
-         bot2: Nav2 cancel → route_B_start へ移動開始
+         bot2: Nav2 cancel → retreat_B へ移動開始
          bot1: Nav2 cancel → 5秒待機
 
-t=3-4s bot2 が退避完了（route_B_start 到着）
+t=3-4s bot2 が退避完了（retreat_B 到着）
 t=5s   bot1 の wait 完了 → 通路を通過
 
 t=6s   Claude（次サイクル）:
@@ -363,10 +363,13 @@ WAYPOINTS = {
     "route_A": {"x": 0.45, "y": 0.5},  # 通路A中間点
     "route_B": {"x": 0.95, "y": 0.5},  # 通路B中間点
     "route_C": {"x": 0.6, "y": 0.15},  # 通路C（横断）中間点
+    "retreat_A": {"x": 0.45, "y": 0.85},  # 通路A退避地点（yield 時の待避先）
+    "retreat_B": {"x": 0.95, "y": 0.85},  # 通路B退避地点（yield 時の待避先）
 }
 ```
 
 ※座標はジオラマの実測後に確定する。
+※`yield` アクションの `retreat_to` には WAYPOINTS のキー（`retreat_A` / `retreat_B` 等）を指定する。未定義の場所名は Policy Gate の known_locations 検証で reject される。
 
 ## Multi-Robot Costmap Layer（Mode A/B用衝突回避）
 

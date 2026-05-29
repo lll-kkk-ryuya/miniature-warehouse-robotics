@@ -7,7 +7,7 @@
 ## プロセス構成
 
 ```
-Emergency Guardian (50ms) → State Cache (100ms) → LLM Bridge (3秒)
+Emergency Guardian (50ms) → State Cache (100ms) → LLM Bridge (5秒サイクル: 応答2s + 待機3s)
     → Hermes Gateway → Warehouse MCP Server → Open-RMF → Fleet Adapter → Nav2 × 2
 ```
 

@@ -107,11 +107,13 @@ LOCATIONS = {
     "berth_A":          {"x": 0.2, "y": 0.8},
     "berth_B":          {"x": 0.7, "y": 0.8},
     "shipping_station": {"x": 0.2, "y": 0.1},
-    "charging_station": {"x": 1.2, "y": 0.1},
+    "berth_charge_1":   {"x": 1.2, "y": 0.1},   # bot1 充電ステーション
+    "berth_charge_2":   {"x": 1.5, "y": 0.1},   # bot2 充電ステーション
 }
 ```
 
 ※座標はジオラマの実測後に確定する。
+※このテーブルのキーは `13-hermes-setup.md §3.3 config.yaml` の `locations`（Policy Gate の known_locations 検証用）と**完全に一致させること**。充電ステーションはロボットごとに `berth_charge_1` / `berth_charge_2` の2箇所（旧 `charging_station` 単一表記は廃止）。
 
 ## サイクル設計
 
@@ -154,7 +156,7 @@ Mode C の場合は最終行が `t=5.0s` になる。
 
 ## 同時発火制御（A+B: HTTPキャンセル + MCP側gen_id検証）
 
-本プロジェクトのサイクルは上記の通り**レスポンス駆動**（前回の応答受信後に3秒カウント開始）であり、固定間隔ポーリングではない。したがって正常系では「LLM呼び出し中に次サイクルが発火する」競合は原理的に発生しない（Single-flight / Coalescing は不要）。
+本プロジェクトのサイクルは上記の通り**レスポンス駆動**（前回の応答受信後に待機時間 — Mode A:1秒 / Mode C:3秒 — カウント開始）であり、固定間隔ポーリングではない。したがって正常系では「LLM呼び出し中に次サイクルが発火する」競合は原理的に発生しない（Single-flight / Coalescing は不要）。
 
 問題は **Hermes が LLM ↔ MCP の往復を内部で持つこと**にある。LLM の tool call は **Warehouse MCP Server で即時実行され、その時点で Nav2 等にコマンドが発行される**。Bridge が Hermes の最終応答を受け取った後に検証してももう手遅れである。よって対策は2層で行う:
 

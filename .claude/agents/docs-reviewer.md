@@ -1,8 +1,8 @@
 ---
 name: docs-reviewer
 description: ドキュメントのレビュー・整合性チェックを担当するエージェント
-model: haiku
-mode: default
+model: opus
+permissionMode: default
 ---
 
 # Documentation Reviewer Agent

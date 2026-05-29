@@ -182,7 +182,7 @@ t=5.0s   次のサイクル開始
 6. rmf_web.service                  ← Nav2後（Open-RMF起動）
 7. hermes_gateway.service           ← 独立（LLM準備）
 8. warehouse_mcp.service            ← hermes後（MCP接続）
-9. llm_bridge.service               ← 全て起動後（3秒ループ開始）
+9. llm_bridge.service               ← 全て起動後（5秒サイクル開始: Mode C）
 ```
 
 各サービス共通:

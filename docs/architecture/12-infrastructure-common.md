@@ -191,20 +191,29 @@ class StateCacheNode(Node):
         self.create_subscription(String, '/emergency/event',
                                  self.on_emergency, 10)
 
+        # キャラLLM（14-character-llm-negotiation.md）はファイルではなくこのトピックを購読する
+        self.snapshot_pub = self.create_publisher(String, '/state_cache/snapshot', 10)
+
         self.create_timer(0.1, self.write_cache)  # 100ms
 
     def write_cache(self):
-        """atomic write でファイル書出し"""
+        """atomic write でファイル書出し + トピック publish"""
         tmp_path = "/tmp/warehouse_state.json.tmp"
         final_path = "/tmp/warehouse_state.json"
 
+        payload = json.dumps(self.state)
         with open(tmp_path, "w") as f:
-            json.dump(self.state, f)
+            f.write(payload)
             f.flush()
             os.fsync(f.fileno())
 
         os.replace(tmp_path, final_path)
+
+        # ファイル経由（LLM Bridge / MCP が読む）に加え、トピックでも配信（キャラLLM が購読）
+        self.snapshot_pub.publish(String(data=payload))
 ```
+
+> **配信2系統**: State Cache は ①`/tmp/warehouse_state.json`（atomic file、LLM Bridge / Warehouse MCP Server が読む）と ②`/state_cache/snapshot` トピック（`std_msgs/String`、キャラLLM が購読、`14-character-llm-negotiation.md` 参照）の両方に同一スナップショットを出力する。
 
 ### State Cache JSON フォーマット
 

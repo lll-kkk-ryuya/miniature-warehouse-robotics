@@ -173,7 +173,7 @@ LLM Bridge Node（ROS 2 ノード）
 ### LLM Bridge Node の役割
 
 1. ROS 2トピックからロボットの状態を収集（位置、障害物、バッテリー等）
-2. 状態を構造化JSON に変換してLLM APIに送信（3秒間隔）
+2. 状態を構造化JSON に変換してLLM APIに送信（サイクル長: Mode A=3秒 / Mode C=5秒、レスポンス駆動）
 3. LLMの返答（指示JSON）をパースしてNav2にゴール送信
 4. LLMの判断理由（reasoning）をログ記録・画面表示
 5. LLMの差し替え（Claude ↔ ChatGPT ↔ Gemini ↔ Grok）を1行で切替可能（Hermes Agent経由）

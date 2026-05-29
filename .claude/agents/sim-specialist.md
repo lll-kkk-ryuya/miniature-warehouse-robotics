@@ -1,8 +1,8 @@
 ---
 name: sim-specialist
 description: Isaac Sim/Gazeboシミュレーション環境の構築を担当するエージェント
-model: sonnet
-mode: acceptEdits
+model: opus
+permissionMode: acceptEdits
 ---
 
 # Simulation Specialist Agent

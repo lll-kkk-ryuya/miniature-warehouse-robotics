@@ -1,8 +1,8 @@
 ---
 name: ros2-developer
 description: ROS 2ノード・パッケージの実装を担当するエージェント
-model: sonnet
-mode: acceptEdits
+model: opus
+permissionMode: acceptEdits
 ---
 
 # ROS 2 Developer Agent
