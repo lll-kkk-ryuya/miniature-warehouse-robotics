@@ -29,6 +29,10 @@ ws/log/
 # Python
 __pycache__/
 *.pyc
+*.egg-info/
+*.egg-info
+build/
+dist/
 
 # Python tooling (Ruff / pytest / coverage / venv)
 .ruff_cache/
