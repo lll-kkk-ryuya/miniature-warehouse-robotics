@@ -11,6 +11,7 @@
 - **1セッション = 1 worktree = 1ブランチ = 1トラック**。同一ブランチ／同一ディレクトリを2セッションで同時に触らない。
 - **`main` は統合専用・常にクリーン**に保つ（直編集・直 push 禁止、ブランチ先行）。
 - 各セッションは root `.claude/CLAUDE.md` ＋ 自パッケージの `CLAUDE.md` ＋ 本ルールを読み、**自トラックの担当ディレクトリのみ**を編集する。
+- **同一マシンの並列ブランチは必ず worktree を使う**（新規 clone ではない）。worktree は `.git` を共有しコミットが相互即時可視・軽量。完全に独立したパッケージでも worktree でよい（むしろ衝突ゼロで最適）。**新規 clone を使うのは別マシンの場合のみ**（＝ Jetson 実機。Phase 1〜 `deploy/jetson` 実行用）。判断軸と根拠は [doc17 §4.0](../../docs/architecture/17-development-workflow.md)。
 
 ### worktree の切り方
 
