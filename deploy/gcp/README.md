@@ -2,6 +2,23 @@
 
 GCP Always Free 枠 (e2-micro) 上で Hermes Gateway + Slack adapter を動かすための一式。
 
+## デプロイ現状 (2026-05-29 時点)
+
+Slack bot `minicar` は GCP 上で稼働中。設定は本リポジトリの CD で管理されている。
+
+| 項目 | 値 |
+|------|-----|
+| VM | `hermes-gateway` @ us-west1-a / e2-micro / **Always Free = $0** |
+| 外部 IP | `34.4.104.112`（静的予約 `hermes-gateway-ip`、再起動でも不変） |
+| Hermes | v0.14.0（git インストール、systemd 常駐） |
+| LLM | provider `google` / `gemini-2.5-flash`（`GOOGLE_API_KEY` 直叩き） |
+| Slack | Socket Mode（`minicar` @ RAG ENGINE）。GitHub MCP で `main` をライブ参照 |
+| CD | `main` の `deploy/hermes/gcp/{config.yaml,SOUL.md}` push で自動反映（下記「継続的デプロイ (CD)」節）。GitHub Actions 検証済み |
+| コスト | ホスティング ≒$0。実コストは Gemini API のみ（[18-gcp-serverless-cost-comparison](../../docs/architecture/18-gcp-serverless-cost-comparison.md)） |
+
+> **VM を畳む際の注意**: 静的 IP は VM 削除/停止後に放置すると課金される。
+> `gcloud compute addresses delete hermes-gateway-ip --region=us-west1` で必ず解放する。
+
 ## 前提
 
 - Project: `gen-lang-client-0487062066` (hermes-minicar)
