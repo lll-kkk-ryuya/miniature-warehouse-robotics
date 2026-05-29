@@ -36,6 +36,7 @@ docs/
 | [15-mcp-platform](architecture/15-mcp-platform.md) | MCPプラットフォーム（Hermes Agent, Warehouse MCP Server, Policy Gate, 競合状態の防止） |
 | [16-repository-and-conventions](architecture/16-repository-and-conventions.md) | リポジトリ構成・パッケージ命名・msg型・gen_store・モデル方針・ブランチ戦略（実装の起点） |
 | [17-development-workflow](architecture/17-development-workflow.md) | 開発の進め方と分担（worktree並列の実行手順書・契約凍結・依存グラフ・マージ順） |
+| [18-gcp-serverless-cost-comparison](architecture/18-gcp-serverless-cost-comparison.md) | Slack Gateway のサーバーレス化検討（Always Free=$0 の現状 vs Cloud Run scale-to-zero・実測・PoC計画） |
 
 ## mode-a/ — LLM単独交通管理
 
