@@ -1,0 +1,13 @@
+# dev 環境差分（Mac Docker / Gazebo sim）。base を上書きする差分のみ記述。
+# 接続先 secrets は config/dev/.env（gitignore）。
+
+# 開発は sim 上で実機を使わない
+runtime:
+  use_simulation: true        # Gazebo Harmonic
+  runtime_dir: /tmp/warehouse
+
+hermes:
+  base_url: "http://localhost:8642"   # ローカル or dev Gateway（doc13: Gateway port 8642）
+
+# dev は Mode A（LLM単独）から始める
+traffic_mode: none

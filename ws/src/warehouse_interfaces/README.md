@@ -1,7 +1,7 @@
 # warehouse_interfaces
 
-- **ビルド**: ament_cmake
-- **責務**: カスタム msg/srv 定義（rosidl）。Situation/Command 等の構造化型（Phase 4以降に必要なら導入）
-- **主担当**: ros2 / **Phase**: 0.5
+- **ビルド**: ament_python（Phase 0.5〜3）。Phase 4 で構造化 `.msg` 導入時に ament_cmake へ移行
+- **責務**: 凍結契約のコード化 — pydantic schemas（Situation/Command/proposal）・`StateStore`/`GenStore` IF・共有パス定数。初期は `.msg/.srv` を持たない純 Python 契約パッケージ
+- **主担当**: ros2/bridge / **Phase**: 0.5
 
-> doc16 §2/§3 準拠。初期は `std_msgs/String`(JSON) 方式のため、本パッケージの `.msg` 化は Phase 4 以降。
+> doc16 §2/§3 準拠。初期は `std_msgs/String`(JSON) 運用のため ament_python。`.msg` 化（Phase 4）の際に ament_cmake へ移行（rosidl は Python パッケージで生成不可）。

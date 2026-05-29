@@ -72,6 +72,32 @@ skeleton ┼─ hw/jetson-setup ★実機不要で即着手（deploy/jetson）
 
 ## 4. worktree 実行ランブック
 
+### 4.0 worktree と clone の使い分け（前提）
+
+複数ブランチを並行開発する手段は2つ。**判断軸は「同じパッケージか別か」ではなく「同じマシン・同じリポジトリか」**。
+
+| 観点 | `git worktree`（同一 .git） | 新規 `git clone`（別 .git） |
+|---|---|---|
+| マシン | **同じマシン**で並行 | **別マシン**でも可 |
+| `.git`／履歴 | 共有（コミット即・相互可視） | 別（共有に push/pull 往復が要る） |
+| ディスク | 軽い（オブジェクト共有） | 重い（履歴を丸ごと複製） |
+| main の最新契約取込 | `git merge main` が**ローカル即時** | origin 経由で往復 |
+| 向くケース | **1モノレポを同一マシンで並列開発** | 別マシン／別プロジェクト／破壊的実験 |
+
+- **本プロジェクトの Mac 開発は全て worktree**。各パッケージは編集上は独立だが、`ws/src/` モノレポとして `colcon build` で一緒にビルドし、共有契約 `warehouse_interfaces` に依存する「独立編集 × 密統合」構造であり、これは worktree の設計対象そのもの。**完全に独立したパッケージ／ブランチこそ worktree に向く**（触るファイルが重ならず衝突ゼロ）。
+- **clone を使うのは別マシンの場合のみ**。具体的には **Jetson 実機（Phase 1〜）に別途 `git clone`** して `deploy/jetson` を実行する。
+- **`main` worktree は統合専用**。そこでは開発しない。
+- git 仕様: `refs/`（ブランチ）は全 worktree で共有 → main の最新が即見える。**同一ブランチを2つの worktree で同時 checkout は不可**（＝「1ブランチ1worktree1セッション」が自動強制）。出典: [git-worktree](https://git-scm.com/docs/git-worktree)。
+
+```
+Mac（開発機）:
+  /miniature-warehouse-robotics  [main]            ← 統合専用（開発しない）
+  /mwr-skeleton    [feat/repo-skeleton]            ← worktree
+  /mwr-llm-bridge  [feat/llm-bridge]   …（skeletonマージ後に追加）
+Jetson（実機, Phase 1〜）:
+  別途 git clone  ← deploy/jetson を実行（別マシンなので clone）
+```
+
 ### Step 0: `feat/repo-skeleton`（逐次）
 
 このブランチの仕事の **8割は「契約の凍結」、2割がディレクトリ改名**。
@@ -86,10 +112,11 @@ skeleton ┼─ hw/jetson-setup ★実機不要で即着手（deploy/jetson）
 ### Step 1: worktree 展開（skeletonマージ後）
 
 ```bash
-git worktree add ../mwr-llm-bridge   feat/llm-bridge
-git worktree add ../mwr-safety-state feat/safety-state
-git worktree add ../mwr-jetson       hw/jetson-setup
-git worktree add ../mwr-firmware     hw/firmware-esp32
+# 最新 main を基点に「フォルダ＋新ブランチ」を作る（-b で新規ブランチ）
+git worktree add ../mwr-llm-bridge   -b feat/llm-bridge   main
+git worktree add ../mwr-safety-state -b feat/safety-state main
+git worktree add ../mwr-firmware     -b hw/firmware-esp32 main
+# 完了しマージ後は片付け: git worktree remove ../mwr-llm-bridge
 ```
 
 - 各worktreeに**1エージェント**を割り当て、**`feat/llm-bridge` に最優先で厚く**配置（核心・最重量・偽トピックで完全独立）。
