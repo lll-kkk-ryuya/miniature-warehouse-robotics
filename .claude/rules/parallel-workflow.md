@@ -13,15 +13,35 @@
 - 各セッションは root `.claude/CLAUDE.md` ＋ 自パッケージの `CLAUDE.md` ＋ 本ルールを読み、**自トラックの担当ディレクトリのみ**を編集する。
 - **同一マシンの並列ブランチは必ず worktree を使う**（新規 clone ではない）。worktree は `.git` を共有しコミットが相互即時可視・軽量。完全に独立したパッケージでも worktree でよい（むしろ衝突ゼロで最適）。**新規 clone を使うのは別マシンの場合のみ**（＝ Jetson 実機。Phase 1〜 `deploy/jetson` 実行用）。判断軸と根拠は [doc17 §4.0](../../docs/architecture/17-development-workflow.md)。
 
-### worktree の切り方
+### worktree 作成・破棄チェックリスト
 
-```bash
-# main をクリーンにした状態で（skeleton マージ後）
-git worktree add ../mwr-<track> -b feat/<track> main
-cd ../mwr-<track> && claude        # そのブランチ専用の Opus セッション
-# 完了後
-git worktree remove ../mwr-<track>
-```
+**作成時（着手）**:
+1. **Issue を選ぶ**: `ready` ラベルのものだけ着手可。`blocked`（依存未解決）は不可。新トラックなら**先に epic Issue を作る**（§3。Issue/ラベル無しで始めない＝トラッキング不能になる）。
+2. **命名はブランチ表に従う**（doc16 §9 / doc17）。フォルダ `../mwr-<track>`、ブランチ `feat/<track>` または `hw/<track>`（例 `feat/sim-gazebo` / `feat/wo-metrics` / `hw/firmware-esp32`）。勝手に短縮・改名しない。
+3. **最新 main を基点に作成**:
+   ```bash
+   git fetch origin                                   # 念のため最新化
+   git worktree add ../mwr-<track> -b <branch> main   # フォルダ＋新ブランチ
+   ```
+4. **セッション起動**: `cd ../mwr-<track> && claude`。Opus を確認。キックオフで「担当 Issue 番号・編集境界（自パッケージのみ）・本ルール参照」を伝える。
+5. **Issue を着手中に更新**: `blocked`→`ready`、assign または着手コメント（他セッションとの重複防止）。
+
+**破棄時（完了）**:
+1. PR を出す（`[track] ...` / `Closes #N` / track ラベル）。`colcon build` 通過・安全機構はユニットテスト通過を確認。
+2. main へマージ（マージ順 doc17 §6）。
+3. クリーンを確認して掃除:
+   ```bash
+   git worktree remove ../mwr-<track>   # 未コミット残があると拒否される
+   git branch -d <branch>               # マージ済みブランチを削除
+   git worktree prune                   # 手で消した残骸の掃除
+   ```
+
+**禁止事項**:
+- `main` worktree で開発しない（統合専用）。
+- 同一ブランチを2 worktree で checkout しない（git が拒否する）。
+- `blocked` Issue のトラックを先行着手しない。
+- 別トラックのフォルダ／共有契約を触らない（契約変更は §4 経由）。
+- **新トラックを epic Issue／ラベル無しで開始しない**（協調不能になる）。
 
 ---
 
