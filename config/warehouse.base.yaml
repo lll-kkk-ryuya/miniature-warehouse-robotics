@@ -13,7 +13,7 @@ robots:
 # 速度・安全（ミニチュアスケール。Layer0/1 で強制。.claude/rules/safety.md）
 safety:
   max_linear_velocity: 0.3   # m/s 上限（厳守）
-  emergency_min_distance: 0.15  # m（2台間。TODO: Phase 2 実測で確定）
+  emergency_min_distance: 0.3   # m（2台間。doc12 DISTANCE_THRESHOLD と一致。TODO: Phase 2 実測で確定）
 
 # LLM サイクル長（秒）。Mode A=3 / Mode C=5（doc03）
 cycle:
@@ -30,15 +30,17 @@ locations:
   berth_B: {x: 0.7, y: 0.8}
   shipping_station: {x: 0.2, y: 0.1}
   charging_station: {x: 1.2, y: 0.1}   # 2台共有・先着順
+  retreat_A: {x: 0.45, y: 0.85}        # 通路A yield 退避先（doc08 LOCATIONS と一致）
+  retreat_B: {x: 0.95, y: 0.85}        # 通路B yield 退避先
 
 # Hermes Gateway 接続先（環境別に上書き必須）
 hermes:
   base_url: ""   # 環境側で設定
   # token は secrets（config/<env>/.env）から注入
 
-# Nav2 Bridge（Mode A/B 実行先）
+# Nav2 Bridge（Mode A/B 実行先。ポートは doc13/12a と一致）
 nav2_bridge:
-  base_url: "http://localhost:8080"
+  base_url: "http://localhost:8645"
 
 # Open-RMF（Mode C。dev では無効が既定）
 rmf:
