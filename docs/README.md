@@ -1,5 +1,7 @@
 # ドキュメントマップ
 
+> 📍 **プロジェクト現況**は [STATUS.md](STATUS.md)（随時更新の living doc）。
+
 ## 構成
 
 ```
@@ -38,6 +40,7 @@ docs/
 | [17-development-workflow](architecture/17-development-workflow.md) | 開発の進め方と分担（worktree並列の実行手順書・契約凍結・依存グラフ・マージ順） |
 | [18-gcp-serverless-cost-comparison](architecture/18-gcp-serverless-cost-comparison.md) | Slack Gateway のサーバーレス化検討（Always Free=$0 の現状 vs Cloud Run scale-to-zero・実測・PoC計画） |
 | [19-environments-and-config](architecture/19-environments-and-config.md) | 環境分離 dev/stg/prod（軸A: config/secrets切替・WAREHOUSE_ENV・base+overlay・prodはタグ） |
+| [20-dev-quality-and-testing](architecture/20-dev-quality-and-testing.md) | 開発品質・テスト戦略（Ruff/pytest/pre-commit/CI/Playwright・安全契約テスト・テストピラミッド） |
 
 ## mode-a/ — LLM単独交通管理
 
