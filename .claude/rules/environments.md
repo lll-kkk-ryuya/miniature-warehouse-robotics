@@ -1,6 +1,6 @@
 # 環境（dev / stg / prod）運用ルール
 
-> 方式は軸A「デプロイ環境の分離」。設計の正本は [docs/architecture/18](../../docs/architecture/18-environments-and-config.md)。本書は守るべき運用規約のみ。
+> 方式は軸A「デプロイ環境の分離」。設計の正本は [docs/architecture/19](../../docs/architecture/19-environments-and-config.md)。本書は守るべき運用規約のみ。
 
 ## 必須
 

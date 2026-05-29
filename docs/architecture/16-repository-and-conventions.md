@@ -108,7 +108,7 @@ doc03 では `/llm/situation` `/llm/command` `/wo/mission` を「カスタム（
 | Command Audit Log | `$WAREHOUSE_AUDIT_LOG_PATH`（既定 `/tmp/warehouse/audit.jsonl`） | MCP Server | 分析 | JSON Lines 追記 |
 | 倉庫 config | `config/warehouse.base.yaml` + `config/$WAREHOUSE_ENV/warehouse.yaml`（base+overlay） | — | 全ノード | YAML |
 
-- **環境分離（dev/stg/prod）は `WAREHOUSE_ENV` で切替**。config は base+overlay で解決し、runtime dir（dev=`/tmp/warehouse/` / prod=`/run/warehouse/`）も環境別。詳細は **[doc18 - 環境分離と設定](18-environments-and-config.md)**（旧 `$WAREHOUSE_CONFIG_PATH` 単一ファイル方式を置換）。
+- **環境分離（dev/stg/prod）は `WAREHOUSE_ENV` で切替**。config は base+overlay で解決し、runtime dir（dev=`/tmp/warehouse/` / prod=`/run/warehouse/`）も環境別。詳細は **[doc19 - 環境分離と設定](19-environments-and-config.md)**（旧 `$WAREHOUSE_CONFIG_PATH` 単一ファイル方式を置換）。
 - アクセスは抽象インターフェース越し（例 `StateStore` / `GenStore`）にし、実体（file / Redis 等）を Phase 進行で差し替えられるようにする。
 
 ---
@@ -117,7 +117,7 @@ doc03 では `/llm/situation` `/llm/command` `/wo/mission` を「カスタム（
 
 - ROS 2 ノードのパラメータ（Nav2 / AMCL / SLAM / twist_mux / footprint / 速度上限）は **`warehouse_bringup/config/` に集約**し、各ノードパッケージは config を持たず launch 引数で受け取る。
 - 1ファイル1責務に分割（`nav2_params.yaml` / `slam_params.yaml` / `amcl.yaml` / `twist_mux.yaml` / `bot_params.yaml`）→ 別担当が別ファイルを編集でき、衝突を避ける。
-- モード切替・サイクル長・キャラLLM設定は倉庫 config（`config/warehouse.base.yaml` + `config/<env>/warehouse.yaml` の base+overlay。**doc18**）に集約。`traffic_mode` 等のキー名・「1行変更でモード切替」は不変で、mode-a/c docs の「config.yaml」はこの倉庫 config を指す。
+- モード切替・サイクル長・キャラLLM設定は倉庫 config（`config/warehouse.base.yaml` + `config/<env>/warehouse.yaml` の base+overlay。**doc19**）に集約。`traffic_mode` 等のキー名・「1行変更でモード切替」は不変で、mode-a/c docs の「config.yaml」はこの倉庫 config を指す。
 - ハードウェア固有パラメータ（footprint・wheel base・エンコーダ分解能）は実測前は**暫定値＋`# TODO: Phase 1 実測で確定` マーカー**を付け、確定後に1ファイル差し替えで済む構造にする（ロボット実寸 T1 未確定のため）。
 
 ---

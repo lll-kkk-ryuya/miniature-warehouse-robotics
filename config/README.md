@@ -1,6 +1,6 @@
 # config/ — 倉庫設定（環境分離 dev/stg/prod）
 
-ROS 2 パッケージ非依存の設定。**軸A（デプロイ環境の分離）**で、`WAREHOUSE_ENV`（dev|stg|prod、既定 dev）により切り替える。設計の正本: [`docs/architecture/18-environments-and-config.md`](../docs/architecture/18-environments-and-config.md)。運用ルール: `.claude/rules/environments.md`。
+ROS 2 パッケージ非依存の設定。**軸A（デプロイ環境の分離）**で、`WAREHOUSE_ENV`（dev|stg|prod、既定 dev）により切り替える。設計の正本: [`docs/architecture/19-environments-and-config.md`](../docs/architecture/19-environments-and-config.md)。運用ルール: `.claude/rules/environments.md`。
 
 ```
 config/
