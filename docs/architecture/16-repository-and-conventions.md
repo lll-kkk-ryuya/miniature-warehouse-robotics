@@ -45,7 +45,7 @@ miniature-warehouse-robotics/
 │   ├── gcp/                         # 既存: Hermes Gateway VPS
 │   ├── jetson/                      # Jetson セットアップ・systemd・監視スクリプト
 │   └── hermes/                      # Hermes config.yaml / .env.example
-├── config/                          # ※運用上の暫定: 倉庫 config.yaml の置き場（WAREHOUSE_CONFIG_PATH が指す）
+├── config/                          # 倉庫 config（env分離: warehouse.base.yaml + dev|stg|prod/。WAREHOUSE_ENV で選択。doc19）
 ├── docs/
 └── ws/build, ws/install, ws/log     # .gitignore 対象（生成物）
 ```
