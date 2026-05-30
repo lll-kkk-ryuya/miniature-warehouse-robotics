@@ -189,7 +189,7 @@ from geometry_msgs.msg import PoseWithCovarianceStamped
 class VirtualScanNode(Node):
     """相手ロボットの位置を仮想LaserScanとして自ロボットのNav2に注入"""
 
-    ROBOT_RADIUS = 0.1      # ロボット半径 (m)、実測後に調整
+    ROBOT_RADIUS = 0.075    # ロボット半径 (m)。R-42 で 0.075 に確定（旧 0.1=直径200mm は車体~150mmと矛盾）。単一ソース: warehouse_description.robot_dimensions.ROBOT_RADIUS。Phase 1 実測で最終確定
     ANGULAR_WIDTH = 0.26    # 相手ロボット方向の ±15度 (rad)
     MAX_RANGE = 2.0         # 最大検出距離 (m)
     SUPPRESSION_RANGE = 1.0 # この距離以上離れていたら発行しない (m)
@@ -304,7 +304,7 @@ global_costmap:
 
 | パラメータ | 値 | 説明 |
 |-----------|-----|------|
-| `ROBOT_RADIUS` | 0.1m | ロボット半径（Phase 1 で実測後に確定） |
+| `ROBOT_RADIUS` | 0.075m | ロボット半径（R-42 で 0.075 確定。単一ソース=`warehouse_description.robot_dimensions`。Phase 1 実測で最終確定） |
 | `ANGULAR_WIDTH` | ±15度 (0.26rad) | 相手ロボットを仮想障害物として表現する角度幅 |
 | `MAX_RANGE` | 2.0m | LaserScan の最大レンジ |
 | `SUPPRESSION_RANGE` | 1.0m | この距離以上離れている場合は仮想スキャンを発行しない |

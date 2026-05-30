@@ -105,7 +105,7 @@ Bot2 (キャラLLM, turn=2):
 | 相手の発話 | `/character/speech` |
 | バトン | `/negotiation/turn` |
 | 中断信号 | `/negotiation/abort` |
-| gen_id（自分用） | `/state_cache/snapshot.gen_id`（Bridge が書き込む） |
+| gen_id（自分用） | `/llm/command` / `/llm/reasoning`（Bridge が採番・publish）。※ `/state_cache/snapshot` は State Cache が publish し、凍結 `StateSnapshot` に gen_id フィールドは無い |
 
 キャラLLM は **直接 ROS topics を subscribe** する（State Cache JSON ファイル経由ではなく）。State Cache のリアルタイム性（100ms）とトピック整合性が必要なため。
 
