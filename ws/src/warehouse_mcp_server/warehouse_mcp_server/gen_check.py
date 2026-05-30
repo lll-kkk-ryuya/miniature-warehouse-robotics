@@ -57,9 +57,10 @@ class GenChecker:
         ``{"status": "rejected", "reason": "stale_generation", "received_gen": gen_id}``.
         """
         cur_gen = self._gen_store.get()
-        # SEAM(#25): per-call UUID idempotency dedup plugs in here. `idempotency_key`
-        # is accepted now and intentionally ignored; the dedup track checks/records
-        # the key against a seen-set before the monotonic comparison below.
         if is_stale(gen_id, cur_gen):
             return GenCheckResult(ok=False, reason="stale_generation", cur_gen=cur_gen)
+        # SEAM(#25): per-call UUID idempotency dedup plugs in HERE — AFTER the
+        # monotonic gen check (doc15 §2 order: gen → idempotency → Policy Gate), so a
+        # stale call is rejected first and never consumes an idempotency key.
+        # `idempotency_key` is accepted now and intentionally ignored.
         return GenCheckResult(ok=True, reason=None, cur_gen=cur_gen)
