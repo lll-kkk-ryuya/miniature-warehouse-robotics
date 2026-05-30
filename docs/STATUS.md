@@ -33,10 +33,10 @@
 | 6 | wo | ready（trace_id 契約合意で着手可） |
 | 7 | sim | ready（**環境スパイク**が前段ゲート＝クリティカルパス）※独立並行可 |
 | 8 | nav-traffic | **blocked**（#7 sim 依存） |
-| 25 | gen_id UUID冪等化 | 🟡 **並列セッション実行中**（`mwr-contract-idempotency`/`contract/gen-id-idempotency`）。**Option A 分担**: #25=doc08/15 設計+`warehouse_interfaces` additive 契約 / #4=MCP enforcement（契約 land 後）。`contract`+`blocked`（doc08/15 設計確定が解除条件, R-35） |
+| 25 | gen_id UUID冪等化 | 🟡 **セッション起動済（設計フェーズのみ進行）**（`mwr-contract-idempotency`/`contract/gen-id-idempotency`）。GitHub では `contract`+`blocked`（コード/契約 land 前の調査・設計のみ進行；解除条件=doc08/15 設計確定, R-35）。**分担案A**: #25=doc08/15 設計+`warehouse_interfaces` additive 契約 / #4=MCP enforcement（契約 land 後） |
 
 ## ⚠️ 進行中の要決着事項（オーケストレーター監視）
-- **実行モデルの doc-vs-code ドリフト**（#25 が掘当て）: docs（doc08:162 / doc15:48）は「Hermes が tool を **server-side 実行**・LLM が gen_id/UUID を echo」（モデルb）、一方 main の `action_map.py`(#27) は「**Bridge が Command を parse→自分で MCP 呼出し**・gen_id を Bridge 注入」（モデルa）。両立不能で、idempotency key の mint 主体（Bridge=信頼可 / LLM=不可）と **#25 の契約変更要否**（モデルa なら `CommandItem.idempotency_key` 不要に縮小）、**#4 の A/B-3 設計の正当性**を左右する。**決定（Option 1, 2026-05-30）**: #25 の最初の設計タスクとして doc15（正本）で **#4 と GitHub 合意の上で決着**。**オーケストレーターが #4↔#25 両 PR のレビューで結論一致を確認**する。
+- **実行モデルの未確定（doc 内の不整合 + コードとの解釈差）**（#25 が掘当て）: docs は **server-side 実行**（doc08 §同時発火制御 L162「tool call は MCP で即時実行」／ doc15 §1 L48「ツール呼出しはサーバーサイドで実行」）を記す一方、`docs/mode-a/08a` §アクション→MCP マッピングは Command-JSON 出力＋マッピング表を併記しており、**docs 内部に既に不整合**がある。main の `action_map.py`(#27) は Command→ToolCall 変換時に **Bridge が gen_id を注入する記述子生成のみ**（MCP 実行はせず・consumer も未存在、docstring は doc08/15 B-3 準拠を明示）＝**コードは tool 実行主体を確定していない**。**実行主体（Bridge 直呼び vs Hermes server-side）が未確定**で、これが gen_id/UUID の mint 主体（Bridge=信頼可 / LLM=不可）、**#25 の契約変更要否**（Bridge mint なら `CommandItem.idempotency_key` 縮小の可能性）、**#4 の A/B-3 設計の前提**を左右する。**決着方針（2026-05-30）**: #25 の最初の設計タスクとして doc15（正本）で **#4 と GitHub 合意の上で確定**し、**オーケストレーターが #4↔#25 両 PR のレビューで結論一致を確認**する。
 - **R-35(A)（HTTPキャンセルが Hermes server-side tool 実行を止めない可能性）** は未起票の latent TODO。#25 のスコープ外（#25 は R-35(B) 冪等化のみ）。#4 の「A: HTTPキャンセル」設計の有効性に直結 → 別 Issue 化を検討。
 
 ## 次の山（#4 / #25 と独立並行できるもの）
@@ -46,7 +46,7 @@
 - 既知の設計リスクは [07-research-notes](shared/07-research-notes.md) R-35〜R-52（排他制御の冪等化、micro-ROS 2台接続、Open-RMF on 8GB、MS200精度/200mm通路 等）
 
 ## git 衛生（現況, 2026-05-30）
-- main = `origin/main`(`42ab14a`) 同期・クリーン。**稼働 worktree: `mwr-llm-bridge`(feat/llm-bridge, #4) / `mwr-contract-idempotency`(contract/gen-id-idempotency, #25)**（+ 本 STATUS 更新の `docs/status-refresh`）。以前の stale worktree/branch は掃除済み。
+- main = `origin/main`(`42ab14a`) 同期・クリーン。**稼働 worktree: `mwr-llm-bridge`(feat/llm-bridge, #4) / `mwr-contract-idempotency`(contract/gen-id-idempotency, #25)**（+ 本 PR の `docs/status-refresh`、マージ後に掃除）。以前の stale worktree/branch は掃除済み。
 - キックオフ指示文（repo外, 貼付/`@`参照用）: `../mwr-handoff/kickoff-04-llm-bridge.md` / `kickoff-25-gen-id-idempotency.md`。
 - remote ブランチは作業中のみ（マージ済みは削除）。worktree も完了次第掃除。
 - 全 worktree 未コミット0・未push0 を基本状態とする。
