@@ -8,9 +8,12 @@
 docs/
 ├── shared/          モード非依存（プロジェクト概要・ハードウェア・予算等）
 ├── architecture/    共通基盤設計（LLM Bridge共通・インフラ・フェーズ計画）
+├── dev/             開発プロセス（並列開発 playbook・オペレーター手順・教訓ログ）
 ├── mode-a/          Mode A/B: LLM単独交通管理（Open-RMFなし）
 └── mode-c/          Mode C: LLM + Open-RMF（主方針）
 ```
+
+> 「何を作るか」（設計）= `architecture/` `shared/` `mode-*/`。「どう開発するか」（プロセス・運用・教訓）= [`dev/`](dev/README.md)。強制力のある規約は [`.claude/rules/`](../.claude/rules/)、現況は [STATUS.md](STATUS.md)。
 
 ## shared/ — モード非依存
 
