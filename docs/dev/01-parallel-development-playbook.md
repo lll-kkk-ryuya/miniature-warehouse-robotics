@@ -57,7 +57,7 @@ git worktree prune
 
 並列開発の事故はほぼ「**共有ファイルの同時編集**」と「**他トラック内部依存**」から来る。
 
-1. **共有ファイルは単一所有者 or contract-PR**（[parallel-workflow.md §6 所有者表](../../.claude/rules/parallel-workflow.md)）。所有者以外が変えたい時は所有トラックの Issue に予告→合意。
+1. **共有ファイルは単一所有者 or contract-PR**（[parallel-workflow.md §7.1 所有者表](../../.claude/rules/parallel-workflow.md)）。所有者以外が変えたい時は所有トラックの Issue に予告→合意。
 2. **他トラック内部 import 禁止**（CI 機械検出）。共有が要るなら契約化（`warehouse_interfaces`）。
 3. **契約変更は additive-first**（optional field / 新 store / 新トピック）。削除・改名・型変更は破壊的＝予告＋全消費トラック合意。
 4. **トラック跨ぎの成果物**（例: twist_mux を package-local に一時配置）は `move-to:` マーカー＋受取側 Issue 予告。

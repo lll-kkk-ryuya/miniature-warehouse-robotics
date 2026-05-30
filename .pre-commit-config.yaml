@@ -22,7 +22,8 @@ repos:
       - id: detect-private-key   # safety.md: never commit credentials/keys
 
   # 並列マージ/エディタが作る複製残骸 "X 2.md" / "Y 2.py" を機械的に拒否
-  # (parallel-workflow.md §6 / docs/dev 03-retrospectives L5)。CI(ci.yml)にも同等の保険あり。
+  # (parallel-workflow.md §6 / docs/dev 03-retrospectives L5)。本ガードは pre-commit のみ
+  # （CI ci.yml には未配線。CI 側の保険が要るなら dev-tooling でステップ追加）。
   - repo: local
     hooks:
       - id: forbid-duplicate-copies
