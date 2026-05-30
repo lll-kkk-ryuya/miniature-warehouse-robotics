@@ -55,7 +55,7 @@
 | # | 事項 | 影響度 | 確認方法 |
 |---|------|--------|---------|
 | 19 | ~~Docker + ROS 2 Jazzy + Gazebo Harmonic の Mac M4 での動作~~ → **成立確認（2026-05-30, #43）** | 高（開発環境の基盤） | 環境スパイク **GO**。gz-sim8 8.11 headless + gpu_lidar(ogre2/software GL) + ros_gz_bridge、`--memory=6g` OOM なし。`warehouse_sim/spike/RESULT.md` |
-| 20 | ~~tiryoh/ros2-desktop-vnc:jazzy イメージの ARM64 動作確認~~ → **動作確認済（2026-05-30, #43）** | 高 | ARM64 で gz sim + ros_gz_bridge 動作。`docker commit` 経由で colcon build / `ros2 launch`(bot1/bot2 spawn) も確認 |
+| 20 | ~~tiryoh/ros2-desktop-vnc:jazzy イメージの ARM64 動作確認~~ → **動作確認済（2026-05-30, #43）** | 高 | ARM64 で gz sim + ros_gz_bridge 動作。スパイクは**単一 bot**（`/bot1/{scan,odom,cmd_vel}`）の gz sim+bridge 動作のみ確認（`warehouse_sim/spike/RESULT.md`。colcon build は CI/PR ゲートで担保＝スパイク成果物ではない）。実 `sim.launch.py` の bot1/bot2 spawn は launch/単体テストレベルで、Gazebo E2E は未実施（#8） |
 
 ---
 
