@@ -1,0 +1,22 @@
+# ros_gz_bridge parameter_bridge config for the environment spike (single robot bot1).
+# Types match the frozen topic contract (doc03 §トピック表 lines 77/78/85):
+#   /bot{n}/odom = nav_msgs/Odometry, /bot{n}/scan = sensor_msgs/LaserScan,
+#   /bot{n}/cmd_vel = geometry_msgs/Twist.
+# gz topic names equal the SDF <topic>/<odom_topic> (set to /bot1/* for a 1:1 bridge).
+- ros_topic_name: "/bot1/scan"
+  gz_topic_name: "/bot1/scan"
+  ros_type_name: "sensor_msgs/msg/LaserScan"
+  gz_type_name: "gz.msgs.LaserScan"
+  direction: GZ_TO_ROS
+
+- ros_topic_name: "/bot1/odom"
+  gz_topic_name: "/bot1/odom"
+  ros_type_name: "nav_msgs/msg/Odometry"
+  gz_type_name: "gz.msgs.Odometry"
+  direction: GZ_TO_ROS
+
+- ros_topic_name: "/bot1/cmd_vel"
+  gz_topic_name: "/bot1/cmd_vel"
+  ros_type_name: "geometry_msgs/msg/Twist"
+  gz_type_name: "gz.msgs.Twist"
+  direction: ROS_TO_GZ
