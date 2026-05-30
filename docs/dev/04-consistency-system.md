@@ -47,9 +47,11 @@ check_consistency.py ─┤
 [.claude/skills/consistency-audit/SKILL.md](../../.claude/skills/consistency-audit/SKILL.md)。`context: fork` + `agent: docs-reviewer` で**隔離コンテキスト**に重い grep&compare を逃がし findings だけ返す。決定論チェッカーを先に走らせ、その上で**機械では無理な**意味的・doc 跨ぎ矛盾（凍結契約 vs 例示 JSON、トピック契約 vs 実コード、doc08/`stop`・doc08a/`blocked` 類、鮮度、リンク腐敗）を judgment 監査する。
 - 意味的矛盾は**解決方針を決め打ちせず**、docs に「⚠️ 未解決」注記 + **追跡 Issue**（運用例: #54 / #55）。
 
-## 4. Claude Code hook 配線（**人間が** settings.json に追記）
+## 4. Claude Code hook 配線
 
-> 本 repo ルールで **settings.json のエージェント自己改変は禁止**（[.claude/hooks/README.md](../../.claude/hooks/README.md)）。下記は**人間が** `/update-config` か手動で `.claude/settings.json` に追記する。`workspace trust` 承認後に発火（[hooks-guide](https://code.claude.com/docs/en/hooks-guide)）。
+> **配線先で規約を満たす**: 共有の **`.claude/settings.json`（コミット）は引き続き人間専任**（hook は任意 shell 実行のため。[.claude/hooks/README.md](../../.claude/hooks/README.md) / runbook 02）。一方 **phase-1 の (1) PostToolUse 自己修正は `.claude/settings.local.json`（ローカル・gitignore）に配線済み**（オーナー承認・#56 系。共有設定を変えないので human-only 規約と非衝突）。実体は専用ラッパー [`.claude/hooks/consistency-posttooluse.py`](../../.claude/hooks/consistency-posttooluse.py)（ERROR のみ block・失敗時は必ず非ブロック）。`workspace trust` 承認後に発火（[hooks-guide](https://code.claude.com/docs/en/hooks-guide)）。
+>
+> (2) SessionStart 注入 / (3) Stop の `type:"agent"` 判定は**任意の次フェーズ**（experimental 含む）。共有 settings.json に入れるなら人間が追記する。下記はその雛形。
 
 ```jsonc
 {
@@ -58,7 +60,7 @@ check_consistency.py ─┤
     "PostToolUse": [
       { "matcher": "Edit|Write|MultiEdit",
         "hooks": [ { "type": "command",
-          "command": "python3 \"$CLAUDE_PROJECT_DIR\"/scripts/check_consistency.py --json >/tmp/warehouse/cc.json 2>&1; python3 -c \"import json,sys;d=json.load(open('/tmp/warehouse/cc.json'));e=[f for f in d if f['level']=='ERROR'];print(json.dumps({'decision':'block','reason':'consistency ERROR','hookSpecificOutput':{'hookEventName':'PostToolUse','additionalContext':'\\n'.join(f\\\"{x['rule']} {x['file']}:{x['line']} {x['message']}\\\" for x in e)}}) if e else '{}')\"" } ] }
+          "command": "python3 \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/consistency-posttooluse.py || true" } ] }
     ],
     // (2) 毎セッション開始: 直近の整合レポートを短く注入（トークン節約のためレポートのみ）
     "SessionStart": [
