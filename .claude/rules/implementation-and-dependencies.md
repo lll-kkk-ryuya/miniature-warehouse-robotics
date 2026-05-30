@@ -38,3 +38,9 @@
 ## 4. 原則
 - **契約は遅く広く、実装は速く独立に**: 共有が要るものだけ契約化し、それ以外は各トラックが自由に実装。
 - 「依存が見えてから契約化」できるよう、§2 の docs 記録を怠らない。これが**後追いで依存を安全に取り込む唯一の担保**。
+
+## 5. トラック跨ぎの成果物受け渡し（hand-off）
+あるトラックが **別トラック所有の正準パスに置くべき成果物** を一時的に package-local に置く場合（例: #5 が `twist_mux.yaml` を `warehouse_safety/config/` に置き、正準 `warehouse_bringup/config/`（nav-traffic 所有）への移管は保留）:
+1. **置いた時点で受け取り側トラックの Issue に予告コメント**（先頭 worktree タグ ＋ `move-to: <正準パス> / owner: #N`）。
+2. package-local 版に **`# TODO(move): <正準パス> へ移管 (owner #N)`** マーカー＋移管 Issue 番号を付す。
+3. 受け取り側は移管完了 PR で package-local 版を削除（二重定義の恒久化を防ぐ）。

@@ -31,6 +31,12 @@
 - 実装の都合で凍結 docs / 契約を黙って変える（変更は docs PR / contract PR 経由）。
 - docs の「例示」を「凍結契約」と取り違えてコピーする。
 
+## plan 手順（plan 作成時の固定書式）
+
+- plan の各ステップは **`[何をするか] — 根拠 doc(番号:節/行) — 検証方法`** の3点組で書く（例: 「State Cache 100ms 書出 — doc12 §4 / doc16 §4共有パス — unit: 偽生値→StateSnapshot.model_validate 通過」）。**根拠 doc を書けないステップ＝設計の空白** → そのステップで plan を止め、`docs/*`（契約なら contract）PR を先行。
+- JSON / 型 / しきい値を扱うステップは、出所が **(a) 凍結契約 `warehouse_interfaces` の pydantic** か **(b) docs の例示 JSON** かを明記。両者がズレたら **凍結契約が優先**。着手前に `warehouse_interfaces/schemas.py` を `grep` で確認する（doc12 §4 旧 state.json が `StateSnapshot` と非互換だった事故=PR#42、[retrospectives L6](../../docs/dev/03-retrospectives.md)）。
+- plan 中に **docs 同士の矛盾 / 正本の沈黙** を見つけたら、実装 plan を止めて docs を先に確定する（コードで暗黙に解釈しない）。
+
 ## References
 
 - [docs/README.md](../../docs/README.md) ドキュメントマップ / [docs/STATUS.md](../../docs/STATUS.md)

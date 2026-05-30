@@ -20,3 +20,13 @@ repos:
       - id: check-added-large-files
         args: [--maxkb=1024]
       - id: detect-private-key   # safety.md: never commit credentials/keys
+
+  # 並列マージ/エディタが作る複製残骸 "X 2.md" / "Y 2.py" を機械的に拒否
+  # (parallel-workflow.md §6 / docs/dev 03-retrospectives L5)。CI(ci.yml)にも同等の保険あり。
+  - repo: local
+    hooks:
+      - id: forbid-duplicate-copies
+        name: forbid duplicate "X 2.ext" files
+        entry: 'duplicate-copy file detected (e.g. "README 2.md"). Rename or remove it.'
+        language: fail
+        files: ' [0-9]+\.[A-Za-z0-9]+$'

@@ -155,8 +155,33 @@
 
 ---
 
+## 7. 衝突回避の追加規約（教訓由来。詳細は [docs/dev/03-retrospectives](../../docs/dev/03-retrospectives.md)）
+
+### 7.1 共有ファイルは「単一所有者 or contract-PR」
+
+共有ファイルの同時編集が並列事故の主因。各共有ファイルに**単一の所有トラック**を割り当て、所有者以外が変えたい時は **所有トラックの Issue に予告（先頭 worktree タグ）→ 合意 → 編集**（§4 経由）。
+
+| 共有ファイル / ディレクトリ | 所有 | 他トラックが変えたい時 |
+|---|---|---|
+| `ws/src/warehouse_interfaces/**`（凍結契約） | skeleton | **contract-PR**（`contract` ラベル＋予告 §4） |
+| `config/warehouse.base.yaml` | bringup/skeleton | 所有 Issue へ予告→合意。環境差分は `config/<env>/`（environments.md） |
+| `warehouse_bringup/config/<file>.yaml` | doc16 §5 の1ファイル1責務に従う各担当 | **別ファイルなら自由**・同一ファイルは所有者調整 |
+| `docs/STATUS.md` | オーケストレーター | 各トラックは自節のみ追記、構造変更は予告 |
+| **`.claude/**` / `.github/**`（メタ/ガバナンス）** | **governance（`track:docs`）** | governance Issue 経由。複数同時のメタ作業は直列化 |
+
+### 7.2 契約変更は additive-first
+
+既存フィールドの**削除・改名・型変更は破壊的＝原則禁止**（必要なら予告＋全消費トラック合意＋移行期間）。追加は **optional field / 新 store / 新トピック**（既存購読者が無視できる形）を既定とする（pydantic `extra="ignore"` で前方互換）。#36 gen_id 冪等化が好例。
+
+### 7.3 掃除は squash 前提で判定（`--merged` を使わない）
+
+squash マージは別コミットになるため `git branch --merged` は**偽陰性**。マージ済み判定は `gh pr view <N> --json state --jq .state` が `MERGED` か で行い、`git branch -D` ＋ `git push origin --delete` で stale を即削除（§1 破棄チェックリスト）。
+
+---
+
 ## References
 
+- [docs/dev/ 開発プロセス](../../docs/dev/README.md)（playbook / operator-runbook / retrospectives）
 - [docs/architecture/16 - リポジトリ構成と実装規約](../../docs/architecture/16-repository-and-conventions.md)
 - [docs/architecture/17 - 開発の進め方と分担](../../docs/architecture/17-development-workflow.md)
 - `.claude/rules/code-style.md` / `safety.md` / `ros2.md`
