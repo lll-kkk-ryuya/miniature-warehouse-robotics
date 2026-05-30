@@ -1,0 +1,161 @@
+<?xml version="1.0"?>
+<!--
+  minicar (Yahboom MicroROS car) — sim + real share this description (doc16 §9).
+  Frozen names (doc09 TF tree): base_link, lidar_link, imu_link, wheel_* (×4); odom frame.
+  Per-robot namespace via the `namespace` arg → gz topics /<ns>/{scan,odom,cmd_vel} and
+  robot_state_publisher frame_prefix = <ns>/ (set in description.launch.py).
+
+  ALL geometry below is PROVISIONAL (# TODO Phase 1 実測 — R-04/R-42; Yahboom公式に寸法なし).
+  Keep these in sync with warehouse_description/robot_dimensions.py (guarded by unit test).
+-->
+<robot name="minicar" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <xacro:arg name="namespace" default="bot1"/>
+  <xacro:property name="ns" value="$(arg namespace)"/>
+  <xacro:property name="pi" value="3.14159265359"/>
+
+  <!-- provisional geometry (m) — TODO(Phase 1 実測) -->
+  <xacro:property name="body_length" value="0.20"/>
+  <xacro:property name="body_width" value="0.15"/>
+  <xacro:property name="body_height" value="0.06"/>
+  <xacro:property name="body_mass" value="0.6"/>
+  <xacro:property name="wheel_radius" value="0.033"/>
+  <xacro:property name="wheel_width" value="0.02"/>
+  <xacro:property name="wheel_mass" value="0.05"/>
+  <xacro:property name="wheel_separation" value="0.15"/>
+  <xacro:property name="wheel_base" value="0.12"/>
+  <xacro:property name="lidar_mount_z" value="0.05"/>
+
+  <material name="body_blue"><color rgba="0.2 0.3 0.7 1"/></material>
+  <material name="wheel_black"><color rgba="0.1 0.1 0.1 1"/></material>
+  <material name="sensor_grey"><color rgba="0.3 0.3 0.3 1"/></material>
+
+  <!-- ── base_link (body root; doc09 TF root under odom) ── -->
+  <link name="base_link">
+    <visual>
+      <geometry><box size="${body_length} ${body_width} ${body_height}"/></geometry>
+      <material name="body_blue"/>
+    </visual>
+    <collision>
+      <geometry><box size="${body_length} ${body_width} ${body_height}"/></geometry>
+    </collision>
+    <inertial>
+      <mass value="${body_mass}"/>
+      <inertia ixx="0.0012" ixy="0" ixz="0" iyy="0.0018" iyz="0" izz="0.0024"/>
+    </inertial>
+  </link>
+
+  <!-- ── 4 skid-steer wheels (continuous, spin about body +Y) ── -->
+  <xacro:macro name="wheel" params="name x y">
+    <link name="${name}">
+      <visual>
+        <origin rpy="${pi/2} 0 0" xyz="0 0 0"/>
+        <geometry><cylinder length="${wheel_width}" radius="${wheel_radius}"/></geometry>
+        <material name="wheel_black"/>
+      </visual>
+      <collision>
+        <origin rpy="${pi/2} 0 0" xyz="0 0 0"/>
+        <geometry><cylinder length="${wheel_width}" radius="${wheel_radius}"/></geometry>
+      </collision>
+      <inertial>
+        <mass value="${wheel_mass}"/>
+        <inertia ixx="2e-5" ixy="0" ixz="0" iyy="2e-5" iyz="0" izz="3e-5"/>
+      </inertial>
+    </link>
+    <joint name="${name}_joint" type="continuous">
+      <parent link="base_link"/>
+      <child link="${name}"/>
+      <origin rpy="0 0 0" xyz="${x} ${y} ${-body_height/2}"/>
+      <axis xyz="0 1 0"/>
+    </joint>
+    <gazebo reference="${name}"><material>Gazebo/Black</material></gazebo>
+  </xacro:macro>
+
+  <xacro:wheel name="wheel_front_left"  x="${wheel_base/2}"  y="${wheel_separation/2}"/>
+  <xacro:wheel name="wheel_front_right" x="${wheel_base/2}"  y="${-wheel_separation/2}"/>
+  <xacro:wheel name="wheel_rear_left"   x="${-wheel_base/2}" y="${wheel_separation/2}"/>
+  <xacro:wheel name="wheel_rear_right"  x="${-wheel_base/2}" y="${-wheel_separation/2}"/>
+
+  <!-- ── lidar_link (ORBBEC MS200 mount) ── -->
+  <link name="lidar_link">
+    <visual>
+      <geometry><cylinder length="0.02" radius="0.02"/></geometry>
+      <material name="sensor_grey"/>
+    </visual>
+    <inertial>
+      <mass value="0.05"/>
+      <inertia ixx="1e-5" ixy="0" ixz="0" iyy="1e-5" iyz="0" izz="1e-5"/>
+    </inertial>
+  </link>
+  <joint name="lidar_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="lidar_link"/>
+    <origin rpy="0 0 0" xyz="0 0 ${body_height/2 + lidar_mount_z}"/>
+  </joint>
+
+  <!-- ── imu_link (doc09 TF tree) ── -->
+  <link name="imu_link">
+    <inertial>
+      <mass value="0.01"/>
+      <inertia ixx="1e-6" ixy="0" ixz="0" iyy="1e-6" iyz="0" izz="1e-6"/>
+    </inertial>
+  </link>
+  <joint name="imu_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="imu_link"/>
+    <origin rpy="0 0 0" xyz="0 0 0"/>
+  </joint>
+
+  <!-- ── Gazebo (gz-sim8) sensors + drive ── -->
+  <gazebo reference="lidar_link">
+    <sensor name="lidar" type="gpu_lidar">
+      <topic>/${ns}/scan</topic>
+      <gz_frame_id>${ns}/lidar_link</gz_frame_id>
+      <update_rate>10</update_rate>
+      <always_on>1</always_on>
+      <lidar>
+        <scan>
+          <horizontal>
+            <!-- 360 samples / 1deg: downsample of MS200 0.4deg/900pts (R-43). TODO(R-43) -->
+            <samples>360</samples>
+            <resolution>1</resolution>
+            <min_angle>-${pi}</min_angle>
+            <max_angle>${pi}</max_angle>
+          </horizontal>
+          <vertical><samples>1</samples><resolution>1</resolution>
+            <min_angle>0</min_angle><max_angle>0</max_angle></vertical>
+        </scan>
+        <range><min>0.08</min><max>12.0</max><resolution>0.01</resolution></range>
+      </lidar>
+    </sensor>
+  </gazebo>
+
+  <gazebo reference="imu_link">
+    <sensor name="imu" type="imu">
+      <topic>/${ns}/imu</topic>
+      <gz_frame_id>${ns}/imu_link</gz_frame_id>
+      <update_rate>50</update_rate>
+      <always_on>1</always_on>
+    </sensor>
+  </gazebo>
+
+  <gazebo reference="base_link"><material>Gazebo/Blue</material></gazebo>
+
+  <gazebo>
+    <plugin filename="gz-sim-diff-drive-system" name="gz::sim::systems::DiffDrive">
+      <!-- skid-steer: two left joints + two right joints -->
+      <left_joint>wheel_front_left_joint</left_joint>
+      <left_joint>wheel_rear_left_joint</left_joint>
+      <right_joint>wheel_front_right_joint</right_joint>
+      <right_joint>wheel_rear_right_joint</right_joint>
+      <wheel_separation>${wheel_separation}</wheel_separation>
+      <wheel_radius>${wheel_radius}</wheel_radius>
+      <topic>/${ns}/cmd_vel</topic>
+      <odom_topic>/${ns}/odom</odom_topic>
+      <frame_id>${ns}/odom</frame_id>
+      <child_frame_id>${ns}/base_link</child_frame_id>
+      <odom_publish_frequency>30</odom_publish_frequency>
+    </plugin>
+  </gazebo>
+
+</robot>

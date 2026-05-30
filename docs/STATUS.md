@@ -31,8 +31,8 @@
 | 4 | llm-bridge | 🟡 **in progress / セッション実行中**（核心・最重量。`mwr-llm-bridge`/`feat/llm-bridge`）。main 済: LLMClient IF + action_map + gen_id B-3(#27)。司令官サイクル / MCP 7ツール+Policy Gate / nav2_bridge を偽入力で先行 |
 | 5 | safety-state | ready（Emergency Guardian 50ms / State Cache。安全ユニット必須）※独立並行可 |
 | 6 | wo | ready（trace_id 契約合意で着手可） |
-| 7 | sim | ready（**環境スパイク**が前段ゲート＝クリティカルパス）※独立並行可 |
-| 8 | nav-traffic | **blocked**（#7 sim 依存） |
+| 7 | sim | 🟢 **環境スパイク GO（2026-05-30, PR #43 提出・CI緑・未マージ）**。`warehouse_sim`/`warehouse_description` 実装（world 単一定数生成 + minicar URDF 凍結フレーム `bot{n}/base_link→{lidar_link,imu_link}` + `ros_gz_bridge` `/bot{n}/{scan,odom,cmd_vel}`、headless `ros2 launch` で bot1/bot2 spawn 実証）。残: Nav2 E2E |
+| 8 | nav-traffic | **blocked**（#7 sim 依存）→ #43 マージで解錠（doc16 §9「sim spawn 後」充足）。参照: 固定フレーム `bot{n}/lidar_link`、topics `/bot{n}/{scan,odom,cmd_vel}` |
 | 25 | gen_id UUID冪等化 | 🟡 **セッション起動済（設計フェーズのみ進行）**（`mwr-contract-idempotency`/`contract/gen-id-idempotency`）。GitHub では `contract`+`blocked`（コード/契約 land 前の調査・設計のみ進行；解除条件=doc08/15 設計確定, R-35）。**分担案A**: #25=doc08/15 設計+`warehouse_interfaces` additive 契約 / #4=MCP enforcement（契約 land 後） |
 
 ## ⚠️ 進行中の要決着事項（オーケストレーター監視）
@@ -41,7 +41,7 @@
 
 ## 次の山（#4 / #25 と独立並行できるもの）
 - **#5 safety-state** — 完全独立・実機不要（偽入力でCI完結）。安全機構（R-26）。State Cache が #4 の実入力(state.json=StateSnapshot)を供給。次セッションの最有力。
-- **#7 sim 環境スパイク** — クリティカルパス先頭（#8 を解錠）。`tiryoh/ros2-desktop-vnc:jazzy` で headless `gz sim` + LiDAR + `ros_gz_bridge` 成立確認（doc16 §10）。
+- ~~**#7 sim 環境スパイク**~~ → **完了（GO, 2026-05-30, PR #43）**。`tiryoh/ros2-desktop-vnc:jazzy` で headless `gz sim`(gz-sim8 8.11) + gpu_lidar + `ros_gz_bridge` 成立。本実装（world/URDF/launch/tests）も同 PR。#8 nav-traffic はマージで解錠。
 - **#2 jetson** — deploy/jetson（systemd/監視）。実機不要で先行可。
 - 既知の設計リスクは [07-research-notes](shared/07-research-notes.md) R-35〜R-52（排他制御の冪等化、micro-ROS 2台接続、Open-RMF on 8GB、MS200精度/200mm通路 等）
 

@@ -166,52 +166,38 @@ class EmergencyGuardian(Node):
 
 ### 設計
 
+State Cache producer（`warehouse_state` パッケージ）は各 bot の `/{bot}/amcl_pose`・`/{bot}/battery`・`/{bot}/odom`・`/{bot}/scan` と `/emergency/event` を購読し、`StateAggregator` に最新生値を蓄積する。100ms タイマーで **凍結契約 `warehouse_interfaces.schemas.StateSnapshot` 形状**のスナップショットを構築し、`FileStateStore`（atomic `tmp` + `os.replace`）で `/tmp/warehouse/state.json` に書き出すと同時に、同一ペイロードを `/state_cache/snapshot` トピックへ publish する。
+
 ```python
 class StateCacheNode(Node):
-    """ROS 2トピックを購読し、集約JSONを100ms周期でファイル書出し"""
+    """生トピックを購読し、StateSnapshot 形状の集約を 100ms 周期で書き出す。"""
 
     def __init__(self):
-        super().__init__('state_cache')
-        self.state = {"robots": {}, "emergency": {"active": [], "history": []}}
+        super().__init__("state_cache")
+        self._agg = StateAggregator(bots=("bot1", "bot2"))
+        self._store = FileStateStore()  # 既定 state_path() = /tmp/warehouse/state.json
+        self._snapshot_pub = self.create_publisher(String, "/state_cache/snapshot", qos)
 
-        for bot in ["bot1", "bot2"]:
-            self.create_subscription(
-                PoseWithCovarianceStamped,
-                f'/{bot}/amcl_pose',
-                lambda msg, b=bot: self.update_pose(b, msg), 10)
-            self.create_subscription(
-                BatteryState,
-                f'/{bot}/battery',
-                lambda msg, b=bot: self.update_battery(b, msg), 10)
-            self.create_subscription(
-                Odometry,
-                f'/{bot}/odom',
-                lambda msg, b=bot: self.update_velocity(b, msg), 10)
+        for bot in ("bot1", "bot2"):
+            self.create_subscription(PoseWithCovarianceStamped, f"/{bot}/amcl_pose",
+                                     lambda m, b=bot: self._agg.set_pose(b, _pose(m)), qos)
+            self.create_subscription(BatteryState, f"/{bot}/battery",
+                                     lambda m, b=bot: self._agg.set_battery(b, _batt(m)), qos)
+            self.create_subscription(Odometry, f"/{bot}/odom",
+                                     lambda m, b=bot: self._agg.set_velocity(b, _vel(m)), qos)
+            self.create_subscription(LaserScan, f"/{bot}/scan",
+                                     lambda m, b=bot: self._agg.set_scan(b, _scan(m)), qos)
+        self.create_subscription(String, "/emergency/event", self._on_emergency, qos)
+        self.create_timer(0.1, self._write_cache)  # 100ms
 
-        self.create_subscription(String, '/emergency/event',
-                                 self.on_emergency, 10)
-
-        # キャラLLM（14-character-llm-negotiation.md）はファイルではなくこのトピックを購読する
-        self.snapshot_pub = self.create_publisher(String, '/state_cache/snapshot', 10)
-
-        self.create_timer(0.1, self.write_cache)  # 100ms
-
-    def write_cache(self):
-        """atomic write でファイル書出し + トピック publish"""
-        tmp_path = "/tmp/warehouse/state.json.tmp"
-        final_path = "/tmp/warehouse/state.json"
-
-        payload = json.dumps(self.state)
-        with open(tmp_path, "w") as f:
-            f.write(payload)
-            f.flush()
-            os.fsync(f.fileno())
-
-        os.replace(tmp_path, final_path)
-
-        # ファイル経由（LLM Bridge / MCP が読む）に加え、トピックでも配信（キャラLLM が購読）
-        self.snapshot_pub.publish(String(data=payload))
+    def _write_cache(self):
+        # StateSnapshot 検証済み dict（+ emergency 追加キー）を atomic 書き出し + publish
+        payload = self._agg.build_snapshot(datetime.now(UTC).isoformat())
+        self._store.write(payload)                        # tmp + os.replace（FileStateStore）
+        self._snapshot_pub.publish(String(data=json.dumps(payload)))
 ```
+
+> **非有限値・未完了 bot の扱い**: `StateAggregator` は非有限（NaN/Inf）の pose/velocity/battery を捨てて最後の正常値を保持し、pose + velocity + battery が揃わない bot は**省略**する（`battery=0` の偽値を出さない）。これにより `json.dumps` に NaN/Infinity が混入せず、下流の安全演算を汚さない。`build_snapshot` は dump 前に `StateSnapshot.model_validate` で凍結契約に照合する。
 
 > **配信2系統**: State Cache は ①`/tmp/warehouse/state.json`（atomic file、LLM Bridge / Warehouse MCP Server が読む）と ②`/state_cache/snapshot` トピック（`std_msgs/String`、キャラLLM が購読、`14-character-llm-negotiation.md` 参照）の両方に同一スナップショットを出力する。
 
@@ -219,22 +205,23 @@ class StateCacheNode(Node):
 
 ```json
 {
+  "timestamp": "2026-05-30T12:34:56.789012+00:00",
   "robots": {
     "bot1": {
-      "pose": {"x": 0.3, "y": 0.5, "yaw": 1.57},
+      "position": {"x": 0.3, "y": 0.5},
       "velocity": {"linear": 0.1, "angular": 0.0},
+      "heading": 1.57,
+      "status": "moving",
       "battery": 85,
-      "nav_status": "moving",
-      "current_task": "t_041",
-      "updated_at": 1710000000.123
+      "obstacle_distance": 0.42
     },
     "bot2": {
-      "pose": {"x": 1.2, "y": 0.7, "yaw": 4.71},
+      "position": {"x": 1.2, "y": 0.7},
       "velocity": {"linear": 0.0, "angular": 0.0},
+      "heading": 4.71,
+      "status": "idle",
       "battery": 72,
-      "nav_status": "idle",
-      "current_task": null,
-      "updated_at": 1710000000.145
+      "obstacle_distance": null
     }
   },
   "emergency": {
@@ -254,30 +241,40 @@ class StateCacheNode(Node):
 }
 ```
 
+> **正本は凍結契約 `warehouse_interfaces.schemas.StateSnapshot` / `RobotSnapshot`**（#30）。形状変更は rules §4（`contract` ラベル＋依存トラック予告）に従う。フィールド対応:
+>
+> - **top-level `timestamp`**（ISO 8601 / UTC、`datetime.now(UTC).isoformat()`）＝ スナップショット全体の鮮度の単一ソース。**旧 per-robot `updated_at`（epoch float）は廃止**。全 robot は同一 100ms スナップショットで書かれるため、鮮度はスナップショット単位で判定する（次節「stale 判定」）。
+> - **`robots[bot]` = `RobotSnapshot`**: `position{x,y}`（地図座標 m）＋ `heading`（yaw rad、旧 `pose.yaw` 相当を独立フィールド化）／ `velocity{linear,angular}`（m/s・rad/s）／ `status`（`"moving"` | `"idle"`、linear 速度から導出）／ `battery`（int 0–100、契約が範囲検証）／ `obstacle_distance`（最近傍障害物 [m]、`/{bot}/scan` 由来・不明時 `null`）。
+> - **`current_task` / `nav_status` は state.json に含めない**（契約 `RobotSnapshot` に無い）。タスク／ナビ状態は LLM Bridge の関心で、`Situation` 構築時に付与する（`predicted_position_3s`・`obstacle_ahead` も Bridge が計算、doc mode-a/08a）。
+> - **`emergency` は `StateSnapshot` 外の追加 top-level キー**。`StateSnapshot` は `extra="ignore"` のため再読込時に無視され、契約安全に共存する。State Cache が in-memory 集約して付与する（契約には入れない）。`active` / `history` は**上限付きリング**で、持続 estop（Guardian が条件継続中 ~20 events/s 再送）でも `state.json` が無制限に増えない。明示的な clear／解決プロトコル + Guardian 側エッジトリガは Phase-2 TODO。`emergency` を契約 schema に昇格するかは将来の contract 判断（rules §4）。
+
 ### stale 判定
 
-Warehouse MCP Server 側で、`updated_at` の経過時間に応じて状態を判定する:
+Warehouse MCP Server（Policy Gate）側で、**top-level `timestamp` の経過時間**に応じて robot 鮮度を判定する。鮮度はスナップショット単位（全 robot 共通）で、`availability` は **契約フィールドではなく MCP が局所導出**する（#5 が明示的な `availability` を出すまでの暫定。実装: `warehouse_mcp_server.policy_gate`）:
 
 ```python
-def get_fleet_status(self):
-    state = self.read_state_cache()
-    now = time.time()
-    for bot, data in state["robots"].items():
-        age = now - data["updated_at"]
-        if age > 2.0:
-            data["availability"] = "unavailable"  # 2秒以上 → 通信断の可能性
-        elif age > 0.5:
-            data["availability"] = "stale"         # 500ms以上 → 古い情報
-        else:
-            data["availability"] = "ok"
-    return state
+# warehouse_mcp_server/policy_gate.py（要点）
+STALE_AFTER_S = 0.5
+UNAVAILABLE_AFTER_S = 2.0
+
+def check_robot_state(robot_snapshot, now, snapshot_ts):
+    if robot_snapshot is None:
+        return "unknown_robot"          # robots に存在しない
+    age = now - snapshot_ts             # snapshot_ts = top-level timestamp（ISO → epoch）
+    if age > UNAVAILABLE_AFTER_S:
+        return "robot_unavailable"
+    if age > STALE_AFTER_S:
+        return "robot_stale"
+    return None
 ```
 
-| 経過時間 | 状態 | Policy Gateの扱い |
-|---------|------|------------------|
+| 経過時間（`now - timestamp`） | availability | Policy Gate の扱い |
+|---|---|---|
 | < 500ms | `ok` | 通常通りコマンド受付 |
-| 500ms - 2s | `stale` | dispatch_task拒否、cancel/charging は許可 |
-| > 2s | `unavailable` | 全コマンド拒否、Claudeに通信断を通知 |
+| 500ms – 2s | `stale` | dispatch_task 拒否、cancel/charging は許可 |
+| > 2s | `unavailable` | 全コマンド拒否、Claude に通信断を通知 |
+
+> **`timestamp` の堅牢性**: top-level `timestamp` が**破損**（非 ISO 等）なら fail-closed（`state_timestamp_corrupt` で拒否）。**欠落**は #5 producer 投入前の暫定として accept（鮮度チェックを skip）。詳細は `15-mcp-platform.md` の Policy Gate / availability を参照。
 
 ---
 

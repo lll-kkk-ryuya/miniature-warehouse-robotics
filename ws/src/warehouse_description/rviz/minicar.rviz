@@ -1,0 +1,42 @@
+# Minimal RViz2 config for the sim (visualization aid; gz GUI is not used — doc16 §10).
+# Shows TF + both robots' LaserScans. Fixed frame = bot1/odom (no map until SLAM, Phase 2).
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+Visualization Manager:
+  Global Options:
+    Fixed Frame: bot1/odom
+    Frame Rate: 30
+  Displays:
+    - Class: rviz_default_plugins/Grid
+      Name: Grid
+      Enabled: true
+      Cell Size: 0.1
+      Plane Cell Count: 20
+    - Class: rviz_default_plugins/TF
+      Name: TF
+      Enabled: true
+      Show Names: true
+    - Class: rviz_default_plugins/LaserScan
+      Name: bot1/scan
+      Enabled: true
+      Topic:
+        Value: /bot1/scan
+        Reliability Policy: Best Effort
+      Size (m): 0.01
+      Color: 0; 255; 0
+    - Class: rviz_default_plugins/LaserScan
+      Name: bot2/scan
+      Enabled: true
+      Topic:
+        Value: /bot2/scan
+        Reliability Policy: Best Effort
+      Size (m): 0.01
+      Color: 255; 0; 0
+  Tools:
+    - Class: rviz_default_plugins/MoveCamera
+  Views:
+    Current:
+      Class: rviz_default_plugins/Orbit
+      Distance: 2.5
+      Pitch: 1.0

@@ -35,6 +35,7 @@
 - 詳細は `.claude/rules/` 配下のルールファイルを参照
 
 ## Documentation
+- **docs 中心主義（docs-first）**: 実装・plan は docs を正本とする。着手前に該当 doc を読み、コードは docs を検証する側＝docs に無い契約/トピック/スキーマ/しきい値を発明しない。詳細 → [.claude/rules/docs-first.md](rules/docs-first.md)
 - docs/ 配下にMarkdownで管理
 - 新規ドキュメントは既存の番号体系に従う（00-xx, 01-xx, ...）
 

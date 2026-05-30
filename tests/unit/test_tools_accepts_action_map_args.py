@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 from warehouse_interfaces.schemas import Command
-from warehouse_interfaces.stores import FileGenStore, FileStateStore
+from warehouse_interfaces.stores import FileGenStore, FileIdempotencyStore, FileStateStore
 from warehouse_llm_bridge.action_map import command_to_tool_calls
 from warehouse_mcp_server.audit import CommandAuditLog
 from warehouse_mcp_server.gen_check import GenChecker
@@ -33,7 +33,7 @@ def _tools(tmp_path: Path) -> WarehouseTools:
         }
     )
     return WarehouseTools(
-        gen_checker=GenChecker(gen),
+        gen_checker=GenChecker(gen, FileIdempotencyStore(tmp_path / "idempotency_store")),
         policy_gate=PolicyGate(state),
         audit=CommandAuditLog(tmp_path / "audit.jsonl"),
         state_store=state,
