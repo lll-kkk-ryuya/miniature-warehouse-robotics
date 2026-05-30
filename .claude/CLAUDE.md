@@ -38,6 +38,11 @@
 - docs/ 配下にMarkdownで管理
 - 新規ドキュメントは既存の番号体系に従う（00-xx, 01-xx, ...）
 
+## Issue / PR 作成
+- **作成前に必ず `docs/` を確認**（`docs/README.md` で設計正本を特定）。Issue / PR 本文に**設計正本へのリンクを必須**とする。
+- 必須セクション・テンプレ・ラベル規約・簡素 issue 禁止は `.claude/rules/issue-and-pr-authoring.md`。GitHub フォームは `.github/ISSUE_TEMPLATE/`・`.github/PULL_REQUEST_TEMPLATE.md`。
+- `gh issue create` / `gh pr create` 時は非ブロッキングフック（`.claude/hooks/remind-gh-authoring.sh`）が要点を注意喚起する。
+
 ## Important Paths
 - `docs/README.md` - ドキュメントマップ（全体構成）
 - `docs/shared/` - モード非依存ドキュメント（概要・予算・ハードウェア等）
