@@ -130,7 +130,7 @@ mcp_servers:
 
 ### ツール定義（7個）
 
-**注**: すべてのツールは `gen_id: int` を required 引数として持つ。LLM は situation JSON の `gen_id` フィールドをそのまま渡す（B-3 安全機構、§2 参照）。
+**注**: すべてのツールは `gen_id: int` を required 引数として持つ。LLM は situation JSON の `gen_id` フィールドをそのまま渡す（B-3 安全機構、§2 参照）。さらに全ツールは `idempotency_key: str | None`（tool-call 単位の冪等キー、UUID）を**任意**引数として持つ。これは Bridge が注入し LLM は触らない（C, §競合状態の防止§2 参照）。
 
 ```python
 # ※ 全ツールの先頭引数として `gen_id: int` を必ず持つ（B-3 安全機構）。以下は gen_id 以外の引数を示す。
@@ -202,7 +202,7 @@ Mode A/B では `dispatch_task` の拡張パラメータ（`via`, `action`, `dur
 | `stop` | `cancel_task` | `task_id="current:{robot}"` | `POST /api/v1/stop` |
 | `charge` | `send_to_charging` | `robot=対象` | `POST /api/v1/navigate` (charging_station) |
 
-**トークンコスト影響**: `dispatch_task` に3パラメータ追加で約30トークン増、`gen_id` required 引数を全7ツールに追加で約20トークン増、`start_negotiation` 新規ツールで約50トークン増。合計 約600トークン/ターン（従来約500）。
+**トークンコスト影響**: `dispatch_task` に3パラメータ追加で約30トークン増、`gen_id` required 引数を全7ツールに追加で約20トークン増、`start_negotiation` 新規ツールで約50トークン増。合計 約600トークン/ターン（従来約500）。`idempotency_key`（C, §競合状態の防止§2）は schema 上は全7ツールに加わるが、**Bridge が tool call 送出時に注入し LLM 出力には現れない**ため、**LLM 出力トークンの増加はゼロ**（schema 定義文の入力側コストのみ、無視できる）。
 
 **`cancel_task` の `"current:{robot}"` 規約**: LLM の出力 JSON には `task_id` が含まれないため、`cancel_task("current:bot1")` と指定すると Warehouse MCP Server 内部の `active_tasks: dict[str, str]`（robot → task_id マッピング）から実際の task_id を解決する。
 
@@ -398,32 +398,56 @@ topics:
 - `twist_mux` ノードが優先度に従って `/bot{n}/cmd_vel` に転送
 - Emergency が 0.5s 以内に来ていれば Nav2 を完全にブロック
 
-### 2. MCP Server gen_id 検証（B-3 方式: tool schema required 引数）
+### 2. MCP Server gen_id 検証 + 冪等キー検証（B-3 + C）
 
-Bridge が cycle 開始時に `current_gen` を共有ストレージに公開する。さらに **全 MCP tool 定義に `gen_id: int` を required 引数として追加**し、LLM に system prompt で「situation JSON の gen_id を全 tool 呼び出しに含めよ」と指示する。MCP は受信した tool 引数の `gen_id` と共有ストレージの `current_gen` を比較し、古いなら reject する。
+Bridge が cycle 開始時に `current_gen` を共有ストレージに公開する。さらに **全 MCP tool 定義に `gen_id: int` を required 引数として追加**し、LLM に system prompt で「situation JSON の gen_id を全 tool 呼び出しに含めよ」と指示する。MCP は受信した tool 引数の `gen_id` と共有ストレージの `current_gen` を比較し、古いなら reject する（**B-3**）。
 
-詳細は `08-llm-bridge-common.md` の「同時発火制御」セクション参照。本書では MCP Server 側の実装を示す:
+ただし B-3 は `gen_id < current_gen` の比較のみで、**同一世代内の重複・再送（replay）は弾けない**（R-35 part B）。司令官は1呼び出しで bot1・bot2 両方に指示する＝**同一 gen_id の tool call が複数正当に発火する**ため、冪等キーは世代単位ではなく **tool-call 単位**でなければならない。そこで各 tool call に **1回限りの `idempotency_key`（UUID、Bridge が mint・LLM は echo しない）** を付与し、MCP は消費済みキーを `IdempotencyStore.check_and_add` で記録して replay を冪等に reject する（**C**）。設計背景は `08-llm-bridge-common.md` の「同時発火制御 → C. 冪等キー」を参照。
+
+本書では MCP Server 側の実装を示す:
 
 ```python
 class WarehouseMCPServer:
-    def __init__(self, gen_store):
-        self.gen_store = gen_store   # Bridge と共有（Redis/file/ROS param）
+    def __init__(self, gen_store, idempotency_store):
+        self.gen_store = gen_store                 # Bridge と共有（Redis/file/ROS param）
+        self.idempotency_store = idempotency_store  # 消費済みキー記録（FileIdempotencyStore 等）
 
     async def _check_gen(self, gen_id: int) -> bool:
-        """tool 呼び出しの先頭で必ず呼ぶ。古い世代なら False を返す。"""
+        """tool 呼び出しの先頭で必ず呼ぶ。古い世代なら False を返す（B-3）。"""
         cur_gen = await self.gen_store.get()
         if gen_id < cur_gen:
             log.warn(f"stale tool call gen={gen_id} < current={cur_gen}, rejected")
             return False
         return True
 
-    async def dispatch_task(self, gen_id: int, robot: str, pickup: str, dropoff: str, **kwargs):
+    def _check_idempotency(self, key: str | None, gen_id: int) -> bool:
+        """key を消費して新規なら True、既知（replay）なら False を返す（C）。
+
+        key=None（旧 producer・冪等キー未注入）は後方互換で許容（True）。
+        check_and_add は単一プリミティブ（seen()/add() に分割せず呼び出し側の TOCTOU を防ぐ）。
+        ファイル実装の load→check→write はロックしておらず、**単一プロセス/イベントループ内でのみ atomic**
+        （複数プロセス共有時は Redis 等のロック付きバックエンドを使う。下記「共有ストレージ」参照）。
+        同一 gen の別キーは全て True（bot1+bot2 のカーブアウト）。
+        """
+        if key is None:
+            return True
+        return self.idempotency_store.check_and_add(key, gen_id)
+
+    async def dispatch_task(self, gen_id: int, robot: str, pickup: str, dropoff: str,
+                            idempotency_key: str | None = None, **kwargs):
+        # 0. gen_id 検証（B-3）
         if not await self._check_gen(gen_id):
             return {"status": "rejected", "reason": "stale_generation", "received_gen": gen_id}
-        # ... 既存処理 ...
+        # 0.5 冪等キー検証（C）— 同一世代の重複・再送を弾く
+        if not self._check_idempotency(idempotency_key, gen_id):
+            return {"status": "rejected", "reason": "duplicate_command",
+                    "idempotency_key": idempotency_key}
+        # ... 既存処理（Policy Gate → 割当 → 実行）...
 ```
 
-MCP tool 定義例（全7ツール共通で `gen_id` を required に）:
+検証順序は **gen → 冪等 → Policy Gate**。冪等チェックは Policy Gate の前に置く（重複コマンドが二重に副作用を持たないよう、副作用を伴う処理の手前で落とす）。`idempotency_key` は **required ではない**（`gen_id` と異なり optional。旧 producer や冪等キー未注入の経路を壊さない後方互換）。
+
+MCP tool 定義例（全7ツール共通で `gen_id` を required に。`idempotency_key` は**全7ツールに追加するが optional**＝`required` に入れない。`gen_id` と違い、旧 producer や冪等キー未注入の経路を壊さない後方互換のため）:
 
 ```json
 {
@@ -434,6 +458,7 @@ MCP tool 定義例（全7ツール共通で `gen_id` を required に）:
     "required": ["gen_id", "pickup", "dropoff"],
     "properties": {
       "gen_id": {"type": "integer", "description": "Situation JSON で受け取った gen_id をそのまま渡す（安全機構）"},
+      "idempotency_key": {"type": ["string", "null"], "description": "Bridge が注入する tool-call 単位の冪等キー（UUID）。LLM は触らない（任意・後方互換）"},
       "robot": {"type": ["string", "null"]},
       "pickup": {"type": "string"},
       "dropoff": {"type": "string"}
@@ -442,7 +467,9 @@ MCP tool 定義例（全7ツール共通で `gen_id` を required に）:
 }
 ```
 
-共有ストレージは Mac/Docker 開発時はファイル（`/tmp/warehouse/gen_store`）、Jetson 本番時は `multiprocessing.Value(ctypes.c_int)` / Redis のいずれか（**Phase 1 で選定**）。
+> **`idempotency_key` は LLM に生成させない**: schema 上は引数だが、Bridge が tool call 送出時に注入する（`08-llm-bridge-common.md` の信頼の非対称性参照）。LLM 出力には現れないため**追加 LLM 出力トークンはゼロ**。`gen_id`（LLM が echo＝出力トークン増）とは対照的。
+
+共有ストレージは Mac/Docker 開発時はファイル（`gen_store` は `/tmp/warehouse/gen_store`、冪等キー記録は `/tmp/warehouse/idempotency_store`）、Jetson 本番時は `multiprocessing` 共有 / Redis のいずれか（**Phase 1 で選定**）。冪等キー記録はファイル実装で `FileIdempotencyStore`（`{key: gen}` の JSON map、atomic write、gen-window=8 で eviction）。
 
 #### なぜ HTTP ヘッダ方式（X-Bridge-Gen）にしなかったか
 
@@ -505,7 +532,8 @@ class PolicyGate:
 | # | 対策 | Mode A | Mode B | Mode C | 配置場所 |
 |---|---|---|---|---|---|
 | 1 | twist_mux | ✅ | ✅ | ✅ | Jetson の launch ファイル（共通） |
-| 2 | MCP gen_id 検証 | ✅ | ✅ | ✅ | Warehouse MCP Server（共通） |
+| 2 | MCP gen_id 検証（B-3） | ✅ | ✅ | ✅ | Warehouse MCP Server（共通） |
+| 2b | MCP 冪等キー検証（C, `idempotency_key`） | ✅ | ✅ | ✅ | Warehouse MCP Server（共通） |
 | 3 | active_tasks Lock | ✅ | ✅ | ✅ | Warehouse MCP Server（共通） |
 | 4 | Policy Gate atomic | ✅ | ✅ | ✅ | Policy Gate（共通） |
 

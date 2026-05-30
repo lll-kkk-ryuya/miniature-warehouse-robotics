@@ -6,12 +6,14 @@ Source of truth for the JSON shapes exchanged over ``std_msgs/String`` topics
 - ``Command``    — produced by the commander LLM (doc mode-a/08a)
 - ``Proposal``   — produced by character-LLM negotiation (doc14)
 
-``gen_id`` carries the B-3 same-generation guard (doc08 §同時発火制御 / doc15).
+``gen_id`` carries the B-3 same-generation guard (doc08 §同時発火制御 / doc15);
+``CommandItem.idempotency_key`` adds the per-tool-call idempotency layer (R-35).
 Models tolerate unknown extra fields (``extra="ignore"``) so LLM output / doc
 evolution does not hard-fail; required fields, types and known locations are
 still validated. Extending these models is a contract change (rules §4).
 """
 
+import uuid
 from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -131,12 +133,25 @@ class CommandItem(_Model):
     via: str | None = None
     duration: float | None = None
     retreat_to: str | None = None
+    # Per-tool-call idempotency key (R-35, doc08/15 §同時発火制御). Minted by the
+    # Bridge (NOT echoed by the LLM); one fresh UUID per tool call. Distinct keys
+    # in the same gen_id (e.g. navigate bot1 + bot2) are all accepted; replay of
+    # the same key is an idempotent reject at the MCP server (check_and_add).
+    # Optional for backward-compat: absent/None until the Bridge mints it.
+    idempotency_key: str | None = None
 
     @field_validator("destination", "retreat_to")
     @classmethod
     def _known_location(cls, value: str | None) -> str | None:
         if value is not None and value not in KNOWN_LOCATIONS:
             raise ValueError(f"unknown location {value!r}")
+        return value
+
+    @field_validator("idempotency_key")
+    @classmethod
+    def _valid_uuid(cls, value: str | None) -> str | None:
+        if value is not None:
+            uuid.UUID(value)  # raises ValueError if not a parseable UUID
         return value
 
 

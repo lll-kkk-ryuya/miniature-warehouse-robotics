@@ -40,6 +40,11 @@ def gen_store_path() -> Path:
     return runtime_dir() / "gen_store"
 
 
+def idempotency_store_path() -> Path:
+    """Path to the idempotency store (consumed per-tool-call keys, R-35, doc08/15)."""
+    return runtime_dir() / "idempotency_store"
+
+
 def audit_log_path() -> Path:
     """Path to the command audit log (JSON Lines), overridable via env."""
     override = os.environ.get("WAREHOUSE_AUDIT_LOG_PATH")
