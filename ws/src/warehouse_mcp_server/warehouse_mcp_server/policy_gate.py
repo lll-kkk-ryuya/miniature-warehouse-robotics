@@ -206,6 +206,25 @@ class PolicyGate:
         except ValueError:
             return None
 
+    @staticmethod
+    def _timestamp_is_corrupt(state: dict) -> bool:
+        """True iff ``timestamp`` is a present non-empty string that fails to parse.
+
+        Absent/empty timestamp is the documented #5-pending interim (accept as
+        fresh); a present-but-unparseable one signals upstream corruption, so the
+        gate fails CLOSED rather than treating a corrupt snapshot as fresh.
+        """
+        ts = state.get("timestamp")
+        if not isinstance(ts, str) or not ts:
+            return False
+        from datetime import datetime
+
+        try:
+            datetime.fromisoformat(ts)
+        except ValueError:
+            return True
+        return False
+
     # -- sync inner helpers (run only under _gate_lock) ----------------------
 
     def _validate_dispatch_inner(
@@ -236,6 +255,8 @@ class PolicyGate:
         # Robot stage (only when a robot is named).
         if robot is not None:
             state = self._read_state()
+            if self._timestamp_is_corrupt(state):
+                return "state_timestamp_corrupt"
             # `or {}` (not get(default)): a present-but-null "robots" must coerce to
             # {} too, so a degraded state.json never crashes the gate (returns
             # unknown_robot instead).
@@ -303,6 +324,22 @@ class PolicyGate:
             self._dropoffs.pop(robot, None)
             return task_id
 
+    async def resolve_and_clear_by_task_id(self, task_id: str) -> str | None:
+        """Clear the bookkeeping for a direct ``task_id`` cancel, under the lock.
+
+        Reverse-looks-up the robot whose active task is ``task_id`` and pops both
+        ``active_tasks`` and ``_dropoffs`` so a cancelled delivery stops reserving
+        its destination — keeping ``check_duplicate_destination`` accurate for any
+        cancel form, not just ``current:{robot}``. Returns the owning robot, or
+        None if no robot currently holds ``task_id``.
+        """
+        async with self._gate_lock:
+            owner = next((r for r, tid in self.active_tasks.items() if tid == task_id), None)
+            if owner is not None:
+                self.active_tasks.pop(owner, None)
+                self._dropoffs.pop(owner, None)
+            return owner
+
     async def validate_and_register_charging(
         self, robot: str, now: float | None = None
     ) -> DispatchResult:
@@ -316,10 +353,17 @@ class PolicyGate:
         that charging is unnecessary (``battery > CHARGING_NOT_NEEDED_ABOVE``).
         Validate + register run inside one lock so charging stays consistent with
         the fleet bookkeeping (doc15 §validate_charging / §4).
+
+        It does NOT enforce single-occupancy of the shared ``charging_station``
+        (doc08 "2台共有・同時充電不可・先着順"): two robots may both be dispatched
+        here. That physical first-come constraint is owned downstream (Nav2 /
+        Open-RMF), not this gate — no contract layer specifies it yet (TODO).
         """
         when = time.time() if now is None else now
         async with self._gate_lock:
             state = self._read_state()
+            if self._timestamp_is_corrupt(state):
+                return DispatchResult(accepted=False, reason="state_timestamp_corrupt")
             robots = state.get("robots") or {}
             snapshot = robots.get(robot)
             reason = check_robot_state(snapshot, when, self._snapshot_ts(state))

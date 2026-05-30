@@ -33,6 +33,19 @@ from warehouse_mcp_server.policy_gate import PolicyGate
 NEGOTIATION_STARTERS = ("bot1", "bot2")
 # Valid escalation_response actions (doc15 ツール6 / validate_escalation).
 ESCALATION_ACTIONS = ("reassign", "cancel", "retry")
+# The 7 callable MCP tool names — the wire allowlist. dispatch() refuses anything
+# else, so a malformed/hostile tool name can never reach an arbitrary attribute.
+TOOL_NAMES = frozenset(
+    {
+        "dispatch_task",
+        "cancel_task",
+        "get_fleet_status",
+        "get_task_queue",
+        "send_to_charging",
+        "escalation_response",
+        "start_negotiation",
+    }
+)
 
 
 def _stale(gen_id: int) -> dict[str, Any]:
@@ -66,6 +79,35 @@ class WarehouseTools:
         # store once the escalation producer track lands; emergent dependency).
         self._escalations: dict[str, dict] = {}
         self._negotiation_seq = 0
+
+    # ── wire entry: dispatch by tool name (server.py stdio boundary) ────────
+
+    async def dispatch(self, name: str, arguments: dict) -> dict[str, Any]:
+        """Resolve + invoke a tool from raw MCP args, ALWAYS returning a status dict.
+
+        The stdio wire (``server.py``) routes every call through here so a missing
+        ``gen_id``, an unknown/disallowed tool name, or malformed arguments become
+        an audited ``{"status": ...}`` reject/error instead of an exception
+        escaping onto the transport — which would skip the B-3 gen guard and the
+        audit log (both live inside the tool bodies).
+        """
+        if name not in TOOL_NAMES:
+            payload = {"status": "error", "reason": f"unknown_tool:{name}"}
+            self._audit.record(name, "error", payload)
+            return payload
+        args = dict(arguments)
+        gen_id = args.pop("gen_id", None)
+        if gen_id is None:
+            payload = {"status": "rejected", "reason": "missing_gen_id"}
+            self._audit.record(name, "rejected", payload)
+            return payload
+        handler = getattr(self, name)
+        try:
+            return await handler(gen_id, **args)
+        except TypeError as exc:
+            payload = {"status": "error", "reason": f"bad_arguments:{exc}"}
+            self._audit.record(name, "error", payload)
+            return payload
 
     # ── tool 1: dispatch_task ───────────────────────────────────────────────
 
@@ -131,6 +173,11 @@ class WarehouseTools:
                 payload = {"status": "rejected", "reason": "no_active_task", "robot": robot}
                 self._audit.record("cancel_task", "rejected", payload, robot=robot)
                 return payload
+        else:
+            # Direct task_id (a documented cancel form, doc15/08a): still free the
+            # destination so a cancelled delivery stops blocking duplicate_destination.
+            # robot may be None if the gate never registered this id (lenient cancel).
+            robot = await self._policy_gate.resolve_and_clear_by_task_id(task_id)
 
         payload = {"status": "ok", "task_id": resolved, "robot": robot}
         self._audit.record("cancel_task", "executed", payload, robot=robot)

@@ -142,13 +142,9 @@ def main() -> None:
     async def _call_tool(name: str, arguments: dict) -> list[Any]:  # pragma: no cover
         import json
 
-        handler = getattr(tools, name, None)
-        if handler is None:
-            result = {"status": "error", "reason": f"unknown_tool:{name}"}
-        else:
-            args = dict(arguments)
-            gen_id = args.pop("gen_id")
-            result = await handler(gen_id, **args)
+        # All wire-boundary defense (unknown tool / missing gen_id / bad args ->
+        # audited status dict, never an escaping exception) lives in tools.dispatch.
+        result = await tools.dispatch(name, arguments)
         return [types.TextContent(type="text", text=json.dumps(result))]
 
     async def _run() -> None:  # pragma: no cover - needs MCP SDK

@@ -53,3 +53,22 @@ def test_cancel_no_active_task_rejected(tmp_path: Path) -> None:
     result = asyncio.run(tools.cancel_task(1, task_id="current:bot2"))
     assert result["status"] == "rejected"
     assert result["reason"] == "no_active_task"
+
+
+@pytest.mark.unit
+def test_direct_task_id_cancel_frees_destination(tmp_path: Path) -> None:
+    # A direct task_id cancel (a documented cancel form, doc15/08a) must free the
+    # destination so a cancelled delivery stops blocking duplicate_destination.
+    tools = _tools(tmp_path)
+
+    async def _run() -> tuple[dict, dict, dict]:
+        d1 = await tools.dispatch_task(1, robot="bot1", dropoff="berth_A")
+        cancelled = await tools.cancel_task(1, task_id=d1["task_id"])
+        d2 = await tools.dispatch_task(1, robot="bot2", dropoff="berth_A")
+        return d1, cancelled, d2
+
+    d1, cancelled, d2 = asyncio.run(_run())
+    assert cancelled["status"] == "ok"
+    assert cancelled["robot"] == "bot1"  # reverse-resolved the owning robot
+    assert d2["status"] == "ok"  # destination was freed by the direct-id cancel
+    assert "bot1" not in tools._policy_gate.active_tasks

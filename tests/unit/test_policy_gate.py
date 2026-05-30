@@ -225,6 +225,34 @@ def test_wait_without_robot_rejected(tmp_path: Path) -> None:
 
 @pytest.mark.safety
 @pytest.mark.unit
+def test_corrupt_timestamp_fails_closed(tmp_path: Path) -> None:
+    # A present-but-unparseable timestamp signals upstream corruption → reject
+    # (fail closed), distinct from an ABSENT timestamp (the #5-pending accept case).
+    store = FileStateStore(tmp_path / "state.json")
+    store.write({"timestamp": "not-a-date", "robots": {"bot1": {"battery": 90, "status": "idle"}}})
+    gate = PolicyGate(store)
+    res = asyncio.run(
+        gate.validate_and_register_dispatch(robot="bot1", dropoff="berth_A", action="deliver")
+    )
+    assert res.accepted is False
+    assert res.reason == "state_timestamp_corrupt"
+
+
+@pytest.mark.unit
+def test_absent_timestamp_still_accepted(tmp_path: Path) -> None:
+    # Absent timestamp is the documented #5-pending interim: accept as fresh
+    # (must NOT collapse into the corrupt-timestamp reject).
+    store = FileStateStore(tmp_path / "state.json")
+    store.write({"robots": {"bot1": {"battery": 90, "status": "idle"}}})
+    gate = PolicyGate(store)
+    res = asyncio.run(
+        gate.validate_and_register_dispatch(robot="bot1", dropoff="berth_A", action="deliver")
+    )
+    assert res.accepted is True
+
+
+@pytest.mark.safety
+@pytest.mark.unit
 def test_pickup_none_passes_location_stage(tmp_path: Path) -> None:
     # action_map sends only dropoff; pickup=None must not fail the location stage.
     gate = _gate(tmp_path)
