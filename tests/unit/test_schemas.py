@@ -1,9 +1,17 @@
 """Contract schema tests for warehouse_interfaces (doc16 §3, doc16 §11)."""
 
+import uuid
+
 import pytest
 from pydantic import ValidationError
 from warehouse_interfaces.locations import KNOWN_LOCATIONS
-from warehouse_interfaces.schemas import Command, CommandAction, Proposal, Situation
+from warehouse_interfaces.schemas import (
+    Command,
+    CommandAction,
+    CommandItem,
+    Proposal,
+    Situation,
+)
 
 
 def _situation_payload() -> dict:
@@ -74,6 +82,39 @@ def test_command_rejects_invalid_action() -> None:
     with pytest.raises(ValidationError):
         Command.model_validate(
             {"reasoning": "x", "commands": [{"bot": "bot1", "action": "teleport"}]}
+        )
+
+
+@pytest.mark.unit
+def test_command_item_round_trips_idempotency_key() -> None:
+    key = str(uuid.uuid4())
+    cmd = Command.model_validate(
+        {
+            "reasoning": "navigate both bots",
+            "commands": [
+                {
+                    "bot": "bot1",
+                    "action": "navigate",
+                    "destination": "shelf_1",
+                    "idempotency_key": key,
+                }
+            ],
+        }
+    )
+    assert cmd.commands[0].idempotency_key == key
+
+
+@pytest.mark.unit
+def test_command_item_without_idempotency_key_is_none() -> None:
+    item = CommandItem.model_validate({"bot": "bot1", "action": "stop"})
+    assert item.idempotency_key is None
+
+
+@pytest.mark.unit
+def test_command_item_rejects_malformed_idempotency_key() -> None:
+    with pytest.raises(ValidationError):
+        CommandItem.model_validate(
+            {"bot": "bot1", "action": "stop", "idempotency_key": "not-a-uuid"}
         )
 
 
