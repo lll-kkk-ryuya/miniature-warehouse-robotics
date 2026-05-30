@@ -18,12 +18,18 @@ _GEN_ID_PROP: dict[str, Any] = {
     "type": "integer",
     "description": "situation JSON で受け取った gen_id をそのまま渡す（B-3 安全機構）",
 }
+# idempotency_key (R-35 C): OPTIONAL on all 7 tools (NOT in `required`). The Bridge
+# injects a per-call UUID; the LLM never sets it. doc15 §競合状態の防止.
+_IDEMPOTENCY_PROP: dict[str, Any] = {
+    "type": ["string", "null"],
+    "description": "Bridge が注入する tool-call 単位の冪等キー（UUID）。LLM は触らない（任意・後方互換）",
+}
 
 
 def _tool_schemas() -> list[dict[str, Any]]:
     """Return the 7 tool JSON schemas (gen_id required on all), doc15 §2."""
     place = {"type": ["string", "null"]}
-    return [
+    schemas = [
         {
             "name": "dispatch_task",
             "description": "ロボットにタスクを割当（gen_id は situation JSON のものをそのまま渡す）",
@@ -108,6 +114,11 @@ def _tool_schemas() -> list[dict[str, Any]]:
             },
         },
     ]
+    # idempotency_key is OPTIONAL on every tool (added to properties, NOT to
+    # `required`) — backward-compatible, Bridge-injected (R-35 C, doc15 §2).
+    for schema in schemas:
+        schema["inputSchema"]["properties"]["idempotency_key"] = _IDEMPOTENCY_PROP
+    return schemas
 
 
 def main() -> None:

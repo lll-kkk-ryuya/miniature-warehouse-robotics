@@ -11,7 +11,12 @@ Pure Python — depends only on ``warehouse_interfaces.stores.GenStore`` /
 
 from dataclasses import dataclass
 
-from warehouse_interfaces.stores import FileGenStore, GenStore
+from warehouse_interfaces.stores import (
+    FileGenStore,
+    FileIdempotencyStore,
+    GenStore,
+    IdempotencyStore,
+)
 
 
 def is_stale(gen_id: int, cur_gen: int) -> bool:
@@ -37,30 +42,46 @@ class GenCheckResult:
 
 
 class GenChecker:
-    """Single validation entry point wrapping a shared ``GenStore`` (B-3).
+    """Single validation entry point: B-3 gen check + C per-call idempotency (R-35).
 
-    Tools call :meth:`check` as their very first step. Today this performs only
-    the monotonic ``gen_id < current_gen`` comparison; the ``idempotency_key``
-    argument is accepted but ignored so the per-call dedup track (#25) can plug
-    in without changing any tool signature or call site.
+    Tools call :meth:`check` as their very first step. It (1) rejects a stale
+    generation (``gen_id < current_gen``), then (2) — only for a non-stale call —
+    consumes the per-call ``idempotency_key`` via the :class:`IdempotencyStore`
+    and rejects a replay (a key already seen). Order is gen → idempotency so a
+    stale call never consumes a key (doc15 §2).
     """
 
-    def __init__(self, gen_store: GenStore | None = None) -> None:
-        """Wrap ``gen_store`` (defaults to the shared :class:`FileGenStore`)."""
+    def __init__(
+        self,
+        gen_store: GenStore | None = None,
+        idempotency_store: IdempotencyStore | None = None,
+    ) -> None:
+        """Wrap the shared stores (default to their ``File*`` implementations)."""
         self._gen_store = gen_store or FileGenStore()
+        self._idempotency_store = idempotency_store or FileIdempotencyStore()
 
     async def check(self, gen_id: int, idempotency_key: str | None = None) -> GenCheckResult:
-        """Validate ``gen_id`` against the shared current generation.
+        """Validate ``gen_id`` (B-3) then the per-call ``idempotency_key`` (C).
 
-        Returns a :class:`GenCheckResult`; on a stale call (``ok=False``) the
-        reason is ``"stale_generation"`` and the tool maps it to
-        ``{"status": "rejected", "reason": "stale_generation", "received_gen": gen_id}``.
+        On reject (``ok=False``) the reason is ``"stale_generation"`` (the tool maps
+        it to ``{"reason": "stale_generation", "received_gen": gen_id}``) or
+        ``"duplicate_command"`` (a replayed key → ``{"reason": "duplicate_command",
+        "idempotency_key": key}``). ``idempotency_key=None`` skips the C layer
+        (backward-compatible: an un-keyed call is never deduped).
         """
         cur_gen = self._gen_store.get()
         if is_stale(gen_id, cur_gen):
             return GenCheckResult(ok=False, reason="stale_generation", cur_gen=cur_gen)
-        # SEAM(#25): per-call UUID idempotency dedup plugs in HERE — AFTER the
-        # monotonic gen check (doc15 §2 order: gen → idempotency → Policy Gate), so a
-        # stale call is rejected first and never consumes an idempotency key.
-        # `idempotency_key` is accepted now and intentionally ignored.
+        # C (R-35): per-call idempotency dedup runs AFTER the gen check (doc15 §2
+        # order gen → idempotency → Policy Gate), so a stale call never consumes a
+        # key. The key is recorded under the CALL's ``gen_id`` (doc15:434), NOT the
+        # store's ``cur_gen``: eviction must track the same generation the stale
+        # guard compares against, else a future-gen call's key (gen_id > cur_gen,
+        # the accepted publish/observe race) could be window-evicted while a replay
+        # still passes B-3. First-seen key → accept; replay of the same key →
+        # reject. Distinct keys in the same gen (navigate bot1 + bot2) all pass.
+        if idempotency_key is not None and not self._idempotency_store.check_and_add(
+            idempotency_key, gen_id
+        ):
+            return GenCheckResult(ok=False, reason="duplicate_command", cur_gen=cur_gen)
         return GenCheckResult(ok=True, reason=None, cur_gen=cur_gen)
