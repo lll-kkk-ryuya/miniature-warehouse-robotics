@@ -31,3 +31,12 @@ repos:
         entry: 'duplicate-copy file detected (e.g. "README 2.md"). Rename or remove it.'
         language: fail
         files: ' [0-9]+\.[A-Za-z0-9]+$'
+
+      # docs↔code 整合チェック（凍結契約への doc ドリフト検出）。同じ script を CI と
+      # Claude PostToolUse hook も呼ぶ（docs/dev/04-consistency-system.md）。ERROR でブロック。
+      - id: docs-code-consistency
+        name: docs↔code consistency (frozen contract drift)
+        entry: python3 scripts/check_consistency.py
+        language: system
+        pass_filenames: false
+        always_run: true

@@ -20,6 +20,7 @@
 | [01-parallel-development-playbook](01-parallel-development-playbook.md) | セッション=worktree の並列開発フロー全体（起動→キックオフ→実装→PR→掃除→衝突回避） |
 | [02-operator-runbook](02-operator-runbook.md) | 人間オペレーターの手順書（人間専任オペ・GO/NO-GO ゲート・マージ承認） |
 | [03-retrospectives](03-retrospectives.md) | 教訓ログ（living doc。各並列開発サイクルの反省を追記） |
+| [04-consistency-system](04-consistency-system.md) | docs↔code 整合システム（`scripts/check_consistency.py` を pre-commit/CI/hook で／意味的矛盾は `/consistency-audit` skill） |
 
 ## 関連正本
 
