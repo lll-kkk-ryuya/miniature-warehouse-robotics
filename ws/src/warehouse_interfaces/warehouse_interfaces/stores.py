@@ -140,7 +140,7 @@ class FileIdempotencyStore(IdempotencyStore):
 
     def _load(self) -> dict[str, int]:
         try:
-            return json.loads(self._path.read_text())
+            data = json.loads(self._path.read_text())
         except FileNotFoundError:
             return {}
         except json.JSONDecodeError:
@@ -148,6 +148,9 @@ class FileIdempotencyStore(IdempotencyStore):
             # the dispatch path degrades to "no replay memory" — B-3's gen check
             # still runs first — instead of raising into the tool call.
             return {}
+        # Valid JSON but not an object (out-of-band tampering, e.g. a bare list/int):
+        # also fail safe to empty rather than crashing check_and_add with a TypeError.
+        return data if isinstance(data, dict) else {}
 
     def check_and_add(self, key: str, gen: int) -> bool:
         consumed = self._load()

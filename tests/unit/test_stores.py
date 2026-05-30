@@ -94,10 +94,20 @@ def test_idempotency_no_leftover_tmp_files(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("contents", ["", '{"k": 1, "bad'])
+@pytest.mark.parametrize(
+    "contents",
+    [
+        "",  # zero-byte
+        '{"k": 1, "bad',  # truncated -> JSONDecodeError
+        "[1, 2, 3]",  # valid JSON, wrong type (list) -> would TypeError without coercion
+        "42",  # valid JSON, wrong type (int)
+        '"x"',  # valid JSON, wrong type (str)
+        "null",  # valid JSON null
+    ],
+)
 def test_idempotency_corrupt_store_fails_safe(tmp_path: Path, contents: str) -> None:
-    # A corrupt / zero-byte store must NOT raise into the dispatch path: it
-    # degrades to empty (no replay memory; B-3's gen check still runs first).
+    # A corrupt / zero-byte / wrong-type store must NOT raise into the dispatch
+    # path: it degrades to empty (no replay memory; B-3's gen check still runs first).
     path = tmp_path / "idempotency_store"
     path.write_text(contents)
     store = FileIdempotencyStore(path)
