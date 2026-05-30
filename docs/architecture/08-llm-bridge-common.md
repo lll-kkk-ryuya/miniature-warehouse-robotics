@@ -133,7 +133,7 @@ LOCATIONS = {
 3. 動画的な思考ログ可読性
 4. Phase 4 比較検証の公平性
 
-重なり防止は A+B（HTTPキャンセル + MCP gen_id 検証）で別解決済。
+重なり防止は A+B-3+C（HTTPキャンセル+`/stop` + MCP gen_id 検証 + 冪等キー検証）で別解決済（本節「同時発火制御」参照）。
 
 ### タイムアウトとフォールバック
 
@@ -147,26 +147,37 @@ t=0.0s  LLM Bridge Node: current_gen += 1 → gen_store に publish
         State Cache JSON読取 + emergency情報付加
 t=0.1s  LLM Bridge Node: POST → Hermes Gateway（situation JSON に gen_id 同梱）
 t=2.0s  応答受信（正常時）→ Warehouse MCP Server経由で実行 → 1秒後に次のサイクル（Mode A）
-t=2.5s  応答未受信 → HTTPキャンセル → 前回指示を継続 → 1秒後に次のサイクル
-        ↑ Hermes セッション中断、後続 tool call の発火を止める
-        ↑ 既に発火済 tool call は MCP の gen_id 検証で reject される
+t=2.5s  応答未受信 → HTTPキャンセル + POST /v1/runs/{id}/stop → 前回指示を継続 → 1秒後に次のサイクル
+        ↑ 接続断だけでは Hermes のサーバー側実行は止まらない（R-35 part A）。
+          専用の /stop を明示呼出しして後続 tool call の発火を止める
+        ↑ 既に発火済の古い世代の tool call は MCP の gen_id 検証（B-3）で reject される
+        ↑ 同一世代の重複・再送は MCP の冪等キー検証（C）で reject される
 t=3.0s  次サイクル開始（Mode A）
 ```
 
 Mode C の場合は最終行が `t=5.0s` になる。
 
-## 同時発火制御（A+B: HTTPキャンセル + MCP側gen_id検証）
+## 同時発火制御（A+B-3+C: HTTPキャンセル+`/stop` + gen_id検証 + 冪等キー）
 
 本プロジェクトのサイクルは上記の通り**レスポンス駆動**（前回の応答受信後に待機時間 — Mode A:1秒 / Mode C:3秒 — カウント開始）であり、固定間隔ポーリングではない。したがって正常系では「LLM呼び出し中に次サイクルが発火する」競合は原理的に発生しない（Single-flight / Coalescing は不要）。
 
-問題は **Hermes が LLM ↔ MCP の往復を内部で持つこと**にある。LLM の tool call は **Warehouse MCP Server で即時実行され、その時点で Nav2 等にコマンドが発行される**。Bridge が Hermes の最終応答を受け取った後に検証してももう手遅れである。よって対策は2層で行う:
+問題は **Hermes が LLM ↔ MCP の往復を内部で持つこと**にある。LLM の tool call は **Warehouse MCP Server で即時実行され、その時点で Nav2 等にコマンドが発行される**。Bridge が Hermes の最終応答を受け取った後に検証してももう手遅れである。よって対策は3層で行う（R-35 を踏まえた更新。従来は A+B-3 の2層だった）:
 
 | 層 | 役割 |
 |---|---|
-| **A. HTTPキャンセル** | Bridge タイムアウト（2.5s）時に Hermes への HTTP リクエストを切断し、進行中の LLM セッションを中断する。**後続の tool call の発火を止める** |
-| **B. MCP Server gen_id 検証（B-3 方式）** | Bridge が cycle 開始時に `current_gen` を共有ストレージに書き込み、situation JSON に同値を含めて LLM に渡す。**Warehouse MCP の全ツール定義に `gen_id: int` を required 引数として追加**し、LLM に「gen_id を必ず引数に含めよ」と system prompt で指示。MCP は tool 呼び出し時に `args.gen_id` と共有ストレージの `current_gen` を比較し、古いなら reject |
+| **A. HTTPキャンセル + `/stop` 明示呼出し** | Bridge タイムアウト（2.5s）時に進行中の Hermes run を中断する。**ただし HTTP 接続断だけでは Hermes のサーバー側 tool 実行は止まらない**（Hermes は専用の `POST /v1/runs/{id}/stop` を持つ＝接続断＝停止という設計ではない。R-35 part A）。したがって接続を切るだけでなく **`POST /v1/runs/{id}/stop` を明示的に呼ぶ**。後続 tool call の発火を止める最善努力レイヤ |
+| **B-3. MCP Server gen_id 検証（同一世代の単調比較）** | Bridge が cycle 開始時に `current_gen` を共有ストレージに書き込み、situation JSON に同値を含めて LLM に渡す。**Warehouse MCP の全ツール定義に `gen_id: int` を required 引数として追加**し、LLM に「gen_id を必ず引数に含めよ」と system prompt で指示。MCP は tool 呼び出し時に `args.gen_id` と共有ストレージの `current_gen` を比較し、**古い世代（`gen_id < current_gen`）なら reject**。同一世代内の重複は弾けない（→ C で補う） |
+| **C. 冪等キー検証（tool-call 単位の UUID）** | 各 tool call に **1回限りの `idempotency_key`（UUID）** を Bridge が付与し、MCP は消費済みキーを `check_and_add` で記録する。**同一世代の重複・再送（replay）を弾く唯一の層**。B-3 が落とせない「同一 gen でゾンビセッションが同じ tool call を2回発火」を冪等に reject する（R-35 part B） |
 
-A 単独では「タイムアウト直前に始まり、その後完了する tool call」を防げない。B 単独では「Hermes セッションがゾンビ的に LLM を呼び続け、tool call を連発する」事態を防げない。**両方必要**。
+A 単独では「タイムアウト直前に始まり、その後完了する tool call」を防げない。B-3 単独では「Hermes セッションがゾンビ的に LLM を呼び続け、tool call を連発する」事態のうち**同一世代内の重複**を防げない。C 単独では「次サイクルが既に進んだ後の古い世代」を世代番号だけで安く落とせない。**3層すべて必要**。
+
+#### C. 冪等キー（`idempotency_key`）の設計
+
+- **粒度は tool-call 単位**。`gen_id` は1サイクル＝1世代を表すため、司令官が1呼び出しで bot1・bot2 両方に指示する（navigate bot1 + navigate bot2）と**同一 `gen_id` の tool call が複数**正当に発火する。冪等キーを世代単位にすると正当な2台分指示を誤って弾く。よってキーは**各 tool call ごとに新規 UUID**。
+- **bot1+bot2 のカーブアウト（最重要の正しさ条件）**: 同一 `gen_id` でも**キーが異なれば全て accept**。reject されるのは**同じキーの再送**のみ。MCP は `check_and_add(key, gen)` で「初見なら記録して True、既知なら False（冪等 reject）」を atomic に判定する。
+- **Bridge が mint、LLM は echo しない（信頼の非対称性）**: `gen_id` は situation JSON 経由で LLM に渡し tool 引数として echo させる（B-3。本節の対策3層表および §「B案を B-3 にした理由」の「LLM／HTTP を信頼しない」論理）。しかし**「毎回ユニークで二度と繰り返さない UUID を必ず正しく生成・転記せよ」を LLM に委ねるのは信頼できない**（重複・取り違えが冪等性そのものを壊す）。よって冪等キーは **Bridge が tool call 送出時に注入**し、LLM 出力には含めない。**LLM 出力トークンを一切増やさない**（B-3 が増やす gen_id とは対照的）。
+- **増殖の抑制**: MCP の消費済みキー記録は **gen-window（既定 8 世代）で eviction** し、古い世代のキーを忘れる。B-3 の単調世代とひも付き、ストレージの無限増殖を防ぐ。`current_gen > 記録時 gen + window` になったキーは破棄される。
+- 契約: キーは `warehouse_interfaces` の `CommandItem.idempotency_key`（`str | None`、UUID 検証、省略可で後方互換）。MCP 側の消費記録は `IdempotencyStore.check_and_add`（`FileIdempotencyStore` が file-backed 実装）。MCP 側の実装詳細・tool schema・dispatch フローは `15-mcp-platform.md` の「競合状態の防止」§2 を参照。
 
 ### B案を B-3 にした理由（過去の訂正）
 
@@ -206,8 +217,12 @@ class BridgeScheduler:
             apply(response)
         except asyncio.TimeoutError:
             log.warn(f"cycle timeout gen={gen}, HTTP cancelled, continue previous command")
-            # wait_for が内部タスクを cancel → httpx 接続クローズ → Hermes セッション中断
-            # ただし Hermes 内で既に発火済の tool call は MCP の gen_id 検証で reject される（B-3）
+            # wait_for が内部タスクを cancel → httpx 接続クローズ。
+            # ただし接続断だけでは Hermes のサーバー側実行は止まらない（R-35 part A）
+            # → run_id があれば POST /v1/runs/{id}/stop を明示呼出しして中断する（A）。
+            await self.stop_hermes_run(run_id)  # best-effort, /v1/runs/{id}/stop
+            # 既に発火済の古い世代の tool call は MCP の gen_id 検証で reject（B-3）。
+            # 同一世代の重複・再送は MCP の冪等キー検証で reject（C）。
         await asyncio.sleep(self.cycle_wait_sec)
 ```
 
@@ -222,8 +237,9 @@ System prompt には以下を追加する:
 | 項目 | 採用 | 理由 |
 |---|---|---|
 | Single-flight / Coalescing | **不採用** | レスポンス駆動サイクルなので原理的に並列発火が起きない |
-| A. HTTPキャンセル（タイムアウト時） | **採用** | Hermes セッションを中断、後続 tool call の発火を止める |
-| B-3. MCP Server gen_id 検証（tool schema required引数）| **採用** | 既に発火済の tool call が遅れて MCP に届くケースを止める唯一の手段。JSON Schema 検証で LLM の出力漏れも検出 |
+| A. HTTPキャンセル + `/stop` 明示呼出し（タイムアウト時） | **採用** | 進行中の Hermes run を中断し後続 tool call の発火を止める。**接続断だけでは止まらない**ため `POST /v1/runs/{id}/stop` を明示呼出し（R-35 part A） |
+| B-3. MCP Server gen_id 検証（tool schema required引数）| **採用** | 既に発火済の**古い世代**の tool call が遅れて MCP に届くケースを止める。JSON Schema 検証で LLM の出力漏れも検出。**同一世代の重複は弾けない**（→ C で補完） |
+| C. 冪等キー検証（tool-call 単位 UUID、Bridge mint）| **採用** | B-3 が落とせない**同一世代の重複・再送**を冪等に reject（R-35 part B）。Bridge が注入するため LLM 出力トークン増ゼロ。bot1+bot2 は別キーで全 accept |
 | Priority Queue | **不採用** | YAGNI |
 | イベント駆動エスカレーション | **不採用** | 次サイクルに `escalation` フィールドで投入する方式で十分（最大3秒遅延を許容） |
 
