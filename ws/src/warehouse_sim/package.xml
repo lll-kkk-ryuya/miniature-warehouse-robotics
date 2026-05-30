@@ -7,6 +7,12 @@
   <maintainer email="ryu3124ruyu@gmail.com">kawaguchiryuya</maintainer>
   <license>Apache-2.0</license>
 
+  <exec_depend>warehouse_interfaces</exec_depend>
+  <exec_depend>warehouse_description</exec_depend>
+  <exec_depend>ros_gz_sim</exec_depend>
+  <exec_depend>ros_gz_bridge</exec_depend>
+  <exec_depend>robot_state_publisher</exec_depend>
+  <exec_depend>rviz2</exec_depend>
 
   <test_depend>python3-pytest</test_depend>
 
