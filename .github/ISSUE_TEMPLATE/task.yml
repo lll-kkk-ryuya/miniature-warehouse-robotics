@@ -1,0 +1,50 @@
+name: "✅ 個別タスク（epic 配下）"
+description: "epic に紐づく単位タスク。Part of #<epic> を明記。"
+title: "[<track>] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        起票前に [docs/README.md](../../docs/README.md) で**設計正本**を確認し、下に必ずリンク。親 epic に紐づけること（[ルール](../../.claude/rules/issue-and-pr-authoring.md)）。
+  - type: input
+    id: worktree_tag
+    attributes:
+      label: worktree タグ（先頭行）
+      placeholder: "[worktree: mwr-<track> | branch: <branch> | track: #N]"
+    validations:
+      required: true
+  - type: input
+    id: parent
+    attributes:
+      label: 親 epic
+      placeholder: "Part of #N"
+    validations:
+      required: true
+  - type: textarea
+    id: purpose
+    attributes:
+      label: 目的 / なぜ
+    validations:
+      required: true
+  - type: textarea
+    id: dod
+    attributes:
+      label: 受け入れ条件 (DoD)
+      value: |
+        - [ ]
+    validations:
+      required: true
+  - type: textarea
+    id: design_source
+    attributes:
+      label: 設計正本（必須・docs/ リンク）
+      placeholder: docs/architecture/NN-....md（§セクション）
+    validations:
+      required: true
+  - type: input
+    id: deps
+    attributes:
+      label: 依存
+      placeholder: "Depends on #N / Blocked by #N（無ければ「なし」）"
+    validations:
+      required: true

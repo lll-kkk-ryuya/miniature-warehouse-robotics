@@ -1,0 +1,73 @@
+name: "🗂 トラック epic / 大タスク"
+description: "1トラック=1 epic。担当領域の親 Issue（doc06/doc17 由来のタスクを束ねる）。"
+title: "[<track>] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        起票前に [docs/README.md](../../docs/README.md) で**設計正本**を特定し、下の「設計正本」に必ずリンクしてください。簡素な issue は禁止（[issue-and-pr-authoring](../../.claude/rules/issue-and-pr-authoring.md)）。
+  - type: input
+    id: worktree_tag
+    attributes:
+      label: worktree タグ（先頭行）
+      description: 発言元（並列協調用）。未着手なら想定で可。
+      placeholder: "[worktree: mwr-<track> | branch: feat/<track> | track: #N]"
+    validations:
+      required: true
+  - type: dropdown
+    id: track
+    attributes:
+      label: トラック（track:* ラベルも付与すること）
+      options:
+        - skeleton
+        - llm-bridge
+        - safety-state
+        - sim
+        - nav-traffic
+        - wo
+        - jetson
+        - firmware
+        - docs
+        - dev-tooling
+        - orchestrator
+    validations:
+      required: true
+  - type: textarea
+    id: purpose
+    attributes:
+      label: 目的 / なぜ
+      description: このトラックが解く問題と期待結果（1-3行）。動画/安全/契約のどれに効くか。
+    validations:
+      required: true
+  - type: textarea
+    id: tasks
+    attributes:
+      label: タスク（チェックリスト）
+      description: doc06 / doc17 由来。検証可能な単位で。安全機構は unit テスト必須（R-26）。
+      value: |
+        - [ ]
+        - [ ]
+    validations:
+      required: true
+  - type: textarea
+    id: design_source
+    attributes:
+      label: 設計正本（必須・docs/ リンク）
+      description: 例 docs/architecture/12-infrastructure-common.md（§...）。複数可。無ければ先に docs を追記してから起票。
+      placeholder: docs/architecture/NN-....md（§セクション）
+    validations:
+      required: true
+  - type: textarea
+    id: impact
+    attributes:
+      label: 影響範囲（パッケージ / 契約 / トピック）
+      placeholder: "ws/src/warehouse_<pkg> / warehouse_interfaces.X / /topic"
+    validations:
+      required: false
+  - type: input
+    id: deps
+    attributes:
+      label: 依存
+      placeholder: "Depends on #N / Blocked by #N（無ければ「なし」）"
+    validations:
+      required: true

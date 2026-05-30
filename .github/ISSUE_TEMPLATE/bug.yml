@@ -1,0 +1,54 @@
+name: "🐛 バグ報告"
+description: "再現可能な不具合。期待と実際の差分を明確に。"
+title: "[<track>] bug: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        安全機構（Emergency Guardian / Policy Gate / 速度クランプ）に関わるバグは **safety-state / llm-bridge** トラックを明記。設計正本との差分なら docs リンクも添付（[ルール](../../.claude/rules/issue-and-pr-authoring.md)）。
+  - type: input
+    id: worktree_tag
+    attributes:
+      label: worktree タグ（先頭行）
+      placeholder: "[worktree: <name> | branch: <branch> | track: #N]"
+    validations:
+      required: true
+  - type: textarea
+    id: summary
+    attributes:
+      label: 概要 / なぜ問題か
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: 再現手順
+      value: |
+        1.
+        2.
+    validations:
+      required: true
+  - type: textarea
+    id: expected_actual
+    attributes:
+      label: 期待 / 実際
+      value: |
+        - 期待:
+        - 実際:
+    validations:
+      required: true
+  - type: textarea
+    id: env
+    attributes:
+      label: 環境
+      description: WAREHOUSE_ENV / sim・実機 / コミット / OS・ROS 2 等
+    validations:
+      required: true
+  - type: textarea
+    id: design_source
+    attributes:
+      label: 設計正本 / 関連（docs・契約・トピック）
+      placeholder: docs/architecture/NN-....md / warehouse_interfaces.X / /topic
+    validations:
+      required: false

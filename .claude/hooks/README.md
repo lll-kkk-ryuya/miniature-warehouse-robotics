@@ -43,12 +43,56 @@ echo '{"tool_input":{"file_path":"<main-repo>/x.md"},"cwd":"<main-repo>"}' | pyt
 echo '{"tool_input":{"file_path":"<feature-worktree>/x.py"}}' | python3 .claude/hooks/guard-boundaries.py
 ```
 
+## remind-gh-authoring.sh — gh issue/pr 作成時の注意喚起（非ブロッキング）
+
+`PreToolUse(Bash)` で発火し、コマンドが `gh issue create` / `gh pr create` の場合に
+[issue-and-pr-authoring.md](../rules/issue-and-pr-authoring.md) の要点（docs-first・必須セクション・簡素禁止）を
+`additionalContext` として注入する。
+
+- **非ブロッキング**: `exit 0` + `additionalContext` のみ（`permissionDecision` を返さない）＝**作成は止めない**。並列3セッションに安全（モデルの自己修正を促す advisory）。
+- **fail-open**: `jq` 不在 / JSON parse 失敗 / 非 gh コマンドは無出力で `exit 0`。
+- コマンド本文に `docs/` リンクが無い場合は注意文を一段強める。
+
+### 有効化（settings.json に追記 — guard-boundaries と同じ配列に併記）
+
+> ⚠️ guard-boundaries と同様、**有効化は人間が明示的に行う**（エージェントによる settings.json 自己改変は禁止）。
+> 両方有効化する場合は、`PreToolUse` 配列に matcher 別エントリとして併記する:
+
+```jsonc
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          { "type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-boundaries.py\"", "timeout": 10 }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          { "type": "command", "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/remind-gh-authoring.sh\"", "timeout": 10 }
+        ]
+      }
+    ]
+  }
+```
+
+### テスト
+
+```bash
+# gh issue create → 注意喚起 JSON（additionalContext）を出力
+echo '{"tool_input":{"command":"gh issue create --title x --body short"}}' | .claude/hooks/remind-gh-authoring.sh
+# 非 gh コマンド → 出力なし・exit 0
+echo '{"tool_input":{"command":"ls -la"}}' | .claude/hooks/remind-gh-authoring.sh
+```
+
 ## 多層防御（defense-in-depth）の位置づけ
 
 | 層 | 仕組み | 強制対象 |
 |---|---|---|
 | permission deny | `.claude/settings.json` permissions | パス単位の read/edit 禁止 |
-| **PreToolUse hook**（本書） | `guard-boundaries.py` | main worktree の直接編集 |
+| **PreToolUse hook**（block） | `guard-boundaries.py` | main worktree の直接編集 |
+| **PreToolUse hook**（advisory） | `remind-gh-authoring.sh` | gh issue/pr 作成時の docs-first・テンプレ注意喚起（非ブロッキング） |
 | CI ジョブ | `.github/workflows/ci.yml` governance | `contract` ラベル必須・他トラック import 禁止 |
 | pre-commit | `.pre-commit-config.yaml` | lint / format / 秘密鍵検知 |
 | branch protection | GitHub 設定 | main 直 push 禁止・PR + CI 緑必須 |
