@@ -171,6 +171,8 @@ Mode C の場合は最終行が `t=5.0s` になる。
 
 A 単独では「タイムアウト直前に始まり、その後完了する tool call」を防げない。B-3 単独では「Hermes セッションがゾンビ的に LLM を呼び続け、tool call を連発する」事態のうち**同一世代内の重複**を防げない。C 単独では「次サイクルが既に進んだ後の古い世代」を世代番号だけで安く落とせない。**3層すべて必要**。
 
+> ⚠️ **未解決（R-35 A / Issue #54）**: レイヤ A の `POST /v1/runs/{id}/stop` は **stateful な runs API（run_id 前提）** を仮定するが、本PJの採用トランスポートは **同期 `POST /v1/chat/completions`（ステートレス・run_id 無し。doc13 §runs 不使用 / doc15）**。このままでは A の `/stop` 明示呼出しは採用経路上で成立しない。キャンセル手段の確定（chat/completions のクライアント側キャンセル＋B-3/C 依拠 か、stop 専用に runs API を併用するか）は **Issue #54** で追跡。確定までレイヤ A は best-effort 扱いとし、**安全の主担保は B-3（古い世代 reject）+ C（冪等キー）** に置く。
+
 #### C. 冪等キー（`idempotency_key`）の設計
 
 - **粒度は tool-call 単位**。`gen_id` は1サイクル＝1世代を表すため、司令官が1呼び出しで bot1・bot2 両方に指示する（navigate bot1 + navigate bot2）と**同一 `gen_id` の tool call が複数**正当に発火する。冪等キーを世代単位にすると正当な2台分指示を誤って弾く。よってキーは**各 tool call ごとに新規 UUID**。

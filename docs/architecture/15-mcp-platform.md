@@ -221,6 +221,7 @@ class WarehouseMCPServer:
         self.policy_gate = PolicyGate(self.traffic, config)
         self.audit_log = CommandAuditLog(config)
 
+    # ※ 例示シグネチャ。凍結実装 tools.py は gen_id 後を keyword-only（`*`）にし順序は robot, pickup, dropoff... （食い違い時は tools.py 優先）
     async def dispatch_task(self, gen_id, pickup=None, dropoff=None, priority="normal", robot=None,
                             via=None, action="deliver", duration=None, idempotency_key=None):
         # 0. gen_id 検証（B-3、§2 参照）
