@@ -67,7 +67,7 @@ class Sources:
 
 
 def _module_consts(path: Path, names: set[str]) -> dict[str, object]:
-    tree = ast.parse(path.read_text(encoding="utf-8"))
+    tree = ast.parse(path.read_text(encoding="utf-8", errors="replace"))
     out: dict[str, object] = {}
     for node in tree.body:
         targets = []
@@ -107,7 +107,7 @@ def _config_location_keys() -> set[str]:
         return set()
     keys: set[str] = set()
     in_block = False
-    for raw in CONFIG_BASE.read_text(encoding="utf-8").splitlines():
+    for raw in CONFIG_BASE.read_text(encoding="utf-8", errors="replace").splitlines():
         if re.match(r"^locations:\s*$", raw):
             in_block = True
             continue
@@ -135,7 +135,7 @@ def _iter_doc_lines(only: list[Path] | None):
             rel = f.relative_to(ROOT)
         except ValueError:
             rel = f
-        for i, line in enumerate(f.read_text(encoding="utf-8").splitlines(), 1):
+        for i, line in enumerate(f.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
             yield str(rel), i, line
 
 
@@ -194,25 +194,40 @@ def check_battery_thresholds(src: Sources, only) -> list[Finding]:
 
 def check_topic_custom(src: Sources, only) -> list[Finding]:
     out = []
-    # doc16 §3 froze /llm/* and /wo/mission to std_msgs/String(JSON). Flag only a
-    # TABLE ROW typing the topic as "カスタム" (the actual drift shape, e.g. doc03's
-    # `| /llm/command | カスタム（JSON） | ... |`). Prose that QUOTES the old label to
-    # resolve it (doc16 §3 itself) is a table-less line and is intentionally exempt.
-    topic = re.compile(r"(/llm/\w+|/wo/mission)")
+    # doc16 §3 froze /llm/* and /wo/mission to std_msgs/String(JSON). Drift shape is a
+    # TYPE-TABLE row whose topic cell is one of these topics and whose adjacent TYPE cell
+    # is NOT std_msgs/String — i.e. "カスタム"/"custom"/a different `*_msgs/Type`. We parse
+    # cells so the topic must be its OWN cell (avoids flagging prose / description cells),
+    # and the resolution prose in doc16 §3 (a non-pipe line) stays exempt.
+    topic_cell = re.compile(r"^`?(/llm/\w+|/wo/mission)`?$")
+    drift_word = re.compile(r"カスタム|custom", re.I)
+    msg_type = re.compile(r"\b\w+_msgs/\w+")
     for rel, ln, line in _iter_doc_lines(only):
-        if not line.lstrip().startswith("|"):
+        s = line.strip()
+        if not s.startswith("|"):
             continue
-        if topic.search(line) and "カスタム" in line:
-            out.append(
-                Finding(
-                    ERROR,
-                    "B2-topic-type",
-                    rel,
-                    ln,
-                    "topic typed 'カスタム' in a type table; doc16 §3 froze /llm/* and "
-                    "/wo/mission to std_msgs/String (JSON) for Phase 0.5-3.",
+        cells = [c.strip() for c in s.strip("|").split("|")]
+        for idx, c in enumerate(cells):
+            if not topic_cell.match(c) or idx + 1 >= len(cells):
+                continue
+            type_cell = cells[idx + 1]
+            if "std_msgs/String" in type_cell:
+                continue
+            bad = drift_word.search(type_cell) or [
+                t for t in msg_type.findall(type_cell) if t != "std_msgs/String"
+            ]
+            if bad:
+                out.append(
+                    Finding(
+                        ERROR,
+                        "B2-topic-type",
+                        rel,
+                        ln,
+                        f"`{c}` typed '{type_cell}'; doc16 §3 froze /llm/* and /wo/mission "
+                        "to std_msgs/String (JSON) for Phase 0.5-3.",
+                    )
                 )
-            )
+                break
     return out
 
 
@@ -274,12 +289,14 @@ def check_status_sha(src: Sources, only) -> list[Finding]:
     if not actual:
         return []
     out = []
-    pat = re.compile(r"origin/main\s*=\s*`([0-9a-f]{7,40})`")
-    for ln, line in enumerate(status.read_text(encoding="utf-8").splitlines(), 1):
+    # Both pin shapes used in STATUS.md: "origin/main = `sha`" (L12) and the
+    # alternate "`origin/main`(`sha`)" (L54).
+    pat = re.compile(r"origin/main\s*=\s*`([0-9a-f]{7,40})`|`origin/main`\s*\(`([0-9a-f]{7,40})`\)")
+    for ln, line in enumerate(status.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
         m = pat.search(line)
         if not m:
             continue
-        pinned = m.group(1)
+        pinned = m.group(1) or m.group(2)
         if actual.startswith(pinned) or pinned.startswith(actual):
             continue
         if _git("merge-base", "--is-ancestor", pinned, "origin/main", check_only=True):
@@ -352,7 +369,22 @@ def main(argv: list[str] | None = None) -> int:
         if not only:
             only = None
 
-    findings = run(only)
+    try:
+        findings = run(only)
+    except Exception as exc:  # noqa: BLE001 — a checker crash must not block all PRs
+        # Surface a clear ERROR finding instead of a bare traceback (a permanent CI gate
+        # crashing on e.g. a non-literal frozen constant or a moved source file would
+        # otherwise red every PR). The finding makes the cause visible and actionable.
+        findings = [
+            Finding(
+                ERROR,
+                "Z0-self-error",
+                "scripts/check_consistency.py",
+                0,
+                f"checker self-error ({type(exc).__name__}: {exc}); fix the checker or "
+                "the source it reads (see docs/dev/04-consistency-system.md).",
+            )
+        ]
     errors = [f for f in findings if f.level == ERROR]
 
     if args.json:
