@@ -30,6 +30,58 @@ jobs:
       - name: Pytest (safety + unit)
         run: pytest
 
+  governance:
+    name: Governance (contract label + track boundaries)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Contract label required for warehouse_interfaces changes
+        env:
+          LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+        run: |
+          base="origin/${{ github.base_ref }}"
+          changed="$(git diff --name-only "$base"...HEAD || true)"
+          if echo "$changed" | grep -q '^ws/src/warehouse_interfaces/'; then
+            if ! printf '%s' "$LABELS" | tr ',' '\n' | grep -qx 'contract'; then
+              echo "::error::PR は ws/src/warehouse_interfaces/（凍結契約）を変更していますが 'contract' ラベルがありません。.claude/rules/parallel-workflow.md §4 を参照。"
+              exit 1
+            fi
+          fi
+      - name: No cross-track internal imports (warehouse_interfaces のみ共有)
+        run: |
+          python3 - <<'PY'
+          import re, subprocess, sys
+          pkgs = ["warehouse_safety", "warehouse_state", "warehouse_sim",
+                  "warehouse_description", "warehouse_traffic", "warehouse_llm_bridge",
+                  "warehouse_mcp_server", "warehouse_nav2_bridge", "warehouse_orchestrator",
+                  "warehouse_bringup", "warehouse_teleop"]
+          out = subprocess.run(["git", "ls-files", "ws/src/"],
+                               capture_output=True, text=True).stdout.split()
+          files = [f for f in out if f.endswith(".py")]
+          bad = []
+          for f in files:
+              m = re.search(r"ws/src/(warehouse_\w+)/", f)
+              if not m:
+                  continue
+              owner = m.group(1)
+              try:
+                  txt = open(f, encoding="utf-8").read()
+              except OSError:
+                  continue
+              for p in pkgs:
+                  if p == owner:
+                      continue
+                  if re.search(rf"(?m)^\s*(from|import)\s+{p}\b", txt):
+                      bad.append(f"{f}: imports {p}（他トラック内部）")
+          if bad:
+              print("::error::他トラック内部 import を検出（各パッケージは warehouse_interfaces のみ依存可・parallel-workflow.md §2.1）:")
+              print("\n".join(bad))
+              sys.exit(1)
+          PY
+
   web-e2e:
     name: Playwright (web E2E)
     runs-on: ubuntu-latest
