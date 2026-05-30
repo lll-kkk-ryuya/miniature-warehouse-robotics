@@ -14,6 +14,7 @@ robots:
 safety:
   max_linear_velocity: 0.3   # m/s 上限（厳守）
   emergency_min_distance: 0.3   # m（2台間。doc12 DISTANCE_THRESHOLD と一致。TODO: Phase 2 実測で確定）
+  blocked_timeout: 10.0   # s, Nav2 recovery trigger（doc12 BLOCKED_TIMEOUT）。TODO: Phase 2 実測で確定
 
 # LLM サイクル長（秒）。Mode A=3 / Mode C=5（doc03）
 cycle:
