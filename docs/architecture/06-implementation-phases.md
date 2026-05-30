@@ -74,8 +74,8 @@
 
 ### タスク
 
-- [ ] Gazebo用の仮想ジオラマ作成（1.8m×0.9m、棚3つ、通路、バース）
-- [ ] 仮想minicarモデル（URDF）作成（サイズ・センサー配置）
+- [x] Gazebo用の仮想ジオラマ作成（1.8m×0.9m、棚3つ、通路、バース） — `warehouse_sim`（`layout.py` 単一定数 + `world_generator` SDF 生成、PR #43）
+- [x] 仮想minicarモデル（URDF）作成（サイズ・センサー配置） — `warehouse_description/urdf/minicar.urdf.xacro`（凍結フレーム `base_link`/`lidar_link`/`imu_link`、PR #43。寸法は Phase 1 実測で確定）
 - [ ] Nav2 設定・チューニング（ミニチュアスケール用）
 - [ ] 単体ナビゲーションテスト（ゴール指定→自律走行）
 - [ ] 障害物回避テスト
@@ -108,6 +108,8 @@
 - Gazebo上で2台のロボットがNav2で自律走行できる
 - LLM Bridge Node（Hermes Gateway + Warehouse MCP Server）が Gazebo上で動作する
 - Hermes の Provider 切替で Claude → GPT が1行で切り替えられることを確認
+
+> **進捗（2026-05-30, PR #43）**: 環境スパイク **GO**（doc16 §10）。`warehouse_sim` / `warehouse_description` で headless Gazebo world（1.8×0.9 単一定数生成）+ minicar URDF（凍結フレーム）+ bot1/bot2 spawn + `ros_gz_bridge`（`/bot{n}/{scan,odom,cmd_vel}`）が成立し、`docker run --memory=6g` で OOM なし（メモリ検証 段階1 の sim サブセット）。**残り**: Nav2 自律走行（#8 nav-traffic, blocked）／LLM Bridge E2E／Provider 切替／メモリ検証 段階2（Jetson 実測）。
 
 ### このフェーズの重要性
 

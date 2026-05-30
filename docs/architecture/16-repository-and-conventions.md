@@ -181,7 +181,7 @@ firmware/.pio/
 | ブランチ | 担当ディレクトリ | 着手可能条件 |
 |---|---|---|
 | `feat/repo-skeleton` | `ws/` 初期化・`warehouse_interfaces`・`warehouse_bringup` 骨格・`.gitignore` | **最初にマージ（全土台）** |
-| `feat/sim-gazebo` | `warehouse_sim`・`warehouse_description` | skeleton 後 + §環境スパイク成功 |
+| `feat/sim-gazebo` | `warehouse_sim`・`warehouse_description` | skeleton 後 + §環境スパイク成功 → **条件充足: スパイク GO（2026-05-30）。PR #43 提出済（CI緑・未マージ）** |
 | `feat/safety-state` | `warehouse_safety`・`warehouse_state` | skeleton 後（独立・並行可） |
 | `feat/nav-traffic` | `warehouse_traffic`・`bringup/config/nav2*` | sim spawn 後 |
 | `feat/llm-bridge` | `warehouse_llm_bridge`・`warehouse_mcp_server`・`warehouse_nav2_bridge` | **偽トピックで即着手可（Gazebo/実機不要）** |
@@ -202,6 +202,8 @@ firmware/.pio/
 ## 10. Phase 0.5 の最優先ゲート（環境スパイク）
 
 実装着手後、最初に潰すべき技術リスク: **`tiryoh/ros2-desktop-vnc:jazzy`（ARM64）上で、ヘッドレス `gz sim` + LiDAR センサ（GpuLidar、不可なら CPU ray cast フォールバック）+ `ros_gz_bridge` が成立するか**。これが Phase 0.5 を「Mac 単体で完結できる」前提の分岐点。成立しない場合は Linux/x86 機またはクラウド GPU での Gazebo に退避する。可視化は Gazebo GUI ではなく RViz2 に寄せる（ソフトウェア OpenGL で GUI が実用に耐えない可能性が高いため）。
+
+> **結果（2026-05-30, PR #43）: GO。** `gz sim`（Gazebo Harmonic / gz-sim8 **8.11.0**）が `--headless-rendering` で起動し、**`gpu_lidar` が ogre2 + ソフトウェア GL（llvmpipe / `LIBGL_ALWAYS_SOFTWARE=1`）で初期化成立**（CPU ray-cast フォールバック不要）。`ros_gz_bridge` で `/bot{n}/{scan,odom,cmd_vel}` を橋渡し、`/bot{n}/scan` ~9–10Hz（frame_id `bot{n}/lidar_link`、ranges 非空）、`cmd_vel` で実移動を確認。`docker run --memory=6g` で OOM なし。**退避（Linux/x86・クラウド GPU）不要 → Phase 0.5 は Mac 単体で完結可能**。再現コード・証跡: `ws/src/warehouse_sim/spike/`（`run_spike.sh` / `RESULT.md`）。
 
 ---
 
