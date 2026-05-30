@@ -86,6 +86,31 @@ echo '{"tool_input":{"command":"gh issue create --title x --body short"}}' | .cl
 echo '{"tool_input":{"command":"ls -la"}}' | .claude/hooks/remind-gh-authoring.sh
 ```
 
+## consistency-posttooluse.py — 編集後の docs↔code 整合チェック（PostToolUse, block）
+
+Edit/Write/MultiEdit 直後に `scripts/check_consistency.py` を走らせ、**ERROR レベルの doc↔契約ドリフト**があれば `decision:"block"` + `additionalContext` を返してループを止め、Claude に自己修正させる（WARN は CI/レポート任せ）。設計は [docs/dev/04-consistency-system.md](../../docs/dev/04-consistency-system.md) §4。
+
+- **配線先**: phase-1 は **`.claude/settings.local.json`（ローカル・gitignore、オーナー承認）**。共有 `settings.json` は触らない（human-only 維持）。
+- **堅牢**: stdin 不正・checker 欠落・実行失敗 では**必ず exit 0・非ブロック**（セッションを止めない）。docs/contract/config 以外の編集は skip。
+
+### 有効化（`settings.local.json`、`/update-config` 推奨）
+
+```json
+{ "hooks": { "PostToolUse": [
+  { "matcher": "Edit|Write|MultiEdit",
+    "hooks": [ { "type": "command",
+      "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/consistency-posttooluse.py\" || true" } ] } ] } }
+```
+
+### テスト
+
+```bash
+# clean → 出力なし・exit 0 ; ドリフト doc → block JSON
+echo '{"cwd":"<repo>","tool_input":{"file_path":"docs/x.md"}}' | python3 .claude/hooks/consistency-posttooluse.py
+```
+
+---
+
 ## 多層防御（defense-in-depth）の位置づけ
 
 | 層 | 仕組み | 強制対象 |
@@ -93,6 +118,7 @@ echo '{"tool_input":{"command":"ls -la"}}' | .claude/hooks/remind-gh-authoring.s
 | permission deny | `.claude/settings.json` permissions | パス単位の read/edit 禁止 |
 | **PreToolUse hook**（block） | `guard-boundaries.py` | main worktree の直接編集 |
 | **PreToolUse hook**（advisory） | `remind-gh-authoring.sh` | gh issue/pr 作成時の docs-first・テンプレ注意喚起（非ブロッキング） |
-| CI ジョブ | `.github/workflows/ci.yml` governance | `contract` ラベル必須・他トラック import 禁止 |
-| pre-commit | `.pre-commit-config.yaml` | lint / format / 秘密鍵検知 |
+| **PostToolUse hook**（block, local） | `consistency-posttooluse.py` | 編集後の docs↔code **ERROR** ドリフト（`settings.local.json` 配線・ERROR のみ block） |
+| CI ジョブ | `.github/workflows/ci.yml` governance + `consistency` | `contract` ラベル必須・他トラック import 禁止・docs↔code 整合 |
+| pre-commit | `.pre-commit-config.yaml` | lint / format / 秘密鍵検知 + docs↔code 整合 |
 | branch protection | GitHub 設定 | main 直 push 禁止・PR + CI 緑必須 |

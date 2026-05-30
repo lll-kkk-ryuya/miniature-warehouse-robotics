@@ -9,7 +9,7 @@
 **doc17 Step 0（リポジトリ骨格＋契約凍結）完了**（2026-05-29, Issue #1 closed）。
 **Step 1＝各トラックの並列実装フェーズが進行中**。複数 worktree セッションで #4 llm-bridge / #5 safety-state / #7 sim / #25 gen_id 冪等化を並列実装し、**主要スライスが main に land 済**（下表）。
 
-## main の状態（CI 常時 green, origin/main = `72d4dec`）
+## main の状態（CI 常時 green, origin/main = `2bdced5`）
 - **契約ハブ `warehouse_interfaces`（凍結）**: pydantic `Situation`/`Command`/`Proposal`(+ `gen_id`、`CommandItem.idempotency_key`)、`StateSnapshot`/`RobotSnapshot`、`KNOWN_LOCATIONS` 9キー、共有パス（doc16 §4）、`StateStore`/`GenStore`/`IdempotencyStore` IF + file 実装、`safety`（速度/battery しきい値の単一ソース）、`config`。
 - **実装済みノード（main 入り）**:
   - `warehouse_mcp_server` — 7ツール + Policy Gate + gen_id B-3 + **per-call idempotency 強制**（#35/#41。偽 store でユニット検証、MCP SDK は遅延 import の pip extra）。
@@ -51,6 +51,6 @@
 - 既知の設計リスクは [07-research-notes](shared/07-research-notes.md) R-35〜R-52。
 
 ## git 衛生（現況, 2026-05-30）
-- main = `origin/main`(`72d4dec`) 同期・クリーン。#4 MCP(#35/#38)・#25 冪等化(#36/#41)・#39 safety-state・#43/#46 sim・#45 governance・#48 issue/PR 規約 は **すべて main マージ済**、対応 worktree/branch は掃除済み。
+- main = `origin/main`(`2bdced5`) 同期・クリーン。#4 MCP(#35/#38)・#25 冪等化(#36/#41)・#39 safety-state・#43/#46 sim・#45 governance・#48 issue/PR 規約・#49/#50/#51 docs整合+dev基盤・#57 consistency システム は **すべて main マージ済**、対応 worktree/branch は掃除済み。
 - 現行の稼働 worktree は本 docs 整合 PR（`docs/align-with-impl`）等。remote ブランチは作業中のみ（マージ済みは削除）。
 - 全 worktree 未コミット0・未push0 を基本状態とする。
