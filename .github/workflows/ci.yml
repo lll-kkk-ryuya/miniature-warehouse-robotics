@@ -86,6 +86,24 @@ jobs:
               sys.exit(1)
           PY
 
+  consistency:
+    name: docs↔code consistency
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Ensure origin/main ref (STATUS SHA freshness check is best-effort)
+        run: git fetch origin main || true
+      - name: Run consistency checker
+        # Pure stdlib (ast + regex + git) — no install. Binds doc claims to the frozen
+        # single sources (warehouse_interfaces / description / config). ERROR fails the
+        # build; WARN is surfaced only. 正本: docs/dev/04-consistency-system.md
+        run: python3 scripts/check_consistency.py
+
   web-e2e:
     name: Playwright (web E2E)
     runs-on: ubuntu-latest
