@@ -138,8 +138,8 @@ mcp_servers:
 # ツール1: dispatch_task
 dispatch_task(
     gen_id: int,           # 必須: situation JSON の gen_id をそのまま渡す
-    pickup: str,           # 場所名（"shelf_1"等）
-    dropoff: str,          # 場所名（"berth_A"等）
+    pickup: str | None = None,   # 任意（本プロジェクトのタスクは dropoff 中心。action_map は送らない）
+    dropoff: str | None = None,  # 行き先の場所名（"berth_A"等）。action="wait" 時は不要
     priority: str = "normal",  # "urgent" | "normal" | "low"
     robot: str | None = None,  # デフォルトはアロケーター割当
     # --- Mode A/B 拡張（Mode C では無視） ---
@@ -221,8 +221,8 @@ class WarehouseMCPServer:
         self.policy_gate = PolicyGate(self.traffic, config)
         self.audit_log = CommandAuditLog(config)
 
-    async def dispatch_task(self, gen_id, pickup, dropoff, priority="normal", robot=None,
-                            via=None, action="deliver", duration=None):
+    async def dispatch_task(self, gen_id, pickup=None, dropoff=None, priority="normal", robot=None,
+                            via=None, action="deliver", duration=None, idempotency_key=None):
         # 0. gen_id 検証（B-3、§2 参照）
         if not await self._check_gen(gen_id):
             return {"status": "rejected", "reason": "stale_generation", "received_gen": gen_id}
@@ -270,14 +270,14 @@ class PolicyGate:
                 return Reject("action='wait' requires robot specification")
             # 場所名・同一地点チェックをスキップし、ロボット状態チェックへ進む
         else:
-            # 場所名存在チェック
-            if pickup not in self.known_locations:
+            # 場所名存在チェック（pickup は任意＝省略時はスキップ。本プロジェクトは dropoff 中心）
+            if pickup is not None and pickup not in self.known_locations:
                 return Reject(f"Unknown location: {pickup}")
             if dropoff not in self.known_locations:
                 return Reject(f"Unknown location: {dropoff}")
 
-            # 同一地点チェック
-            if pickup == dropoff:
+            # 同一地点チェック（pickup 指定時のみ）
+            if pickup is not None and pickup == dropoff:
                 return Reject("Pickup and dropoff are the same")
 
         # ロボット状態チェック（指定時のみ）
@@ -292,10 +292,11 @@ class PolicyGate:
                 return Reject(f"{robot} state is stale (no updates >500ms)")
 
             # バッテリーポリシー
+            # しきい値は warehouse_interfaces.safety が単一ソース（包含境界: <=10 critical / <=20 low）
             battery = state.get("battery", 100)
-            if battery < 10:
+            if battery <= 10:
                 return Reject(f"{robot} battery critical ({battery}%)")
-            if battery < 20:
+            if battery <= 20:
                 return Reject(f"{robot} battery low ({battery}%), no new tasks")
 
             # Emergency中のrobot禁止
@@ -455,13 +456,13 @@ MCP tool 定義例（全7ツール共通で `gen_id` を required に。`idempot
   "description": "ロボットにタスクを割り当てる。gen_id は situation JSON の gen_id をそのまま渡すこと",
   "input_schema": {
     "type": "object",
-    "required": ["gen_id", "pickup", "dropoff"],
+    "required": ["gen_id"],
     "properties": {
       "gen_id": {"type": "integer", "description": "Situation JSON で受け取った gen_id をそのまま渡す（安全機構）"},
       "idempotency_key": {"type": ["string", "null"], "description": "Bridge が注入する tool-call 単位の冪等キー（UUID）。LLM は触らない（任意・後方互換）"},
       "robot": {"type": ["string", "null"]},
-      "pickup": {"type": "string"},
-      "dropoff": {"type": "string"}
+      "pickup": {"type": ["string", "null"]},
+      "dropoff": {"type": ["string", "null"]}
     }
   }
 }

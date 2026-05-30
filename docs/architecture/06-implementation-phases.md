@@ -82,8 +82,8 @@
 - [ ] 2台同時走行テスト
 - [ ] LLM Bridge Node のプロトタイプ開発（Hermes Gateway ベース）
   - Hermes Gateway daemon 起動・メモリ計測
-  - Warehouse MCP Server プロトタイプ（7ツール定義 + Policy Gate）
-  - State Cache Node + Emergency Guardian のプロトタイプ
+  - ✅ Warehouse MCP Server（7ツール + Policy Gate + gen_id B-3 + per-call idempotency 強制）を偽 store（FileGenStore / FileIdempotencyStore / FileStateStore）に対し実装（PR #35/#41）。escalation/negotiation は stub、Nav2 Bridge / Open-RMF 送信は follow slice
+  - ✅ State Cache Node + Emergency Guardian を実装（`warehouse_state` state_cache 100ms + aggregator、`warehouse_safety` emergency_guardian 50ms reflex、偽入力でユニット検証、PR #39）
   - Claude API → Hermes Gateway で Gazebo ロボットを制御するE2Eテスト
   - Hermes Memory / Skills の3秒ループでの動作検証（Skills はタスク割当パターンに限定、交通制御スキルは禁止）
 - [ ] **メモリ検証（二段構え）**: Jetson 8GB に全スタックが収まるかを検証する
@@ -109,7 +109,7 @@
 - LLM Bridge Node（Hermes Gateway + Warehouse MCP Server）が Gazebo上で動作する
 - Hermes の Provider 切替で Claude → GPT が1行で切り替えられることを確認
 
-> **進捗（2026-05-30, PR #43）**: 環境スパイク **GO**（doc16 §10）。`warehouse_sim` / `warehouse_description` で headless Gazebo world（1.8×0.9 単一定数生成）+ minicar URDF（凍結フレーム）+ bot1/bot2 spawn + `ros_gz_bridge`（`/bot{n}/{scan,odom,cmd_vel}`）が成立し、`docker run --memory=6g` で OOM なし（メモリ検証 段階1 の sim サブセット）。**残り**: Nav2 自律走行（#8 nav-traffic, blocked）／LLM Bridge E2E／Provider 切替／メモリ検証 段階2（Jetson 実測）。
+> **進捗（2026-05-30, PR #43）**: 環境スパイク **GO**（doc16 §10）。環境成立（headless `gz sim` + `gpu_lidar`/ogre2 software GL + `ros_gz_bridge`）は **単一 bot（汎用ボックスモデル, `/bot1/{scan,odom,cmd_vel}`）の spike で確認**、`docker run --memory=6g` で OOM なし（メモリ検証 段階1 の sim サブセット）。本実装の `warehouse_sim` / `warehouse_description`（1.8×0.9 world 単一定数生成 + minicar URDF 凍結フレーム `bot{n}/base_link→{lidar_link,imu_link}` + `sim.launch.py` の bot1/bot2 spawn）は **単体テスト（`tests/unit/test_sim_*`）で text レベル検証**済。**実 bot1/bot2 の Gazebo E2E は未実施**（Nav2 E2E と併せ #8）。**残り**: Nav2 自律走行（#8 nav-traffic）／LLM Bridge E2E／Provider 切替／メモリ検証 段階2（Jetson 実測）。
 
 ### このフェーズの重要性
 

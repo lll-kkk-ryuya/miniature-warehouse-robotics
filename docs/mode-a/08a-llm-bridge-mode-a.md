@@ -178,11 +178,11 @@ dispatch_task(dropoff="shelf_1")  # via 未指定
 
 解決: `dispatch_task` に `action` パラメータを追加（デフォルト `"deliver"`）。`action="wait"` の場合、Nav2 Bridge が待機処理に分岐する。新ツール追加不要。
 
-`action="wait"` 時は `pickup` と `dropoff` は不要だが、MCP ツールのシグネチャ上は必須パラメータのため、`pickup="_wait"`, `dropoff="_wait"` の予約値を使用する。Policy Gate は `action="wait"` 時に場所名検証をスキップする。
+`action="wait"` 時は `pickup` / `dropoff` を**送らない**（MCP シグネチャ上も任意。予約値 `"_wait"` は不要）。`action_map` は wait を `dispatch_task(robot, action="wait", duration, gen_id, idempotency_key)` に写像し pickup/dropoff を含めない。Policy Gate は `action="wait"` 時に場所名検証をスキップする。
 
 ```python
 # Mode A: Claude が wait を指示
-dispatch_task(pickup="_wait", dropoff="_wait", action="wait", robot="bot1", duration=3.0)
+dispatch_task(action="wait", robot="bot1", duration=3.0)
 # → Policy Gate: action="wait" → pickup/dropoff 検証スキップ
 # → Nav2 Bridge: POST /api/v1/wait {"robot": "bot1", "duration": 3.0}
 ```
@@ -202,8 +202,8 @@ cancel_task(task_id="current:bot1")
 
 ```python
 dispatch_task(
-    pickup: str,
-    dropoff: str,
+    pickup: str | None = None,     # 任意（本プロジェクトは dropoff 中心。action_map は送らない）
+    dropoff: str | None = None,    # 行き先（action="wait" 時は不要）
     priority: str = "normal",
     robot: str | None = None,
     # --- Mode A/B 拡張（Mode C では無視） ---
@@ -211,9 +211,10 @@ dispatch_task(
     action: str = "deliver",       # "deliver" | "wait" | "yield"
     duration: float | None = None  # action="wait" 時の待機秒数
 )
+# gen_id（必須・B-3）と idempotency_key（任意・Bridge mint, C/R-35）は全ツール共通の安全機構引数（doc15 §ツール定義の注 / §競合状態の防止 参照）
 ```
 
-Mode C 互換性: `via`, `action`, `duration` を無視。Open-RMF Fleet Adapter が `pickup`/`dropoff` のみ使用。トークンコスト影響: 約30トークン増（3パラメータ追加分）。
+Mode C 互換性: `via`, `action`, `duration` を無視。Open-RMF Fleet Adapter が `dropoff` を使用（pickup は本プロジェクト未使用）。トークンコスト影響: 約30トークン増（3パラメータ追加分）。
 
 ## システムプロンプト（Mode A/B）
 
