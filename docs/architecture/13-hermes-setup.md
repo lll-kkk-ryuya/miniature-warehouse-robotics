@@ -237,9 +237,9 @@ mcp_servers:
 
 ### 3.3 倉庫側 `config.yaml`（モードスイッチ）
 
-Hermes 外、Warehouse MCP Server / LLM Bridge Node が読む設定。
+Hermes 外、Warehouse MCP Server / LLM Bridge Node が読む設定。**正本は `config/warehouse.base.yaml` + `config/<WAREHOUSE_ENV>/warehouse.yaml`（base + overlay、doc19）**。キー規約（実体に合わせる）: 接続 URL は **`base_url`**（旧 `endpoint` 表記は廃止）／`locations` は**座標マップ**（doc08 LOCATIONS とキー一致）／`robots` は **`id`**。
 
-`config/warehouse.yaml`（`$WAREHOUSE_CONFIG_PATH`、dev既定。本番は `/run/warehouse/`。16 §4）:
+`config/warehouse.base.yaml`（全環境共通の土台。環境差分は `config/<env>/warehouse.yaml` で上書き）:
 
 ```yaml
 # ───────────────────────────────────────────────
@@ -253,47 +253,42 @@ traffic_mode: "open-rmf"    # Mode C: LLM + Open-RMF (主方針)
 # ロボット定義
 # ───────────────────────────────────────────────
 robots:
-  - name: bot1
-    namespace: /bot1
-    charging_station: charging_station   # 2台共有（同時充電不可・先着順）
-  - name: bot2
-    namespace: /bot2
-    charging_station: charging_station
+  - id: bot1
+  - id: bot2
+# namespace は /<id> 規約。charging_station は locations を共有参照（2台共有・同時充電不可・先着順）
 
 # ───────────────────────────────────────────────
 # 場所定義 (Policy Gate の known_locations 検証用)
 # ───────────────────────────────────────────────
-locations:
-  - shelf_1
-  - shelf_2
-  - shelf_3
-  - berth_A
-  - berth_B
-  - shipping_station
-  - charging_station
-  - retreat_A
-  - retreat_B
-# ※ 08-llm-bridge-common.md の LOCATIONS テーブル（場所名→座標）とキーを一致させること
+locations:                       # 座標マップ（doc08 LOCATIONS とキー一致。座標は暫定＝Phase 2 実測で確定）
+  shelf_1: {x: 0.2, y: 0.3}
+  shelf_2: {x: 0.7, y: 0.3}
+  shelf_3: {x: 1.2, y: 0.3}
+  berth_A: {x: 0.2, y: 0.8}
+  berth_B: {x: 0.7, y: 0.8}
+  shipping_station: {x: 0.2, y: 0.1}
+  charging_station: {x: 1.2, y: 0.1}
+  retreat_A: {x: 0.45, y: 0.85}
+  retreat_B: {x: 0.95, y: 0.85}
 
 # ───────────────────────────────────────────────
 # Hermes Gateway 接続情報 (LLM Bridge Node が読む)
 # ───────────────────────────────────────────────
 hermes:
-  endpoint: "http://127.0.0.1:8642"
-  timeout_sec: 5.0
-  api_key_env: API_SERVER_KEY   # .env から読む env var 名
+  base_url: ""                  # 接続 URL（旧 endpoint）。環境側で設定（dev: http://localhost:8642 / prod: GCP）
+  # token は config/<env>/.env の API_SERVER_KEY、timeout は doc08 のモード別（2.5s/5.0s）で扱う
 
 # ───────────────────────────────────────────────
 # Mode A/B のみで使う Nav2 Bridge エンドポイント
 # ───────────────────────────────────────────────
 nav2_bridge:
-  endpoint: "http://127.0.0.1:8645"   # 12a-integration-mode-a.md の Nav2 Bridge 実装ポートと一致
+  base_url: "http://localhost:8645"   # 旧 endpoint。12a-integration-mode-a.md の Nav2 Bridge 実装ポートと一致
 
 # ───────────────────────────────────────────────
 # Mode C のみで使う Open-RMF エンドポイント
 # ───────────────────────────────────────────────
 rmf:
-  api_endpoint: "http://127.0.0.1:8000"   # rmf-web API Server のデフォルトポート（12c-integration-mode-c.md と一致）
+  enabled: false   # dev 既定無効。RMF API エンドポイント(8000) は 12c-integration-mode-c.md が所有（warehouse config 外）
 ```
 
 LLM Bridge Node / Warehouse MCP Server は起動時に `traffic_mode` を読み、内部の TrafficManager 実装を切替える（`15-mcp-platform.md §Warehouse MCP Server`）。

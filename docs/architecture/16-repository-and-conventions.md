@@ -147,7 +147,7 @@ doc03 では `/llm/situation` `/llm/command` `/wo/mission` を「カスタム（
 - API 呼出のモデル文字列は最新世代 Opus を使う（バージョン固定しない方針のため、新リリース時に更新）。
 - コスト試算は Opus 単価（$15/MTok 入力・$75/MTok 出力）で再計算する（§影響箇所参照）。
 
-> ⚠️ **検討事項（要追跡）**: キャラLLM を Haiku に選んだ元設計理由は**テンポ重視**（応答 0.3-0.5s、`max_tokens=60`）だった。Opus 化で応答が ~1-2s に伸び、コストも大幅増（Haiku比で約30倍/トークン）。Mode A の「キャラ同士の軽快な掛け合い」が動画の主役（[05-video-storyboard](../shared/05-video-storyboard.md)）であるため、Phase 0.5/3 のテストで会話テンポが損なわれないかを実測し、テンポが致命的なら本方針の例外化（キャラのみ別系統）を再検討する。現時点は CLAUDE.md 厳守で全 Opus を既定とする。
+> ⚠️ **検討事項（要追跡）**: キャラLLM を Haiku に選んだ元設計理由は**テンポ重視**（応答 0.3-0.5s、`max_tokens=60`）だった。Opus 化で応答が ~1-2s に伸び、コストも大幅増（Haiku比で約30倍/トークン）。Mode A の「キャラ同士の軽快な掛け合い」が動画の主役（doc14 §動画的役割「メインショー」/ [mode-a/README](../mode-a/README.md)。※ [05-video-storyboard](../shared/05-video-storyboard.md) は現状この交渉シーンを含まず未反映＝要追補）であるため、Phase 0.5/3 のテストで会話テンポが損なわれないかを実測し、テンポが致命的なら本方針の例外化（キャラのみ別系統）を再検討する。現時点は CLAUDE.md 厳守で全 Opus を既定とする。
 
 ---
 
@@ -181,7 +181,7 @@ firmware/.pio/
 | ブランチ | 担当ディレクトリ | 着手可能条件 |
 |---|---|---|
 | `feat/repo-skeleton` | `ws/` 初期化・`warehouse_interfaces`・`warehouse_bringup` 骨格・`.gitignore` | **最初にマージ（全土台）** |
-| `feat/sim-gazebo` | `warehouse_sim`・`warehouse_description` | skeleton 後 + §環境スパイク成功 → **条件充足: スパイク GO（2026-05-30）。PR #43 提出済（CI緑・未マージ）** |
+| `feat/sim-gazebo` | `warehouse_sim`・`warehouse_description` | skeleton 後 + §環境スパイク成功 → **条件充足: スパイク GO（2026-05-30）。PR #43 マージ済（#7 closed）。実 bot1/bot2 Gazebo E2E は #8** |
 | `feat/safety-state` | `warehouse_safety`・`warehouse_state` | skeleton 後（独立・並行可） |
 | `feat/nav-traffic` | `warehouse_traffic`・`bringup/config/nav2*` | sim spawn 後 |
 | `feat/llm-bridge` | `warehouse_llm_bridge`・`warehouse_mcp_server`・`warehouse_nav2_bridge` | **偽トピックで即着手可（Gazebo/実機不要）** |

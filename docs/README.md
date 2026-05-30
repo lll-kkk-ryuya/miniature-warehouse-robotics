@@ -62,23 +62,19 @@ docs/
 
 ## モード切替
 
+> 下記は**要点の抜粋（例示）**。ロード可能な正本スキーマは `config/warehouse.base.yaml` + `config/<env>/warehouse.yaml`（doc13 §3.3）。
+
 ```yaml
-# config.yaml — モード別設定
-traffic_mode: "open-rmf"   # Mode C: LLM + Open-RMF（技術的主方針）
-# traffic_mode: "simple"   # Mode B: LLM + 自作ルールベース
-# traffic_mode: "none"     # Mode A: LLM単独（動画メイン回 — キャラLLM交渉が映える）
+# 例: モード別設定の要点（正本は config/warehouse.base.yaml）
+traffic_mode: "open-rmf"   # Mode C: LLM + Open-RMF（主方針）/ "simple"=Mode B / "none"=Mode A（動画メイン回）
 
-# サイクル長（応答後の待機時間）
-cycle_wait_sec: 3          # Mode C: 3秒待機（応答含めて約5秒/サイクル）
-# cycle_wait_sec: 1        # Mode A: 1秒待機（応答含めて約3秒/サイクル）
-
-# キャラLLM（演出用、Mode A メイン回で実装、Mode C は Phase 4 で追加）
-character_llm:
-  enabled: true
-  model: opus          # 最新世代Opus（全Claude Opus統一、architecture/16 §7）
-  max_tokens: 60
-  negotiation_timeout_sec: 8
-  max_turns_per_bot: 4
+# サイクル長（総サイクル。config 実キー = cycle.mode_a_seconds / mode_c_seconds）
+cycle:
+  mode_a_seconds: 3        # Mode A: 約3秒/サイクル（待機 1s + 応答 ~2s）
+  mode_c_seconds: 5        # Mode C: 約5秒/サイクル（待機 3s + 応答 ~2s）
+# ※ 待機値（Mode A:1 / Mode C:3）は doc08 BridgeScheduler 内部の cycle_wait_sec。config キーではない
 ```
+
+> **キャラLLM パラメータ**（`enabled` / `model: opus` / `max_tokens: 60` / `negotiation_timeout_sec` / `max_turns_per_bot`）は doc14 の設計パラメータで、現状どの config にも未定義（Mode A メイン回の実装時に config 化）。
 
 > **位置づけ補足**: 動画的には **Mode A がメイン回**（LLMがminicarを動かしてみたの主役）、Mode C は**実用検証回**（Open-RMFというチートを使うとこんなに上手く動く）。技術主方針としては Mode C を採用。
