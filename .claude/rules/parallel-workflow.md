@@ -51,9 +51,11 @@
 
 ### 2.1 コード依存（build / runtime）→ `package.xml` で宣言・契約ハブに集約
 
-- **唯一の共有依存は `warehouse_interfaces`（凍結契約: pydantic schemas / `StateStore`・`GenStore` IF / 共有パス）**。
-- 各パッケージは **`warehouse_interfaces` にのみ依存**し、**他トラックの内部モジュールを import しない**（疎結合）。
-- 依存方向は一方向（`warehouse_interfaces` ← 各パッケージ）。**循環依存は禁止**。
+- **共有依存は2つのみ**:
+  - `warehouse_interfaces`（凍結契約: pydantic schemas / `StateStore`・`GenStore` IF / 共有パス）。
+  - `warehouse_description`（ロボット記述の**単一ソース**: URDF / `frame_id` / footprint / 寸法定数。sim・nav・bringup が同一を参照する**読み取り専用の共有アセット**。doc16 §9）。
+- 各パッケージは **この2共有パッケージにのみ依存**し、**他トラックの内部モジュールを import しない**（疎結合）。`warehouse_description` は track 実装を持たず、定数/記述を提供するのみ。
+- 依存方向は一方向（共有パッケージ ← 各パッケージ）。**循環依存は禁止**（共有パッケージは他トラックを import しない）。
 - 例: `warehouse_llm_bridge` は interfaces の `Situation`/`Command` schema と `StateStore` IF にのみ依存。`warehouse_state` が `StateStore` を**実装**する。両者は IF 越しにのみ結合 → 実体が無くても**偽実装（fake）で各々独立に開発・テストできる**（doc16 §11）。
 
 ```

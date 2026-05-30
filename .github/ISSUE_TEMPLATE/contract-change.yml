@@ -1,0 +1,48 @@
+name: "🔒 契約変更（warehouse_interfaces）"
+description: "凍結契約（schemas / stores / paths / locations / safety / トピック）の変更。全トラック影響。"
+title: "[contract] "
+labels: ["contract"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **凍結契約の変更は全トラックに波及**します。マージ前に依存トラックへ予告し合意を得ること（[parallel-workflow §4](../../.claude/rules/parallel-workflow.md)）。トピック名・型・JSON スキーマの**真実は設計ドキュメント**（doc03 / doc08 / doc14 / doc15）。
+  - type: input
+    id: worktree_tag
+    attributes:
+      label: worktree タグ（先頭行）
+      placeholder: "[worktree: <name> | branch: contract/<...> | track: #N]"
+    validations:
+      required: true
+  - type: textarea
+    id: change
+    attributes:
+      label: 変更内容 / なぜ
+      description: 追加/変更するシンボル・スキーマ・トピックと理由。最小・後方互換を優先。
+    validations:
+      required: true
+  - type: dropdown
+    id: compat
+    attributes:
+      label: 後方互換性
+      options:
+        - "後方互換（追加のみ・既定値あり）"
+        - "破壊的（要・依存トラック合意 + 移行手順）"
+    validations:
+      required: true
+  - type: textarea
+    id: affected
+    attributes:
+      label: 影響トラック（予告先 Issue）
+      description: 依存する全トラックの Issue 番号。マージ前に予告コメント済みか。
+      placeholder: "#4 llm-bridge / #5 safety-state / ..."
+    validations:
+      required: true
+  - type: textarea
+    id: design_source
+    attributes:
+      label: 設計正本（必須・docs/ リンク）
+      description: スキーマ/トピックの真実。doc03（トピック表）/ doc08 / doc14 / doc15 等。
+      placeholder: docs/architecture/NN-....md（§...）
+    validations:
+      required: true

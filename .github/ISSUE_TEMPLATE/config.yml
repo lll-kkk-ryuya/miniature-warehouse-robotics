@@ -1,0 +1,12 @@
+# 空 Issue を禁止し、起票前に設計正本へ誘導する（.claude/rules/issue-and-pr-authoring.md §1）
+blank_issues_enabled: false
+contact_links:
+  - name: 📕 ドキュメントマップ（起票前に必読・設計正本）
+    url: https://github.com/lll-kkk-ryuya/miniature-warehouse-robotics/blob/main/docs/README.md
+    about: 起票前に docs/README.md で設計正本を特定し、Issue 本文に必ずリンクしてください。
+  - name: 📊 プロジェクト現況 STATUS.md
+    url: https://github.com/lll-kkk-ryuya/miniature-warehouse-robotics/blob/main/docs/STATUS.md
+    about: 現在の進行状況・依存・マージ順。重複/競合の有無を確認してください。
+  - name: 📐 Issue / PR 作成ルール
+    url: https://github.com/lll-kkk-ryuya/miniature-warehouse-robotics/blob/main/.claude/rules/issue-and-pr-authoring.md
+    about: 必須セクション・docs 整合・ラベル規約・簡素 issue 禁止。

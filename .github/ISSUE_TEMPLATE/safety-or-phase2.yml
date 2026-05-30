@@ -1,0 +1,51 @@
+name: "🛡 安全 / Phase-2 フォローアップ"
+description: "実装中に確定した安全リスク・Phase-2 ブロッカー（コード TODO の埋没防止）。"
+title: "[<track>] Phase-2: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        実機/本番前に潰すべき安全項目は埋没させないこと（`.claude/rules/safety.md`）。**実機デモ前に緊急停止ロジックをテスト**が原則（[ルール](../../.claude/rules/issue-and-pr-authoring.md)）。
+  - type: input
+    id: worktree_tag
+    attributes:
+      label: worktree タグ（先頭行）
+      placeholder: "[worktree: <name> | branch: <branch> | track: #N]"
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: 問題
+      description: 何が・どこで（ファイル/シンボル）・なぜ未確定か。
+    validations:
+      required: true
+  - type: textarea
+    id: risk
+    attributes:
+      label: リスク（安全影響）
+      description: 最悪ケース（誤 estop / 見逃し / 競合 等）と発生条件。
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 提案する解決（Phase-2）
+    validations:
+      required: true
+  - type: textarea
+    id: dod
+    attributes:
+      label: 受け入れ条件 (DoD)
+      value: |
+        - [ ]
+        - [ ] 実機での緊急停止テスト通過（prod 接続前・safety.md / doc16 §11）
+    validations:
+      required: true
+  - type: textarea
+    id: design_source
+    attributes:
+      label: 設計正本 / 参照（docs/ ・契約・関連 PR）
+      placeholder: docs/architecture/12-infrastructure-common.md / warehouse_interfaces.safety / PR #N
+    validations:
+      required: true
