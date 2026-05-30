@@ -246,7 +246,7 @@ WO（Webアプリ）  ←→  WO Bridge Node（ROS 2）  ←→  Nav2
 | ツール | 用途 | Phase |
 |--------|------|-------|
 | Docker Desktop | ROS 2 + Gazebo コンテナ実行 | Phase 0〜 |
-| `tiryoh/ros2-desktop-vnc:jazzy` | ROS 2 Jazzy + Gazebo Harmonic（ARM64対応） | Phase 0〜 |
+| `tiryoh/ros2-desktop-vnc:jazzy` | ROS 2 Jazzy + Gazebo Harmonic（gz-sim 8.11, ARM64-native。動作確認済 2026-05-30 / #43） | Phase 0〜 |
 | VS Code | ローカル開発 + Remote SSH（Jetson接続） | Phase 0〜 |
 | Git | バージョン管理 | Phase 0〜 |
 
