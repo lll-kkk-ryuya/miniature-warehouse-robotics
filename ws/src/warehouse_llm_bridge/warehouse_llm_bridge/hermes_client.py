@@ -116,9 +116,14 @@ class HermesClient(LLMClient):
         """
         # Lazy: langfuse.openai is a pip extra and traces the generation under the
         # active Bridge-owned trace (tracing.LangfuseTracer.turn); openai supplies
-        # the error types. Neither is needed by tests (they use a fake client).
-        import openai
-        from langfuse.openai import AsyncOpenAI
+        # the error types. Neither is needed by tests (they use a fake client). A
+        # missing extra degrades to Nav2-only (LLMUnavailableError) rather than
+        # crashing the commander cycle (doc08:287-288 fallback).
+        try:
+            import openai
+            from langfuse.openai import AsyncOpenAI
+        except ImportError as exc:
+            raise LLMUnavailableError(f"langfuse/openai not installed: {exc}") from exc
 
         client = AsyncOpenAI(base_url=self._base_url, api_key=self._api_key or "no-key")
         try:

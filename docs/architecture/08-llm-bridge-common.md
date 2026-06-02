@@ -353,16 +353,18 @@ langfuse.flush()  # 短命スコアラ（#6 wo）はプロセス終了前に flu
 
 ### trace 所有 — Bridge が所有（推奨・Pattern A）
 
-Hermes ビルトイン Langfuse に generation 所有を任せると、Bridge は自前 `trace_id` / `metadata` / managed-prompt をネイティブに乗せられない（pass-through 未確認）。よって **Bridge が `from langfuse.openai import OpenAI` を `base_url`=Hermes（OpenAI 互換）で用い、自分で generation/trace を所有**する（4社を単一コードパスで叩く比較公平性を保ったまま trace 所有問題を解消）。二重計上回避のため **Hermes 側 Langfuse プラグインは無効化**する（[doc13 §7.5](13-hermes-setup.md)）。各呼出に `trace_id`（`uuid7().hex` 32hex no-dash）・`metadata={"langfuse_tags": [provider, mode], "gen_id": ...}` を渡す。managed-prompt（Langfuse Prompt Management）連携が要る場合は `@observe(as_type="generation")` で generation を自作してラップする。**Provider access の決定（Vertex AI SDK 不採用・Hermes 単一経路）は [doc13 §7.6](13-hermes-setup.md)**。
+Hermes ビルトイン Langfuse に generation 所有を任せると、Bridge は自前 `trace_id` / `metadata` / managed-prompt をネイティブに乗せられない（pass-through 未確認）。よって **Bridge が `from langfuse.openai import AsyncOpenAI`（async＝scheduler が `await` で呼び `wait_for` でキャンセル可。Layer A）を `base_url`=Hermes（OpenAI 互換）で用い、自分で generation/trace を所有**する（4社を単一コードパスで叩く比較公平性を保ったまま trace 所有問題を解消）。二重計上回避のため **Hermes 側 Langfuse プラグインは無効化**する（[doc13 §7.5](13-hermes-setup.md)）。**採用実装（#78）**: 各 turn の `trace_id` は **`create_trace_id(seed=f"{run_id}:{gen_id}")`（決定的・32hex no-dash, doc13 §7.5(b)）** で採番し（#6 が同一 id を独立導出）、`session_id` と `metadata={"langfuse_tags": [provider, mode], "gen_id": ...}` を trace に付与する。tool 呼出は各々 span 化する（1 observation/tool, §比較検証ログ）。managed-prompt（Langfuse Prompt Management）連携が要る場合は `@observe(as_type="generation")` で generation を自作してラップする。**Provider access の決定（Vertex AI SDK 不採用・Hermes 単一経路）は [doc13 §7.6](13-hermes-setup.md)**。
 
 ### セッション命名規則
 
 ```python
-session_name = f"demo_{llm_name}_{scenario}_{datetime}"
-# 例: demo_claude_deadlock_20260715
+# 採用実装（#78, warehouse_llm_bridge/tracing.py build_session_id）
+session_id = f"run_{mode}_{provider}_{scenario}_{ts}"
+# 例: run_none_claude_deadlock_20260715_1430
+# run_id == session_id（trace seed の前半。doc13 §7.5(b)）
 ```
 
-同一シナリオの4社比較がLangfuse上でフィルタ・比較可能。
+同一シナリオの4社比較がLangfuse上でフィルタ・比較可能。`mode`=`traffic_mode`、`provider`/`scenario` は run-level ラベル（env `WAREHOUSE_PROVIDER`/`WAREHOUSE_SCENARIO`）。
 
 ### 比較指標
 

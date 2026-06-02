@@ -9,7 +9,12 @@ langfuse-free for tests.
 import asyncio
 
 import pytest
-from warehouse_llm_bridge.tracing import NoopTracer, build_session_id, trace_seed
+from warehouse_llm_bridge.tracing import (
+    LangfuseTracer,
+    NoopTracer,
+    build_session_id,
+    trace_seed,
+)
 
 
 @pytest.mark.unit
@@ -37,3 +42,19 @@ def test_noop_tracer_contexts_are_noop() -> None:
             pass
 
     asyncio.run(_run())  # must not raise
+
+
+@pytest.mark.unit
+def test_langfuse_tracer_fail_open_without_langfuse() -> None:
+    # langfuse is NOT a CI dependency: LangfuseTracer must degrade to a no-op and
+    # NEVER raise into the commander cycle (fail-open, doc08:314). Guards the
+    # ImportError path; the broad-except guards a v4 API mismatch at runtime too.
+    tracer = LangfuseTracer(
+        run_id="run_none_x_demo_t", session_id="run_none_x_demo_t", provider="x", mode="none"
+    )
+
+    async def _run() -> None:
+        async with tracer.turn(1), tracer.tool_span("dispatch_task", 1):
+            pass
+
+    asyncio.run(_run())  # must not raise even though langfuse is absent
