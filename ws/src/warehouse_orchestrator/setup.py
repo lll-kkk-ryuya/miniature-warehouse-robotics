@@ -18,6 +18,9 @@ setup(
     license="Apache-2.0",
     tests_require=["pytest"],
     entry_points={
-        "console_scripts": ["kpi_collector = warehouse_orchestrator.kpi_collector:main"],
+        "console_scripts": [
+            "kpi_collector = warehouse_orchestrator.kpi_collector:main",
+            "kpi_report = warehouse_orchestrator.kpi:main",
+        ],
     },
 )
