@@ -163,6 +163,8 @@ Mode C の場合は最終行が `t=5.0s` になる。
 
 問題は **Hermes が LLM ↔ MCP の往復を内部で持つこと**にある。LLM の tool call は **Warehouse MCP Server で即時実行され、その時点で Nav2 等にコマンドが発行される**。Bridge が Hermes の最終応答を受け取った後に検証してももう手遅れである。よって対策は3層で行う（R-35 を踏まえた更新。従来は A+B-3 の2層だった）:
 
+> 📌 **採用実装（S1, #4 / PR #70）= Bridge 仲介ディスパッチ（Bridge-mediated dispatch）**: 直前の「Hermes が LLM↔MCP の往復を内部で持つ＝サーバーサイド即時実行」は Hermes ネイティブのツール実行能力の説明であり、**本PJが S1 で採用したトランスポートではない**。凍結コード（`ws/src/warehouse_llm_bridge/warehouse_llm_bridge/action_map.py` が tool call 毎に `idempotency_key` を mint・`ws/src/warehouse_mcp_server/warehouse_mcp_server/tools.py:11-13` がその引数を verbatim 受理・#41）では、**LLM は Command JSON を返し、Bridge が `action_map` で MCP ツール呼出に写像して自らディスパッチする**。レイヤ C（Bridge が mint する冪等キー）は **Bridge が tool call を仲介しないと実現不能**なため、この採用形が凍結契約上の正である（docs-first: 凍結契約 > 例示）。Hermes ネイティブのサーバーサイド実行経路は将来の代替（キャンセル手段の確定＝**Issue #54** 後）。下表の3層は採用形（Bridge ディスパッチ）に対して機能する: B-3 の `gen_id` と C の `idempotency_key` はいずれも **Bridge が `action_map` で注入**する（system prompt の「gen_id を tool 引数に echo せよ」指示は Hermes ネイティブ経路向けの記述で、採用形では Bridge 注入が優先）。
+
 | 層 | 役割 |
 |---|---|
 | **A. HTTPキャンセル + `/stop` 明示呼出し** | Bridge タイムアウト（2.5s）時に進行中の Hermes run を中断する。**ただし HTTP 接続断だけでは Hermes のサーバー側 tool 実行は止まらない**（Hermes は専用の `POST /v1/runs/{id}/stop` を持つ＝接続断＝停止という設計ではない。R-35 part A）。したがって接続を切るだけでなく **`POST /v1/runs/{id}/stop` を明示的に呼ぶ**。後続 tool call の発火を止める最善努力レイヤ |
