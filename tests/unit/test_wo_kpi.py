@@ -10,9 +10,13 @@ import json
 import pytest
 from warehouse_orchestrator.audit_reader import parse_lines
 from warehouse_orchestrator.kpi import (
+    DistanceAccumulator,
     _percentile,
     completion_stats,
+    compute_efficiency,
     compute_kpis,
+    distance_traveled,
+    latest_gen_id,
     pair_completion_times,
 )
 
@@ -260,3 +264,70 @@ def test_send_to_charging_flows_through_both_dispatch_kpi_paths() -> None:
     assert len(records) == 1
     assert records[0].robot == "bot1"
     assert records[0].completion_time == pytest.approx(30.0)
+
+
+# ── efficiency (= 総移動距離, doc08 §比較指標) ─────────────────────────────────
+
+
+@pytest.mark.unit
+def test_distance_traveled_sums_euclidean_steps() -> None:
+    # (0,0)->(3,0)->(3,4) = 3 + 4 = 7
+    assert distance_traveled([(0.0, 0.0), (3.0, 0.0), (3.0, 4.0)]) == pytest.approx(7.0)
+
+
+@pytest.mark.unit
+def test_distance_traveled_edges() -> None:
+    assert distance_traveled([]) == 0.0
+    assert distance_traveled([(1.0, 2.0)]) == 0.0  # single pose → no movement
+
+
+@pytest.mark.unit
+def test_compute_efficiency_per_robot() -> None:
+    out = compute_efficiency(
+        {"bot1": [(0.0, 0.0), (0.0, 5.0)], "bot2": [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0)]}
+    )
+    assert out["bot1"] == pytest.approx(5.0)
+    assert out["bot2"] == pytest.approx(2.0)
+
+
+@pytest.mark.unit
+def test_distance_accumulator_incremental() -> None:
+    acc = DistanceAccumulator()
+    acc.add("bot1", 0.0, 0.0)
+    assert acc.totals() == {"bot1": 0.0}  # first pose seeds, no distance yet
+    acc.add("bot1", 0.0, 3.0)
+    acc.add("bot1", 4.0, 3.0)
+    acc.add("bot2", 10.0, 10.0)
+    totals = acc.totals()
+    assert totals["bot1"] == pytest.approx(7.0)
+    assert totals["bot2"] == 0.0
+    # totals() returns a copy — mutating it must not corrupt the accumulator
+    totals["bot1"] = 999.0
+    assert acc.totals()["bot1"] == pytest.approx(7.0)
+
+
+# ── latest_gen_id (trace seed, #73 / doc13:481) ──────────────────────────────
+
+
+@pytest.mark.unit
+def test_latest_gen_id_ignores_stale_reject_and_picks_max() -> None:
+    # received_gen (stale reject) is NOT surfaced as gen_id → no trace seed (review fix).
+    stale_only = _entries(
+        [
+            _rec(
+                "dispatch_task",
+                "rejected",
+                detail={"reason": "stale_generation", "received_gen": 5},
+            )
+        ]
+    )
+    assert latest_gen_id(stale_only) is None
+    assert latest_gen_id(_entries([])) is None
+    # once executed rows carry detail.gen_id, the highest is returned.
+    with_gen = _entries(
+        [
+            _rec("dispatch_task", "executed", detail={"task_id": "nav_1", "gen_id": 3}),
+            _rec("dispatch_task", "executed", detail={"task_id": "nav_2", "gen_id": 8}),
+        ]
+    )
+    assert latest_gen_id(with_gen) == 8

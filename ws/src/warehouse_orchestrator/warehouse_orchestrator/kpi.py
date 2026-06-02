@@ -15,21 +15,21 @@ Scope of THIS Phase-0.5 groundwork slice:
   (frozen path ``warehouse_interfaces.paths.audit_log_path()``; record shape is
   illustrative, doc15:344-360 / warehouse_mcp_server/audit.py:34-43).
 * **result KPI family** — executed/rejected/error tallies per tool & per robot,
-  rejection-reason breakdown, and derived acceptance/error rates. Maps to doc08:357
+  rejection-reason breakdown, and derived acceptance/error rates. Maps to doc08:372
   (判断の正確性 → score "result") and doc06:265 (正確性・エラー率). These are
   descriptive tallies of documented fields, not a frozen score schema.
 * **cancelled exclusion** — exclude ``cancel_task`` rows AND any dispatch ``task_id``
   that has a later ``cancel_task`` (an audit-level interpretation of the
-  Langfuse-trace-level rule doc08:248; flagged in CLAUDE.md, pending doc
+  Langfuse-trace-level rule doc08:250; flagged in CLAUDE.md, pending doc
   confirmation). Toggle with ``exclude_cancelled``.
 * **task_completion_time** — SCAFFOLD ONLY. :func:`pair_completion_times` is pure
   arithmetic pairing a dispatch start with an *externally supplied* completion
   timestamp. The audit log carries **no** completion event (audit.py records
   issuance only); the live source is Nav2 goal-reached keyed by ``trace_id``
-  (doc08:336, doc13:472) — deferred to Phase 3. Tests exercise it with synthetic
+  (doc08:338, doc13:481) — deferred to Phase 3. Tests exercise it with synthetic
   completion events.
 
-Deferred (NOT in this slice): ``efficiency`` (= 総移動距離, doc08:359; needs odometry
+Deferred (NOT in this slice): ``efficiency`` (= 総移動距離, doc08:374; needs odometry
 distance), the live Langfuse score-send (needs ``trace_id`` — see
 :mod:`langfuse_sink`), and freezing an audit/KPI schema in ``warehouse_interfaces``
 (a future ``contract`` PR; see CLAUDE.md).
@@ -37,6 +37,7 @@ distance), the live Langfuse score-send (needs ``trace_id`` — see
 
 import argparse
 import json
+import math
 import sys
 from collections import Counter
 from collections.abc import Sequence
@@ -64,6 +65,17 @@ READONLY_TOOLS = frozenset({"get_fleet_status", "get_task_queue"})
 CANCEL_TOOL = "cancel_task"
 
 
+def latest_gen_id(entries: Sequence[AuditEntry]) -> int | None:
+    """The highest ``gen_id`` in the audit log, or ``None`` — the node's trace seed (#73).
+
+    ``AuditEntry.gen_id`` reads only ``detail.gen_id`` (never a stale-reject ``received_gen``),
+    so this returns ``None`` until mcp_server adds ``gen_id`` to executed rows (predeclared
+    #4/#73), keeping live score-send inert as documented.
+    """
+    gens = [e.gen_id for e in entries if e.gen_id is not None]
+    return max(gens) if gens else None
+
+
 def _percentile(values: Sequence[float], pct: float) -> float | None:
     """Linear-interpolation percentile (``pct`` in 0-100); ``None`` for empty input."""
     if not values:
@@ -77,6 +89,55 @@ def _percentile(values: Sequence[float], pct: float) -> float | None:
     if low == high:
         return ordered[low]
     return ordered[low] + (ordered[high] - ordered[low]) * (rank - low)
+
+
+# ── efficiency (= 総移動距離, doc08 §比較指標; source /bot{n}/odom, doc09:79) ──────────
+
+
+def distance_traveled(poses: Sequence[tuple[float, float]]) -> float:
+    """Total path length = sum of consecutive Euclidean deltas over ``(x, y)`` poses."""
+    total = 0.0
+    previous: tuple[float, float] | None = None
+    for pose in poses:
+        if previous is not None:
+            total += math.hypot(pose[0] - previous[0], pose[1] - previous[1])
+        previous = pose
+    return total
+
+
+def compute_efficiency(
+    per_robot_poses: dict[str, Sequence[tuple[float, float]]],
+) -> dict[str, float]:
+    """Per-robot total travel distance (the ``efficiency`` NUMERIC score, doc08 §比較指標)."""
+    return {robot: distance_traveled(poses) for robot, poses in per_robot_poses.items()}
+
+
+@dataclass
+class DistanceAccumulator:
+    """Incrementally sums travel distance per robot from a live ``/bot{n}/odom`` stream.
+
+    Fed one pose per Odometry message by the ``kpi_collector`` node; kept here as pure logic
+    so it is unit-testable without rclpy (doc16 §11). ``efficiency`` = 総移動距離 (doc08
+    §比較指標; odom source doc09:79).
+    """
+
+    _totals: dict[str, float] = field(default_factory=dict)
+    _last: dict[str, tuple[float, float]] = field(default_factory=dict)
+
+    def add(self, robot: str, x: float, y: float) -> None:
+        """Add one ``(x, y)`` pose for ``robot``, accumulating the step distance."""
+        last = self._last.get(robot)
+        if last is not None:
+            self._totals[robot] = self._totals.get(robot, 0.0) + math.hypot(
+                x - last[0], y - last[1]
+            )
+        else:
+            self._totals.setdefault(robot, 0.0)
+        self._last[robot] = (x, y)
+
+    def totals(self) -> dict[str, float]:
+        """A copy of the per-robot accumulated distances (metres)."""
+        return dict(self._totals)
 
 
 @dataclass
@@ -128,7 +189,7 @@ class CompletionRecord:
 
 @dataclass
 class CompletionStats:
-    """Aggregate ``task_completion_time`` stats (doc08:358). Empty until a live
+    """Aggregate ``task_completion_time`` stats (doc08:373). Empty until a live
     completion source is wired in Phase 3 — see :func:`pair_completion_times`."""
 
     count: int
@@ -226,7 +287,7 @@ def compute_kpis(
     """Aggregate the ``result`` KPI family from audit entries.
 
     ``exclude_cancelled`` drops cancel_task rows and later-cancelled dispatch rows
-    (doc08:248 mapped to the audit stream). ``completions`` is the optional
+    (doc08:250 mapped to the audit stream). ``completions`` is the optional
     externally supplied ``{task_id: completion_epoch}`` map for the
     ``task_completion_time`` scaffold — ``None`` (the live default until Phase 3)
     leaves :attr:`KpiReport.completion` as ``None``.
@@ -292,7 +353,7 @@ def pair_completion_times(
     SCAFFOLD: the start timestamp is the earliest executed ``dispatch_task`` /
     ``send_to_charging`` row for a ``task_id`` (audit.py timestamps issuance). The
     ``completions`` map MUST come from a live completion source — Nav2 goal-reached
-    keyed by ``trace_id`` (doc08:336, doc13:472) — which does not exist before
+    keyed by ``trace_id`` (doc08:338, doc13:481) — which does not exist before
     Phase 3, so this is exercised only with synthetic events today. Completions with
     no matching dispatch, or that precede the dispatch, are skipped defensively.
     """
