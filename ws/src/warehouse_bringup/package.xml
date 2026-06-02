@@ -7,6 +7,17 @@
   <maintainer email="ryu3124ruyu@gmail.com">kawaguchiryuya</maintainer>
   <license>Apache-2.0</license>
 
+  <!-- Bring-up package: launch-time deps on the nodes it composes (doc16:65). -->
+  <exec_depend>nav2_amcl</exec_depend>
+  <exec_depend>nav2_controller</exec_depend>
+  <exec_depend>nav2_planner</exec_depend>
+  <exec_depend>nav2_behaviors</exec_depend>
+  <exec_depend>nav2_bt_navigator</exec_depend>
+  <exec_depend>nav2_map_server</exec_depend>
+  <exec_depend>nav2_lifecycle_manager</exec_depend>
+  <exec_depend>nav2_common</exec_depend>
+  <exec_depend>twist_mux</exec_depend>
+  <exec_depend>warehouse_traffic</exec_depend>
 
   <test_depend>python3-pytest</test_depend>
 

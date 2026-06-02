@@ -1,0 +1,28 @@
+# twist_mux priorities — CANONICAL home (doc16 §5, doc16:118-119; #40).
+#
+# Relocated verbatim from ws/src/warehouse_safety/config/twist_mux.yaml (#5/PR#39),
+# whose TODO(nav-traffic) marker named this as the final home. Values are the
+# FROZEN safety contract (doc15:385-396) and MUST NOT change on relocation: the
+# Emergency Guardian (priority 100) must outrank Nav2 (priority 10) so a zero-Twist
+# stop on /cmd_vel/emergency cannot be overwritten by Nav2 path-following (a
+# last-writer-wins race on /cmd_vel, doc15).
+#
+# PER-ROBOT: nav2_bringup.launch.py launches ONE twist_mux instance per bot inside
+# namespace /bot{n}. Topic names are RELATIVE (no leading "/") so they resolve to
+# /bot{n}/cmd_vel/emergency and /bot{n}/cmd_vel/nav2; the muxed output goes to
+# /bot{n}/cmd_vel (the topic the sim ros_gz_bridge + real base consume). This one
+# file is therefore reusable for bot1 and bot2.
+#
+# Producers: Emergency Guardian -> /bot{n}/cmd_vel/emergency (warehouse_safety);
+# Nav2 controller_server -> /bot{n}/cmd_vel/nav2 (remap in nav2_bringup.launch.py).
+twist_mux:
+  ros__parameters:
+    topics:
+      emergency:
+        topic: cmd_vel/emergency
+        timeout: 0.5
+        priority: 100
+      nav2:
+        topic: cmd_vel/nav2
+        timeout: 0.5
+        priority: 10
