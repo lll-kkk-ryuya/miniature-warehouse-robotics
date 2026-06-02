@@ -1,0 +1,128 @@
+"""Situation assembly: State Cache snapshot -> commander Situation JSON.
+
+The State Cache (warehouse_state, doc12) writes a frozen ``StateSnapshot``
+(timestamp + per-robot ``RobotSnapshot``) to ``state.json``. The LLM Bridge reads
+it and ENRICHES each robot into a ``RobotState`` by computing two fields the
+snapshot does not carry (doc mode-a/08a:89-95):
+
+* ``predicted_position_3s`` — linear extrapolation from pose + velocity
+  (08a:99-103). Computed here (NOT in State Cache, since Mode C does not need it).
+* ``obstacle_ahead`` — bool derived from ``obstacle_distance`` vs the configured
+  ``emergency_min_distance`` (08a:95, illustrative threshold; sourced from config
+  so the number is not invented here).
+
+The Bridge also supplies ``turn``, ``gen_id`` and ``warehouse.layout`` (none of
+which are in ``StateSnapshot``, schemas.py:81-90) plus the bridge-maintained
+``history`` / ``pending_tasks``. The frozen ``Situation``/``RobotState`` contract
+(warehouse_interfaces.schemas) wins over any illustrative doc JSON: this builder
+emits exactly those models. Pure Python (schemas + math) — no rclpy, no network.
+"""
+
+import math
+
+from warehouse_interfaces.schemas import (
+    Position,
+    RobotSnapshot,
+    RobotState,
+    Situation,
+    StateSnapshot,
+    Warehouse,
+)
+from warehouse_interfaces.stores import StateStore
+
+# Illustrative layout string for the commander prompt (doc mode-a/08a:51-53;
+# diorama 1.8m x 0.9m, .claude/CLAUDE.md). Coordinates are config-sourced and
+# pending diorama measurement; this is descriptive context for the LLM only.
+DEFAULT_LAYOUT = "1.8m x 0.9m, 3 shelves, 2 aisles (200mm, no passing)"
+
+# 3-second linear-extrapolation horizon (doc mode-a/08a:99-103, 3.0 s).
+PREDICTION_HORIZON_S = 3.0
+
+# Fallback obstacle_ahead threshold [m] if config omits it (config
+# safety.emergency_min_distance = 0.3, doc12 DISTANCE_THRESHOLD).
+DEFAULT_EMERGENCY_MIN_DISTANCE = 0.3
+
+
+class SituationBuilder:
+    """Read ``state.json`` (StateStore) and build a ``Situation`` JSON dict.
+
+    Pure of ROS: ``state_store`` is the frozen :class:`StateStore` IF (a
+    file-backed default in production, a fake in tests), so the same builder runs
+    against a fake ``state.json`` for upfront verification (doc16 §11).
+    """
+
+    def __init__(
+        self,
+        state_store: StateStore,
+        *,
+        layout: str = DEFAULT_LAYOUT,
+        emergency_min_distance: float = DEFAULT_EMERGENCY_MIN_DISTANCE,
+        prediction_horizon_s: float = PREDICTION_HORIZON_S,
+    ) -> None:
+        """Wire the builder; thresholds come from config (not hardcoded here)."""
+        self._state_store = state_store
+        self._layout = layout
+        self._emergency_min_distance = emergency_min_distance
+        self._horizon = prediction_horizon_s
+
+    def build(
+        self,
+        *,
+        turn: int,
+        gen_id: int,
+        history: list[dict] | None = None,
+        pending_tasks: list[dict] | None = None,
+    ) -> dict | None:
+        """Return the Situation JSON dict, or ``None`` if no snapshot exists yet.
+
+        ``None`` (no ``state.json`` written) tells the scheduler to skip the cycle
+        rather than send the LLM an empty fleet. Validates the read snapshot
+        against the frozen ``StateSnapshot`` (a corrupt snapshot raises, surfacing
+        producer drift instead of silently shipping garbage to the LLM).
+        """
+        raw = self._state_store.read()
+        if raw is None:
+            return None
+        snapshot = StateSnapshot.model_validate(raw)
+        robots = {bot: self._enrich(snap) for bot, snap in snapshot.robots.items()}
+        situation = Situation(
+            timestamp=snapshot.timestamp,
+            turn=turn,
+            gen_id=gen_id,
+            warehouse=Warehouse(layout=self._layout),
+            robots=robots,
+            pending_tasks=pending_tasks or [],
+            history=history or [],
+        )
+        return situation.model_dump()
+
+    def _enrich(self, snap: RobotSnapshot) -> RobotState:
+        """Lift a raw ``RobotSnapshot`` into a ``RobotState`` (L2 -> L1, 08a:93-95)."""
+        return RobotState(
+            position=snap.position,
+            velocity=snap.velocity,
+            heading=snap.heading,
+            status=snap.status,
+            battery=snap.battery,
+            obstacle_distance=snap.obstacle_distance,
+            predicted_position_3s=self._predict(snap),
+            obstacle_ahead=self._obstacle_ahead(snap.obstacle_distance),
+            current_task=None,  # bridge-owned; tracked in a later slice (doc12:248)
+        )
+
+    def _predict(self, snap: RobotSnapshot) -> Position:
+        """Linear-extrapolate the 3s position from pose + velocity (08a:99-103).
+
+        Approximate (ignores turns / walls / goal stops, 08a:113-119); the LLM
+        uses it only for "approaching vs separating" intuition — precise collision
+        avoidance is Nav2's job (50ms).
+        """
+        reach = snap.velocity.linear * self._horizon
+        return Position(
+            x=snap.position.x + reach * math.cos(snap.heading),
+            y=snap.position.y + reach * math.sin(snap.heading),
+        )
+
+    def _obstacle_ahead(self, obstacle_distance: float | None) -> bool:
+        """Derive ``obstacle_ahead`` from the nearest-obstacle distance (08a:95)."""
+        return obstacle_distance is not None and obstacle_distance < self._emergency_min_distance
