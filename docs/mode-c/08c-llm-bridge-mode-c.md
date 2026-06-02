@@ -87,6 +87,26 @@ Mode Cでは交通管理フィールドを省略し、Open-RMFからの交通状
 
 Mode Cのsituation JSONはMode A/B版より約200トークン少ない（predicted_position_3s、velocity、heading、obstacle_ahead、obstacle_distance を省略）。
 
+### Mode C RobotState 正規形（凍結契約）
+
+Mode C の `situation.robots[bot]`（凍結契約 `warehouse_interfaces.schemas.RobotState`）は、交通管理を Open-RMF が担うため**戦略判断に必要な最小フィールドのみ**を持つ。上記 JSON 例（§入力）のとおり `position` / `status` / `current_task` / `battery` を載せ、`velocity` / `heading` / `predicted_position_3s` / `obstacle_ahead` / `obstacle_distance` は**省略**する。
+
+| フィールド | Mode A/B | Mode C | 凍結契約 `RobotState` |
+|---|---|---|---|
+| `position` | 必須 | 必須 | 必須 |
+| `status` | 必須 | 必須 | 必須 |
+| `battery` | 必須 | 必須 | 必須（0–100 検証） |
+| `current_task` | 任意 | 付与 | `str \| None = None` |
+| `velocity` | 付与 | **省略** | `Velocity \| None = None` |
+| `heading` | 付与 | **省略** | `float \| None = None` |
+| `predicted_position_3s` | 付与 | 省略 | `Position \| None = None` |
+| `obstacle_ahead` | 付与 | 省略 | `bool = False` |
+| `obstacle_distance` | 付与 | 省略 | `float \| None = None` |
+
+**契約上の含意**: 単一の凍結 `RobotState` が Mode A/B（司令官が `velocity`/`heading` を deadlock 検出・`predicted_position_3s` 計算に使用＝[08a §入力](../mode-a/08a-llm-bridge-mode-a.md)）と Mode C（省略）の両方を表現できるよう、`velocity`/`heading` を **Optional**（`| None = None`）とする。State Cache が書く生状態 `RobotSnapshot`（L2→L1 契約、`/tmp/warehouse/state.json`、`warehouse_interfaces.schemas.RobotSnapshot`）は odom から常に供給されるため **required を維持**する（[doc12 State Cache](../architecture/12-infrastructure-common.md)）。本正規形が `RobotState.velocity`/`heading` を Optional 化する contract 変更の設計正本。
+
+**生成側（producer / #4）の責務 — 直列化で省略する**: 上記 Optional 化は省略を**許可するだけ**で、~200トークン削減は自動では達成されない。pydantic v2 は既定で `None` フィールドも出力するため（[pydantic serialization 公式doc](https://docs.pydantic.dev/latest/concepts/serialization/)）、LLM Bridge は Mode C の `situation` を**戦略フィールドのみ set した状態で構築し `model_dump_json(exclude_unset=True)` で直列化**する（実測で各 robot は `position`/`status`/`current_task`/`battery` のみ残る）。**`exclude_none=True` では不十分**: `obstacle_ahead` の既定値 `False` は `None` でないため出力に残ってしまう。`exclude_unset` は「明示的に set されたフィールドのみ出力」（`model_fields_set` 連動）なので、未設定の省略対象（velocity/heading/predicted_position_3s/obstacle_ahead/obstacle_distance）が全て落ちる。
+
 ## 出力: LLMが返す指示データ（Mode C）
 
 Claudeはタスク割当のみ。経路選択・衝突回避・待機指示はOpen-RMFが自動処理するため、`via` パラメータは不要。
