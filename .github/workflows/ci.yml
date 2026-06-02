@@ -54,14 +54,23 @@ jobs:
         run: |
           python3 - <<'PY'
           import re, subprocess, sys
-          # 各トラック package。共有パッケージ（どのトラックも import 可）は本リストに含めない:
-          #   - warehouse_interfaces … 凍結契約（schemas / stores / paths / safety, parallel-workflow §2.1）
-          #   - warehouse_description … ロボット記述の単一ソース（URDF / frame_id / footprint / 寸法。
-          #     sim / nav / bringup が同一を参照, doc16 §9 / parallel-workflow §2.1）
-          pkgs = ["warehouse_safety", "warehouse_state", "warehouse_sim",
-                  "warehouse_traffic", "warehouse_llm_bridge",
-                  "warehouse_mcp_server", "warehouse_nav2_bridge", "warehouse_orchestrator",
-                  "warehouse_bringup", "warehouse_teleop"]
+          # Track membership per doc16 §9 (branch→package table, 16-...:181-190). A package
+          # may import packages in its OWN track (they are owned by one branch and ship
+          # together); importing ANOTHER track's internal package is forbidden
+          # (parallel-workflow.md §2.1 "他トラック内部"). Keep this map in sync with doc16 §9.
+          # Shared packages are importable by all and are intentionally absent from any track:
+          #   - warehouse_interfaces … 凍結契約（schemas / stores / paths / safety）
+          #   - warehouse_description … ロボット記述の単一ソース（URDF / frame_id / footprint / 寸法）
+          tracks = {
+              "skeleton": {"warehouse_bringup"},
+              "sim": {"warehouse_sim"},
+              "safety-state": {"warehouse_safety", "warehouse_state"},
+              "nav-traffic": {"warehouse_traffic"},
+              "llm-bridge": {"warehouse_llm_bridge", "warehouse_mcp_server", "warehouse_nav2_bridge"},
+              "wo": {"warehouse_orchestrator"},
+              "teleop": {"warehouse_teleop"},
+          }
+          pkg_track = {p: t for t, ps in tracks.items() for p in ps}
           out = subprocess.run(["git", "ls-files", "ws/src/"],
                                capture_output=True, text=True).stdout.split()
           files = [f for f in out if f.endswith(".py")]
@@ -71,17 +80,18 @@ jobs:
               if not m:
                   continue
               owner = m.group(1)
+              owner_track = pkg_track.get(owner)  # None for shared pkgs (interfaces/description)
               try:
                   txt = open(f, encoding="utf-8").read()
               except OSError:
                   continue
-              for p in pkgs:
-                  if p == owner:
-                      continue
+              for p, ptrack in pkg_track.items():
+                  if p == owner or ptrack == owner_track:
+                      continue  # self / same-track import is allowed (doc16 §9)
                   if re.search(rf"(?m)^\s*(from|import)\s+{p}\b", txt):
-                      bad.append(f"{f}: imports {p}（他トラック内部）")
+                      bad.append(f"{f}: imports {p}（他トラック内部 / track={ptrack}）")
           if bad:
-              print("::error::他トラック内部 import を検出（共有は warehouse_interfaces / warehouse_description のみ・parallel-workflow.md §2.1）:")
+              print("::error::他トラック内部 import を検出（同一トラック内は可・共有は warehouse_interfaces / warehouse_description のみ・parallel-workflow.md §2.1 / doc16 §9）:")
               print("\n".join(bad))
               sys.exit(1)
           PY
