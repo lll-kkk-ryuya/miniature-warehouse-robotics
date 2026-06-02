@@ -23,7 +23,7 @@
 
 ## 前提・未確定 (TODO / 設計の空白)
 - # TODO(Phase 3, 11a:99/118-122) **aisle/route トポロジが docs 未定義**。`route_A`/`route_B` は frozen `KNOWN_LOCATIONS`（locations.py:11-23）に無い→凍結キーを発明せず `route_planner` を注入。`plan_route` 本体と lock 解放トリガ（候補 A=goal到達+C=timeout 推奨, timeout 値未定）も Phase 3 確定。
-- # TODO(Phase 2, R-49 / doc09:169) MPPI チューニングは要再調整（`warehouse_bringup/config/nav2_params.yaml`）。「yaml 1行」は不正確（07:264）。
+- # TODO(Phase 2, R-49 / doc09:171 note / 07:264) MPPI チューニングは要再調整（`warehouse_bringup/config/nav2_params.yaml`）。「yaml 1行」は不正確。
 - # TODO(Phase 1/2) VirtualScan `scan.header.frame_id = bot{n}/base_link`（11a:242）と実 scan の `bot{n}/lidar_link`（xacro:113）は別フレーム。obstacle_layer が両 source を TF 変換する前提。実機で確認。
 - # TODO(Phase 2, R-39) `amcl_pose` は 5-10Hz（実効 100-200ms stale）。VirtualScan の遅延幻影を要評価（freshness ガード候補）。
 - # TODO(Phase 4) Mode C（open-rmf）= VirtualScan 非起動 + `observation_sources` から virtual_scan 除外（11a:317）。RMFTrafficManager は Mode C トラック（11c:59-83）。

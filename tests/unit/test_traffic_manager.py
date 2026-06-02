@@ -142,3 +142,16 @@ def test_factory_open_rmf_not_implemented() -> None:
 def test_factory_unknown_mode_raises() -> None:
     with pytest.raises(ValueError, match="unknown traffic_mode"):
         make_traffic_manager("bogus")
+
+
+@pytest.mark.unit
+def test_simple_no_partial_lock_when_later_aisle_blocked() -> None:
+    # Two-phase check-all-then-lock-all (doc11a:100-109): if ANY aisle in the route
+    # is occupied, NO aisle is locked. Guards against a lock-as-you-go refactor that
+    # would leak a lock on the earlier aisle.
+    mgr = SimpleTrafficManager(route_planner=_one_route("route_A", "route_B"))
+    mgr.aisle_locks["route_B"] = "bot9"  # pre-occupy the LATER aisle in the route
+    result = mgr.submit_task("bot1", "berth_A", "shelf_1")
+    assert result["status"] == "waiting"
+    assert result["wait_for"] == "route_B"
+    assert mgr.aisle_locks.get("route_A") is None  # earlier aisle must NOT be locked

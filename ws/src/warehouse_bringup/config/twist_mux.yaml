@@ -2,7 +2,7 @@
 #
 # Relocated verbatim from ws/src/warehouse_safety/config/twist_mux.yaml (#5/PR#39),
 # whose TODO(nav-traffic) marker named this as the final home. Values are the
-# FROZEN safety contract (doc15:385-396) and MUST NOT change on relocation: the
+# FROZEN safety contract (doc15:389-395) and MUST NOT change on relocation: the
 # Emergency Guardian (priority 100) must outrank Nav2 (priority 10) so a zero-Twist
 # stop on /cmd_vel/emergency cannot be overwritten by Nav2 path-following (a
 # last-writer-wins race on /cmd_vel, doc15).
@@ -14,7 +14,9 @@
 # file is therefore reusable for bot1 and bot2.
 #
 # Producers: Emergency Guardian -> /bot{n}/cmd_vel/emergency (warehouse_safety);
-# Nav2 controller_server -> /bot{n}/cmd_vel/nav2 (remap in nav2_bringup.launch.py).
+# Nav2 controller_server AND behavior_server (recoveries) -> /bot{n}/cmd_vel/nav2
+# (both remapped in nav2_bringup.launch.py — every Nav2 velocity producer must
+# enter via this prio-10 input, never write /bot{n}/cmd_vel directly).
 twist_mux:
   ros__parameters:
     topics:

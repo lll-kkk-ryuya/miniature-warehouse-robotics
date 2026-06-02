@@ -70,10 +70,14 @@ def build_ranges(
     ``max(distance - robot_radius, range_min)`` so the phantom sits at the other
     robot's near edge (doc11a:250-256). ``angle_min = -pi`` so index 0 maps to a
     bearing of ``-pi`` (doc11a:243-251).
+
+    ``bearing`` may be unnormalized (atan2 - own_yaw is in (-2pi, 2pi)); ``floor``
+    + modulo wraps it to the correct ray. (doc11a's example uses ``int``, which
+    truncates toward zero and is off by one ray for bearings below -pi.)
     """
     increment = 2.0 * math.pi / num_rays
     ranges = [math.inf] * num_rays
-    center_idx = int((bearing + math.pi) / increment) % num_rays
+    center_idx = math.floor((bearing + math.pi) / increment) % num_rays
     half_width = int(angular_width / increment)
     near_edge = max(distance - robot_radius, range_min)
     for i in range(-half_width, half_width + 1):

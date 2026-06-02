@@ -2,20 +2,20 @@
 #
 # Controller = MPPI (Model Predictive Path Integral). doc09:167-189 chooses MPPI
 # over DWB for the 200mm bottleneck aisle + smooth motion; R-49
-# (docs/shared/07-research-notes.md:264) corrects doc09:169's "yaml 1-line swap"
-# claim — the WHOLE controller param block must be replaced and re-tuned, which is
-# what this file does. A commented DWB block is kept at the bottom so the
-# controller can be swapped back for first-bring-up (doc09:187 Phase 2前半).
+# (docs/shared/07-research-notes.md:264; doc09:171 note) corrects the discarded
+# "yaml 1-line swap" claim — the WHOLE controller param block must be replaced and
+# re-tuned, which is what this file does. A commented DWB block is kept at the
+# bottom so the controller can be swapped back for first-bring-up (doc09:189 Phase 2前半).
 #
 # MULTI-ROBOT: this one file is launched once per robot inside namespace /bot{n}
-# (doc09:271). Topics are RELATIVE (no leading "/") so they resolve under the
+# (doc09:273). Topics are RELATIVE (no leading "/") so they resolve under the
 # namespace. Frames use the "<robot_namespace>" token, substituted to "bot1" /
-# "bot2" by RewrittenYaml in nav2_bringup.launch.py (robot_state_publisher already
+# "bot2" by ReplaceString in nav2_bringup.launch.py (robot_state_publisher already
 # emits bot{n}/-prefixed TF via frame_prefix, warehouse_description). The "map"
-# frame is shared/global (doc09:255,271).
+# frame is shared/global (doc09:257,273).
 #
 # SPEED CAP: every linear-velocity limit below is <= MAX_LINEAR_VELOCITY = 0.3 m/s
-# (FROZEN, warehouse_interfaces/safety.py:18; doc09:304). The operational cap is
+# (FROZEN, warehouse_interfaces/safety.py:18; doc09:306). The operational cap is
 # config safety.max_linear_velocity (config/warehouse.base.yaml:15, validated
 # <= 0.3 by load_config). The launch passes it in as the "max_linear_velocity"
 # substitution so this file never hardcodes a higher value. # TODO(Phase 2): wire
@@ -65,10 +65,11 @@ bt_navigator:
 controller_server:
   ros__parameters:
     use_sim_time: true
-    controller_frequency: 20.0  # 20 Hz / 50 ms (doc09:184,192,224)
-    # Jazzy publishes TwistStamped by default; the sim bridge (gz.msgs.Twist) and
-    # twist_mux input expect plain Twist, so keep cmd_vel unstamped. The launch
-    # remaps cmd_vel -> cmd_vel/nav2 (twist_mux priority 10 input, twist_mux.yaml).
+    controller_frequency: 20.0  # 20 Hz / 50 ms (doc09:186,194,226-227)
+    # Jazzy defaults to plain Twist (enable_stamped_cmd_vel=false). The sim bridge
+    # (gz.msgs.Twist) and twist_mux input expect plain Twist, so set it explicitly
+    # — the contract survives a future Kilted+ bump where the default flips to
+    # TwistStamped. The launch remaps cmd_vel -> cmd_vel/nav2 (twist_mux priority 10).
     enable_stamped_cmd_vel: false
     min_x_velocity_threshold: 0.001
     min_y_velocity_threshold: 0.5
@@ -208,7 +209,7 @@ local_costmap:
         plugin: "nav2_costmap_2d::InflationLayer"
         # 200mm bottleneck aisle: keep inflation tight or the planner can't fit
         # (robot diameter 0.15 in a 0.2 m aisle). # TODO(Phase 2 実測): tune for
-        # the bottleneck (doc04 200mm, doc09:181).
+        # the bottleneck (doc04 200mm, doc09:183).
         inflation_radius: 0.10
         cost_scaling_factor: 3.0
 
@@ -268,7 +269,7 @@ behavior_server:
     global_frame: "map"
     robot_base_frame: "<robot_namespace>/base_link"
     behavior_plugins: ["spin", "backup", "drive_on_heading", "wait"]
-    # Recovery behaviors (doc09:240; doc11a:384 Nav2 recovery x3 before escalation).
+    # Recovery behaviors (doc09:242; doc11a:384 Nav2 recovery x3 before escalation).
     spin:
       plugin: "nav2_behaviors::Spin"
     backup:

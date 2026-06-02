@@ -14,8 +14,11 @@ Composition (doc09:230-271, doc11a:166-321, doc16 §5):
     substituted per bot via ReplaceString).
   - per bot{n}: twist_mux (emergency prio100 > nav2 prio10, twist_mux.yaml),
     muxed output remapped cmd_vel_out -> cmd_vel => /bot{n}/cmd_vel (the topic the
-    sim ros_gz_bridge + real base consume). The controller's cmd_vel is remapped
-    to cmd_vel/nav2 so it enters twist_mux as the priority-10 input.
+    sim ros_gz_bridge + real base consume). BOTH Nav2 velocity producers —
+    controller_server and behavior_server (recoveries) — remap cmd_vel ->
+    cmd_vel/nav2 so they enter twist_mux as the priority-10 input (a producer that
+    skipped the remap would write /bot{n}/cmd_vel directly and bypass the mux,
+    defeating the Emergency Guardian's prio-100 override).
   - VirtualScan x2, gated OFF under traffic_mode == open-rmf (doc11a:317): Mode C
     (Open-RMF) handles traffic, so the Multi-Robot Costmap Layer is not started.
 
@@ -95,6 +98,12 @@ def _per_robot_group(robot: str, params_file, map_yaml, use_sim_time, autostart,
             name="behavior_server",
             output="screen",
             parameters=[configured_params],
+            # Recovery velocities (Spin/BackUp/DriveOnHeading) ALSO go through
+            # twist_mux as the priority-10 nav2 input — NOT directly to
+            # /bot{n}/cmd_vel — or they would bypass the mux and let a Nav2
+            # recovery overwrite the Emergency Guardian's prio-100 e-stop. Matches
+            # controller_server and the official Nav2 Jazzy navigation_launch.py.
+            remappings=[("cmd_vel", "cmd_vel/nav2")],
         ),
         Node(
             package="nav2_bt_navigator",

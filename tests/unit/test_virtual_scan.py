@@ -78,3 +78,34 @@ def test_build_ranges_wedge_width() -> None:
     marked = sum(1 for r in ranges if r == near)
     expected = 2 * int(vsl.ANGULAR_WIDTH / vsl.ANGLE_INCREMENT) + 1
     assert marked == expected
+
+
+@pytest.mark.unit
+def test_build_ranges_wedge_is_29_rays() -> None:
+    # Literal count (independent of the impl formula): ANGULAR_WIDTH=0.26 rad
+    # (doc11a:193, labeled "±15°"≈0.2618) -> half_width int(0.26/(2π/360))=14 ->
+    # 2*14+1 = 29 rays (~29°), intentionally just under a literal ±15° (=31 rays).
+    ranges = vsl.build_ranges(0.5, 0.0)
+    near = max(0.5 - vsl.ROBOT_RADIUS, vsl.RANGE_MIN)
+    assert sum(1 for r in ranges if r == near) == 29
+
+
+@pytest.mark.unit
+def test_build_ranges_wraps_at_pi_seam() -> None:
+    # bearing = +pi straddles the -pi/+pi seam -> wedge wraps around index 0.
+    ranges = vsl.build_ranges(0.5, math.pi)
+    near = max(0.5 - vsl.ROBOT_RADIUS, vsl.RANGE_MIN)
+    marked = {i for i, r in enumerate(ranges) if r == near}
+    assert len(marked) == 2 * int(vsl.ANGULAR_WIDTH / vsl.ANGLE_INCREMENT) + 1
+    assert any(i < vsl.NUM_RAYS // 4 for i in marked)  # low indices present
+    assert any(i > 3 * vsl.NUM_RAYS // 4 for i in marked)  # and high indices
+
+
+@pytest.mark.unit
+def test_build_ranges_unnormalized_bearing_matches_normalized() -> None:
+    # relative_distance_bearing returns atan2-own_yaw in (-2π, 2π); an unnormalized
+    # bearing must produce the SAME wedge as its wrapped equivalent (same physical
+    # direction). Fails under int()-truncation; passes with floor() (off-by-one fix).
+    dist, raw = 0.5, -math.pi - 0.3  # below -pi (reachable)
+    normalized = math.atan2(math.sin(raw), math.cos(raw))
+    assert vsl.build_ranges(dist, raw) == vsl.build_ranges(dist, normalized)
