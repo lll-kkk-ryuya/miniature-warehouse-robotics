@@ -18,6 +18,9 @@ setup(
     license="Apache-2.0",
     tests_require=["pytest"],
     entry_points={
-        "console_scripts": ["traffic_manager = warehouse_traffic.traffic_manager:main"],
+        "console_scripts": [
+            "traffic_manager = warehouse_traffic.traffic_manager:main",
+            "virtual_scan = warehouse_traffic.virtual_scan:main",
+        ],
     },
 )

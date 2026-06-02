@@ -1,0 +1,299 @@
+# Nav2 parameters — single source for both robots (doc16 §5, doc16:118-119).
+#
+# Controller = MPPI (Model Predictive Path Integral). doc09:167-189 chooses MPPI
+# over DWB for the 200mm bottleneck aisle + smooth motion; R-49
+# (docs/shared/07-research-notes.md:264; doc09:171 note) corrects the discarded
+# "yaml 1-line swap" claim — the WHOLE controller param block must be replaced and
+# re-tuned, which is what this file does. A commented DWB block is kept at the
+# bottom so the controller can be swapped back for first-bring-up (doc09:189 Phase 2前半).
+#
+# MULTI-ROBOT: this one file is launched once per robot inside namespace /bot{n}
+# (doc09:273). Topics are RELATIVE (no leading "/") so they resolve under the
+# namespace. Frames use the "<robot_namespace>" token, substituted to "bot1" /
+# "bot2" by ReplaceString in nav2_bringup.launch.py (robot_state_publisher already
+# emits bot{n}/-prefixed TF via frame_prefix, warehouse_description). The "map"
+# frame is shared/global (doc09:257,273).
+#
+# SPEED CAP: every linear-velocity limit below is <= MAX_LINEAR_VELOCITY = 0.3 m/s
+# (FROZEN, warehouse_interfaces/safety.py:18; doc09:306). The operational cap is
+# config safety.max_linear_velocity (config/warehouse.base.yaml:15, validated
+# <= 0.3 by load_config). The launch passes it in as the "max_linear_velocity"
+# substitution so this file never hardcodes a higher value. # TODO(Phase 2): wire
+# the substitution; until then 0.3 is the hard cap, not a tuned operating point.
+#
+# FOOTPRINT/INFLATION: robot_radius = 0.075 m — single source
+# warehouse_description.robot_dimensions.ROBOT_RADIUS (robot_dimensions.py:45,
+# R-42, PROVISIONAL until Phase 1 実測). Do not raise it independently.
+#
+# RESOLUTION: 0.01 m/cell (doc09:25, map.yaml resolution).
+#
+# Hardware-dependent numbers below are PROVISIONAL — see # TODO(Phase 1/2 実測).
+
+amcl:
+  ros__parameters:
+    use_sim_time: true
+    # AMCL emits map -> <ns>/odom (doc09:124-125). Frames substituted per bot.
+    base_frame_id: "<robot_namespace>/base_link"
+    odom_frame_id: "<robot_namespace>/odom"
+    global_frame_id: "map"
+    scan_topic: scan  # -> /bot{n}/scan (sensor_msgs/LaserScan, doc03)
+    robot_model_type: "nav2_amcl::DifferentialMotionModel"  # diff-drive minicar
+    min_particles: 500   # doc09:59-60 (500-2000)
+    max_particles: 2000
+    laser_max_range: 12.0   # MS200 dToF; # TODO(Phase 1 実測, R-43)
+    laser_min_range: -1.0
+    update_min_a: 0.2
+    update_min_d: 0.05   # small world (1.8x0.9 m) -> frequent updates
+    tf_broadcast: true
+
+map_server:
+  ros__parameters:
+    use_sim_time: true
+    # Shared occupancy grid (one Map Server feeds both AMCLs, doc09:253-255).
+    # yaml_filename is passed by the launch (map not owned by this track).
+    yaml_filename: ""
+
+bt_navigator:
+  ros__parameters:
+    use_sim_time: true
+    global_frame: "map"
+    robot_base_frame: "<robot_namespace>/base_link"
+    odom_topic: odom  # -> /bot{n}/odom
+    bt_loop_duration: 10
+    default_server_timeout: 20
+
+controller_server:
+  ros__parameters:
+    use_sim_time: true
+    controller_frequency: 20.0  # 20 Hz / 50 ms (doc09:186,194,226-227)
+    # Jazzy defaults to plain Twist (enable_stamped_cmd_vel=false). The sim bridge
+    # (gz.msgs.Twist) and twist_mux input expect plain Twist, so set it explicitly
+    # — the contract survives a future Kilted+ bump where the default flips to
+    # TwistStamped. The launch remaps cmd_vel -> cmd_vel/nav2 (twist_mux priority 10).
+    enable_stamped_cmd_vel: false
+    min_x_velocity_threshold: 0.001
+    min_y_velocity_threshold: 0.5
+    min_theta_velocity_threshold: 0.001
+    failure_tolerance: 0.3
+    progress_checker_plugins: ["progress_checker"]
+    goal_checker_plugins: ["goal_checker"]
+    controller_plugins: ["FollowPath"]
+
+    progress_checker:
+      plugin: "nav2_controller::SimpleProgressChecker"
+      required_movement_radius: 0.05   # small scale (doc09:38 cm-grid)
+      movement_time_allowance: 10.0
+    goal_checker:
+      plugin: "nav2_controller::SimpleGoalChecker"
+      xy_goal_tolerance: 0.05
+      yaw_goal_tolerance: 0.10
+      stateful: true
+
+    # ── MPPI controller (Nav2 Jazzy built-in, doc09:167-189; R-49 full block) ──
+    FollowPath:
+      plugin: "nav2_mppi_controller::MPPIController"
+      time_steps: 30
+      model_dt: 0.05            # = 1 / controller_frequency
+      batch_size: 1000          # doc09:173 (1000-2000 trajectories)
+      vx_std: 0.1
+      vy_std: 0.1
+      wz_std: 0.3
+      vx_max: 0.3               # <= MAX_LINEAR_VELOCITY (safety.py:18). # TODO(Phase 2): from config
+      vx_min: -0.1              # limited reverse for recovery
+      vy_max: 0.0               # diff-drive: no lateral velocity
+      wz_max: 1.2               # rad/s; # TODO(Phase 1 実測)
+      ax_max: 0.5
+      ax_min: -0.5
+      az_max: 1.5
+      iteration_count: 1
+      prune_distance: 0.5
+      transform_tolerance: 0.1
+      temperature: 0.3
+      gamma: 0.015
+      motion_model: "DiffDrive"
+      visualize: false
+      AckermannConstraints:
+        min_turning_r: 0.0
+      critics:
+        - "ConstraintCritic"
+        - "CostCritic"
+        - "GoalCritic"
+        - "GoalAngleCritic"
+        - "PathAlignCritic"
+        - "PathFollowCritic"
+        - "PathAngleCritic"
+        - "PreferForwardCritic"
+      ConstraintCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 4.0
+      GoalCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 5.0
+        threshold_to_consider: 0.5
+      GoalAngleCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 3.0
+        threshold_to_consider: 0.3
+      PreferForwardCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 5.0
+        threshold_to_consider: 0.4
+      CostCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 3.81
+        critical_cost: 300.0
+        consider_footprint: true   # 200mm bottleneck needs footprint awareness
+        collision_cost: 1000000.0
+        near_goal_distance: 0.5
+      PathAlignCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 14.0
+        max_path_occupancy_ratio: 0.05
+        trajectory_point_step: 4
+        threshold_to_consider: 0.5
+        offset_from_furthest: 20
+      PathFollowCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 5.0
+        offset_from_furthest: 5
+        threshold_to_consider: 0.3
+      PathAngleCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 2.0
+        offset_from_furthest: 4
+        threshold_to_consider: 0.5
+
+local_costmap:
+  local_costmap:
+    ros__parameters:
+      use_sim_time: true
+      update_frequency: 5.0
+      publish_frequency: 2.0
+      global_frame: "<robot_namespace>/odom"
+      robot_base_frame: "<robot_namespace>/base_link"
+      rolling_window: true
+      width: 3
+      height: 3
+      resolution: 0.01   # doc09:25
+      robot_radius: 0.075   # = warehouse_description.robot_dimensions.ROBOT_RADIUS (R-42)
+      plugins: ["obstacle_layer", "inflation_layer"]
+      # Multi-Robot Costmap Layer = virtual LaserScan injection (doc11a:269-301).
+      obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: true
+        observation_sources: scan virtual_scan
+        scan:
+          topic: scan            # -> /bot{n}/scan (real MS200)
+          data_type: "LaserScan"
+          marking: true
+          clearing: true
+          max_obstacle_height: 2.0
+          obstacle_max_range: 2.5
+          raytrace_max_range: 3.0
+        virtual_scan:
+          topic: virtual_scan    # -> /bot{n}/virtual_scan (the other robot)
+          data_type: "LaserScan"
+          marking: true
+          clearing: false        # inf rays must NOT erase real obstacles (doc11a:290)
+          obstacle_max_range: 2.0
+          raytrace_max_range: 2.0
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        # 200mm bottleneck aisle: keep inflation tight or the planner can't fit
+        # (robot diameter 0.15 in a 0.2 m aisle). # TODO(Phase 2 実測): tune for
+        # the bottleneck (doc04 200mm, doc09:183).
+        inflation_radius: 0.10
+        cost_scaling_factor: 3.0
+
+global_costmap:
+  global_costmap:
+    ros__parameters:
+      use_sim_time: true
+      update_frequency: 1.0
+      publish_frequency: 1.0
+      global_frame: "map"
+      robot_base_frame: "<robot_namespace>/base_link"
+      resolution: 0.01   # doc09:25
+      robot_radius: 0.075   # = ROBOT_RADIUS (R-42)
+      track_unknown_space: true
+      plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
+      static_layer:
+        plugin: "nav2_costmap_2d::StaticLayer"
+        map_subscribe_transient_local: true
+      obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: true
+        observation_sources: scan virtual_scan
+        scan:
+          topic: scan
+          data_type: "LaserScan"
+          marking: true
+          clearing: true
+          obstacle_max_range: 2.5
+          raytrace_max_range: 3.0
+        virtual_scan:
+          topic: virtual_scan
+          data_type: "LaserScan"
+          marking: true
+          clearing: false
+          obstacle_max_range: 2.0
+          raytrace_max_range: 2.0
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        inflation_radius: 0.10   # # TODO(Phase 2 実測): bottleneck tuning
+        cost_scaling_factor: 3.0
+
+planner_server:
+  ros__parameters:
+    use_sim_time: true
+    expected_planner_frequency: 10.0
+    planner_plugins: ["GridBased"]
+    GridBased:
+      plugin: "nav2_navfn_planner::NavfnPlanner"  # Dijkstra/A* (doc09:144)
+      tolerance: 0.05
+      use_astar: false
+      allow_unknown: true
+
+behavior_server:
+  ros__parameters:
+    use_sim_time: true
+    local_frame: "<robot_namespace>/odom"
+    global_frame: "map"
+    robot_base_frame: "<robot_namespace>/base_link"
+    behavior_plugins: ["spin", "backup", "drive_on_heading", "wait"]
+    # Recovery behaviors (doc09:242; doc11a:384 Nav2 recovery x3 before escalation).
+    spin:
+      plugin: "nav2_behaviors::Spin"
+    backup:
+      plugin: "nav2_behaviors::BackUp"
+    drive_on_heading:
+      plugin: "nav2_behaviors::DriveOnHeading"
+    wait:
+      plugin: "nav2_behaviors::Wait"
+    max_rotational_vel: 1.0
+    min_rotational_vel: 0.2
+    rotational_acc_lim: 1.5
+
+# ── DWB alternative (doc09:163-166, Phase 2前半 first-bring-up) ─────────────────
+# To swap controllers, replace controller_server.FollowPath above with the block
+# below (R-49: this is a full-block swap + re-tune, NOT a 1-line change):
+#
+#   FollowPath:
+#     plugin: "dwb_core::DWBLocalPlanner"
+#     min_vel_x: 0.0
+#     max_vel_x: 0.3            # <= MAX_LINEAR_VELOCITY (safety.py:18)
+#     max_vel_theta: 1.0
+#     acc_lim_x: 0.5
+#     vx_samples: 20
+#     vtheta_samples: 20
+#     sim_time: 1.5
+#     critics: ["RotateToGoal", "Oscillation", "BaseObstacle", "GoalAlign",
+#               "PathAlign", "PathDist", "GoalDist"]

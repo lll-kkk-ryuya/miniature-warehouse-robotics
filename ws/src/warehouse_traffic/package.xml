@@ -9,6 +9,11 @@
 
   <exec_depend>rclpy</exec_depend>
   <exec_depend>warehouse_interfaces</exec_depend>
+  <!-- ROBOT_RADIUS single source (parallel-workflow §2.1 shared asset) -->
+  <exec_depend>warehouse_description</exec_depend>
+  <!-- VirtualScan publishes LaserScan from PoseWithCovarianceStamped inputs -->
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
 
   <test_depend>python3-pytest</test_depend>
 

@@ -12,7 +12,7 @@
 ## 提供 (produce)
 - topic: `/emergency/event`（std_msgs/String JSON, doc12:141-150 コア形: `event_id/robot/type/severity/action_taken/timestamp/requires_llm_review` [+任意 `detail`]）。State Cache が `state['emergency']` に取り込む。
 - topic: `/bot{n}/cmd_vel/emergency`（geometry_msgs/Twist 全ゼロ停止, twist_mux priority 100）+ bot 毎 Nav2 goal cancel（action_msgs/CancelGoal を `/{bot}/navigate_to_pose/_action/cancel_goal` へ）。
-- file : `config/twist_mux.yaml`（emergency=100 / nav2=10, timeout 0.5, `/bot{n}/cmd_vel/{emergency,nav2}`）。**正準置き場は `warehouse_bringup/config/`（doc16 §5）。移設は Issue で nav-traffic に予告**。
+- ~~file : `config/twist_mux.yaml`~~ → **`warehouse_bringup/config/twist_mux.yaml` へ移設済（#40 / nav-traffic, doc16 §5）**。値（emergency=100 / nav2=10, timeout 0.5, `/bot{n}/cmd_vel/{emergency,nav2}`）は不変で移設。本パッケージは twist_mux 設定を保持しない。
 
 ## 消費 (consume)
 - 契約: `warehouse_interfaces.safety`（`MAX_LINEAR_VELOCITY`/`BATTERY_CRITICAL_PCT`/`battery_is_critical`/`clamp_velocity`）、`config.load_config`。
@@ -31,4 +31,4 @@
 - # TODO(Phase 2) blocked 検出を Nav2 nav_status でゲート（現状は変位ベース low-harm recovery event のみ）。pose 途絶時の freshness ガードも要検討
 - # TODO(Phase 2) /emergency/event の edge-trigger 化（持続条件で 20Hz 連発を抑止。現状は State Cache 側で active/history を 50 件 ring に bound）
 - # TODO(Mode-A) negotiation abort → /negotiation（契約未確定のため defer）
-- # TODO(nav-traffic) twist_mux.yaml を warehouse_bringup/config/ へ移設（Issue 連携）
+- ~~# TODO(nav-traffic) twist_mux.yaml を warehouse_bringup/config/ へ移設~~ → 完了（#40, nav-traffic）。本パッケージ `config/` は空。
