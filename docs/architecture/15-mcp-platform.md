@@ -45,7 +45,9 @@ resp = httpx.post("http://localhost:8642/v1/chat/completions", json={
 
 - `Authorization: Bearer`: API_SERVER_KEY による認証（`.env` で設定）
 - `role: system`: per-request system prompt（エフェメラル、コアプロンプトに追加）
-- ツール呼出しはサーバーサイドで実行され、最終テキストのみ返却
+- ツール呼出しはサーバーサイドで実行され、最終テキストのみ返却（＝ Hermes ネイティブ経路。下記📌参照）
+
+> 📌 **採用実装（S1, #4 / PR #70）= Bridge 仲介ディスパッチ**: 直前の「ツール呼出しはサーバーサイドで実行」は Hermes の機能説明であり、**本PJ採用の S1 トランスポートではない**。S1 は **LLM が Command JSON を返し、`warehouse_llm_bridge` が `action_map` で MCP 7ツール呼出に写像して自らディスパッチする**（凍結コード `action_map.py` + `tools.py:11-13` の verbatim 受理 + #41）。これにより Bridge が mint する冪等キー（C, §競合状態の防止§2）が成立する（サーバーサイド実行では Bridge が tool call を仲介できず C を注入できない）。Hermes ネイティブのサーバーサイド実行は将来の代替経路（キャンセル手段の確定＝**Issue #54** 後）。設計根拠は `08-llm-bridge-common.md §同時発火制御` の「採用実装」📌注記。
 
 **セッション管理**: `/v1/chat/completions` は stateless（公式仕様）。会話履歴は `messages` に含める。サーバー側の会話継続が必要な場合は `/v1/responses` の `previous_response_id` を使用する。Phase 0.5 で実際のセッション管理方式を検証する。
 
