@@ -9,11 +9,27 @@ scheduler ignores the cycle rather than dispatching garbage (doc08:289).
 import json
 
 import pytest
-from warehouse_llm_bridge.hermes_client import parse_command
+from warehouse_llm_bridge.hermes_client import parse_command, parse_command_content
 
 
 def _resp(content: object) -> dict:
     return {"choices": [{"message": {"content": content}}]}
+
+
+@pytest.mark.unit
+def test_parse_command_content_valid() -> None:
+    # The SDK path: HermesClient.decide passes message.content straight here.
+    assert parse_command_content('{"reasoning": "r", "commands": []}') == {
+        "reasoning": "r",
+        "commands": [],
+    }
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("content", [123, None, "not json", "[1, 2]"])
+def test_parse_command_content_malformed(content: object) -> None:
+    with pytest.raises(ValueError):
+        parse_command_content(content)
 
 
 @pytest.mark.unit

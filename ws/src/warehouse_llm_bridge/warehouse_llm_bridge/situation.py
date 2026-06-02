@@ -42,6 +42,11 @@ PREDICTION_HORIZON_S = 3.0
 # safety.emergency_min_distance = 0.3, doc12 DISTANCE_THRESHOLD).
 DEFAULT_EMERGENCY_MIN_DISTANCE = 0.3
 
+# traffic_mode value for Mode C (Open-RMF). In Mode C the commander only does task
+# allocation, so the situation omits the traffic fields (doc mode-c/08c:88,92).
+OPEN_RMF_MODE = "open-rmf"
+DEFAULT_MODE = "none"  # Mode A (LLM-managed traffic) — full per-robot fields
+
 
 class SituationBuilder:
     """Read ``state.json`` (StateStore) and build a ``Situation`` JSON dict.
@@ -55,12 +60,18 @@ class SituationBuilder:
         self,
         state_store: StateStore,
         *,
+        mode: str = DEFAULT_MODE,
         layout: str = DEFAULT_LAYOUT,
         emergency_min_distance: float = DEFAULT_EMERGENCY_MIN_DISTANCE,
         prediction_horizon_s: float = PREDICTION_HORIZON_S,
     ) -> None:
-        """Wire the builder; thresholds come from config (not hardcoded here)."""
+        """Wire the builder; thresholds come from config (not hardcoded here).
+
+        ``mode`` is ``traffic_mode`` (none/simple = Mode A/B, open-rmf = Mode C).
+        Mode C emits a slimmer per-robot shape (see :meth:`_enrich`).
+        """
         self._state_store = state_store
+        self._mode = mode
         self._layout = layout
         self._emergency_min_distance = emergency_min_distance
         self._horizon = prediction_horizon_s
@@ -94,10 +105,30 @@ class SituationBuilder:
             pending_tasks=pending_tasks or [],
             history=history or [],
         )
-        return situation.model_dump()
+        # exclude_unset so Mode C's unset traffic fields are dropped (~200 tokens,
+        # doc 08c:108). Recursive: each RobotState honors its own model_fields_set,
+        # so Mode A/B (every field set) is unchanged while Mode C keeps only the
+        # strategic fields. exclude_none would NOT work (obstacle_ahead defaults False).
+        return situation.model_dump(exclude_unset=True)
 
     def _enrich(self, snap: RobotSnapshot) -> RobotState:
-        """Lift a raw ``RobotSnapshot`` into a ``RobotState`` (L2 -> L1, 08a:93-95)."""
+        """Lift a raw ``RobotSnapshot`` into a ``RobotState`` (L2 -> L1, 08a:93-95).
+
+        Mode C (Open-RMF owns traffic) builds ONLY the strategic fields
+        (position/status/battery/current_task) and leaves velocity / heading /
+        predicted_position_3s / obstacle_ahead / obstacle_distance UNSET — they are
+        not passed, so ``model_dump(exclude_unset=True)`` drops them (doc 08c:92,108).
+        Passing them as ``None`` would NOT drop them (exclude_unset keys off
+        model_fields_set). Mode A/B sets every field (the commander uses
+        velocity/heading for deadlock + predicted_position reasoning, 08a:§入力).
+        """
+        if self._mode == OPEN_RMF_MODE:
+            return RobotState(
+                position=snap.position,
+                status=snap.status,
+                battery=snap.battery,
+                current_task=None,  # bridge-owned; tracked in a later slice (doc12:248)
+            )
         return RobotState(
             position=snap.position,
             velocity=snap.velocity,

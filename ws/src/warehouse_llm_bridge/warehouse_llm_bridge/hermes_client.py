@@ -1,6 +1,6 @@
 """HermesClient — the single commander LLM client over the Hermes Gateway.
 
-The bridge POSTs the situation to ``{base_url}/v1/chat/completions`` (OpenAI
+The bridge sends the situation to ``{base_url}/v1/chat/completions`` (OpenAI
 Chat-Completions compatible, doc13 §5.1 / doc15:30-44) and gets back the
 commander's decision as a JSON ``Command`` in the assistant message content. The
 provider (Claude / ChatGPT / Gemini / Grok) is chosen server-side by Hermes'
@@ -8,13 +8,18 @@ provider (Claude / ChatGPT / Gemini / Grok) is chosen server-side by Hermes'
 and never changes per request (doc13:171,402-421). This is the Phase-4 4-way
 comparison mechanism.
 
+Trace ownership (doc08:354-356 / doc13:479, Pattern A): the call goes through
+``from langfuse.openai import AsyncOpenAI`` so the generation is captured under the
+Bridge-owned trace established by the :class:`~warehouse_llm_bridge.tracing.Tracer`
+(``scheduler`` opens the per-turn trace around ``decide``). The langfuse + openai
+SDKs are imported **lazily** (pip extras, not pytest/ruff deps) and langfuse is
+fail-open; the pure parser :func:`parse_command_content` needs neither and is
+unit-tested directly.
+
 Transport notes:
-* Synchronous, **stateless** POST — there is no ``run_id`` and no
-  ``/v1/runs/{id}/stop`` on the adopted path (doc13:392-398). Cancellation is the
-  caller's ``asyncio.wait_for`` closing the connection (Layer A client-side);
-  the explicit run ``/stop`` is stubbed pending Issue #54 (doc08:168-174).
-* ``httpx`` is imported lazily (it is not a pytest/ruff dependency); the pure
-  response parser :func:`parse_command` needs no httpx and is unit-tested directly.
+* **stateless** chat/completions — no ``run_id`` / ``/v1/runs/{id}/stop`` on the
+  adopted path (doc13:392-398). Cancellation is the caller's ``asyncio.wait_for``
+  (Layer A client-side); the explicit run ``/stop`` is stubbed pending Issue #54.
 
 Failure contract (consumed by the scheduler, doc08:287-289): a transport / non-2xx
 error raises :class:`LLMUnavailableError` (→ Nav2-only); a malformed body raises
@@ -34,7 +39,7 @@ HERMES_MODEL = "hermes-agent"
 # Command JSON, doc mode-a/08a:245-253) and the safety-over-efficiency / battery
 # guidance common to every mode (08a:231-238). Mode-specific additions (Mode A
 # traffic/deadlock rules vs Mode C task-allocation-only) are a seam left to a
-# later slice (doc14:159-166) so S1 stays mode-agnostic.
+# later slice (doc14:159-166) so the bridge stays mode-agnostic.
 SYSTEM_PROMPT = (
     "あなたは倉庫ロボット2台の司令官AIです。状況JSONを読み、安全性を効率性より優先して"
     "（衝突回避を最優先に）2台分の指示を決定してください。バッテリー方針: 10%以下は新規"
@@ -46,19 +51,13 @@ SYSTEM_PROMPT = (
 )
 
 
-def parse_command(response: dict[str, Any]) -> dict:
-    """Extract the commander ``Command`` JSON dict from a chat-completion response.
+def parse_command_content(content: object) -> dict:
+    """Parse the assistant message *content* (a JSON string) into a Command dict.
 
-    Reads ``choices[0].message.content`` (a JSON string per the system prompt) and
-    parses it. Raises ``ValueError`` for any malformed shape (no choices, missing
-    content, non-JSON content) so the scheduler treats it as an invalid response
-    and ignores the cycle (doc08:289) rather than dispatching garbage.
+    Raises ``ValueError`` for non-text / non-JSON / non-object content so the
+    scheduler treats it as an invalid response and ignores the cycle (doc08:289)
+    rather than dispatching garbage.
     """
-    try:
-        choices = response["choices"]
-        content = choices[0]["message"]["content"]
-    except (KeyError, IndexError, TypeError) as exc:
-        raise ValueError(f"unexpected chat-completion shape: {exc}") from exc
     if not isinstance(content, str):
         raise ValueError(f"message content is not text: {type(content).__name__}")
     try:
@@ -70,8 +69,22 @@ def parse_command(response: dict[str, Any]) -> dict:
     return command
 
 
+def parse_command(response: dict[str, Any]) -> dict:
+    """Extract the Command dict from a raw chat-completion *response dict*.
+
+    The dict form (e.g. an httpx ``.json()`` or a recorded fixture);
+    :meth:`HermesClient.decide` uses :func:`parse_command_content` directly on the
+    SDK object's ``message.content``.
+    """
+    try:
+        content = response["choices"][0]["message"]["content"]
+    except (KeyError, IndexError, TypeError) as exc:
+        raise ValueError(f"unexpected chat-completion shape: {exc}") from exc
+    return parse_command_content(content)
+
+
 class HermesClient(LLMClient):
-    """POST the situation to the Hermes Gateway and return the commander Command."""
+    """Send the situation to the Hermes Gateway and return the commander Command."""
 
     def __init__(
         self,
@@ -84,39 +97,43 @@ class HermesClient(LLMClient):
     ) -> None:
         """Wire the endpoint.
 
-        ``timeout`` is the httpx transport ceiling (doc13 sample 5.0s); the active
+        ``timeout`` is the SDK transport ceiling (doc13 sample 5.0s); the active
         per-cycle bound is the scheduler's ``asyncio.wait_for(2.5s)`` (doc08:140),
-        which cancels the request first under normal slowness.
+        which cancels the request first under normal slowness (Layer A).
         """
-        self._url = base_url.rstrip("/") + "/v1/chat/completions"
+        # OpenAI SDK appends ``/chat/completions`` to ``base_url`` itself.
+        self._base_url = base_url.rstrip("/") + "/v1"
         self._api_key = api_key
         self._system_prompt = system_prompt
         self._model = model
         self._timeout = timeout
 
     async def decide(self, situation: dict) -> dict:
-        """POST the situation and return the parsed Command JSON dict.
+        """Call Hermes (traced) and return the parsed Command JSON dict.
 
-        Raises :class:`LLMUnavailableError` on a transport / non-2xx error, ``ValueError``
-        on a malformed response body (doc08:287-289).
+        Raises :class:`LLMUnavailableError` on a transport / non-2xx error,
+        ``ValueError`` on a malformed response body (doc08:287-289).
         """
-        import httpx
+        # Lazy: langfuse.openai is a pip extra and traces the generation under the
+        # active Bridge-owned trace (tracing.LangfuseTracer.turn); openai supplies
+        # the error types. Neither is needed by tests (they use a fake client).
+        import openai
+        from langfuse.openai import AsyncOpenAI
 
-        payload = {
-            "model": self._model,
-            "messages": [
-                {"role": "system", "content": self._system_prompt},
-                {"role": "user", "content": json.dumps(situation)},
-            ],
-        }
-        headers = {"Content-Type": "application/json"}
-        if self._api_key:
-            headers["Authorization"] = f"Bearer {self._api_key}"
+        client = AsyncOpenAI(base_url=self._base_url, api_key=self._api_key or "no-key")
         try:
-            async with httpx.AsyncClient(timeout=self._timeout) as client:
-                resp = await client.post(self._url, json=payload, headers=headers)
-                resp.raise_for_status()
-                data = resp.json()
-        except httpx.HTTPError as exc:
+            completion = await client.chat.completions.create(
+                model=self._model,
+                messages=[
+                    {"role": "system", "content": self._system_prompt},
+                    {"role": "user", "content": json.dumps(situation)},
+                ],
+                timeout=self._timeout,
+            )
+        except openai.OpenAIError as exc:
             raise LLMUnavailableError(f"hermes request failed: {exc}") from exc
-        return parse_command(data)
+        try:
+            content = completion.choices[0].message.content
+        except (AttributeError, IndexError, TypeError) as exc:
+            raise ValueError(f"unexpected completion shape: {exc}") from exc
+        return parse_command_content(content)
