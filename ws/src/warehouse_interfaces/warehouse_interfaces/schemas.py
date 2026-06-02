@@ -36,11 +36,21 @@ class Velocity(_Model):
 
 
 class RobotState(_Model):
+    """Per-robot state inside a ``Situation`` (LLM Bridge L1 input to the commander LLM).
+
+    Mode A/B populate every field (the LLM uses velocity/heading for deadlock and
+    predicted_position reasoning). Mode C delegates traffic to Open-RMF and sends only the
+    strategic fields (position/status/current_task/battery), omitting velocity, heading,
+    predicted_position_3s, obstacle_ahead and obstacle_distance to save ~200 tokens
+    (doc mode-c/08c §省略). velocity/heading are Optional so one frozen model serves both
+    modes; the State Cache producer (``RobotSnapshot``) keeps them required — odom supplies them.
+
+    Mode C wire shape: build with only the strategic fields set, then serialize with
+    ``model_dump(exclude_unset=True)``. ``exclude_none=True`` is insufficient because
+    ``obstacle_ahead`` defaults to ``False`` (not None) and would otherwise remain in the JSON.
+    """
+
     position: Position
-    # Mode C situation JSON omits velocity + heading (doc mode-c/08c §省略, ~200 tokens saved).
-    # Required in Mode A/B (the LLM uses them for deadlock / predicted_position reasoning), so they
-    # are Optional here to let one frozen Situation serve both modes. The State Cache producer side
-    # (RobotSnapshot) keeps them required — odom always supplies them.
     velocity: Velocity | None = None
     heading: float | None = None
     status: str
