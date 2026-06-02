@@ -333,12 +333,25 @@ class DecisionLog:
 上記のうち `result` と `task_completion_time` のみ自作コードで Langfuse に送信する:
 
 ```python
-# Nav2ゴール到達後にスコアを送信
-langfuse.score(trace_id=current_trace_id, name="result", value="success")
-langfuse.score(trace_id=current_trace_id, name="task_completion_time", value=29.3)
+# Nav2ゴール到達後にスコアを送信（Langfuse Python SDK v4 / 4.7.1）
+from langfuse import get_client
+langfuse = get_client()
+langfuse.create_score(trace_id=current_trace_id, name="result", value="success",
+                      data_type="CATEGORICAL",
+                      metadata={"robot": "bot1", "mode": "A", "provider": "claude", "gen_id": gen_id})
+langfuse.create_score(trace_id=current_trace_id, name="task_completion_time", value=29.3,
+                      data_type="NUMERIC",
+                      metadata={"robot": "bot1", "mode": "A", "provider": "claude", "gen_id": gen_id})
+langfuse.flush()  # 短命スコアラ（#6 wo）はプロセス終了前に flush 必須（バッファ未送出を防ぐ）
 ```
 
+> **v2→v4 注意（要 docs-first）**: 旧 `langfuse.score(...)` は **v3 rewrite で削除**。現行は `create_score(...)`（`get_client()` 経由）。score は tag を持てないため `robot`/`mode`/`provider`/`gen_id` は **score の metadata に複製**する（pin した版で `create_score(metadata=)` が未対応なら score 名に robot を埋める＝`result_bot1`、または per-robot observation に紐付け）。`trace_id` は §7.5（doc13）の **32hex no-dash・両脚同一リテラル**を使う。score は trace 生成前でも ingest 可（後で同一 `trace_id` でリンク＝結果整合）。
+
 これにより自作の DecisionLog ファイル出力は不要となり、全データが Langfuse Dashboard で閲覧・比較・分析できる。
+
+### trace 所有 — Bridge が所有（推奨・Pattern A）
+
+Hermes ビルトイン Langfuse に generation 所有を任せると、Bridge は自前 `trace_id` / `metadata` / managed-prompt をネイティブに乗せられない（pass-through 未確認）。よって **Bridge が `from langfuse.openai import OpenAI` を `base_url`=Hermes（OpenAI 互換）で用い、自分で generation/trace を所有**する（4社を単一コードパスで叩く比較公平性を保ったまま trace 所有問題を解消）。二重計上回避のため **Hermes 側 Langfuse プラグインは無効化**する（[doc13 §7.5](13-hermes-setup.md)）。各呼出に `trace_id`（`uuid7().hex` 32hex no-dash）・`metadata={"langfuse_tags": [provider, mode], "gen_id": ...}` を渡す。managed-prompt（Langfuse Prompt Management）連携が要る場合は `@observe(as_type="generation")` で generation を自作してラップする。**Provider access の決定（Vertex AI SDK 不採用・Hermes 単一経路）は [doc13 §7.6](13-hermes-setup.md)**。
 
 ### セッション命名規則
 
