@@ -10,6 +10,7 @@ from warehouse_interfaces.schemas import (
     CommandAction,
     CommandItem,
     Proposal,
+    RobotState,
     Situation,
 )
 
@@ -49,6 +50,44 @@ def test_situation_tolerates_extra_fields() -> None:
     payload["robots"]["bot1"]["obstacle_ahead"] = True
     situation = Situation.model_validate(payload)
     assert situation.robots["bot1"].obstacle_ahead is True
+
+
+@pytest.mark.unit
+def test_situation_accepts_mode_c_shape_without_velocity_heading() -> None:
+    # Mode C deliberately omits velocity + heading (doc mode-c/08c §省略). The frozen Situation
+    # must validate the main-line Mode C robot shape, not only the Mode A/B shape.
+    payload = _situation_payload()
+    payload["robots"]["bot1"] = {
+        "position": {"x": 0.3, "y": 0.5},
+        "status": "moving",
+        "current_task": "task_3",
+        "battery": 85,
+    }
+    situation = Situation.model_validate(payload)
+    bot1 = situation.robots["bot1"]
+    assert bot1.velocity is None
+    assert bot1.heading is None
+    assert bot1.battery == 85
+
+
+@pytest.mark.unit
+def test_mode_c_wire_shape_omits_optional_fields_via_exclude_unset() -> None:
+    # The ~200-token Mode C saving (doc mode-c/08c §省略) needs the producer to actually OMIT the
+    # optional fields, not emit them as null. Build with only the strategic fields set and dump
+    # with exclude_unset=True. exclude_none=True is insufficient: obstacle_ahead defaults to
+    # False (not None) and would remain in the JSON.
+    robot = RobotState.model_validate(
+        {
+            "position": {"x": 0.3, "y": 0.5},
+            "status": "moving",
+            "current_task": "task_3",
+            "battery": 85,
+        }
+    )
+    wire = robot.model_dump(exclude_unset=True)
+    assert set(wire) == {"position", "status", "current_task", "battery"}
+    # exclude_none would leak obstacle_ahead=False; documents why exclude_unset is the right call.
+    assert "obstacle_ahead" in robot.model_dump(exclude_none=True)
 
 
 @pytest.mark.unit
