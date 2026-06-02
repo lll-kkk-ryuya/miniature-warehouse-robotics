@@ -9,7 +9,7 @@
 **doc17 Step 0（リポジトリ骨格＋契約凍結）完了**（2026-05-29, Issue #1 closed）。
 **Step 1＝各トラックの並列実装フェーズが進行中**。複数 worktree セッションで #4 llm-bridge / #5 safety-state / #7 sim / #25 gen_id 冪等化を並列実装し、**主要スライスが main に land 済**（下表）。
 
-## main の状態（CI 常時 green, origin/main = `2bdced5`）
+## main の状態（CI 常時 green, origin/main = `4fb0cd2`）
 - **契約ハブ `warehouse_interfaces`（凍結）**: pydantic `Situation`/`Command`/`Proposal`(+ `gen_id`、`CommandItem.idempotency_key`)、`StateSnapshot`/`RobotSnapshot`、`KNOWN_LOCATIONS` 9キー、共有パス（doc16 §4）、`StateStore`/`GenStore`/`IdempotencyStore` IF + file 実装、`safety`（速度/battery しきい値の単一ソース）、`config`。
 - **実装済みノード（main 入り）**:
   - `warehouse_mcp_server` — 7ツール + Policy Gate + gen_id B-3 + **per-call idempotency 強制**（#35/#41。偽 store でユニット検証、MCP SDK は遅延 import の pip extra）。
@@ -37,7 +37,7 @@
 | 5 | safety-state | 🟢 **実装 main 入り（#39）**: Emergency Guardian 50ms + State Cache 100ms（`StateSnapshot` producer, atomic `state.json`）。残: 実機統合・twist_mux 連携（Phase 2+） |
 | 6 | wo | ready（trace_id 契約合意で着手可） |
 | 7 | sim | 🟢 **環境スパイク GO + 実装 main 入り（#43/#46）**: world/URDF/`sim.launch.py`。環境成立は単一 bot spike で確認、bot1/bot2 launch は単体テストで text 検証。**残: Nav2 + 実 bot1/bot2 Gazebo E2E（#8）** |
-| 8 | nav-traffic | ready（#43 マージで解錠。doc16 §9「sim spawn 後」充足）。残: Nav2(DWB→MPPI) + TrafficManager + 実 bot1/bot2 Gazebo E2E。参照: `bot{n}/lidar_link`、`/bot{n}/{scan,odom,cmd_vel}` |
+| 8 | nav-traffic | 🟢 **スライス1 main 入り（#68）**: TrafficManager(None/Simple) + VirtualScanNode(`/bot{n}/virtual_scan`) + `nav2_params.yaml`(MPPI 全ブロック, R-49) + `nav2_bringup.launch.py`(新規) + twist_mux 移設(#40 済)。残: **実 bot1/bot2 Gazebo E2E = #67**（前提: sim `/clock`+map #76 / launch 合成 #75 / コンテナ nav2）。参照: `bot{n}/lidar_link`、`/bot{n}/{scan,odom,cmd_vel}` |
 | 25 | gen_id UUID冪等化 | ✅ **CLOSED/merged**: 契約(#36 `IdempotencyStore`/`FileIdempotencyStore` + `CommandItem.idempotency_key` + `idempotency_store_path()`) + enforcement(#41) が main 入り。`action_map` が tool-call 毎に per-call UUID を mint（LLM は echo しない＝信頼の非対称性）、`GenChecker.check` が gen→idempotency を強制（replay=`duplicate_command`）、MCP 7ツール全てに `idempotency_key`（per-call UUID）貫通 |
 
 ## ⚠️ 要決着事項（latent / 監視）
@@ -46,7 +46,7 @@
 
 ## 次の山
 - **#4 司令官サイクル** — `llm_bridge.py`（BridgeScheduler: gen 採番 + Situation 構築 + Hermes POST + 2.5s timeout/HTTPキャンセル + Nav2-only fallback）。MCP 層が揃ったので次の主スライス。R-35(A) の `/stop` 対応もここ。
-- **#8 nav-traffic** — #43 で解錠。Nav2 + TrafficManager + 実 bot1/bot2 Gazebo E2E。
+- **#8 nav-traffic** — スライス1 main 入り（#68: TrafficManager + VirtualScan + Nav2 MPPI + twist_mux 移設#40）。残: 実 bot1/bot2 Gazebo E2E = **#67**（前提 #76 sim `/clock`+map・#75 launch 合成・コンテナ nav2）。
 - **#6 wo / #2 jetson** — 実機不要で先行可。
 - 既知の設計リスクは [07-research-notes](shared/07-research-notes.md) R-35〜R-52。
 
