@@ -469,7 +469,23 @@ LLM呼出し (4社)
         （成功率・平均応答時間・コスト・幻覚率・拒否率）
 ```
 
-`trace_id` は LLM Bridge Node が UUIDv7 で発行し、Hermes リクエストの `metadata.trace_id` と MCP ツール呼出し時の Audit Log に同値を記録する（Phase 3 後半で実装）。
+`trace_id` は LLM Bridge Node が発行する **Langfuse 側の id**。**実装済の突合キーは `gen_id` + timestamp**（§7.5）。`trace_id` の Audit Log 記録は任意（現行 `CommandAuditLog` は持たない。将来 audit エントリに追加する場合は doc15 と整合）。Phase 3 後半で確定。
+
+### 7.5 trace_id / 突合キー契約（Langfuse v4・Phase 3 実トレース検証）
+
+> 前提: Langfuse Python SDK **v4（4.7.1, OTEL ベース）**。本節は trace 所有と突合キーの契約を固定する。
+
+- **trace_id 形式**: Langfuse の trace id は **32 桁小文字 hex・ダッシュ無し**（W3C trace-context）。Bridge が `uuid7()` 採番なら **`uuid7().hex`（ダッシュ除去後）** を渡す。ダッシュ付き UUID 文字列は v4 で拒否され orphan score になる。
+- **trace 所有 = Bridge（推奨・Pattern A）**: Bridge が `from langfuse.openai import OpenAI` を `base_url`=Hermes（OpenAI 互換）で使い、自分で generation/trace を所有する。二重計上回避のため **Hermes 側 Langfuse プラグインは無効化**（本 doc の Langfuse 自動有効化記述は、Bridge-owned トレースを採る比較セットアップでは off に上書きする）。これで `trace_id`/`metadata`/managed-prompt をネイティブに乗せられ、4社単一コードパス（比較公平性）を保てる（[doc08 「trace 所有」](08-llm-bridge-common.md)）。
+- **Langfuse ↔ Audit Log の突合キー = `gen_id` + timestamp（実装済の経路）**。現行 `CommandAuditLog`（doc15）は `{timestamp, tool, result, detail, robot}` を書き **`trace_id` を持たない**。MCP ツールは `gen_id`（B-3 の required 引数）を受けるため、audit から `gen_id` + timestamp で Langfuse trace（同 `gen_id` を metadata に持つ）と突合できる。「3脚同一 `trace_id` リテラル」は audit 脚が未対応のため**前提にしない**。
+- **#6（wo）が `trace_id` を得る方法**: (a) Audit Log から読む（trace_id を記録する設計にした場合）、または **(b) `langfuse.create_trace_id(seed=f"{run_id}:{gen_id}")` で #4 と #6 が決定的に同一 id を導出（クロスレーンのデータ依存ゼロ＝#6 が契約変更なしで着手可）。(b) 推奨**。`warehouse_interfaces` 凍結契約への trace_id 追加は不要（trace_id は ROS メッセージ契約でなく Langfuse/Audit 突合キー）。
+- **Phase 3 実トレース検証項目**: ① Hermes が inbound `metadata.trace_id` を尊重するか（Bridge-owned 方式なら非依存）／② `usage_details`/cost が4社で ≠0 か（**xAI Grok はカスタムモデル定義が必要な可能性**＝無いと cost 空欄で比較破綻）／③ 二重 generation の有無／④ managed-prompt `prompt=` 連携の可否／⑤ SDK 4.7.1 スモーク。
+
+### 7.6 LLM provider access 決定（Vertex AI SDK 不採用・Hermes 単一経路）
+
+- **決定**: 4社比較（Claude / GPT / Gemini / Grok）の統一インターフェイスは **Hermes（OpenAI 互換ゲートウェイ）を維持**する。**Vertex AI SDK は比較経路に採用しない。**
+- **理由**: ① Vertex は **専有 OpenAI GPT に到達不可**（`gpt-oss` オープンウェイトのみ。Claude/Grok/Gemini は到達可）／② いわゆる "Vertex AI SDK"（`vertexai.generative_models`）は **2026-06-24 削除**（新規は `google-genai`、`genai.Client(vertexai=True)`）／③ Vertex 経由でも Claude=Messages 形・Gemini/Grok=OpenAI 形・GPT=外 と **スキーマ分裂**し、単一コードパス＝比較公平性（同一の prompt 組立・tool 解析・retry/timeout・token 会計）を壊す。
+- **Vertex の位置づけ（OPTIONAL・二次）**: 本番デモ機の Gemini/Claude を GCP IAM（ADC / service account）で回す production leg などに限り、**同一 `LLMClient` IF の裏の二次バックエンド**として config（`WAREHOUSE_ENV` overlay）で差し込む。**比較ラン（Phase 4 の 12構成）には混ぜない**（network/region/課金が非対称になりバイアス）。使う場合は Langfuse の `environment` タグ（例 `env=prod_vertex`）で分離記録する。Vertex AI Agent Engine / ADK は不採用（既存オーケストレーション層と競合・Gemini ロックイン）。
 
 ---
 
