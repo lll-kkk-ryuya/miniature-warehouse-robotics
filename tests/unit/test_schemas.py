@@ -52,6 +52,24 @@ def test_situation_tolerates_extra_fields() -> None:
 
 
 @pytest.mark.unit
+def test_situation_accepts_mode_c_shape_without_velocity_heading() -> None:
+    # Mode C deliberately omits velocity + heading (doc mode-c/08c §省略). The frozen Situation
+    # must validate the main-line Mode C robot shape, not only the Mode A/B shape.
+    payload = _situation_payload()
+    payload["robots"]["bot1"] = {
+        "position": {"x": 0.3, "y": 0.5},
+        "status": "moving",
+        "current_task": "task_3",
+        "battery": 85,
+    }
+    situation = Situation.model_validate(payload)
+    bot1 = situation.robots["bot1"]
+    assert bot1.velocity is None
+    assert bot1.heading is None
+    assert bot1.battery == 85
+
+
+@pytest.mark.unit
 def test_command_parses_actions() -> None:
     cmd = Command.model_validate(
         {

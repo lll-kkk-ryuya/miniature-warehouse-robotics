@@ -37,8 +37,12 @@ class Velocity(_Model):
 
 class RobotState(_Model):
     position: Position
-    velocity: Velocity
-    heading: float
+    # Mode C situation JSON omits velocity + heading (doc mode-c/08c §省略, ~200 tokens saved).
+    # Required in Mode A/B (the LLM uses them for deadlock / predicted_position reasoning), so they
+    # are Optional here to let one frozen Situation serve both modes. The State Cache producer side
+    # (RobotSnapshot) keeps them required — odom always supplies them.
+    velocity: Velocity | None = None
+    heading: float | None = None
     status: str
     battery: int
     predicted_position_3s: Position | None = None
