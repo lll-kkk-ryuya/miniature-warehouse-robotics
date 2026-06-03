@@ -90,17 +90,27 @@ Mode A/BではClaude自身が交通管理を行うため、velocity、heading、
 
 `predicted_position_3s`は、Mode A/B（Open-RMFなし）でClaude自身が交通管理を行う場合の補助データ。
 
-**計算場所**: `predicted_position_3s` は LLM Bridge Node が State Cache JSON の `pose`（position + yaw）と `velocity` から線形外挿で計算する。State Cache Node 側には含めない（Mode C では不要なフィールドのため）。
+**計算場所**: `predicted_position_3s` は LLM Bridge Node が State Cache JSON の `pose`（position + yaw）と `velocity`（`linear` + `angular`）から **CTRV（等速・等旋回）外挿**で計算する。State Cache Node 側には含めない（Mode C では不要なフィールドのため）。
 
 一方 `obstacle_distance`（最近傍障害物までの距離 [m]）は **State Cache Node が `/bot{n}/scan` から集約し、`StateSnapshot.robots[].obstacle_distance` として state.json に出力する**（`warehouse_interfaces.schemas.RobotSnapshot`、フィールド名は Situation の `RobotState.obstacle_distance` と一致＝L2→L1 で写し替え不要）。LLM Bridge Node はこの距離から `obstacle_ahead`（真偽値）を導出する（例: `obstacle_distance is not None and obstacle_distance < emergency_min_distance`）。
 
-### 計算方法（線形外挿）
+### 計算方法（CTRV: 等速・等旋回モデル）
+
+`velocity.angular`（旋回速度 ω）を用いて円弧で外挿する。ω≈0 のときは等速直線（CV）に縮退する。CTRV は閉形式で計算が軽く、凍結契約 `Velocity{linear, angular}`（`warehouse_interfaces.schemas.Velocity`、`linear`/`angular` とも必須）の既存フィールドのみで完結する（**契約変更なし**。`predicted_position_3s` は `Position` 形のまま）。
 
 ```python
-# LLM Bridge Node 内で計算
-predicted_x = position_x + velocity_linear * cos(heading) * 3.0
-predicted_y = position_y + velocity_linear * sin(heading) * 3.0
+# LLM Bridge Node 内で計算（horizon T = 3.0 s）
+if abs(velocity_angular) < 1e-3:            # 直進 → CV に縮退（旧式と同一）
+    predicted_x = position_x + velocity_linear * cos(heading) * T
+    predicted_y = position_y + velocity_linear * sin(heading) * T
+else:                                       # 旋回 → 円弧で外挿
+    predicted_x = position_x + (velocity_linear / velocity_angular) * (
+        sin(heading + velocity_angular * T) - sin(heading))
+    predicted_y = position_y + (velocity_linear / velocity_angular) * (
+        -cos(heading + velocity_angular * T) + cos(heading))
 ```
+
+> **CTRA（加速度込み）は不採用**: odom は加速度を供給せず（IMU 積分 or 速度差分が必要）、0.3 m/s のミニチュアスケールでは加速度項の寄与が小さく改修コストに見合わない。学習ベース予測（Trajectron++ 等）もスコープ外（戦略判断には方向性情報で十分）。
 
 ### 目的と必要場面
 
@@ -112,11 +122,11 @@ predicted_y = position_y + velocity_linear * sin(heading) * 3.0
 
 ### 限界（Claudeには参考値として提供）
 
-- 曲がり角で右折する予定でも直進方向を予測する
 - 壁の手前で停止するはずでも壁の向こう側を予測する
 - ゴールに到着して停止する場合でも通過した先を予測する
+- 直近の `velocity.angular` が一定と仮定するため、旋回の途中で操舵が変わると外れる
 
-精密な予測（Nav2の計画経路上の3秒後位置）は計算が複雑かつ経路自体が随時変わるため採用しない。Claudeの戦略判断には「2台が近づいている/離れている」程度の方向性情報で十分であり、精密な衝突回避はNav2（50ms）が担当する。
+CTRV 化により「曲がり角で右折予定でも直進方向を予測する」という旧線形外挿の限界は解消した（`angular` で円弧を考慮）。なお精密な予測（Nav2の計画経路上の3秒後位置）は計算が複雑かつ経路自体が随時変わるため引き続き採用しない。Claudeの戦略判断には「2台が近づいている/離れている」程度の方向性情報で十分であり、精密な衝突回避はNav2（50ms）が担当する。
 
 ## 出力: LLMが返す指示データ（Mode A/B）
 
