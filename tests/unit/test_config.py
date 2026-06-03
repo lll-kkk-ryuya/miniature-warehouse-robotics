@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 from warehouse_interfaces.config import load_config
-from warehouse_interfaces.safety import MAX_LINEAR_VELOCITY
+from warehouse_interfaces.safety import BATTERY_PERCENTAGE_SCALES, MAX_LINEAR_VELOCITY
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -100,3 +100,36 @@ def test_env_var_cannot_exceed_hard_cap(tmp_path: Path, monkeypatch: pytest.Monk
     monkeypatch.setenv("WAREHOUSE__SAFETY__MAX_LINEAR_VELOCITY", "0.9")
     with pytest.raises(ValueError, match="exceeds hard cap"):
         load_config([base])
+
+
+@pytest.mark.safety
+def test_base_config_battery_scale_is_valid() -> None:
+    # The shipped base scale must be a known value (#44) — load must not raise.
+    cfg = load_config([REPO_ROOT / "config" / "warehouse.base.yaml"])
+    assert cfg["safety"]["battery_percentage_scale"] in BATTERY_PERCENTAGE_SCALES
+
+
+@pytest.mark.safety
+def test_battery_scale_typo_rejected(tmp_path: Path) -> None:
+    base = _write(
+        tmp_path / "base.yaml",
+        "safety:\n  max_linear_velocity: 0.3\n  battery_percentage_scale: fractoin\n",
+    )
+    with pytest.raises(ValueError, match="battery_percentage_scale"):
+        load_config([base])
+
+
+@pytest.mark.safety
+def test_battery_scale_typo_rejected_even_without_velocity_key(tmp_path: Path) -> None:
+    # #44 regression guard: the scale must be validated INDEPENDENTLY of
+    # max_linear_velocity (a typo silently disabling the battery estop is fail-OPEN).
+    base = _write(tmp_path / "base.yaml", "safety:\n  battery_percentage_scale: percentage\n")
+    with pytest.raises(ValueError, match="battery_percentage_scale"):
+        load_config([base])
+
+
+@pytest.mark.safety
+def test_valid_battery_scale_loads(tmp_path: Path) -> None:
+    base = _write(tmp_path / "base.yaml", "safety:\n  battery_percentage_scale: fraction\n")
+    cfg = load_config([base])
+    assert cfg["safety"]["battery_percentage_scale"] == "fraction"

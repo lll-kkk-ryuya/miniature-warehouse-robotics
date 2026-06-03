@@ -13,7 +13,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 
-from warehouse_interfaces.safety import battery_is_critical
+from warehouse_interfaces.safety import battery_is_critical, normalize_battery_percent
 
 
 @dataclass(frozen=True)
@@ -40,6 +40,23 @@ class Decision:
 def distance(ax: float, ay: float, bx: float, by: float) -> float:
     """Euclidean distance between two planar points."""
     return math.hypot(ax - bx, ay - by)
+
+
+def marshal_battery(prev: int | None, raw: float, scale: str) -> int | None:
+    """Marshal a raw ``BatteryState.percentage`` into a 0..100 int for ``BotState``.
+
+    rclpy-free so the 50ms reflex's battery path is unit-testable with the same
+    coverage as the State Cache (#44 / R-26). Normalizes via the shared
+    ``normalize_battery_percent`` (single source) under the node's configured
+    ``scale`` (validated at startup). A non-finite reading is transient/unknown ->
+    keep ``prev`` (the last good value), so a prior CRITICAL battery keeps estopping
+    through a garbage sample (sticky-stop) instead of reverting to "unknown" and
+    releasing the estop.
+    """
+    try:
+        return normalize_battery_percent(raw, scale)
+    except ValueError:
+        return prev
 
 
 def _has_pose(b: BotState) -> bool:

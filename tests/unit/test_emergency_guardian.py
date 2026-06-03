@@ -9,6 +9,8 @@ blocked_timeout); battery uses the imported contract, never a literal.
 import pytest
 from warehouse_interfaces.safety import (
     BATTERY_CRITICAL_PCT,
+    BATTERY_SCALE_FRACTION,
+    BATTERY_SCALE_PERCENT,
     MAX_LINEAR_VELOCITY,
     clamp_velocity,
 )
@@ -18,6 +20,7 @@ from warehouse_safety.guard_logic import (
     build_event,
     distance,
     evaluate,
+    marshal_battery,
 )
 
 THRESH = 0.3  # = cfg safety.emergency_min_distance (the node reads it from load_config)
@@ -96,6 +99,34 @@ def test_battery_critical_boundary_is_inclusive() -> None:
     above = _evaluate(_bot("bot1", 5.0, 5.0, batt=BATTERY_CRITICAL_PCT + 1), _bot("bot2", 0.0, 0.0))
     assert [d for d in crit if d.reason == "battery_critical"]
     assert not [d for d in above if d.reason == "battery_critical"]
+
+
+@pytest.mark.safety
+@pytest.mark.parametrize(
+    ("prev", "raw", "scale", "expected"),
+    [
+        (None, 0.85, BATTERY_SCALE_FRACTION, 85),  # fraction driver 0..1 -> 0..100
+        (None, 0.05, BATTERY_SCALE_FRACTION, 5),  # 5% critical stays critical
+        (None, 5.0, BATTERY_SCALE_PERCENT, 5),  # percent driver passes through
+        (50, float("nan"), BATTERY_SCALE_PERCENT, 50),  # non-finite -> keep last good
+        (8, float("inf"), BATTERY_SCALE_FRACTION, 8),  # garbage after critical keeps estop
+        (None, float("nan"), BATTERY_SCALE_PERCENT, None),  # no prior + garbage -> unknown
+    ],
+)
+def test_marshal_battery_reflex_parity(prev, raw, scale, expected) -> None:
+    # The 50ms reflex's battery scaling has the same coverage as the State Cache (#44):
+    # configured scale applied via the shared normalizer; non-finite keeps last-good.
+    assert marshal_battery(prev, raw, scale) == expected
+
+
+@pytest.mark.safety
+def test_marshal_battery_then_estops_critical_fraction_driver() -> None:
+    # End-to-end on the reflex path: a fraction-driver critical reading marshals to a
+    # 0..100 pct that guard_logic estops on — the bug #44 fixed (Guardian used raw).
+    batt = marshal_battery(None, 0.05, BATTERY_SCALE_FRACTION)  # 5%
+    decs = _evaluate(_bot("bot1", 5.0, 5.0, batt=batt), _bot("bot2", 0.0, 0.0))
+    crit = [d for d in decs if d.reason == "battery_critical"]
+    assert crit and crit[0].bot == "bot1" and crit[0].action == "estop"
 
 
 @pytest.mark.safety

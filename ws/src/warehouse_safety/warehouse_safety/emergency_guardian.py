@@ -33,6 +33,7 @@ from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import BatteryState
 from std_msgs.msg import String
 from warehouse_interfaces.config import load_config
+from warehouse_interfaces.safety import BATTERY_PERCENTAGE_SCALE_DEFAULT, validate_battery_scale
 
 from warehouse_safety import guard_logic as gl
 
@@ -50,6 +51,16 @@ class EmergencyGuardian(Node):
         blocked = cfg["safety"]["blocked_timeout"]
         self._dist_threshold = self.declare_parameter("emergency_min_distance", dist).value
         self._blocked_timeout = self.declare_parameter("blocked_timeout", blocked).value
+        # #44: explicit battery driver scale, shared with State Cache via
+        # warehouse_interfaces.safety so this reflex and the snapshot never diverge.
+        scale = cfg["safety"].get("battery_percentage_scale", BATTERY_PERCENTAGE_SCALE_DEFAULT)
+        # #44: validate at startup so a typo'd scale (config or `-p` override) fails fast
+        # — the node refuses to start — instead of silently disabling the battery estop
+        # (an unknown scale would raise on every reading and _on_battery would suppress it,
+        # leaving battery None = unknown = no estop = fail-OPEN).
+        self._battery_scale = validate_battery_scale(
+            self.declare_parameter("battery_percentage_scale", scale).value
+        )
 
         self._seq = 0
         self._tracker = gl.BlockTracker()
@@ -101,17 +112,13 @@ class EmergencyGuardian(Node):
         self._blocked[bot] = self._tracker.update(bot, p.x, p.y, time.monotonic())
 
     def _on_battery(self, bot: str, msg: BatteryState) -> None:
-        # battery_is_critical expects a PERCENTAGE (0..100). We forward the raw
-        # BatteryState.percentage; guard_logic treats NaN/None as unknown (no estop).
-        # TODO(Phase 2, SAFETY-BLOCKER): pin the driver scale before trusting the
-        # battery estop on real hardware. The scale is currently UNKNOWN and the two
-        # consumers of /bot{n}/battery differ: State Cache normalizes (0..1->0..100 via
-        # battery_to_percent) while this node does not. A 0..1-fraction driver would
-        # make every reading <= 10 -> spurious estop; do NOT apply battery_to_percent's
-        # `<=1.0` heuristic here, because on a true 0..100 driver it would misread 0.5%
-        # as 50% and MISS a critical estop. Resolve by measuring the driver scale and
-        # normalizing once (ideally a shared warehouse_interfaces helper, contract PR).
-        self._battery[bot] = msg.percentage
+        # #44: marshal via the rclpy-free, unit-tested gl.marshal_battery (single
+        # shared normalizer + configured scale) so this 50ms reflex and the State
+        # Cache agree and battery_is_critical sees a 0..100 percent. Non-finite ->
+        # keep last good (sticky-stop); guard_logic treats None as unknown (no estop).
+        self._battery[bot] = gl.marshal_battery(
+            self._battery[bot], msg.percentage, self._battery_scale
+        )
 
     # --- 50ms timer: pure decide + side effects ---
     def _check_safety(self) -> None:

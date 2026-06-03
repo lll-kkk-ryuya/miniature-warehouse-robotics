@@ -21,6 +21,11 @@ import contextlib
 import math
 from dataclasses import dataclass
 
+from warehouse_interfaces.safety import (
+    BATTERY_PERCENTAGE_SCALE_DEFAULT,
+    normalize_battery_percent,
+    validate_battery_scale,
+)
 from warehouse_interfaces.schemas import StateSnapshot
 
 _BOTS: tuple[str, ...] = ("bot1", "bot2")
@@ -96,22 +101,6 @@ def min_valid_range(
     return min(valid) if valid else None
 
 
-def battery_to_percent(percentage: float) -> int:
-    """Map a raw ``BatteryState.percentage`` to an int in [0, 100].
-
-    REP-147 defines ``percentage`` as a fraction in [0, 1]; some drivers instead
-    report 0..100. Rule (documented best-effort, Phase-2 TODO to pin the real
-    firmware scale): ``<= 1.0`` is treated as a fraction (``* 100``), otherwise it
-    is taken as already-percent; result is rounded and clamped to [0, 100].
-    Non-finite (NaN/±inf) is "unknown" and raises so the caller can drop it
-    rather than emit a fake value.
-    """
-    if not math.isfinite(percentage):
-        raise ValueError("non-finite battery percentage")
-    scaled = percentage * 100.0 if percentage <= 1.0 else percentage
-    return max(0, min(100, round(scaled)))
-
-
 def derive_status(linear: float) -> str:
     """Best-effort motion status from linear velocity.
 
@@ -129,8 +118,17 @@ class StateAggregator:
     than emitted with a fake ``battery=0``.
     """
 
-    def __init__(self, bots: tuple[str, ...] = _BOTS) -> None:
+    def __init__(
+        self,
+        bots: tuple[str, ...] = _BOTS,
+        battery_scale: str = BATTERY_PERCENTAGE_SCALE_DEFAULT,
+    ) -> None:
         self._bots = bots
+        # Explicit driver scale (#44); the node reads it from config and passes it in.
+        # Validate up front so a typo fails fast here instead of making every
+        # normalize_battery_percent call raise (which set_battery would suppress ->
+        # battery stays None -> no estop): fail-fast, not fail-open.
+        self._battery_scale = validate_battery_scale(battery_scale)
         self._pose: dict[str, PoseSample | None] = {b: None for b in bots}
         self._vel: dict[str, VelocitySample | None] = {b: None for b in bots}
         self._battery: dict[str, int | None] = {b: None for b in bots}
@@ -155,9 +153,10 @@ class StateAggregator:
             self._vel[bot] = sample
 
     def set_battery(self, bot: str, sample: BatterySample) -> None:
-        # Drop NaN/non-finite -> the bot stays incomplete instead of faking a value.
+        # Normalize via the single shared helper (#44) using the configured driver
+        # scale; drop NaN/non-finite -> the bot stays incomplete instead of faking.
         with contextlib.suppress(ValueError):
-            self._battery[bot] = battery_to_percent(sample.percentage)
+            self._battery[bot] = normalize_battery_percent(sample.percentage, self._battery_scale)
 
     def set_scan(self, bot: str, sample: ScanSample) -> None:
         self._obstacle[bot] = min_valid_range(sample.ranges, sample.range_min, sample.range_max)
