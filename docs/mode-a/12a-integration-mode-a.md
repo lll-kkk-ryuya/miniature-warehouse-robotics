@@ -62,7 +62,7 @@ Warehouse MCP Server は rclpy を持たないため、Nav2 制御用の薄い B
 │                                                                │
 │  [LLM Bridge Node 3秒タイマー]                                 │
 │        ├── State Cache JSON からスナップショット取得            │
-│        ├── predicted_position_3s を線形外挿で計算              │
+│        ├── predicted_position_3s を CTRV外挿で計算            │
 │        ├── emergency 情報があれば付加                           │
 │        └── → POST → Hermes Gateway                             │
 │                         │                                      │

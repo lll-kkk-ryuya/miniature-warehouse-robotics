@@ -149,7 +149,7 @@ Claudeに渡すtraffic:
 ## 4. 必要な自作コンポーネント一覧
 
 - **Multi-Robot Costmap Layer**（Nav2レベルの衝突回避、モードA/B共通）
-- **predicted_position_3s**（線形外挿、モードA/B共通）
+- **predicted_position_3s**（CTRV 外挿、モードA/B共通）
 - **デッドロック検出ロジック**（LLM Bridge内、モードAで必須）
 - **SimpleTrafficManager本体**（Python、モードBで必須）
 
