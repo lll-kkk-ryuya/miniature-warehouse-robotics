@@ -11,7 +11,7 @@
 
 ## 1. 地図ファイルの構成
 
-SLAM Toolboxでスキャンすると2つのファイルが生成される。
+地図は `map.pgm`（画像）と `map.yaml`（メタデータ）の2ファイルで構成される。生成経路は環境で2系統あり（実機 = SLAM Toolbox / sim = `warehouse_sim.map_generator` の決定論生成）、いずれも同一形式のため Nav2 map_server / AMCL / costmap からは透過に扱える（→ §7「地図の生成経路」）。
 
 ### map.pgm（画像ファイル）
 
@@ -312,6 +312,23 @@ map（グローバル、共有）
 - **複数台の協調制御**: 自動運転車は各車が独立判断するが、本プロジェクトではLLMが全体を俯瞰して交通整理を行う
 - **LLMによる自然言語での戦略判断**: 判断理由（reasoning）が人間に読める形で出力される
 - **LLM比較検証**: 同じ状況でClaude/ChatGPT/Gemini/Grokの判断の違いを定量比較できる
+
+---
+
+## 7. 地図の生成経路（実機 SLAM / sim 決定論生成）
+
+`map.pgm`/`map.yaml` の**形式は §1 と共通**だが、生成経路は環境で2系統に分かれる。map_server / AMCL / costmap からは同一形式として透過に扱える。
+
+- **実機（Phase 2）**: minicar 搭載 MS200 を teleop 走行させ、SLAM Toolbox がスキャンを蓄積して生成する（§2「SLAM地図生成に使用するセンサー」）。倉庫の実寸・実形状を反映する。
+- **sim（Phase 0.5, #76）**: ジオラマは合成かつ完全既知なので SLAM は不要。`warehouse_sim.map_generator`（pure 関数。`warehouse_sim.layout` の周壁＋棚を resolution 0.01 でラスタライズ）が**決定論的に**生成し `warehouse_sim/maps/map.{pgm,yaml}` として commit する。Nav2 へは `nav2_bringup map:=<warehouse_sim share>/maps/map.yaml` で渡す（共有 map_server は §5「Map Server の共有方式」）。
+
+sim マップの占有規約は Nav2 `nav2_map_server/src/map_io.cpp` に準拠する（§1 の `map.yaml` 例と整合）:
+
+- `origin` = 画像左下ピクセルの world 座標 = world 角 `[0.0, 0.0, 0.0]`（+X = 長辺 1.8m / +Y = 短辺 0.9m、`warehouse_sim.layout` の軸マッピング）。
+- 占有 = 黒 `0` / 通行可 = 白 `255`（`negate: 0` で `occ = (255 − pixel) / 255`）。ファイル先頭行 = 最大 y（map_server が上下反転して読む）。形式は P5（バイナリ）PGM。
+- 占有セルは **周壁＋棚のみ**。berth/station マーカーは docking 先であり、かつ MS200 のスキャン面より低く AMCL が観測しないため**非占有**（経路計画上は通行可）。
+
+> 実機 SLAM マップへ移行しても map_server / AMCL / costmap の設定は不変（同一形式）。sim マップの場所座標は暫定で、Phase 2 の地図実測で確定する（`warehouse_sim.layout` の `# TODO(Phase 2)`）。再生成は `python3 -m warehouse_sim.map_generator`。
 
 ---
 
