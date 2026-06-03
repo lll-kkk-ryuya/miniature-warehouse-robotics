@@ -10,7 +10,10 @@ setup(
         ("share/ament_index/resource_index/packages", [f"resource/{package_name}"]),
         (f"share/{package_name}", ["package.xml"]),
     ],
-    install_requires=["setuptools"],
+    # fastapi + uvicorn serve the Nav2 Bridge REST API (doc12a:198-343); imported
+    # lazily (app.py / nav2_bridge.py) so the pure-core unit tests run without them,
+    # the same pattern warehouse_llm_bridge uses for langfuse.
+    install_requires=["setuptools", "fastapi>=0.110", "uvicorn>=0.27"],
     zip_safe=True,
     maintainer="kawaguchiryuya",
     maintainer_email="ryu3124ruyu@gmail.com",
