@@ -4,7 +4,7 @@
 - **Phase**: 0.5→3
 - **ビルド**: ament_python
 - **ノード**: llm_bridge
-- **編集境界**: このパッケージ配下のみ。共有契約 `warehouse_interfaces` は変更不可（`.claude/rules/parallel-workflow.md` §4）。**`warehouse_mcp_server` を import しない**（同一トラックだが CI governance / parallel-workflow §2.1 が ws/src 間 import を禁止 → tool dispatch は executor seam 経由で注入）。
+- **編集境界**: このパッケージ配下のみ。共有契約 `warehouse_interfaces` は変更不可（`.claude/rules/parallel-workflow.md` §4）。**`warehouse_mcp_server` は同一トラック（doc16 §9 = `16-...:181-190`: `feat/llm-bridge` が両 pkg を所有）なので import 可**。CI cross-import check は track-aware（#81）＝他トラック内部のみ禁止。`main()` が実 `WarehouseTools().dispatch` を executor seam に注入する（S2-PR2 HALF B）。`warehouse_nav2_bridge`（同トラック）は REST 越し（httpx）に呼ぶのみ＝Python import しない。
 
 ## モジュール構成（S1 = #4 司令官サイクル / S2-PR1 = Langfuse trace 所有 + Mode C）
 - `llm_client.py` — `LLMClient`（ABC, `async decide(situation)->dict`）+ `LLMUnavailableError`（接続/HTTP 障害→Nav2-only; doc08:287-288）。
@@ -14,7 +14,7 @@
 - `action_map.py` — Command→ToolCall（`gen_id` 注入 + per-call `idempotency_key` mint。既存・#27/#41）。
 - `executor.py` — `ToolExecutor`(ABC) / `DispatchToolExecutor`(注入された `async dispatch(name,args)` をラップ) / `RecordingToolExecutor`(fake)。**MCP 依存をここで遮断**。
 - `scheduler.py` — `BridgeScheduler`（pure async, 単一グローバルループ doc08:250-252）：gen++ → `gen_store.set`（B-3 publish, cycle 先頭）→ situation → **`async with tracer.turn(gen)`** で `wait_for(decide, 2.5s)`（A client-side cancel, doc08:140）→ action_map→**`tracer.tool_span` 下で** executor dispatch。fallback: timeout=前回継続 / 連続=Nav2-only（doc08:286,141）。
-- `llm_bridge.py` — rclpy ノード（薄い adapter）：`/llm/reasoning`・`/llm/command` publish、session_id+`LangfuseTracer` を構築、mode を builder に注入、scheduler を asyncio スレッドで駆動。tool dispatch は **ログスタブ**（実 backend は PR-2）。
+- `llm_bridge.py` — rclpy ノード（薄い adapter）：`/llm/reasoning`・`/llm/command` publish、session_id+`LangfuseTracer` を構築、mode を builder に注入、scheduler を asyncio スレッドで駆動。**tool dispatch = 実 `WarehouseTools().dispatch`**（同一 `gen_store`/`state_store` を共有 → B-3 と Policy Gate が end-to-end で効く）。Mode A/B（`traffic_mode` none/simple）は受理された motion tool を **Nav2 Bridge REST（`:8645`）へ forward**（`Nav2RestForwarder` を注入）。Mode C（open-rmf）は Open-RMF 経由なので forwarder=None（doc15:211-219）。S2-PR2 HALF B。
 
 ## 提供 (produce)
 - topic: `/llm/reasoning` (std_msgs/String, 表示用) / `/llm/command` (std_msgs/String JSON, ログ用)（doc08:428-429, doc16§3）
@@ -23,7 +23,9 @@
 - **Langfuse trace（Bridge 所有, S2-PR1）**: 1 trace/turn・`trace_id`=`create_trace_id(seed=f"{run_id}:{gen_id}")`（32hex 決定的）・`session_id`=`run_{mode}_{provider}_{scenario}_{ts}`・tags`[provider,mode]`+`gen_id` metadata。**#6(wo) との突合契約 = この seed**（run_id=session_id; 凍結契約フィールドは増やさない doc13:481）。
 
 ## 消費 (consume)
-- 契約: `warehouse_interfaces.schemas`（Situation/Command/StateSnapshot/RobotSnapshot）、`stores`（StateStore/GenStore IF）、`config.load_config`（traffic_mode / safety.emergency_min_distance / hermes.base_url）
+- 契約: `warehouse_interfaces.schemas`（Situation/Command/StateSnapshot/RobotSnapshot）、`stores`（StateStore/GenStore/IdempotencyStore IF）、`config.load_config`（traffic_mode / safety.emergency_min_distance / hermes.base_url / **nav2_bridge.base_url**）
+- 同一トラック（in-process, doc16 §9 / #81）: `warehouse_mcp_server.tools.WarehouseTools().dispatch`（実 tool 実行）、`gen_check.GenChecker`（共有 gen_store/idempotency_store で wire）、`nav2_client.Nav2RestForwarder`（Mode A/B の REST forwarder を注入）。
+- net: Nav2 Bridge REST `POST /api/v1/{navigate,wait,stop}`（`:8645`, #86 確定契約 = `docs/mode-a/12a-integration-mode-a.md:198-363`）。受理された `dispatch_task`/`cancel_task`/`send_to_charging` のみ発火（mapping は `docs/mode-a/08a-llm-bridge-mode-a.md:154-161`）。`dropoff`→`destination` の凍結ドリフトは `nav2_client.plan_nav2_request` が明示変換（どちらの凍結フィールドも改名しない）。
 - env: `HERMES_API_KEY`/`API_SERVER_KEY`（secret）、`WAREHOUSE_PROVIDER`（Hermes active_provider を反映, 既定 default）/`WAREHOUSE_SCENARIO`（既定 demo）= trace ラベル。`LANGFUSE_*`（trace 送信先・deploy 申し送り）。
 - file: `state.json`（State Cache=#5 が書く `StateSnapshot`。Bridge は読むだけ・センサ topic は購読しない doc08a:20-22/doc12:169）
 - net: Hermes Gateway `/v1/chat/completions`（OpenAI 互換, langfuse.openai 経由）
@@ -39,8 +41,9 @@
 - 偽 LLM / 偽 state.json / `NoopTracer` で独立検証（doc16§11, langfuse 非依存）。tests/ は ws/src 間 import 可（governance 非対象）なので end-to-end は実 `warehouse_mcp_server` を使用。安全機構は `@pytest.mark.safety`。Ruff(py312/line100/double-quote) + pytest 緑を維持。
 
 ## 前提・未確定 (TODO / seam)
-- **tool dispatch transport（最重要 seam）**: 現状 executor=ログスタブ。実 backend は **PR-2**：`StdioMcpToolExecutor`（`python -m warehouse_mcp_server` を subprocess 起動し mcp SDK で stdio 対話＝import でなく governance クリア）。end-to-end の安全は tests で実 tools 検証済。
-- **nav2_bridge は PR-2**（REST→BasicNavigator, doc12a:222-354）。MCP→nav2_bridge REST 配線も PR-2（境界に `warehouse_mcp_server` 追加, 承認済）。
+- **(済) tool dispatch transport**: S2-PR2 HALF B で **in-process `WarehouseTools().dispatch`** を採用（subprocess/stdio の `StdioMcpToolExecutor` 案は撤回 ＝ #81 が同一トラック import を解錠したため不要）。stdio server.py は Hermes 外部接続用に存続。end-to-end の安全は `test_bridge_scheduler.py` / `test_nav2_forward.py` で実 tools 検証済。
+- **(済) MCP→nav2_bridge REST 配線**: S2-PR2 HALF B（`warehouse_mcp_server.nav2_client`）。受理 motion tool→`POST /api/v1/{navigate,wait,stop}`。nav2_bridge 本体（REST→BasicNavigator, #86）は編集せず消費。
+- **REST forward は fail-open**: Nav2 Bridge outage は log のみ（cycle を落とさない）。実機での到達確認・retry/backoff は後続（Phase 2/3）。Open-RMF（Mode C）forward 経路は未実装（forwarder=None）。
 - **Langfuse v4 API 実機 verify（Phase 3, doc13:482）**: `LangfuseTracer` の `create_trace_id`/`start_as_current_span`/`update_trace` と `langfuse.openai.AsyncOpenAI` の正確な 4.7.1 形は実機で確認。lazy+fail-open なので CI/単体は非依存。
 - **deploy 申し送り**: ① Hermes 内蔵 Langfuse プラグイン **無効化**（二重計上回避, doc13:479）② bridge プロセスに `LANGFUSE_*` env 投入（`config/<env>/.env`、現 `.env.example` は `HERMES_LANGFUSE_*` のみ＝要追記）。
 - **docs 反映は #73 へ**: doc08:356/361・doc13:478（trace_id=`uuid7().hex`/session=`demo_...` の記述）を **seed 派生 + `run_*` session** に更新するのは Langfuse doc 所有の **#73**（branch `docs/langfuse-v4-provider-decision`）。本 PR は #73/#6 にコメントで seed 契約を予告（cross-lane 衝突回避）。

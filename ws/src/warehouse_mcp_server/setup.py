@@ -11,10 +11,13 @@ setup(
         (f"share/{package_name}", ["package.xml"]),
     ],
     install_requires=["setuptools", "pydantic>=2"],
-    # The MCP wire SDK is needed ONLY to run the stdio server (server.py:main),
-    # not for the pure tool logic / unit tests / ruff. Install with:
-    #   pip install -e ".[mcp]"
-    extras_require={"mcp": ["mcp>=1.0"]},
+    # Both are runtime-only pip *extras* (lazy-imported), NOT needed for the pure
+    # tool logic / unit tests / ruff:
+    #   - mcp : the MCP wire SDK to run the stdio server (server.py:main).
+    #     pip install -e ".[mcp]"
+    #   - nav2: httpx for the Nav2 Bridge REST forwarder (nav2_client.py, Mode A/B,
+    #     doc12a:198-363). pip install -e ".[nav2]"
+    extras_require={"mcp": ["mcp>=1.0"], "nav2": ["httpx>=0.27"]},
     zip_safe=True,
     maintainer="kawaguchiryuya",
     maintainer_email="ryu3124ruyu@gmail.com",
