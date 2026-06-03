@@ -23,11 +23,11 @@
    git fetch origin                                   # 念のため最新化
    git worktree add ../mwr-<track> -b <branch> main   # フォルダ＋新ブランチ
    ```
-4. **セッション起動（session 名を付ける）**: `cd ../mwr-<track> && claude -n "mwr-<track>"`（`-n/--name` で session 表示名を付与。下記「session 命名規約」）。Opus を確認。キックオフで「担当 Issue 番号・編集境界（自パッケージのみ）・本ルール参照」を伝える。
+4. **セッション起動（session 名を付ける）**: `cd ../mwr-<track> && claude -n "mwr-<track>"`（`-n/--name` で session 表示名を付与。下記「session 命名規約」）。Opus を確認。キックオフで「担当 Issue 番号・編集境界（自パッケージのみ）・本ルール参照・**docs-first 実装ゲート（§1.1）**」を伝える。
 5. **Issue を着手中に更新**: `blocked`→`ready`、assign または着手コメント（他セッションとの重複防止）。
 
 **破棄時（完了）**:
-1. PR を出す（`[track] ...` / `Closes #N` / track ラベル）。`colcon build` 通過・安全機構はユニットテスト通過を確認。
+1. PR を出す（`[track] ...` / `Closes #N` / track ラベル）。`colcon build` 通過・安全機構はユニットテスト通過・**docs 整合まとめ＋突合ゲート（§1.1 step 3）通過**を確認（このゲートを満たして初めて「完了／納期」とする）。
 2. main へマージ（マージ順 doc17 §6）。
 3. クリーンを確認して掃除:
    ```bash
@@ -42,6 +42,15 @@
 - `blocked` Issue のトラックを先行着手しない。
 - 別トラックのフォルダ／共有契約を触らない（契約変更は §4 経由）。
 - **新トラックを epic Issue／ラベル無しで開始しない**（協調不能になる）。
+
+### 1.1 docs-first 実装ゲート（session 指示文・完了条件に必須）
+
+session を独立で回す際、**kickoff 指示文と DoD（完了条件）に下記を必ず織り込む**。実装は常に docs を正本とし、**docs に記載しながら**進め、**最終ゲートを満たして初めて「完了（納期）」と宣言する**（正本: [docs-first.md](docs-first.md) / [implementation-and-dependencies.md §2](implementation-and-dependencies.md) / [consistency-check.md](consistency-check.md) の session 適用）。
+
+1. **着手前**: 正本 doc を実 Read し、根拠を **たどれる file:line** で引く（記憶・要約で進めない。docs-first.md §引用）。
+2. **実装中（docs に記載しながら）**: 公開 IF（produce/consume・新トピック/型/しきい値）を当該 pkg `CLAUDE.md` に**都度記録**する（implementation-and-dependencies.md §2）。docs に無い契約/トピック/スキーマ/しきい値を**発明しない**。docs と食い違えば **code を docs に合わせる**（docs 誤り/不足なら先に `docs/*` PR）。
+3. **完了前（docs 整合まとめ＋突合ゲート）**: ① 実装が今も docs と一致するか**再照合**（docs-first.md §必須(同期)）→ ② `python3 scripts/check_consistency.py` が **0 ERROR**（consistency-check.md）→ ③ 機械で拾えない意味的・doc 跨ぎ矛盾は **`/consistency-audit`**（docs-reviewer 隔離実行）→ ④ **残るおかしな点・未決・暫定値を docs / PR 本文に列挙**（隠さない）。
+4. **「完了（納期）」の宣言は step 3 を満たし PR の確認項目に明記してから**。未達なら未完了として扱う（`colcon build` / 安全 unit と並ぶ**必須ゲート**）。
 
 ### session 命名規約（worktree 起動時に必ず付ける）
 
