@@ -5,8 +5,9 @@ The State Cache (warehouse_state, doc12) writes a frozen ``StateSnapshot``
 it and ENRICHES each robot into a ``RobotState`` by computing two fields the
 snapshot does not carry (doc mode-a/08a:89-95):
 
-* ``predicted_position_3s`` — linear extrapolation from pose + velocity
-  (08a:99-103). Computed here (NOT in State Cache, since Mode C does not need it).
+* ``predicted_position_3s`` — CTRV (constant turn-rate & velocity) extrapolation
+  from pose + velocity (08a:97-111). Computed here (NOT in State Cache, since Mode
+  C does not need it).
 * ``obstacle_ahead`` — bool derived from ``obstacle_distance`` vs the configured
   ``emergency_min_distance`` (08a:95, illustrative threshold; sourced from config
   so the number is not invented here).
@@ -35,8 +36,12 @@ from warehouse_interfaces.stores import StateStore
 # pending diorama measurement; this is descriptive context for the LLM only.
 DEFAULT_LAYOUT = "1.8m x 0.9m, 3 shelves, 2 aisles (200mm, no passing)"
 
-# 3-second linear-extrapolation horizon (doc mode-a/08a:99-103, 3.0 s).
+# 3-second CTRV/CV extrapolation horizon (doc mode-a/08a:97-111, T = 3.0 s).
 PREDICTION_HORIZON_S = 3.0
+
+# Below this |angular velocity| [rad/s], CTRV degenerates to constant-velocity
+# (straight line) to avoid division by ~0 (doc mode-a/08a:103, abs(omega) < 1e-3).
+CV_ANGULAR_EPS = 1e-3
 
 # Fallback obstacle_ahead threshold [m] if config omits it (config
 # safety.emergency_min_distance = 0.3, doc12 DISTANCE_THRESHOLD).
@@ -142,16 +147,28 @@ class SituationBuilder:
         )
 
     def _predict(self, snap: RobotSnapshot) -> Position:
-        """Linear-extrapolate the 3s position from pose + velocity (08a:99-103).
+        """CTRV-extrapolate the 3s position from pose + velocity (08a:97-111).
 
-        Approximate (ignores turns / walls / goal stops, 08a:113-119); the LLM
+        Constant-turn-rate-and-velocity: ``velocity.angular`` (omega) bends the
+        path along a circular arc; degenerates to constant-velocity (the old
+        straight-line form) when ``abs(omega) < CV_ANGULAR_EPS``. Approximate
+        (assumes omega constant, ignores walls / goal stops, 08a:123-129); the LLM
         uses it only for "approaching vs separating" intuition — precise collision
         avoidance is Nav2's job (50ms).
         """
-        reach = snap.velocity.linear * self._horizon
+        v = snap.velocity.linear
+        omega = snap.velocity.angular
+        theta = snap.heading
+        t = self._horizon
+        if abs(omega) < CV_ANGULAR_EPS:  # straight line -> CV (omega ~ 0, 08a:103-105)
+            return Position(
+                x=snap.position.x + v * math.cos(theta) * t,
+                y=snap.position.y + v * math.sin(theta) * t,
+            )
+        # turning -> circular arc (CTRV, 08a:106-110)
         return Position(
-            x=snap.position.x + reach * math.cos(snap.heading),
-            y=snap.position.y + reach * math.sin(snap.heading),
+            x=snap.position.x + (v / omega) * (math.sin(theta + omega * t) - math.sin(theta)),
+            y=snap.position.y + (v / omega) * (-math.cos(theta + omega * t) + math.cos(theta)),
         )
 
     def _obstacle_ahead(self, obstacle_distance: float | None) -> bool:
