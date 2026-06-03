@@ -106,6 +106,7 @@ doc03 では `/llm/situation` `/llm/command` `/wo/mission` を「カスタム（
 | 状態スナップショット | `/tmp/warehouse/state.json` | State Cache Node | LLM Bridge | `tmp`→`os.replace` の atomic write |
 | gen_store | `/tmp/warehouse/gen_store` | LLM Bridge | Warehouse MCP Server | §6 参照 |
 | Command Audit Log | `$WAREHOUSE_AUDIT_LOG_PATH`（既定 `/tmp/warehouse/audit.jsonl`） | MCP Server | 分析 | JSON Lines 追記 |
+| 冪等キーストア | `/tmp/warehouse/idempotency_store`（`idempotency_store_path()`） | Warehouse MCP Server | Warehouse MCP Server | per-call UUID 消費記録＝C 層 replay 拒否（R-35 / doc15 §2。`GenChecker.check_and_add`） |
 | 倉庫 config | `config/warehouse.base.yaml` + `config/$WAREHOUSE_ENV/warehouse.yaml`（base+overlay） | — | 全ノード | YAML |
 
 - **環境分離（dev/stg/prod）は `WAREHOUSE_ENV` で切替**。config は base+overlay で解決し、runtime dir（dev=`/tmp/warehouse/` / prod=`/run/warehouse/`）も環境別。詳細は **[doc19 - 環境分離と設定](19-environments-and-config.md)**（旧 `$WAREHOUSE_CONFIG_PATH` 単一ファイル方式を置換）。
