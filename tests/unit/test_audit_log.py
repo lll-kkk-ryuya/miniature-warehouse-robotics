@@ -57,3 +57,45 @@ def test_tools_emit_audit_entries(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     asyncio.run(tools.dispatch_task(3, robot="bot1", dropoff="berth_A"))
     entries = [json.loads(line) for line in audit_path.read_text().splitlines()]
     assert any(e["tool"] == "dispatch_task" and e["result"] == "executed" for e in entries)
+
+
+@pytest.mark.unit
+def test_record_merges_gen_id_into_detail_without_mutating_caller(tmp_path: Path) -> None:
+    # #109: gen_id is merged into a COPY of detail (the join key the WO sink reads);
+    # the caller's payload dict must be left untouched (it is also the tool's return).
+    path = tmp_path / "audit.jsonl"
+    payload = {"status": "ok", "task_id": "nav_001"}
+    CommandAuditLog(path).record("dispatch_task", "executed", payload, robot="bot1", gen_id=7)
+    entry = json.loads(path.read_text(encoding="utf-8").splitlines()[0])
+    assert entry["detail"]["gen_id"] == 7
+    assert payload == {"status": "ok", "task_id": "nav_001"}  # caller dict NOT mutated
+
+
+@pytest.mark.unit
+def test_executed_dispatch_row_carries_gen_id_for_wo_join(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # #109 end-to-end: an executed dispatch_task row must carry detail.gen_id so the WO
+    # live-score join is no longer a permanent no-op. Cross-check with the ACTUAL #6
+    # consumer (tests may cross-import ws/src): parse_line(...).gen_id == the gen.
+    from warehouse_orchestrator.audit_reader import parse_line
+
+    monkeypatch.setenv("WAREHOUSE_RUNTIME_DIR", str(tmp_path))
+    audit_path = tmp_path / "audit.jsonl"
+    gen = FileGenStore(tmp_path / "gen_store")
+    gen.set(3)
+    state = FileStateStore(tmp_path / "state.json")
+    state.write({"timestamp": datetime.now().isoformat(), "robots": {"bot1": {"battery": 90}}})
+    tools = WarehouseTools(
+        gen_checker=GenChecker(gen),
+        policy_gate=PolicyGate(state),
+        audit=CommandAuditLog(audit_path),
+        state_store=state,
+    )
+    asyncio.run(tools.dispatch_task(3, robot="bot1", dropoff="berth_A"))
+    executed = [
+        e
+        for line in audit_path.read_text(encoding="utf-8").splitlines()
+        if (e := parse_line(line)) is not None and e.result == "executed"
+    ]
+    assert executed and all(e.gen_id == 3 for e in executed)  # consumer reads the gen

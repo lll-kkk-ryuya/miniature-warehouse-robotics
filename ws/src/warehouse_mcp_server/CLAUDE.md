@@ -19,7 +19,7 @@
 - `server.py` — stdio ワイヤ。MCP SDK は `main()` 内で遅延 import（pip extra）。全ツール schema で `gen_id` を required。`_call_tool` は `tools.dispatch` に委譲。
 
 ## 提供 (produce)
-- file : `audit_log_path()`（既定 `/tmp/warehouse/audit.jsonl`、JSON Lines、`WAREHOUSE_AUDIT_LOG_PATH` で上書き可）— 全 MCP コマンドの実行/拒否ログ
+- file : `audit_log_path()`（既定 `/tmp/warehouse/audit.jsonl`、JSON Lines、`WAREHOUSE_AUDIT_LOG_PATH` で上書き可）— 全 MCP コマンドの実行/拒否ログ。**受理 motion tool（dispatch_task/cancel_task/send_to_charging）の executed 行は `detail.gen_id` を持つ**（#109＝#6/wo の live score join key。consumer=`warehouse_orchestrator.audit_reader.AuditEntry.gen_id`, doc13:484。`record(gen_id=)` が detail コピーへ merge）。
 - in-memory: `PolicyGate.active_tasks: dict[robot, task_id]`（`dispatch_task` 書込・`cancel_task("current:{robot}")` で解決）。deterministic task id `nav_{seq:03d}`、negotiation id `nego_{seq:03d}`。
 - 7 MCP tools（dispatch_task / cancel_task / get_fleet_status / get_task_queue / send_to_charging / escalation_response / start_negotiation）。返り値は `{"status": "ok"|"rejected"|"error", ...}`。
 - net（`nav2_forwarder` 注入時・Mode A/B のみ）: 受理された `dispatch_task`/`cancel_task`/`send_to_charging` → Nav2 Bridge `POST /api/v1/{navigate,wait,stop}`（`:8645`, #86 契約）。read-only/escalation/negotiation は forward しない（`plan_nav2_request`→None）。`audit` の `result` 値集合（executed/rejected/error）は不変＝forward 結果は logger のみ（監査契約を広げない）。
