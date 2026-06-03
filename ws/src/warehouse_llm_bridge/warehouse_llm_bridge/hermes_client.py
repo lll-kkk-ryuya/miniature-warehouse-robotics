@@ -36,8 +36,8 @@ from warehouse_llm_bridge.llm_client import LLMClient, LLMUnavailableError
 HERMES_MODEL = "hermes-agent"
 
 # Mode-neutral base system prompt. It fixes ONLY the output contract (the frozen
-# Command JSON, doc mode-a/08a:245-253) and the safety-over-efficiency / battery
-# guidance common to every mode (08a:231-238). Mode-specific additions (Mode A
+# Command JSON, doc mode-a/08a:257-264) and the safety-over-efficiency / battery
+# guidance common to every mode (08a:243-250). Mode-specific additions (Mode A
 # traffic/deadlock rules vs Mode C task-allocation-only) are a seam left to a
 # later slice (doc14:159-166) so the bridge stays mode-agnostic.
 SYSTEM_PROMPT = (

@@ -2,7 +2,7 @@
 
 Verifies the L2(StateSnapshot) -> L1(Situation) enrichment: top-level fields the
 bridge supplies (turn / gen_id / warehouse.layout / history), the computed
-``predicted_position_3s`` (08a:99-103), and ``obstacle_ahead`` derived from
+``predicted_position_3s`` (CTRV, 08a:97-111), and ``obstacle_ahead`` derived from
 ``obstacle_distance`` vs ``emergency_min_distance`` (08a:95). Pure-python, no ROS.
 """
 
@@ -57,14 +57,61 @@ def test_situation_top_level_fields(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
-def test_predicted_position_3s_linear_extrapolation(tmp_path: Path) -> None:
-    # heading=0, linear=0.1, horizon 3.0 -> x advances by 0.3, y unchanged (08a:99-103).
+def test_predicted_position_3s_ctrv_straight(tmp_path: Path) -> None:
+    # omega=0 degenerates to constant-velocity: heading=0, linear=0.1, horizon 3.0
+    # -> x advances by 0.3, y unchanged (08a:103-105, CV branch).
     builder = SituationBuilder(_store(tmp_path, {"bot1": _robot()}))
     sit = builder.build(turn=1, gen_id=1)
     assert sit is not None
     pred = sit["robots"]["bot1"]["predicted_position_3s"]
-    assert pred["x"] == pytest.approx(0.3 + 0.1 * math.cos(0.0) * 3.0)
-    assert pred["y"] == pytest.approx(0.5 + 0.1 * math.sin(0.0) * 3.0)
+    assert pred["x"] == pytest.approx(0.3 + 0.1 * 3.0)
+    assert pred["y"] == pytest.approx(0.5)
+
+
+@pytest.mark.unit
+def test_predicted_position_3s_ctrv_turning(tmp_path: Path) -> None:
+    # omega != 0 follows a circular arc using velocity.angular (08a:106-110): the
+    # robot turns, so y must leave the straight-line (CV) path.
+    v, omega, theta, t = 0.1, 0.5, 0.0, 3.0
+    builder = SituationBuilder(
+        _store(tmp_path, {"bot1": _robot(velocity={"linear": v, "angular": omega})})
+    )
+    sit = builder.build(turn=1, gen_id=1)
+    assert sit is not None
+    pred = sit["robots"]["bot1"]["predicted_position_3s"]
+    exp_x = 0.3 + (v / omega) * (math.sin(theta + omega * t) - math.sin(theta))
+    exp_y = 0.5 + (v / omega) * (-math.cos(theta + omega * t) + math.cos(theta))
+    assert pred["x"] == pytest.approx(exp_x)
+    assert pred["y"] == pytest.approx(exp_y)
+    assert pred["y"] != pytest.approx(0.5)  # NOT the straight-line CV prediction
+
+
+@pytest.mark.unit
+def test_predicted_position_3s_ctrv_below_eps_uses_cv(tmp_path: Path) -> None:
+    # |omega| below CV_ANGULAR_EPS (1e-3) takes the CV branch exactly (08a:103).
+    v, theta, t = 0.1, 0.0, 3.0
+    builder = SituationBuilder(
+        _store(tmp_path, {"bot1": _robot(velocity={"linear": v, "angular": 1e-4})})
+    )
+    sit = builder.build(turn=1, gen_id=1)
+    assert sit is not None
+    pred = sit["robots"]["bot1"]["predicted_position_3s"]
+    assert pred["x"] == pytest.approx(0.3 + v * math.cos(theta) * t)
+    assert pred["y"] == pytest.approx(0.5 + v * math.sin(theta) * t)
+
+
+@pytest.mark.unit
+def test_predicted_position_3s_ctrv_arc_continuous_with_cv(tmp_path: Path) -> None:
+    # Just above the threshold the arc stays close to CV -> no jump at the branch.
+    v, t = 0.1, 3.0
+    builder = SituationBuilder(
+        _store(tmp_path, {"bot1": _robot(velocity={"linear": v, "angular": 2e-3})})
+    )
+    sit = builder.build(turn=1, gen_id=1)
+    assert sit is not None
+    pred = sit["robots"]["bot1"]["predicted_position_3s"]
+    assert pred["x"] == pytest.approx(0.3 + v * t, abs=1e-3)
+    assert pred["y"] == pytest.approx(0.5, abs=1e-3)
 
 
 @pytest.mark.unit
