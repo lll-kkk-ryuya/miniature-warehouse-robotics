@@ -23,7 +23,7 @@
    git fetch origin                                   # 念のため最新化
    git worktree add ../mwr-<track> -b <branch> main   # フォルダ＋新ブランチ
    ```
-4. **セッション起動**: `cd ../mwr-<track> && claude`。Opus を確認。キックオフで「担当 Issue 番号・編集境界（自パッケージのみ）・本ルール参照」を伝える。
+4. **セッション起動（session 名を付ける）**: `cd ../mwr-<track> && claude -n "mwr-<track>"`（`-n/--name` で session 表示名を付与。下記「session 命名規約」）。Opus を確認。キックオフで「担当 Issue 番号・編集境界（自パッケージのみ）・本ルール参照」を伝える。
 5. **Issue を着手中に更新**: `blocked`→`ready`、assign または着手コメント（他セッションとの重複防止）。
 
 **破棄時（完了）**:
@@ -42,6 +42,14 @@
 - `blocked` Issue のトラックを先行着手しない。
 - 別トラックのフォルダ／共有契約を触らない（契約変更は §4 経由）。
 - **新トラックを epic Issue／ラベル無しで開始しない**（協調不能になる）。
+
+### session 命名規約（worktree 起動時に必ず付ける）
+
+並列 worktree の識別性のため、**`claude` 起動時に session 表示名を付ける**（どの worktree のセッションかを prompt box・`/resume` picker・端末タイトルで即判別でき、「どのセッションだっけ」を防ぐ）。
+
+- **規約**: session 名 = **worktree フォルダ名 `mwr-<track>`**（`git worktree list` と一致し、PR/Issue 冒頭タグ（[merge-and-communication.md](merge-and-communication.md) §2）の `worktree:` フィールドと対応）。起動は `claude -n "mwr-<track>"`（`-n/--name`。Claude Code v2.1.160 で確認。help: 「Set a display name for this session（prompt box / `/resume` picker / 端末タイトルに表示）」）。再開は `claude --resume mwr-<track>`、改名は `/rename`。
+- **`--session-id <uuid>` は別物**（UUID 必須の機械ID＝transcript ファイル名であり表示名ではない）。同一 worktree を常に同じ transcript で再開したい場合のみ、worktree パスから導出した deterministic UUID（例 `uuid5`）を `-n` と併用してよい。
+- **任意の自動化（有効化は人間）**: `SessionStart` hook の `sessionTitle`（Claude Code v2.1.152+）で cwd/branch から自動命名、または `statusLine` に `session_name` / `workspace.git_worktree` を表示する手もある。ただし **hooks / `settings.json` の有効化は人間が `/update-config` 等で行う**（エージェントによる `settings.json` 自己改変は禁止。[.claude/hooks/README.md](../hooks/README.md) / §7.1）。
 
 ---
 
