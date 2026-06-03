@@ -58,7 +58,7 @@ traffic = MANAGERS[config["traffic_mode"]]()
 
 ## 2. モードC: Open-RMF交通管理（主方針）
 
-Open-RMFのTraffic ScheduleとConflict Negotiationを使用する。経路ベースの衝突予測が可能になり、predicted_position_3s（線形外挿）やMulti-Robot Costmap Layer（自作）が不要になる。
+Open-RMFのTraffic ScheduleとConflict Negotiationを使用する。経路ベースの衝突予測が可能になり、predicted_position_3s（CTRV 外挿）やMulti-Robot Costmap Layer（自作）が不要になる。
 
 **Nav2への経路**: Hermes → Warehouse MCP Server → Open-RMF Task API → Fleet Adapter → Nav2（Fleet Adapterが唯一のNav2制御パス）。
 
