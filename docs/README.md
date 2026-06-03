@@ -9,6 +9,7 @@ docs/
 ├── shared/          モード非依存（プロジェクト概要・ハードウェア・予算等）
 ├── architecture/    共通基盤設計（LLM Bridge共通・インフラ・フェーズ計画）
 ├── dev/             開発プロセス（並列開発 playbook・オペレーター手順・教訓ログ）
+├── setup/           デプロイ手順（Jetson prod 常駐化・systemd / 監視）
 ├── mode-a/          Mode A/B: LLM単独交通管理（Open-RMFなし）
 └── mode-c/          Mode C: LLM + Open-RMF（主方針）
 ```
