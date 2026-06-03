@@ -1,0 +1,28 @@
+[Unit]
+# State Cache — aggregates the ROS 2 state and writes the atomic snapshot
+# /run/warehouse/state.json (+ gen_store / idempotency_store / audit.jsonl)
+# consumed by the LLM Bridge and MCP Server (doc12:384 100ms target,
+# paths.py:33-51). The shared runtime dir is declared + preserved by every data
+# unit (state-cache / safety / bridge); whichever starts first creates it.
+Description=Warehouse State Cache (state.json @ /run/warehouse)
+Documentation=https://github.com/lll-kkk-ryuya/miniature-warehouse-robotics/blob/main/docs/setup/jetson-deploy.md
+After=warehouse-microros-agent.service
+Wants=warehouse-microros-agent.service
+PartOf=warehouse.target
+
+[Service]
+Type=simple
+EnvironmentFile=-/etc/warehouse/warehouse.env
+User=warehouse
+Group=warehouse
+# /run/warehouse (prod runtime dir, paths.py:22-30). Preserve=yes keeps the
+# SHARED dir across an individual unit restart so peers do not lose state.json.
+RuntimeDirectory=warehouse
+RuntimeDirectoryMode=0770
+RuntimeDirectoryPreserve=yes
+ExecStart=/opt/warehouse/deploy/jetson/bin/ros-exec.sh ros2 run warehouse_state state_cache
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=warehouse.target

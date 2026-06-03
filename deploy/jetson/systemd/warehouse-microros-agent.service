@@ -1,0 +1,26 @@
+[Unit]
+# micro-ROS Agent — bridges the two ESP32 minicars (Yahboom) to the ROS 2 graph
+# over WiFi/UDP (doc02:71 "micro-ROS Agent の実行（minicarとのWiFi通信）",
+# doc02:138). Base of the stack: nothing ROS-side reaches the wheels without it.
+# NOTE: Layer 0 hardware safety (speed clamp <= 0.3 m/s, e-stop) lives on the
+# MCU itself and is independent of this agent (doc12:75-78, safety.md).
+Description=Warehouse micro-ROS Agent (ESP32 minicars over WiFi/UDP)
+Documentation=https://github.com/lll-kkk-ryuya/miniature-warehouse-robotics/blob/main/docs/setup/jetson-deploy.md
+After=network-online.target
+Wants=network-online.target
+PartOf=warehouse.target
+
+[Service]
+Type=simple
+EnvironmentFile=-/etc/warehouse/warehouse.env
+# Dedicated service account (created by install.sh). dialout only needed if the
+# transport is switched to serial; harmless for UDP.
+User=warehouse
+Group=warehouse
+SupplementaryGroups=dialout
+ExecStart=/opt/warehouse/deploy/jetson/bin/ros-exec.sh ros2 run micro_ros_agent micro_ros_agent udp4 --port ${MICROROS_PORT}
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=warehouse.target

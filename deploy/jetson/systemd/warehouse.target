@@ -1,0 +1,22 @@
+[Unit]
+# Aggregate target for the warehouse robot stack on the Jetson (prod commander).
+# `systemctl start warehouse.target` brings up the whole stack in dependency
+# order; `stop` tears it down. Individual units also declare PartOf= this target.
+#
+# SAFETY GATE: do NOT enable/start on the real robots until the Layer 0 speed
+# clamp (<= 0.3 m/s, MCU-enforced) and the Emergency Guardian have passed their
+# tests (.claude/rules/safety.md, doc16 §11, doc19:21). install.sh installs the
+# units but does not enable them by default.
+#
+# Design: docs/setup/jetson-deploy.md, docs/shared/02-hardware-design.md:134-138,
+# docs/architecture/12-infrastructure-common.md (4-layer safety).
+Description=Warehouse robot stack (micro-ROS + state + safety + nav2 + bridge)
+Documentation=https://github.com/lll-kkk-ryuya/miniature-warehouse-robotics/blob/main/docs/setup/jetson-deploy.md
+Wants=warehouse-microros-agent.service
+Wants=warehouse-state-cache.service
+Wants=warehouse-safety.service
+Wants=warehouse-nav2.service
+Wants=warehouse-bridge.service
+
+[Install]
+WantedBy=multi-user.target
