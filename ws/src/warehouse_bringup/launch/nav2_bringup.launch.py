@@ -107,6 +107,12 @@ def _per_robot_group(robot: str, params_file, map_yaml, use_sim_time, autostart,
             name="planner_server",
             output="screen",
             parameters=[configured_params],
+            # global_costmap's static_layer subscribes "map" RELATIVELY -> /bot{n}/map under
+            # the namespace, but the shared map_server publishes un-namespaced /map. Without
+            # this remap the global static layer never receives the diorama walls (silent
+            # degradation under track_unknown_space). Mirrors the AMCL ("map","/map") remap
+            # above and the one-shared-map design (doc09:253-257). Found in the #67 E2E gate.
+            remappings=[("map", "/map")],
         ),
         Node(
             package="nav2_behaviors",
@@ -192,7 +198,26 @@ def generate_launch_description() -> LaunchDescription:
             description="Nav2 params (single source, doc16 §5).",
         ),
         DeclareLaunchArgument(
-            "map", default_value="", description="map .yaml path (from SLAM; owned elsewhere)."
+            "map",
+            # Default = the committed sim occupancy map (warehouse_sim/maps/map.yaml, doc09:323).
+            # Leaving it "" silently stalls the shared map_server -> no /map -> both AMCLs and
+            # both global_costmap static_layers wait forever (found in the #67 E2E gate).
+            # SCOPE: this default fires when nav2_bringup.launch.py is launched DIRECTLY (the
+            # #67 DoD path). The skeleton-owned top-level bringup.launch.py declares its OWN
+            # map default "" and forwards it (bringup.launch.py:51-53, #75), so that path is
+            # unaffected until aligned separately on the skeleton track.
+            # COUPLING: FindPackageShare("warehouse_sim") is resolved LAZILY (only when map:= is
+            # omitted), so the prod/Jetson path — which always passes map:= (deploy/jetson/
+            # systemd/warehouse-nav2.service) — never evaluates it. We therefore deliberately do
+            # NOT add a warehouse_sim exec_depend, keeping prod decoupled from the sim-only
+            # package; in a dev workspace warehouse_sim is co-built so the default resolves, and
+            # a bringup-only install that omits map:= fails fast (PackageNotFoundError) instead
+            # of silently stalling.
+            default_value=PathJoinSubstitution(
+                [FindPackageShare("warehouse_sim"), "maps", "map.yaml"]
+            ),
+            description="map .yaml path; defaults to the warehouse_sim committed map for direct "
+            "sim launches. prod & top-level bringup pass map:= (doc09:323).",
         ),
         DeclareLaunchArgument(
             "traffic_mode",
