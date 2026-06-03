@@ -52,7 +52,7 @@ miniature-warehouse-robotics/
 
 **設計上の根拠**:
 - ROS 2 ノードと LLM が同一プロセスに同居しない原則（doc12）を、**パッケージ分離＝プロセス分離＝ブランチ分離**として構造に反映する。
-- `warehouse_mcp_server` は Hermes Gateway の stdio 子プロセス（`python -m warehouse_mcp_server`）として起動するが、ソースはモノレポ統一のため `ws/src/` に置く。rclpy には依存せず純 Python + MCP SDK で動く。
+- `warehouse_mcp_server` は Hermes Gateway の stdio 子プロセス（`python -m warehouse_mcp_server`）として起動できるが、ソースはモノレポ統一のため `ws/src/` に置く。rclpy には依存せず純 Python + MCP SDK で動く。**ただし S2-PR2 HALF B 以降、commander サイクルの tool dispatch は同一トラック in-process（`warehouse_llm_bridge` が `WarehouseTools().dispatch` を注入。#81 / doc08:166-168）**＝stdio 子プロセス起動は Hermes ネイティブ/外部 MCP client 用の経路で、commander 経路では必須でない。
 - `warehouse_sim` の Gazebo world とジオラマ寸法は**単一定数定義**から生成し、Phase 5 の Isaac Sim シーンも同じ寸法定数を参照できるようにする（シミュレータ差し替え時の改修を最小化）。
 
 ---
