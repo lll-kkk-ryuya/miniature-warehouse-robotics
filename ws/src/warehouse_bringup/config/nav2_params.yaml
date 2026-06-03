@@ -156,7 +156,15 @@ controller_server:
         cost_power: 1
         cost_weight: 3.81
         critical_cost: 300.0
-        consider_footprint: true   # 200mm bottleneck needs footprint awareness
+        # consider_footprint=false: the robot is CIRCULAR (robot_radius 0.075 in both
+        # costmaps), not a footprint polygon. MPPI CostCritic with consider_footprint=true
+        # requires the costmap to publish a footprint polygon, else controller_server FAILS
+        # to configure ("Considering footprint ... but no robot footprint provided") and the
+        # whole lifecycle bringup aborts (found in the #67 E2E gate). Circular radius checking
+        # is correct + cheaper for a 0.15 m-diameter minicar (R-49). # TODO(Phase 2): if a true
+        # non-circular footprint is ever needed, switch the costmaps from robot_radius to a
+        # `footprint:` polygon AND set this back to true together.
+        consider_footprint: false
         collision_cost: 1000000.0
         near_goal_distance: 0.5
       PathAlignCritic:
@@ -237,6 +245,14 @@ global_costmap:
       static_layer:
         plugin: "nav2_costmap_2d::StaticLayer"
         map_subscribe_transient_local: true
+        # ABSOLUTE /map: the global_costmap runs as a SUB-node (/bot{n}/global_costmap/
+        # global_costmap), so a relative "map" resolves to /bot{n}/global_costmap/map (no
+        # publisher) and a remap on the parent planner_server does NOT cascade to it. The
+        # shared map_server publishes un-namespaced /map (doc09:253-257), so subscribe it
+        # absolutely. Without this the static layer never loads -> "Can't update static
+        # costmap layer, no map received" -> planner "Costmap timed out" -> goals ABORT
+        # (found in the #67 E2E gate; supersedes the insufficient launch remap in #113).
+        map_topic: /map
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
         enabled: true
