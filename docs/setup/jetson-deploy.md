@@ -104,6 +104,11 @@ systemctl status warehouse.target
 `healthcheck.sh` は core unit のいずれかが非 active、または `/run/warehouse/state.json`
 が欠落/陳腐化（既定 10s 超）で exit≠0（cron/監視プローブ兼用）。
 
+> **guardian クラッシュ後の復旧（手動）**: `StartLimitIntervalSec=0` で guardian 自体は
+> 自動再起動するが、`BindsTo=` は stop/inactivation のみ伝播し start しないため
+> **nav2 は停止維持（fail-safe）**。安全確認後に手動で復帰させる:
+> `sudo systemctl start warehouse-nav2.service`（または `restart warehouse.target`）。
+
 ## 8. 更新・ロールバック
 
 ```bash
