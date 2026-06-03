@@ -192,7 +192,7 @@
 |----|--------|
 | R-11 | /tmp/warehouse/state.json の tmpfs 設定 |
 | R-19 | Jetson Orin Nano Super の在庫リスク |
-| R-23 | predicted_position_3s 線形外挿の限界（壁の向こうを予測） |
+| R-23 | predicted_position_3s CTRV 外挿の限界（壁/ゴール停止を無視。旋回は angular で考慮） |
 | R-24 | 3モード維持のテスト工数（3倍） |
 | R-30 | Grok API のモデル名・価格が未確定 |
 | R-33 | デモ中のハードウェア故障（バッテリー切れ、ESP32ハングアップ） |
