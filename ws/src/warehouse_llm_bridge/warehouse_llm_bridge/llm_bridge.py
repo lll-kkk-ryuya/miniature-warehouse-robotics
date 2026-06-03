@@ -57,7 +57,7 @@ from warehouse_llm_bridge.executor import DispatchToolExecutor
 from warehouse_llm_bridge.hermes_client import HermesClient
 from warehouse_llm_bridge.scheduler import CYCLE_WAIT_SEC, DEFAULT_CYCLE_WAIT_SEC, BridgeScheduler
 from warehouse_llm_bridge.situation import DEFAULT_EMERGENCY_MIN_DISTANCE, SituationBuilder
-from warehouse_llm_bridge.tracing import LangfuseTracer, build_session_id
+from warehouse_llm_bridge.tracing import LangfuseTracer, build_session_id, resolve_run_id
 
 # Hermes Gateway default endpoint (doc13:24,369) if config leaves it blank.
 DEFAULT_HERMES_BASE_URL = "http://localhost:8642"
@@ -113,11 +113,12 @@ class LlmBridge(Node):
         )
         cycle_wait = CYCLE_WAIT_SEC.get(mode, DEFAULT_CYCLE_WAIT_SEC)
         # Bridge-owned Langfuse trace (Pattern A, doc08:354-356); fail-open if
-        # langfuse is absent. run_id == session_id so #6 (wo) derives the same
-        # per-turn trace_id via create_trace_id(seed=f"{run_id}:{gen_id}") (doc13:481(b)).
-        tracer = LangfuseTracer(
-            run_id=session_id, session_id=session_id, provider=provider, mode=mode
-        )
+        # langfuse is absent. The trace-seed run_id is the SHARED WAREHOUSE_RUN_ID env
+        # (the same source #6/wo reads, doc13:481(b)) so both lanes derive an identical
+        # create_trace_id(seed=f"{run_id}:{gen_id}"); session_id (timestamped) is only a
+        # display label / fallback when WAREHOUSE_RUN_ID is unset (#108).
+        run_id = resolve_run_id(os.environ.get("WAREHOUSE_RUN_ID"), session_id)
+        tracer = LangfuseTracer(run_id=run_id, session_id=session_id, provider=provider, mode=mode)
         self._scheduler = BridgeScheduler(
             llm_client=HermesClient(base_url, api_key=api_key),
             situation_builder=SituationBuilder(

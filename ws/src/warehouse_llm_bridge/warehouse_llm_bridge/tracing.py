@@ -28,9 +28,10 @@ log = logging.getLogger(__name__)
 def build_session_id(mode: str, provider: str, scenario: str, ts: str) -> str:
     """Compose the Langfuse session id that groups one demo run (doc08 §セッション命名).
 
-    Shape ``run_{mode}_{provider}_{scenario}_{ts}`` — used as the ``run_id`` for the
-    per-turn trace seed so a whole run's turns share a session and derive
-    deterministic trace ids.
+    Shape ``run_{mode}_{provider}_{scenario}_{ts}``. This is the Langfuse SESSION id
+    (a human-readable grouping label for one run's turns). The trace-seed ``run_id``
+    is the shared ``WAREHOUSE_RUN_ID`` env (see :func:`resolve_run_id`); ``session_id``
+    is only the fallback when that env var is unset (#108).
     """
     return f"run_{mode}_{provider}_{scenario}_{ts}"
 
@@ -43,6 +44,20 @@ def trace_seed(run_id: str, gen_id: int) -> str:
     data — the cross-lane contract is the seed, not a frozen field.
     """
     return f"{run_id}:{gen_id}"
+
+
+def resolve_run_id(env_run_id: str | None, session_id: str) -> str:
+    """The ``run_id`` half of the trace seed — the cross-lane join key (#108).
+
+    The Bridge (#4) and the Orchestrator (#6) MUST seed ``create_trace_id`` with the
+    SAME ``run_id`` (doc13:481(b)). #6 reads it from the ``WAREHOUSE_RUN_ID`` env var
+    (``warehouse_orchestrator/trace_id.py``); the Bridge must use the same source —
+    NOT its per-process ``session_id``, which carries a wall-clock timestamp and so
+    could never match #6. Fall back to ``session_id`` only when ``WAREHOUSE_RUN_ID``
+    is unset/blank, mirroring #6's blank handling (then #6 sends nothing, so the
+    fallback mismatch is harmless).
+    """
+    return env_run_id if (env_run_id and env_run_id.strip()) else session_id
 
 
 class Tracer(ABC):
