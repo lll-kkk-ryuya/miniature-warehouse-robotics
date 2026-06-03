@@ -22,7 +22,9 @@
 ## 必須（同期）
 
 - docs を更新したら、関連コード / `CLAUDE.md` の参照（doc番号・行）も更新し、リンク腐敗を防ぐ。
+- **実装中は docs に記載しながら進める**: 公開 IF（produce/consume・新トピック/型/しきい値）を当該 pkg `CLAUDE.md` に**都度記録**する（[implementation-and-dependencies.md §2](implementation-and-dependencies.md)）。docs から外れた契約/しきい値を発明しない。
 - 実装スライス完了時に **docs 再照合チェックポイント**（実装が今も docs と一致するか）を PR の確認項目に含める。
+- **完了（納期）の定義 = docs 整合まとめ＋突合ゲート**（session 運用での必須化は [parallel-workflow.md §1.1](parallel-workflow.md)）: スライス完了前に ① docs 再照合（実装↔docs 一致）→ ② `python3 scripts/check_consistency.py` **0 ERROR**（[consistency-check.md](consistency-check.md)）→ ③ 意味的・doc 跨ぎ矛盾は `/consistency-audit` → ④ **残るおかしな点・未決・暫定値を docs / PR 本文に列挙** — を行い、**結果を PR 確認項目に明記してから「完了」とする**。
 
 ## やってはいけない
 
