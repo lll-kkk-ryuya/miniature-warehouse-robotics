@@ -184,7 +184,7 @@ Emergency Guardian（50ms, 横串） / Nav2（50ms）→ Open-RMF（即時）→
 レベル0: Emergency Guardian（50ms周期、LLM非経由、全レベル横串）
   常時監視し、危険検知時は即時に物理停止を実行する。
   - 2台が0.3m以内に接近 → Nav2 cancel + cmd_vel=0
-  - blocked > 10秒 / バッテリー < 10% → 強制停止
+  - blocked > 10秒 / バッテリー ≤ 10% → 強制停止
   検知事象は /emergency/event で次サイクルの situation JSON に付加。
   上位への問い合わせではなく即時介入である点に注意。
   詳細: ../architecture/12-infrastructure-common.md の安全レイヤー設計

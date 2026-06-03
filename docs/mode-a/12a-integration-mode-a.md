@@ -89,7 +89,7 @@ Warehouse MCP Server は rclpy を持たないため、Nav2 制御用の薄い B
 │  ┌──────────────────────────────────────────────────────┐ │
 │  │  Emergency Guardian（rclpy、50ms周期目標、LLM非経由） │ │
 │  │  ├── 2台間距離監視（< 0.3m → Nav2 cancel要求+cmd_vel停止）│ │
-│  │  ├── バッテリー監視（< 10% → Nav2 cancel要求+cmd_vel停止）│ │
+│  │  ├── バッテリー監視（≤ 10% → Nav2 cancel要求+cmd_vel停止）│ │
 │  │  ├── blocked監視（> 10秒 → Nav2リカバリー要求）      │ │
 │  │  ├── Nav2 goal cancel + cmd_vel停止（LLM非経由）     │ │
 │  │  └── /emergency/event Publish（構造化イベント）       │ │
