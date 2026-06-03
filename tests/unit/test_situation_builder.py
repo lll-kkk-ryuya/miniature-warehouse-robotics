@@ -94,4 +94,36 @@ def test_robot_state_carries_snapshot_fields(tmp_path: Path) -> None:
     assert robot["battery"] == 72
     assert robot["heading"] == pytest.approx(1.57)
     assert robot["velocity"] == {"linear": 0.1, "angular": 0.0}
-    assert robot["current_task"] is None  # bridge-owned, unset in S1 (doc12:248)
+    assert robot["current_task"] is None  # bridge-owned, unset (doc12:248)
+
+
+@pytest.mark.unit
+def test_mode_c_omits_traffic_fields(tmp_path: Path) -> None:
+    # Mode C (open-rmf): Open-RMF owns traffic, so the situation carries ONLY the
+    # strategic fields; velocity/heading/predicted_position_3s/obstacle_ahead/
+    # obstacle_distance are dropped via exclude_unset (~200 tokens, 08c:88,108).
+    builder = SituationBuilder(_store(tmp_path, {"bot1": _robot()}), mode="open-rmf")
+    sit = builder.build(turn=1, gen_id=1)
+    assert sit is not None
+    robot = sit["robots"]["bot1"]
+    assert set(robot) == {"position", "status", "battery", "current_task"}
+    for omitted in (
+        "velocity",
+        "heading",
+        "predicted_position_3s",
+        "obstacle_ahead",
+        "obstacle_distance",
+    ):
+        assert omitted not in robot
+
+
+@pytest.mark.unit
+def test_mode_a_keeps_traffic_fields(tmp_path: Path) -> None:
+    # Mode A/B (default mode="none"): full per-robot shape retained (exclude_unset
+    # keeps every field the builder set).
+    builder = SituationBuilder(_store(tmp_path, {"bot1": _robot()}))
+    sit = builder.build(turn=1, gen_id=1)
+    assert sit is not None
+    robot = sit["robots"]["bot1"]
+    for field in ("velocity", "heading", "predicted_position_3s", "obstacle_ahead"):
+        assert field in robot

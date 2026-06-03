@@ -35,6 +35,7 @@ from warehouse_llm_bridge.action_map import command_to_tool_calls
 from warehouse_llm_bridge.executor import ToolExecutor
 from warehouse_llm_bridge.llm_client import LLMClient, LLMUnavailableError
 from warehouse_llm_bridge.situation import SituationBuilder
+from warehouse_llm_bridge.tracing import NoopTracer, Tracer
 
 log = logging.getLogger(__name__)
 
@@ -72,6 +73,7 @@ class BridgeScheduler:
         gen_store: GenStore,
         publish_reasoning=_noop,
         publish_command=_noop,
+        tracer: Tracer | None = None,
         cycle_wait_sec: float = DEFAULT_CYCLE_WAIT_SEC,
         cycle_timeout_sec: float = CYCLE_TIMEOUT_SEC,
         outage_after_consecutive: int = OUTAGE_AFTER_CONSECUTIVE,
@@ -83,6 +85,7 @@ class BridgeScheduler:
         self._gen_store = gen_store
         self._publish_reasoning = publish_reasoning
         self._publish_command = publish_command
+        self._tracer = tracer or NoopTracer()
         self._cycle_wait_sec = cycle_wait_sec
         self._cycle_timeout_sec = cycle_timeout_sec
         self._outage_after = outage_after_consecutive
@@ -122,28 +125,32 @@ class BridgeScheduler:
             log.warning("no state snapshot yet (gen=%s); skipping cycle", gen)
             return
 
-        try:
-            response = await asyncio.wait_for(
-                self._llm.decide(situation), timeout=self._cycle_timeout_sec
-            )
-        except TimeoutError:
-            self._on_timeout(gen)
-            return
-        except LLMUnavailableError as exc:
-            self._on_outage(gen, exc)
-            return
+        # Bridge-owned Langfuse trace for this turn (doc08:354-356); the LLM
+        # generation (langfuse.openai) and the tool spans nest under it. NoopTracer
+        # default keeps this langfuse-free for tests.
+        async with self._tracer.turn(gen):
+            try:
+                response = await asyncio.wait_for(
+                    self._llm.decide(situation), timeout=self._cycle_timeout_sec
+                )
+            except TimeoutError:
+                self._on_timeout(gen)
+                return
+            except LLMUnavailableError as exc:
+                self._on_outage(gen, exc)
+                return
 
-        try:
-            command = Command.model_validate(response)
-        except (ValueError, TypeError) as exc:  # malformed JSON / schema (doc08:289-291)
-            self._consecutive_failures += 1
-            log.warning("invalid command gen=%s: %s; ignoring this cycle", gen, exc)
-            return
+            try:
+                command = Command.model_validate(response)
+            except (ValueError, TypeError) as exc:  # malformed JSON / schema (doc08:289-291)
+                self._consecutive_failures += 1
+                log.warning("invalid command gen=%s: %s; ignoring this cycle", gen, exc)
+                return
 
-        await self._dispatch_command(command, gen)
-        self.last_command = command
-        self._consecutive_failures = 0
-        self.nav2_only = False
+            await self._dispatch_command(command, gen)
+            self.last_command = command
+            self._consecutive_failures = 0
+            self.nav2_only = False
 
     async def _dispatch_command(self, command: Command, gen: int) -> list[dict]:
         """Publish reasoning/command, map to ToolCalls, dispatch each (C key minted)."""
@@ -152,7 +159,10 @@ class BridgeScheduler:
         tool_calls = command_to_tool_calls(command, gen)
         results: list[dict] = []
         for item, tool_call in zip(command.commands, tool_calls, strict=True):
-            result = await self._executor.execute(tool_call)
+            # Tool call as an observation under the turn trace (doc08:312); no-op
+            # under NoopTracer so the cycle logic stays langfuse-free/testable.
+            async with self._tracer.tool_span(tool_call.tool, gen):
+                result = await self._executor.execute(tool_call)
             results.append(result)
             self._history.append(
                 {
