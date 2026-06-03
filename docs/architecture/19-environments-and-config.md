@@ -64,6 +64,21 @@ config/
 - リポジトリに置くのは **`.env.example`（プレースホルダのみ）** だけ。
 - 環境ごとに別キーを使う（dev/stg/prod で API キー・Hermes トークンを分離し、本番事故・課金混在を防ぐ）。
 
+### 4.1 Secrets は2ファイルに分かれる（重要）
+
+LLM Bridge は各社 API を**直接叩かず Hermes Gateway（OpenAI 互換 `…/v1/chat/completions`）経由**で呼ぶ（doc13 §5.1）。したがってキーの置き場所は**消費プロセスで2つに分かれる**。混同すると Bridge が 401 で動かない。
+
+| ファイル | 消費プロセス | 置くキー | 正本 |
+|---|---|---|---|
+| **`~/.hermes/.env`** | Hermes Gateway（プロバイダを直接呼ぶ） | `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GEMINI_API_KEY`（または `GOOGLE_API_KEY`）/ `XAI_API_KEY`、`API_SERVER_*`、`LANGFUSE_*`（任意・Hermes 所有トレース時） | doc13 §3.1 |
+| **`config/<env>/.env`** | ROS プロセス（LLM Bridge Node / Orchestrator） | `API_SERVER_KEY`（Bridge→Hermes 認証。`~/.hermes/.env` と**同一値**）、Langfuse 観測キー | 本書 |
+
+- **`API_SERVER_KEY` の同一性が必須**: `config/<env>/.env` と `~/.hermes/.env` で値が一致しないと Bridge は Hermes に認証できない（LLM Bridge Node は `API_SERVER_KEY` / `HERMES_API_KEY` を読み `Authorization: Bearer` で送る）。生成は `openssl rand -hex 32`。
+- **プロバイダ3社キーは `config/<env>/.env` に置かない**（ROS 側は消費しない）。`~/.hermes/.env`（dev ローカル）または Gateway VM 上の `~/.hermes/.env`（stg/prod の GCP Gateway）に置く。
+- **Langfuse のキー名は消費側で異なる**（観測）: Orchestrator の `langfuse_sink` は `HERMES_LANGFUSE_PUBLIC_KEY` / `HERMES_LANGFUSE_SECRET_KEY`、Bridge の `langfuse.openai` SDK は `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` / `LANGFUSE_HOST` を読む → `config/<env>/.env` に**両系統へ同値**を設定する。Hermes 自身は `LANGFUSE_BASE_URL` を使う。
+- **Langfuse リージョン**: `LANGFUSE_HOST`（Bridge SDK）/ `LANGFUSE_BASE_URL`（Hermes）で選ぶ。EU=`https://cloud.langfuse.com`（既定）/ US=`https://us.cloud.langfuse.com` / **JP=`https://jp.cloud.langfuse.com`**。キーの発行リージョンと一致させること（不一致だと 401/404）。
+- 設定後の疎通確認手順は doc13 §4.3（health / `/v1/models` / `/v1/chat/completions`）。
+
 ---
 
 ## 5. Hermes Gateway の環境差分（hermes トラックと連携）
