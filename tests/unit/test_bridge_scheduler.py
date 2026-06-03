@@ -182,7 +182,7 @@ def test_history_carries_blocked_for_deadlock_pattern2(tmp_path: Path) -> None:
     # "blocked" result across cycles so the commander COULD detect the deadlock. It
     # injects a fabricated {"status":"blocked"} because the real dispatch result is
     # only ok/rejected/error today — no layer emits "blocked" yet, so pattern-2 is
-    # NOT reachable end-to-end until #55 adds a blocked-producing path (08a:289 note).
+    # NOT reachable end-to-end until #55 adds a blocked-producing path (08a:281 note).
     # See test_node_cycle_* for what the commander really sees today (ok).
     executor = RecordingToolExecutor(result={"status": "blocked"})
     llm = FakeLLM(_nav_response("bot1", "shelf_1"))
@@ -382,3 +382,20 @@ def test_node_cycle_forwards_accepted_command_to_nav2(tmp_path: Path) -> None:
     asyncio.run(sched.run_cycle())
     assert [r.path for r in forwarder.requests] == ["/api/v1/navigate"]
     assert forwarder.requests[0].body == {"robot": "bot1", "destination": "berth_A"}
+
+
+@pytest.mark.unit
+def test_current_task_set_then_cleared_through_real_tools(tmp_path: Path) -> None:
+    # End-to-end against the REAL WarehouseTools: an accepted navigate sets
+    # current_task=destination, and an accepted stop (a real cancel of the registered
+    # active task) clears it — locking the set/clear semantics to the real MCP return
+    # shapes, not RecordingToolExecutor's canned "ok" (the gen_store + state.json are
+    # shared via tmp_path so B-3 and the Policy Gate are live).
+    tools, _ = _real_tools(tmp_path, gen=0)  # the cycle bumps gen 0 -> 1
+    llm = FakeLLM(_nav_response("bot1", "berth_A"))
+    sched, _ = _scheduler(tmp_path, llm, DispatchToolExecutor(tools.dispatch))
+    asyncio.run(sched.run_cycle())
+    assert sched._current_tasks == {"bot1": "berth_A"}  # accepted navigate -> set
+    llm.response = {"reasoning": "halt", "commands": [{"bot": "bot1", "action": "stop"}]}
+    asyncio.run(sched.run_cycle())
+    assert sched._current_tasks == {}  # accepted cancel of the active task -> cleared

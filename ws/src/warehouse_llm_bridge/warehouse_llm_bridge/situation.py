@@ -100,11 +100,11 @@ class SituationBuilder:
         ``current_tasks`` maps ``bot -> destination`` for each robot's in-flight
         task — the DESTINATION only; the doc's illustrative "<from> → <to>" route is
         not reproduced since the Bridge has no pickup (Bridge-owned working memory
-        the snapshot does not carry, doc12:249 / 08a:62,73,90). The scheduler tracks
+        the snapshot does not carry, doc12:249 / 08a:62,73,466). The scheduler tracks
         it from accepted dispatches; an absent/unmapped bot gets ``current_task=None``
         (idle). ``pending_tasks`` has no wired producer yet — its source is not
         specified in the design docs — so it stays ``[]`` by design for now
-        (08a:92 / #102).
+        (08a:468 / #102).
         """
         raw = self._state_store.read()
         if raw is None:
@@ -138,7 +138,7 @@ class SituationBuilder:
         — the State Cache omits it and the Bridge supplies it at build time
         (doc12:249). BOTH modes carry it: Mode C's slim shape still includes
         current_task (08c:92,99), Mode A/B includes it alongside the full traffic
-        fields (08a:62,73,90).
+        fields (08a:62,73,466).
 
         Mode C (Open-RMF owns traffic) builds ONLY the strategic fields
         (position/status/battery/current_task) and leaves velocity / heading /

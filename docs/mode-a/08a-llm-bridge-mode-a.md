@@ -86,11 +86,6 @@ Mode A/BではClaude自身が交通管理を行うため、velocity、heading、
 }
 ```
 
-> **`pending_tasks` / `current_task` / `history` の供給元（#102 で確定）**: 上の JSON は**形の例示**であり、各フィールドの実際の供給元は以下のとおり（LLM Bridge が `Situation` 構築時に付与。State Cache `StateSnapshot` には含めない、doc12:249）。
-> - **`current_task`**: Bridge が受理 dispatch（`status=="ok"`）から追跡する **in-flight の行先（destination 単体）**。例の `"shelf_1 → berth_A"`（起点→終点）は **illustrative**で、Bridge は起点（pickup）を保持しないため**終点のみ**を格納する（`navigate`→destination / `yield`→retreat_to / `charge`→`charging_station` を set、`stop` で clear、`wait` は据置）。凍結契約 `RobotState.current_task: str | None` は形式無制約なので終点単体で契約合法。
-> - **`history`**: Bridge が保持する**有界リング（直近5サイクル）**。`{turn, action:"<bot> <action> <target>", result:<dispatch status>}`。`result` は実際には dispatch の戻り値（`ok`/`rejected`/`error`。例示の `success`/`blocked` は illustrative）。
-> - **`pending_tasks`**: タスクキュー。**現状 producer は未配線**で、供給元（将来的に Warehouse Orchestrator #6 / `get_task_queue`（doc15）想定だが**本設計では未確定**）が決まるまで LLM Bridge は **`pending_tasks: []`** を出力する（空でよい＝#102 の判断）。
-
 ## predicted_position_3s について
 
 `predicted_position_3s`は、Mode A/B（Open-RMFなし）でClaude自身が交通管理を行う場合の補助データ。
@@ -463,6 +458,14 @@ class CommandParser:
         """LLMの charge 指示を実行（充電ステーションへ移動）"""
         self.execute_navigate(bot, "charging_station")
 ```
+
+## フィールド供給元: pending_tasks / current_task / history（#102）
+
+§入力の situation JSON は**形の例示**。各フィールドの実供給元は以下（いずれも LLM Bridge が `Situation` 構築時に付与し、State Cache `StateSnapshot` には含めない＝doc12:249）:
+
+- **`current_task`**: Bridge が受理 dispatch（`status=="ok"`）から追跡する **in-flight の行先（destination 単体）**。§入力例の `"shelf_1 → berth_A"`（起点→終点）は **illustrative** で、Bridge は起点（pickup）を保持しないため**終点のみ**を格納する（`navigate`→destination / `yield`→retreat_to / `charge`→`charging_station` を set、`stop` で clear、`wait` は据置）。凍結契約 `RobotState.current_task: str | None` は形式無制約なので終点単体で契約合法。
+- **`history`**: Bridge が保持する**有界リング（直近5サイクル）**。`{turn, action:"<bot> <action> <target>", result:<dispatch status>}`。`result` は実際には dispatch の戻り値（`ok`/`rejected`/`error`。§入力例の `success`/`blocked` は illustrative）。
+- **`pending_tasks`**: タスクキュー。**現状 producer は未配線**で、供給元（将来的に Warehouse Orchestrator #6 / `get_task_queue`（doc15）想定だが**本設計では未確定**）が決まるまで LLM Bridge は **`pending_tasks: []`** を出力する（空でよい＝#102 の判断）。
 
 ## References
 

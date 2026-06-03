@@ -113,8 +113,8 @@ class BridgeScheduler:
         self.last_command: Command | None = None
         self._consecutive_failures = 0
         self._history: deque[dict] = deque(maxlen=HISTORY_MAXLEN)
-        # Bridge-owned per-robot in-flight task (bot -> destination), mirroring the
-        # MCP active_tasks lifecycle (doc12:248 / 08a:62,73). Bounded by fleet size.
+        # Bridge-owned per-robot in-flight task (bot -> destination); set-on-accept /
+        # clear-on-stop policy (doc12:249 / 08a:62,73). Bounded by fleet size.
         self._current_tasks: dict[str, str] = {}
         self._running = False
 
@@ -138,9 +138,9 @@ class BridgeScheduler:
         gen = self.current_gen
         self._gen_store.set(gen)
 
-        # history + current_tasks are the bridge-owned working memory (08a:82-85,62,90);
+        # history + current_tasks are the bridge-owned working memory (08a:82-85,62,466);
         # pending_tasks is omitted -> [] : it has no wired producer yet (source not
-        # specified in docs, 08a:92). current_tasks/history are copied so a later
+        # specified in docs, 08a:468). current_tasks/history are copied so a later
         # cycle's mutation cannot reach back into this turn's situation snapshot.
         situation = self._situation_builder.build(
             turn=self.turn,
@@ -202,7 +202,7 @@ class BridgeScheduler:
         return results
 
     def _track_current_task(self, item: CommandItem, result: dict) -> None:
-        """Track a per-robot ``current_task`` = the in-flight DESTINATION (08a:62,73,90).
+        """Track a per-robot ``current_task`` = the in-flight DESTINATION (08a:62,73,466).
 
         Bridge-owned working memory, NOT a 1:1 mirror of the MCP gate: the stored
         value is the dispatched destination (matching ``PolicyGate._dropoffs``
