@@ -9,9 +9,13 @@ Documentation=https://github.com/lll-kkk-ryuya/miniature-warehouse-robotics/blob
 After=warehouse-state-cache.service
 Wants=warehouse-state-cache.service
 PartOf=warehouse.target
-# Never let a flapping guardian stick in 'failed' — that would leave the BindsTo=
-# motion units stopped with no auto-recovery path. Disable the start-rate limiter
-# so it keeps restarting (pairs with Restart=on-failure below).
+# Disable the start-rate limiter so the GUARDIAN itself keeps restarting after
+# repeated crashes (pairs with Restart=on-failure below) — the Layer 1 safety unit
+# must never stick in 'failed'. NOTE: this auto-recovery is for the guardian ONLY.
+# BindsTo= propagates the guardian's stop/inactivation to the motion units (nav2)
+# but NOT a start: once the guardian crashes, nav2 stays stopped (fail-safe) even
+# after the guardian recovers, and must be restarted manually (systemd.unit(5)
+# BindsTo=; recovery procedure in docs/setup/jetson-deploy.md §7).
 StartLimitIntervalSec=0
 
 [Service]
