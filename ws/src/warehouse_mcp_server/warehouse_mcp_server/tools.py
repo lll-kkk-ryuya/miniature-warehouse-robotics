@@ -23,13 +23,17 @@ CLAUDE.md.
 Pure Python — imports only ``warehouse_interfaces`` + sibling modules. No rclpy.
 """
 
+import logging
 from typing import Any
 
 from warehouse_interfaces.stores import FileStateStore, StateStore
 
 from warehouse_mcp_server.audit import CommandAuditLog
 from warehouse_mcp_server.gen_check import GenChecker, GenCheckResult
+from warehouse_mcp_server.nav2_client import Nav2Forwarder, plan_nav2_request
 from warehouse_mcp_server.policy_gate import PolicyGate
+
+log = logging.getLogger(__name__)
 
 # Valid character-LLM negotiation starters (doc14 / doc15 ツール7).
 NEGOTIATION_STARTERS = ("bot1", "bot2")
@@ -84,13 +88,21 @@ class WarehouseTools:
         state_store: StateStore | None = None,
         *,
         config: dict | None = None,
+        nav2_forwarder: Nav2Forwarder | None = None,
     ) -> None:
-        """Wire collaborators; each defaults to its shared file-backed instance."""
+        """Wire collaborators; each defaults to its shared file-backed instance.
+
+        ``nav2_forwarder`` (Mode A/B only) forwards an ACCEPTED motion tool to the
+        Nav2 Bridge REST API (doc12a:198-363). Left ``None`` (the default, and Mode
+        C / Open-RMF) the tools only validate + book-keep and actuate nothing —
+        the pre-#86 behaviour every existing test relies on.
+        """
         self._gen_checker = gen_checker or GenChecker()
         self._policy_gate = policy_gate or PolicyGate(state_store)
         self._audit = audit or CommandAuditLog()
         self._state_store = state_store or FileStateStore()
         self._config = config or {}
+        self._nav2_forwarder = nav2_forwarder
         # In-memory escalation registry (TODO #escalation: replace with a shared
         # store once the escalation producer track lands; emergent dependency).
         self._escalations: dict[str, dict] = {}
@@ -120,11 +132,42 @@ class WarehouseTools:
             return payload
         handler = getattr(self, name)
         try:
-            return await handler(gen_id, **args)
+            result = await handler(gen_id, **args)
         except TypeError as exc:
             payload = {"status": "error", "reason": f"bad_arguments:{exc}"}
             self._audit.record(name, "error", payload)
             return payload
+        await self._maybe_forward(name, result)
+        return result
+
+    async def _maybe_forward(self, name: str, result: dict[str, Any]) -> None:
+        """Forward an ACCEPTED motion tool to the Nav2 Bridge (R-26 safety gate).
+
+        Fires ONLY when a forwarder is wired (Mode A/B) AND the tool returned
+        ``status == "ok"``: a stale-generation (B-3) / duplicate (C) / Policy-Gate
+        rejection returns ``status != "ok"`` and so NEVER reaches a robot. Read-only
+        / escalation / negotiation tools map to ``None`` and actuate nothing. The
+        forwarder is fail-open, so a Nav2 Bridge outage is logged, not raised
+        (doc12a:198-205 / doc15:198-205 / doc08a:154-161).
+        """
+        if self._nav2_forwarder is None or result.get("status") != "ok":
+            return
+        request = plan_nav2_request(name, result)
+        if request is None:
+            return
+        # Fail-open at the seam: a forwarder fault (transport error, a missing
+        # ``.[nav2]`` extra, a buggy injected forwarder) must NEVER propagate out of
+        # dispatch — it would unwind through the executor / scheduler and silently
+        # kill the commander cycle thread (llm_bridge only suppresses CancelledError)
+        # while the node stays alive issuing no further commands. The Nav2Forwarder
+        # ABC documents "never raises", but we enforce it HERE, where the type is
+        # owned, so the guarantee holds for ANY forwarder.
+        try:
+            outcome = await self._nav2_forwarder.forward(request)
+        except Exception as exc:  # fail-open: a forwarder fault must not kill the cycle
+            log.warning("nav2 forward raised for %s -> POST %s: %s", name, request.path, exc)
+            return
+        log.info("nav2 forward %s -> POST %s %s: %s", name, request.path, request.body, outcome)
 
     # ── tool 1: dispatch_task ───────────────────────────────────────────────
 

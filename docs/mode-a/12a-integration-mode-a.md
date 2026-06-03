@@ -142,6 +142,8 @@ Warehouse MCP Server は rclpy を持たないため、Nav2 制御用の薄い B
 └──────────────────────────────────────────────────────────┘
 ```
 
+> ⚠️ **dispatch 経路の補足（S2-PR2 HALF B / #4 以降）**: 上図の `Hermes Gateway →(MCP stdio)→ Warehouse MCP Server` 線は **Hermes ネイティブのツール実行経路**で、**S1+S2 採用の commander dispatch ではない**。採用形では LLM が Command JSON を返し、Bridge が `action_map` で MCP 7ツールに写像して **`WarehouseTools().dispatch` を in-process 呼出し**する（同一トラック import #81。`docs/architecture/08-llm-bridge-common.md:166-168`「採用実装 / S2-PR2 HALF B」注記 / `docs/architecture/15-mcp-platform.md:50,211`）。一方、図下段の `Warehouse MCP Server →(REST localhost)→ Nav2 Bridge` 線は**採用形でも有効**（受理された motion tool のみ転送、`nav2_client.py`）。
+
 ---
 
 ## Nav2 Bridge プロセス設計

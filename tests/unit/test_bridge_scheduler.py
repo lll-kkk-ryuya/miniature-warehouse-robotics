@@ -23,6 +23,7 @@ from warehouse_llm_bridge.llm_client import LLMUnavailableError
 from warehouse_llm_bridge.scheduler import BridgeScheduler
 from warehouse_mcp_server.audit import CommandAuditLog
 from warehouse_mcp_server.gen_check import GenChecker
+from warehouse_mcp_server.nav2_client import RecordingNav2Forwarder
 from warehouse_mcp_server.policy_gate import PolicyGate
 from warehouse_mcp_server.tools import WarehouseTools
 
@@ -188,7 +189,9 @@ def test_recovers_to_command_after_outage(tmp_path: Path) -> None:
 # ── end-to-end exclusivity through the real WarehouseTools ────────────────────
 
 
-def _real_tools(tmp_path: Path, gen: int) -> tuple[WarehouseTools, FileGenStore]:
+def _real_tools(
+    tmp_path: Path, gen: int, *, forwarder: RecordingNav2Forwarder | None = None
+) -> tuple[WarehouseTools, FileGenStore]:
     gen_store = FileGenStore(tmp_path / "gen_store")
     gen_store.set(gen)
     state = FileStateStore(tmp_path / "state.json")
@@ -203,6 +206,7 @@ def _real_tools(tmp_path: Path, gen: int) -> tuple[WarehouseTools, FileGenStore]
         policy_gate=PolicyGate(state),
         audit=CommandAuditLog(tmp_path / "audit.jsonl"),
         state_store=state,
+        nav2_forwarder=forwarder,
     )
     return tools, gen_store
 
@@ -267,3 +271,25 @@ def test_end_to_end_bot1_bot2_distinct_keys_both_accepted(tmp_path: Path) -> Non
 
     results = asyncio.run(_run())
     assert all(r["status"] == "ok" for r in results), results
+
+
+@pytest.mark.safety
+@pytest.mark.unit
+def test_node_cycle_forwards_accepted_command_to_nav2(tmp_path: Path) -> None:
+    # Full node path (S2-PR2 HALF B): the scheduler bumps + publishes the gen, the
+    # FakeLLM command is mapped by action_map, dispatched through the REAL
+    # WarehouseTools (DispatchToolExecutor) and — being accepted — forwarded to the
+    # Nav2 Bridge exactly once, with dropoff translated to destination (doc08a:156 /
+    # doc12a:240). Tools and scheduler share the gen_store file, so B-3 is live.
+    forwarder = RecordingNav2Forwarder()
+    tools, _ = _real_tools(tmp_path, gen=0, forwarder=forwarder)  # the cycle bumps gen 0 -> 1
+    llm = FakeLLM(
+        {
+            "reasoning": "go",
+            "commands": [{"bot": "bot1", "action": "navigate", "destination": "berth_A"}],
+        }
+    )
+    sched, _ = _scheduler(tmp_path, llm, DispatchToolExecutor(tools.dispatch))
+    asyncio.run(sched.run_cycle())
+    assert [r.path for r in forwarder.requests] == ["/api/v1/navigate"]
+    assert forwarder.requests[0].body == {"robot": "bot1", "destination": "berth_A"}

@@ -149,6 +149,8 @@ Claude自身が交通管理も行うため、`via`（経由ルート）や `wait
 
 Mode A/B では、Claude の出力 JSON 内の `action` を Warehouse MCP Server のツール呼出しに変換する。7ツールの定義は `../architecture/15-mcp-platform.md` を参照。
 
+> ▶ **実装（S2-PR2 HALF B / #4）**: action→MCP ツールの写像は `ws/src/warehouse_llm_bridge/warehouse_llm_bridge/action_map.py`、MCP ツール→Nav2 Bridge エンドポイント（下表「Nav2 Bridge エンドポイント」列）の写像は `ws/src/warehouse_mcp_server/warehouse_mcp_server/nav2_client.py` の `plan_nav2_request`。後者は**受理（`status=="ok"`）された tool のみ** REST 転送し（R-26）、`dropoff`→`destination` の凍結フィールドドリフトを明示変換する（どちらの凍結契約も改名しない）。
+
 ### マッピング表
 
 | LLM 出力 action | MCP ツール | パラメータ変換 | Nav2 Bridge エンドポイント |

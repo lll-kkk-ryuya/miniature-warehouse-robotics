@@ -35,7 +35,7 @@
 | 1 | skeleton | ✅ **CLOSED**（契約凍結 #22 + 12pkg #24） |
 | 2 | jetson | ready（実機不要で着手可） |
 | 3 | firmware | 雛形 main 入り（#23）。実機実装は Phase 1 |
-| 4 | llm-bridge | 🟢 **S1 + S2-PR1 main 入り（#70/#78/#86）**: 司令官サイクル(Scheduler+HermesClient+Situation+action_map+排他 A/B-3/C) / **Bridge-owned Langfuse trace `tracing.py`(#78)** / **nav2_bridge part1(#86)**。MCP 層(#35/#41) 済。**残(S2-PR2)**: 実 tool dispatch（MCP→nav2_bridge REST 配線）/ Mode C None / R-35A(#54)。Langfuse 観測の Phase3 検証は #88 |
+| 4 | llm-bridge | 🟢 **S1 + S2-PR1 main 入り（#70/#78/#86）**: 司令官サイクル(Scheduler+HermesClient+Situation+action_map+排他 A/B-3/C) / **Bridge-owned Langfuse trace `tracing.py`(#78)** / **nav2_bridge part1(#86)**。MCP 層(#35/#41) 済。**S2-PR2 HALF B = in PR**: 実 in-process tool dispatch（`WarehouseTools().dispatch` 注入・同一トラック #81）+ MCP→nav2_bridge REST 転送（`nav2_client`・受理時のみ・R-26）。**残**: Mode C None / R-35A(#54) / Open-RMF 転送経路。Langfuse 観測の Phase3 検証は #88 |
 | 5 | safety-state | 🟢 **実装 main 入り（#39）**: Emergency Guardian 50ms + State Cache 100ms（`StateSnapshot` producer, atomic `state.json`）。残: 実機統合・twist_mux 連携（Phase 2+） |
 | 6 | wo | 🟢 **KPI scaffold + Langfuse v4 配線 main 入り（#69/#83）**: audit.jsonl reader + result/task_completion_time + **v4 `create_score` 実配線 + trace_id 導出 + efficiency(#83)**。**残**: node-wiring（provider+gen_id metadata + collector test）/ 他 score / Grok cost(=#88) / Metrics+Experiments。trace_id は seed 導出で契約不要 |
 | 7 | sim | 🟢 **環境スパイク GO + 実装 main 入り（#43/#46）**: world/URDF/`sim.launch.py`。環境成立は単一 bot spike で確認、bot1/bot2 launch は単体テストで text 検証。**残: `/clock`+`sim_time`+占有マップ所有/生成（#76, critical-path）→ 2台 Gazebo Nav2 E2E（#67）** |

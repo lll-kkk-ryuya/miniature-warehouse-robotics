@@ -21,13 +21,21 @@ ROS/langfuse); this file only wires them to ROS and the live Hermes Gateway.
 Safety (Policy Gate / gen_id B-3 / idempotency C) is ENFORCED at the Warehouse MCP
 Server, never duplicated here (doc12:19-22, doc15 §2).
 
-Tool-dispatch transport is a SEAM (the ``ToolExecutor``). To stay decoupled (no
-cross-package import of ``warehouse_mcp_server``, parallel-workflow §2.1 / CI
-governance), this still wires a logging stub that records the mapped tool calls.
-The real backend (Warehouse MCP ``WarehouseTools`` via a stdio subprocess) is the
-**PR-2** slice, once the cancellation transport question is settled (Issue #54,
-doc08:174). The full A+B-3+C loop against the real ``WarehouseTools`` is verified
-in ``tests/unit/test_bridge_scheduler.py`` (tests may cross-import; ws/src may not).
+Tool-dispatch transport is a SEAM (the ``ToolExecutor``). The real backend is the
+in-process Warehouse MCP :class:`~warehouse_mcp_server.tools.WarehouseTools`: this
+node injects ``tools.dispatch`` into :class:`DispatchToolExecutor` (S2-PR2 HALF B).
+The same-track import of ``warehouse_mcp_server`` is governance-legal — ``doc16``
+§9 (16-...:181-190) assigns ``warehouse_llm_bridge`` + ``warehouse_mcp_server`` +
+``warehouse_nav2_bridge`` to one track (``feat/llm-bridge``) and the CI cross-import
+check is track-aware (#81); only OTHER tracks' internals are off-limits. The tools
+share the bridge's ``GenStore`` (so a superseded ``gen_id`` is rejected end-to-end,
+B-3) and ``StateStore`` (the Policy Gate reads the same snapshot). For Mode A/B
+(``traffic_mode`` none/simple) an ACCEPTED motion tool is then forwarded to the
+separate Nav2 Bridge process over REST (:class:`~warehouse_mcp_server.nav2_client.
+Nav2RestForwarder`, doc12a:198-363); Mode C (open-rmf) routes via Open-RMF, so no
+forwarder is wired (doc15:211-219). The full A+B-3+C loop against the real
+``WarehouseTools`` is verified in ``tests/unit/test_bridge_scheduler.py`` /
+``test_nav2_forward.py`` (tests may cross-import; ws/src is track-scoped).
 """
 
 import asyncio
@@ -40,7 +48,10 @@ import rclpy
 from rclpy.node import Node
 from std_msgs.msg import String
 from warehouse_interfaces.config import load_config
-from warehouse_interfaces.stores import FileGenStore, FileStateStore
+from warehouse_interfaces.stores import FileGenStore, FileIdempotencyStore, FileStateStore
+from warehouse_mcp_server.gen_check import GenChecker
+from warehouse_mcp_server.nav2_client import Nav2RestForwarder
+from warehouse_mcp_server.tools import WarehouseTools
 
 from warehouse_llm_bridge.executor import DispatchToolExecutor
 from warehouse_llm_bridge.hermes_client import HermesClient
@@ -50,6 +61,12 @@ from warehouse_llm_bridge.tracing import LangfuseTracer, build_session_id
 
 # Hermes Gateway default endpoint (doc13:24,369) if config leaves it blank.
 DEFAULT_HERMES_BASE_URL = "http://localhost:8642"
+# Nav2 Bridge default endpoint (doc12a:222 / config nav2_bridge.base_url) if config
+# leaves it blank. Mode A/B forwards accepted motion tools here over REST.
+DEFAULT_NAV2_BRIDGE_BASE_URL = "http://localhost:8645"
+# traffic_mode values that route motion through the Nav2 Bridge (doc15:211-219).
+# Mode C (open-rmf) routes via Open-RMF instead — no Nav2 Bridge forwarder.
+NAV2_BRIDGE_MODES = frozenset({"none", "simple"})
 
 
 class LlmBridge(Node):
@@ -62,10 +79,12 @@ class LlmBridge(Node):
         mode = cfg.get("traffic_mode", "none")
         safety = cfg.get("safety") or {}
         hermes = cfg.get("hermes") or {}
+        nav2_bridge = cfg.get("nav2_bridge") or {}
         emergency_min_distance = safety.get(
             "emergency_min_distance", DEFAULT_EMERGENCY_MIN_DISTANCE
         )
         base_url = hermes.get("base_url") or DEFAULT_HERMES_BASE_URL
+        nav2_base_url = nav2_bridge.get("base_url") or DEFAULT_NAV2_BRIDGE_BASE_URL
         # Token is a secret (config/<env>/.env), NOT in config (rules/environments.md).
         api_key = os.environ.get("HERMES_API_KEY") or os.environ.get("API_SERVER_KEY", "")
         # provider/scenario are run-level labels for the Langfuse trace (doc08 §セッション
@@ -80,6 +99,18 @@ class LlmBridge(Node):
 
         gen_store = FileGenStore()
         state_store = FileStateStore()
+        # Real in-process Warehouse MCP tool dispatch (same-track import, doc16 §9 /
+        # #81). The tools share the bridge's gen_store so a superseded gen_id is
+        # rejected end-to-end (B-3, executor.py) and the same state_store so the
+        # Policy Gate validates against the snapshot the situation was built from.
+        # Mode A/B forwards an accepted motion tool to the Nav2 Bridge over REST;
+        # Mode C (open-rmf) routes via Open-RMF, so no forwarder is wired (doc15:211-219).
+        nav2_forwarder = Nav2RestForwarder(nav2_base_url) if mode in NAV2_BRIDGE_MODES else None
+        self._tools = WarehouseTools(
+            gen_checker=GenChecker(gen_store, FileIdempotencyStore()),
+            state_store=state_store,
+            nav2_forwarder=nav2_forwarder,
+        )
         cycle_wait = CYCLE_WAIT_SEC.get(mode, DEFAULT_CYCLE_WAIT_SEC)
         # Bridge-owned Langfuse trace (Pattern A, doc08:354-356); fail-open if
         # langfuse is absent. run_id == session_id so #6 (wo) derives the same
@@ -92,7 +123,7 @@ class LlmBridge(Node):
             situation_builder=SituationBuilder(
                 state_store, mode=mode, emergency_min_distance=emergency_min_distance
             ),
-            executor=DispatchToolExecutor(self._dispatch_tool),
+            executor=DispatchToolExecutor(self._tools.dispatch),
             gen_store=gen_store,
             publish_reasoning=self._publish_reasoning,
             publish_command=self._publish_command,
@@ -102,8 +133,9 @@ class LlmBridge(Node):
 
         self._loop = asyncio.new_event_loop()
         self._thread = threading.Thread(target=self._run_loop, daemon=True)
+        nav2_desc = nav2_base_url if nav2_forwarder is not None else "off (Open-RMF)"
         self.get_logger().info(
-            f"llm_bridge ready (mode={mode}, hermes={base_url}, "
+            f"llm_bridge ready (mode={mode}, hermes={base_url}, nav2_bridge={nav2_desc}, "
             f"cycle_wait={cycle_wait}s, session={session_id})"
         )
 
@@ -112,21 +144,6 @@ class LlmBridge(Node):
 
     def _publish_command(self, text: str) -> None:
         self._command_pub.publish(String(data=text))
-
-    async def _dispatch_tool(self, name: str, args: dict) -> dict:
-        """S1 tool-dispatch stub: log the mapped tool call, accept it (no backend).
-
-        The args already carry the ``gen_id`` (B-3) + minted ``idempotency_key``
-        (C) from ``action_map``. The real backend (Warehouse MCP ``WarehouseTools``
-        / Hermes stdio child) is injected here in S2 once the dispatch/cancel
-        transport is settled (Issue #54, doc08:174); until then the bridge only
-        publishes its decision while State Cache / Emergency Guardian own safety.
-        """
-        self.get_logger().info(
-            f"tool-call {name} gen={args.get('gen_id')} args={args} "
-            "[S1 stub — real MCP dispatch is S2 / Issue #54]"
-        )
-        return {"status": "ok", "tool": name}
 
     def _run_loop(self) -> None:
         asyncio.set_event_loop(self._loop)

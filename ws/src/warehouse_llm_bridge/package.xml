@@ -9,12 +9,15 @@
 
   <exec_depend>rclpy</exec_depend>
   <exec_depend>warehouse_interfaces</exec_depend>
+  <!-- Same-track sibling (doc16 §9: feat/llm-bridge owns both packages; CI cross-
+       import check is track-aware, #81). main() injects WarehouseTools().dispatch
+       into the ToolExecutor seam (S2-PR2 HALF B). -->
+  <exec_depend>warehouse_mcp_server</exec_depend>
   <!-- langfuse + openai (Bridge-owned trace via langfuse.openai, doc08/doc13 §7.5)
        are pip-only and lazy-imported; pinned in setup.py install_requires (not as
-       rosdep keys). openai supplies the httpx transport. Tool dispatch goes through
-       the ToolExecutor seam (injected), so the bridge does NOT import
-       warehouse_mcp_server (parallel-workflow §2.1 / CI governance); the real
-       backend is wired in PR-2 (Issue #54). -->
+       rosdep keys). openai supplies the httpx transport. The Nav2 Bridge REST
+       forwarder (warehouse_mcp_server.nav2_client, Mode A/B) uses httpx via the
+       mcp_server ".[nav2]" extra (lazy). -->
 
   <test_depend>python3-pytest</test_depend>
 

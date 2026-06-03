@@ -208,6 +208,8 @@ Mode A/B では `dispatch_task` の拡張パラメータ（`via`, `action`, `dur
 
 **`cancel_task` の `"current:{robot}"` 規約**: LLM の出力 JSON には `task_id` が含まれないため、`cancel_task("current:bot1")` と指定すると Warehouse MCP Server 内部の `active_tasks: dict[str, str]`（robot → task_id マッピング）から実際の task_id を解決する。
 
+> ▶ **REST 転送の実装（S2-PR2 HALF B, #4 / #86）**: 上表の「Nav2 Bridge エンドポイント」列は `warehouse_mcp_server/nav2_client.py` の `plan_nav2_request`（純関数）が実装する。`WarehouseTools.dispatch` は tool **受理後（`status=="ok"`）にのみ** `nav2_forwarder`（注入された `Nav2RestForwarder`, httpx 遅延 import）で `POST /api/v1/{navigate,wait,stop}` を発火する＝stale(B-3)/dup(C)/Policy 拒否は転送されない（R-26 の単一 seam）。`dropoff`→`destination` の凍結フィールドドリフトはここで明示変換（凍結契約を改名しない）。転送は fail-open。forwarder は **Mode A/B（`traffic_mode` none/simple）でのみ注入**、Mode C（open-rmf）は下記 TrafficManager 同様 Open-RMF 経由（forwarder 無し）。設計根拠と end-to-end 検証は `08-llm-bridge-common.md §同時発火制御` の「S2-PR2 HALF B」▶注記。
+
 ### モード切替（TrafficManager パターン）
 
 ```python
