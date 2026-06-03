@@ -141,7 +141,7 @@ def test_robot_state_carries_snapshot_fields(tmp_path: Path) -> None:
     assert robot["battery"] == 72
     assert robot["heading"] == pytest.approx(1.57)
     assert robot["velocity"] == {"linear": 0.1, "angular": 0.0}
-    assert robot["current_task"] is None  # bridge-owned, unset (doc12:248)
+    assert robot["current_task"] is None  # bridge-owned, unset (doc12:249)
 
 
 @pytest.mark.unit
@@ -174,3 +174,26 @@ def test_mode_a_keeps_traffic_fields(tmp_path: Path) -> None:
     robot = sit["robots"]["bot1"]
     for field in ("velocity", "heading", "predicted_position_3s", "obstacle_ahead"):
         assert field in robot
+
+
+@pytest.mark.unit
+def test_current_task_filled_from_map(tmp_path: Path) -> None:
+    # current_task is bridge-owned (NOT in the snapshot): it comes from the tracked
+    # map; an unmapped bot stays None=idle (08a:62,73 / doc12:248).
+    builder = SituationBuilder(_store(tmp_path, {"bot1": _robot(), "bot2": _robot()}))
+    sit = builder.build(turn=1, gen_id=1, current_tasks={"bot1": "berth_A"})
+    assert sit is not None
+    assert sit["robots"]["bot1"]["current_task"] == "berth_A"
+    assert sit["robots"]["bot2"]["current_task"] is None
+
+
+@pytest.mark.unit
+def test_current_task_filled_in_mode_c(tmp_path: Path) -> None:
+    # Mode C keeps current_task in its slim shape (08c §正規形); it must still be
+    # populated from the tracked map.
+    builder = SituationBuilder(_store(tmp_path, {"bot1": _robot()}), mode="open-rmf")
+    sit = builder.build(turn=1, gen_id=1, current_tasks={"bot1": "shelf_2"})
+    assert sit is not None
+    robot = sit["robots"]["bot1"]
+    assert robot["current_task"] == "shelf_2"
+    assert set(robot) == {"position", "status", "battery", "current_task"}

@@ -88,6 +88,7 @@ class SituationBuilder:
         gen_id: int,
         history: list[dict] | None = None,
         pending_tasks: list[dict] | None = None,
+        current_tasks: dict[str, str] | None = None,
     ) -> dict | None:
         """Return the Situation JSON dict, or ``None`` if no snapshot exists yet.
 
@@ -95,12 +96,25 @@ class SituationBuilder:
         rather than send the LLM an empty fleet. Validates the read snapshot
         against the frozen ``StateSnapshot`` (a corrupt snapshot raises, surfacing
         producer drift instead of silently shipping garbage to the LLM).
+
+        ``current_tasks`` maps ``bot -> destination`` for each robot's in-flight
+        task — the DESTINATION only; the doc's illustrative "<from> → <to>" route is
+        not reproduced since the Bridge has no pickup (Bridge-owned working memory
+        the snapshot does not carry, doc12:249 / 08a:62,73,90). The scheduler tracks
+        it from accepted dispatches; an absent/unmapped bot gets ``current_task=None``
+        (idle). ``pending_tasks`` has no wired producer yet — its source is not
+        specified in the design docs — so it stays ``[]`` by design for now
+        (08a:92 / #102).
         """
         raw = self._state_store.read()
         if raw is None:
             return None
         snapshot = StateSnapshot.model_validate(raw)
-        robots = {bot: self._enrich(snap) for bot, snap in snapshot.robots.items()}
+        tasks = current_tasks or {}
+        robots = {
+            bot: self._enrich(snap, current_task=tasks.get(bot))
+            for bot, snap in snapshot.robots.items()
+        }
         situation = Situation(
             timestamp=snapshot.timestamp,
             turn=turn,
@@ -116,8 +130,15 @@ class SituationBuilder:
         # strategic fields. exclude_none would NOT work (obstacle_ahead defaults False).
         return situation.model_dump(exclude_unset=True)
 
-    def _enrich(self, snap: RobotSnapshot) -> RobotState:
+    def _enrich(self, snap: RobotSnapshot, *, current_task: str | None = None) -> RobotState:
         """Lift a raw ``RobotSnapshot`` into a ``RobotState`` (L2 -> L1, 08a:93-95).
+
+        ``current_task`` is the Bridge-owned in-flight DESTINATION for this robot
+        (``None`` when idle/untracked); it is deliberately NOT in ``RobotSnapshot``
+        — the State Cache omits it and the Bridge supplies it at build time
+        (doc12:249). BOTH modes carry it: Mode C's slim shape still includes
+        current_task (08c:92,99), Mode A/B includes it alongside the full traffic
+        fields (08a:62,73,90).
 
         Mode C (Open-RMF owns traffic) builds ONLY the strategic fields
         (position/status/battery/current_task) and leaves velocity / heading /
@@ -132,7 +153,7 @@ class SituationBuilder:
                 position=snap.position,
                 status=snap.status,
                 battery=snap.battery,
-                current_task=None,  # bridge-owned; tracked in a later slice (doc12:248)
+                current_task=current_task,  # bridge-owned (doc12:249); None when idle
             )
         return RobotState(
             position=snap.position,
@@ -143,7 +164,7 @@ class SituationBuilder:
             obstacle_distance=snap.obstacle_distance,
             predicted_position_3s=self._predict(snap),
             obstacle_ahead=self._obstacle_ahead(snap.obstacle_distance),
-            current_task=None,  # bridge-owned; tracked in a later slice (doc12:248)
+            current_task=current_task,  # bridge-owned (doc12:249); None when idle
         )
 
     def _predict(self, snap: RobotSnapshot) -> Position:

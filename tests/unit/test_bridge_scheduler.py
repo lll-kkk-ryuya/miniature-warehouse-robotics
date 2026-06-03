@@ -20,7 +20,7 @@ from warehouse_interfaces.stores import FileGenStore, FileIdempotencyStore, File
 from warehouse_llm_bridge.action_map import command_to_tool_calls
 from warehouse_llm_bridge.executor import DispatchToolExecutor, RecordingToolExecutor
 from warehouse_llm_bridge.llm_client import LLMUnavailableError
-from warehouse_llm_bridge.scheduler import BridgeScheduler
+from warehouse_llm_bridge.scheduler import HISTORY_MAXLEN, BridgeScheduler
 from warehouse_mcp_server.audit import CommandAuditLog
 from warehouse_mcp_server.gen_check import GenChecker
 from warehouse_mcp_server.nav2_client import RecordingNav2Forwarder
@@ -49,12 +49,22 @@ class FakeLLM:
 
 
 class FakeSituation:
-    """Situation builder stub: a canned non-empty situation, or None when not ready."""
+    """Situation builder stub: a canned non-empty situation, or None when not ready.
+
+    Records the last ``history`` / ``current_tasks`` the scheduler passed so cycle
+    tests can assert the bridge-owned working memory threaded into the next build.
+    """
 
     def __init__(self, *, ready: bool = True) -> None:
         self.ready = ready
+        self.last_history: list | None = None
+        self.last_current_tasks: dict | None = None
 
-    def build(self, *, turn: int, gen_id: int, history=None, pending_tasks=None) -> dict | None:
+    def build(
+        self, *, turn: int, gen_id: int, history=None, pending_tasks=None, current_tasks=None
+    ) -> dict | None:
+        self.last_history = history
+        self.last_current_tasks = current_tasks
         if not self.ready:
             return None
         return {"turn": turn, "gen_id": gen_id, "robots": {}}
@@ -107,6 +117,85 @@ def test_happy_path_dispatches_mapped_tool_calls(tmp_path: Path) -> None:
     keys = {c.args["idempotency_key"] for c in executor.calls}
     assert len(keys) == 2  # C: a distinct per-call key for bot1 and bot2
     assert sched.last_command is not None
+
+
+# ── working memory: history + current_task (#102, doc08a:82-85,62) ────────────
+
+
+def _nav_response(bot: str, dest: str) -> dict:
+    return {
+        "reasoning": "go",
+        "commands": [{"bot": bot, "action": "navigate", "destination": dest}],
+    }
+
+
+@pytest.mark.unit
+def test_current_task_tracked_after_accepted_navigate(tmp_path: Path) -> None:
+    # An accepted navigate records bot -> destination; the NEXT cycle's situation
+    # carries it (build runs before this cycle's dispatch, so it lags one cycle).
+    llm = FakeLLM(_nav_response("bot1", "berth_A"))
+    sched, _ = _scheduler(tmp_path, llm, RecordingToolExecutor())
+    asyncio.run(sched.run_cycle())  # dispatch navigate -> track
+    assert sched._current_tasks == {"bot1": "berth_A"}
+    asyncio.run(sched.run_cycle())  # next build sees the tracked task
+    assert sched._situation_builder.last_current_tasks == {"bot1": "berth_A"}
+
+
+@pytest.mark.unit
+def test_current_task_cleared_after_stop(tmp_path: Path) -> None:
+    # stop -> cancel_task -> cleared, mirroring PolicyGate.active_tasks on cancel.
+    llm = FakeLLM(_nav_response("bot1", "berth_A"))
+    sched, _ = _scheduler(tmp_path, llm, RecordingToolExecutor())
+    asyncio.run(sched.run_cycle())
+    assert sched._current_tasks == {"bot1": "berth_A"}
+    llm.response = {"reasoning": "halt", "commands": [{"bot": "bot1", "action": "stop"}]}
+    asyncio.run(sched.run_cycle())
+    assert sched._current_tasks == {}
+
+
+@pytest.mark.unit
+def test_current_task_not_tracked_on_rejected_dispatch(tmp_path: Path) -> None:
+    # A rejected command (battery/stale/duplicate) must not look like it gave a task.
+    executor = RecordingToolExecutor(result={"status": "rejected", "reason": "battery_critical"})
+    llm = FakeLLM(_nav_response("bot1", "berth_A"))
+    sched, _ = _scheduler(tmp_path, llm, executor)
+    asyncio.run(sched.run_cycle())
+    assert sched._current_tasks == {}
+
+
+@pytest.mark.unit
+def test_history_accumulates_and_is_bounded(tmp_path: Path) -> None:
+    # history is a bounded ring (no unbounded growth) and labels carry the target.
+    llm = FakeLLM(_nav_response("bot1", "berth_A"))
+    sched, _ = _scheduler(tmp_path, llm, RecordingToolExecutor())
+    for _ in range(HISTORY_MAXLEN + 3):
+        asyncio.run(sched.run_cycle())
+    assert len(sched._history) == HISTORY_MAXLEN  # ring capped at maxlen
+    last = list(sched._history)[-1]
+    assert last["action"] == "bot1 navigate berth_A"  # target appended (08a:83)
+    assert last["result"] == "ok"
+
+
+@pytest.mark.unit
+def test_history_carries_blocked_for_deadlock_pattern2(tmp_path: Path) -> None:
+    # Pattern 2 (08a:296-305) MECHANISM only: this proves the history pipe carries a
+    # "blocked" result across cycles so the commander COULD detect the deadlock. It
+    # injects a fabricated {"status":"blocked"} because the real dispatch result is
+    # only ok/rejected/error today — no layer emits "blocked" yet, so pattern-2 is
+    # NOT reachable end-to-end until #55 adds a blocked-producing path (08a:289 note).
+    # See test_node_cycle_* for what the commander really sees today (ok).
+    executor = RecordingToolExecutor(result={"status": "blocked"})
+    llm = FakeLLM(_nav_response("bot1", "shelf_1"))
+    sched, _ = _scheduler(tmp_path, llm, executor)
+    asyncio.run(sched.run_cycle())
+    asyncio.run(sched.run_cycle())
+    blocked = [
+        h for h in sched._history if h["result"] == "blocked" and h["action"].startswith("bot1")
+    ]
+    assert len(blocked) == 2  # two consecutive cycles blocked -> pattern-2 detectable
+    asyncio.run(sched.run_cycle())  # the 3rd build receives the two blocked entries
+    carried = [h for h in sched._situation_builder.last_history if h["result"] == "blocked"]
+    assert len(carried) >= 2
 
 
 # ── fallback (Layer A + outage) ───────────────────────────────────────────────
