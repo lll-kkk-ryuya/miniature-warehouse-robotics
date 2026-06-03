@@ -15,6 +15,11 @@ safety:
   max_linear_velocity: 0.3   # m/s 上限（厳守）
   emergency_min_distance: 0.3   # m（2台間。doc12 DISTANCE_THRESHOLD と一致。TODO: Phase 2 実測で確定）
   blocked_timeout: 10.0   # s, Nav2 recovery trigger（doc12 BLOCKED_TIMEOUT）。TODO: Phase 2 実測で確定
+  # #44: BatteryState.percentage の driver スケール。percent=0..100 / fraction=0..1(REP-147)。
+  # 既定 percent は fail-safe（fraction ドライバを percent と読むと誤 estop=安全側、見逃しは起きない）。
+  # State Cache・Emergency Guardian が共有 helper(warehouse_interfaces.safety.normalize_battery_percent)
+  # で正規化。TODO: Phase 1 で実機 Yahboom ドライバの実スケールを計測し確定（safety.md / doc16 §11 estop テスト）。
+  battery_percentage_scale: percent
 
 # LLM サイクル長（秒）。Mode A=3 / Mode C=5（doc03）
 cycle:

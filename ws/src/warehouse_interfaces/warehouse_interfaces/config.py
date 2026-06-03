@@ -18,7 +18,7 @@ from typing import Any
 import yaml
 
 from warehouse_interfaces.paths import config_paths
-from warehouse_interfaces.safety import MAX_LINEAR_VELOCITY
+from warehouse_interfaces.safety import BATTERY_PERCENTAGE_SCALES, MAX_LINEAR_VELOCITY
 
 # Env vars overriding config use this prefix; ``__`` separates nesting levels,
 # e.g. ``WAREHOUSE__SAFETY__MAX_LINEAR_VELOCITY=0.25`` sets
@@ -68,13 +68,22 @@ def _apply_env_overrides(
 def _validate_safety(cfg: dict[str, Any]) -> None:
     """Reject a config whose speed cap exceeds the hard ceiling (rules/safety.md)."""
     safety = cfg.get("safety")
-    if not isinstance(safety, dict) or "max_linear_velocity" not in safety:
+    if not isinstance(safety, dict):
         return
-    cap = safety["max_linear_velocity"]
-    if cap > MAX_LINEAR_VELOCITY:
+    # Validate each safety key INDEPENDENTLY — never gate one behind another's
+    # presence (#44: a typo battery scale must be rejected even if max_linear_velocity
+    # is absent, since it silently disables the battery estop).
+    cap = safety.get("max_linear_velocity")
+    if cap is not None and cap > MAX_LINEAR_VELOCITY:
         raise ValueError(
             f"config safety.max_linear_velocity={cap} exceeds hard cap "
             f"MAX_LINEAR_VELOCITY={MAX_LINEAR_VELOCITY} m/s (rules/safety.md)"
+        )
+    scale = safety.get("battery_percentage_scale")
+    if scale is not None and scale not in BATTERY_PERCENTAGE_SCALES:
+        raise ValueError(
+            f"config safety.battery_percentage_scale={scale!r} invalid; "
+            f"expected one of {BATTERY_PERCENTAGE_SCALES}"
         )
 
 

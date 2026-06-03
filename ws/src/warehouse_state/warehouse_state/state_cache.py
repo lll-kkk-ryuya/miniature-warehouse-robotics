@@ -21,6 +21,8 @@ from rclpy.node import Node
 from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import BatteryState, LaserScan
 from std_msgs.msg import String
+from warehouse_interfaces.config import load_config
+from warehouse_interfaces.safety import BATTERY_PERCENTAGE_SCALE_DEFAULT
 from warehouse_interfaces.stores import FileStateStore
 
 from warehouse_state.aggregator import (
@@ -39,6 +41,15 @@ class StateCacheNode(Node):
     def __init__(self) -> None:
         super().__init__("state_cache")
         self.declare_parameter("write_period_s", 0.1)  # 100ms (doc12 State Cache)
+        # #44: explicit battery driver scale (config-driven, fail-safe default),
+        # shared with the Emergency Guardian via warehouse_interfaces.safety so the
+        # two consumers of /bot{n}/battery never normalize differently.
+        scale = (
+            load_config()
+            .get("safety", {})
+            .get("battery_percentage_scale", BATTERY_PERCENTAGE_SCALE_DEFAULT)
+        )
+        self._battery_scale = self.declare_parameter("battery_percentage_scale", scale).value
 
         # ros2.md: set QoS explicitly. Sensor streams are best-effort; the control
         # snapshot / event topics are reliable.
@@ -49,7 +60,7 @@ class StateCacheNode(Node):
             reliability=ReliabilityPolicy.RELIABLE, history=HistoryPolicy.KEEP_LAST, depth=10
         )
 
-        self._agg = StateAggregator(_BOTS)
+        self._agg = StateAggregator(_BOTS, battery_scale=self._battery_scale)
         self._store = FileStateStore()  # default state_path() = /tmp/warehouse/state.json
 
         for bot in _BOTS:

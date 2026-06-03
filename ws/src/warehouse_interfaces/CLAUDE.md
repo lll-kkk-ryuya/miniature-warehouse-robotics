@@ -10,8 +10,8 @@
 - `locations.py` — `KNOWN_LOCATIONS`（9キー）/ `is_known_location`。**Policy Gate の単一真実**。doc08＝doc13＝config/warehouse.base.yaml と一致。
 - `paths.py` — 共有パス（doc16 §4）+ `WAREHOUSE_ENV`（dev/stg/prod, doc19）。state=`/tmp/warehouse/state.json`、gen_store=`/tmp/warehouse/gen_store`、idempotency_store=`/tmp/warehouse/idempotency_store`、prod=`/run/warehouse/`。
 - `stores.py` — `StateStore` / `GenStore` / `IdempotencyStore` 抽象IF + file実装（atomic write）。`IdempotencyStore.check_and_add(key, gen) -> bool`（単一プリミティブ＝呼び出し側の check/add 分割を防ぐ：初見 True / replay False。**`FileIdempotencyStore` は単一プロセス/イベントループ内でのみ atomic**、複数プロセス時は Redis 等ロック付きバックエンドが必要 / doc15 §2）。`FileIdempotencyStore` は `{key: gen}` JSON map＋gen-window eviction（`IDEMPOTENCY_WINDOW_GENS=8`）。R-35 C 層、MCP が消費記録に使用。
-- `safety.py` — **安全定数の単一ソース（ハードキャップ）**（`MAX_LINEAR_VELOCITY=0.3` / battery 閾値 / `clamp_velocity`（非有限値→0.0 stop）/ `battery_allows_new_task` / `battery_is_critical`）。**Policy Gate(L1) と Emergency Guardian(L2) が共用**。config の `safety.max_linear_velocity` は環境 tunable で、`load_config` が ≤ ハードキャップを検証し超過は拒否。ハードコード禁止。
-- `config.py` — `load_config()`：`warehouse.base.yaml` + `config/<env>/warehouse.yaml` を deep-merge し、`WAREHOUSE__SECTION__KEY` 環境変数で上書き（doc19 §3 後勝ち）。speed cap を `safety.MAX_LINEAR_VELOCITY` 以下に検証。
+- `safety.py` — **安全定数の単一ソース（ハードキャップ）**（`MAX_LINEAR_VELOCITY=0.3` / battery 閾値 / `clamp_velocity`（非有限値→0.0 stop）/ `battery_allows_new_task` / `battery_is_critical` / **`normalize_battery_percent(raw, scale)`＋`BATTERY_PERCENTAGE_SCALES`/既定 `percent`＝#44 battery スケール単一正規化**）。**Policy Gate(L1) と Emergency Guardian(L2) が共用**。config の `safety.max_linear_velocity` は環境 tunable で、`load_config` が ≤ ハードキャップを検証し超過は拒否。ハードコード禁止。
+- `config.py` — `load_config()`：`warehouse.base.yaml` + `config/<env>/warehouse.yaml` を deep-merge し、`WAREHOUSE__SECTION__KEY` 環境変数で上書き（doc19 §3 後勝ち）。speed cap を `safety.MAX_LINEAR_VELOCITY` 以下に検証＋`safety.battery_percentage_scale` を `BATTERY_PERCENTAGE_SCALES` に検証（#44）。
 - `schemas.py` の `StateSnapshot`/`RobotSnapshot` — State Cache(L2) が書く生状態（`obstacle_distance` は Situation の `RobotState` と同名・`battery` は 0–100 検証）。LLM Bridge(L1) が読む。
 
 ## 依存

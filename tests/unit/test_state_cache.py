@@ -10,6 +10,7 @@ import math
 import sys
 
 import pytest
+from warehouse_interfaces.safety import BATTERY_SCALE_FRACTION
 from warehouse_interfaces.schemas import StateSnapshot
 from warehouse_interfaces.stores import FileStateStore
 from warehouse_state.aggregator import (
@@ -19,13 +20,14 @@ from warehouse_state.aggregator import (
     ScanSample,
     StateAggregator,
     VelocitySample,
-    battery_to_percent,
     min_valid_range,
     quaternion_to_yaw,
 )
 
 
-def _full_bot(agg: StateAggregator, bot: str, *, battery: float = 0.5, linear: float = 0.0) -> None:
+def _full_bot(
+    agg: StateAggregator, bot: str, *, battery: float = 85.0, linear: float = 0.0
+) -> None:
     """Feed a bot the minimum required samples (pose + velocity + battery)."""
     agg.set_pose(bot, PoseSample(0.0, 0.0, 0.0, 0.0, 0.0, 1.0))
     agg.set_velocity(bot, VelocitySample(linear, 0.0))
@@ -41,8 +43,8 @@ def test_aggregator_is_rclpy_free() -> None:
 @pytest.mark.unit
 def test_build_snapshot_is_state_snapshot_valid() -> None:
     agg = StateAggregator()
-    _full_bot(agg, "bot1", battery=0.85)
-    _full_bot(agg, "bot2", battery=0.72)
+    _full_bot(agg, "bot1", battery=85.0)
+    _full_bot(agg, "bot2", battery=72.0)
     payload = agg.build_snapshot("2026-06-15T14:30:05")
     snap = StateSnapshot.model_validate(payload)  # frozen L2->L1 contract
     assert set(snap.robots) == {"bot1", "bot2"}
@@ -100,19 +102,20 @@ def test_min_valid_range_respects_range_max() -> None:
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize(
-    ("raw", "expected"),
-    [(0.85, 85), (0.0, 0), (1.0, 100), (72.0, 72), (150.0, 100), (-0.2, 0)],
-)
-def test_battery_to_percent(raw: float, expected: int) -> None:
-    assert battery_to_percent(raw) == expected
+def test_aggregator_battery_scale_fraction() -> None:
+    # Explicit fraction-scale driver: 0..1 -> 0..100 via the shared helper (#44).
+    # (percent-scale normalization is covered by the default fixtures above.)
+    agg = StateAggregator(battery_scale=BATTERY_SCALE_FRACTION)
+    _full_bot(agg, "bot1", battery=0.85)
+    assert agg.build_snapshot("t")["robots"]["bot1"]["battery"] == 85
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")])
-def test_battery_to_percent_non_finite_raises(bad: float) -> None:
-    with pytest.raises(ValueError, match="non-finite"):
-        battery_to_percent(bad)
+def test_aggregator_rejects_unknown_battery_scale() -> None:
+    # #44: a typo'd scale must fail fast at construction (the node refuses to start),
+    # never silently drop every battery sample / disable the estop.
+    with pytest.raises(ValueError, match="unknown battery percentage scale"):
+        StateAggregator(battery_scale="percentage")
 
 
 @pytest.mark.unit
@@ -122,7 +125,7 @@ def test_battery_nan_keeps_bot_incomplete_then_completes() -> None:
     agg.set_velocity("bot1", VelocitySample(0.0, 0.0))
     agg.set_battery("bot1", BatterySample(float("nan")))  # dropped
     assert "bot1" not in agg.build_snapshot("t")["robots"]
-    agg.set_battery("bot1", BatterySample(0.5))  # now valid
+    agg.set_battery("bot1", BatterySample(50.0))  # now valid
     assert "bot1" in agg.build_snapshot("t")["robots"]
 
 
@@ -142,7 +145,7 @@ def test_bot_with_only_non_finite_pose_omitted() -> None:
     agg = StateAggregator()
     agg.set_pose("bot1", PoseSample(float("nan"), float("nan"), 0.0, 0.0, 0.0, 1.0))
     agg.set_velocity("bot1", VelocitySample(0.0, 0.0))
-    agg.set_battery("bot1", BatterySample(0.5))
+    agg.set_battery("bot1", BatterySample(50.0))
     assert "bot1" not in agg.build_snapshot("t")["robots"]  # never got a finite pose
 
 
@@ -232,7 +235,7 @@ def test_emergency_active_and_history_are_bounded() -> None:
 def test_atomic_round_trip_via_file_store(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("WAREHOUSE_RUNTIME_DIR", str(tmp_path))
     agg = StateAggregator()
-    _full_bot(agg, "bot1", battery=0.5)
+    _full_bot(agg, "bot1", battery=50.0)
     payload = agg.build_snapshot("t")
     store = FileStateStore()  # resolves to tmp_path/state.json via the env override
     store.write(payload)

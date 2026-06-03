@@ -15,18 +15,18 @@
 - ~~file : `config/twist_mux.yaml`~~ → **`warehouse_bringup/config/twist_mux.yaml` へ移設済（#40 / nav-traffic, doc16 §5）**。値（emergency=100 / nav2=10, timeout 0.5, `/bot{n}/cmd_vel/{emergency,nav2}`）は不変で移設。本パッケージは twist_mux 設定を保持しない。
 
 ## 消費 (consume)
-- 契約: `warehouse_interfaces.safety`（`MAX_LINEAR_VELOCITY`/`BATTERY_CRITICAL_PCT`/`battery_is_critical`/`clamp_velocity`）、`config.load_config`。
-- config: `safety.emergency_min_distance`（既存・2台間距離。速度cap とは別概念）, `safety.blocked_timeout`（← **このトラックで `config/warehouse.base.yaml` に追加: 10.0**）。
+- 契約: `warehouse_interfaces.safety`（`MAX_LINEAR_VELOCITY`/`BATTERY_CRITICAL_PCT`/`battery_is_critical`/`clamp_velocity`/`normalize_battery_percent`（#44））、`config.load_config`。
+- config: `safety.emergency_min_distance`（既存・2台間距離。速度cap とは別概念）, `safety.blocked_timeout`（← **このトラックで `config/warehouse.base.yaml` に追加: 10.0**）, `safety.battery_percentage_scale`（← **#44 で追加: `percent` 既定=fail-safe**）。
 - topic: `/{bot}/amcl_pose`(PoseWithCovarianceStamped), `/{bot}/battery`(BatteryState)。bot1 / bot2。
 
 ## 実装メモ
-- 判定ロジックは rclpy 非依存の `guard_logic.py`（`evaluate`/`build_event`/`BlockTracker`/`distance`）に分離 → `tests/unit/test_emergency_guardian.py`（`@pytest.mark.safety`）で ROS 無し検証。
+- 判定ロジックは rclpy 非依存の `guard_logic.py`（`evaluate`/`build_event`/`BlockTracker`/`distance`/`marshal_battery`（#44 battery scale 正規化＋非有限→last-good））に分離 → `tests/unit/test_emergency_guardian.py`（`@pytest.mark.safety`）で ROS 無し検証（reflex 側の battery scale も parity test 済）。
 - 安全定数は全て `warehouse_interfaces.safety` から import（**0.3/10/20 直書きゼロ**）。距離・blocked_timeout は `load_config`。
 - estop は `/bot{n}/cmd_vel/emergency` のみ（`/cmd_vel` 直 publish 禁止, doc15 race）。Nav2 cancel は非ブロッキング `call_async`（dev で Nav2 無し→`service_is_ready()` で no-op）。
 - R-40: `main()` で `gc.disable()`/`gc.freeze()`（best-effort。最終防衛は ESP32 Layer 0）。
 
 ## 前提・未確定 (TODO)
-- # TODO(Phase 2, SAFETY-BLOCKER) battery スケールを実機で確定。`battery_is_critical` は %（0..100）前提。State Cache は正規化、本ノードは raw を渡すため不一致。0..1 ドライバなら全読値≤10→誤 estop、0..100 ドライバに `<=1.0` ヒューリスティックを当てると 0.5%→50% で estop 見逃し。実測後に1箇所で正規化（理想は warehouse_interfaces 共有ヘルパ・contract PR）
+- # ✅(#44, SAFETY-BLOCKER 解消) battery は config `safety.battery_percentage_scale` で明示スケール＋共有 `normalize_battery_percent` で State Cache と単一正規化（`_on_battery` の raw 転送＋`<=1.0` ヒューリスティックを撤去）。既定 `percent`=fail-safe（誤 estop=安全側、critical 見逃しなし）。**残: Phase 1 で実機 Yahboom の実スケールを計測し config 確定＋実機 estop テスト**（safety.md / doc16 §11）
 - # TODO(Phase 2) R-39: /scan or ESP32 Layer0 を 2台間近接の主担当に（amcl_pose は 5-10Hz＝実効 100-200ms stale）
 - # TODO(Phase 2) blocked 検出を Nav2 nav_status でゲート（現状は変位ベース low-harm recovery event のみ）。pose 途絶時の freshness ガードも要検討
 - # TODO(Phase 2) /emergency/event の edge-trigger 化（持続条件で 20Hz 連発を抑止。現状は State Cache 側で active/history を 50 件 ring に bound）
