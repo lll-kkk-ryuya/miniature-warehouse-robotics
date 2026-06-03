@@ -39,7 +39,7 @@ from typing import Any
 
 from warehouse_interfaces.paths import audit_log_path
 
-# Documented audit ``result`` vocabulary (doc15:352, warehouse_mcp_server tools.py:15).
+# Documented audit ``result`` vocabulary (doc15:354, warehouse_mcp_server tools.py:15).
 # A convention asserted by the producer code + docs, NOT a frozen pydantic enum, so
 # we keep any out-of-vocabulary value rather than dropping it (see ResultTally.other).
 RESULT_EXECUTED = "executed"
@@ -79,6 +79,22 @@ class AuditEntry:
     def reason(self) -> str | None:
         """``detail.reason`` for rejected/error rows (tools.py:160/_gen_reject), else ``None``."""
         return self.detail.get("reason") if isinstance(self.detail, dict) else None
+
+    @property
+    def gen_id(self) -> int | None:
+        """The task's generation, used to derive the Langfuse ``trace_id`` (#73, doc13:481).
+
+        Reads **only** ``detail.gen_id`` — the per-task generation the predeclared mcp_server
+        change (#4 / #73) will add to executed rows. We deliberately do **not** fall back to
+        ``received_gen`` (written only on stale-generation rejects, tools.py ``_stale``): a
+        stale-reject's gen is an *older, rejected* generation and must NOT seed a trace
+        (doc13:481 keys the join to the specific executed gen). So ``gen_id`` stays ``None``
+        until executed rows carry it — keeping live trace-linking inert/no-op as documented.
+        """
+        if not isinstance(self.detail, dict):
+            return None
+        value = self.detail.get("gen_id")
+        return value if isinstance(value, int) and not isinstance(value, bool) else None
 
 
 def parse_line(line: str) -> AuditEntry | None:

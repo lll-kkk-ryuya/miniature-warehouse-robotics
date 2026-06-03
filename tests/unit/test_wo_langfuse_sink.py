@@ -1,8 +1,10 @@
-"""LangfuseScoreSink tests (warehouse_orchestrator, Lane C #6 wo).
+"""LangfuseScoreSink v4 tests (warehouse_orchestrator, Lane C #6 wo).
 
-The adapter must be a NO-OP without a trace_id (the Phase-0.5 reality — trace_id is
-Phase 3, doc13:472) and FAIL-OPEN (doc08:314): never raise, even when the SDK is
-absent or the client throws. No real langfuse SDK is imported here.
+The adapter uses the Langfuse **v4** API (``create_score`` + ``flush``, doc08:341-350): it
+must pass ``data_type``/``metadata``, normalize the trace_id to 32-hex-no-dash (doc13:478),
+fall back to embedding the robot in the score NAME when the SDK rejects ``metadata=``
+(doc08:350), NO-OP without a usable trace_id, and FAIL-OPEN (never raise). No real langfuse
+SDK is imported — a fake v4 client stands in.
 """
 
 import json
@@ -12,23 +14,42 @@ from warehouse_orchestrator.audit_reader import parse_lines
 from warehouse_orchestrator.kpi import compute_kpis
 from warehouse_orchestrator.langfuse_sink import LangfuseScoreSink
 
+# A valid Langfuse trace id (32 lowercase hex, no dash) and its dashed-UUID equivalent.
+TRACE = "0123456789abcdef0123456789abcdef"
+TRACE_DASHED = "01234567-89ab-cdef-0123-456789abcdef"
+
 
 class _FakeClient:
-    """Captures langfuse.score(trace_id=, name=, value=) calls."""
+    """Captures v4 ``create_score(...)`` + ``flush()`` calls."""
 
-    def __init__(self, *, raises: bool = False) -> None:
+    def __init__(self, *, raises: bool = False, accepts_metadata: bool = True) -> None:
         self.calls: list[dict] = []
+        self.flushed = 0
         self._raises = raises
+        self._accepts_metadata = accepts_metadata
 
-    def score(self, *, trace_id, name, value) -> None:
+    def create_score(self, *, trace_id, name, value, data_type=None, metadata=None) -> None:
         if self._raises:
             raise RuntimeError("boom")
-        self.calls.append({"trace_id": trace_id, "name": name, "value": value})
+        if not self._accepts_metadata and (data_type is not None or metadata is not None):
+            raise TypeError("create_score() got an unexpected keyword argument")
+        self.calls.append(
+            {
+                "trace_id": trace_id,
+                "name": name,
+                "value": value,
+                "data_type": data_type,
+                "metadata": metadata,
+            }
+        )
+
+    def flush(self) -> None:
+        self.flushed += 1
 
 
 @pytest.fixture(autouse=True)
 def _no_langfuse_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Ensure the default-client path stays disabled regardless of the host env.
+    # Keep the default-client path disabled regardless of the host env.
     monkeypatch.delenv("HERMES_LANGFUSE_PUBLIC_KEY", raising=False)
     monkeypatch.delenv("HERMES_LANGFUSE_SECRET_KEY", raising=False)
 
@@ -37,8 +58,7 @@ def _no_langfuse_env(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_disabled_without_client_or_credentials() -> None:
     sink = LangfuseScoreSink()
     assert sink.enabled is False
-    # Even with a trace_id, a disabled sink sends nothing and does not raise.
-    assert sink.send_result("trace-123", "success") is False
+    assert sink.send_result(TRACE, "success") is False  # disabled → no-op, no raise
 
 
 @pytest.mark.unit
@@ -52,22 +72,64 @@ def test_noop_when_trace_id_missing() -> None:
 
 
 @pytest.mark.unit
-def test_sends_scores_when_enabled_and_trace_id() -> None:
+def test_v4_create_score_with_data_type_and_metadata() -> None:
     fake = _FakeClient()
     sink = LangfuseScoreSink(client=fake)
-    assert sink.send_result("trace-1", "success") is True
-    assert sink.send_task_completion_time("trace-1", 29.3) is True
-    assert fake.calls == [
-        {"trace_id": "trace-1", "name": "result", "value": "success"},
-        {"trace_id": "trace-1", "name": "task_completion_time", "value": 29.3},
-    ]
+    assert sink.send_result(TRACE, "success", robot="bot1", mode="A") is True
+    assert sink.send_task_completion_time(TRACE, 29.3, robot="bot1") is True
+    assert sink.send_efficiency(TRACE, 12.5, robot="bot2") is True
+    assert [c["name"] for c in fake.calls] == ["result", "task_completion_time", "efficiency"]
+    assert fake.calls[0]["data_type"] == "CATEGORICAL"
+    assert fake.calls[0]["metadata"] == {"robot": "bot1", "mode": "A"}
+    assert fake.calls[1]["data_type"] == "NUMERIC"
+    assert fake.calls[2] == {
+        "trace_id": TRACE,
+        "name": "efficiency",
+        "value": 12.5,
+        "data_type": "NUMERIC",
+        "metadata": {"robot": "bot2"},
+    }
+
+
+@pytest.mark.unit
+def test_trace_id_is_normalized_to_32hex_no_dash() -> None:
+    fake = _FakeClient()
+    sink = LangfuseScoreSink(client=fake)
+    assert sink.send_result(TRACE_DASHED, "success") is True
+    assert fake.calls[0]["trace_id"] == TRACE  # dashes stripped, lowercased (doc13:478)
+
+
+@pytest.mark.unit
+def test_invalid_trace_id_skipped() -> None:
+    fake = _FakeClient()
+    sink = LangfuseScoreSink(client=fake)
+    assert sink.send_result("not-a-hex-trace", "success") is False
+    assert fake.calls == []  # normalize() rejected it before any send
+
+
+@pytest.mark.unit
+def test_metadata_fallback_embeds_robot_in_name() -> None:
+    # Pinned SDK lacks metadata=/data_type= → TypeError → minimal retry with robot in name.
+    fake = _FakeClient(accepts_metadata=False)
+    sink = LangfuseScoreSink(client=fake)
+    assert sink.send_result(TRACE, "success", robot="bot1") is True
+    assert fake.calls[0]["name"] == "result_bot1"
+    assert fake.calls[0]["metadata"] is None
+    assert fake.calls[0]["data_type"] is None
 
 
 @pytest.mark.unit
 def test_fail_open_when_client_raises() -> None:
     sink = LangfuseScoreSink(client=_FakeClient(raises=True))
-    # Exceptions from the SDK are swallowed (fail-open) — returns False, never raises.
-    assert sink.send_result("trace-1", "success") is False
+    assert sink.send_result(TRACE, "success") is False  # swallowed, never raises
+
+
+@pytest.mark.unit
+def test_flush_delegates_and_is_noop_when_disabled() -> None:
+    fake = _FakeClient()
+    LangfuseScoreSink(client=fake).flush()
+    assert fake.flushed == 1
+    LangfuseScoreSink().flush()  # disabled → no client → no raise
 
 
 @pytest.mark.unit
@@ -88,16 +150,15 @@ def test_send_report_emits_completion_when_available() -> None:
     report = compute_kpis(entries, completions={"nav_001": 110.0})
     fake = _FakeClient()
     sink = LangfuseScoreSink(client=fake)
-
-    assert sink.send_report(report, "trace-1") == 1
+    assert sink.send_report(report, TRACE, run_id="run-7") == 1
     assert fake.calls[0]["name"] == "task_completion_time"
     assert fake.calls[0]["value"] == pytest.approx(10.0)
-    # Without a trace_id (today's default), send_report is a no-op.
-    assert sink.send_report(report, None) == 0
+    assert fake.calls[0]["metadata"] == {"run_id": "run-7"}
+    assert sink.send_report(report, None) == 0  # no trace_id → no-op
 
 
 @pytest.mark.unit
 def test_explicit_enabled_override_false_disables() -> None:
     sink = LangfuseScoreSink(client=_FakeClient(), enabled=False)
     assert sink.enabled is False
-    assert sink.send_result("trace-1", "success") is False
+    assert sink.send_result(TRACE, "success") is False

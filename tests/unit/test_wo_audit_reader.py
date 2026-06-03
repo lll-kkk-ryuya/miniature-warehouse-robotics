@@ -142,3 +142,21 @@ def test_parse_lines_filters_none() -> None:
     out = parse_lines(["", "bad", json.dumps({"tool": "x", "result": "executed"})])
     assert len(out) == 1
     assert isinstance(out[0], AuditEntry)
+
+
+@pytest.mark.unit
+def test_gen_id_reads_only_detail_gen_id() -> None:
+    # detail.gen_id is the trace-seed source (added to executed rows by mcp_server, #73).
+    assert parse_line(json.dumps({"tool": "dispatch_task", "detail": {"gen_id": 7}})).gen_id == 7
+    # received_gen is a stale-REJECTED gen → must NOT be used as gen_id (review fix; doc13:481).
+    assert (
+        parse_line(json.dumps({"tool": "dispatch_task", "detail": {"received_gen": 3}})).gen_id
+        is None
+    )
+    assert (
+        parse_line(json.dumps({"tool": "dispatch_task", "detail": {"task_id": "nav_001"}})).gen_id
+        is None
+    )
+    assert parse_line(json.dumps({"tool": "dispatch_task", "detail": "x"})).gen_id is None
+    # bool must not be read as an int gen_id
+    assert parse_line(json.dumps({"tool": "x", "detail": {"gen_id": True}})).gen_id is None
