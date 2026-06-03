@@ -65,7 +65,7 @@ Bot1/Bot2（実行者）= 言われた通りにモーターを回す
 
 **学習は発生しない。RAGでもない。**
 
-- minicar搭載のMS200 LiDARでジオラマ内をteleop走行し、SLAM Toolboxで地図（`map.pgm` + `map.yaml`）を生成する（1回だけ）
+- minicar搭載のMS200 LiDARでジオラマ内をteleop走行し、SLAM Toolboxで地図（`map.pgm` + `map.yaml`）を生成する（1回だけ）。**Gazebo sim では SLAM を使わず `warehouse_sim.map_generator` が `layout` から決定論生成する**（同一形式。doc09 §7「地図の生成経路」, #76）
 - Nav2はその地図ファイルを読み込んで経路計画に使う
 - LLMには地図データは渡さない。場所名と座標の対応テーブル（`LOCATIONS`辞書）と現在の状況JSONを渡すだけ
 

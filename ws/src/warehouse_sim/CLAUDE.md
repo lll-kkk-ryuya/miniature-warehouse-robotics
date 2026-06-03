@@ -14,10 +14,12 @@
 ## 提供 (produce)
 - topic（ros_gz_bridge 橋渡し済・doc03 契約）: `/bot{n}/odom`(nav_msgs/Odometry)、`/bot{n}/scan`(sensor_msgs/LaserScan, frame_id `bot{n}/lidar_link`)
 - sub : `/bot{n}/cmd_vel`(geometry_msgs/Twist)
-- 未橋渡し: gz `/bot{n}/imu`（imu_link 由来。doc03 契約外、必要時に bridge へ追加）
+- topic: `/clock`(rosgraph_msgs/msg/Clock, GZ→ROS 単方向)。gz の sim time を bridge。`use_sim_time:=true` の全 Nav2 ノードが消費（無いと stall）。`bridge.py` `_CLOCK`。# TODO(#67): コンテナで `gz topic -l` 実確認（`/world/warehouse/clock` フォールバック, ros_gz #341）
+- 静的占有マップ: `maps/map.pgm`(P5) + `maps/map.yaml`（resolution 0.01, origin world 角 `[0,0,0]`, 180×90, 壁+棚のみ占有・marker 除外）。Nav2 map_server が `nav2_bringup map:=<share>/maps/map.yaml` で消費（doc09:255-257）。`map_generator.py`（pure）で `layout` から生成・committ、再生成は `python3 -m warehouse_sim.map_generator`
+- launch arg: `sim.launch.py` / `description.launch.py` の `use_sim_time`（default true, consumer `nav2_bringup.launch.py:187` と一致）。robot_state_publisher / bridge / rviz に thread
 - launch: `sim.launch.py`（headless `gz sim -s -r`、bot1/bot2 spawn、ros_gz_bridge、`rviz:=true` 任意）
 - `layout.py`: `WORLD_X=1.8`/`WORLD_Y=0.9` + 棚/通路/バース寸法（単一定数、Phase 5 Isaac 参照）
-- `world_generator.build_world_sdf()` / `bridge.bridge_pairs()`（純関数・テスト可能）
+- `world_generator.build_world_sdf()` / `bridge.bridge_pairs()` / `map_generator.build_map()`（純関数・テスト可能）
 - スパイク成果物 `spike/`（環境スパイク GO の再現コード・証跡）
 
 ## 消費 (consume)

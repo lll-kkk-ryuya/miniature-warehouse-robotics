@@ -351,6 +351,8 @@ langfuse.flush()  # 短命スコアラ（#6 wo）はプロセス終了前に flu
 
 > **v2→v4 注意（要 docs-first）**: 旧 `langfuse.score(...)` は **v3 rewrite で削除**。現行は `create_score(...)`（`get_client()` 経由）。score は tag を持てないため `robot`/`mode`/`provider`/`gen_id` は **score の metadata に複製**する（pin した版で `create_score(metadata=)` が未対応なら score 名に robot を埋める＝`result_bot1`、または per-robot observation に紐付け）。`trace_id` は §7.5（doc13）の **32hex no-dash・両脚同一リテラル**を使う。score は trace 生成前でも ingest 可（後で同一 `trace_id` でリンク＝結果整合）。
 
+> **📌 採用実装（#83/#92, wo `score_send.py`）**: 上の metadata は**例示**。実装は additive に **`run_id`**（trace seed の前半 `f"{run_id}:{gen_id}"`、#73 / doc13 §7.5(b)）も metadata に持つ＝`{run_id, mode?, provider?, gen_id?}`（`robot` は efficiency leg が per-leg 付与）。`provider` は run-level ラベルで **env `WAREHOUSE_PROVIDER`**（§セッション命名規則 / doc08:367 の通り）から解決。`run_id` 空/全空白は unset 扱いで送信ゲート（trace 導出不可なら no-op）。docs-first（例示 vs 凍結）に従い逐語一致は主張しない。
+
 これにより自作の DecisionLog ファイル出力は不要となり、全データが Langfuse Dashboard で閲覧・比較・分析できる。
 
 ### trace 所有 — Bridge が所有（推奨・Pattern A）

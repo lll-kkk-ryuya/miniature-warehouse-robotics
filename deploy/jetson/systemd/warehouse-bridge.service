@@ -1,0 +1,31 @@
+[Unit]
+# LLM Bridge Node — the commander cycle (doc12:386 Mode A 3s / Mode C 5s). Reads
+# /run/warehouse/state.json, calls the GCP Hermes Gateway (doc19:18,86 — prod
+# Hermes is on GCP 34.4.104.112, NOT the Jetson), and issues goals. Starts last,
+# once nav2 + safety are up. Secrets (API_SERVER_KEY, Langfuse) come from
+# config/prod/.env, never from this repo (doc19 §4, safety.md).
+# NOTE(Phase 1): the Bridge also needs the Warehouse MCP Server and (Mode A/B)
+# the nav2_bridge running — add warehouse-mcp-server.service / warehouse-nav2-bridge.service
+# when those tracks land (see docs/setup/jetson-deploy.md "Phase 1 units").
+Description=Warehouse LLM Bridge Node (commander cycle -> Hermes Gateway)
+Documentation=https://github.com/lll-kkk-ryuya/miniature-warehouse-robotics/blob/main/docs/setup/jetson-deploy.md
+After=warehouse-nav2.service warehouse-state-cache.service
+Wants=warehouse-nav2.service
+PartOf=warehouse.target
+
+[Service]
+Type=simple
+EnvironmentFile=-/etc/warehouse/warehouse.env
+# Bridge->Hermes auth + Langfuse keys (gitignored real file, doc19 §4.1).
+EnvironmentFile=-/opt/warehouse/config/prod/.env
+User=warehouse
+Group=warehouse
+RuntimeDirectory=warehouse
+RuntimeDirectoryMode=0770
+RuntimeDirectoryPreserve=yes
+ExecStart=/opt/warehouse/deploy/jetson/bin/ros-exec.sh ros2 run warehouse_llm_bridge llm_bridge
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=warehouse.target

@@ -1,0 +1,30 @@
+[Unit]
+# Emergency Guardian — Layer 1 software safety (doc12:80-84, :383 50ms target):
+# AMCL distance watch -> Nav2 goal cancel + cmd_vel stop, battery policy, blocked
+# timeout, /emergency/event. MUST be up whenever the robots can move; nav2
+# BindsTo= this unit so motion never runs without the guardian (and stops if the
+# guardian crashes). Final defence line is Layer 0 on the MCU (doc12:75-78).
+Description=Warehouse Emergency Guardian (Layer 1 software safety)
+Documentation=https://github.com/lll-kkk-ryuya/miniature-warehouse-robotics/blob/main/docs/setup/jetson-deploy.md
+After=warehouse-state-cache.service
+Wants=warehouse-state-cache.service
+PartOf=warehouse.target
+# Never let a flapping guardian stick in 'failed' — that would leave the BindsTo=
+# motion units stopped with no auto-recovery path. Disable the start-rate limiter
+# so it keeps restarting (pairs with Restart=on-failure below).
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+EnvironmentFile=-/etc/warehouse/warehouse.env
+User=warehouse
+Group=warehouse
+RuntimeDirectory=warehouse
+RuntimeDirectoryMode=0770
+RuntimeDirectoryPreserve=yes
+ExecStart=/opt/warehouse/deploy/jetson/bin/ros-exec.sh ros2 run warehouse_safety emergency_guardian
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=warehouse.target
