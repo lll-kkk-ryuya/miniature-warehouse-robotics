@@ -38,6 +38,10 @@ def _setup(context, *args, **kwargs):
     cfg = load_config()
     validate_in_bounds(cfg)
     robot_ids = [r["id"] for r in cfg["robots"]]
+    # Threaded into every node that consumes the /clock sim time. Default true matches
+    # the Nav2 consumer (nav2_bringup.launch.py:187); the /clock pair is bridged below.
+    use_sim_time = LaunchConfiguration("use_sim_time").perform(context)
+    use_sim_time_bool = use_sim_time.lower() == "true"
 
     out_dir = os.path.join(tempfile.gettempdir(), "warehouse_sim")
     os.makedirs(out_dir, exist_ok=True)
@@ -69,7 +73,7 @@ def _setup(context, *args, **kwargs):
         actions.append(
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(desc_launch),
-                launch_arguments={"namespace": rid}.items(),
+                launch_arguments={"namespace": rid, "use_sim_time": use_sim_time}.items(),
             )
         )
         actions.append(
@@ -99,7 +103,7 @@ def _setup(context, *args, **kwargs):
         Node(
             package="ros_gz_bridge",
             executable="parameter_bridge",
-            parameters=[{"config_file": bridge_path}],
+            parameters=[{"config_file": bridge_path, "use_sim_time": use_sim_time_bool}],
             output="screen",
         )
     )
@@ -108,6 +112,7 @@ def _setup(context, *args, **kwargs):
             package="rviz2",
             executable="rviz2",
             arguments=["-d", rviz_cfg],
+            parameters=[{"use_sim_time": use_sim_time_bool}],
             condition=IfCondition(LaunchConfiguration("rviz")),
             output="screen",
         )
@@ -119,6 +124,11 @@ def generate_launch_description() -> LaunchDescription:
     return LaunchDescription(
         [
             DeclareLaunchArgument("rviz", default_value="false"),
+            DeclareLaunchArgument(
+                "use_sim_time",
+                default_value="true",
+                description="Use the Gazebo /clock sim time (matches nav2_bringup.launch.py:187).",
+            ),
             OpaqueFunction(function=_setup),
         ]
     )
