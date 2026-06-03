@@ -1,6 +1,6 @@
 # 01 並列開発プレイブック（セッション = worktree）
 
-> 正本規約: [parallel-workflow.md](../../.claude/rules/parallel-workflow.md) / [merge-and-communication.md](../../.claude/rules/merge-and-communication.md) / [doc17](../architecture/17-development-workflow.md)。本書は**全体像の物語**で、規約の重複ではなく流れの解説。
+> 正本規約: [parallel-workflow.md](../../.claude/rules/parallel-workflow.md)（**§1.1 docs-first 実装ゲート**を含む, #91） / [merge-and-communication.md](../../.claude/rules/merge-and-communication.md) / [doc17](../architecture/17-development-workflow.md)。本書は**全体像の物語**で、規約の重複ではなく流れの解説。
 
 ## 基本方針
 
@@ -21,7 +21,7 @@ git worktree add ../mwr-<track> -b feat/<track> origin/main
 cd ../mwr-<track> && claude   # Opus を確認
 ```
 - 着手は **`ready` ラベルの Issue** のみ（`blocked` は不可）。新トラックは**先に epic Issue を作る**。
-- キックオフで「担当 Issue 番号・編集境界（自パッケージのみ）・消費/生産する契約・正本 doc」を伝える。
+- キックオフで「担当 Issue 番号・編集境界（自パッケージのみ）・消費/生産する契約・正本 doc・**docs-first 実装ゲート（[parallel-workflow.md §1.1](../../.claude/rules/parallel-workflow.md)）**」を伝える。
 
 ### 2. plan（docs 中心主義）
 
@@ -38,6 +38,7 @@ cd ../mwr-<track> && claude   # Opus を確認
 
 - **ブランチ先行・PR 経由のみ。同一ターンの self-merge 禁止**（①PR提出 →②CI緑・レビュー可視 →③別ステップでマージ）。
 - タイトル `[track] 要約`、本文は [issue-and-pr-authoring.md](../../.claude/rules/issue-and-pr-authoring.md) のテンプレ（worktree タグ / Closes #N / consume・produce / DoD / 編集境界 / 契約変更の有無）。
+- **DoD の必須ゲート（[parallel-workflow.md §1.1](../../.claude/rules/parallel-workflow.md) step 3）**: docs 再照合 → `check_consistency.py` **0 ERROR** → `/consistency-audit` → 残る未決・暫定値を PR 本文に列挙。これを満たして初めて「完了」。
 - `warehouse_interfaces` に触れたら **`contract` ラベル必須**（CI が機械強制）。
 
 ### 5. 掃除（破棄チェックリスト）
