@@ -13,7 +13,11 @@ def test_bridge_pairs_cover_all_config_robots_and_topics() -> None:
     assert len(pairs) == 4 * len(ids) + 1
     for rid in ids:
         names = {p["ros_topic_name"] for p in pairs if p["ros_topic_name"].startswith(f"/{rid}/")}
-        assert names == {f"/{rid}/scan", f"/{rid}/odom", f"/{rid}/cmd_vel"}  # /tf is shared, not /bot{n}/
+        assert names == {
+            f"/{rid}/scan",
+            f"/{rid}/odom",
+            f"/{rid}/cmd_vel",
+        }  # /tf is shared, not /bot{n}/
 
 
 @pytest.mark.unit
