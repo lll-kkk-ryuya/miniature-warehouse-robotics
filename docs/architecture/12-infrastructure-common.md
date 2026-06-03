@@ -109,9 +109,10 @@ class EmergencyGuardian(Node):
             self.emergency_stop("bot1", "near_collision")
             self.emergency_stop("bot2", "near_collision")
 
-        # 2. バッテリーチェック
+        # 2. バッテリーチェック（境界は閾値を含む = 凍結契約 safety.battery_is_critical
+        #    `pct <= BATTERY_CRITICAL_PCT` および下表「≤ 10%」と一致。10% ちょうどで停止）
         for bot in ["bot1", "bot2"]:
-            if self.battery[bot] < self.BATTERY_CRITICAL:
+            if self.battery[bot] <= self.BATTERY_CRITICAL:
                 self.emergency_stop(bot, "battery_critical")
 
         # 3. blocked チェック
