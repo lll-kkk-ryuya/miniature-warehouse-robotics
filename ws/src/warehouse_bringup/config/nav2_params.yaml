@@ -36,6 +36,15 @@ amcl:
     base_frame_id: "<robot_namespace>/base_link"
     odom_frame_id: "<robot_namespace>/odom"
     global_frame_id: "map"
+    # Seed AMCL at the bot's spawn berth so localization converges without a manual
+    # RViz initialpose (AMCL has no auto-seed). The <init_*> tokens are substituted
+    # per bot by nav2_bringup.launch.py (ReplaceString) from the spawn poses.
+    set_initial_pose: true
+    initial_pose:
+      x: <init_x>
+      y: <init_y>
+      z: 0.0
+      yaw: <init_yaw>
     scan_topic: scan  # -> /bot{n}/scan (sensor_msgs/LaserScan, doc03)
     robot_model_type: "nav2_amcl::DifferentialMotionModel"  # diff-drive minicar
     min_particles: 500   # doc09:59-60 (500-2000)

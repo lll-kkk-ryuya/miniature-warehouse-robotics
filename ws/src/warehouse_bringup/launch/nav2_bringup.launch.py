@@ -47,16 +47,32 @@ _LIFECYCLE_NODES = [
     "bt_navigator",
 ]
 
+# Per-bot AMCL initial pose = spawn berth (config/warehouse.base.yaml:30-31) + sim
+# SPAWN_YAW (warehouse_sim.layout: bot1->berth_A, bot2->berth_B, yaw -1.5707963).
+# Hardcoded here (provisional, Phase 1) to avoid a fragile launch-time config read;
+# # TODO(Phase 1): unify with the config/sim single source once spawn poses are shared.
+_INITIAL_POSES = {
+    "bot1": {"x": 0.2, "y": 0.8, "yaw": -1.5707963},  # berth_A
+    "bot2": {"x": 0.7, "y": 0.8, "yaw": -1.5707963},  # berth_B
+}
+
 
 def _per_robot_group(robot: str, params_file, map_yaml, use_sim_time, autostart, traffic_mode):
     """Build the namespaced Nav2 + twist_mux + VirtualScan actions for one robot."""
     other = "bot2" if robot == "bot1" else "bot1"
 
-    # Substitute the "<robot_namespace>" frame token (e.g. -> bot1) in the shared
-    # params file, then rewrite use_sim_time / map yaml (Nav2 multirobot pattern).
+    # Substitute the "<robot_namespace>" frame token (e.g. -> bot1) and the AMCL
+    # "<init_*>" pose tokens in the shared params file, then rewrite use_sim_time /
+    # map yaml (Nav2 multirobot pattern).
+    pose = _INITIAL_POSES[robot]
     ns_params = ReplaceString(
         source_file=params_file,
-        replacements={"<robot_namespace>": robot},
+        replacements={
+            "<robot_namespace>": robot,
+            "<init_x>": str(pose["x"]),
+            "<init_y>": str(pose["y"]),
+            "<init_yaw>": str(pose["yaw"]),
+        },
     )
     configured_params = RewrittenYaml(
         source_file=ns_params,
