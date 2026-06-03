@@ -8,9 +8,9 @@
 実機未到着のため**ソフト・基盤・ドキュメントを先行整備**中（doc06 方針）。
 **doc17 Step 0（リポジトリ骨格＋契約凍結）完了**（2026-05-29, Issue #1 closed）。
 **Step 1＝各トラックの並列実装フェーズが進行中**。#4 llm-bridge S1 / #8 nav-traffic / #6 wo / #5 safety-state / #7 sim / #25 gen_id 冪等化 / Mode C 契約(#66) を並列実装し、**Phase 0.5 スライスが main に land 済**（下表）。**S2-PR1 も land 済**: Bridge-owned Langfuse trace(#78) / wo v4 `create_score`(#83) / nav2_bridge REST→BasicNavigator part1(#86)。**Langfuse trace 所有 #73 は完了 → close、Phase3 実トレース検証は #88 に分離**。次ラウンドは4並列: #4 S2-PR2（実 dispatch + MCP→nav2_bridge REST）/ #76 sim `/clock`+占有マップ（critical-path, #67 解錠）/ #6 wo node-wiring / #75 bringup 合成 + #2 jetson。
-**【現況 2026-06-03】**このうち **#76 sim `/clock`+占有マップ = PR #94（critical-path）** / **#6 wo node-wiring = PR #92** / **#75 bringup 合成 = PR #93** の **3 本が PR 進行中（未マージ・CI green）**、**#4 S2-PR2 / #2 jetson は未着手**。#91 で **docs-first 実装ゲート**（[parallel-workflow.md §1.1](../.claude/rules/parallel-workflow.md)：着手前 file:line 引用 → 実装中 CLAUDE.md 記録 → 完了前 `check_consistency.py` 0ERROR + `/consistency-audit` + 未決列挙）が**完了条件として必須化**された。
+**【現況 2026-06-03 更新】**上記のうち **#76 sim `/clock`+占有マップ(#94, critical-path) / #6 wo node-wiring(#92) / #75 bringup 合成(#93)** は **3 本ともマージ済**、**#2 jetson deploy scaffold(#96) もマージ済**。現在 **#4 S2-PR2 HALF B（実 dispatch + MCP→nav2_bridge REST）= PR #104 進行中**、docs 改訂 **CTRV(08a)=PR #100** + 派生 issue **#101(CTRV実装)/#102(history充填+current_task)/#103(Hermes Memory)** を起票。#91 で **docs-first 実装ゲート**（[parallel-workflow.md §1.1](../.claude/rules/parallel-workflow.md)：着手前 file:line 引用 → 実装中 CLAUDE.md 記録 → 完了前 `check_consistency.py` 0ERROR + `/consistency-audit` + 未決列挙）が**完了条件として必須化**された。
 
-## main の状態（CI 常時 green, origin/main = `2caf04c`）
+## main の状態（CI 常時 green, origin/main = `39ea045`）
 - **契約ハブ `warehouse_interfaces`（凍結）**: pydantic `Situation`/`Command`/`Proposal`(+ `gen_id`、`CommandItem.idempotency_key`)、`StateSnapshot`/`RobotSnapshot`、`KNOWN_LOCATIONS` 9キー、共有パス（doc16 §4）、`StateStore`/`GenStore`/`IdempotencyStore` IF + file 実装、`safety`（速度/battery しきい値の単一ソース）、`config`。
 - **実装済みノード（main 入り）**:
   - `warehouse_mcp_server` — 7ツール + Policy Gate + gen_id B-3 + **per-call idempotency 強制**（#35/#41。偽 store でユニット検証、MCP SDK は遅延 import の pip extra）。
@@ -36,11 +36,11 @@
 | 1 | skeleton | ✅ **CLOSED**（契約凍結 #22 + 12pkg #24） |
 | 2 | jetson | ready（実機不要で着手可） |
 | 3 | firmware | 雛形 main 入り（#23）。実機実装は Phase 1 |
-| 4 | llm-bridge | 🟢 **S1 + S2-PR1 main 入り（#70/#78/#86）**: 司令官サイクル(Scheduler+HermesClient+Situation+action_map+排他 A/B-3/C) / **Bridge-owned Langfuse trace `tracing.py`(#78)** / **nav2_bridge part1(#86)**。MCP 層(#35/#41) 済。**残(S2-PR2)**: 実 tool dispatch（MCP→nav2_bridge REST 配線）/ Mode C None / R-35A(#54)。Langfuse 観測の Phase3 検証は #88 |
+| 4 | llm-bridge | 🟢 **S1 + S2-PR1 main 入り（#70/#78/#86）**: 司令官サイクル(Scheduler+HermesClient+Situation+action_map+排他 A/B-3/C) / **Bridge-owned Langfuse trace `tracing.py`(#78)** / **nav2_bridge part1(#86)**。MCP 層(#35/#41) 済。**S2-PR2 HALF B = PR #104 進行中**（実 tool dispatch + MCP→nav2_bridge REST 配線）/ Mode C None / R-35A(#54)。Langfuse 観測の Phase3 検証は #88。予測 CTRV 化 = #101（docs PR #100 待ち）/ history 充填+current_task = #102 |
 | 5 | safety-state | 🟢 **実装 main 入り（#39）**: Emergency Guardian 50ms + State Cache 100ms（`StateSnapshot` producer, atomic `state.json`）。残: 実機統合・twist_mux 連携（Phase 2+） |
-| 6 | wo | 🟢 **KPI scaffold + Langfuse v4 配線 main 入り（#69/#83）**: audit.jsonl reader + result/task_completion_time + **v4 `create_score` 実配線 + trace_id 導出 + efficiency(#83)**。**node-wiring（provider+gen_id metadata + collector test）= PR #92 進行中**（`score_send.py` pure helper 抽出 + `provider` param[`WAREHOUSE_PROVIDER` env] + score metadata に provider/gen_id 追加 + blank-run_id ゲート修正）。**残**: 他 score 名（docs-PR 前提）/ Grok cost(=#88) / Metrics+Experiments。trace_id は seed 導出で契約不要 |
-| 7 | sim | 🟢 **環境スパイク GO + 実装 main 入り（#43/#46）**: world/URDF/`sim.launch.py`。環境成立は単一 bot spike で確認、bot1/bot2 launch は単体テストで text 検証。**残: `/clock`+`sim_time`+占有マップ所有/生成（#76, critical-path）→ 2台 Gazebo Nav2 E2E（#67）** |
-| 8 | nav-traffic | 🟢 **TrafficManager/VirtualScan/nav2_params(#68) + E2E enablement(#82) main 入り**: None/Simple + `/bot{n}/virtual_scan` + DWB→MPPI + twist_mux 移設(#40) + AMCL initialpose seeding + container nav2 provisioning(#82)。**残**: 2台 Gazebo E2E ゲート **#67**（Blocked by #76 sim `/clock`+map）/ `bringup.launch.py` per-bot 合成 **#75 = PR #93 進行中**（skeleton 所有・`nav2_bringup.launch.py` を IncludeLaunchDescription 合成） |
+| 6 | wo | 🟢 **KPI scaffold + Langfuse v4 配線 main 入り（#69/#83）**: audit.jsonl reader + result/task_completion_time + **v4 `create_score` 実配線 + trace_id 導出 + efficiency(#83)**。**node-wiring（provider+gen_id metadata + collector test）= #92 main 入り**（`score_send.py` pure helper 抽出 + `provider` param[`WAREHOUSE_PROVIDER` env] + score metadata に provider/gen_id 追加 + blank-run_id ゲート修正）。**残**: 他 score 名（docs-PR 前提）/ Grok cost(=#88) / Metrics+Experiments。trace_id は seed 導出で契約不要 |
+| 7 | sim | 🟢 **環境スパイク GO + 実装 + `/clock`/`sim_time`/占有マップ main 入り（#43/#46/#94）**: world/URDF/`sim.launch.py` + `/clock` bridge + use_sim_time + 占有マップ生成（#76=#94, critical-path 解錠済）。**残: 2台 Gazebo Nav2 E2E（#67）** |
+| 8 | nav-traffic | 🟢 **TrafficManager/VirtualScan/nav2_params(#68) + E2E enablement(#82) main 入り**: None/Simple + `/bot{n}/virtual_scan` + DWB→MPPI + twist_mux 移設(#40) + AMCL initialpose seeding + container nav2 provisioning(#82)。**残**: 2台 Gazebo E2E ゲート **#67**（Blocked by #76 sim `/clock`+map）/ `bringup.launch.py` per-bot 合成 **#75 = #93 main 入り**（skeleton 所有・`nav2_bringup.launch.py` を IncludeLaunchDescription 合成） |
 | 25 | gen_id UUID冪等化 | ✅ **CLOSED/merged**: 契約(#36 `IdempotencyStore`/`FileIdempotencyStore` + `CommandItem.idempotency_key` + `idempotency_store_path()`) + enforcement(#41) が main 入り。`action_map` が tool-call 毎に per-call UUID を mint（LLM は echo しない＝信頼の非対称性）、`GenChecker.check` が gen→idempotency を強制（replay=`duplicate_command`）、MCP 7ツール全てに `idempotency_key`（per-call UUID）貫通 |
 
 ## ⚠️ 要決着事項（latent / 監視）
@@ -48,20 +48,22 @@
 - **（解決済・参考）実行モデル**（Bridge mint vs LLM echo）の未確定は #41 で確定済: **`action_map` が per-call UUID を mint・LLM は触らない**（信頼の非対称性。doc08 §C / doc15 §競合状態の防止）。
 - **（決定・実装済）Langfuse trace 所有 + provider access**（#72 docs / #78 Bridge seam / #83 wo wiring。**#73 は close、Phase3 実トレース検証は #88**）: trace 所有は **Bridge**（`langfuse.openai` + `base_url`=Hermes、Hermes 内蔵 Langfuse は無効化）。score は v4 `create_score`（v2 `langfuse.score` 廃止）。`trace_id`=32hex no-dash、#4↔#6 は `create_trace_id(seed)` 導出で契約不要、audit 突合は `gen_id`+timestamp。**Vertex AI SDK は不採用・Hermes 単一経路維持**（doc13 §7.5/§7.6）。
 
-## 次の山（次ラウンド4並列。kickoff brief: `~/Developer/mwr-handoff/round-s2-2026-06-03/`）
-**PR 進行中（未マージ・レビュー/マージ待ち, 2026-06-03。すべて CI green・MERGEABLE）**:
-- **#76 sim `/clock`+`sim_time`+占有マップ = PR #94**（`feat/sim-gazebo`）— **critical-path**。#67（2台 Gazebo Nav2 E2E）を解錠。マージ順 doc17 §6 上の律速＝**最優先レビュー**。
-- **#6 wo node-wiring = PR #92**（`feat/wo-metrics`）— provider+gen_id metadata + collector test。Langfuse Phase3 検証は #88。
-- **#75 bringup.launch.py 合成 = PR #93**（`feat/repo-skeleton`）— skeleton 所有。`nav2_bringup.launch.py`(#68/nav-traffic 所有) を Include 参照、`config/nav2*` は不触。
+## 次の山（kickoff brief: `~/Developer/mwr-handoff/round-s2-2026-06-03/`）
+**直近マージ済（2026-06-03）**: #94 sim `/clock`+`sim_time`+占有マップ（critical-path 解錠） / #92 wo node-wiring / #93 bringup.launch.py 合成 / #96 jetson deploy scaffold。
 
-**未着手**:
-- **#4 S2-PR2（実 dispatch + MCP→nav2_bridge REST 配線）** — #86 part1 land で解錠済（`feat/llm-bridge`）。R-35(A) /stop は #54。
-- **#2 jetson**（実機不要で先行可、`hw/jetson-setup`）。
+**PR 進行中（未マージ・レビュー待ち, 2026-06-03。CI green）**:
+- **#104 #4 S2-PR2 HALF B**（`feat/llm-bridge`）— 実 tool dispatch + MCP→nav2_bridge REST 配線。#86 part1 land で解錠済。R-35(A) /stop は #54。
+- **#100 docs CTRV**（`docs/ctrv-prediction`）— 08a の `predicted_position_3s` を linear→CTRV。実装は #101（Blocked by #100）。
+
+**残り（着手待ち）**:
+- **#67 2台 Gazebo Nav2 E2E**（nav-traffic）— #76/#94 land で Blocked 解除。critical-path の最終ゲート。
+- **#2 jetson** — deploy scaffold #96 main 入り。実機セットアップは Jetson 到着後（`hw/jetson-setup`）。
+- 派生 issue: **#101**(CTRV実装, Blocked by #100) / **#102**(history充填+current_task) / **#103**(Hermes Memory, Mode A 限定)。
 
 - マージ順（doc17 §6）: skeleton(#75/#93) → 独立トラック(#92 wo / #4) 随時 → **sim(#76/#94, critical-path)** → nav-traffic(#67 E2E) → 統合。
 - 既知の設計リスクは [07-research-notes](shared/07-research-notes.md) R-35〜R-52。
 
 ## git 衛生（現況, 2026-06-03）
-- main = `origin/main`(`2caf04c`) 同期・クリーン。**open PR 3 件**: **#94**(`feat/sim-gazebo`, #76 sim `/clock`+占有マップ, critical-path) / **#92**(`feat/wo-metrics`, wo provider+gen_id metadata + collector test) / **#93**(`feat/repo-skeleton`, #75 bringup nav2 合成)。直近 land（新しい順）: #91(docs-first 実装ゲート) / #90(battery `<=10%`, closes #59) / #89(STATUS refresh `0f90e58`) / #87(doc19 §4.1 2ファイル secrets) / #85(.env.example 変数名) / #80(bringup CLAUDE.md) / #86(nav2_bridge part1) / #82(nav E2E enablement) / #83(wo v4 score) / #78(Bridge Langfuse trace)。
+- main = `origin/main`(`39ea045`) 同期・クリーン。**open PR 2 件**: **#104**(`feat/llm-bridge`, #4 S2-PR2 HALF B 実 dispatch+MCP→nav2_bridge REST) / **#100**(`docs/ctrv-prediction`, 08a CTRV 改訂)。直近 land（新しい順）: #98(doc12 battery `<=`) / #97(doc09 §7 sim/SLAM 二系統) / #94(sim `/clock`+占有マップ, critical-path) / #96(jetson deploy scaffold) / #92(wo node-wiring) / #93(bringup 合成) / #95(STATUS refresh `2caf04c`) / #91(docs-first 実装ゲート) / #90(battery `<=10%`, closes #59) / #89(STATUS refresh `0f90e58`)。
 - **issue 整理（2026-06-03）**: #73(Langfuse trace 所有=完了 → Phase3 は **#88**) / audit umbrella **#37**(根本=#41確定) / #59(battery `<=10%`、#90 で close) を close。日次レポート #53/#62/#63/#84 を close。残 open の整合 issue は **#44/#54/#55/#61**（+ #88 Phase3 Langfuse 検証）。
-- **次ラウンド worktree 状態**（「新規 worktree で4並列」は session-local worktree の意。branch は既存可）: `feat/sim-gazebo`(#76→PR #94) / `feat/wo-metrics`(#6→PR #92) / `feat/repo-skeleton`(#75→PR #93) は **着手済・PR 中**、`feat/llm-bridge`(#4 S2-PR2) / `hw/jetson-setup`(#2) は **kickoff 待ち**。各 worktree は未コミット0・未push0 を基本状態とする。
+- **worktree 状態（2026-06-03）**: `feat/sim-gazebo`(#76→#94) / `feat/wo-metrics`(#6→#92) / `feat/repo-skeleton`(#75→#93) は **マージ済（掃除可）**。`feat/llm-bridge`(#4 S2-PR2 = PR #104) と `docs/ctrv-prediction`(#100) / `docs/status-refresh-0603`(本 PR) は **PR 中**。`hw/jetson-setup`(#2) 実機セットアップは Jetson 到着待ち。各 worktree は未コミット0・未push0 を基本状態とする。
