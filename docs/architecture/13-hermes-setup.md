@@ -121,7 +121,9 @@ XAI_API_KEY=xai-...
 # ───────────────────────────────────────────────
 LANGFUSE_PUBLIC_KEY=pk-lf-...
 LANGFUSE_SECRET_KEY=sk-lf-...
-LANGFUSE_HOST=https://cloud.langfuse.com   # セルフホスト時は差替
+# リージョンをキー発行先に合わせる: EU=cloud.langfuse.com(既定) / US=us.cloud.langfuse.com / JP=jp.cloud.langfuse.com / セルフホスト時は差替
+LANGFUSE_HOST=https://cloud.langfuse.com
+# ※ Hermes 自身は LANGFUSE_BASE_URL を読む。Bridge(langfuse.openai SDK)は LANGFUSE_HOST。Orchestrator は HERMES_LANGFUSE_* (doc19 §4.1)
 
 # ───────────────────────────────────────────────
 # Warehouse MCP Server (子プロセスへ渡される)
