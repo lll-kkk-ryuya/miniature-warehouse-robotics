@@ -363,7 +363,7 @@ curl -s http://127.0.0.1:8642/v1/models \
 
 > `situation` JSON のスキーマ（pose, velocity, battery, predicted_position_3s, obstacle_ahead 等）と `system_prompt` の正本は以下に定義済み:
 > - 共通: [`08-llm-bridge-common.md`](08-llm-bridge-common.md)
-> - Mode A/B: [`mode-a/08a-llm-bridge-mode-a.md`](../mode-a/08a-llm-bridge-mode-a.md) — `predicted_position_3s` は LLM Bridge Node が State Cache の `pose`+`velocity` から線形外挿で計算
+> - Mode A/B: [`mode-a/08a-llm-bridge-mode-a.md`](../mode-a/08a-llm-bridge-mode-a.md) — `predicted_position_3s` は LLM Bridge Node が State Cache の `pose`+`velocity`（linear/angular）から CTRV 外挿で計算
 > - Mode C: [`mode-c/08c-llm-bridge-mode-c.md`](../mode-c/08c-llm-bridge-mode-c.md) — `predicted_position_3s` は Open-RMF が計画する経路に置換
 
 ```python
