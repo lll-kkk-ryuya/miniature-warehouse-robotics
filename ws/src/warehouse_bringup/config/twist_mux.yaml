@@ -17,8 +17,27 @@
 # Nav2 controller_server AND behavior_server (recoveries) -> /bot{n}/cmd_vel/nav2
 # (both remapped in nav2_bringup.launch.py — every Nav2 velocity producer must
 # enter via this prio-10 input, never write /bot{n}/cmd_vel directly).
-twist_mux:
+#
+# NODE-NAME KEY = "/**" (NOT "twist_mux"): this file is loaded by a twist_mux node
+# launched INSIDE namespace /bot{n} (nav2_bringup.launch.py:143-154), whose fully
+# qualified name is /bot{n}/twist_mux. A bare "twist_mux:" key only matches a node in
+# the ROOT namespace (/twist_mux), so under the per-bot namespace the params silently
+# DO NOT load — twist_mux then comes up with NO topics, never publishes /bot{n}/cmd_vel,
+# and the Emergency prio-100 override (R-26) is dead. "/**" matches the node in ANY
+# namespace, so the FROZEN values below apply unchanged to both bot1 and bot2.
+# Found+fixed in the #67 2-bot E2E gate (bare key -> params unset & bot does not move);
+# the priorities/timeouts/topics are the same frozen safety contract (doc15:389-395, #40).
+"/**":
   ros__parameters:
+    # use_stamped MUST be false: every velocity hop in this stack is plain
+    # geometry_msgs/Twist — Nav2 controller_server enable_stamped_cmd_vel:false
+    # (nav2_params.yaml:82), the Emergency Guardian, and the gz bridge (gz.msgs.Twist).
+    # twist_mux's Jazzy default is true (TwistStamped); leaving it unset makes twist_mux
+    # subscribe/publish TwistStamped and silently forward NOTHING (type mismatch) -> no
+    # /bot{n}/cmd_vel, the robot never moves, and the Emergency prio-100 override (R-26)
+    # is dead. Found in the #67 E2E gate (live: handlers subscribe but produce no muxed
+    # output until use_stamped:false). Not a priority/timeout value -> frozen contract intact.
+    use_stamped: false
     topics:
       emergency:
         topic: cmd_vel/emergency
