@@ -112,6 +112,16 @@ def test_trace_id_for_none_when_run_id_unset(monkeypatch: pytest.MonkeyPatch) ->
 
 
 @pytest.mark.unit
-def test_trace_id_for_none_when_run_id_empty_string() -> None:
-    # an explicitly-passed empty run id is treated as unset (defensive; review)
-    assert tid.trace_id_for(5, run_id_value="", create_fn=_fake_create) is None
+@pytest.mark.parametrize("blank", ["", "   ", "\t"])
+def test_trace_id_for_none_when_run_id_blank(blank: str) -> None:
+    # an empty / all-whitespace run id is treated as unset (defensive; review #6) — a stray
+    # WAREHOUSE_RUN_ID typo must NOT seed a trace from "   :gen".
+    assert tid.trace_id_for(5, run_id_value=blank, create_fn=_fake_create) is None
+
+
+@pytest.mark.unit
+def test_trace_id_for_uses_nonblank_run_id_verbatim() -> None:
+    # a padded-but-nonblank run id is used VERBATIM in the seed (no strip), so #4 and #6
+    # stay byte-identical when sharing the same WAREHOUSE_RUN_ID (doc13:480-483).
+    out = tid.trace_id_for(5, run_id_value=" run-7 ", create_fn=_fake_create)
+    assert out == _fake_create(seed=" run-7 :5")

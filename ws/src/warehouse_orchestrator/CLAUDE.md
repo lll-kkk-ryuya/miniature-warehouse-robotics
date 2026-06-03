@@ -1,6 +1,6 @@
 # warehouse_orchestrator — KPI 計測・Langfuse score・分析
 
-- **担当トラック / ブランチ**: wo / `feat/wo-metrics-langfuse`（epic #6、slice 2 = Issue #73 の #6 分）
+- **担当トラック / ブランチ**: wo / `feat/wo-metrics`（epic #6。slice 1=#69 audit→KPI / slice 2=#73 Langfuse v4 / slice 3=#6 node-wiring）
 - **Phase**: 0.5→4（slice 1 #69 = audit→KPI 土台 / slice 2 #73 = Langfuse v4 実配線。WO統合本番は Phase 4: doc06:239,265-268）
 - **ビルド**: ament_python
 - **ノード / CLI**: `kpi_collector`（rclpy ノード）/ `kpi_report`（オフライン分析 CLI）
@@ -11,8 +11,8 @@
 
 ## 提供 (produce)
 - **CLI** `kpi_report [path] [--include-cancelled] [--json]` — audit.jsonl から result KPI を集計し出力。
-- **node** `kpi_collector` — `report_interval_sec`(=30) ごとに audit.jsonl を読み KPI を log 出力、`/bot{n}/odom` を購読し移動距離を積算、Langfuse v4 score を best-effort 送信。param: `exclude_cancelled`(=True) / `audit_log_path`(空=凍結パス) / `robot_names`(=[bot1,bot2]) / `run_id`(空=`WAREHOUSE_RUN_ID` env) / `mode`(score metadata 用 A/B/C)。
-- **lane-internal 型/関数**（**凍結契約ではない**。`warehouse_interfaces` には置かない）: `kpi.{KpiReport,ResultTally,CompletionStats,CompletionRecord,DistanceAccumulator,distance_traveled,compute_efficiency}`、`audit_reader.AuditEntry`、`trace_id.{normalize_trace_id,derive_trace_id,seed_for,trace_id_for}`、`langfuse_sink.LangfuseScoreSink`。`KpiReport.to_dict()` はローカル出力用でトラック跨ぎ契約ではない（KPI 出力契約は未定 → voids）。
+- **node** `kpi_collector` — `report_interval_sec`(=30) ごとに audit.jsonl を読み KPI を log 出力、`/bot{n}/odom` を購読し移動距離を積算、Langfuse v4 score を best-effort 送信。param: `exclude_cancelled`(=True) / `audit_log_path`(空=凍結パス) / `robot_names`(=[bot1,bot2]) / `run_id`(空=`WAREHOUSE_RUN_ID` env) / `mode`(score metadata 用 A/B/C) / `provider`(空=`WAREHOUSE_PROVIDER` env、score metadata 用。doc08:367)。
+- **lane-internal 型/関数**（**凍結契約ではない**。`warehouse_interfaces` には置かない）: `kpi.{KpiReport,ResultTally,CompletionStats,CompletionRecord,DistanceAccumulator,distance_traveled,compute_efficiency,latest_gen_id}`、`audit_reader.AuditEntry`、`trace_id.{normalize_trace_id,derive_trace_id,seed_for,trace_id_for}`、`langfuse_sink.LangfuseScoreSink`、`score_send.{resolve_provider,build_score_metadata,send_scores}`。`KpiReport.to_dict()` はローカル出力用でトラック跨ぎ契約ではない（KPI 出力契約は未定 → voids）。
 
 ## 消費 (consume)
 - 契約: `warehouse_interfaces.paths.audit_log_path()`（**凍結**、doc16 §4 / paths.py:48）→ `/tmp/warehouse/audit.jsonl`（dev、`WAREHOUSE_AUDIT_LOG_PATH` 上書き可）。
@@ -24,8 +24,13 @@
 - `langfuse_sink.py` — **v2 `.score()` → v4 `create_score(trace_id,name,value,data_type,metadata)` + `flush()`**（`get_client()` 経由、doc08:341-350）。`result`=CATEGORICAL / `task_completion_time`・`efficiency`=NUMERIC。robot/mode/run_id を metadata に、**未対応版は score 名に robot 埋め込み（`result_bot1`）でフォールバック**（doc08:350）。trace_id を 32hex-no-dash 正規化（doc13:478）。fail-open + 遅延 import 維持。
 - `trace_id.py` — `trace_id = create_trace_id(seed=f"{WAREHOUSE_RUN_ID}:{gen_id}")`（#73 / doc13:481b、**両脚決定的同一 id**）。`normalize_trace_id`/`seed_for`/`derive_trace_id`(create_fn 注入可)/`trace_id_for`。**凍結契約変更なし**（trace_id は Langfuse/Audit 突合キー）。
 - `kpi.py` — `distance_traveled`/`compute_efficiency`/`DistanceAccumulator`（efficiency=総移動距離, doc08 §比較指標 / odom doc09:79）。result KPI 群・cancelled 除外・task_completion_time scaffold は slice 1 のまま。
-- `audit_reader.py` — `AuditEntry.gen_id`（`detail.gen_id`→`received_gen`→None、防御的。下記 voids 2）。
+- `audit_reader.py` — `AuditEntry.gen_id`（**`detail.gen_id` のみ**読み、無ければ None。`received_gen`＝stale reject の*却下された*古い世代には **fallback しない**＝doc13:481 は executed gen を join key とする。下記 voids 2 / `tests/unit/test_wo_audit_reader.py:148-162`）。
 - `kpi_collector.py` — odom 購読（inert）+ v4 sink + trace_id 導出 + shutdown flush。**live 送信はゲート**（creds + `WAREHOUSE_RUN_ID` + gen_id が揃うまで no-op）。
+
+## 実装済み（slice 3 / #6 部分: provider+gen_id score metadata）
+- `score_send.py`（**新規・rclpy 非依存の pure helper**）— node の score 送信ロジックを抽出（node は薄い shell、doc16 §11）。`resolve_provider(param)`＝param→`WAREHOUSE_PROVIDER` env（空/空白は unset、doc08:367）／`build_score_metadata(run_id,mode,provider,gen_id)`＝doc08:341-346 の `{robot,mode,provider,gen_id}` を組立（`robot` は efficiency leg が per-leg 付与、`run_id` は seed 半分の additive extra・#73）／`send_scores(sink,report,entries,distances,*,run_id,mode,provider,create_fn)`＝ゲート（sink無効 / run_id 未設定 / trace 導出不可 → `(0,None)` fail-open）+ task_completion_time + per-robot efficiency 送信 → `(#sent, trace|None)`。`create_fn` 注入で SDK 無しに unit 可能。
+- `kpi_collector.py` — `provider` param 追加（doc08:367）。`_send_scores` は `score_send.send_scores` へ委譲し、trace 導出時のみ flush + log（送信ゲート/metadata 組立はすべて pure helper 側）。**送信 score の metadata に `provider`+`gen_id` を追加**（従来 `{run_id,mode}` のみ → `{run_id,mode,provider,gen_id}`、doc08:343）。
+- `tests/unit/test_wo_kpi_collector.py`（新規）— fake audit.jsonl（`tmp_path`+`WAREHOUSE_AUDIT_LOG_PATH`）→ `read_audit_log`→`compute_kpis`→`send_scores`（fake v4 client + 注入 `create_fn`）の実チェーンで **gate matrix**（run_id×gen_id×creds→送信数）+ `provider`/`gen_id` metadata + trace 決定性を検証。
 
 ## 前提・未確定 (TODO / 設計の空白＝発明しない・予告して確定)
 docs-first.md に従い、未定義は**コードで発明せず**予告 → docs/contract で確定（implementation-and-dependencies §3）:

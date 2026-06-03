@@ -94,6 +94,13 @@ def trace_id_for(
     carries no gen_id yet — see module docstring), or langfuse is unavailable.
     """
     rid = run_id_value if run_id_value is not None else run_id()
-    if not rid or gen_id is None:  # empty-string run id is treated as unset (defensive)
+    # A blank run id (empty or all-whitespace — e.g. a stray WAREHOUSE_RUN_ID typo) is a
+    # misconfig → treated as unset (defensive), so we never seed a trace from "   :gen".
+    # A NON-blank run id is used VERBATIM in the seed (we deliberately do NOT .strip() it,
+    # unlike the #6-only `provider` label) so #4 and #6 derive byte-identical ids from the
+    # same WAREHOUSE_RUN_ID env (doc13:480-483) — stripping here could diverge the seed.
+    if rid is not None and not rid.strip():
+        rid = None
+    if not rid or gen_id is None:
         return None
     return derive_trace_id(seed_for(rid, gen_id), create_fn=create_fn)
