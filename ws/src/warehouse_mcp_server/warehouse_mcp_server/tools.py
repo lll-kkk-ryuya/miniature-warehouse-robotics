@@ -214,7 +214,7 @@ class WarehouseTools:
             "priority": priority,
             "duration": duration,
         }
-        self._audit.record("dispatch_task", "executed", payload, robot=robot)
+        self._audit.record("dispatch_task", "executed", payload, robot=robot, gen_id=gen_id)
         return payload
 
     # ── tool 2: cancel_task ─────────────────────────────────────────────────
@@ -245,7 +245,7 @@ class WarehouseTools:
             robot = await self._policy_gate.resolve_and_clear_by_task_id(task_id)
 
         payload = {"status": "ok", "task_id": resolved, "robot": robot}
-        self._audit.record("cancel_task", "executed", payload, robot=robot)
+        self._audit.record("cancel_task", "executed", payload, robot=robot, gen_id=gen_id)
         return payload
 
     # ── tool 3: get_fleet_status ────────────────────────────────────────────
@@ -323,7 +323,7 @@ class WarehouseTools:
             "robot": robot,
             "dropoff": "charging_station",
         }
-        self._audit.record("send_to_charging", "executed", payload, robot=robot)
+        self._audit.record("send_to_charging", "executed", payload, robot=robot, gen_id=gen_id)
         return payload
 
     # ── tool 6: escalation_response ─────────────────────────────────────────

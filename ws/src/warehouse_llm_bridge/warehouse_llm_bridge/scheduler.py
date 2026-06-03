@@ -28,7 +28,7 @@ import asyncio
 import logging
 from collections import deque
 
-from warehouse_interfaces.schemas import Command
+from warehouse_interfaces.schemas import Command, CommandAction, CommandItem
 from warehouse_interfaces.stores import GenStore
 
 from warehouse_llm_bridge.action_map import command_to_tool_calls
@@ -56,9 +56,26 @@ OUTAGE_AFTER_CONSECUTIVE = 2
 # Rolling commander history fed back into the next situation (doc mode-a/08a:82-85).
 HISTORY_MAXLEN = 5
 
+# Fixed charge destination — a known location and the ``send_to_charging`` dropoff
+# (locations.py / tools.py:324); used as current_task on an accepted charge.
+CHARGING_TASK = "charging_station"
+
 
 def _noop(_text: str) -> None:
     """Default publish sink (no ROS wired): drop the message."""
+
+
+def _describe_action(item: CommandItem) -> str:
+    """Render a history action label ``"<bot> <action> [<target>]"`` (08a:83,300).
+
+    The target is the command's ``destination`` (navigate) or ``retreat_to``
+    (yield); ``wait`` / ``stop`` / ``charge`` carry no location so the label is
+    just ``"<bot> <action>"``. This matches the doc's history example
+    (``"bot1 navigate shelf_1"``) so the commander can tie a result back to a goal.
+    """
+    target = item.destination or item.retreat_to
+    label = f"{item.bot} {item.action.value}"
+    return f"{label} {target}" if target else label
 
 
 class BridgeScheduler:
@@ -96,6 +113,9 @@ class BridgeScheduler:
         self.last_command: Command | None = None
         self._consecutive_failures = 0
         self._history: deque[dict] = deque(maxlen=HISTORY_MAXLEN)
+        # Bridge-owned per-robot in-flight task (bot -> destination); set-on-accept /
+        # clear-on-stop policy (doc12:249 / 08a:62,73). Bounded by fleet size.
+        self._current_tasks: dict[str, str] = {}
         self._running = False
 
     async def run_forever(self) -> None:
@@ -118,8 +138,15 @@ class BridgeScheduler:
         gen = self.current_gen
         self._gen_store.set(gen)
 
+        # history + current_tasks are the bridge-owned working memory (08a:82-85,62,466);
+        # pending_tasks is omitted -> [] : it has no wired producer yet (source not
+        # specified in docs, 08a:468). current_tasks/history are copied so a later
+        # cycle's mutation cannot reach back into this turn's situation snapshot.
         situation = self._situation_builder.build(
-            turn=self.turn, gen_id=gen, history=list(self._history)
+            turn=self.turn,
+            gen_id=gen,
+            history=list(self._history),
+            current_tasks=dict(self._current_tasks),
         )
         if situation is None:
             log.warning("no state snapshot yet (gen=%s); skipping cycle", gen)
@@ -164,14 +191,46 @@ class BridgeScheduler:
             async with self._tracer.tool_span(tool_call.tool, gen):
                 result = await self._executor.execute(tool_call)
             results.append(result)
+            self._track_current_task(item, result)
             self._history.append(
                 {
                     "turn": self.turn,
-                    "action": f"{item.bot} {item.action.value}",
+                    "action": _describe_action(item),
                     "result": result.get("status", "unknown"),
                 }
             )
         return results
+
+    def _track_current_task(self, item: CommandItem, result: dict) -> None:
+        """Track a per-robot ``current_task`` = the in-flight DESTINATION (08a:62,73,466).
+
+        Bridge-owned working memory, NOT a 1:1 mirror of the MCP gate: the stored
+        value is the dispatched destination (matching ``PolicyGate._dropoffs``
+        bot->dropoff, policy_gate.py:294), and it follows a set-on-accept /
+        clear-on-stop POLICY. Only an ACCEPTED dispatch (``status == "ok"``) changes
+        it, so a rejected (battery/stale/duplicate) command never looks like it gave
+        the robot a task. By action: ``navigate``/``yield`` set their dropoff,
+        ``charge`` the charging station, ``stop`` clears it, and ``wait`` is a hold
+        on the existing task (left UNCHANGED). That last point is a deliberate
+        divergence from ``active_tasks`` (bot->task_id), which re-registers a fresh
+        task even on an accepted ``wait`` (policy_gate.py:286-295) — current_task
+        tracks the navigation target, not the gate's task id, so it is held. Task
+        COMPLETION is not yet signalled, so a finished destination persists until
+        superseded/cancelled (Phase-2 TODO, related to #55).
+        """
+        if result.get("status") != "ok":
+            return
+        match item.action:
+            case CommandAction.NAVIGATE if item.destination is not None:
+                self._current_tasks[item.bot] = item.destination
+            case CommandAction.YIELD if item.retreat_to is not None:
+                self._current_tasks[item.bot] = item.retreat_to
+            case CommandAction.CHARGE:
+                self._current_tasks[item.bot] = CHARGING_TASK
+            case CommandAction.STOP:
+                self._current_tasks.pop(item.bot, None)
+            # WAIT (and a NAVIGATE/YIELD missing its dropoff): a hold on the
+            # existing task -> current_task unchanged.
 
     def _on_timeout(self, gen: int) -> None:
         """2.5s in-cycle timeout: keep the previous command, advance (doc08:286)."""
