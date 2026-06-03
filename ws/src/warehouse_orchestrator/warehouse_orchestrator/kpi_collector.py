@@ -26,11 +26,10 @@ from warehouse_orchestrator.kpi import (
     DistanceAccumulator,
     compute_kpis,
     format_report,
-    latest_gen_id,
 )
 from warehouse_orchestrator.langfuse_sink import LangfuseScoreSink
+from warehouse_orchestrator.score_send import resolve_provider, send_scores
 from warehouse_orchestrator.trace_id import run_id as env_run_id
-from warehouse_orchestrator.trace_id import trace_id_for
 
 _DEFAULT_REPORT_INTERVAL_SEC = 30.0
 _DEFAULT_ROBOTS = ["bot1", "bot2"]
@@ -47,6 +46,7 @@ class KpiCollector(Node):
         self.declare_parameter("robot_names", _DEFAULT_ROBOTS)
         self.declare_parameter("run_id", "")  # empty => WAREHOUSE_RUN_ID env (#73)
         self.declare_parameter("mode", "")  # traffic_mode tag for score metadata (A/B/C)
+        self.declare_parameter("provider", "")  # empty => WAREHOUSE_PROVIDER env (doc08:367)
 
         interval = float(self.get_parameter("report_interval_sec").value)
         self._exclude_cancelled = bool(self.get_parameter("exclude_cancelled").value)
@@ -55,6 +55,7 @@ class KpiCollector(Node):
         self._robots = list(self.get_parameter("robot_names").value)
         self._run_id = str(self.get_parameter("run_id").value) or None
         self._mode = str(self.get_parameter("mode").value) or None
+        self._provider = resolve_provider(str(self.get_parameter("provider").value))
 
         self._distances = DistanceAccumulator()
         self._langfuse = LangfuseScoreSink()
@@ -68,6 +69,7 @@ class KpiCollector(Node):
         self.get_logger().info(
             f"kpi_collector started (interval={interval}s, robots={self._robots}, "
             f"exclude_cancelled={self._exclude_cancelled}, langfuse={self._langfuse.enabled}, "
+            f"provider={self._provider or 'unset'}, "
             f"run_id={'set' if (self._run_id or env_run_id()) else 'unset'})"
         )
 
@@ -90,25 +92,23 @@ class KpiCollector(Node):
         self._send_scores(report, entries)
 
     def _send_scores(self, report, entries: list[AuditEntry]) -> None:
-        """Derive the shared trace_id (#73) and send documented scores; no-op if not ready."""
-        if not self._langfuse.enabled:
-            return
-        run = self._run_id or env_run_id()
-        if run is None:
-            return  # WAREHOUSE_RUN_ID unset → cannot derive the cross-lane trace_id
-        # gen_id for the trace seed: the latest gen in the audit log. None until mcp_server
-        # writes gen_id into audit rows (#73 接点) → trace_id None → no-op.
-        trace = trace_id_for(latest_gen_id(entries), run_id_value=run)
-        if trace is None:
-            return
-        meta = {"run_id": run}
-        if self._mode:
-            meta["mode"] = self._mode
-        sent = self._langfuse.send_report(report, trace, **meta)
-        for robot, meters in self._distances.totals().items():
-            if self._langfuse.send_efficiency(trace, meters, robot=robot, **meta):
-                sent += 1
-        self.flush()
+        """Delegate to the pure :func:`send_scores` (gated/fail-open), then flush + log.
+
+        All gating + trace derivation + metadata assembly is in ``score_send`` (rclpy-free,
+        unit-tested); the node only supplies its params/env, flushes the buffer (doc08:347),
+        and logs. Inert in dev until creds + ``WAREHOUSE_RUN_ID`` + an audit ``gen_id`` line up.
+        """
+        sent, trace = send_scores(
+            self._langfuse,
+            report,
+            entries,
+            self._distances.totals(),
+            run_id=self._run_id or env_run_id(),
+            mode=self._mode,
+            provider=self._provider,
+        )
+        if trace is not None:
+            self.flush()
         if sent:
             self.get_logger().info(f"sent {sent} Langfuse score(s) (trace_id={trace})")
 
