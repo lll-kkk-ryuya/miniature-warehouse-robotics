@@ -84,7 +84,7 @@ check_consistency.py ─┤
 - 決定論チェッカーは**列挙した不変条件のみ**検出。新しい契約値を凍結したら `CHECKS` に追加する（さもないと silent gap）。
 - **WARN を一括自動修正しない**（境界条件は所有トラックの設計判断。surface に留める。parallel-workflow §7.1）。
 - 意味的監査（skill）はモデル判定＝完全保証ではない。**CI（決定論）が唯一の hard gate**。
-- 現状 main で出る WARN（battery 境界 ×5・STATUS SHA ×2）は本 PR では**修正せず surface**（別トラック所有 / 鮮度は次回 STATUS 更新で追従）。
+- 現状 main で出る WARN（STATUS SHA ×2）は本 PR では**修正せず surface**（鮮度は次回 STATUS 更新で追従）。※ battery 境界 ×5 は #90 で解消済（doc 群を凍結 `safety.battery_is_critical` の `≤ 10%` に整合）。
 - **堅牢性**: checker 自身が落ちても（非UTF8・ソース欠落・定数が非リテラル式）traceback で全PRをブロックせず、`Z0-self-error` の **ERROR finding** として可視化する（`read_text(errors="replace")` + `main()` の try/except）。意味的監査は `/consistency-audit` skill 側へ。
 - **既知の検出限界（narrow FN・surface 言語が日本語前提の運用で許容）**: ①B1 config パーサは2スペース・top-level `locations:` 前提（4スペース/タブ/ネストにすると無音 no-op）。②引用ブロック内のテーブル行（`> | ... |`）は B2 が拾わない。③`_NEGATION` 除外は日本語中心（英語の "not/old" 等は未対応）。④A1 は `ROBOT_RADIUS`〔=/は/:〕値 の語形のみ（"robot radius is 0.1" のような定数名なし表現は拾わない）。新しい語形のドリフトが出たら該当 check を拡張する。
 
