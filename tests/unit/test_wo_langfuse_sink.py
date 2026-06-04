@@ -162,3 +162,35 @@ def test_explicit_enabled_override_false_disables() -> None:
     sink = LangfuseScoreSink(client=_FakeClient(), enabled=False)
     assert sink.enabled is False
     assert sink.send_result(TRACE, "success") is False
+
+
+@pytest.mark.unit
+def test_reserved_phase3_score_names_match_frozen_docs() -> None:
+    # doc08 §比較計測の追加設計 :489-496 — score names frozen in docs; reserved here (#133) so #4/#6
+    # and tests share the exact strings. data_type per the doc08 table (deadlock = NUMERIC :494).
+    from warehouse_orchestrator import langfuse_sink as ls
+
+    assert ls.SCORE_COLLISION_FREE == "collision_free"
+    assert ls.SCORE_REPLANS == "replans"
+    assert ls.SCORE_MEAN_DECISION_LATENCY == "mean_decision_latency"
+    assert ls.SCORE_DEADLOCK == "deadlock"  # NUMERIC (doc08:494)
+    assert ls.SCORE_NEGOTIATION_ROUNDS == "negotiation_rounds"
+    assert ls.SCORE_AGREEMENT_REACHED == "agreement_reached"
+    assert ls.DATA_TYPE_BOOLEAN == "BOOLEAN"
+
+
+@pytest.mark.unit
+def test_reserved_phase3_scores_have_no_live_send_path() -> None:
+    # Inert reservation (Phase 3-4 / #88): names only, no producer wired. Guards against a
+    # premature live-send method sneaking in before the producers exist (#133 scope). Covers
+    # all six reserved scores (doc08:489-496) so none can be silently wired.
+    reserved_send_methods = (
+        "send_collision_free",
+        "send_replans",
+        "send_mean_decision_latency",
+        "send_deadlock",
+        "send_negotiation_rounds",
+        "send_agreement_reached",
+    )
+    for attr in reserved_send_methods:
+        assert not hasattr(LangfuseScoreSink, attr)
