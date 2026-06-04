@@ -12,7 +12,7 @@
 ## 提供 (produce)
 - **CLI** `kpi_report [path] [--include-cancelled] [--json]` — audit.jsonl から result KPI を集計し出力。
 - **node** `kpi_collector` — `report_interval_sec`(=30) ごとに audit.jsonl を読み KPI を log 出力、`/bot{n}/odom` を購読し移動距離を積算、Langfuse v4 score を best-effort 送信。param: `exclude_cancelled`(=True) / `audit_log_path`(空=凍結パス) / `robot_names`(=[bot1,bot2]) / `run_id`(空=`WAREHOUSE_RUN_ID` env) / `mode`(score metadata 用 A/B/C) / `provider`(空=`WAREHOUSE_PROVIDER` env、score metadata 用。doc08:367)。
-- **lane-internal 型/関数**（**凍結契約ではない**。`warehouse_interfaces` には置かない）: `kpi.{KpiReport,ResultTally,CompletionStats,CompletionRecord,DistanceAccumulator,distance_traveled,compute_efficiency,latest_gen_id}`、`audit_reader.AuditEntry`、`trace_id.{normalize_trace_id,derive_trace_id,seed_for,trace_id_for}`、`langfuse_sink.LangfuseScoreSink`、`score_send.{resolve_provider,build_score_metadata,send_scores}`。`KpiReport.to_dict()` はローカル出力用でトラック跨ぎ契約ではない（KPI 出力契約は未定 → voids）。
+- **lane-internal 型/関数**（**凍結契約ではない**。`warehouse_interfaces` には置かない）: `kpi.{KpiReport,ResultTally,CompletionStats,CompletionRecord,DistanceAccumulator,distance_traveled,compute_efficiency,latest_gen_id}`、`audit_reader.AuditEntry`、`trace_id.{normalize_trace_id,derive_trace_id,seed_for,trace_id_for}`、`langfuse_sink.LangfuseScoreSink`＋予約 `SCORE_*`（Phase3-4 score 名・inert）、`score_send.{resolve_provider,build_score_metadata,send_scores}`、`grok_cost.{grok_cost,resolve_grok_price,grok_cost_for_model,GrokPrice,GROK_PRICE_TABLE_2026_06_04}`（Grok オフライン cost 純関数・#133）。`KpiReport.to_dict()` はローカル出力用でトラック跨ぎ契約ではない（KPI 出力契約は未定 → voids）。
 
 ## 消費 (consume)
 - 契約: `warehouse_interfaces.paths.audit_log_path()`（**凍結**、doc16 §4 / paths.py:48）→ `/tmp/warehouse/audit.jsonl`（dev、`WAREHOUSE_AUDIT_LOG_PATH` 上書き可）。
@@ -32,6 +32,11 @@
 - `kpi_collector.py` — `provider` param 追加（doc08:367）。`_send_scores` は `score_send.send_scores` へ委譲し、trace 導出時のみ flush + log（送信ゲート/metadata 組立はすべて pure helper 側）。**送信 score の metadata に `provider`+`gen_id` を追加**（従来 `{run_id,mode}` のみ → `{run_id,mode,provider,gen_id}`、doc08:343）。
 - `tests/unit/test_wo_kpi_collector.py`（新規）— fake audit.jsonl（`tmp_path`+`WAREHOUSE_AUDIT_LOG_PATH`）→ `read_audit_log`→`compute_kpis`→`send_scores`（fake v4 client + 注入 `create_fn`）の実チェーンで **gate matrix**（run_id×gen_id×creds→送信数）+ `provider`/`gen_id` metadata + trace 決定性を検証。
 
+## 実装済（#133 / Part of #88: Grok オフライン cost + 予約 SCORE_*・実機不要分）
+- `grok_cost.py`（**新規・rclpy/langfuse/xAI SDK 非依存の pure helper**, doc08:498-506）— `grok_cost(usage_details, price)`＝`tokens×per-token 価格→USD`（0-token 境界=0.0、token キーは `input`/`input_tokens`/`prompt_tokens` 等を**防御パース**＝live 形未確定 doc08:506）／`resolve_grok_price(model, table, *, default)`＝`xai/` prefix 除去・case 無視・**最長 prefix** マッチ、未知 model→`default`（既定 `None`=unpriceable）／`grok_cost_for_model(...)`＝解決+計算、未知 model は `None`（0.0 と区別＝fail-open）。`GROK_PRICE_TABLE_2026_06_04`＝**versioned 静的 xAI 価格表**だが**値は UNVERIFIED PLACEHOLDER**（`# TODO(#88 Phase3)`＋出典 URL/取得日）＝**構造のみ凍結**、テストは表注入（doc08:506 の literal model 文字列・単価・価格フィールド形は live 確認まで推測固定しない）。
+- `langfuse_sink.py` — Phase3-4 score 名を**予約**（`SCORE_COLLISION_FREE`/`SCORE_REPLANS`/`SCORE_MEAN_DECISION_LATENCY`/`SCORE_DEADLOCK`＝NUMERIC doc08:494 + Mode A `SCORE_NEGOTIATION_ROUNDS`/`SCORE_AGREEMENT_REACHED`、`DATA_TYPE_BOOLEAN` 追加）。**docs凍結名一致・live send 経路なし（inert）**＝producer（Guardian/Nav2/deadlock 検出/交渉）未配線のため emit は Phase3-4（#88）。
+- `tests/unit/test_wo_grok_cost.py`（新規, R-26・live SDK 不使用）— token×price / 0境界 / alias token キー / bool 除外 / prefix・`xai/`・case マッチ / 未知 model fallback / 最長 prefix / static 表 structure。`test_wo_langfuse_sink.py` に予約 SCORE_* 名 assert ＋ live-send 経路非存在 assert（inert 担保）。
+
 ## 前提・未確定 (TODO / 設計の空白＝発明しない・予告して確定)
 docs-first.md に従い、未定義は**コードで発明せず**予告 → docs/contract で確定（implementation-and-dependencies §3）:
 1. **audit レコードの凍結スキーマが無い** → 防御パースで凌ぐ。`AuditEntry`/`KpiRecord` 凍結は将来 `contract` PR（skeleton #1 / bridge #4）。# TODO(contract)
@@ -41,7 +46,7 @@ docs-first.md に従い、未定義は**コードで発明せず**予告 → doc
 5. **result score の値マッピング**（audit `executed/rejected/error` → score `"success"` 等）が未定義（doc08:341 例示）。node は `result` を自動送信しない（値語彙が docs 未定）。# TODO(docs)
 6. **cancelled 除外の正準定義**が audit 単位で未定（doc08:250 は Langfuse trace status）。本実装は解釈。# TODO(docs)
 7. **efficiency の live 値**は robots/sim 稼働が要る（Phase 3）。積算器+送信路は実装済・inert。# TODO(Phase 3)
-8. ✅ **Grok cost / 集計設計 docs 凍結済（#88）**: Grok カスタムモデル価格 PLAN（cost≠0、doc13 §7.5② :486 / doc08 §比較計測の追加設計）+ オフライン フォールバック（`usage_details`×静的価格）= **Phase 3 実装**。**Metrics API + Datasets/Experiments**（12構成×KPI、doc13:472）= **Phase 4 実装**。# TODO(Phase 3-4 実装)
+8. ✅ **Grok オフライン cost = 実装済（#133, `grok_cost.py`）**＝`usage_details`×versioned 静的価格→USD（pure・live SDK 非依存）。**価格値は placeholder（`# TODO(#88 Phase3)`）・live verify（literal model 文字列 / 単価 / 価格フィールド形・cost≠0 を実 Langfuse4.7.x で確認＝doc13 §7.5② :486 / doc08:504-506）= Phase 3**。Langfuse カスタムモデル価格**登録**（UI/API・live）= Phase 3。**Metrics API + Datasets/Experiments**（12構成×KPI、doc13:472 / doc08:508-516）= **Phase 4**。`SCORE_*` 予約は実装済・inert（producer 未配線＝live send は Phase 3-4）。# TODO(Phase 3 live verify / Phase 4 集計)
 9. **KPI 出力契約が無い**（Langfuse 以外の出力先/形）。`to_dict()` は lane-internal。# TODO(docs/contract)
 10. ✅ **doc06 KPI リスト矛盾 解消済（#88）**: 06:275 交通モード軸が `deadlock`/`collision_free`/`replans` を明示し doc08 §比較計測の追加設計 を正本参照、LLM 公平性比較軸（06:276）と軸分離を明記。
 
