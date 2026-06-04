@@ -318,9 +318,9 @@ Phase 4 の4社 LLM 比較は**公平性の前提として、比較 run では H
 ### Langfuse 設定
 
 ```bash
-export HERMES_LANGFUSE_PUBLIC_KEY=pk-lf-xxx
-export HERMES_LANGFUSE_SECRET_KEY=sk-lf-xxx
-export HERMES_LANGFUSE_BASE_URL=https://cloud.langfuse.com
+export LANGFUSE_PUBLIC_KEY=pk-lf-xxx
+export LANGFUSE_SECRET_KEY=sk-lf-xxx
+export LANGFUSE_BASE_URL=https://cloud.langfuse.com   # Hermes 内蔵プラグインが読む env。Bridge SDK は LANGFUSE_HOST、Orchestrator は HERMES_LANGFUSE_*（doc13:128 / doc19:78）
 ```
 
 Hermes Agent が自動的にLangfuseに送信する内容（コード変更不要）:
@@ -402,7 +402,7 @@ session_id = f"run_{mode}_{provider}_{scenario}_{ts}"
 | Phase 0-6（本プロジェクト） | Langfuse Cloud（無料、50K obs/月） | 導入30秒、規模十分（約500 obs/デモ） |
 | 将来のPhysical AI展開 | Langfuse セルフホスト（Docker） | データ外部送信不可の環境向け |
 
-移行時の変更: `HERMES_LANGFUSE_BASE_URL` を自社サーバーに変更するのみ。
+移行時の変更: `LANGFUSE_BASE_URL`（Hermes が読む env）を自社サーバーに変更するのみ。
 
 ## コスト見積もり
 

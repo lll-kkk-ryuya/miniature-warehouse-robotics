@@ -47,7 +47,7 @@ Mode A の見せ場の中核。詳細は [14-character-llm-negotiation](../archi
 
 ## 関連ドキュメント
 
-- [08a-llm-bridge-mode-a](08a-llm-bridge-mode-a.md) — situation JSON, system prompt, 6アクション定義
+- [08a-llm-bridge-mode-a](08a-llm-bridge-mode-a.md) — situation JSON, system prompt, 5アクション定義
 - [11a-traffic-mode-a](11a-traffic-mode-a.md) — NoTrafficManager / SimpleTrafficManager
 - [12a-integration-mode-a](12a-integration-mode-a.md) — Nav2 Bridge, systemd構成, タイミング図
 - [共通: LLM Bridge](../architecture/08-llm-bridge-common.md) — LLM Client IF, Langfuse, フォールバック

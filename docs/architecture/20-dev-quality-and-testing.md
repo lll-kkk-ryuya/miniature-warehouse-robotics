@@ -32,7 +32,7 @@
 ```
 
 - **土台はユニットテスト**: 実機・Gazebo・LLM API なしで CI が毎回回せるものを厚くする（doc16 §11）。
-- **安全クリティカルは必須**（リスク R-26）: Emergency Guardian（速度クランプ ≤0.3 m/s）、Policy Gate（known_locations / バッテリー / stale / 重複）。`tests/contracts.py` に参照実装を置き、実装が出来たら本物 import に差し替える。
+- **安全クリティカルは必須**（リスク R-26）: Emergency Guardian（速度クランプ ≤0.3 m/s）、Policy Gate（known_locations / バッテリー / stale / 重複）。`tests/contracts.py` は `warehouse_interfaces.safety` / `.locations` を再 export する**薄い shim**（単一ソース。歴史的 import パス `tests/unit/test_safety_contracts.py` 用に保持）。
 - **LLM Bridge / MCP は偽入力で先行E2E**（doc16 §9・§11）: 偽トピック・偽 `state.json` でGazebo/実機なしに検証できる設計にする。
 
 ## 3. Lint / Format 規約

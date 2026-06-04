@@ -34,7 +34,7 @@
 
 ## 3. PR 規約（再掲・補強）
 
-- **タイトル**: `<type>(<track>): <要約>`（例: `feat(llm-bridge): situation schema 追加`）。
+- **タイトル**: `[<track>] 要約`（命令形。例: `[llm-bridge] situation schema 追加`）。
 - **本文の構成**: ①先頭に §2 の worktree タグ → ②変更概要 → ③確認（`colcon build` 通過・安全機構はユニットテスト通過。parallel-workflow.md §PR規約 / doc16 §11）。
 - **契約変更**（トピック名・型・JSON スキーマ・共有パス）を含む PR は **`contract` ラベル必須**。マージ前に依存トラックの Issue へ予告しレビュー合意を得る（parallel-workflow.md §4）。
 - マージは **squash** を基本とし、マージ順は doc17 §6（skeleton → 独立トラック随時 → sim 系 → nav-traffic → 統合E2E）。
