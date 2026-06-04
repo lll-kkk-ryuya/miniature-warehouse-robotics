@@ -478,11 +478,11 @@ rclpy
 
 注: LLM SDK（anthropic, openai, google-genai, xai）は hermes-agent の依存関係として自動インストールされる。
 
-## 比較計測の追加設計 — 追加スコア・Grok コスト・集計（Phase 3-4, #88 / wo-metrics）
+## 比較計測の追加設計
 
-> 本節は上の [§比較指標](#比較指標)（Phase 0.5 から有効な基本指標 ＋ 既存 frozen score `result`(CATEGORICAL)/`task_completion_time`(NUMERIC)/`efficiency`(NUMERIC)、`create_score` 例 :356-361）を **Phase 3-4 向けに拡張**する。**配置注記**: 行ズレで `doc08:428-429` を参照する `warehouse_llm_bridge` の file:line が腐らないよう、§比較指標 本体ではなく本節（References 直前）に追記している（in-body 挿入回避）。
+> 本節は上の [§比較指標](#比較指標)（Phase 0.5 からの基本指標 ＋ 既存 frozen score `result`(CATEGORICAL)/`task_completion_time`(NUMERIC)/`efficiency`(NUMERIC)）を **Phase 3-4 向けに拡張**する。既存の file:line 参照を保つため、§比較指標 本体ではなく doc 末尾（References 直前）に配置している。
 >
-> **いずれも凍結契約 `warehouse_interfaces` の変更不要** — 全ラベルは Langfuse score の metadata `{run_id, mode?, provider?, gen_id?}` に載る（score は tag を持てない、§比較検証 :365）。`provider` 軸は env `WAREHOUSE_PROVIDER`（:367）、`trace_id` は #4/#6 が `create_trace_id(seed=f"{run_id}:{gen_id}")` で導出（[doc13](13-hermes-setup.md):485、ROS 契約ではなく Langfuse/Audit 突合キー）。
+> **いずれも凍結契約 `warehouse_interfaces` の変更不要** — 全ラベルは Langfuse score の metadata `{run_id, mode?, provider?, gen_id?}` に載る（score は tag を持てない、§比較検証ログ :365）。`provider` 軸は env `WAREHOUSE_PROVIDER`（:367）、`trace_id` は #4/#6 が `create_trace_id(seed=f"{run_id}:{gen_id}")` で導出（[doc13](13-hermes-setup.md):485、ROS 契約ではなく Langfuse/Audit 突合キー）。
 
 ### 追加比較スコア（司令官比較軸, Phase 3-4）
 
@@ -491,9 +491,9 @@ rclpy
 | `collision_free` | BOOLEAN | run/シナリオ単位: 当該 run 中に Emergency Guardian の `near_collision` イベント（[doc12](12-infrastructure-common.md):101 / :236）が**発生しなかった**ら `true`。※真の「接触」イベントは存在せず、近接 0.3m 停止（:101 / :109-110）の不在で代理する | 司令官（provider）＋交通モード軸 | Phase 3+（実機/sim 要） | ⚠️ **Phase依存・暫定**（信号源 = sim 接触センサ vs Guardian `near_collision` 近接停止が未配線） |
 | `replans` | NUMERIC（run/タスク単位の回数） | Nav2 のリプラン回数（`nav2_bridge`/BasicNavigator が露出する想定）。**現状どの凍結契約・トピックも産出しない**（nav-traffic #8 未露出） | 司令官＋交通モード軸 | Phase 3（Nav2 稼働要） | ⚠️ **Phase依存・暫定**（データ源未露出） |
 | `mean_decision_latency` | NUMERIC（ms, run 単位の集計） | 司令官の各ターン `generation.latency`（自動取得 :390 / :343）を run 単位で平均（派生集計） | 司令官比較（provider） | Phase 4（集計） | 確定（auto latency からの派生） |
-| `deadlock` | 🔒 **未確定（#55 land 後に凍結）** | デッドロック検出: Mode A 検出アルゴリズム（[doc08a](../mode-a/08a-llm-bridge-mode-a.md):267 / ルール :321、ただし `status=="blocked"` 信号源は :281 で**未解決**）／ Mode C は Open-RMF エスカレーション→Claude 介入（[doc11c](../mode-c/11c-traffic-mode-c.md):149-150） | 交通モード軸（デッドロック頻度, [doc06](06-implementation-phases.md):275） | Phase 3+ | 🔒 **予約のみ**: data_type/信号源は **#55**（`status=="blocked"` ↔ State Cache が `moving`/`idle` のみ産出する不整合, doc08a:281）解決後に凍結。本 doc では **名前を予約**するのみ |
+| `deadlock` | NUMERIC（run 単位のデッドロック検出回数＝頻度） | Mode A/B 検出（[doc08a](../mode-a/08a-llm-bridge-mode-a.md):271-281＝2台が `status=="idle"`＋`current_task` 保持 ＋ 距離<0.4m ＋ heading 対向>2.5rad。#55/#128 で `status=="blocked"` 依存から利用可能信号へ**再基礎付け済**＝:281）／ Mode C は Open-RMF エスカレーション→Claude 介入（[doc11c](../mode-c/11c-traffic-mode-c.md):149-150） | 交通モード軸（デッドロック頻度, [doc06](06-implementation-phases.md):275） | Phase 3+（live 計測） | ⚠️ **Phase依存・暫定**（信号源は #55/#128＝doc08a:281 で確定済、live 計測は実機/sim 要） |
 
-- **Mode A 交渉スコア**（`negotiation_rounds` / `agreement_reached`）は **演出専用・Phase 4 比較対象外**（[doc14](14-character-llm-negotiation.md):255 / [doc06](06-implementation-phases.md):263）。定義は **[doc14 §交渉スコア](14-character-llm-negotiation.md)** に置く（交渉エピソードの記述指標であり provider 能力比較には用いない）。
+- **Mode A 交渉スコア**（`negotiation_rounds` / `agreement_reached`）は **演出専用・Phase 4 比較対象外**（[doc14](14-character-llm-negotiation.md):255 / [doc06](06-implementation-phases.md):263）。定義は **[doc14 §交渉スコア](14-character-llm-negotiation.md#交渉スコア)** に置く（交渉エピソードの記述指標であり provider 能力比較には用いない）。
 
 ### Grok コスト定義（PLAN・実検証は Phase 3, [doc13](13-hermes-setup.md) §7.5② :486）
 
