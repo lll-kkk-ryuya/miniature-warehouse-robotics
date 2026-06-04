@@ -76,7 +76,7 @@
 |---|------|--------|------|
 | T3 | WiFi帯域と通信安定性 | **高** | 2台同時通信量: MS200 LiDAR(10-15Hz)×2 + odom(20-50Hz)×2 + cmd_vel(20Hz)×2 ≒ 30-40KB/s。帯域自体は余裕だが、UDP パケットロス・ジッター・テザリング遅延の実測が必要。Emergency Guardian(50ms周期) + State Cache(100ms周期) + LLM API(Mode A:3秒/Mode C:5秒)同時通信時の安定性も確認 |
 | T4 | ESP32 のメモリ・CPU制約 | **中** | ESP32 SRAM 520KB中、FreeRTOS+WiFi(~150KB) + micro-ROS(~100KB) + MS200バッファ(~20KB) + モーター制御(~10KB) = ~280KB使用、残り~240KB。Yahboom公式がMS200+micro-ROSで動作確認済みなら問題ないはず。Phase 1で1台の実測で確認 |
-| T5 | micro-ROS Agent の多重化 | **中** | 1つのmicro-ROS Agent（Jetson上）が2台のESP32クライアントを同時処理できるか。仕様上は可能（UDPポートで識別）だが、2台同時の実測が必要。Phase 1で1台、Phase 2後半で2台接続して検証 |
+| T5 | micro-ROS Agent の多重化 | **中** | 1つのmicro-ROS Agent（Jetson上）が2台のESP32クライアントを同時処理できるか。**識別は UDP ポートではなく XRCE `client_key`（session）**で行われる（R-37 で確認）。**host spike で distinct client_key なら単一Agentで2台双方向OKを実証**（[firmware/spike/RESULT.md](../../firmware/spike/RESULT.md)）。Phase 1で1台、Phase 2後半で2台を実機接続して検証 |
 
 ### Phase 2-3 で設計詳細化が必要
 
@@ -239,7 +239,7 @@
 |----|--------|------|------|------|
 | R-35 | **排他制御の二重防御が両方とも穴** | (A)HTTPキャンセルはHermesの**サーバー側tool実行を止めない**可能性（公式に `/v1/runs/{id}/stop` 専用エンドポイントが存在＝接続断では止まらない設計）。(B)gen_id検証が `gen_id < cur_gen` のみで、**同一世代の重複呼出し**を弾けない（冪等性なし）。→競合防止が未達のおそれ | 各tool callに1回限りの **idempotency key(UUID)** を付与しMCP側で消費済み記録。cancelは `/stop` 明示呼出しへ（Chat Completions前提の再設計要） | Phase 0.5 |
 | R-36 | **Hermes Memory/Skills 有効化が Phase 4 比較を破壊** | 自己学習エージェントは同一プロンプトでも応答が変動 → 4社LLM公平比較の**再現性が崩壊**。`13-hermes-setup.md` の config が `memory.enabled:true / skills.enabled:true` | 比較時は **`memory.enabled:false, skills.enabled:false`** を必須化（運用契約は [08-llm-bridge-common.md](../architecture/08-llm-bridge-common.md) §比較の公平性 で固定・起動時 assert＝#103）。Hermes採用の費用対効果を案D(LiteLLM等)と再評価 | Phase 4前 |
-| R-37 | **micro-ROS Agent 2台同時接続の既知不具合**（T5/R-05格上げ） | micro-ROS-Agent Issue #21: 1Agentに複数ボードをUDP接続すると**pub/subの片方しか通らない**報告。別ポートでも解消せず。**「2台協調」の根幹リスク**（従来「中」→**高**） | 2 Agentプロセス/別ポートを試行、不可なら**USB有線**。Phase 2後半→**前倒し検証** | Phase 1 |
+| R-37 | **micro-ROS Agent 2台同時接続の既知不具合**（T5/R-05格上げ） | 上流 micro-ROS-Agent **Issue #21**（2019起票・**2022 無修正クローズ**・**STM32/NuttX**, ESP32ではない）: 1Agentに複数ボードをUDP接続すると**pub/subの片方しか通らない**／別ポート(Case2)でも解消せず。**根本原因＝XRCE `client_key`（Agent側のsession識別子）衝突**（ホスト既定キーは弱RNG: rmw_microxrcedds `rmw_init.c:114-118` `srand(uxr_nanos()); client_key=rand()`）。**host spike で強制再現＋対策実証済**（同一キーで Agent が "session re-established"→片方向喪失 / distinct キーで2 session独立。[firmware/spike/RESULT.md](../../firmware/spike/RESULT.md)）。**「2台協調」の根幹リスク**（従来「中」→**高**） | **第一対策＝両ESP32に distinct `client_key`（`rmw_uros_options_set_client_key()`、BOT_ID/MAC由来）→ 単一Agent(:8888)で2台双方向OK（spike fixA 実証）**。不可なら**USB有線**(#21 Case5)。**2 Agent/別ポートは降格**（#21 Case2/#62 で別問題・不要）。Phase2後半→**前倒し検証(host)済** | Phase 1（実機WiFi＋ファームのkey差確認でクローズ） |
 | R-38 | **Open-RMFが8GB Jetsonに載らない恐れ**（R-02具体化） | fleet adapter/traffic schedule の**メモリ漸増（解放されない）既知問題**（公式Discourse）。主方針 Mode C が物理的に不成立のリスク | planner cache上限/`malloc_trim` を最初から導入。載らなければ **Mode B 格下げ or Open-RMF別マシンoffload** の分岐を用意（Go/No-Goゲート化） | Phase 0.5 メモリゲート |
 
 ### 🟡 中
@@ -250,7 +250,7 @@
 | R-40 | **rclpy 50ms周期がGC/GILで破綻しうる** | PythonのGCスパイクで周期が散発的に飛ぶ（実測報告あり） | Guardianで `gc.disable()`/`gc.freeze()`。長期的に**C++化を技術的負債として記録** | Phase 0.5(Jetson) |
 | R-41 | **MS200測距精度がミニチュアに不足の恐れ** | 安価2D dToF誤差±1-3cmが地図解像度1cm・通路片側余裕25mmと同オーダー → AMCL収束困難・壁を数セルぶれて認識 | Phase2で**測距誤差を実測**し地図解像度を誤差の2-3倍へ。余裕不足なら通路幅を再設計 | Phase 2 |
 | R-42 | **200mm通路×150mm車体でinflation余裕ゼロ** | 標準Nav2 inflationでは通行可能幅が中央1点に収束し追従不能。`11a` の `ROBOT_RADIUS=0.1`(直径200mm)は車体150mmと矛盾し通路を塞ぐ | **非標準inflation**(壁直近のみ高コスト)。`ROBOT_RADIUS`を実測75mmへ | Phase 2 |
-| R-43 | **LaserScanのmicro-ROS UDP転送(MTU/fragmentation)** | 360°/0.4°=900点×float≒3.6KB/scan、UDP MTU 512B、2台分常時送出 | scan点数ダウンサンプル(0.4°→1-2°)、Reliable/MTU設定、最悪USB有線 | Phase 1(T3併せ) |
+| R-43 | **LaserScanのmicro-ROS UDP転送(MTU/fragmentation)** | 360°/0.4°=900点×float≒3.6KB/scan、UDP MTU 512B、2台分常時送出。**R-37 host spike(loopback)はこのMTU/フラグメンテーションを未検証**（小型 std_msgs/Int32 のみ。要 Phase 1 実機） | scan点数ダウンサンプル(0.4°→1-2°)、Reliable/MTU設定、最悪USB有線 | Phase 1(T3併せ) |
 | R-44 | **free_fleetがESP32 micro-ROS構成に不適合** | free_fleet clientの置き場所がない（ロボットがESP32のため）。標準ユースケースとずれる | `rmf_fleet_adapter` **EasyFullControl** で自作adapterがNav2 namespaceを直接駆動する方が素直。free_fleet採用是非をPhase3冒頭で判断 | Phase 3後半 |
 | R-45 | **LLM比較がモデル格差混在** | Claude(Opus) / GPT-4o / Gemini 2.5 **Flash** / Grok でフラッグシップ級とFlash級が混在 → 速度・コスト・正確性比較がミスリード | 比較は**同格モデルで揃える**方針を決定 | Phase 4設計時 |
 | R-46 | **BLOCKED_TIMEOUTがサイクル長に未連動** | `BLOCKED_TIMEOUT=10秒` は「3サイクル(9秒)余裕」前提だが、p95>2.5sでサイクルが4-5秒に延びると余裕計算が破綻 | `BLOCKED_TIMEOUT` を**サイクル長の関数**(例 max(10, 3×cycle))にしレイテンシ実測後再計算 | Phase 0.5 |
