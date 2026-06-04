@@ -4,7 +4,9 @@ On a 50ms timer it estops on inter-robot proximity / critical battery and
 triggers a (low-harm) recovery event on blocked-timeout. An estop cancels Nav2
 goals, publishes a zero ``Twist`` to ``/{bot}/cmd_vel/emergency`` (twist_mux
 priority 100 — never ``/{bot}/cmd_vel`` directly, which races Nav2, doc15) and
-publishes a structured ``/emergency/event``.
+publishes a structured ``/emergency/event``. The Twist stop is re-asserted every
+tick a condition holds (level); the event is edge-triggered (#126, gl.EdgeLatch)
+so a sustained condition does not re-spam ``/emergency/event`` at 20Hz.
 
 All decisions live in the rclpy-free ``guard_logic`` module (unit-testable
 without ROS, doc16 §11); this node only marshals ROS and performs side effects.
@@ -64,6 +66,9 @@ class EmergencyGuardian(Node):
 
         self._seq = 0
         self._tracker = gl.BlockTracker()
+        # #126 edge-trigger: latch active (bot, reason) alarms so /emergency/event
+        # fires on the rising edge only (the physical stop below stays level).
+        self._latch = gl.EdgeLatch()
         self._pose: dict[str, tuple[float, float] | None] = {b: None for b in _BOTS}
         self._battery: dict[str, float | None] = {b: None for b in _BOTS}
         self._blocked: dict[str, float] = {b: 0.0 for b in _BOTS}
@@ -124,28 +129,41 @@ class EmergencyGuardian(Node):
     def _check_safety(self) -> None:
         a = gl.BotState("bot1", *self._xy("bot1"), self._battery["bot1"], self._blocked["bot1"])
         b = gl.BotState("bot2", *self._xy("bot2"), self._battery["bot2"], self._blocked["bot2"])
-        for dec in gl.evaluate(
+        decisions = gl.evaluate(
             a, b, distance_threshold=self._dist_threshold, blocked_timeout=self._blocked_timeout
-        ):
+        )
+        # #126 edge-trigger: only NEWLY-active (bot, reason) alarms emit an
+        # /emergency/event — a held condition must not re-spam the LLM-review stream
+        # at 20Hz. The physical stop stays level: _emergency_stop re-asserts the zero
+        # Twist on every tick regardless (twist_mux prio-100 input expires after 0.5s).
+        rising = self._latch.rising(decisions)
+        for dec in decisions:
+            emit_event = (dec.bot, dec.reason) in rising
             if dec.action == "estop":
-                self._emergency_stop(dec)
+                self._emergency_stop(dec, emit_event=emit_event)
             else:
-                self._trigger_recovery(dec)
+                self._trigger_recovery(dec, emit_event=emit_event)
 
     def _xy(self, bot: str) -> tuple[float | None, float | None]:
         p = self._pose[bot]
         return (p[0], p[1]) if p is not None else (None, None)
 
-    def _emergency_stop(self, dec: gl.Decision) -> None:
+    def _emergency_stop(self, dec: gl.Decision, *, emit_event: bool) -> None:
+        # Physical stop is HELD on every tick the condition is active (the twist_mux
+        # prio-100 emergency input ages out after its 0.5s timeout, so it must be
+        # re-asserted) — independent of the event edge-trigger below.
         self._cancel_all_goals(dec.bot)  # async, never blocks the 50ms timer
         self._cmd_pub[dec.bot].publish(Twist())  # all-zero stop (twist_mux prio 100)
         # TODO(Mode-A): also abort character-LLM negotiation -> /negotiation when
         # that contract lands (doc14); the topic does not exist yet, so defer.
-        self._publish_event(dec, action_taken=["nav2_goal_cancel", "cmd_vel_stop"])
+        if emit_event:  # #126: rising edge only (doc12 edge-trigger); shape unchanged
+            self._publish_event(dec, action_taken=["nav2_goal_cancel", "cmd_vel_stop"])
 
-    def _trigger_recovery(self, dec: gl.Decision) -> None:
-        # Low-harm: a structured event only (the bot may be legitimately idle).
-        self._publish_event(dec, action_taken=["nav2_recovery"])
+    def _trigger_recovery(self, dec: gl.Decision, *, emit_event: bool) -> None:
+        # Low-harm: a structured event only (the bot may be legitimately idle). Edge-
+        # triggered too, so a sustained blocked-timeout does not re-spam at 20Hz.
+        if emit_event:
+            self._publish_event(dec, action_taken=["nav2_recovery"])
 
     def _publish_event(self, dec: gl.Decision, action_taken: list[str]) -> None:
         self._seq += 1
