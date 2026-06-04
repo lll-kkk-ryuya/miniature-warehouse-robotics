@@ -30,5 +30,16 @@ bot2 は `BOT_ID=2` でビルド（namespace `/bot2`）。
 - Sub: `/<ns>/cmd_vel`(`geometry_msgs/Twist`)
 - transport: WiFi UDP → micro-ROS Agent（Jetson）
 
+## micro-ROS Agent 多重接続（R-37）— **Phase 1 必須要件**
+2台を**1つの `micro_ros_agent udp4 --port 8888`**（凍結 launch）に接続する。先行検証（[`spike/`](spike/) =
+ESP32 無しの host 再現）で確定した**最重要要件**:
+- **両機は distinct な XRCE `client_key` を持つこと**。Agent はクライアントを **UDP ポートではなく `client_key`
+  （session 識別子）で識別**し、**同一キーだと session を奪い合い pub/sub の片方向が落ちる**（= R-37 を host で強制再現）。
+- distinct キーなら**単一 Agent で2台双方向 OK**（spike fixA 実証。[spike/RESULT.md](spike/RESULT.md)）。
+- micro_ros_arduino 既定キーが両機で同一/弱 RNG だと踏むため、**Phase 1 で `rmw_uros_options_set_client_key()`
+  に BOT_ID/MAC 由来の値を明示設定**し、起動時にキー差を確認する。# TODO(Phase 1): set distinct client_key per board。
+- 不可なら **USB 有線（serial）** へフォールバック（2 Agent/別ポートは不要・別問題＝降格）。
+- 根拠/正本: [docs/shared/07-research-notes.md:242](../docs/shared/07-research-notes.md)（R-37）, [spike/RESULT.md](spike/RESULT.md), Issue #116。
+
 ## 秘密情報
 `config_secret.h`（WiFi SSID/PASS・Agent IP）は**コミット禁止**。`config.h` がプレースホルダを提供。
