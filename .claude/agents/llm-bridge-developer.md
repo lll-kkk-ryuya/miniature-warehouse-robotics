@@ -23,7 +23,7 @@ color: purple
 - Hermes Gateway daemon との通信（Gateway port 8642、`~/.hermes/.env`）
 - Provider切替の実装（Claude → GPT → Gemini → Grok が config 1行 / `hermes model` で切替可能なこと）
 - 状態収集 → situation JSON 変換 → API呼出 → アクション実行のサイクル実装
-- Langfuse トレース連携（`HERMES_LANGFUSE_PUBLIC_KEY` / `SECRET_KEY` / `HOST` の3環境変数）
+- Langfuse トレース連携（Bridge は `langfuse.openai` SDK＝`LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` / `LANGFUSE_HOST` の3環境変数。Orchestrator の `HERMES_LANGFUSE_*` とは**別系統**＝doc19:78 / doc13:128）
 - フォールバック・リトライ・タイムアウト処理
 - レイテンシ計測（p50/p95/p99）とサイクル長の調整ロジック
 
