@@ -107,14 +107,14 @@ LOCATIONS = {
     "berth_A":          {"x": 0.2, "y": 0.8},
     "berth_B":          {"x": 0.7, "y": 0.8},
     "shipping_station": {"x": 0.2, "y": 0.1},
-    "charging_station": {"x": 1.2, "y": 0.1},   # 2台共有（同時充電不可・先着順）
+    "charging_station": {"x": 1.2, "y": 0.1},   # 物理1基。同時占有の排他は下流(Nav2/Open-RMF)想定・所有層 TODO、Policy Gate では未強制
     "retreat_A":        {"x": 0.45, "y": 0.85}, # 通路A yield 退避先
     "retreat_B":        {"x": 0.95, "y": 0.85}, # 通路B yield 退避先
 }
 ```
 
 ※座標はジオラマの実測後に確定する。
-※このテーブルのキーは `13-hermes-setup.md §3.3 config.yaml` の `locations`（Policy Gate の known_locations 検証用）と**完全に一致させること**。充電ステーションは1箇所（`charging_station`、2台共有・先着順、物理ジオラマ `04-diorama-layout.md` と一致）。`yield` の `retreat_to` はこの LOCATIONS のキー（`retreat_A`/`retreat_B`）を渡す（WAYPOINTS ではなく LOCATIONS で解決され、Policy Gate の known_locations でも検証される）。
+※このテーブルのキーは `13-hermes-setup.md §3.3 config.yaml` の `locations`（Policy Gate の known_locations 検証用）と**完全に一致させること**。充電ステーションは1箇所（`charging_station`、物理1基。**同時占有の排他は Policy Gate では未強制＝所有層 TODO**（下流 Nav2/Open-RMF が担う想定。`policy_gate.validate_and_register_charging` 参照）、物理ジオラマ `04-diorama-layout.md` と一致）。`yield` の `retreat_to` はこの LOCATIONS のキー（`retreat_A`/`retreat_B`）を渡す（WAYPOINTS ではなく LOCATIONS で解決され、Policy Gate の known_locations でも検証される）。
 
 ## サイクル設計
 

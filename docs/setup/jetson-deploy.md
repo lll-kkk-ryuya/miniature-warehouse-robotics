@@ -128,7 +128,7 @@ sudo systemctl restart warehouse.target
 | unit | 役割 | 依存 | runtime dir |
 |---|---|---|:---:|
 | `warehouse-microros-agent.service` | micro-ROS Agent（WiFi/UDP, doc02:71） | `network-online.target` | — |
-| `warehouse-state-cache.service` | State Cache（`state.json`, doc12:384） | microros | `/run/warehouse`（作成・Preserve） |
+| `warehouse-state-cache.service` | State Cache（`state.json`, doc12 §State Cache Node） | microros | `/run/warehouse`（作成・Preserve） |
 | `warehouse-safety.service` | Emergency Guardian（Layer 1, doc12:80-84） | state-cache | `/run/warehouse` |
 | `warehouse-nav2.service` | Nav2 bring-up（`bringup.launch.py`・**#75 着地後**有効） | **BindsTo safety** | — |
 | `warehouse-bridge.service` | LLM Bridge（→ GCP Hermes） | nav2 / state-cache | `/run/warehouse` |
