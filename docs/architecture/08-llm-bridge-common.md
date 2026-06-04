@@ -478,6 +478,43 @@ rclpy
 
 注: LLM SDK（anthropic, openai, google-genai, xai）は hermes-agent の依存関係として自動インストールされる。
 
+## 比較計測の追加設計 — 追加スコア・Grok コスト・集計（Phase 3-4, #88 / wo-metrics）
+
+> 本節は上の [§比較指標](#比較指標)（Phase 0.5 から有効な基本指標 ＋ 既存 frozen score `result`(CATEGORICAL)/`task_completion_time`(NUMERIC)/`efficiency`(NUMERIC)、`create_score` 例 :356-361）を **Phase 3-4 向けに拡張**する。**配置注記**: 行ズレで `doc08:428-429` を参照する `warehouse_llm_bridge` の file:line が腐らないよう、§比較指標 本体ではなく本節（References 直前）に追記している（in-body 挿入回避）。
+>
+> **いずれも凍結契約 `warehouse_interfaces` の変更不要** — 全ラベルは Langfuse score の metadata `{run_id, mode?, provider?, gen_id?}` に載る（score は tag を持てない、§比較検証 :365）。`provider` 軸は env `WAREHOUSE_PROVIDER`（:367）、`trace_id` は #4/#6 が `create_trace_id(seed=f"{run_id}:{gen_id}")` で導出（[doc13](13-hermes-setup.md):485、ROS 契約ではなく Langfuse/Audit 突合キー）。
+
+### 追加比較スコア（司令官比較軸, Phase 3-4）
+
+| score 名 | data_type | データ源 | 比較軸 | Phase | 状態 |
+|---|---|---|---|---|---|
+| `collision_free` | BOOLEAN | run/シナリオ単位: 当該 run 中に Emergency Guardian の `near_collision` イベント（[doc12](12-infrastructure-common.md):101 / :236）が**発生しなかった**ら `true`。※真の「接触」イベントは存在せず、近接 0.3m 停止（:101 / :109-110）の不在で代理する | 司令官（provider）＋交通モード軸 | Phase 3+（実機/sim 要） | ⚠️ **Phase依存・暫定**（信号源 = sim 接触センサ vs Guardian `near_collision` 近接停止が未配線） |
+| `replans` | NUMERIC（run/タスク単位の回数） | Nav2 のリプラン回数（`nav2_bridge`/BasicNavigator が露出する想定）。**現状どの凍結契約・トピックも産出しない**（nav-traffic #8 未露出） | 司令官＋交通モード軸 | Phase 3（Nav2 稼働要） | ⚠️ **Phase依存・暫定**（データ源未露出） |
+| `mean_decision_latency` | NUMERIC（ms, run 単位の集計） | 司令官の各ターン `generation.latency`（自動取得 :390 / :343）を run 単位で平均（派生集計） | 司令官比較（provider） | Phase 4（集計） | 確定（auto latency からの派生） |
+| `deadlock` | 🔒 **未確定（#55 land 後に凍結）** | デッドロック検出: Mode A 検出アルゴリズム（[doc08a](../mode-a/08a-llm-bridge-mode-a.md):267 / ルール :321、ただし `status=="blocked"` 信号源は :281 で**未解決**）／ Mode C は Open-RMF エスカレーション→Claude 介入（[doc11c](../mode-c/11c-traffic-mode-c.md):149-150） | 交通モード軸（デッドロック頻度, [doc06](06-implementation-phases.md):275） | Phase 3+ | 🔒 **予約のみ**: data_type/信号源は **#55**（`status=="blocked"` ↔ State Cache が `moving`/`idle` のみ産出する不整合, doc08a:281）解決後に凍結。本 doc では **名前を予約**するのみ |
+
+- **Mode A 交渉スコア**（`negotiation_rounds` / `agreement_reached`）は **演出専用・Phase 4 比較対象外**（[doc14](14-character-llm-negotiation.md):255 / [doc06](06-implementation-phases.md):263）。定義は **[doc14 §交渉スコア](14-character-llm-negotiation.md)** に置く（交渉エピソードの記述指標であり provider 能力比較には用いない）。
+
+### Grok コスト定義（PLAN・実検証は Phase 3, [doc13](13-hermes-setup.md) §7.5② :486）
+
+`コスト`（:395 = `generation.cost`）は Langfuse が generation の `model` 文字列を価格表に正規表現マッチして算出する。**Langfuse 既定の価格表は OpenAI/Anthropic/Google のみで xAI Grok を含まない**ため、Grok は cost が空欄になり比較が破綻する（doc13:486② を確認）。対策（**本節は PLAN・実装は Phase 3**）:
+
+1. **Langfuse にカスタムモデル価格を登録**（UI: Project Settings → Models → Add model definition ／ API: `POST /api/public/models`）。`match_pattern`（Grok の model 文字列への正規表現、例 `(?i)^(xai/)?grok-4.*$`）＋ 入出力トークン単価（USD/token、xAI 公開価格・取得日を併記）＋ `unit: TOKENS`。ユーザ定義は組込より優先。
+2. **オフライン フォールバック（wo, Phase 前でも可）**: `usage_details`（入出力トークン数）は cost と独立に取得されるため、wo 側で `tokens × 静的 xAI 価格表`（versioned 定数）から cost を派生計算できる → Langfuse 価格登録の有無に依存せず Grok 比較を解錠。
+3. **Phase 3 実検証**: 登録後 `grok-*` の `generation.cost_details.total > 0` を assert（4社とも cost ≠0・比較可能を確認）。
+
+> **要実機検証（未確定）**: v4 価格フィールドの正確な形（`prices:{input,output}` ネスト vs flat `input_price`/`output_price`）と Hermes が Grok に転送する literal `model` 文字列は、コード化前に live で確認する（推測で固定しない）。
+
+### 集計設計 — Metrics API + Datasets/Experiments（PLAN・実装 Phase 4, [doc13](13-hermes-setup.md):472「12構成×KPI」）
+
+**12構成 = 4 provider × 3 交通モード（none/simple/open-rmf）**。集計は **Phase 4 seam**（本節は設計 PLAN・凍結契約ではない）:
+
+- **Datasets + Experiments（推奨）**: 5 比較シナリオ（[doc06](06-implementation-phases.md):249-253）を **Dataset** 化し、**provider×mode = 12 runs**（`run_name="claude__open-rmf"` 等）として Experiment 実行 → 同一 versioned dataset 上で compare view が run 間を差分表示（再現性ある4社×シナリオ比較）。ad-hoc な trace tag より系統的。
+- **Metrics API**（`GET /api/public/v2/metrics`、view `scores-numeric`/`scores-categorical`、集計 sum/avg/count/min/max/p50–p99）。**v4 制約**: score は tag を持たず（:365）、`sessionId`/`traceId` は**フィルタ可だが group-by 不可**（v2）。→ 12構成の軸は **score `name` に符号化**（例 `result__claude__open-rmf`）するか、構成ごとに filter したクエリを `name` で group-by して 12 回反復する。**score metadata / sessionId への group-by 依存は避ける**。
+- **wo 側コード seam（Phase 4・新規）**: ① per-run KPI を構成軸付き score 名で export、② Metrics API を叩く query helper（12 filtered クエリを `name` で group-by → 表組立）。KPI 値は wo が算出（Nav2/diagnostics）、Langfuse は保存・集計のみ。Langfuse 側 config（Dataset・ScoreConfig・dashboard・compare view・run 命名規約）はコード外。
+
+> **要 Phase 3/4 検証（未確定）**: v4 score の **metadata group-by 可否**（不可なら上記 name 符号化を採用）。
+
 ## References
 
 - [Anthropic API Documentation](https://docs.anthropic.com/) -- 参照日: 2026-05-21

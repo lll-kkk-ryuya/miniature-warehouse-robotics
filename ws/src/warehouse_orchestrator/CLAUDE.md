@@ -7,7 +7,7 @@
 - **編集境界**: このパッケージ配下のみ。共有契約 `warehouse_interfaces` は変更不可（`.claude/rules/parallel-workflow.md` §4）。`warehouse_mcp_server` 等の他トラック内部は import しない（audit.jsonl は**ファイルとして**消費）。
 - **依存**: `warehouse_interfaces.paths.audit_log_path`（凍結パス）・rclpy・`nav_msgs`（odom 購読）。`langfuse`（**v4: `>=4.7,<5` を想定**）は**遅延・任意 import**（fail-open / pip extra）＝ハード依存にしない（package.xml に追加せず、未インストールでも build/test 可）。
 - **テスト**: 偽 audit.jsonl（`tmp_path` + `WAREHOUSE_AUDIT_LOG_PATH`）+ 偽 Langfuse client + 注入 `create_fn` で独立検証（doc16 §11 / doc20:36）。rclpy/langfuse 非依存のコア（`kpi.py`/`audit_reader.py`/`langfuse_sink.py`/`trace_id.py`）を単体検証。Ruff(py312/line100/double-quote) + pytest 緑を維持（host py3.7 不可＝`python3.12`）。
-- **設計**: docs/architecture/08-llm-bridge-common.md（§Langfuse: v4 `create_score`/`flush` 338-356, §比較指標, cancelled 除外 248）, 13-hermes-setup.md（**§7.5 trace_id 契約 474-482**: 32hex no-dash 478 / Bridge-owned 479 / `create_trace_id(seed)` 481b）, 15-mcp-platform.md（§Command Audit Log 344-360）, 06（Phase 265-268）, 16 §4（共有パス）, 09:79（odom）, 20。
+- **設計**: docs/architecture/08-llm-bridge-common.md（§Langfuse: v4 `create_score`/`flush` 356-362, §比較指標, **§比較計測の追加設計（#88: 追加スコア/Grok cost/集計）**, cancelled 除外 252）, 13-hermes-setup.md（**§7.5 trace_id 契約 478-486**: 32hex no-dash 482 / Bridge-owned 483 / `create_trace_id(seed)` 485 / **Grok cost :486②**）, 14-character-llm-negotiation.md（**§交渉スコア #88**）, 15-mcp-platform.md（§Command Audit Log 344-360）, 06（Phase 265-268, **交通モード軸 275**）, 16 §4（共有パス）, 09:79（odom）, 20。
 
 ## 提供 (produce)
 - **CLI** `kpi_report [path] [--include-cancelled] [--json]` — audit.jsonl から result KPI を集計し出力。
@@ -37,12 +37,12 @@ docs-first.md に従い、未定義は**コードで発明せず**予告 → doc
 1. **audit レコードの凍結スキーマが無い** → 防御パースで凌ぐ。`AuditEntry`/`KpiRecord` 凍結は将来 `contract` PR（skeleton #1 / bridge #4）。# TODO(contract)
 2. **【#4 接点・要予告】audit 行に `gen_id` が無い**（実プロデューサは executed 行に未記録、stale reject の `received_gen` のみ）。**per-task の live trace 連結には mcp_server が audit 行へ `gen_id` を追加する必要**（#73 合意 point3 が前提とする）。`AuditEntry.gen_id` は **`detail.gen_id` のみ**読む（stale reject の `received_gen`=却下された古い世代は trace seed に**使わない**。doc13:481 は executed gen を join key とする）→ 追加まで `gen_id`=None → trace_id None → 送信 no-op（graceful）。# TODO(coordinate #4/#73)
 3. **task_completion_time の live 完了源**（Nav2 goal-reached）= Phase 3（nav-traffic #8 / bridge #4）。# TODO(Phase 3)
-4. **新規 score 名は docs 先行**（`collision_free`/`replans`/`mean_decision_latency`/`deadlock`、Mode A: `negotiation_rounds`/`agreement_reached`）。docs に未定義＝**doc08 §比較指標 へ追記する docs PR で定義+データ源+Phase を凍結してから実装**（USER 指示）。本 slice では未実装。# TODO(docs PR)
+4. ✅ **新規 score 名 docs 凍結済（#88 wo-metrics docs PR）**: `collision_free`(BOOLEAN)/`replans`(NUMERIC)/`mean_decision_latency`(NUMERIC) = doc08 §比較計測の追加設計、Mode A `negotiation_rounds`(NUMERIC)/`agreement_reached`(BOOLEAN) = doc14 §交渉スコア（演出専用・Phase4 比較対象外）。`deadlock` は **🔒 名前予約のみ**（data_type/信号源は #55 land 後に凍結, doc08a:281）。`collision_free`/`replans`/`negotiation_rounds` は Phase依存・暫定。**live 送信実装は Phase 3-4**。# TODO(Phase 3-4 実装)
 5. **result score の値マッピング**（audit `executed/rejected/error` → score `"success"` 等）が未定義（doc08:341 例示）。node は `result` を自動送信しない（値語彙が docs 未定）。# TODO(docs)
 6. **cancelled 除外の正準定義**が audit 単位で未定（doc08:250 は Langfuse trace status）。本実装は解釈。# TODO(docs)
 7. **efficiency の live 値**は robots/sim 稼働が要る（Phase 3）。積算器+送信路は実装済・inert。# TODO(Phase 3)
-8. **Grok cost のカスタムモデル定義**（cost≠0、doc13:482②）= Phase 3 seam。**Metrics API / Dashboard / Datasets+Experiments**（12構成比較）= Phase 4 seam。# TODO(Phase 3-4)
+8. ✅ **Grok cost / 集計設計 docs 凍結済（#88）**: Grok カスタムモデル価格 PLAN（cost≠0、doc13 §7.5② :486 / doc08 §比較計測の追加設計）+ オフライン フォールバック（`usage_details`×静的価格）= **Phase 3 実装**。**Metrics API + Datasets/Experiments**（12構成×KPI、doc13:472）= **Phase 4 実装**。# TODO(Phase 3-4 実装)
 9. **KPI 出力契約が無い**（Langfuse 以外の出力先/形）。`to_dict()` は lane-internal。# TODO(docs/contract)
-10. **doc06 KPI リスト内部矛盾**（06:265 vs 06:275）。正本確定は docs PR。# TODO(docs)
+10. ✅ **doc06 KPI リスト矛盾 解消済（#88）**: 06:275 交通モード軸が `deadlock`/`collision_free`/`replans` を明示し doc08 §比較計測の追加設計 を正本参照、LLM 公平性比較軸（06:276）と軸分離を明記。
 
 > slice 1 (#69) が `main()` スタブを実装で置換、slice 2 (#73) が Langfuse v4 実配線 + trace_id 導出 + efficiency を追加。
