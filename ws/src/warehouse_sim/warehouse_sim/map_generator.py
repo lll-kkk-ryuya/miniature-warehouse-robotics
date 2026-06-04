@@ -1,8 +1,9 @@
 """Generate the static occupancy map (map.pgm + map.yaml) from layout constants.
 
 Pure functions (no ROS / numpy), unit-testable like ``world_generator``. The map
-rasterizes the world's static, sensor-visible obstacles — the perimeter walls + the
-three shelves — onto a ``RESOLUTION`` = 0.01 m/cell grid. The low berth/station markers
+rasterizes the world's static, sensor-visible obstacles — the perimeter walls, the
+three shelves + the aisle A/B 200mm bottleneck walls — onto a ``RESOLUTION`` = 0.01 m/cell
+grid. The low berth/station markers
 are deliberately NOT occupied: they are docking *targets* and sit below the MS200 scan
 plane, so AMCL never sees them and the planner must be able to drive onto them.
 
@@ -28,7 +29,14 @@ import math
 from dataclasses import dataclass
 from pathlib import Path
 
-from warehouse_sim.layout import WORLD_X, WORLD_Y, Box, perimeter_walls, shelves
+from warehouse_sim.layout import (
+    WORLD_X,
+    WORLD_Y,
+    Box,
+    bottleneck_walls,
+    perimeter_walls,
+    shelves,
+)
 
 RESOLUTION = 0.01  # m/cell (doc09:25 = nav2_params local/global_costmap resolution)
 OCCUPIED = 0  # black pixel = wall (occ 1.0, doc09:18)
@@ -58,8 +66,9 @@ def grid_spec(resolution: float = RESOLUTION) -> GridSpec:
 
 
 def obstacle_boxes(cfg: dict | None = None) -> list[Box]:
-    """Sensor-visible static obstacles to map: perimeter walls + shelves (no markers)."""
-    return [*perimeter_walls(), *shelves(cfg)]
+    """Sensor-visible static obstacles to map: perimeter walls + shelves + aisle bottleneck
+    walls (no markers — those are docking targets below the scan plane)."""
+    return [*perimeter_walls(), *shelves(cfg), *bottleneck_walls(cfg)]
 
 
 def occupied_cells(boxes: list[Box], spec: GridSpec) -> set[tuple[int, int]]:

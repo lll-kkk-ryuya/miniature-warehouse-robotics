@@ -70,7 +70,7 @@ def _box_model(b: Box) -> str:
 
 
 def build_world_sdf(boxes: list[Box] | None = None) -> str:
-    """Return the full world SDF string for the diorama (walls + shelves + markers)."""
+    """Return the full world SDF string for the diorama (walls, shelves, aisle pinch, markers)."""
     boxes = world_boxes() if boxes is None else boxes
     ground_x = WORLD_X + 0.4
     ground_y = WORLD_Y + 0.4
