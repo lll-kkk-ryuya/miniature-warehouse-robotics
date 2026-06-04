@@ -15,14 +15,14 @@
 # frame is shared/global (doc09:257,273).
 #
 # SPEED CAP: every linear-velocity limit below is <= MAX_LINEAR_VELOCITY = 0.3 m/s
-# (FROZEN, warehouse_interfaces/safety.py:18; doc09:306). The operational cap lives in
-# config safety.max_linear_velocity (config/warehouse.base.yaml:15, validated <= 0.3 by
-# load_config). NOTE: that config value is NOT yet wired into this file — the launch
-# rewrites only use_sim_time + yaml_filename and substitutes <robot_namespace> / <init_*>
-# (nav2_bringup.launch.py:80,68-76); there is NO "max_linear_velocity" substitution. So
-# the FollowPath vx_max below (0.3) is currently a HARDCODED hard cap, not a config-driven
-# operating point. # TODO(#125, Phase 2): wire the config substitution into the launch and
-# tune the operating vx_max below the 0.3 cap live.
+# (FROZEN, warehouse_interfaces/safety.py:18; doc09:306). The OPERATING cap is the config
+# value safety.max_linear_velocity (config/warehouse.base.yaml:15, validated <= 0.3 by
+# load_config). The launch WIRES it in (#125): nav2_bringup.launch.py reads load_config()
+# and overrides the FollowPath vx_max below via the RewrittenYaml "vx_max" param_rewrite,
+# fed by the "max_linear_velocity" launch arg (default = the config value). The literal
+# vx_max: 0.3 below is the SAFE in-file default (= the hard cap), used only if this params
+# file is loaded without that launch. Lower the operating point via the config value; it
+# can never exceed the 0.3 hard cap (load_config rejects a higher value).
 #
 # FOOTPRINT/INFLATION: robot_radius = 0.075 m — single source
 # warehouse_description.robot_dimensions.ROBOT_RADIUS (robot_dimensions.py:45,
@@ -97,7 +97,16 @@ controller_server:
       movement_time_allowance: 10.0
     goal_checker:
       plugin: "nav2_controller::SimpleGoalChecker"
-      xy_goal_tolerance: 0.05
+      # #125/#67: a goal near inflation (inflation_radius 0.10) made NavfnPlanner (tolerance
+      # 0.05) fail to plan to the exact goal, and the controller never declared arrival.
+      # Coordinate xy_goal_tolerance with planner GridBased.tolerance + inflation_radius (all
+      # 0.10) so a goal at the inflated aisle edge is both reachable AND accepted as reached.
+      # NOTE: this loosens arrival for ALL goals to 0.10 m (not only aisle-edge ones). Safe
+      # here: the closest named-location pair is 0.20 m apart (warehouse.base.yaml shelf_1/
+      # shipping_station and shelf_3/charging_station), so the 0.10 m acceptance disks are at
+      # most tangent — no goal can satisfy two named locations.
+      # TODO(Phase 2 実測): retune in the 2-bot Gazebo E2E once #124 lands the true 200mm aisle.
+      xy_goal_tolerance: 0.10
       yaw_goal_tolerance: 0.10
       stateful: true
 
@@ -110,7 +119,7 @@ controller_server:
       vx_std: 0.1
       vy_std: 0.1
       wz_std: 0.3
-      vx_max: 0.3               # <= MAX_LINEAR_VELOCITY (safety.py:18). # TODO(Phase 2): from config
+      vx_max: 0.3               # in-file default = hard cap; launch overrides from config (safety.py:18; #125)
       vx_min: -0.1              # limited reverse for recovery
       vy_max: 0.0               # diff-drive: no lateral velocity
       wz_max: 1.2               # rad/s; # TODO(Phase 1 実測)
@@ -286,7 +295,10 @@ planner_server:
     planner_plugins: ["GridBased"]
     GridBased:
       plugin: "nav2_navfn_planner::NavfnPlanner"  # Dijkstra/A* (doc09:144)
-      tolerance: 0.05
+      # #125/#67: was 0.05 — match goal_checker.xy_goal_tolerance + inflation_radius (0.10) so
+      # NavFn returns a plan to the nearest free cell when the goal sits in inflated space at
+      # the aisle edge (else planning ABORTS). # TODO(Phase 2 実測): retune in 2-bot E2E (#124).
+      tolerance: 0.10
       use_astar: false
       allow_unknown: true
 

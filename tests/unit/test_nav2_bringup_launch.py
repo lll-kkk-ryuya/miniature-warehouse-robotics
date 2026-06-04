@@ -11,6 +11,10 @@ Regression coverage for two #67 E2E-gate findings:
     (doc11a:317); none/simple keep both ON.
   * map_server blocker — the ``map`` launch arg must NOT default to "" (an empty map
     silently stalls the shared map_server -> AMCL/global costmap).
+
+Plus the #125 vx_max config-wiring: the ``max_linear_velocity`` arg defaults from config
+safety.max_linear_velocity and is always <= the 0.3 hard cap, and a RewrittenYaml
+param_rewrite injects it into the MPPI FollowPath vx_max (the operating speed cap).
 """
 
 import importlib.util
@@ -22,10 +26,12 @@ pytest.importorskip("launch")  # ROS 2 launch — skip in non-ROS (pure-CI) envs
 pytest.importorskip("launch_ros")
 pytest.importorskip("nav2_common")  # nav2_bringup.launch.py imports ReplaceString/RewrittenYaml
 
+import yaml  # noqa: E402
 from launch import LaunchContext  # noqa: E402
-from launch.actions import DeclareLaunchArgument  # noqa: E402
+from launch.actions import DeclareLaunchArgument, GroupAction  # noqa: E402
 from launch.utilities import perform_substitutions  # noqa: E402
 from launch_ros.actions import Node  # noqa: E402
+from nav2_common.launch import RewrittenYaml  # noqa: E402
 
 _NAV2_LAUNCH = (
     Path(__file__).resolve().parents[2] / "ws/src/warehouse_bringup/launch/nav2_bringup.launch.py"
@@ -78,3 +84,72 @@ def test_map_arg_defaults_to_a_real_yaml_not_empty() -> None:
     resolved = perform_substitutions(LaunchContext(), list(map_arg.default_value))
     assert resolved != ""
     assert resolved.endswith("map.yaml")  # resolves the warehouse_sim committed map (sim default)
+
+
+def _arg_default(ld, name: str) -> str:
+    """Resolve a DeclareLaunchArgument's default_value to its string value."""
+    arg = next(a for a in ld.entities if isinstance(a, DeclareLaunchArgument) and a.name == name)
+    return perform_substitutions(LaunchContext(), list(arg.default_value))
+
+
+def _any_rewritten_yaml(ld):
+    """Return the shared RewrittenYaml (configured_params) attached to a bot's Nav2 nodes.
+
+    White-box: launch does not expose Node parameters publicly before execution. We reach
+    the normalized parameter tuple — launch_ros wraps a params-file substitution in a
+    ``ParameterFile`` whose ``.param_file`` is the substitution list ``[RewrittenYaml]`` —
+    and return the first RewrittenYaml. amcl / controller / planner / behavior / bt_navigator
+    all share the SAME object per bot (root_key=bot1).
+    """
+    for entity in ld.entities:
+        if not isinstance(entity, GroupAction):
+            continue
+        for sub in entity.get_sub_entities():
+            if not isinstance(sub, Node):
+                continue
+            for param in getattr(sub, "_Node__parameters", None) or ():
+                for candidate in (param, *(getattr(param, "param_file", None) or ())):
+                    if isinstance(candidate, RewrittenYaml):
+                        return candidate
+    return None
+
+
+@pytest.mark.unit
+def test_max_linear_velocity_arg_defaults_from_config_within_hard_cap() -> None:
+    # #125: the operating MPPI vx_max is SOURCED from config safety.max_linear_velocity (not
+    # a hardcode) and can NEVER exceed the frozen 0.3 hard cap (safety.py:18, rules/safety.md).
+    from warehouse_interfaces.config import load_config
+    from warehouse_interfaces.safety import MAX_LINEAR_VELOCITY
+
+    resolved = float(_arg_default(_load_ld(), "max_linear_velocity"))
+    assert 0.0 < resolved <= MAX_LINEAR_VELOCITY  # hard cap
+    cfg_cap = load_config().get("safety", {}).get("max_linear_velocity", MAX_LINEAR_VELOCITY)
+    assert resolved == pytest.approx(min(float(cfg_cap), MAX_LINEAR_VELOCITY))
+
+
+def _followpath_vx_max(max_linear_velocity: str) -> float:
+    """Perform the per-bot RewrittenYaml with a given max_linear_velocity override and return
+    the resulting MPPI FollowPath vx_max. A fresh LD per call avoids any perform() caching."""
+    ld = _load_ld()
+    rewritten = _any_rewritten_yaml(ld)
+    assert rewritten is not None, "no RewrittenYaml found on the per-bot Nav2 nodes"
+    ctx = LaunchContext()
+    ctx.launch_configurations["use_sim_time"] = "true"
+    ctx.launch_configurations["map"] = _arg_default(ld, "map")
+    ctx.launch_configurations["params_file"] = _arg_default(ld, "params_file")
+    ctx.launch_configurations["max_linear_velocity"] = max_linear_velocity
+    out = yaml.safe_load(Path(rewritten.perform(ctx)).read_text())
+    items = list(out.items())
+    assert len(items) == 1  # single root_key = the bot namespace
+    return items[0][1]["controller_server"]["ros__parameters"]["FollowPath"]["vx_max"]
+
+
+@pytest.mark.unit
+def test_vx_max_param_rewrite_overrides_and_clamps_followpath_vx_max() -> None:
+    # #125: the RewrittenYaml injects the operating vx_max into the MPPI FollowPath leaf, and
+    # the launch CLAMPS it to the FROZEN 0.3 hard cap (safety.py:18) even on an explicit
+    # override. 0.2 (< cap) passes through verbatim (proves the override actually overrode the
+    # in-file 0.3); 0.9 (> cap) is clamped to 0.3 (proves an override cannot exceed the cap).
+    # Needs the built workspace so FindPackageShare resolves the installed nav2_params.yaml.
+    assert _followpath_vx_max("0.2") == pytest.approx(0.2)  # below cap -> applied verbatim
+    assert _followpath_vx_max("0.9") == pytest.approx(0.3)  # above cap -> clamped to hard cap

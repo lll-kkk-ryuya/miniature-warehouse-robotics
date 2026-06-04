@@ -12,6 +12,12 @@ Composition (doc09:230-271, doc11a:166-321, doc16 §5):
     behavior_server, bt_navigator + a lifecycle_manager. Params come from the
     single nav2_params.yaml (relative topics; ``<robot_namespace>`` frame token
     substituted per bot via ReplaceString).
+  - SPEED CAP: the MPPI FollowPath vx_max is config-driven — ``load_config`` reads
+    safety.max_linear_velocity (warehouse.base.yaml:15) into the ``max_linear_velocity``
+    launch arg, which a RewrittenYaml param_rewrite injects as vx_max, CLAMPED at launch to
+    <= MAX_LINEAR_VELOCITY 0.3 (FROZEN, safety.py:18) so even an explicit override cannot
+    exceed the cap. The literal vx_max: 0.3 in nav2_params.yaml is the safe in-file default
+    used without this launch (#125).
   - per bot{n}: twist_mux (emergency prio100 > nav2 prio10, twist_mux.yaml),
     muxed output remapped cmd_vel_out -> cmd_vel => /bot{n}/cmd_vel (the topic the
     sim ros_gz_bridge + real base consume). BOTH Nav2 velocity producers —
@@ -33,6 +39,8 @@ from launch.substitutions import LaunchConfiguration, PathJoinSubstitution, Pyth
 from launch_ros.actions import Node, PushRosNamespace, SetParameter
 from launch_ros.substitutions import FindPackageShare
 from nav2_common.launch import ReplaceString, RewrittenYaml
+from warehouse_interfaces.config import load_config
+from warehouse_interfaces.safety import MAX_LINEAR_VELOCITY
 
 # Robot ids: single source is config robots / sim spawn (warehouse.base.yaml:9,
 # warehouse_sim layout). Kept as a literal here to match the 2-bot demo.
@@ -47,7 +55,7 @@ _LIFECYCLE_NODES = [
     "bt_navigator",
 ]
 
-# Per-bot AMCL initial pose = spawn berth (config/warehouse.base.yaml:30-31) + sim
+# Per-bot AMCL initial pose = spawn berth (config/warehouse.base.yaml:35-36) + sim
 # SPAWN_YAW (warehouse_sim.layout: bot1->berth_A, bot2->berth_B, yaw -1.5707963).
 # Hardcoded here (provisional, Phase 1) to avoid a fragile launch-time config read;
 # # TODO(Phase 1): unify with the config/sim single source once spawn poses are shared.
@@ -57,7 +65,9 @@ _INITIAL_POSES = {
 }
 
 
-def _per_robot_group(robot: str, params_file, map_yaml, use_sim_time, autostart, traffic_mode):
+def _per_robot_group(
+    robot: str, params_file, map_yaml, use_sim_time, autostart, traffic_mode, vx_max
+):
     """Build the namespaced Nav2 + twist_mux + VirtualScan actions for one robot."""
     other = "bot2" if robot == "bot1" else "bot1"
 
@@ -77,7 +87,17 @@ def _per_robot_group(robot: str, params_file, map_yaml, use_sim_time, autostart,
     configured_params = RewrittenYaml(
         source_file=ns_params,
         root_key=robot,
-        param_rewrites={"use_sim_time": use_sim_time, "yaml_filename": map_yaml},
+        param_rewrites={
+            "use_sim_time": use_sim_time,
+            "yaml_filename": map_yaml,
+            # Inject the operating speed cap into the MPPI FollowPath vx_max (the only vx_max
+            # leaf in this file) — the launch's config-wiring of the cap (#125). `vx_max` is
+            # already CLAMPED to <= MAX_LINEAR_VELOCITY at launch (see generate_launch_description),
+            # so an override cannot exceed the cap. RewrittenYaml matches param_rewrites by leaf
+            # key name across the tree (same as use_sim_time above) and convert_types parses the
+            # value -> float. The in-file vx_max: 0.3 remains the safe default for raw file use.
+            "vx_max": vx_max,
+        },
         convert_types=True,
     )
 
@@ -178,12 +198,36 @@ def _per_robot_group(robot: str, params_file, map_yaml, use_sim_time, autostart,
     return [GroupAction(nav_nodes), virtual_scan]
 
 
+def _operating_vx_max() -> float:
+    """Operating MPPI ``vx_max`` (m/s) from config, clamped to the frozen hard cap.
+
+    Reads ``safety.max_linear_velocity`` from the warehouse config (base + env overlay,
+    doc19) via ``load_config``, which already REJECTS a value above the frozen
+    ``MAX_LINEAR_VELOCITY`` ceiling (config.py ``_validate_safety``; rules/safety.md).
+    A missing config resolves to the hard cap (``load_config`` returns ``{}``), and the
+    ``min`` is belt-and-suspenders: this launch can only LOWER the operating speed below
+    the 0.3 m/s ceiling, never raise it (safety.py:18). The result is the default of the
+    ``max_linear_velocity`` launch arg, which overrides the in-file ``vx_max: 0.3`` (#125).
+    """
+    cap = load_config().get("safety", {}).get("max_linear_velocity", MAX_LINEAR_VELOCITY)
+    return min(float(cap), MAX_LINEAR_VELOCITY)
+
+
 def generate_launch_description() -> LaunchDescription:
     use_sim_time = LaunchConfiguration("use_sim_time")
     autostart = LaunchConfiguration("autostart")
     params_file = LaunchConfiguration("params_file")
     map_yaml = LaunchConfiguration("map")
     traffic_mode = LaunchConfiguration("traffic_mode")
+    max_linear_velocity = LaunchConfiguration("max_linear_velocity")
+    # Clamp the operating cap to the FROZEN hard ceiling at LAUNCH time so even an explicit
+    # `max_linear_velocity:=<x>` override can only LOWER vx_max, never raise it above
+    # MAX_LINEAR_VELOCITY = 0.3 (safety.py:18). load_config validates the config DEFAULT; this
+    # PythonExpression (min(float(value), 0.3)) also guards the CLI/override path. A non-numeric
+    # value raises here (fail-loud) rather than silently bypassing the cap.
+    vx_max = PythonExpression(
+        ["min(float(", max_linear_velocity, "), ", repr(MAX_LINEAR_VELOCITY), ")"]
+    )
 
     default_params = PathJoinSubstitution(
         [FindPackageShare("warehouse_bringup"), "config", "nav2_params.yaml"]
@@ -225,6 +269,18 @@ def generate_launch_description() -> LaunchDescription:
             description="none|simple|open-rmf (config/warehouse.base.yaml:6). "
             "open-rmf disables VirtualScan (doc11a:317).",
         ),
+        DeclareLaunchArgument(
+            "max_linear_velocity",
+            # Default = config safety.max_linear_velocity (warehouse.base.yaml:15), read once
+            # here via load_config; clamped to <= MAX_LINEAR_VELOCITY 0.3 hard cap (safety.py:18).
+            # Overrides the in-file FollowPath vx_max default (nav2_params.yaml; #125). prod sets
+            # the operating cap via config (warehouse-nav2.service runs bringup.launch.py, which
+            # does NOT yet forward this arg — skeleton follow-up); a direct nav2_bringup.launch.py
+            # max_linear_velocity:= override is honored but clamped to the 0.3 cap.
+            default_value=str(_operating_vx_max()),
+            description="Operating MPPI vx_max (m/s); default = config safety."
+            "max_linear_velocity, clamped to <= 0.3 hard cap (safety.py:18).",
+        ),
     ]
 
     # One shared map server (doc09:253-255): both AMCLs subscribe /map.
@@ -250,7 +306,7 @@ def generate_launch_description() -> LaunchDescription:
         ld.add_action(node)
     for robot in ROBOTS:
         for action in _per_robot_group(
-            robot, params_file, map_yaml, use_sim_time, autostart, traffic_mode
+            robot, params_file, map_yaml, use_sim_time, autostart, traffic_mode, vx_max
         ):
             ld.add_action(action)
     return ld

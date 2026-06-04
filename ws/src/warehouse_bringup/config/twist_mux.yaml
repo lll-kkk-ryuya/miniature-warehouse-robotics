@@ -19,7 +19,7 @@
 # enter via this prio-10 input, never write /bot{n}/cmd_vel directly).
 #
 # NODE-NAME KEY = "/**" (NOT "twist_mux"): this file is loaded by a twist_mux node
-# launched INSIDE namespace /bot{n} (nav2_bringup.launch.py:143-154), whose fully
+# launched INSIDE namespace /bot{n} (nav2_bringup.launch.py:167-178), whose fully
 # qualified name is /bot{n}/twist_mux. A bare "twist_mux:" key only matches a node in
 # the ROOT namespace (/twist_mux), so under the per-bot namespace the params silently
 # DO NOT load — twist_mux then comes up with NO topics, never publishes /bot{n}/cmd_vel,
@@ -31,7 +31,7 @@
   ros__parameters:
     # use_stamped MUST be false: every velocity hop in this stack is plain
     # geometry_msgs/Twist — Nav2 controller_server enable_stamped_cmd_vel:false
-    # (nav2_params.yaml:82), the Emergency Guardian, and the gz bridge (gz.msgs.Twist).
+    # (nav2_params.yaml:85), the Emergency Guardian, and the gz bridge (gz.msgs.Twist).
     # twist_mux's Jazzy default is true (TwistStamped); leaving it unset makes twist_mux
     # subscribe/publish TwistStamped and silently forward NOTHING (type mismatch) -> no
     # /bot{n}/cmd_vel, the robot never moves, and the Emergency prio-100 override (R-26)
