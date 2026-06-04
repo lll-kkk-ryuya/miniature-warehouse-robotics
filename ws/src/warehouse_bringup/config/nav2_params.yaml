@@ -15,11 +15,14 @@
 # frame is shared/global (doc09:257,273).
 #
 # SPEED CAP: every linear-velocity limit below is <= MAX_LINEAR_VELOCITY = 0.3 m/s
-# (FROZEN, warehouse_interfaces/safety.py:18; doc09:306). The operational cap is
-# config safety.max_linear_velocity (config/warehouse.base.yaml:15, validated
-# <= 0.3 by load_config). The launch passes it in as the "max_linear_velocity"
-# substitution so this file never hardcodes a higher value. # TODO(Phase 2): wire
-# the substitution; until then 0.3 is the hard cap, not a tuned operating point.
+# (FROZEN, warehouse_interfaces/safety.py:18; doc09:306). The operational cap lives in
+# config safety.max_linear_velocity (config/warehouse.base.yaml:15, validated <= 0.3 by
+# load_config). NOTE: that config value is NOT yet wired into this file — the launch
+# rewrites only use_sim_time + yaml_filename and substitutes <robot_namespace> / <init_*>
+# (nav2_bringup.launch.py:80,68-76); there is NO "max_linear_velocity" substitution. So
+# the FollowPath vx_max below (0.3) is currently a HARDCODED hard cap, not a config-driven
+# operating point. # TODO(#125, Phase 2): wire the config substitution into the launch and
+# tune the operating vx_max below the 0.3 cap live.
 #
 # FOOTPRINT/INFLATION: robot_radius = 0.075 m — single source
 # warehouse_description.robot_dimensions.ROBOT_RADIUS (robot_dimensions.py:45,

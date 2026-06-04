@@ -304,7 +304,7 @@ Claude（LLM）の担当（モードC: Open-RMF主方針）:
 
 2台以上が互いに「相手が動くのを待っている」状態で、誰も動けなくなること。通路幅200mm（すれ違い不可）の本プロジェクトでは高頻度で発生しうる。
 
-- 検出: LLM Bridge（Jetson側）で「両方blocked かつ互いに近い」を判定
+- 検出: LLM Bridge（Jetson側）で「両方 idle（velocity≈0）かつ current_task 保持で近接（<0.4m）・heading 対向（>2.5rad）」を判定（#128 で `status=="blocked"` 依存→凍結 RobotState 信号へ再基礎付け、`docs/mode-a/08a` §デッドロック検出。Emergency Guardian の pose-timeout blocked とは別系統）
 - 解消: Claude（LLM）が「誰がどう退くか」を判断
 
 ### Q: Nav2は他のロボットを自動で認識できるか？

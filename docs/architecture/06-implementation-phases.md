@@ -272,7 +272,7 @@
 ### 完了条件
 
 - 4つのLLM（Claude / ChatGPT / Gemini / Grok）で同じシナリオを実行完了
-- **交通モード軸**: 交通管理の2〜4パターン（none/simple/open-rmf）で比較データが揃っている（デッドロック頻度・タスク完了時間）
+- **交通モード軸**: 交通管理の2〜4パターン（none/simple/open-rmf）で比較データが揃っている（**デッドロック頻度 `deadlock`（信号源 #55/#128 確定）・衝突回避 `collision_free`・リプラン `replans`・タスク完了時間 `task_completion_time`**。指標定義は [doc08 §比較計測の追加設計](08-llm-bridge-common.md#比較計測の追加設計) に集約。`deadlock`/`collision_free`/`replans` は**交通モード軸の指標**であり、LLM 公平性比較軸（下行）とは別軸）
 - **LLM比較軸**: 4つのLLM間の比較データが揃っている（応答速度・判断の正確性・タスク完了時間・効率性=総移動距離・エラー率・コスト。指標の定義と取得方法は [doc08 §比較指標](08-llm-bridge-common.md#比較指標)）
 - WO画面からミッション状況が可視化される
 
