@@ -246,8 +246,8 @@
 
 | ID | リスク | 詳細 | 対策 | 検証 |
 |----|--------|------|------|------|
-| R-39 | **Emergency Guardian 距離監視がAMCL律速** | 50ms周期でも入力 `/amcl_pose` はAMCL更新(5-10Hz)＝**実効100-200ms古い**。「50ms反射安全系」は過大表現 | 距離監視を `/scan` 直接購読に変更 or **ESP32近接(Layer0)を2台間近接の主担当**と明記 | Phase 2 |
-| R-40 | **rclpy 50ms周期がGC/GILで破綻しうる** | PythonのGCスパイクで周期が散発的に飛ぶ（実測報告あり） | Guardianで `gc.disable()`/`gc.freeze()`。長期的に**C++化を技術的負債として記録** | Phase 0.5(Jetson) |
+| R-39 | **Emergency Guardian 距離監視がAMCL律速** | 50ms周期でも入力 `/amcl_pose` はAMCL更新(5-10Hz)＝**実効100-200ms古い**。「50ms反射安全系」は過大表現 | 近接の物理反射を **`nav2_collision_monitor`**（`/scan`+`/bot{n}/virtual_scan` の polygon stop/approach・`source_timeout` で stale 停止）へ委譲し Guardian は policy 層へ縮退。blocked は Nav2 `progress_checker` へ委譲。最終保証は **ESP32近接(Layer0)**。採用是非は **#126**（PoC=#67 でゲート） | Phase 2 |
+| R-40 | **rclpy 50ms周期がGC/GILで破綻しうる** | PythonのGCスパイクで周期が散発的に飛ぶ（実測報告あり）＝最悪応答時間が有界でない | Guardianで `gc.disable()`/`gc.freeze()`。物理反射は **C++(`nav2_collision_monitor`)+ESP32(Layer0)** へ委譲し、締切の無い policy 層のみ Python に残す（最悪応答時間が要る hot path を Python から外す）＝**#126** | Phase 0.5(Jetson) |
 | R-41 | **MS200測距精度がミニチュアに不足の恐れ** | 安価2D dToF誤差±1-3cmが地図解像度1cm・通路片側余裕25mmと同オーダー → AMCL収束困難・壁を数セルぶれて認識 | Phase2で**測距誤差を実測**し地図解像度を誤差の2-3倍へ。余裕不足なら通路幅を再設計 | Phase 2 |
 | R-42 | **200mm通路×150mm車体でinflation余裕ゼロ** | 標準Nav2 inflationでは通行可能幅が中央1点に収束し追従不能。`11a` の `ROBOT_RADIUS=0.1`(直径200mm)は車体150mmと矛盾し通路を塞ぐ | **非標準inflation**(壁直近のみ高コスト)。`ROBOT_RADIUS`を実測75mmへ | Phase 2 |
 | R-43 | **LaserScanのmicro-ROS UDP転送(MTU/fragmentation)** | 360°/0.4°=900点×float≒3.6KB/scan、UDP MTU 512B、2台分常時送出。**R-37 host spike(loopback)はこのMTU/フラグメンテーションを未検証**（小型 std_msgs/Int32 のみ。要 Phase 1 実機） | scan点数ダウンサンプル(0.4°→1-2°)、Reliable/MTU設定、最悪USB有線 | Phase 1(T3併せ) |
