@@ -28,8 +28,6 @@ body:
         - jetson
         - firmware
         - docs
-        - dev-tooling
-        - orchestrator
     validations:
       required: true
   - type: textarea

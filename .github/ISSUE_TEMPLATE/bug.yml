@@ -51,4 +51,4 @@ body:
       label: 設計正本 / 関連（docs・契約・トピック）
       placeholder: docs/architecture/NN-....md / warehouse_interfaces.X / /topic
     validations:
-      required: false
+      required: true
