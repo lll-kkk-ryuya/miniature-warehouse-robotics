@@ -314,7 +314,7 @@ global_costmap:
 ### 無効化条件
 
 - **距離 > 1.0m**: 仮想 LaserScan を発行しない。Nav2 のコストマップに不要なコストが残ることを防止
-- **Mode C（Open-RMF）使用時**: VirtualScanNode 自体を起動しない。`config.yaml` の `traffic_mode: "open-rmf"` 時に systemd で制御
+- **Mode C（Open-RMF）使用時**: VirtualScanNode 自体を起動しない。`traffic_mode: "open-rmf"`（`config/warehouse.base.yaml:6`）のとき **launch-time の `IfCondition`** で起動を抑止する（`nav2_bringup.launch.py:175`）。prod では systemd（`deploy/jetson/systemd/warehouse-nav2.service:26`）が `traffic_mode:=` を launch に渡すだけで、gating 自体は launch が行う（systemd がノードを直接制御するのではない）。
 
 ### Mode C との関係
 
