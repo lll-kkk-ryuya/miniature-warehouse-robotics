@@ -56,7 +56,7 @@
 
 #### フロー
 
-1. 司令官が **`start_negotiation` MCP tool** を呼び出し（gen_id, starter, context を引数で渡す）→ Warehouse MCP Server が `/negotiation/start` トピックを publish（状況スナップショット + gen_id + 先手 `"starter": "bot1"` 同梱）
+1. 司令官が **`start_negotiation` MCP tool** を呼び出し（`gen_id`, `deadlock_or_escalation_id`, `starter`, `context` を引数で渡す。`deadlock_or_escalation_id` は必須＝tools.py）→ Warehouse MCP Server が `/negotiation/start` トピックを publish（状況スナップショット + gen_id + 先手 `"starter": "bot1"` 同梱）
 2. キャラLLM Bot1 ←→ Bot2 が**バトンパス方式**で交互に発話（各最大4ターン、計8ターン上限）
 3. 合意に達したら構造化JSON を `/negotiation/proposal` に publish
 4. 司令官が次サイクルで proposal を situation JSON に取り込み
@@ -160,8 +160,8 @@ Bot2 (キャラLLM, turn=2):
 
 司令官LLM のシステムプロンプトは Mode A / Mode C で**意図的に分岐**する:
 
-- **Mode A** (08a-llm-bridge-mode-a.md:217): デッドロック検出・交通管理を自分で行う指示を含む。交渉モード発動も自分の判断
-- **Mode C** (08c-llm-bridge-mode-c.md:116): タスク割当のみ。交通管理は Open-RMF。交渉モード発動は escalation フィールド見て判断
+- **Mode A** (08a-llm-bridge-mode-a.md §システムプロンプト（Mode A/B）): デッドロック検出・交通管理を自分で行う指示を含む。交渉モード発動も自分の判断
+- **Mode C** (08c-llm-bridge-mode-c.md §システムプロンプト（Mode C）): タスク割当のみ。交通管理は Open-RMF。交渉モード発動は escalation フィールド見て判断
 
 Phase 4 比較検証では「同じ Claude モデルでも Mode によりプロンプトが違う」点に注意。比較公平性のため、**同じ Mode 内で4社を比較**する原則とする。
 

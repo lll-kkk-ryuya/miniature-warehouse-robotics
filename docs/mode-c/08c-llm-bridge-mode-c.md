@@ -80,7 +80,7 @@ Mode Cでは交通管理フィールドを省略し、Open-RMFからの交通状
     {"id": "task_3", "from": "shelf_3", "to": "berth_B"}
   ],
   "history": [
-    {"turn": 41, "action": "bot1 navigate shelf_1", "result": "success"}
+    {"turn": 41, "action": "bot1 navigate shelf_1", "result": "ok"}
   ]
 }
 ```

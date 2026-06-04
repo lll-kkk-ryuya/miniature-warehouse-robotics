@@ -8,7 +8,7 @@
 
 | 操作 | なぜ人間専任 | エージェントの動き |
 |---|---|---|
-| **PR マージ** | 同一ターン self-merge 禁止（parallel-workflow §3 / doc31）。不可逆 | ①PR 提出 →②CI 緑・レビュー可視 で**停止**し承認を待つ |
+| **PR マージ** | 同一ターン self-merge 禁止（parallel-workflow §3）。不可逆 | ①PR 提出 →②CI 緑・レビュー可視 で**停止**し承認を待つ |
 | **共有 `.claude/settings.json` への hook 配線** | hook は任意 shell を実行＝**共有設定のエージェント自己改変は禁止**（理由は `.claude/hooks/README.md`）。**ローカル `settings.local.json`（gitignore）はオーナー承認で可**（例: consistency PostToolUse, docs/dev/04 §4） | 共有はスニペット提示のみ・配線しない／ローカルはオーナー指示時に `/update-config` で配線 |
 | **branch protection 設定** | 無料 + private リポでは GitHub 機能制限（要 public 化 or Pro） | CI governance + `guard-boundaries` hook で代替（多層防御）。public 化/Pro は人間判断 |
 | **リポジトリ public 化** | 公開は不可逆な露出（数秒で clone/fork/index され得る） | 提案のみ。実行は人間 |
