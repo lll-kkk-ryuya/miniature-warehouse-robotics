@@ -28,6 +28,15 @@ def test_world_has_required_systems_and_models() -> None:
 
 
 @pytest.mark.unit
+def test_world_has_aisle_bottleneck_models() -> None:
+    # the 200mm pinch must exist in the SDF world too (not only the occupancy map), so
+    # Gazebo physics/lidar see the same bottleneck the planner avoids.
+    world = ET.fromstring(world_generator.build_world_sdf()).find("world")
+    model_names = {m.get("name") for m in world.findall("model")}
+    assert {"aisle_a_wall_w", "aisle_a_wall_e", "aisle_b_wall_w", "aisle_b_wall_e"} <= model_names
+
+
+@pytest.mark.unit
 def test_box_poses_match_layout() -> None:
     boxes = layout.world_boxes()
     world = ET.fromstring(world_generator.build_world_sdf(boxes)).find("world")

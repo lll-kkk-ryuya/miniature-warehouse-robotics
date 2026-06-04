@@ -1,6 +1,7 @@
 """warehouse_sim.map_generator: valid map.yaml + non-empty P5 PGM, occupied cells match
-the walls/shelves, origin at the world corner, markers excluded, and the committed
-maps/ files equal the generator output (drift guard). Convention checked against
+the obstacle boxes (walls / shelves / aisle bottleneck pinch), origin at the world corner,
+markers excluded, the 200mm aisle channel rendered, and the committed maps/ files equal the
+generator output (drift guard). Convention checked against
 nav2_map_server/src/map_io.cpp + doc09:23-41.
 """
 
@@ -47,13 +48,13 @@ def test_pgm_is_non_empty_binary_p5_with_expected_dims() -> None:
 
 
 @pytest.mark.unit
-def test_occupied_cells_match_walls_and_shelves_only() -> None:
+def test_occupied_cells_match_obstacle_boxes() -> None:
     spec = mg.grid_spec()
     boxes = mg.obstacle_boxes()
     cells = mg.occupied_cells(boxes, spec)
     assert cells
     res = spec.resolution
-    # every occupied cell's center lies within some wall/shelf box (no spurious occupancy)
+    # every occupied cell's center lies within some obstacle box (wall/shelf/aisle pinch)
     for col, row in cells:
         cx, cy = (col + 0.5) * res, (row + 0.5) * res
         assert any(
@@ -78,6 +79,37 @@ def test_berth_and_station_markers_are_not_occupied() -> None:
     res = spec.resolution
     for m in markers():
         assert (int(m.x / res), int(m.y / res)) not in cells, m.name
+
+
+@pytest.mark.unit
+def test_aisle_bottleneck_is_occupied_with_a_200mm_free_channel() -> None:
+    # doc04 200mm aisle: at the shelf row the two pinch walls are occupied and leave a single
+    # contiguous ~200mm free channel centred on the aisle (retreat_A/B x). The lidar-visible
+    # occupancy map must reflect this, or the planner won't see the bottleneck.
+    from warehouse_interfaces.config import load_config
+    from warehouse_sim import layout
+
+    spec = mg.grid_spec()
+    cells = mg.occupied_cells(mg.obstacle_boxes(), spec)
+    res = spec.resolution
+    loc = load_config()["locations"]
+    walls = {b.name: b for b in layout.bottleneck_walls()}
+    for tag, retreat in (("a", "retreat_A"), ("b", "retreat_B")):
+        w, e = walls[f"aisle_{tag}_wall_w"], walls[f"aisle_{tag}_wall_e"]
+        row = int(w.y / res)  # shelf row
+        # both pinch walls occupy their cells
+        assert (int(w.x / res), row) in cells, f"aisle_{tag}_wall_w"
+        assert (int(e.x / res), row) in cells, f"aisle_{tag}_wall_e"
+        # the channel centre (retreat x) is free; widen left/right to measure the free run
+        centre_col = int(loc[retreat]["x"] / res)
+        assert (centre_col, row) not in cells
+        lo = hi = centre_col
+        while lo - 1 >= 0 and (lo - 1, row) not in cells:
+            lo -= 1
+        while hi + 1 < spec.width and (hi + 1, row) not in cells:
+            hi += 1
+        width_m = (hi - lo + 1) * res
+        assert width_m == pytest.approx(layout.AISLE_BOTTLENECK_WIDTH, abs=res)  # ~0.20 m
 
 
 @pytest.mark.unit

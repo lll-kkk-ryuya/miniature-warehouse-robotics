@@ -25,10 +25,16 @@ SHELF_SIZE = (0.15, 0.30, 0.20)
 BERTH_SIZE = (0.20, 0.15, 0.04)
 STATION_SIZE = (0.20, 0.15, 0.02)
 
-# Aisle design targets (doc04): 200mm bottleneck (no passing) vs 300mm standard.
-# Current location coords are provisional (Phase 2); generated gaps may differ — TODO(Phase 2).
+# Aisle design targets (doc04:44,55-58): 200mm bottleneck (no passing) vs 300mm standard.
 AISLE_BOTTLENECK_WIDTH = 0.2
 AISLE_STANDARD_WIDTH = 0.3
+
+# Vertical aisles flanked by adjacent shelves (doc04 上面図): 通路A = shelf_1↔shelf_2,
+# 通路B = shelf_2↔shelf_3. ``bottleneck_walls`` narrows each to AISLE_BOTTLENECK_WIDTH.
+AISLES: tuple[tuple[str, str, str], ...] = (
+    ("a", "shelf_1", "shelf_2"),
+    ("b", "shelf_2", "shelf_3"),
+)
 
 # Provisional spawn assignment (scenario 1, doc04): the two bots start at the berths.
 SPAWN_LOCATIONS = {"bot1": "berth_A", "bot2": "berth_B"}
@@ -76,6 +82,33 @@ def shelves(cfg: Config | None = None) -> list[Box]:
     ]
 
 
+def bottleneck_walls(cfg: Config | None = None) -> list[Box]:
+    """Walls that narrow aisles A/B to ``AISLE_BOTTLENECK_WIDTH`` (doc04:44,56-58 —
+    通路A/B=200mm すれ違い不可).
+
+    The provisional shelf coords leave a ~350mm inter-shelf gap, so a wall flush with each
+    flanking shelf face fills the excess, centring a 200mm channel on the aisle (``retreat_A``
+    /``retreat_B`` sit on that centreline). Computed from the live coords + the target width,
+    so the 200mm holds even if the provisional coords are re-surveyed (Phase 2). These are
+    real, lidar-visible obstacles → fed to BOTH the occupancy map (``map_generator``) and the
+    SDF world (``world_boxes``), so the pinch cannot drift between map and sim.
+    """
+    loc = _cfg(cfg)["locations"]
+    sx, sy, _sz = SHELF_SIZE  # sy: span the shelf row so the whole inter-shelf channel is 200mm
+    h = WALL_HEIGHT
+    out: list[Box] = []
+    for tag, left, right in AISLES:
+        west_edge = loc[left]["x"] + sx / 2  # aisle west boundary = left shelf's east face
+        east_edge = loc[right]["x"] - sx / 2  # aisle east boundary = right shelf's west face
+        fill = (east_edge - west_edge - AISLE_BOTTLENECK_WIDTH) / 2
+        if fill <= 0:  # coords already at/under the target → no narrowing wall needed
+            continue
+        y = loc[left]["y"]  # shelf row (both flanking shelves share y)
+        out.append(Box(f"aisle_{tag}_wall_w", west_edge + fill / 2, y, h / 2, fill, sy, h))
+        out.append(Box(f"aisle_{tag}_wall_e", east_edge - fill / 2, y, h / 2, fill, sy, h))
+    return out
+
+
 def markers(cfg: Config | None = None) -> list[Box]:
     """Low boxes marking berths + stations (visual reference, not obstacles to plan around)."""
     loc = _cfg(cfg)["locations"]
@@ -91,7 +124,7 @@ def markers(cfg: Config | None = None) -> list[Box]:
 
 def world_boxes(cfg: Config | None = None) -> list[Box]:
     cfg = _cfg(cfg)
-    return [*perimeter_walls(), *shelves(cfg), *markers(cfg)]
+    return [*perimeter_walls(), *shelves(cfg), *bottleneck_walls(cfg), *markers(cfg)]
 
 
 def in_bounds(x: float, y: float) -> bool:
