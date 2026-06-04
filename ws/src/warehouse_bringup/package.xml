@@ -8,6 +8,9 @@
   <license>Apache-2.0</license>
 
   <!-- Bring-up package: launch-time deps on the nodes it composes (doc16:65). -->
+  <!-- nav2_bringup.launch.py reads config safety.max_linear_velocity via load_config to
+       wire the MPPI vx_max operating cap (#125), mirroring warehouse_sim/sim.launch.py. -->
+  <exec_depend>warehouse_interfaces</exec_depend>
   <exec_depend>nav2_amcl</exec_depend>
   <exec_depend>nav2_controller</exec_depend>
   <exec_depend>nav2_planner</exec_depend>
