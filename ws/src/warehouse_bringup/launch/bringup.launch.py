@@ -24,8 +24,9 @@ Composition (each layer cited; ordering = doc12a:398-412 systemd chain, sim swap
              (doc12:95-151). Params self-loaded from config; no launch params needed. Always-on.
   5. nav2_bridge  Node(warehouse_nav2_bridge/nav2_bridge) — FastAPI :8645 + rclpy; the REST
              action sink the in-process MCP tools POST to (doc12a:150-415, #86/#104). Mode A/B
-             ONLY (gated OFF under traffic_mode==open-rmf, where Open-RMF replaces it,
-             doc15:211). Also gated by ``llm`` (it only matters when the commander runs).
+             ONLY — positive allowlist ``traffic_mode in {none,simple}`` mirroring llm_bridge
+             NAV2_BRIDGE_MODES (llm_bridge.py:70, doc15:211-219); open-rmf (Mode C) uses
+             Open-RMF instead (#166). Also gated by ``llm`` (only matters when commander runs).
   6. llm     Node(warehouse_llm_bridge/llm_bridge) — the 3 s commander cycle: reads state.json,
              POSTs Hermes, maps the Command JSON via action_map and dispatches the MCP 7-tools
              IN-PROCESS (WarehouseTools().dispatch, doc15:50 / doc16:55), forwarding accepted
@@ -198,7 +199,10 @@ def generate_launch_description() -> LaunchDescription:
     )
 
     # 5. Nav2 Bridge — FastAPI :8645 + rclpy; the REST action sink for accepted MCP motion
-    # tools. Mode A/B only (OFF under open-rmf, doc15:211) AND only when the commander runs.
+    # tools. Mode A/B only AND only when the commander runs. POSITIVE allowlist
+    # traffic_mode in {none,simple} mirrors llm_bridge NAV2_BRIDGE_MODES (llm_bridge.py:70,
+    # doc15:211-219) — so an unknown/typo mode fails closed (no bridge) exactly as the bridge
+    # would skip forwarding, and open-rmf (Mode C, Open-RMF replaces it) stays off (#166).
     nav2_bridge = Node(
         package="warehouse_nav2_bridge",
         executable="nav2_bridge",
@@ -206,7 +210,7 @@ def generate_launch_description() -> LaunchDescription:
         output="screen",
         condition=IfCondition(
             PythonExpression(
-                ["'", llm_enabled, "' == 'true' and '", traffic_mode, "' != 'open-rmf'"]
+                ["'", llm_enabled, "' == 'true' and '", traffic_mode, "' in ('none', 'simple')"]
             )
         ),
     )

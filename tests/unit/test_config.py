@@ -103,6 +103,54 @@ def test_env_var_cannot_exceed_hard_cap(tmp_path: Path, monkeypatch: pytest.Monk
 
 
 @pytest.mark.safety
+@pytest.mark.parametrize("bad", ["-0.5", "0", "0.0", "-0.0", ".nan", ".inf", "-.inf"])
+def test_non_positive_or_non_finite_cap_rejected(tmp_path: Path, bad: str) -> None:
+    # #169: a non-positive / non-finite speed cap is degenerate and must fail LOUD
+    # at config load. The prior check only caught `> hard cap`, so -0.5 / 0 / NaN /
+    # -inf slipped through (a negative cap then inverts the symmetric clamp in
+    # consumers). Each is now rejected with a clear "finite positive" message.
+    base = _write(tmp_path / "base.yaml", f"safety:\n  max_linear_velocity: {bad}\n")
+    with pytest.raises(ValueError, match="finite positive"):
+        load_config([base])
+
+
+@pytest.mark.safety
+def test_non_finite_cap_via_env_var_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The override path (WAREHOUSE__*) is validated too — a NaN injected via env
+    # must fail loud, not slip past as the old `> hard cap`-only check did.
+    base = _write(tmp_path / "base.yaml", "safety:\n  max_linear_velocity: 0.3\n")
+    monkeypatch.setenv("WAREHOUSE__SAFETY__MAX_LINEAR_VELOCITY", ".nan")
+    with pytest.raises(ValueError, match="finite positive"):
+        load_config([base])
+
+
+@pytest.mark.safety
+def test_cap_at_hard_cap_loads(tmp_path: Path) -> None:
+    # Boundary: the exact hard cap is valid — load succeeds and the value is kept.
+    base = _write(tmp_path / "base.yaml", "safety:\n  max_linear_velocity: 0.3\n")
+    cfg = load_config([base])
+    assert cfg["safety"]["max_linear_velocity"] == MAX_LINEAR_VELOCITY
+
+
+@pytest.mark.safety
+def test_valid_lowered_cap_loads(tmp_path: Path) -> None:
+    # A positive operational cap below the hard cap is valid (config may LOWER it).
+    base = _write(tmp_path / "base.yaml", "safety:\n  max_linear_velocity: 0.2\n")
+    cfg = load_config([base])
+    assert cfg["safety"]["max_linear_velocity"] == 0.2
+
+
+@pytest.mark.safety
+def test_cap_just_above_hard_cap_rejected(tmp_path: Path) -> None:
+    # R-26 boundary: just above the hard cap is still rejected (existing message).
+    base = _write(tmp_path / "base.yaml", "safety:\n  max_linear_velocity: 0.31\n")
+    with pytest.raises(ValueError, match="exceeds hard cap"):
+        load_config([base])
+
+
+@pytest.mark.safety
 def test_base_config_battery_scale_is_valid() -> None:
     # The shipped base scale must be a known value (#44) — load must not raise.
     cfg = load_config([REPO_ROOT / "config" / "warehouse.base.yaml"])
