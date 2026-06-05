@@ -10,7 +10,7 @@
 
 - **fail-open 設計**: JSON parse / git / IO の失敗時は exit 0（allow）。ガード自身のバグで編集が固まることはない。
 - feature worktree（`feat/*` `fix/*` `chore/*` `docs/*` `hw/*`）の編集は素通り。
-- モデルは hook の deny 判定を上書きできない（決定的）。
+- モデルは hook の deny 判定を上書きできない（決定的・**有効化後の挙動**。現状この hook は未配線＝下記「有効化」未実施）。
 
 ### 有効化（settings.json に追記）
 
@@ -116,8 +116,8 @@ echo '{"cwd":"<repo>","tool_input":{"file_path":"docs/x.md"}}' | python3 .claude
 | 層 | 仕組み | 強制対象 |
 |---|---|---|
 | permission deny | `.claude/settings.json` permissions | パス単位の read/edit 禁止 |
-| **PreToolUse hook**（block） | `guard-boundaries.py` | main worktree の直接編集 |
-| **PreToolUse hook**（advisory） | `remind-gh-authoring.sh` | gh issue/pr 作成時の docs-first・テンプレ注意喚起（非ブロッキング） |
+| **PreToolUse hook**（block） | `guard-boundaries.py` | main worktree の直接編集（**未配線**・有効化は人間。§「有効化」参照） |
+| **PreToolUse hook**（advisory） | `remind-gh-authoring.sh` | gh issue/pr 作成時の docs-first・テンプレ注意喚起（非ブロッキング・**未配線**） |
 | **PostToolUse hook**（block, local） | `consistency-posttooluse.py` | 編集後の docs↔code **ERROR** ドリフト（`settings.local.json` 配線・ERROR のみ block） |
 | CI ジョブ | `.github/workflows/ci.yml` governance + `consistency` | `contract` ラベル必須・他トラック import 禁止・docs↔code 整合 |
 | pre-commit | `.pre-commit-config.yaml` | lint / format / 秘密鍵検知 + docs↔code 整合 |
