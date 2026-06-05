@@ -22,6 +22,17 @@
   <exec_depend>twist_mux</exec_depend>
   <exec_depend>warehouse_traffic</exec_depend>
 
+  <!-- Full Phase 0.5 stack composed by bringup.launch.py (#156): the launch-less node
+       packages whose executables are started here. These run in both sim and prod, so they
+       are declared. warehouse_sim is DELIBERATELY omitted: sim.launch.py is gated sim:=true
+       and resolved lazily (FindPackageShare), so prod/bringup-only installs stay decoupled
+       from the sim-only package (same rationale as nav2_bringup.launch.py:253-259); in a dev
+       workspace it is co-built. -->
+  <exec_depend>warehouse_state</exec_depend>
+  <exec_depend>warehouse_safety</exec_depend>
+  <exec_depend>warehouse_nav2_bridge</exec_depend>
+  <exec_depend>warehouse_llm_bridge</exec_depend>
+
   <test_depend>python3-pytest</test_depend>
 
   <export>
