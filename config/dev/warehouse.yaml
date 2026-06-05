@@ -8,6 +8,14 @@ runtime:
 
 hermes:
   base_url: "http://localhost:8642"   # ローカル or dev Gateway（doc13: Gateway port 8642）
+  # Memory/Skills 公平性 intent（#103、doc13 §「OFF 機構」/ doc08 §比較の公平性）。
+  # 既定 OFF（fairness-safe）。dev は明示せず OFF のまま。用途別の立て方:
+  #   ・Mode A エンタメ回（学習 ON 可）: memory_enabled: true（comparison_run は false）
+  #   ・Phase 4 比較 run（強制 OFF）: comparison_run: true（memory/skills を true にすると Bridge が起動 abort）
+  # ※ これらは「運用意図」フラグ。実 Hermes の OFF は Hermes config 側が権威（doc13 §OFF 機構）。
+  # memory_enabled: false
+  # skills_enabled: false
+  # comparison_run: false
 
 # dev は Mode A（LLM単独）から始める
 traffic_mode: none

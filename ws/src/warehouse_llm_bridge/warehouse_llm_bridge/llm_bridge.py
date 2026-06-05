@@ -54,6 +54,7 @@ from warehouse_mcp_server.nav2_client import Nav2RestForwarder
 from warehouse_mcp_server.tools import WarehouseTools
 
 from warehouse_llm_bridge.executor import DispatchToolExecutor
+from warehouse_llm_bridge.fairness import assert_fairness, fairness_log_line, resolve_memory_policy
 from warehouse_llm_bridge.hermes_client import HermesClient
 from warehouse_llm_bridge.scheduler import CYCLE_WAIT_SEC, DEFAULT_CYCLE_WAIT_SEC, BridgeScheduler
 from warehouse_llm_bridge.situation import DEFAULT_EMERGENCY_MIN_DISTANCE, SituationBuilder
@@ -85,6 +86,15 @@ class LlmBridge(Node):
         )
         base_url = hermes.get("base_url") or DEFAULT_HERMES_BASE_URL
         nav2_base_url = nav2_bridge.get("base_url") or DEFAULT_NAV2_BRIDGE_BASE_URL
+        # Phase 4 comparison fairness guard (#103, doc08 §比較の公平性). Fail-closed:
+        # abort node startup if a comparison run declares Hermes memory/skills ON.
+        # This asserts warehouse INTENT only — the Bridge↔Hermes path is stateless so
+        # it cannot control/verify Hermes's actual memory state; authoritative OFF is
+        # the Hermes config (doc13 §OFF 機構). Default OFF, so non-comparison runs and
+        # Mode C/WO inherit OFF; Mode A entertainment may enable (doc08:314).
+        memory_policy = resolve_memory_policy(cfg)
+        assert_fairness(memory_policy)
+        self.get_logger().info(fairness_log_line(memory_policy))
         # Token is a secret (config/<env>/.env), NOT in config (rules/environments.md).
         api_key = os.environ.get("HERMES_API_KEY") or os.environ.get("API_SERVER_KEY", "")
         # provider/scenario are run-level labels for the Langfuse trace (doc08 §セッション
