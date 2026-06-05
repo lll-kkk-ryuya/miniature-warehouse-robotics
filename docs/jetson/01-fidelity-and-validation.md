@@ -50,7 +50,7 @@
 | # | 領域 | dev(Mac) | 近似不可の理由（実機固有） | 確定する場所 | 合否基準 / 根拠 doc |
 |---|---|:---:|---|---|---|
 | F1 | ROS ノードロジック・凍結契約・launch 合成 | ◯ | arm64 一致＋偽トピック/偽 `state.json` で完全独立検証可（doc16:211-214） | dev（pytest/CI） | unit/CI 緑。`scripts/check_consistency.py` 0 ERROR |
-| F2 | config overlay（`WAREHOUSE_ENV`・base+prod） | ◯ | パス解決は純 Python（`paths.py`）。prod=`/run/warehouse` は env 解決で再現可 | dev（unit） | `WAREHOUSE_ENV=prod` で `/run/warehouse` 解決（doc19:18 / jetson-deploy.md:154-155） |
+| F2 | config overlay（`WAREHOUSE_ENV`・base+prod） | ◯ | パス解決は純 Python（`paths.py`）。prod=`/run/warehouse` は env 解決で再現可 | dev（unit） | `WAREHOUSE_ENV=prod` で `/run/warehouse` 解決（doc19:18 / jetson-deploy.md:157-158） |
 | F3 | 2台 Gazebo 自律走行 E2E | ◯ | headless `gz sim`＋`ros_gz_bridge` 環境成立（spike GO, doc06:112）。tiryoh は ARM64-native（doc03:262）。実 bot1/bot2 E2E は sim track #8/#156 で進行（doc06:112） | dev（tiryoh Docker） | 2台が衝突せず巡回（sim。実機性能は別） |
 | F4 | **GPU / CUDA**（Isaac ROS・GPU 加速 Nav2/SLAM・GPU costmap） | ✕ | **Mac に CUDA 無し**。Isaac ROS は Jetson 専用、release-3.x は未検証（doc07:23 / doc02:90） | **実機ゲート G4**（Jetson） | CPU 版 Nav2×2 で巡回が実時間成立。GPU 利用は載れば加点（doc06:100 ユニファイド食合せ計測） |
 | F5 | **実時間性**（50ms Guardian / 100ms State Cache の jitter） | ✕ | Docker Desktop は Mac 上 VM 経由でスケジューラが別物。R-40（doc07:250）GC/GIL スパイク＝最悪応答有界でない。doc12:481 が非ハードRT明記 | **実機ゲート G3**（Jetson） | §4 G3 の jitter 合否（p99 / max・stale 検出）。最終防衛は Layer0(doc12:75-78) |
@@ -76,13 +76,13 @@
 ROS ノードロジック・**凍結契約**（`warehouse_interfaces` schema/IF）・**launch 合成**（`bringup.launch.py` の
 構文/引数解決）・**systemd unit 定義**（`deploy/jetson/` の静的検査）・**pytest**（安全機構 unit＝doc16:213）・
 **config overlay**（`WAREHOUSE_ENV` の base+prod 解決）・**2台 Gazebo 自律走行 E2E**（環境成立・spike GO
-doc06:112、sim 範囲。実 bot E2E は sim track #8/#156）。→ F1-F3, F2。**ARM64 三者一致が効く領域**（doc06:91）。
+doc06:112、sim 範囲。実 bot E2E は sim track #8/#156）。→ F1-F3。**ARM64 三者一致が効く領域**（doc06:91）。
 
 ### 3.2 原理的に近似不可（実 Jetson の "実機投入前ゲート" 必須）
 
 **GPU/CUDA**(F4)・**実時間性 jitter**(F5)・**micro-ROS 2台 WiFi UDP**(F6)・**LaserScan UDP MTU**(F7)・
 **実センサ精度**(F8)・**メモリ確定値（ユニファイド食合せ）**(F9 の確定値)・**WiFi 同時通信/discovery**(F10)・
-**Layer 0 estop**(F11)。→ §4 のゲートで合否を取る。**Mac では「無い／別物／未接続」のため値が出ない**のが本質。
+**Layer 0 estop**(F11)・**熱スロットリング/持続負荷**(F12)。→ §4 のゲートで合否を取る。**Mac では「無い／別物／未接続」のため値が出ない**のが本質。
 
 ---
 
