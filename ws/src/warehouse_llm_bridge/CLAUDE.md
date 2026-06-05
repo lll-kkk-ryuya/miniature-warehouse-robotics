@@ -14,16 +14,18 @@
 - `action_map.py` — Command→ToolCall（`gen_id` 注入 + per-call `idempotency_key` mint。既存・#27/#41）。
 - `executor.py` — `ToolExecutor`(ABC) / `DispatchToolExecutor`(注入された `async dispatch(name,args)` をラップ) / `RecordingToolExecutor`(fake)。**MCP 依存をここで遮断**。
 - `scheduler.py` — `BridgeScheduler`（pure async, 単一グローバルループ doc08:250-252）：gen++ → `gen_store.set`（B-3 publish, cycle 先頭）→ situation → **`async with tracer.turn(gen)`** で `wait_for(decide, 2.5s)`（A client-side cancel, doc08:140）→ action_map→**`tracer.tool_span` 下で** executor dispatch。fallback: timeout=前回継続 / 連続=Nav2-only（doc08:286,141）。**短期記憶（#102）**: 受理 dispatch(`status=="ok"`)から **`current_task`**(bot→destination, **set-on-accept/clear-on-stop 方針**＝navigate/yield/charge で set・stop で clear・wait は据置。格納値=destination=`_dropoffs` 相当で `active_tasks` の task_id とは別物・1:1 mirror ではない)+**`history`**(有界 `deque(maxlen=5)`, `<bot> <action> <target>`/result, 08a:82-85)を保持し次 situation へ供給。deadlock pattern-2(同一 navigate 反復 × idle 持続, 08a:296-305)/pattern-1(idle×goal保持×近接×対向, 08a:277-279)の判定に必要な history+current_task 配管を供給する（#55 で `result:"blocked"` 依存は撤廃＝dispatch 戻り値は ok/rejected/error のみ・非進捗は `status=="idle"` で判断）。
-- `llm_bridge.py` — rclpy ノード（薄い adapter）：`/llm/reasoning`・`/llm/command` publish、session_id+`LangfuseTracer` を構築、mode を builder に注入、scheduler を asyncio スレッドで駆動。**tool dispatch = 実 `WarehouseTools().dispatch`**（同一 `gen_store`/`state_store` を共有 → B-3 と Policy Gate が end-to-end で効く）。Mode A/B（`traffic_mode` none/simple）は受理された motion tool を **Nav2 Bridge REST（`:8645`）へ forward**（`Nav2RestForwarder` を注入）。Mode C（open-rmf）は Open-RMF 経由なので forwarder=None（doc15:211-219）。S2-PR2 HALF B。
+- `fairness.py` — **Phase 4 比較公平性ガード（#103, doc08 §比較の公平性）**：`resolve_memory_policy(cfg)`→`MemoryPolicy(memory_enabled,skills_enabled,comparison_run)`（`hermes.*`、既定 OFF）/ `assert_fairness`（`comparison_run` 下で memory/skills の ON 宣言を**独立**チェック=#44 流→`FairnessViolationError` で**起動 abort**）/ `fairness_log_line`（公平性ガードのログ行）。**純・unit テスト済**（ROS/Hermes 非依存）。**intent ガードであって enforcement ではない**: Bridge↔Hermes はステートレスで Hermes の memory 状態を制御・確認不可。実 OFF は Hermes config 側が権威（doc13 §OFF 機構）。
+- `llm_bridge.py` — rclpy ノード（薄い adapter）：`/llm/reasoning`・`/llm/command` publish、session_id+`LangfuseTracer` を構築、mode を builder に注入、scheduler を asyncio スレッドで駆動。**起動時に `assert_fairness`（#103 公平性ガード）を実行**（`comparison_run` × memory/skills ON 宣言なら fail-closed で起動失敗）。**tool dispatch = 実 `WarehouseTools().dispatch`**（同一 `gen_store`/`state_store` を共有 → B-3 と Policy Gate が end-to-end で効く）。Mode A/B（`traffic_mode` none/simple）は受理された motion tool を **Nav2 Bridge REST（`:8645`）へ forward**（`Nav2RestForwarder` を注入）。Mode C（open-rmf）は Open-RMF 経由なので forwarder=None（doc15:211-219）。S2-PR2 HALF B。
 
 ## 提供 (produce)
 - topic: `/llm/reasoning` (std_msgs/String, 表示用) / `/llm/command` (std_msgs/String JSON, ログ用)（doc08:428-429, doc16§3）
 - file/state: `GenStore.set(current_gen)`（B-3, cycle 毎。MCP と共有 `/tmp/warehouse/gen_store`）
 - per-call `idempotency_key`（C, action_map が mint。MCP が `check_and_add` で replay reject）
 - **Langfuse trace（Bridge 所有, S2-PR1）**: 1 trace/turn・`trace_id`=`create_trace_id(seed=f"{run_id}:{gen_id}")`（32hex 決定的）・`session_id`=`run_{mode}_{provider}_{scenario}_{ts}`・tags`[provider,mode]`+`gen_id` metadata。**#6(wo) との突合契約 = この seed**（**run_id=`WAREHOUSE_RUN_ID` env**＝#6 と同一ソース・session_id は表示ラベル/未設定時 fallback。#108 で session_id 直結＝不一致を修正。凍結契約フィールドは増やさない doc13:481）。
+- **公平性ガード（#103, intent-only）**: 起動時 `assert_fairness`＝`comparison_run` 下で `hermes.{memory_enabled,skills_enabled}` の ON 宣言を fail-closed で abort＋「公平性ガード / fairness guard」ログ行。**実 OFF の権威は Hermes config 側**（`memory.memory_enabled:false`＋`user_profile_enabled:false`＋`memory`/`skills`/`session_search` toolset 除外。doc13 §「Memory/Skills/session_search — OFF 機構」）。倉庫 intent→実 Hermes OFF の配線は Phase 4 起動ハーネスへ defer。
 
 ## 消費 (consume)
-- 契約: `warehouse_interfaces.schemas`（Situation/Command/StateSnapshot/RobotSnapshot）、`stores`（StateStore/GenStore/IdempotencyStore IF）、`config.load_config`（traffic_mode / safety.emergency_min_distance / hermes.base_url / **nav2_bridge.base_url**）
+- 契約: `warehouse_interfaces.schemas`（Situation/Command/StateSnapshot/RobotSnapshot）、`stores`（StateStore/GenStore/IdempotencyStore IF）、`config.load_config`（traffic_mode / safety.emergency_min_distance / hermes.base_url / **nav2_bridge.base_url** / **hermes.{memory_enabled,skills_enabled,comparison_run}**=#103 公平性 intent）
 - 同一トラック（in-process, doc16 §9 / #81）: `warehouse_mcp_server.tools.WarehouseTools().dispatch`（実 tool 実行）、`gen_check.GenChecker`（共有 gen_store/idempotency_store で wire）、`nav2_client.Nav2RestForwarder`（Mode A/B の REST forwarder を注入）。
 - net: Nav2 Bridge REST `POST /api/v1/{navigate,wait,stop}`（`:8645`, #86 確定契約 = `docs/mode-a/12a-integration-mode-a.md:198-363`）。受理された `dispatch_task`/`cancel_task`/`send_to_charging` のみ発火（mapping は `docs/mode-a/08a-llm-bridge-mode-a.md:164-173`）。`dropoff`→`destination` の凍結ドリフトは `nav2_client.plan_nav2_request` が明示変換（どちらの凍結フィールドも改名しない）。
 - env: `HERMES_API_KEY`/`API_SERVER_KEY`（secret）、`WAREHOUSE_PROVIDER`（Hermes active_provider を反映, 既定 default）/`WAREHOUSE_SCENARIO`（既定 demo）= trace ラベル。`LANGFUSE_*`（trace 送信先・deploy 申し送り）。
@@ -37,7 +39,7 @@
 - **C** = action_map が per-call UUID mint → MCP `GenChecker.check`→`check_and_add` で replay reject（gen_check.py:83-86 で enforce 確認済）。
 
 ## テスト
-- `tests/unit/test_situation_builder.py`（Situation 組立・CTRV 予測(直進=CV/旋回=円弧/閾値連続)・obstacle_ahead・**Mode C 省略 / Mode A 保持**・**current_task 充填(両モード)**）/ `test_hermes_client_parse.py`（`parse_command`+`parse_command_content`）/ `test_tracing.py`（`build_session_id`・`trace_seed` 決定性・`NoopTracer` no-op）/ `test_bridge_scheduler.py`（gen publish・dispatch・timeout/outage fallback・**実 WarehouseTools で B-3 stale / C replay の end-to-end**・**current_task 追跡(navigate/stop/rejected)・history 有界+pattern-2 blocked 持続**）。
+- `tests/unit/test_situation_builder.py`（Situation 組立・CTRV 予測(直進=CV/旋回=円弧/閾値連続)・obstacle_ahead・**Mode C 省略 / Mode A 保持**・**current_task 充填(両モード)**）/ `test_hermes_client_parse.py`（`parse_command`+`parse_command_content`）/ `test_tracing.py`（`build_session_id`・`trace_seed` 決定性・`NoopTracer` no-op）/ `test_bridge_scheduler.py`（gen publish・dispatch・timeout/outage fallback・**実 WarehouseTools で B-3 stale / C replay の end-to-end**・**current_task 追跡(navigate/stop/rejected)・history 有界+pattern-2 idle 持続**）。
 - 偽 LLM / 偽 state.json / `NoopTracer` で独立検証（doc16§11, langfuse 非依存）。tests/ は ws/src 間 import 可（governance 非対象）なので end-to-end は実 `warehouse_mcp_server` を使用。安全機構は `@pytest.mark.safety`。Ruff(py312/line100/double-quote) + pytest 緑を維持。
 
 ## 前提・未確定 (TODO / seam)
@@ -50,6 +52,7 @@
 - **(済) doc-drift #71 MERGED**: Bridge-mediated dispatch の doc08/doc15 reconcile は #71 で main 入り。
 - **(済) Mode C 省略**: situation builder が mode-aware（#66 Optional 化を消費）。残: Mode A/C 別 **system prompt**（doc14:159-166）は後続スライス。
 - **/stop（#54）= DEFER**: #54 OPEN・未決のため S1 の best-effort stub 維持（実装しない＝発明しない）。
+- **公平性ガード #103 = intent-only / 一部 defer**: Bridge は倉庫 intent の自己矛盾を起動時 abort するのみ＝**Hermes の実 memory 状態を保証しない**（stateless path・別 config・起動順）。**defer**: ① 倉庫 intent→実 Hermes OFF の配線（env interpolation / 生成 config / toolset 差し替え）= Phase 4 起動ハーネス責務（`deploy/hermes` owner 未割当→要予告）／② MCP token-cost **実測**（現状は config 由来概算 ~800+~500tok）= Phase 3→4／③ doc06:88「3秒ループ動作検証」= runtime 必要。docs 正本: doc13 §「Memory/Skills/session_search — OFF 機構」（PR #150）。
 
 ## 設計ドキュメント
 - docs/architecture/08（共通サイクル/フォールバック/同時発火制御）・mode-a/08a（Situation/action map/prompt）・15（MCP/競合状態）・13（Hermes）・12（State Cache/Emergency）・03（topics）・16§3,§11・17§6。
