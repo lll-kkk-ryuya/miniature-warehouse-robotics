@@ -90,7 +90,7 @@ sudo systemctl enable --now warehouse.target
 > **prod launch 引数（nav2-only 固定）**: `warehouse-nav2.service` は `ros2 launch warehouse_bringup
 > bringup.launch.py use_sim_time:=false sim:=false llm:=false …` を渡す。`bringup.launch.py` は
 > #75/PR#93・#156/PR#162 でフルスタック合成済（既定 `sim:=true`/`llm:=true`＝Mac M4 capstone・
-> bringup.launch.py:147-148,153-154）。prod は実機（gz 無し）＋ LLM を専用 unit（`warehouse-bridge.service`）で
+> bringup.launch.py:148-149,154-155）。prod は実機（gz 無し）＋ LLM を専用 unit（`warehouse-bridge.service`）で
 > 動かすため `sim:=false llm:=false` を固定して **nav2-only** 化し、gz sim / llm・nav2 bridge の二重起動を防ぐ
 > （#156 cross-lane→#127）。
 > `traffic_mode` の prod 値は `config/prod/warehouse.yaml:13`（`open-rmf`＝Mode C）と一致させる

@@ -128,7 +128,7 @@ doc06:112、sim 範囲。実 bot E2E は sim track #8/#156）。→ F1-F3。**AR
 | Hermes は GCP（Jetson でない） | doc19:18,:86（`34.4.104.112`） | bridge unit/README/healthcheck が GCP を read-only 言及（Jetson に Hermes を置かない） | ◯ |
 | micro-ROS transport | doc02:81（WiFi UDP）/ G2（distinct `client_key`） | microros unit が `udp4 --port ${MICROROS_PORT}`（既定 8888） | ◯（key 差は **ファーム側**で設定＝G2 で確認） |
 | traffic_mode 単一ソース | doc19:54（config 単一ソース）/ 11a:317（Mode C） | env.example が prod=`open-rmf` を `config/prod/warehouse.yaml:13` と同期せよと明記。`bringup.launch.py` は config を既定値に直読み（#75/PR#93・#156/PR#162 着地済） | ◯ |
-| **prod launch 引数（二重起動防止）** | prod=実機（gz 無し）＋ LLM は専用 unit `warehouse-bridge.service` | `warehouse-nav2.service:29` が `sim:=false llm:=false` を固定＝**nav2-only**（`bringup.launch.py` 既定 `sim:=true`/`llm:=true` は Mac capstone 用、:147-148,153-154） | ◯（#156 cross-lane→#127 で反映） |
+| **prod launch 引数（二重起動防止）** | prod=実機（gz 無し）＋ LLM は専用 unit `warehouse-bridge.service` | `warehouse-nav2.service:29` が `sim:=false llm:=false` を固定＝**nav2-only**（`bringup.launch.py` 既定 `sim:=true`/`llm:=true` は Mac capstone 用、:148-149,154-155） | ◯（#156 cross-lane→#127 で反映） |
 
 ### 5.2 実機なしでできる検証手順（README に追記済）
 
@@ -153,7 +153,7 @@ doc06:112、sim 範囲。実 bot E2E は sim track #8/#156）。→ F1-F3。**AR
   `safety.battery_percentage_scale`（Phase 1 実測・doc12:252）／ `ROBOT_RADIUS`（Phase 1 実測・R-42）／
   残RAM 500MB 閾（doc06:98 の Go/No-Go 値）。いずれも到着後に G1/G3/G5 で更新。
 - **prod nav2 起動（本 PR で反映・#156 cross-lane→#127）**: `bringup.launch.py` は #75/PR#93・#156/PR#162 で
-  フルスタック合成され、既定 `sim:=true`/`llm:=true`（Mac capstone・:147-148,153-154）。prod は
+  フルスタック合成され、既定 `sim:=true`/`llm:=true`（Mac capstone・:148-149,154-155）。prod は
   `warehouse-nav2.service:29` が `sim:=false llm:=false` を固定して **nav2-only** 化し、gz sim / llm・nav2 bridge
   の二重起動を防ぐ。G4（nav2/SLAM 性能）の実効は実機到着後＝§4。
 - **Phase 1 追加 unit**: `warehouse_mcp_server` / `warehouse_nav2_bridge`(Mode A/B) / WO Bridge は別トラック

@@ -3,7 +3,7 @@
 # top-level bring-up (warehouse_bringup/launch/bringup.launch.py; itself Includes
 # nav2_bringup.launch.py — nav2 composed by #75/PR#93, full Phase 0.5 stack by #156/PR#162).
 # bringup.launch.py now DEFAULTS to sim:=true / llm:=true for the Mac M4 capstone
-# (bringup.launch.py:147-148,153-154). prod is real hardware (no Gazebo) and runs the
+# (bringup.launch.py:148-149,154-155). prod is real hardware (no Gazebo) and runs the
 # LLM commander as its own unit (warehouse-bridge.service), so the ExecStart below pins
 # sim:=false llm:=false to keep this a nav2-only / safety-only bring-up and avoid
 # double-starting gz sim or the llm/nav2 bridge (#156 cross-lane -> #127).
