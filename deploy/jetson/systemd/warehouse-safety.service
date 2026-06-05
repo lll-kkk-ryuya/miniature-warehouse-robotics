@@ -1,5 +1,5 @@
 [Unit]
-# Emergency Guardian — Layer 1 software safety (doc12:80-84, :383 50ms target):
+# Emergency Guardian — Layer 1 software safety (doc12:80-84, :390 50ms target):
 # AMCL distance watch -> Nav2 goal cancel + cmd_vel stop, battery policy, blocked
 # timeout, /emergency/event. MUST be up whenever the robots can move; nav2
 # BindsTo= this unit so motion never runs without the guardian (and stops if the
