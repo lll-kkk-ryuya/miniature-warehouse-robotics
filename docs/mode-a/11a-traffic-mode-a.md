@@ -119,7 +119,7 @@ class SimpleTrafficManager(TrafficManager):
     #   候補A: Nav2のゴール到達コールバックで解放
     #   候補B: ロボット位置が通路外に出たことをposition監視で検出
     #   候補C: タイムアウト（一定時間後に自動解放、デッドロック防止）
-    #   → A + C の組み合わせを推奨（正常時はA、異常時はCでフォールバック）
+    #   → A + C を推奨（正常時=A, 異常時=C）。#125 デモの確定値は §9（一般 planner は Phase 3）
 
     def get_traffic_state(self):
         return {
@@ -425,6 +425,49 @@ Phase 3前半: TrafficManager + LLM Bridge + Claude統合
   - モードA/BでClaude動作検証
   工数: Phase 3本来の工数内
 ```
+
+---
+
+## 9. #125 yield: デモ用 route→隘路トポロジと lock 解放トリガ（#125 デモぶん確定・一般は Phase 3）
+
+> §3（モードB）の `SimpleTrafficManager`（`aisle_locks` / `submit_task` 待機 / `release_aisle`）は実装済（`ws/src/warehouse_traffic/warehouse_traffic/traffic_logic.py:119-160`）。本節は **#125 yield デモ（真200mm隘路で2台 head-on → 一方が入口で待機 → 最接近 ≥0.15m）** に必要な**最小トポロジと解放タイミング**を、§3:118-122・T8（`docs/shared/07-research-notes.md:87`）・R-28（`07-research-notes.md:187`）の**デモ範囲ぶん**として確定する。**一般の route planner と timeout 実測値は Phase 3**（§3:99,118-122）— 本節はそれを置き換えず、risk register T8/R-28 は一般解として Phase 3 のまま残す。
+>
+> ロック/route キーは**凍結契約に入れない**: `warehouse_interfaces` の `KNOWN_LOCATIONS`（`locations.py:11-23`・9地点）に無く、`traffic_logic.py:17-21` の通り `route_planner` で**注入**する（コードで凍結キーを発明しない）。
+
+### 9.1 ロックキー（200mm隘路 = 2本）
+
+`aisle_locks` のキーは §3 illustrative の `route_A` / `route_B`（doc11a:96,139-142）をそのまま使い、物理隘路（単一ソース `warehouse_sim.layout.AISLES`）へ対応づける（新名称は発明しない）:
+
+| ロックキー（`aisle_locks`） | 物理隘路（layout.AISLES タグ） | 隣接 shelf | 中心列 x | すれ違い |
+|---|---|---|---|---|
+| `route_A` | 通路A（タグ `"a"`） | shelf_1↔shelf_2 | ≈0.45 | **不可**（幅200mm・車体直径 = `2×ROBOT_RADIUS`。live 最接近 0.074m, #144） |
+| `route_B` | 通路B（タグ `"b"`） | shelf_2↔shelf_3 | ≈0.95 | 不可 |
+
+各隘路は shelf 行（y∈[0.15,0.45]）を貫く **N↔S の単線通路**。2台同時進入は物理的に回避不能（#144 live 実証）→ **排他ロックで直列化**し、後着は隘路**入口（open な北側）で待機**する＝ ≥0.15m が成立する唯一の幾何。
+
+### 9.2 route → ロックキー写像（最小）
+
+`plan_route(pickup, dropoff)` は route が貫くロックキー列を返す（`RoutePlanner = Callable[[str, str], list[str]]`, `traffic_logic.py:43-46`）。最小デモ規則:
+
+- route の2端点が **shelf 行を南北に挟み**、かつ隘路 X の中心列を通るなら、その route は `[<key_X>]` を含む。
+- **#125 デモ**: 北側ステージング（y≈0.8）↔ 通路A 南端（x≈0.45, y≈0.12）の**対向2タスクはともに `["route_A"]`** を返す ＝ 同一ロックを争う。先着が確保し、後着の `submit_task` は `{"status":"waiting","wait_for":"route_A"}` を返す（§3:103-107）。
+
+> **ゴール到達性（#144 live 知見）**: 凍結 `KNOWN_LOCATIONS` の南側地点（`shipping_station` / `charging_station`, y=0.1）は shelf 直下で **robot 中心が置けず到達不能**。デモの南端ゴールは**隘路整列座標**（x≈0.45/0.95, y≈0.12・名前付き location では無い）を使う。名前付き地点の再配置は location 座標所有（skeleton / #124）の Phase-2 survey 案件で、本トラックは触らない。
+
+### 9.3 lock 解放トリガ（A 主 + C 副 = §3:118-122 の推奨を本デモで確定）
+
+| 区分 | トリガ | 判定 |
+|---|---|---|
+| **主（A）** | occupant が隘路を**通過完了** | occupant の Nav2 goal が `SUCCEEDED`（goal を隘路遠端の先に置く＝ **goal 到達 ≒ 隘路退出**）。補強の位置監視（候補B）: occupant 中心が隘路の**遠側 y 境界**（進入と反対側の shelf 行端 ∓ `ROBOT_RADIUS`）を越えたら退出とみなし即解放してよい |
+| **副（C）** | **timeout** フォールバック | ロック取得から `AISLE_LOCK_TIMEOUT_S` 経過で自動 `release_aisle`。**暫定デモ既定値 = 30s**（期待通過 ~3-5s = 列長 ≈0.7m / `vx ≤ 0.3` ＋ 計画・回避 を十分上回り、異常時のデッドロックのみ解く）。**値は未凍結**＝ `# TODO(Phase 3)`: 実測で確定・config 化（T8=07:87 / CLAUDE.md:25「timeout 値未定」を本デモぶん暫定化） |
+
+- §3:122「A + C 推奨」のトリガ**型**を本デモで確定（**正常時=A** 通過完了で解放 / **異常時=C** timeout で強制解放）。timeout の**値**は暫定（上記）。
+- 解放後、待機 bot を **`submit_task` 再投入**（Node が保持していた goal を再発行）。
+- 待機の物理停止/再開は **twist_mux 経由**: 待機 = その bot の Nav2 goal を保持（未発行 or cancel）＝ prio-10 nav2 入力が出ない。緊急 prio-100（Emergency Guardian）とは独立（`warehouse_bringup/config/twist_mux.yaml`）。timeout は**ロック齢**で判定し、退役した `status=="blocked"` 述語には依存しない（#128 / `docs/shared/10-system-qanda.md:307`）。
+
+### 9.4 安全不変（不変）
+
+本機構は**速度・footprint・inflation を変えない**。ハード速度上限 `MAX_LINEAR_VELOCITY = 0.3 m/s`（`warehouse_interfaces/safety.py:18`・config `safety.max_linear_velocity` は `config.py` が ≤cap 検証）・`inscribed_radius = ROBOT_RADIUS`（`warehouse_description.robot_dimensions`, =0.075 R-42）は不変。yield は「先着優先で後着が**入口で待つ**」だけの**論理層**で、物理的な壁クリアランス保証（inscribed）と独立。`warehouse_interfaces` 契約変更なし（ロック/route キーは注入・本節冒頭）。
 
 ---
 
