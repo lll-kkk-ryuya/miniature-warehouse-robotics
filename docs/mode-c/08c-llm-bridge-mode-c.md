@@ -263,7 +263,7 @@ Nav2（50ms）     → Open-RMF（即時）  → Claude（1-3秒）
 - Open-RMFは「どう実現するか（HOW: 経路・衝突回避・待機時間）」を担当
 - Mode Cでは、Claudeの指示はOpen-RMF Task API経由でNav2に送る（Nav2 MCP Serverは使わない）
 - Open-RMFの調整中（conflicts.status = "in_progress"）はClaudeは介入しない
-- Open-RMFの調整が3回失敗した場合のみClaudeにエスカレーション。**通知経路**: producer `11c RMFTrafficManager.get_traffic_state()` が解消不能な衝突を situation の `traffic.escalation`（非null）に載せる → 司令官は §システムプロンプト の `traffic.escalation` gate で介入する（階層は §エスカレーション階層 / `11c §6`＝`11c-traffic-mode-c.md:247-275`）
+- Open-RMFの調整が3回失敗した場合のみClaudeにエスカレーション。**通知経路**: producer `11c RMFTrafficManager.get_traffic_state()` が解消不能な衝突を situation の `traffic.escalation`（非null）に載せる → 司令官は §システムプロンプト の `traffic.escalation` gate で介入する（階層は §エスカレーション階層 / `11c §6`＝`11c-traffic-mode-c.md:342-370`）
 - Claudeが強制的にOpen-RMFを無視する仕組み（override等）は設けない
 
 ## 通信フロー（タイミング）
