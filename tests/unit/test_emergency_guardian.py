@@ -17,6 +17,8 @@ from warehouse_interfaces.safety import (
 from warehouse_safety.guard_logic import (
     BlockTracker,
     BotState,
+    Decision,
+    EdgeLatch,
     build_event,
     distance,
     evaluate,
@@ -199,3 +201,63 @@ def test_block_tracker_accrues_then_resets() -> None:
     assert tracker.update("bot1", 0.0, 0.0, now=100.0) == 0.0  # first sample
     assert tracker.update("bot1", 0.0, 0.0, now=105.0) == pytest.approx(5.0)  # stationary
     assert tracker.update("bot1", 1.0, 1.0, now=106.0) == 0.0  # moved >= epsilon -> reset
+
+
+# --- #126 edge-trigger latch (gl.EdgeLatch) ---------------------------------
+# /emergency/event must fire on the rising edge of each (bot, reason) alarm, not
+# at 20Hz while a condition holds. The physical stop (cmd_vel) stays level — that
+# wiring lives in the rclpy node and is not exercised here; this locks the latch
+# decision logic that the node consults before publishing an event.
+
+
+def _estop(bot: str, reason: str = "near_collision") -> Decision:
+    return Decision(bot, "estop", reason)
+
+
+@pytest.mark.safety
+def test_edge_latch_fires_once_then_suppresses_held_condition() -> None:
+    latch = EdgeLatch()
+    held = [_estop("bot1")]
+    assert latch.rising(held) == {("bot1", "near_collision")}  # rising edge -> emit
+    assert latch.rising(held) == set()  # still held -> no re-spam (the 20Hz fix)
+    assert latch.rising(held) == set()
+
+
+@pytest.mark.safety
+def test_edge_latch_refires_after_condition_clears_and_recurs() -> None:
+    latch = EdgeLatch()
+    key = {("bot1", "near_collision")}
+    assert latch.rising([_estop("bot1")]) == key  # rise
+    assert latch.rising([]) == set()  # cleared -> nothing emitted, latch resets
+    assert latch.rising([_estop("bot1")]) == key  # recurs -> rises again
+
+
+@pytest.mark.safety
+def test_edge_latch_keys_each_bot_reason_independently() -> None:
+    latch = EdgeLatch()
+    # bot1 is in proximity AND critically low; both alarms rise once, together.
+    first = latch.rising([_estop("bot1", "near_collision"), _estop("bot1", "battery_critical")])
+    assert first == {("bot1", "near_collision"), ("bot1", "battery_critical")}
+    # Proximity persists, battery recovers: nothing new rises (proximity is held,
+    # battery_critical merely dropped — a falling edge emits no event).
+    assert latch.rising([_estop("bot1", "near_collision")]) == set()
+    # Battery goes critical again while proximity still holds -> only battery rises.
+    again = latch.rising([_estop("bot1", "near_collision"), _estop("bot1", "battery_critical")])
+    assert again == {("bot1", "battery_critical")}
+
+
+@pytest.mark.safety
+def test_edge_latch_recovery_action_also_latches() -> None:
+    # A sustained blocked-timeout (recovery, not estop) must not re-spam either.
+    latch = EdgeLatch()
+    rec = [Decision("bot2", "recovery", "blocked_timeout")]
+    assert latch.rising(rec) == {("bot2", "blocked_timeout")}
+    assert latch.rising(rec) == set()
+
+
+@pytest.mark.safety
+def test_edge_latch_distinct_bots_rise_independently() -> None:
+    latch = EdgeLatch()
+    assert latch.rising([_estop("bot1")]) == {("bot1", "near_collision")}
+    # bot2 enters proximity a tick later; only bot2 is fresh (bot1 is held).
+    assert latch.rising([_estop("bot1"), _estop("bot2")]) == {("bot2", "near_collision")}

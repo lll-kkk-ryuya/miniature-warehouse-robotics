@@ -31,7 +31,8 @@ from warehouse_interfaces.schemas import StateSnapshot
 _BOTS: tuple[str, ...] = ("bot1", "bot2")
 _MOVING_EPS = 0.01  # m/s; below this |linear| the bot is reported "idle"
 _EMERGENCY_HISTORY_MAX = 50
-_EMERGENCY_ACTIVE_MAX = 50  # bound active too: a sustained estop publishes ~20 events/s
+_EMERGENCY_ACTIVE_MAX = 50  # bound active too: distinct/recurring events still accrue (no
+# clear/resolution protocol yet; the Guardian edge-triggers since #126 so duplicates don't)
 
 
 # --- fake-input dataclasses (node fills these from ROS messages; tests use them directly) ---
@@ -165,10 +166,12 @@ class StateAggregator:
         """Record an ``/emergency/event`` into the active list + a bounded history ring.
 
         Phase-1 rule: every event is appended to both ``active`` and ``history``,
-        each bounded to its last-N ring so a sustained estop (the Guardian re-emits
-        ~20 events/s while the condition holds) cannot grow ``state.json`` without
-        limit. A proper clear/resolution protocol + Guardian-side edge-triggering
-        (so ``active`` reflects only currently-unresolved events) is a Phase-2 TODO.
+        each bounded to its last-N ring so distinct/recurring events cannot grow
+        ``state.json`` without limit. Guardian-side edge-triggering landed in #126
+        (the Guardian now emits on the rising edge of a ``(robot, type)`` alarm, not
+        ~20 events/s while it holds), so ``active`` no longer fills with duplicates;
+        a clear/resolution protocol (so ``active`` reflects only currently-unresolved
+        events) remains a Phase-2 TODO.
         """
         evt = dict(event.raw)
         self._emergency_active.append(evt)

@@ -176,3 +176,37 @@ class BlockTracker:
             self._last_moved_t[bot] = now
             return 0.0
         return now - self._last_moved_t.get(bot, now)
+
+
+@dataclass
+class EdgeLatch:
+    """Rising-edge latch over the active ``(bot, reason)`` alarm set (#126, doc12).
+
+    ``evaluate`` is LEVEL-triggered: it re-returns a Decision on every 50ms tick a
+    condition holds, which made the node re-publish ``/emergency/event`` at 20Hz
+    (the edge-trigger Phase-2 TODO). The *physical* stop must stay level — the node
+    re-asserts the zero ``Twist`` every tick because the twist_mux prio-100
+    emergency input ages out after its 0.5s timeout (doc15:389-395) — but the
+    *event*, the LLM-review notification the State Cache ingests, should fire once
+    on the rising edge and again only after the condition clears and recurs.
+
+    rclpy-free so the edge semantics are unit-tested with the rest of guard_logic
+    (R-26). The frozen ``/emergency/event`` shape (doc12:141-150) is unchanged: this
+    gates WHEN an event is published, never WHAT it contains.
+    """
+
+    _active: set[tuple[str, str]] = field(default_factory=set)
+
+    def rising(self, decisions: list[Decision]) -> set[tuple[str, str]]:
+        """Feed this tick's decisions; return the ``(bot, reason)`` keys that are
+        NEWLY active (rising edge → publish an event).
+
+        Latches the active set so a held condition returns nothing on the next
+        tick, while a cleared-then-recurring condition rises again. Keying on
+        ``(bot, reason)`` latches each alarm independently, so a bot under
+        simultaneous ``near_collision`` + ``battery_critical`` emits both once.
+        """
+        now = {(d.bot, d.reason) for d in decisions}
+        fresh = now - self._active
+        self._active = now
+        return fresh

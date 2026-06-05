@@ -25,5 +25,5 @@
 ## 前提・未確定 (TODO)
 - # ✅(#44) battery スケールは config `safety.battery_percentage_scale`（既定 percent=fail-safe）で明示宣言＋共有 `normalize_battery_percent` で正規化（Guardian と単一化・split-brain 解消）。実機ドライバの実スケール計測は Phase 1 に残（既定は安全側）
 - # TODO(Phase 2) status を Nav2 nav_status と統合（現状は velocity から best-effort）
-- # TODO(Phase 2) emergency active の clear/resolution プロトコル + Guardian 側 edge-trigger（現状は append のみ・active/history とも 50 件 ring で bound 済み）
+- # TODO(Phase 2) emergency active の clear/resolution プロトコル（active が未解決 event のみ反映するように）。Guardian 側 edge-trigger は ✅#126 実装済（rising edge のみ発行＝重複は出ない）。active/history は依然 50 件 ring で bound（distinct/再発 event は蓄積しうるため defense 維持）
 - 非有限 pose/velocity/heading は setter で drop（last-good 保持）→ state.json に NaN/Infinity を出さない（RFC-8259 valid）。battery NaN・scan inf/nan も同様に drop。
