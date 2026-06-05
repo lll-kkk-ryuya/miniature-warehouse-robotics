@@ -65,6 +65,18 @@ def _nonneg(value: object) -> float:
     return speed if math.isfinite(speed) and speed >= 0.0 else 0.0
 
 
+def _positive(value: object, default: float) -> float:
+    """Coerce a ros param to a finite, strictly-positive float (else ``default``).
+
+    Used for the publish rate and the dead-man ``stop_timeout``: a non-finite or
+    <=0 value would either spin the timer at a 0.0 period or DISABLE the dead-man
+    (``elapsed > NaN`` is always False -> a keypress latches velocity forever), so
+    fall back to the safe default rather than honour a degenerate value.
+    """
+    out = float(value)
+    return out if math.isfinite(out) and out > 0.0 else default
+
+
 class TeleopKeyboard(Node):
     """rclpy node: WASD/arrow keys -> clamped Twist -> ``/<bot>/cmd_vel``."""
 
@@ -92,8 +104,10 @@ class TeleopKeyboard(Node):
         self._max_angular = _nonneg(
             self.declare_parameter("max_angular_velocity", DEFAULT_MAX_ANGULAR).value
         )
-        publish_rate = float(self.declare_parameter("publish_rate", 10.0).value)
-        self._stop_timeout = float(self.declare_parameter("stop_timeout", 0.6).value)
+        # Rate / dead-man timeout: finite & >0, else default — a NaN stop_timeout
+        # would disable the dead-man (a keypress would latch velocity forever).
+        publish_rate = _positive(self.declare_parameter("publish_rate", 10.0).value, 10.0)
+        self._stop_timeout = _positive(self.declare_parameter("stop_timeout", 0.6).value, 0.6)
         self.shutdown_requested = False
 
         topic = f"/{self._bot}/cmd_vel"
@@ -109,8 +123,7 @@ class TeleopKeyboard(Node):
         self._old_term = None
         self._raw = self._enter_raw_mode()
 
-        period = 1.0 / publish_rate if publish_rate > 0 else 0.1
-        self._timer = self.create_timer(period, self._tick)
+        self._timer = self.create_timer(1.0 / publish_rate, self._tick)
 
         self.get_logger().info(
             f"teleop_keyboard up: publishing {topic} "

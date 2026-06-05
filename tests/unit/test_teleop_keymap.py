@@ -13,6 +13,7 @@ from warehouse_interfaces.safety import MAX_LINEAR_VELOCITY
 from warehouse_teleop.keymap import (
     ARROW_MAP,
     DEFAULT_LINEAR_STEP,
+    STOP_KEYS,
     decode_key,
     key_to_twist,
 )
@@ -53,6 +54,13 @@ def test_right_is_negative_angular_only(key: str) -> None:
 def test_stop_and_unmapped_keys_are_zero(key: str) -> None:
     # Stop keys AND any unmapped key -> (0,0): an unknown key never moves the bot.
     assert key_to_twist(key, lin_step=0.3, ang_step=1.0) == (0.0, 0.0)
+
+
+@pytest.mark.safety
+def test_every_declared_stop_key_stops() -> None:
+    # The STOP_KEYS contract: each declared stop key maps to (0,0) regardless of step.
+    for key in STOP_KEYS:
+        assert key_to_twist(key, lin_step=0.3, ang_step=1.0) == (0.0, 0.0)
 
 
 # ── safety clamp boundaries (R-26) ───────────────────────────────────────────
