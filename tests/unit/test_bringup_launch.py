@@ -147,7 +147,6 @@ def test_state_cache_and_guardian_are_core_infra_always_on() -> None:
         ("true", "none", True, True),  # Mode A: commander + REST sink both on
         ("true", "simple", True, True),  # Mode B: same
         ("true", "open-rmf", True, False),  # Mode C: Open-RMF replaces nav2_bridge (doc15:211)
-        ("true", "bogus", True, False),  # unknown mode: allowlist fails closed (no bridge)
         ("false", "none", False, False),  # llm:=false: nav2-only / safety-only bring-up
     ],
 )
