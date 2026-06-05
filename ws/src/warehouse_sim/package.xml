@@ -13,6 +13,10 @@
   <exec_depend>ros_gz_bridge</exec_depend>
   <exec_depend>robot_state_publisher</exec_depend>
   <exec_depend>rviz2</exec_depend>
+  <!-- sim_battery_publisher node (#44/#156): synthetic /bot{n}/battery so bots reach
+       the situation JSON (doc12:207). The rest of the package is data/launch only. -->
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
 
   <test_depend>python3-pytest</test_depend>
 
