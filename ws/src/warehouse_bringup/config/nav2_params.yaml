@@ -236,11 +236,14 @@ local_costmap:
           raytrace_max_range: 2.0
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        # 200mm bottleneck aisle: keep inflation tight or the planner can't fit
-        # (robot diameter 0.15 in a 0.2 m aisle). # TODO(Phase 2 実測): tune for
-        # the bottleneck (doc04 200mm, doc09:183).
-        inflation_radius: 0.10
-        cost_scaling_factor: 3.0
+        # 200mm bottleneck aisle (R-42, doc07:252): robot Ø0.15 in a 0.2 m channel leaves
+        # ~25mm/side. inflation_radius 0.10 SATURATED the whole channel (centre is only 0.10 m
+        # from each wall) -> NavFn could not commit a path and bots stalled in inscribed cells
+        # (#125 live 2-bot run). Tightened to wall-proximity only: inflation_radius 0.085 (just
+        # over inscribed 0.075) + steep cost_scaling_factor 10 -> channel centre is low-cost and
+        # plannable while wall-hugging stays penalised (#125 / R-42 "壁直近のみ高コスト").
+        inflation_radius: 0.085
+        cost_scaling_factor: 10.0
 
 global_costmap:
   global_costmap:
@@ -285,8 +288,8 @@ global_costmap:
           raytrace_max_range: 2.0
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        inflation_radius: 0.10   # # TODO(Phase 2 実測): bottleneck tuning
-        cost_scaling_factor: 3.0
+        inflation_radius: 0.085   # R-42 bottleneck: see local_costmap.inflation_layer (#125)
+        cost_scaling_factor: 10.0
 
 planner_server:
   ros__parameters:
