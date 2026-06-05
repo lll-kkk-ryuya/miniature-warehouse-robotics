@@ -5,7 +5,7 @@ The ``kpi_collector`` node is a thin rclpy shell; its score-send logic lives in 
 chain — fake ``audit.jsonl`` (``tmp_path`` + ``WAREHOUSE_AUDIT_LOG_PATH``) → ``read_audit_log``
 → ``compute_kpis`` → ``send_scores`` with a fake v4 client + an injected deterministic
 ``create_fn`` — and assert the **gate matrix** plus the documented score metadata
-(``provider`` + ``gen_id`` added this slice; doc08:341-346 / doc13:480-483). No real langfuse
+(``provider`` + ``gen_id`` added this slice; doc08:360,369 / doc13:516,519). No real langfuse
 SDK is imported.
 """
 
@@ -111,7 +111,7 @@ def test_resolve_provider_none_when_unset_or_blank() -> None:
     assert resolve_provider("   ") is None  # whitespace is treated as unset
 
 
-# ── build_score_metadata (doc08:341-346) ─────────────────────────────────────
+# ── build_score_metadata (doc08:360,363) ─────────────────────────────────────
 
 
 @pytest.mark.unit
@@ -257,7 +257,7 @@ def test_gate_c_full_creds_send_with_provider_and_gen_id_metadata(
     assert tct["metadata"] == {"run_id": "run-c", "mode": "A", "provider": "claude", "gen_id": 7}
 
     eff_meta = [c["metadata"] for c in fake.calls if c["name"] == "efficiency"]
-    assert {m["robot"] for m in eff_meta} == {"bot1", "bot2"}  # robot added per-leg (doc08:343)
+    assert {m["robot"] for m in eff_meta} == {"bot1", "bot2"}  # robot added per-leg (doc08:369)
     for m in eff_meta:
         assert m["provider"] == "claude" and m["gen_id"] == 7 and m["run_id"] == "run-c"
 
