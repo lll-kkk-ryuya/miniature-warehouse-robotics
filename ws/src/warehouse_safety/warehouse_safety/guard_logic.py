@@ -25,6 +25,7 @@ class BotState:
     y: float | None
     battery_pct: float | None  # None or NaN = unknown
     blocked_duration: float  # seconds stationary (from BlockTracker)
+    pose_age: float | None = None  # s since last /amcl_pose; None until 1st pose (#126 freshness)
 
 
 @dataclass(frozen=True)
@@ -33,8 +34,8 @@ class Decision:
 
     bot: str
     action: str  # "estop" | "recovery"
-    reason: str  # "near_collision" | "battery_critical" | "blocked_timeout"
-    detail: dict | None = None  # optional doc12:322-339 block (proximity case)
+    reason: str  # "near_collision" | "battery_critical" | "blocked_timeout" | "pose_stale"
+    detail: dict | None = None  # optional doc12:322-339 block (proximity / pose_stale case)
 
 
 def distance(ax: float, ay: float, bx: float, by: float) -> float:
@@ -69,12 +70,17 @@ def evaluate(
     *,
     distance_threshold: float,  # cfg safety.emergency_min_distance (NOT the speed cap)
     blocked_timeout: float,  # cfg safety.blocked_timeout
+    pose_freshness_timeout: float,  # cfg safety.pose_freshness_timeout (#126; amcl_pose staleness)
 ) -> list[Decision]:
     """Reflex decisions in doc12 ``check_safety`` order.
 
     1. inter-bot distance < threshold (both poses known) -> estop BOTH;
     2. per-bot critical battery -> estop;
-    3. per-bot blocked longer than timeout -> recovery (LOW-HARM, not an estop).
+    3. per-bot blocked longer than timeout -> recovery (LOW-HARM, not an estop);
+    4. per-bot /amcl_pose older than ``pose_freshness_timeout`` -> estop
+       (precautionary, fail-safe: localization likely lost, doc12 §freshness guard).
+       ``pose_age`` is None until the first pose, so a not-yet-localized bot is
+       never estopped at startup (#126).
     """
     decisions: list[Decision] = []
 
@@ -118,6 +124,25 @@ def evaluate(
     for b in (bot_a, bot_b):
         if b.blocked_duration > blocked_timeout:
             decisions.append(Decision(b.bot, "recovery", "blocked_timeout", None))
+
+    # (4) pose freshness -> estop (precautionary, fail-safe; doc12 §freshness guard).
+    # A bot whose /amcl_pose feed has gone stale is navigating with an unknown
+    # position, so it is stopped. pose_age is None until the first pose arrives, so a
+    # not-yet-localized bot is NOT estopped (no fix yet -> a spurious startup stop).
+    # Strict `>` mirrors blocked_timeout. The node's physical stop is level, so it
+    # auto-releases once poses resume (EdgeLatch re-arms on the falling edge). This
+    # is intentionally additive: proximity (1) still runs on the last-known pose, so
+    # the guard can only ADD an estop, never suppress a real near_collision one.
+    for b in (bot_a, bot_b):
+        if b.pose_age is not None and b.pose_age > pose_freshness_timeout:
+            decisions.append(
+                Decision(
+                    b.bot,
+                    "estop",
+                    "pose_stale",
+                    {"pose_age": b.pose_age, "freshness_timeout": pose_freshness_timeout},
+                )
+            )
 
     return decisions
 

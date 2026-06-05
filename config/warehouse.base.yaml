@@ -15,6 +15,10 @@ safety:
   max_linear_velocity: 0.3   # m/s 上限（厳守）
   emergency_min_distance: 0.3   # m（2台間。doc12 DISTANCE_THRESHOLD と一致。TODO: Phase 2 実測で確定）
   blocked_timeout: 10.0   # s, Nav2 recovery trigger（doc12 BLOCKED_TIMEOUT）。TODO: Phase 2 実測で確定
+  # #126 freshness guard: amcl_pose 途絶（localization ロスト）→ precautionary estop の鮮度窓。
+  # 既定 1.0s は R-39（doc07:249）の AMCL 5-10Hz=100-200ms 正常間隔の ~5×（正常 cadence で誤発火しない）。
+  # 正本 = doc12 §「Emergency Guardian — pose freshness guard」。TODO: Phase 2 実機 AMCL レートで確定。
+  pose_freshness_timeout: 1.0   # s
   # #44: BatteryState.percentage の driver スケール。percent=0..100 / fraction=0..1(REP-147)。
   # 既定 percent は fail-safe（fraction ドライバを percent と読むと誤 estop=安全側、見逃しは起きない）。
   # State Cache・Emergency Guardian が共有 helper(warehouse_interfaces.safety.normalize_battery_percent)
