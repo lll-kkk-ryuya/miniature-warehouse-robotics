@@ -45,7 +45,7 @@ check_consistency.py ─┤
 ## 3. モデル判定 `/consistency-audit` skill
 
 [.claude/skills/consistency-audit/SKILL.md](../../.claude/skills/consistency-audit/SKILL.md)。`context: fork` + `agent: docs-reviewer` で**隔離コンテキスト**に重い grep&compare を逃がし findings だけ返す。決定論チェッカーを先に走らせ、その上で**機械では無理な**意味的・doc 跨ぎ矛盾（凍結契約 vs 例示 JSON、トピック契約 vs 実コード、doc08/`stop`・doc08a/`blocked` 類、鮮度、リンク腐敗）を judgment 監査する。
-- 意味的矛盾は**解決方針を決め打ちせず**、docs に「⚠️ 未解決」注記 + **追跡 Issue**（運用例: #54 / #55）。
+- 意味的矛盾は**解決方針を決め打ちせず**、docs に「⚠️ 未解決」注記 + **追跡 Issue**（運用例: #55。#54 もこのパターンで起票され、後に解決＝/stop 撤回）。
 
 ## 4. Claude Code hook 配線
 

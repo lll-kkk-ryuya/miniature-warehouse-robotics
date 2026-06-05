@@ -28,7 +28,7 @@
 - `tests/unit/test_nav2_bridge_core.py`（23 ケース, **py3.12**）：5 endpoint・全エラーコード（INVALID_ROBOT/LOCATION/VIA/DURATION・ALREADY_NAVIGATING 409・NAV2_NOT_READY 503）・stop 冪等・status・health・`poll_results`（nav 完了/失敗・wait 期限）・`from_config`。`FakeNavigatorBackend` + 注入 clock で **ROS/FastAPI 非依存**。ruff(py312/line100/double-quote) + ruff format 緑。
 
 ## 前提・未確定 (TODO / seam)
-- **part 2（実 tool dispatch）**: `warehouse_llm_bridge` の log スタブ executor を実 backend に差し替え。**#81 で同一トラック import が許可**（ci.yml track-aware）されたため in-process `WarehouseTools.dispatch` 注入 or stdio subprocess の選択は part 2 で確定。キャンセル手段は **#54 DEFER** に整合させる。
+- **part 2（実 tool dispatch）**: `warehouse_llm_bridge` の log スタブ executor を実 backend に差し替え。**#81 で同一トラック import が許可**（ci.yml track-aware）されたため in-process `WarehouseTools.dispatch` 注入で確定・採用（#104）。キャンセル手段は **#54 解決**（明示 Hermes `/v1/runs/{id}/stop` 撤回・Layer A は client-side cancel のみ・主担保 B-3+C）に整合。
 - **part 3（MCP→nav2_bridge 配線）**: `warehouse_mcp_server` の `dispatch_task`/`cancel_task` が Policy Gate accept 後に nav2_bridge REST（`/navigate`・`/stop`）へ POST（HTTP client を注入しテストは stub）。境界に `warehouse_mcp_server` 追加（承認済）。**安全クリティカル経路**のため part 1 とは別 commit で慎重に。
 - **Phase 3 実機 verify**: 2× `BasicNavigator` 同居の namespace/singleton 危険（doc12:372）と FastAPI↔rclpy スレッド競合（backend lock で緩和）、readiness（`waitUntilNav2Active`）、feedback の progress/eta は **実 sim/実機で確認**（#67 E2E）。
 - **via/WAYPOINTS**: doc12a:351 の WAYPOINTS 辞書は未凍結。現状 `via` は凍結 `locations` で検証。専用 waypoint 契約が要るなら contract PR（発明しない）。
