@@ -7,13 +7,13 @@ lives here as pure functions so it can be exercised end-to-end without a ROS bui
 (inject a fake :class:`~warehouse_orchestrator.langfuse_sink.LangfuseScoreSink` + a fake
 ``create_fn``). The node just supplies its params/env and flushes/logs around the result.
 
-Documented score metadata (doc08:341-346)::
+Documented score metadata (doc08:360,363)::
 
     {"robot": "bot1", "mode": "A", "provider": "claude", "gen_id": gen_id}
 
 ``robot`` is added per-leg by the efficiency send; ``provider`` comes from the new
 ``provider`` param / ``WAREHOUSE_PROVIDER`` env (doc08:367); ``gen_id`` is the audit row's
-generation (the trace seed, doc13:480-483). ``run_id`` is kept as an additive extra (the
+generation (the trace seed, doc13:516,519). ``run_id`` is kept as an additive extra (the
 other half of the deterministic trace seed ``f"{run_id}:{gen_id}"``, #73) — we add
 ``provider``/``gen_id`` to the prior ``{run_id, mode}`` rather than claiming a byte-for-byte
 match with doc08's illustrative dict (docs-first.md: example vs frozen).
@@ -25,6 +25,12 @@ from collections.abc import Callable, Mapping, Sequence
 from warehouse_orchestrator.audit_reader import AuditEntry
 from warehouse_orchestrator.kpi import KpiReport, latest_gen_id
 from warehouse_orchestrator.langfuse_sink import LangfuseScoreSink
+from warehouse_orchestrator.tags import (
+    TAG_KEY_GEN_ID,
+    TAG_KEY_MODE,
+    TAG_KEY_PROVIDER,
+    TAG_KEY_RUN_ID,
+)
 from warehouse_orchestrator.trace_id import trace_id_for
 
 WAREHOUSE_PROVIDER_ENV = "WAREHOUSE_PROVIDER"
@@ -42,20 +48,21 @@ def resolve_provider(param: str | None) -> str | None:
 def build_score_metadata(
     *, run_id: str, mode: str | None, provider: str | None, gen_id: int | None
 ) -> dict[str, object]:
-    """Assemble the Langfuse score metadata (doc08:341-346 ``{robot,mode,provider,gen_id}``).
+    """Assemble the Langfuse score metadata (doc08:360,363 ``{robot,mode,provider,gen_id}``; 採用 :369).
 
-    ``run_id`` is always present (the trace-seed half, #73 / doc13:483); ``mode``,
+    ``run_id`` is always present (the trace-seed half, #73 / doc13:519); ``mode``,
     ``provider`` and ``gen_id`` are included only when set. ``robot`` is NOT added here —
-    the efficiency leg adds it per-robot (doc08:343). Scores carry no tags, so every label
-    rides in the metadata (doc08:350).
+    the efficiency leg adds it per-robot (doc08:369). Scores carry no tags, so every label
+    rides in the metadata (doc08:367). Keys come from the shared taxonomy
+    (:mod:`~warehouse_orchestrator.tags`, doc20 §8) so they cannot drift from the trace side.
     """
-    meta: dict[str, object] = {"run_id": run_id}
+    meta: dict[str, object] = {TAG_KEY_RUN_ID: run_id}
     if mode:
-        meta["mode"] = mode
+        meta[TAG_KEY_MODE] = mode
     if provider:
-        meta["provider"] = provider
+        meta[TAG_KEY_PROVIDER] = provider
     if gen_id is not None:
-        meta["gen_id"] = gen_id
+        meta[TAG_KEY_GEN_ID] = gen_id
     return meta
 
 
@@ -75,7 +82,7 @@ def send_scores(
     Gates (any miss → ``(0, None)``, never raises):
 
     * ``sink`` disabled (no Langfuse creds/client) — doc08:316/350 fail-open.
-    * ``run_id`` unset — cannot derive the cross-lane trace seed (#73 / doc13:483).
+    * ``run_id`` unset — cannot derive the cross-lane trace seed (#73 / doc13:519).
     * no derivable ``trace_id`` — ``gen_id`` is ``None`` until ``warehouse_mcp_server`` writes
       it into executed audit rows (predeclared #4/#73), so the live send stays inert/no-op.
 
