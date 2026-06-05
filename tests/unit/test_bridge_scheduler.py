@@ -7,7 +7,10 @@ Covers, with fakes (no ROS, no network, no Gazebo — doc16 §11):
   no-response and a transport outage drop to Nav2-only (doc08:141,286-288).
 - invalid response ignored; no-snapshot cycle skips the LLM.
 - end-to-end exclusivity through the REAL WarehouseTools (shared GenStore):
-  B-3 stale-gen reject and C same-gen replay reject (doc15 §2, #41).
+  B-3 stale-gen reject and C same-gen replay reject (doc15 §2, #41), incl. the
+  #54 "no explicit /stop" guarantee — a superseded-generation call that Layer A
+  (client-side cancel only) did not server-side-stop is still B-3-rejected and
+  never forwarded to Nav2 (R-35 part A resolved, doc08:173-179).
 """
 
 import asyncio
@@ -319,6 +322,29 @@ def test_end_to_end_stale_generation_rejected(tmp_path: Path) -> None:
     result = asyncio.run(executor.execute(tool_call))
     assert result["status"] == "rejected"
     assert result["reason"] == "stale_generation"
+
+
+@pytest.mark.safety
+@pytest.mark.unit
+def test_stale_call_rejected_when_stop_noop_54(tmp_path: Path) -> None:
+    # Issue #54 / R-35 part A (DoD item-3 / R-26 evidence): the explicit Hermes run
+    # /stop is DROPPED. The adopted stateless chat/completions + Bridge-mediated
+    # in-process dispatch has no server-side tool execution to stop, so Layer A is
+    # client-side cancel only (asyncio.wait_for) — there is no _stop_hermes_run.
+    # This locks the resulting guarantee: a leftover tool call from a superseded
+    # generation — which Layer A neither could nor did server-side-stop — is STILL
+    # rejected by B-3 at the MCP server AND never forwarded to Nav2 (status != "ok"
+    # => 0 POST, the single R-26 forward-suppression seam in tools.py). B-3 + C, not
+    # an explicit /stop, are the safety guarantee.
+    forwarder = RecordingNav2Forwarder()
+    tools, gen_store = _real_tools(tmp_path, gen=1, forwarder=forwarder)
+    executor = DispatchToolExecutor(tools.dispatch)
+    tool_call = _navigate("bot1", "berth_A", gen=1)  # a gen=1 decision, never stopped
+    gen_store.set(2)  # a newer cycle superseded it -> the gen=1 call is now stale
+    result = asyncio.run(executor.execute(tool_call))
+    assert result["status"] == "rejected"
+    assert result["reason"] == "stale_generation"
+    assert forwarder.requests == []  # B-3 reject -> no actuation reaches the robot
 
 
 @pytest.mark.safety

@@ -9,9 +9,12 @@ robots' commands in a single LLM call. Each cycle (doc08:146-155, 206-228):
    MCP server rejects any call from a superseded generation (doc15 §2).
 2. Build the ``Situation`` from ``state.json`` (SituationBuilder) and POST it to
    the LLM under ``asyncio.wait_for(..., 2.5s)`` — the in-cycle timeout
-   (doc08:140). The ``wait_for`` cancelling the request is Layer **A**
-   (client-side cancel); the explicit Hermes run ``/stop`` is a STUB on the
-   stateless transport (Issue #54, doc08:168-174).
+   (doc08:140). The ``wait_for`` cancelling the request IS Layer **A**: a pure
+   client-side cancel. There is no explicit Hermes run ``/stop`` — the adopted
+   stateless chat/completions + Bridge-mediated in-process dispatch has no
+   server-side tool execution to stop (Issue #54 resolved, doc08:173-179), so a
+   leftover tool call from a superseded generation is rejected at the MCP server
+   by B-3 (stale gen) + C (idempotency), not by stopping a remote run.
 3. Map the returned ``Command`` to ToolCalls and dispatch each through the
    executor. ``action_map`` mints a per-call ``idempotency_key`` (Layer **C**) so
    a same-generation replay is rejected at the MCP server (doc15 §2, #41).
@@ -233,14 +236,22 @@ class BridgeScheduler:
             # existing task -> current_task unchanged.
 
     def _on_timeout(self, gen: int) -> None:
-        """2.5s in-cycle timeout: keep the previous command, advance (doc08:286)."""
+        """2.5s in-cycle timeout: keep the previous command, advance (doc08:286).
+
+        Layer A here is purely the client-side cancel ``asyncio.wait_for`` already
+        performed (the in-flight httpx request is closed). There is deliberately NO
+        explicit Hermes run ``/stop``: the adopted stateless chat/completions +
+        Bridge-mediated in-process dispatch has no server-side tool execution to
+        stop (Issue #54 resolved, doc08:173-179). A leftover tool call from this
+        now-superseded generation is rejected at the MCP server by B-3 (stale gen)
+        + C (idempotency) — proven by ``test_stale_call_rejected_when_stop_noop_54``.
+        """
         self._consecutive_failures += 1
         log.warning(
-            "cycle timeout gen=%s; keeping previous command (A); consecutive=%s",
+            "cycle timeout gen=%s; keeping previous command (A: client-side cancel); consecutive=%s",
             gen,
             self._consecutive_failures,
         )
-        self._stop_hermes_run(gen)
         if self._consecutive_failures >= self._outage_after:
             self.nav2_only = True
             log.error("sustained no-response → Nav2-only fallback (doc08:141)")
@@ -250,15 +261,3 @@ class BridgeScheduler:
         self._consecutive_failures += 1
         self.nav2_only = True
         log.error("LLM unavailable gen=%s: %s → Nav2-only fallback", gen, exc)
-
-    def _stop_hermes_run(self, gen: int) -> None:
-        """STUB (Issue #54 / R-35 A): explicit Hermes run ``/stop`` on timeout.
-
-        ``POST /v1/runs/{id}/stop`` assumes a stateful runs API with a ``run_id``,
-        but the adopted transport is the stateless ``/v1/chat/completions`` (no
-        ``run_id``, doc13:392-398). ``asyncio.wait_for`` has already cancelled the
-        in-flight request (Layer A client-side); the safety guarantee rests on B-3
-        (stale-gen reject) + C (idempotency) at the MCP server (doc08:168-174).
-        Best-effort no-op until Issue #54 fixes the cancellation transport.
-        """
-        log.debug("hermes run /stop is a no-op on chat/completions (Issue #54), gen=%s", gen)
