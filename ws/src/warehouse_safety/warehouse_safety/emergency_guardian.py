@@ -1,7 +1,8 @@
 """Emergency Guardian — 50ms reflex safety node (doc12:95-151). LLM-independent.
 
-On a 50ms timer it estops on inter-robot proximity / critical battery and
-triggers a (low-harm) recovery event on blocked-timeout. An estop cancels Nav2
+On a 50ms timer it estops on inter-robot proximity / critical battery / stale
+localization (``/amcl_pose`` older than ``pose_freshness_timeout`` -> precautionary
+stop, #126) and triggers a (low-harm) recovery event on blocked-timeout. An estop cancels Nav2
 goals, publishes a zero ``Twist`` to ``/{bot}/cmd_vel/emergency`` (twist_mux
 priority 100 — never ``/{bot}/cmd_vel`` directly, which races Nav2, doc15) and
 publishes a structured ``/emergency/event``. The Twist stop is re-asserted every
@@ -51,8 +52,12 @@ class EmergencyGuardian(Node):
         # blocked_timeout is added to config/warehouse.base.yaml by this track.
         dist = cfg["safety"]["emergency_min_distance"]
         blocked = cfg["safety"]["blocked_timeout"]
+        # #126 freshness guard: amcl_pose staleness window. Past it the bot is
+        # navigating with an unknown position -> precautionary estop (doc12 §freshness).
+        freshness = cfg["safety"]["pose_freshness_timeout"]
         self._dist_threshold = self.declare_parameter("emergency_min_distance", dist).value
         self._blocked_timeout = self.declare_parameter("blocked_timeout", blocked).value
+        self._freshness_timeout = self.declare_parameter("pose_freshness_timeout", freshness).value
         # #44: explicit battery driver scale, shared with State Cache via
         # warehouse_interfaces.safety so this reflex and the snapshot never diverge.
         scale = cfg["safety"].get("battery_percentage_scale", BATTERY_PERCENTAGE_SCALE_DEFAULT)
@@ -72,6 +77,9 @@ class EmergencyGuardian(Node):
         self._pose: dict[str, tuple[float, float] | None] = {b: None for b in _BOTS}
         self._battery: dict[str, float | None] = {b: None for b in _BOTS}
         self._blocked: dict[str, float] = {b: 0.0 for b in _BOTS}
+        # #126 freshness: monotonic arrival time of the latest /amcl_pose per bot
+        # (None until the first pose) -> pose_age computed in _check_safety.
+        self._last_pose_t: dict[str, float | None] = {b: None for b in _BOTS}
 
         sensor_qos = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT, history=HistoryPolicy.KEEP_LAST, depth=1
@@ -112,9 +120,11 @@ class EmergencyGuardian(Node):
 
     # --- callbacks: store latest only, no logic ---
     def _on_pose(self, bot: str, msg: PoseWithCovarianceStamped) -> None:
+        now = time.monotonic()
         p = msg.pose.pose.position
         self._pose[bot] = (p.x, p.y)
-        self._blocked[bot] = self._tracker.update(bot, p.x, p.y, time.monotonic())
+        self._last_pose_t[bot] = now  # #126 freshness: stamp arrival (wall-monotonic)
+        self._blocked[bot] = self._tracker.update(bot, p.x, p.y, now)
 
     def _on_battery(self, bot: str, msg: BatteryState) -> None:
         # #44: marshal via the rclpy-free, unit-tested gl.marshal_battery (single
@@ -127,10 +137,15 @@ class EmergencyGuardian(Node):
 
     # --- 50ms timer: pure decide + side effects ---
     def _check_safety(self) -> None:
-        a = gl.BotState("bot1", *self._xy("bot1"), self._battery["bot1"], self._blocked["bot1"])
-        b = gl.BotState("bot2", *self._xy("bot2"), self._battery["bot2"], self._blocked["bot2"])
+        now = time.monotonic()  # one clock for both bots' pose_age (#126 freshness)
+        a = self._bot_state("bot1", now)
+        b = self._bot_state("bot2", now)
         decisions = gl.evaluate(
-            a, b, distance_threshold=self._dist_threshold, blocked_timeout=self._blocked_timeout
+            a,
+            b,
+            distance_threshold=self._dist_threshold,
+            blocked_timeout=self._blocked_timeout,
+            pose_freshness_timeout=self._freshness_timeout,
         )
         # #126 edge-trigger: only NEWLY-active (bot, reason) alarms emit an
         # /emergency/event — a held condition must not re-spam the LLM-review stream
@@ -143,6 +158,14 @@ class EmergencyGuardian(Node):
                 self._emergency_stop(dec, emit_event=emit_event)
             else:
                 self._trigger_recovery(dec, emit_event=emit_event)
+
+    def _bot_state(self, bot: str, now: float) -> gl.BotState:
+        # #126 freshness: pose_age = now - last /amcl_pose arrival, None until the
+        # first pose (the pure logic then never estops a not-yet-localized bot).
+        last_t = self._last_pose_t[bot]
+        pose_age = None if last_t is None else now - last_t
+        x, y = self._xy(bot)
+        return gl.BotState(bot, x, y, self._battery[bot], self._blocked[bot], pose_age)
 
     def _xy(self, bot: str) -> tuple[float | None, float | None]:
         p = self._pose[bot]

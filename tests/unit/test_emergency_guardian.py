@@ -27,14 +27,19 @@ from warehouse_safety.guard_logic import (
 
 THRESH = 0.3  # = cfg safety.emergency_min_distance (the node reads it from load_config)
 TIMEOUT = 10.0  # = cfg safety.blocked_timeout
+FRESHNESS = 1.0  # = cfg safety.pose_freshness_timeout (#126; amcl_pose staleness window)
 
 
-def _bot(name: str, x=0.0, y=0.0, batt=100.0, blocked=0.0) -> BotState:
-    return BotState(name, x, y, batt, blocked)
+def _bot(name: str, x=0.0, y=0.0, batt=100.0, blocked=0.0, pose_age=None) -> BotState:
+    # pose_age defaults to None ("fresh"/not-applicable) so the existing proximity /
+    # battery / blocked cases never trip the #126 freshness estop unless they opt in.
+    return BotState(name, x, y, batt, blocked, pose_age)
 
 
 def _evaluate(a: BotState, b: BotState) -> list:
-    return evaluate(a, b, distance_threshold=THRESH, blocked_timeout=TIMEOUT)
+    return evaluate(
+        a, b, distance_threshold=THRESH, blocked_timeout=TIMEOUT, pose_freshness_timeout=FRESHNESS
+    )
 
 
 @pytest.mark.safety
@@ -201,6 +206,136 @@ def test_block_tracker_accrues_then_resets() -> None:
     assert tracker.update("bot1", 0.0, 0.0, now=100.0) == 0.0  # first sample
     assert tracker.update("bot1", 0.0, 0.0, now=105.0) == pytest.approx(5.0)  # stationary
     assert tracker.update("bot1", 1.0, 1.0, now=106.0) == 0.0  # moved >= epsilon -> reset
+
+
+# --- #126 pose freshness guard (localization-lost -> precautionary estop) -----
+# A bot whose /amcl_pose feed has gone stale is navigating with an unknown position,
+# so the Guardian estops it (fail-safe, doc12 §freshness guard). pose_age is None
+# until the first pose -> a not-yet-localized bot is never estopped. The window is
+# large vs the 5-10Hz amcl cadence (R-39) so normal jitter does not false-fire.
+
+
+def _stale(decs: list) -> list:
+    return [d for d in decs if d.reason == "pose_stale"]
+
+
+@pytest.mark.safety
+def test_pose_stale_estops_when_feed_lost() -> None:
+    decs = _evaluate(_bot("bot1", 5.0, 5.0, pose_age=FRESHNESS + 0.5), _bot("bot2", 0.0, 0.0))
+    stale = _stale(decs)
+    assert len(stale) == 1
+    # Precautionary estop (fail-safe), NOT a low-harm recovery like blocked_timeout.
+    assert stale[0].bot == "bot1" and stale[0].action == "estop"
+
+
+@pytest.mark.safety
+def test_fresh_pose_no_stale_estop() -> None:
+    decs = _evaluate(_bot("bot1", 5.0, 5.0, pose_age=FRESHNESS - 0.5), _bot("bot2", 0.0, 0.0))
+    assert not _stale(decs)
+
+
+@pytest.mark.safety
+def test_pose_freshness_threshold_is_strict() -> None:
+    # Exactly at the window is NOT stale (strict >, mirroring blocked_timeout's `>`).
+    decs = _evaluate(_bot("bot1", 5.0, 5.0, pose_age=FRESHNESS), _bot("bot2", 0.0, 0.0))
+    assert not _stale(decs)
+
+
+@pytest.mark.safety
+def test_unreceived_pose_never_stale() -> None:
+    # pose_age None = first /amcl_pose not yet arrived -> a not-yet-localized bot must
+    # NOT be estopped (no fix yet; estopping it would be a spurious startup stop).
+    decs = _evaluate(_bot("bot1", None, None), _bot("bot2", None, None))
+    assert not _stale(decs)
+
+
+@pytest.mark.safety
+@pytest.mark.parametrize("age", [0.1, 0.2, 0.5, 0.99])
+def test_normal_amcl_interval_does_not_false_fire(age: float) -> None:
+    # amcl_pose is 5-10Hz = 100-200ms normal interval (R-39, doc07:249); the 1.0s
+    # window must not trip on a normal/jittery cadence (DoD: no false fire).
+    decs = _evaluate(_bot("bot1", 5.0, 5.0, pose_age=age), _bot("bot2", 0.0, 0.0))
+    assert not _stale(decs)
+
+
+@pytest.mark.safety
+def test_pose_stale_affects_only_the_stale_bot() -> None:
+    # bot1 lost localization; bot2 is fresh and far -> only bot1 estops on staleness.
+    decs = _evaluate(
+        _bot("bot1", 5.0, 5.0, pose_age=FRESHNESS + 1.0), _bot("bot2", 0.0, 0.0, pose_age=0.1)
+    )
+    stale = _stale(decs)
+    assert len(stale) == 1 and stale[0].bot == "bot1"
+
+
+@pytest.mark.safety
+def test_both_bots_stale_estop_independently() -> None:
+    # Shared localization loss (AMCL / tf break) -> BOTH /amcl_pose feeds go stale at
+    # once, the most safety-critical case. Each bot must get its OWN pose_stale estop:
+    # the per-bot loop in evaluate must not stop after the first. Mirrors
+    # test_proximity_estops_both_bots; locks against a "return/break after first stale
+    # bot" or shared-Decision regression. Bots are far apart so only freshness fires.
+    decs = _evaluate(
+        _bot("bot1", 5.0, 5.0, pose_age=FRESHNESS + 0.5),
+        _bot("bot2", -5.0, -5.0, pose_age=FRESHNESS + 0.5),
+    )
+    stale = _stale(decs)
+    assert {d.bot for d in stale} == {"bot1", "bot2"}
+    assert len(stale) == 2
+    assert all(d.action == "estop" for d in stale)
+
+
+@pytest.mark.safety
+def test_pose_stale_detail_reports_age_and_timeout() -> None:
+    age = FRESHNESS + 0.7
+    decs = _evaluate(_bot("bot1", 5.0, 5.0, pose_age=age), _bot("bot2", 0.0, 0.0))
+    assert _stale(decs)[0].detail == {"pose_age": age, "freshness_timeout": FRESHNESS}
+
+
+@pytest.mark.safety
+def test_pose_stale_coexists_with_proximity_estop() -> None:
+    # A stale bot is still proximity-checked on its last-known pose: the freshness
+    # guard ADDS an estop, it never suppresses a real near_collision one (fail-safe).
+    decs = _evaluate(
+        _bot("bot1", 0.0, 0.0, pose_age=FRESHNESS + 1.0), _bot("bot2", 0.0, 0.1, pose_age=0.1)
+    )
+    assert len([d for d in decs if d.reason == "near_collision"]) == 2  # both bots
+    assert [d for d in _stale(decs) if d.bot == "bot1"]  # plus bot1 stale
+
+
+@pytest.mark.safety
+def test_build_event_pose_stale_type_is_additive() -> None:
+    # pose_stale is a NEW /emergency/event `type` value only; the core keys
+    # (doc12:141-150) are unchanged -> existing State Cache ingestion is unaffected.
+    detail = {"pose_age": 1.7, "freshness_timeout": 1.0}
+    event = build_event("emg-1", "bot1", "pose_stale", 1.0, detail=detail)
+    assert event["type"] == "pose_stale"
+    assert event["severity"] == "critical"
+    assert event["action_taken"] == ["nav2_goal_cancel", "cmd_vel_stop"]  # estop set
+    assert event["requires_llm_review"] is True
+    assert event["detail"] == detail
+    assert set(event) == {
+        "event_id",
+        "robot",
+        "type",
+        "severity",
+        "action_taken",
+        "timestamp",
+        "requires_llm_review",
+        "detail",
+    }
+
+
+@pytest.mark.safety
+def test_pose_stale_event_edge_triggers_not_spam() -> None:
+    # A sustained stale condition fires ONE /emergency/event on the rising edge, not
+    # at 20Hz (EdgeLatch keys on (bot, reason), so pose_stale latches like the rest).
+    latch = EdgeLatch()
+    stale = [Decision("bot1", "estop", "pose_stale")]
+    assert latch.rising(stale) == {("bot1", "pose_stale")}  # rising edge -> emit
+    assert latch.rising(stale) == set()  # held -> no re-spam
+    assert latch.rising([]) == set()  # pose feed recovers -> latch resets
+    assert latch.rising(stale) == {("bot1", "pose_stale")}  # recurs -> rises again
 
 
 # --- #126 edge-trigger latch (gl.EdgeLatch) ---------------------------------
