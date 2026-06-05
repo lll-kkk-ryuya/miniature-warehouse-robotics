@@ -187,7 +187,7 @@ Claudeに渡すtraffic（**エスカレーション発生時** — RMF が route
 | ライセンス | Apache 2.0（無料） |
 | ROS 2対応 | Jazzyブランチあり（rmf_ros2） |
 | Jetson動作 | 可能（ROS 2ノードの集合体、GPU不要） |
-| 追加開発 | Fleet Adapter自作（free_fleetベース、3-5日） |
+| 追加開発 | Fleet Adapter 自作（**§3.5 / R-44 で free_fleet 不採用＝EasyFullControl 直駆動に判断**。工数は Phase 3 で再見積り） |
 | 地図 | Navigation Graph（通路2-3本、手動定義で1日） |
 
 ### Open-RMFから使用する機能と無効化する機能
@@ -197,6 +197,102 @@ Claudeに渡すtraffic（**エスカレーション発生時** — RMF が route
 | Traffic Schedule | **使用** | 経路予測・衝突検出の核心 |
 | Conflict Negotiation | **使用** | 衝突時の自動調整 |
 | Task Dispatcher | **無効化** | Claudeがタスク割当を担当（競合防止） |
+
+---
+
+## 3.5 free_fleet ⇔ micro-ROS/ESP32 適合性評価と Fleet Adapter 経路判断（R-44 / Go-No-Go）
+
+> **本節の位置づけ**: [R-44](../shared/07-research-notes.md)（`docs/shared/07-research-notes.md:254`）の**文献ベース評価**と Go/No-Go を記録する。**スコープは docs（設計判断）のみ**。Open-RMF を Jetson/実機に立てる **PoC（メモリ実測・2台 E2E）は R-38（`docs/shared/07-research-notes.md:243`）のメモリゲート未通過のため BLOCKED ＝ Phase 3 後半の別 Issue へ defer**（本節 D）。本評価は §2 `get_traffic_state()` / §6 エスカレーション階層（#163 land 分）の設計を**変更しない**（別節）。
+
+### 結論サマリ
+
+| 項目 | 判断 |
+|------|------|
+| **free_fleet をそのまま採用** | **No-Go**（理由 A） |
+| **第一候補（採用方針）** | **案A: `rmf_fleet_adapter` の EasyFullControl API で自作 Fleet Adapter が `/bot{n}` Nav2 を直接駆動（zenoh ブリッジ無し）** |
+| **縮退フォールバック** | 案B: Open-RMF 不使用・既存 Nav2 Bridge REST（`:8645`）でタスク割当（RMF 交通管理＝Traffic Schedule + Conflict Negotiation を放棄） |
+| **不変条件**（§2 冒頭「Fleet Adapter が唯一の Nav2 制御パス」, `docs/mode-c/11c-traffic-mode-c.md:63`） | 案A=**保持**／案B=intent は保持するが Mode C（RMF）を出る |
+| **最終実証（メモリ・動作）** | R-38 ゲート通過後の **Phase 3 後半・別 Issue（defer, 本節 D）** |
+
+### A. free_fleet が本構成に不適合な理由（No-Go）
+
+**前提（文献）**: 現行 free_fleet は「**EasyFullControl Fleet Adapter（Python 実装）＋ ロボット毎の zenoh ブリッジ**」である。
+
+> "The `free_fleet_adapter` implements the Easy Full Control fleet adapter API, and communicates with individual robots over Zenoh bridges."
+> — [OSRF, Free Fleet Adapter](https://osrf.github.io/ros2multirobotbook/integration_free_fleet_adapter.html)
+
+> "It uses `zenoh` as a communication layer between each robot and the fleet adapter, allowing access and control over the navigation stacks of the robots."
+> — [open-rmf/free_fleet README](https://github.com/open-rmf/free_fleet)
+
+**理由1（主・決定打＝アーキテクチャ不整合）**: free_fleet の zenoh ブリッジは「**各ロボットが自前の（非 namespaced な）Nav2 を持ち、ロボット側に置いた zenoh ブリッジで橋渡しする**」分散構成を前提とする。
+
+> "Each robot's navigation stack is expected to be non-namespaced, while its `zenoh` bridge is expected to be set up with it's robot name as the namespace."
+> — [open-rmf/free_fleet README](https://github.com/open-rmf/free_fleet)
+
+本プロジェクトは逆に、**2台分の Nav2/AMCL/SLAM を中央の単一 Jetson 上で `/bot1` `/bot2` の namespace に分離**して動かす（`docs/mode-c/12c-integration-mode-c.md:137` の構成図・`:180-181` の `nav2_bot1/2.service`）。したがって free_fleet の zenoh transport が解く問題（マシン跨ぎ伝送・ドメイン分離・帯域フィルタ）は**いずれも本構成に存在せず**、かつ free_fleet が期待する「非 namespaced な onboard Nav2」は本構成の「中央 namespaced Nav2」と**逆**である。free_fleet をここに載せると、既に namespaced な単一 ROS グラフに対して zenoh ブリッジを中央で回し namespace を付け替える＝**設計意図に逆らった冗長運用**になる（free_fleet が解決対象とするのは ROS 配布版・ナビ・通信プロトコルが**異なる分散・異種フリート**であり、本構成は該当しない）。
+
+**理由2（副・補強。決定打ではない）**: ロボットの MCU は ESP32 micro-ROS であり、これは XRCE-DDS クライアント（full ROS 2 ノードではない）でホスト側 Agent に橋渡しされる。zenoh ブリッジや Nav2 のような full ROS 2 プロセスを ESP32 に載せることはできない。
+
+> micro-ROS は「low resource devices（XRCE Clients）が Agent を介して DDS Global-Data-Space に参加する」構成。
+> — [micro-ROS, Micro XRCE-DDS](https://micro.vulcanexus.org/docs/concepts/middleware/Micro_XRCE-DDS/)
+
+ただし本構成では Nav2 自体が Jetson 中央にあるため、そもそも**ロボット側に橋渡し対象の Nav2 が無い**。よって ESP32 制約は No-Go を補強するが、決定打は理由1（中央 namespaced 構成との不整合）である。
+
+**R-44 原文の精緻化**: `docs/shared/07-research-notes.md:254` の「free_fleet client の置き場が無い（ロボットが ESP32）」は**真だが決定打ではない**。決定打は理由1。また現行 free_fleet の旧 client/server 世代は **deprecated**（"This legacy implementation is no longer being supported" — [OSRF, Legacy free fleet](https://osrf.github.io/ros2multirobotbook/integration_free-fleet.html)）であり、R-44 を「free_fleet_client vs EasyFullControl」と表現しない（現行 free_fleet 自体が EasyFullControl の上に立つため、両者は同じ Full Control 階層・**実装モデルが異なる**だけ）。
+
+### B. 代替設計2案（既存 docs と整合）
+
+#### 案A（第一候補）: 自作 EasyFullControl Fleet Adapter が `/bot{n}` Nav2 を直接駆動
+
+EasyFullControl は `rmf_fleet_adapter` の一級 API であり（free_fleet が内部で使うのと同じ API）、**zenoh transport を外して**中央の Nav2 namespace を直接呼ぶ自作 adapter を書ける。
+
+> `class EasyFullControl` — "An easy to initialize full_control fleet adapter."（namespace `rmf_fleet_adapter::agv`）
+> — [rmf_ros2 EasyFullControl.hpp](https://github.com/open-rmf/rmf_ros2/blob/main/rmf_fleet_adapter/include/rmf_fleet_adapter/agv/EasyFullControl.hpp)
+
+- **統合面**: 自作 adapter は `navigate` / `stop` / `execute_action` の3コールバックと `RobotState` 更新を実装する（[Fleet Adapter Tutorial](https://osrf.github.io/ros2multirobotbook/integration_fleets_adapter_tutorial.html)）。`navigate()` を **namespace 毎の Nav2 `NavigateToPose` action client**（`/bot1/navigate_to_pose` 等）に接続し、in-process で駆動する（zenoh ブリッジ無し）。Python/C++ どちらも可。
+- **Jazzy 在中（確認済）**: `EasyFullControl.hpp` は rmf_ros2 の `jazzy` ブランチ `rmf_fleet_adapter/include/rmf_fleet_adapter/agv/` に存在（[jazzy agv/ ディレクトリ](https://github.com/open-rmf/rmf_ros2/tree/jazzy/rmf_fleet_adapter/include/rmf_fleet_adapter/agv)）。Jazzy doc も `EasyFullControl::FleetConfiguration`（rmf_fleet_adapter 2.7.2 = Jazzy）を公開（[docs.ros.org/jazzy](https://docs.ros.org/en/jazzy/p/rmf_fleet_adapter/generated/classrmf__fleet__adapter_1_1agv_1_1EasyFullControl_1_1FleetConfiguration.html)）。
+- **不変条件（`docs/mode-c/11c-traffic-mode-c.md:63`）**: 自作 adapter が唯一の Nav2 writer になる → **保持**。
+- **既存 docs との整合**: 既存フォールバック「直接 ROS 2 Action Client に切替」（`docs/mode-c/12c-integration-mode-c.md:202`）は、まさに zenoh を外して Nav2 action を直接呼ぶ＝**案A の実体**。よって案A は `docs/shared/07-research-notes.md:254` の推奨（EasyFullControl 直駆動）と 12c:202 の既存フォールバックを統合・常用化したもの（新方式の発明ではない）。
+- **RMF 交通管理は不変**: Traffic Schedule / Conflict Negotiation は RMF core（fleet adapter インターフェースの背後）にあり、adapter が free_fleet か自作 EasyFullControl かに依存しない（[RMF Core Overview](https://osrf.github.io/ros2multirobotbook/rmf-core.html)）。よって §3 の「Traffic Schedule=使用 / Conflict Negotiation=使用」（`docs/mode-c/11c-traffic-mode-c.md:197-198`）は案A でそのまま成立する。
+
+#### 案B（縮退フォールバック）: Open-RMF 不使用・Nav2 Bridge REST 経由
+
+Open-RMF を立てず、既存 `warehouse_nav2_bridge`（REST `:8645`、`POST /api/v1/navigate|wait|stop` — `ws/src/warehouse_nav2_bridge/CLAUDE.md:18-20`）でタスク→Nav2 ゴールを割り当てる。
+
+- **失うもの（核心）**: RMF の **Traffic Schedule（事前の経路デコンフリクト）＋ Conflict Negotiation（衝突時の自動交渉）** を全て放棄する。2台は **Nav2 ローカル回避のみ**に縮退し、共有スケジュールも交差点・隘路でのデッドロック保証解消も無い（200mm 真隘路の渋滞デモ＝#124 の前提が崩れる）。RMF の **Read-Only 相当**（位置は見えるが経路制御・調整はできない — [OSRF, Read-Only Fleets](https://osrf.github.io/ros2multirobotbook/integration_read-only.html)）であり、Mode C の主役機能そのものを失う。
+- **不変条件（`docs/mode-c/11c-traffic-mode-c.md:63`）**: RMF Fleet Adapter は存在しなくなるが、REST ブリッジが唯一の Nav2 writer になる → 「単一制御パス」という **intent は保持**。ただし RMF トポロジを出る＝厳密には Mode C ではなく Mode A/B 寄りのフォールバック。
+- **実装方針（契約でない）**: 現状 Mode C では Nav2 Bridge REST forwarder は非注入（`NAV2_BRIDGE_MODES = {none, simple}` — `docs/mode-c/12c-integration-mode-c.md:142`）。案B 採用には Mode C へこの forwarder を拡張する必要がある。これは**実装方針であって凍結契約の変更ではない**（`warehouse_interfaces` は無編集・新トピック/型/閾値を発明しない）。
+
+### C. Go/No-Go
+
+- **free_fleet: No-Go**（理由 A）。
+- **採用方針: 案A（自作 EasyFullControl 直駆動）を第一候補**、案B（REST 縮退）をフォールバック。
+- これは `docs/shared/07-research-notes.md:254` の R-44 結論（「`rmf_fleet_adapter` EasyFullControl で自作 adapter が Nav2 namespace を直接駆動する方が素直。free_fleet 採用是非を Phase3 冒頭で判断」）と整合する。
+- **最終確定**（メモリ実測・2台動作）は R-38 ゲート通過後（**D 参照、defer**）。
+
+### D. PoC/実機検証は BLOCKED（R-38 ゲート依存 ＝ defer）
+
+本節の成果は**文献評価＋設計判断のみ**。下記は **R-38 メモリゲート（`docs/shared/07-research-notes.md:243`）通過後の Phase 3 後半（`docs/architecture/06-implementation-phases.md:215-221`）の別 Issue** で実施する＝本レーンでは実装しない:
+
+- 自作 EasyFullControl adapter の実装、2台 Open-RMF E2E、Jetson メモリ実測。
+- **残未決（実装 spike で要確認。文献では確証できなかった点）**:
+  1. **「EasyFullControl + in-process Nav2 action client（namespace 毎）」の end-to-end 実例は未確認**（最大の未証明前提）。canonical な EasyFullControl 例（`rmf_demos_fleet_adapter`）は外部 fleet manager を REST で駆動し、Nav2 action を直接叩く例は free_fleet の `nav2_robot_adapter.py`（ただし zenoh 経由）のみ。両者を合成（rmf_demos の足場 + free_fleet の `NavigateToPose` 構築ロジック − zenoh）して自作する必要がある。
+  2. **1プロセスから `/bot1` `/bot2` 両方を駆動する namespacing は integrator 実装**（first-party doc に turnkey の記載なし）。
+  3. **`ros-jazzy-rmf-fleet-adapter` バイナリ版が jazzy ブランチ source と同一 API か未 pin**（依存ピン時に確認）。
+  4. **EasyFullControl 下での rmf_traffic schedule/negotiation 配線負荷（Navigation Graph / traffic profile / footprint）が未定量**（工数の隠れコスト。effort 見積り前に要確認）。
+  5. **RMF Navigation Graph と本プロジェクトの 9 locations / Gazebo 地図の整合**は設計依存（凍結 `warehouse_interfaces.locations` に waypoint/lane 契約を**発明しない**＝必要なら別途 contract PR）。
+  6. **1.8×0.9m・200mm 隘路（#124）・≤0.3 m/s で RMF デコンフリクトが有効か**は sim 検証待ち。
+
+> なお本節の適合判断は、Open-RMF/micro-ROS 各々の**文書化された前提**からの**工学的推論**であり、「この分割トポロジ（薄い ESP32 アクチュエータ + 中央 namespaced Nav2）」を名指しで是認した一次ソースは存在しない。維持者による本構成の保証ではない点に注意（推論として提示）。
+
+### E. cross-doc 整合（本レーン編集境界外＝別 PR で追従）
+
+本評価により Fleet Adapter の実体は free_fleet ではなく**自作 EasyFullControl adapter**となる。下記は本レーンの**編集境界外（読むのみ）**のため、Phase 3 実装 Issue の別 PR で反映する（本 PR では触らない）:
+
+- `docs/mode-c/12c-integration-mode-c.md:129`「Fleet Adapter（free_fleet + battery拡張）」→ EasyFullControl 自作 adapter（+ battery 拡張）へ。
+- `docs/architecture/06-implementation-phases.md:217`「free_fleet ベースの Fleet Adapter 作成」→ EasyFullControl 自作へ。
+- `docs/shared/07-research-notes.md:179`（R-13）「Open-RMF + free_fleet + zenoh + Nav2 の統合チェーン」→ 「Open-RMF + EasyFullControl 直駆動 + Nav2」へ（free_fleet/zenoh をチェーンから除外）。
+- （本 11c 内の §3 表・§7 スケジュールの「free_fleet ベース」表記は本 PR で §3.5 への pointer に更新済み。）
 
 ---
 
@@ -281,7 +377,7 @@ Emergency Guardian（50ms, 横串） / Nav2（50ms）→ Open-RMF（即時）→
 ```
 Phase 3後半: モードC（Open-RMF）追加
   - RMFTrafficManager 実装
-  - free_fleet ベースの Fleet Adapter 作成
+  - Fleet Adapter 作成（EasyFullControl 自作・§3.5 / R-44。free_fleet 不採用）
   - Navigation Graph 定義
   - Claude + Open-RMF の統合テスト
   工数: 1-2週間
@@ -314,3 +410,17 @@ Phase 4: YouTube比較検証
 - [Programming Multiple Robots with ROS 2](https://osrf.github.io/ros2multirobotbook/) — 参照日: 2026-05-22
 - [Open-RMF + Nav2 Integration — Atomic Loops](https://www.atomicloops.com/technologies/industrial-automation-and-robotics/coordinate-heterogeneous-robot-fleets-with-nav2-and-open-rmf) — 参照日: 2026-05-22
 - [NVIDIA Isaac Mission Dispatch — GitHub](https://github.com/nvidia-isaac/isaac_mission_dispatch) — 参照日: 2026-05-22
+
+### §3.5（R-44 評価）で追加
+
+- [OSRF — Mobile Robot Fleet Integration（Full Control / Easy Full Control）](https://osrf.github.io/ros2multirobotbook/integration_fleets.html) — 参照日: 2026-06-05
+- [OSRF — Fleet Adapter Tutorial（navigate/stop/execute_action）](https://osrf.github.io/ros2multirobotbook/integration_fleets_adapter_tutorial.html) — 参照日: 2026-06-05
+- [OSRF — Read-Only Fleets（Read-Only 階層の限界）](https://osrf.github.io/ros2multirobotbook/integration_read-only.html) — 参照日: 2026-06-05
+- [OSRF — Free Fleet Adapter（v2: EasyFullControl + ロボット側 zenoh ブリッジ）](https://osrf.github.io/ros2multirobotbook/integration_free_fleet_adapter.html) — 参照日: 2026-06-05
+- [OSRF — Legacy free fleet（旧 client/server, deprecated・異種フリート向け）](https://osrf.github.io/ros2multirobotbook/integration_free-fleet.html) — 参照日: 2026-06-05
+- [OSRF — RMF Core Overview（Traffic Schedule / Conflict Negotiation は adapter の背後）](https://osrf.github.io/ros2multirobotbook/rmf-core.html) — 参照日: 2026-06-05
+- [rmf_ros2 — EasyFullControl.hpp（API クラス・コールバック）](https://github.com/open-rmf/rmf_ros2/blob/main/rmf_fleet_adapter/include/rmf_fleet_adapter/agv/EasyFullControl.hpp) — 参照日: 2026-06-05
+- [rmf_ros2 — jazzy ブランチ agv/（EasyFullControl の Jazzy 在中確認）](https://github.com/open-rmf/rmf_ros2/tree/jazzy/rmf_fleet_adapter/include/rmf_fleet_adapter/agv) — 参照日: 2026-06-05
+- [rmf_fleet_adapter EasyFullControl::FleetConfiguration（Jazzy doc, 2.7.2）](https://docs.ros.org/en/jazzy/p/rmf_fleet_adapter/generated/classrmf__fleet__adapter_1_1agv_1_1EasyFullControl_1_1FleetConfiguration.html) — 参照日: 2026-06-05
+- [free_fleet — nav2_robot_adapter.py（zenoh 経由 NavigateToPose・案A で模倣する配線, zenoh 抜き）](https://github.com/open-rmf/free_fleet/blob/main/free_fleet_adapter/free_fleet_adapter/nav2_robot_adapter.py) — 参照日: 2026-06-05
+- [micro-ROS — Micro XRCE-DDS（client/agent split: ESP32 は full ROS 2 不可）](https://micro.vulcanexus.org/docs/concepts/middleware/Micro_XRCE-DDS/) — 参照日: 2026-06-05
