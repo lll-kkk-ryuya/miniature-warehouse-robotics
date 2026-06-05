@@ -1,7 +1,7 @@
 # LLM Bridge Node -- Mode C（LLM + Open-RMF）
 
 作成日: 2026-05-21
-更新日: 2026-05-25
+更新日: 2026-06-05
 
 > **関連ドキュメント**:
 > - [08 - LLM Bridge 共通設計](../architecture/08-llm-bridge-common.md) -- 共通インターフェース・フォールバック・Langfuse等
@@ -74,6 +74,7 @@ Mode Cでは交通管理フィールドを省略し、Open-RMFからの交通状
       "route_B": {"status": "free"}
     },
     "conflicts": [],
+    "adjustments_since_last": [],
     "escalation": null
   },
   "pending_tasks": [
@@ -86,6 +87,8 @@ Mode Cでは交通管理フィールドを省略し、Open-RMFからの交通状
 ```
 
 Mode Cのsituation JSONはMode A/B版より約200トークン少ない（predicted_position_3s、velocity、heading、obstacle_ahead、obstacle_distance を省略）。
+
+> **`traffic` は凍結 `Situation` 契約外の top-level 追加キー（Mode C 限定・Bridge が mode 連動で付与）**。凍結契約 `warehouse_interfaces.schemas.Situation`（`ws/src/warehouse_interfaces/warehouse_interfaces/schemas.py:125-132`）は `timestamp / turn / gen_id / warehouse / robots / pending_tasks / history` のみで `traffic` を**含まない**。`Situation` は `extra="ignore"`（`schemas.py:25`）のため、LLM Bridge が Mode C で付与する `traffic`（中身は producer `11c RMFTrafficManager.get_traffic_state()` の戻り値そのもの＝`mode / aisles / conflicts / adjustments_since_last / escalation` の5キー、`11c §2（producer〜キー集合）`＝`11c-traffic-mode-c.md:75-179`）は**契約安全に共存**し、frozen schema の再 validate 時に無視される。これは State Cache が `emergency` を `StateSnapshot` 外の追加 top-level キーとして付与するのと同じパターン（`../architecture/12-infrastructure-common.md:256`）。`traffic` の各キー（特に `escalation`）を凍結 schema に昇格するかは将来の contract 判断（producer 昇格の owner は #4、`parallel-workflow.md §4`）。Mode A/B では `traffic` のキー集合が異なる（`mode / aisles / conflicts`、`mode-a/11a`／`warehouse_traffic.traffic_logic` の `TrafficState = dict[str, Any]`）ため、付与は **mode 連動**である。
 
 ### Mode C RobotState 正規形（凍結契約）
 
@@ -154,11 +157,11 @@ Claudeはタスク割当のみ。経路選択・衝突回避・待機指示はOp
   - 10-20%: 新規タスク割当禁止、充電ステーションへの移動を推奨
   - 20-30%: 次タスク割当禁止、充電候補として検討
 - 交通管理（衝突回避・経路選択・待機）には関与しない — Open-RMFが自動処理する
-- escalationフィールドがnullでない場合のみ、Open-RMFが解決できなかった問題に対処する
+- 状況JSON の `traffic.escalation` フィールドがnullでない場合のみ、Open-RMFが解決できなかった問題に対処する（`suggested_action` は助言ヒント＝タスク再割当・目的地変更等の戦略ツールへ写す。応答に id が要るツールには `traffic.escalation.id` を渡す。経路・待機には関与しない）
 
 ## 安全機構（必ず守る）
 - 状況JSON の `gen_id` フィールドを、すべての MCP tool 呼出しの `gen_id` 引数にそのまま渡してください（B-3 安全機構、`15-mcp-platform.md §2` 参照）
-- `escalation` が立っているときは `start_negotiation` ツールでキャラLLM交渉を発動できます（Mode C ではクライマックス演出用、任意）
+- `traffic.escalation` が立っている（非null）ときは `start_negotiation` ツール（`deadlock_or_escalation_id` に `traffic.escalation.id` を渡す）でキャラLLM交渉を発動できます（Mode C ではクライマックス演出用、任意）
 - `negotiation_proposal` が状況JSONに含まれていれば、その提案を検証し、安全条件を満たすなら採用してください
 
 ## 使用可能なアクション
@@ -260,7 +263,7 @@ Nav2（50ms）     → Open-RMF（即時）  → Claude（1-3秒）
 - Open-RMFは「どう実現するか（HOW: 経路・衝突回避・待機時間）」を担当
 - Mode Cでは、Claudeの指示はOpen-RMF Task API経由でNav2に送る（Nav2 MCP Serverは使わない）
 - Open-RMFの調整中（conflicts.status = "in_progress"）はClaudeは介入しない
-- Open-RMFの調整が3回失敗した場合のみClaudeにエスカレーション
+- Open-RMFの調整が3回失敗した場合のみClaudeにエスカレーション。**通知経路**: producer `11c RMFTrafficManager.get_traffic_state()` が解消不能な衝突を situation の `traffic.escalation`（非null）に載せる → 司令官は §システムプロンプト の `traffic.escalation` gate で介入する（階層は §エスカレーション階層 / `11c §6`＝`11c-traffic-mode-c.md:247-275`）
 - Claudeが強制的にOpen-RMFを無視する仕組み（override等）は設けない
 
 ## 通信フロー（タイミング）

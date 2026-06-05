@@ -1,7 +1,7 @@
 # 交通管理レイヤー — Mode C（Open-RMF）
 
 作成日: 2026-05-22
-更新日: 2026-05-25
+更新日: 2026-06-05
 
 > 関連ドキュメント: [Mode A/B（LLM単独 / 自作ルールベース）](../mode-a/11a-traffic-mode-a.md) | [共通インフラ](../architecture/12-infrastructure-common.md)
 
@@ -78,11 +78,44 @@ class RMFTrafficManager(TrafficManager):
             "mode": "open-rmf",
             "aisles": schedule.aisle_status,
             "conflicts": schedule.active_conflicts,
-            "adjustments_since_last": schedule.recent_adjustments
+            "adjustments_since_last": schedule.recent_adjustments,
+            # null while RMF is still resolving; 非 null only after retries are
+            # exhausted and the case is handed to Claude（司令官 gate = 08c:160）。
+            "escalation": self._derive_escalation(schedule),
+        }
+
+    def _derive_escalation(self, schedule):
+        """Open-RMF が解決できなかった衝突を、司令官 LLM 向けの escalation に変換する。
+
+        エスカレーション階層（§6）の Level 1-3 を司令官に上げる単一フィールド。
+        通常時は ``schedule.unresolved_conflict`` が None（このとき該当 conflict の
+        ``status`` は ``"in_progress"`` ＝ RMF が調整中）→ escalation も None を返す。
+        RMF の交渉 / Nav2 リカバリが retry 上限（3回）に達して解消できなかった衝突
+        がある時のみ非 None。司令官 LLM はこの非 None のときだけ介入する（08c:160）。
+        """
+        failed = schedule.unresolved_conflict   # retry 上限まで調整しても解消不能だった衝突 / None
+        if failed is None:
+            return None
+        return {
+            # producer が failed.id から採番する識別子。司令官はこれを escalation_response の
+            # escalation_id / start_negotiation の deadlock_or_escalation_id 引数にそのまま渡す
+            # （doc15 ツール6/7）。この id を MCP in-memory registry（tools.py:108）へ登録する
+            # producer→registry 連携は # TODO(#escalation)、それまで tools.py:357 で
+            # unknown_escalation_id 拒否。
+            "id": failed.id,
+            "level": failed.level,                 # 1: Nav2 stuck→reroute失敗 / 2: RMF調整失敗 / 3: 両方（§6）
+            "reason": failed.reason,               # 例 "rmf_negotiation_failed" / "nav2_stuck_reroute_failed"
+            "robots": failed.robots,               # 影響を受けるロボット
+            "location": failed.location,           # 衝突箇所（aisle/route キー）
+            "failed_attempts": failed.attempts,    # RMF が試行した回数（上限=3 で escalation）
+            # 司令官への助言ヒント。§6 の level に対応: 1→change_destination /
+            # 2→reassign_task / 3→global_reassign。escalation_response の action enum
+            # （reassign|cancel|retry、tools.py:40）とは**別物**＝戦略ツールへのマッピング用。
+            "suggested_action": failed.suggestion,
         }
 ```
 
-Claudeに渡すtraffic:
+Claudeに渡すtraffic（**通常時** — RMF が調整中。`escalation` は `null`）:
 ```json
 {
   "mode": "open-rmf",
@@ -106,9 +139,44 @@ Claudeに渡すtraffic:
       "reason": "route_A occupied by bot1",
       "duration_s": 5
     }
-  ]
+  ],
+  "escalation": null
 }
 ```
+
+`escalation` は通常 `null`。RMF の交通調整が retry 上限（3回）に達して**解消できなかった衝突**が出たときのみ非 `null` になり、司令官 LLM が介入する（§6 Level 1-3 / `08c:160` の gate）。司令官はこの非 `null` を受けてタスク再割当などの戦略判断のみを行い、経路・待機には引き続き関与しない。
+
+Claudeに渡すtraffic（**エスカレーション発生時** — RMF が route_A の衝突を解消できず Claude へ委譲。`conflicts[].status` は `"escalated"`、`rmf_resolution` は `"failed"`）:
+```json
+{
+  "mode": "open-rmf",
+  "aisles": {
+    "route_A": {"status": "blocked", "robot": "bot1", "eta_clear_s": null},
+    "route_B": {"status": "free"}
+  },
+  "conflicts": [
+    {
+      "robots": ["bot1", "bot2"],
+      "location": "route_A",
+      "rmf_resolution": "failed",
+      "wait_remaining_s": null,
+      "status": "escalated"
+    }
+  ],
+  "adjustments_since_last": [],
+  "escalation": {
+    "id": "esc-20260615-0001",
+    "level": 2,
+    "reason": "rmf_negotiation_failed",
+    "robots": ["bot1", "bot2"],
+    "location": "route_A",
+    "failed_attempts": 3,
+    "suggested_action": "reassign_task"
+  }
+}
+```
+
+> **キー集合（`traffic`）**: 両例とも top-level は `mode / aisles / conflicts / adjustments_since_last / escalation` の5キー。これは `08c` の situation 例（`08c §入力`）の `traffic` ブロックと**同一キー集合**であり、producer（本 `get_traffic_state()`）の戻り値そのもの。`escalation` が非 null のときの内部キーは `id / level / reason / robots / location / failed_attempts / suggested_action`。`id` は producer（`_derive_escalation` が `failed.id` から採番）が付与する識別子で、司令官が `escalation_response`(`escalation_id`)/`start_negotiation`(`deadlock_or_escalation_id`) に渡す（doc15 ツール6/7）。この id を MCP in-memory registry（`tools.py:108`）へ登録する producer→registry 連携は未実装（`tools.py:343 TODO(#escalation)`）＝現状 registry 未登録 id は `tools.py:357` で `unknown_escalation_id` 拒否。`escalation` の派生は §6 エスカレーション階層に対応する。
 
 ---
 
