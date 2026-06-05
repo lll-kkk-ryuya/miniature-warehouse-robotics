@@ -14,8 +14,9 @@ Verifies the #156 slice1 composition of bringup.launch.py:
   * the four launch-less nodes are composed as Node()s: state_cache, emergency_guardian,
     nav2_bridge, llm_bridge (doc16:117-120 — bringup owns launch, node pkgs own none).
   * State Cache + Emergency Guardian are core infra (always-on, no condition).
-  * the commander layer is gated: llm_bridge by ``llm``; nav2_bridge by ``llm`` AND
-    traffic_mode != open-rmf (Open-RMF replaces it under Mode C, doc15:211); sim by ``sim``.
+  * the commander layer is gated: llm_bridge by ``llm``; nav2_bridge by ``llm`` AND the
+    positive allowlist traffic_mode in {none,simple} (#166; Open-RMF replaces it under Mode C,
+    doc15:211, and an unknown/typo mode fails closed); sim by ``sim``.
   * the Warehouse MCP Server is NOT a Node here (in-process / Hermes stdio child,
     doc15:50,80-94) — guarded by asserting the node executable set is exactly the four above.
 """
@@ -147,6 +148,12 @@ def test_state_cache_and_guardian_are_core_infra_always_on() -> None:
         ("true", "none", True, True),  # Mode A: commander + REST sink both on
         ("true", "simple", True, True),  # Mode B: same
         ("true", "open-rmf", True, False),  # Mode C: Open-RMF replaces nav2_bridge (doc15:211)
+        (
+            "true",
+            "simpel",
+            True,
+            False,
+        ),  # unknown/typo mode: allowlist fails closed (no bridge, #166)
         ("false", "none", False, False),  # llm:=false: nav2-only / safety-only bring-up
     ],
 )

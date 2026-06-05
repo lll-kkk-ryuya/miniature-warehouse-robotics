@@ -11,6 +11,7 @@ The resulting ``safety.max_linear_velocity`` is validated against the hard cap
 miniature-scale speed limit above the code-enforced ceiling (rules/safety.md).
 """
 
+import math
 import os
 from pathlib import Path
 from typing import Any
@@ -66,7 +67,8 @@ def _apply_env_overrides(
 
 
 def _validate_safety(cfg: dict[str, Any]) -> None:
-    """Reject a config whose speed cap exceeds the hard ceiling (rules/safety.md)."""
+    """Reject a config whose speed cap is non-positive, non-finite, or above the
+    hard ceiling (rules/safety.md)."""
     safety = cfg.get("safety")
     if not isinstance(safety, dict):
         return
@@ -74,11 +76,22 @@ def _validate_safety(cfg: dict[str, Any]) -> None:
     # presence (#44: a typo battery scale must be rejected even if max_linear_velocity
     # is absent, since it silently disables the battery estop).
     cap = safety.get("max_linear_velocity")
-    if cap is not None and cap > MAX_LINEAR_VELOCITY:
-        raise ValueError(
-            f"config safety.max_linear_velocity={cap} exceeds hard cap "
-            f"MAX_LINEAR_VELOCITY={MAX_LINEAR_VELOCITY} m/s (rules/safety.md)"
-        )
+    if cap is not None:
+        # Fail LOUD on a degenerate cap first (#169): a non-positive / non-finite
+        # value would otherwise slip past the upper-bound check (-0.5 / 0 / NaN are
+        # all NOT `> MAX`), then invert the symmetric clamp in consumers / pass a
+        # negative vx_max to Nav2. NaN must be rejected explicitly: both `> MAX`
+        # and `<= 0` are False for NaN, so the isfinite() guard is required.
+        if not math.isfinite(cap) or cap <= 0:
+            raise ValueError(
+                f"config safety.max_linear_velocity={cap} must be a finite "
+                f"positive value (got non-finite or <= 0) (rules/safety.md)"
+            )
+        if cap > MAX_LINEAR_VELOCITY:
+            raise ValueError(
+                f"config safety.max_linear_velocity={cap} exceeds hard cap "
+                f"MAX_LINEAR_VELOCITY={MAX_LINEAR_VELOCITY} m/s (rules/safety.md)"
+            )
     scale = safety.get("battery_percentage_scale")
     if scale is not None and scale not in BATTERY_PERCENTAGE_SCALES:
         raise ValueError(
@@ -93,8 +106,8 @@ def load_config(paths: list[Path] | None = None) -> dict[str, Any]:
     Resolution order (doc19 §3, last wins): base file → env overlay file →
     ``WAREHOUSE__*`` environment variables. ``paths`` overrides the resolved file
     paths (for tests). Missing files are skipped, so a partial overlay merges
-    cleanly onto the base. Raises ``ValueError`` if the resulting speed cap
-    exceeds ``safety.MAX_LINEAR_VELOCITY``.
+    cleanly onto the base. Raises ``ValueError`` if the resulting speed cap is
+    non-positive, non-finite, or exceeds ``safety.MAX_LINEAR_VELOCITY``.
     """
     resolved = config_paths() if paths is None else paths
     merged: dict[str, Any] = {}
