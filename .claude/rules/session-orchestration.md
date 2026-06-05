@@ -18,7 +18,7 @@
 
 ## 1. 独立レーン設計の作法
 - 1 lane = 1 worktree = 1 branch = 1 epic Issue（parallel-workflow.md §1）。最新 `main` を基点に `git worktree add ../mwr-<track> -b <branch> main`。
-- session 命名: `cd ../mwr-<track> && claude -n "mwr-<track>"`（`-n/--name`＝表示名。parallel-workflow.md §1.1 session 命名規約）。`git worktree list` と一致させる。
+- session 命名: `cd ../mwr-<track> && claude -n "mwr-<track>"`（`-n/--name`＝表示名。parallel-workflow.md「session 命名規約」小節＝parallel-workflow.md:55）。`git worktree list` と一致させる。
 - `ready` ラベルのみ着手可。`blocked` は不可。新トラックは先に epic Issue を作る（create-issue skill）。
 
 ## 2. 編集境界の非衝突設計（レーンを真に独立にする）
@@ -26,7 +26,7 @@
 - **新規ファイル優先**・**1 ファイル 1 責務**（parallel-workflow.md §6 / §7.1）。
 - **共有ファイルは単一所有者 or contract-PR**（§7.1 の所有表）。`warehouse_interfaces/**`=skeleton(contract) / `config/warehouse.base.yaml`=bringup/skeleton / `docs/STATUS.md`=orchestrator / **`.claude/**`・`.github/**`=governance(track:docs)・メタ作業は直列化**。
 - 他トラックの内部モジュールを import しない（parallel-workflow.md §2.1）。凍結契約 `warehouse_interfaces` のみに依存。
-- **割り当て前に各レーンの編集境界を列挙し、ペアワイズで重なりゼロを確認**（collisionNotes として記録）。同一ファイルを 2 レーンが触るなら片方に内包するか順序化する（実例: #166 は `bringup.launch.py` を #156 と共有 → 別レーンにせず #156 slice2 に内包）。
+- **割り当て前に各レーンの編集境界を列挙し、ペアワイズで重なりゼロを確認**（collisionNotes として記録）。同一ファイルを 2 レーンが触るなら別レーンを切らず順序化する（実例: #166（nav2_bridge launch gate）は `bringup.launch.py` を #156 slice1（PR#162）と共有 → 別レーンにせず #162 land 後に同一 `feat/integration-e2e` 上で順序化し PR#174 で land）。
 
 ## 3. 配信メカニズム（GitHub をチャネルに）
 - すべての連絡は GitHub Issue/PR コメント（チャットでなく記録に残す。merge-and-communication.md §2）。

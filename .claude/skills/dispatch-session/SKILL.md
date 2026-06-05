@@ -67,7 +67,7 @@ orchestrator が指示を **ground truth で裏取り→ドラフト→ユーザ
 - post 後、**コメント URL を返す**。worker はそれを poll で pull する。
 
 ## 6. 検証・後始末
-- 新規レーンなら起動コマンドを添える: `cd ../mwr-<lane> && claude -n "mwr-<lane>"`（Opus 確認・session 命名規約 parallel-workflow.md §1.1）。
+- 新規レーンなら起動コマンドを添える: `cd ../mwr-<lane> && claude -n "mwr-<lane>"`（Opus 確認・session 命名規約＝parallel-workflow.md:55）。
 - 稼働中レーンへは「次サイクル冒頭で `gh issue view <N> --json comments` を poll」を指示済みであることを確認。
 - 大きなラウンドは brief を `~/Developer/mwr-handoff/round<N>-<date>/kickoff-<lane>.md` に保存（記録・再利用）。
 
