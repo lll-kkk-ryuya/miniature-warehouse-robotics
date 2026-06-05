@@ -42,6 +42,13 @@ def _setup(context, *args, **kwargs):
     # the Nav2 consumer (nav2_bringup.launch.py:187); the /clock pair is bridged below.
     use_sim_time = LaunchConfiguration("use_sim_time").perform(context)
     use_sim_time_bool = use_sim_time.lower() == "true"
+    # Synthetic battery scenario (#44/#156). Resolved here (not passed as Substitutions)
+    # so the Node receives real floats matching its declared double params. The battery
+    # SCALE is NOT passed: the node reads safety.battery_percentage_scale from config
+    # itself — the same single source the State Cache / Guardian read (no split-brain).
+    battery_initial = float(LaunchConfiguration("battery_initial_percent").perform(context))
+    battery_drain = float(LaunchConfiguration("battery_drain_per_min").perform(context))
+    battery_floor = float(LaunchConfiguration("battery_floor_percent").perform(context))
 
     out_dir = os.path.join(tempfile.gettempdir(), "warehouse_sim")
     os.makedirs(out_dir, exist_ok=True)
@@ -107,6 +114,25 @@ def _setup(context, *args, **kwargs):
             output="screen",
         )
     )
+    # Synthetic battery so the State Cache emits each bot (it gates a snapshot on
+    # pose+velocity+battery, doc12:207) → the LLM commander can see the bots (#156).
+    # The node reads safety.battery_percentage_scale from config (single source, #44).
+    actions.append(
+        Node(
+            package="warehouse_sim",
+            executable="sim_battery_publisher",
+            parameters=[
+                {
+                    "use_sim_time": use_sim_time_bool,
+                    "initial_percent": battery_initial,
+                    "drain_percent_per_minute": battery_drain,
+                    "floor_percent": battery_floor,
+                }
+            ],
+            condition=IfCondition(LaunchConfiguration("battery")),
+            output="screen",
+        )
+    )
     actions.append(
         Node(
             package="rviz2",
@@ -129,6 +155,19 @@ def generate_launch_description() -> LaunchDescription:
                 default_value="true",
                 description="Use the Gazebo /clock sim time (matches nav2_bringup.launch.py:187).",
             ),
+            # Synthetic battery publisher (#44/#156). Default on: required for the State
+            # Cache to emit a bot (doc12:207). Tune for a low-battery demo, e.g.
+            # battery_initial_percent:=15 battery_floor_percent:=5 to exercise the
+            # critical-battery estop / Policy Gate on camera.
+            DeclareLaunchArgument(
+                "battery",
+                default_value="true",
+                description="Publish synthetic /bot{n}/battery (#44/#156); needed for bots to "
+                "reach the situation JSON (doc12:207).",
+            ),
+            DeclareLaunchArgument("battery_initial_percent", default_value="100.0"),
+            DeclareLaunchArgument("battery_drain_per_min", default_value="1.0"),
+            DeclareLaunchArgument("battery_floor_percent", default_value="60.0"),
             OpaqueFunction(function=_setup),
         ]
     )
