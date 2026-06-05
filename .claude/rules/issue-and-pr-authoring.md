@@ -32,7 +32,7 @@ docs-first の原則（真実は docs・着手前に正本を読む・例示 vs 
 | sim | `shared/09-navigation-internals.md`・`architecture/06-implementation-phases.md`＋該当 Issue（#7） |
 | wo（orchestrator KPI） | `architecture/15-mcp-platform.md`・`architecture/08`（Langfuse）・`architecture/20-dev-quality-and-testing.md` |
 | jetson | `architecture/17` §4（deploy）・`shared/02-hardware-design.md`・`architecture/19-environments-and-config.md` |
-| firmware | `shared/02-hardware-design.md`・`safety.md`・`architecture/12`（Layer 0） |
+| firmware | `shared/02-hardware-design.md`・`.claude/rules/safety.md`・`architecture/12`（Layer 0） |
 | docs / dev-tooling | `docs/README.md`・`architecture/20-dev-quality-and-testing.md`・本書 |
 | 環境 / config | `architecture/19-environments-and-config.md` |
 
@@ -42,7 +42,7 @@ docs-first の原則（真実は docs・着手前に正本を読む・例示 vs 
 
 ## 2. Issue 必須セクション（`gh` CLI テンプレ）
 
-すべての Issue は以下を**順番通り**に含める。`gh issue create --body "$(cat <<'EOF' ... EOF)"` でこの形を貼る:
+Issue は以下を**順番通り**に含める（この形は **CLI 用の最大集合＝epic / 大タスク向け**。必須サブセットは種別で変わる → 末尾注記・§3）。`gh issue create --body "$(cat <<'EOF' ... EOF)"` でこの形を貼る:
 
 ```markdown
 [worktree: mwr-<track> | branch: <branch> | track: #N]
@@ -73,7 +73,7 @@ docs-first の原則（真実は docs・着手前に正本を読む・例示 vs 
 
 - **先頭 worktree タグ必須**（merge-and-communication.md §2）。worktree 名 `git worktree list` / branch `git rev-parse --abbrev-ref HEAD`。
 - **「設計正本」セクションは空にしない**。docs リンクが書けない＝起票が早い。
-- 種別ごとの追加項目は §3。
+- 種別ごとの追加項目は §3。**各種別の必須サブセットは GitHub フォームが正準**: `task.yml`（個別タスク・sub）は worktree タグ / 親 epic / 目的 / DoD / 設計正本 / 依存 を必須とし、`背景・現状`・`影響範囲`・`ラベル/Phase` は **epic（`epic-track.yml`）中心＝小タスク・sub では省略可**（上のフル形は epic / 大タスクの最大集合）。
 
 ---
 

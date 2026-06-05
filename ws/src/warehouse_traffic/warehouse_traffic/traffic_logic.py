@@ -45,6 +45,11 @@ Conflict = dict[str, Any]
 # 11a:99/118-122): real planner mapping locations -> aisle keys.
 RoutePlanner = Callable[[str, str], list[str]]
 
+# Lock-release fallback C: a lock held longer than this (seconds) is force-released
+# to break a deadlock (11a §9.3 / R-28 / T8). PROVISIONAL demo default — the value is
+# NOT frozen (docs say "未定"); # TODO(Phase 3): measure transit time + make it config.
+AISLE_LOCK_TIMEOUT_S = 30.0
+
 
 class Nav2BridgeLike(Protocol):
     """Minimal duck-typed surface of ``warehouse_nav2_bridge`` consumed here.
@@ -65,6 +70,23 @@ def no_route(pickup: str, dropoff: str) -> list[str]:
     once the route contract is defined (# TODO(Phase 3, 11a:99/118-122)).
     """
     return []
+
+
+def table_route_planner(routes: dict[tuple[str, str], list[str]]) -> RoutePlanner:
+    """Build a planner from an explicit ``{(pickup, dropoff): [aisle keys]}`` table.
+
+    This is the **demo** topology of 11a §9.2 (not the Phase-3 geometric planner):
+    the caller declares which (pickup, dropoff) tasks traverse which lock key, e.g.
+    both opposing demo tasks map to ``["route_A"]`` so they contend for one lock.
+    Unknown pairs return ``[]`` (degrade to no-exclusion, like :func:`no_route`).
+    Keys are injected, NOT frozen ``KNOWN_LOCATIONS`` (11a §9 / docstring).
+    """
+    table = {pair: list(aisles) for pair, aisles in routes.items()}
+
+    def planner(pickup: str, dropoff: str) -> list[str]:
+        return list(table.get((pickup, dropoff), []))
+
+    return planner
 
 
 class TrafficManager(ABC):
@@ -129,14 +151,24 @@ class SimpleTrafficManager(TrafficManager):
         self,
         nav2_bridge: Nav2BridgeLike | None = None,
         route_planner: RoutePlanner | None = None,
+        lock_timeout_s: float = AISLE_LOCK_TIMEOUT_S,
     ) -> None:
         self._nav2_bridge = nav2_bridge
         self._plan_route: RoutePlanner = route_planner or no_route
         # {aisle_key: occupant_robot_or_None}
         self.aisle_locks: dict[str, str | None] = {}
+        # {aisle_key: acquisition timestamp} — only set when submit_task gets a `now`
+        # (the rclpy node passes its clock). Used by :meth:`expired_locks` (fallback C).
+        self._acquired_at: dict[str, float] = {}
+        self._lock_timeout_s = lock_timeout_s
 
     def submit_task(
-        self, robot: str, pickup: str, dropoff: str, priority: str = "normal"
+        self,
+        robot: str,
+        pickup: str,
+        dropoff: str,
+        priority: str = "normal",
+        now: float | None = None,
     ) -> SubmitResult:
         route = self._plan_route(pickup, dropoff)
         for aisle in route:
@@ -149,14 +181,31 @@ class SimpleTrafficManager(TrafficManager):
                 }
         for aisle in route:
             self.aisle_locks[aisle] = robot
+            if now is not None:
+                self._acquired_at[aisle] = now  # stamp for the lock-age timeout (C)
         if self._nav2_bridge is not None:
             self._nav2_bridge.navigate(robot, dropoff)  # single destination (11a:110)
         return {"status": "sent", "adjustments": None}
 
     def release_aisle(self, robot: str, aisle: str) -> None:
-        """Free ``aisle`` once ``robot`` has passed (``11a:113-116``)."""
+        """Free ``aisle`` once ``robot`` has passed (``11a:113-116`` / §9.3 trigger A)."""
         if self.aisle_locks.get(aisle) == robot:
             self.aisle_locks[aisle] = None
+            self._acquired_at.pop(aisle, None)
+
+    def expired_locks(self, now: float) -> list[tuple[str, str]]:
+        """``(robot, aisle)`` locks held >= ``lock_timeout_s`` (fallback C, §9.3).
+
+        Deadlock fallback only: judged on **lock age**, never the retired
+        ``status=="blocked"`` predicate (#128). Caller (the node) force-releases these.
+        """
+        return [
+            (robot, aisle)
+            for aisle, robot in self.aisle_locks.items()
+            if robot is not None
+            and aisle in self._acquired_at
+            and now - self._acquired_at[aisle] >= self._lock_timeout_s
+        ]
 
     def get_conflicts(self) -> list[Conflict]:
         # Locks alone do not yet surface in-progress conflict objects

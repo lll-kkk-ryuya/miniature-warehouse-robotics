@@ -42,7 +42,7 @@
 ## Issue / PR 作成
 - **作成前に必ず `docs/` を確認**（`docs/README.md` で設計正本を特定）。Issue / PR 本文に**設計正本へのリンクを必須**とする。
 - 必須セクション・テンプレ・ラベル規約・簡素 issue 禁止は `.claude/rules/issue-and-pr-authoring.md`。GitHub フォームは `.github/ISSUE_TEMPLATE/`・`.github/PULL_REQUEST_TEMPLATE.md`。
-- `gh issue create` / `gh pr create` 時は非ブロッキングフック（`.claude/hooks/remind-gh-authoring.sh`）が要点を注意喚起する。
+- `gh issue create` / `gh pr create` 用の非ブロッキングフック（`.claude/hooks/remind-gh-authoring.sh`）を用意（要点を注意喚起）。**有効化（settings.json への配線）は人間が行い、未配線時は発火しない**（[hooks/README](hooks/README.md) / `.claude/rules/issue-and-pr-authoring.md` §6）。
 
 ## Important Paths
 - `docs/README.md` - ドキュメントマップ（全体構成）
