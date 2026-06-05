@@ -18,8 +18,9 @@ unit-tested directly.
 
 Transport notes:
 * **stateless** chat/completions — no ``run_id`` / ``/v1/runs/{id}/stop`` on the
-  adopted path (doc13:392-398). Cancellation is the caller's ``asyncio.wait_for``
-  (Layer A client-side); the explicit run ``/stop`` is stubbed pending Issue #54.
+  adopted path (doc13:396-436). Cancellation is the caller's ``asyncio.wait_for``
+  (Layer A client-side); the explicit run ``/stop`` is dropped — in-process
+  dispatch has no server-side run to stop (Issue #54 resolved, doc08:173-179).
 
 Failure contract (consumed by the scheduler, doc08:287-289): a transport / non-2xx
 error raises :class:`LLMUnavailableError` (→ Nav2-only); a malformed body raises

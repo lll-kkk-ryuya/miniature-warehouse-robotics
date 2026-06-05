@@ -33,8 +33,8 @@
 - net: Hermes Gateway `/v1/chat/completions`（OpenAI 互換, langfuse.openai 経由）
 - pip: `langfuse>=4.7,<5` + `openai`（lazy・setup.py 宣言。rosdep でない＝CI pytest は fake で非依存）
 
-## 排他3層（A+B-3+C, doc08:160-174 / doc15§2）
-- **A** = `wait_for(2.5s)` の client-side cancel。**明示 `/v1/runs/{id}/stop` は STUB**（stateless chat/completions に run_id 無し＝**Issue #54** / R-35A, doc08:174）。安全主担保は B-3+C。
+## 排他3層（A+B-3+C, doc08:161-179 / doc15§2）
+- **A** = `wait_for(2.5s)` の client-side cancel のみ。明示 `/v1/runs/{id}/stop` は **#54 で撤回**（stateless chat/completions に run_id 無し＋ tool dispatch は Bridge in-process でサーバー側 tool 実行が無く /stop 不要。R-35A 解消, doc08:173-179）。安全主担保は B-3+C。
 - **B-3** = `gen_store.set` で世代公開 → action_map が `gen_id` を全 ToolCall に注入 → MCP が stale reject。
 - **C** = action_map が per-call UUID mint → MCP `GenChecker.check`→`check_and_add` で replay reject（gen_check.py:83-86 で enforce 確認済）。
 
@@ -51,7 +51,7 @@
 - **docs 反映は #73 へ**: doc08:356/361・doc13:478（trace_id=`uuid7().hex`/session=`demo_...` の記述）を **seed 派生 + `run_*` session** に更新するのは Langfuse doc 所有の **#73**（branch `docs/langfuse-v4-provider-decision`）。本 PR は #73/#6 にコメントで seed 契約を予告（cross-lane 衝突回避）。
 - **(済) doc-drift #71 MERGED**: Bridge-mediated dispatch の doc08/doc15 reconcile は #71 で main 入り。
 - **(済) Mode C 省略**: situation builder が mode-aware（#66 Optional 化を消費）。残: Mode A/C 別 **system prompt**（doc14:159-166）は後続スライス。
-- **/stop（#54）= DEFER**: #54 OPEN・未決のため S1 の best-effort stub 維持（実装しない＝発明しない）。
+- **(済) /stop（#54）= 解決(撤回)**: 採用トランスポート（stateless chat/completions + Bridge in-process dispatch）にはサーバー側 tool 実行が無いため明示 Hermes `/v1/runs/{id}/stop` は不要＝撤回。Layer A は client-side cancel（`wait_for`）のみ・安全主担保は B-3+C。`scheduler._stop_hermes_run` の no-op stub は削除（dead code）。unit: `test_stale_call_rejected_when_stop_noop_54`（R-26）。
 - **公平性ガード #103 = intent-only / 一部 defer**: Bridge は倉庫 intent の自己矛盾を起動時 abort するのみ＝**Hermes の実 memory 状態を保証しない**（stateless path・別 config・起動順）。**defer**: ① 倉庫 intent→実 Hermes OFF の配線（env interpolation / 生成 config / toolset 差し替え）= Phase 4 起動ハーネス責務（`deploy/hermes` owner 未割当→要予告）／② MCP token-cost **実測**（現状は config 由来概算 ~800+~500tok）= Phase 3→4／③ doc06:88「3秒ループ動作検証」= runtime 必要。docs 正本: doc13 §「Memory/Skills/session_search — OFF 機構」（PR #150）。
 
 ## 設計ドキュメント

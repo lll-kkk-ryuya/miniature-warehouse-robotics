@@ -7,10 +7,11 @@ BridgeScheduler` cycle logic is unit-testable with a fake async client.
 
 ``decide`` is a **coroutine** so the scheduler can wrap it in
 ``asyncio.wait_for(decide(...), timeout=2.5)`` and cancel an in-flight request
-on the in-cycle timeout — the client-side half of exclusivity Layer A
-(08-llm-bridge-common.md:140,215-225). The explicit Hermes run ``/stop`` half of
-Layer A is unresolved on the stateless ``/v1/chat/completions`` transport (no
-``run_id``) and is stubbed pending Issue #54 (doc08:168-174).
+on the in-cycle timeout — Layer A is exactly this client-side cancel
+(08-llm-bridge-common.md:140,215-225). There is no explicit Hermes run ``/stop``:
+the adopted stateless ``/v1/chat/completions`` + Bridge-mediated in-process
+dispatch transport has no server-side run/tool execution to stop (Issue #54
+resolved, doc08:173-179); any leftover tool call is caught by B-3 + C instead.
 """
 
 from abc import ABC, abstractmethod
