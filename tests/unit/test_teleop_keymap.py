@@ -135,6 +135,27 @@ def test_negative_or_nonfinite_max_angular_fail_stops(bad_max: float) -> None:
     assert (vx, wz) == (0.0, 0.0)
 
 
+@pytest.mark.safety
+@pytest.mark.parametrize("bad_step", [-0.3, -1e9, float("nan"), float("inf"), float("-inf")])
+@pytest.mark.parametrize("key", ["w", "s", "a", "d"])
+def test_negative_or_nonfinite_lin_step_never_inverts_or_runs(key: str, bad_step: float) -> None:
+    # Single-source step defense: a negative / non-finite linear step must NOT
+    # invert the drive direction (e.g. 's' with -step driving forward) nor move —
+    # it fail-stops to vx=0.0, magnitude always within the frozen hard cap (R-26).
+    vx, _ = key_to_twist(key, lin_step=bad_step)
+    assert vx == 0.0
+    assert abs(vx) <= MAX_LINEAR_VELOCITY
+
+
+@pytest.mark.safety
+@pytest.mark.parametrize("bad_step", [-0.3, -1e9, float("nan"), float("inf"), float("-inf")])
+@pytest.mark.parametrize("key", ["a", "d"])
+def test_negative_or_nonfinite_ang_step_never_inverts_or_runs(key: str, bad_step: float) -> None:
+    # Same for the angular step: a bad turn step fail-stops to wz=0.0 (no sign flip).
+    vx, wz = key_to_twist(key, ang_step=bad_step)
+    assert (vx, wz) == (0.0, 0.0)
+
+
 # ── raw key decoding ─────────────────────────────────────────────────────────
 @pytest.mark.parametrize(
     ("raw", "token"),

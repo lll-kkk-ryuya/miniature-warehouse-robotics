@@ -74,19 +74,24 @@ def key_to_twist(
       (``a``/``d``, ←/→) -> angular ``±ang_step`` clamped to ``max_angular``.
     - a stop key (space / ``x``) and ANY unmapped key -> ``(0.0, 0.0)`` (safe
       default: an unknown key never moves the robot).
-    - a non-finite step (NaN/±inf) clamps to ``0.0`` via ``clamp_velocity`` ->
-      stop, never a runaway ±cap (safety.py:31).
+    - a negative or non-finite step / cap (NaN/±inf) fail-stops to ``0.0`` —
+      never a direction flip or a runaway ±cap (single-source defense below;
+      the node also bounds its params via ``teleop_keyboard._nonneg``).
 
     Stateless and pure: one key -> one command. The node holds the latest command
     and republishes it at a fixed rate (with a dead-man auto-stop), so real-time
     behaviour stays out of this unit-tested mapping.
     """
-    # Defuse a hostile / misconfigured cap before clamping: a NEGATIVE or
-    # non-finite max inverts the symmetric clamp into a runaway
-    # (clamp_velocity(v, -m) -> +m, exceeding the hard cap). Collapse it to 0.0 =
-    # fail-stop. The node also bounds its params (teleop_keyboard._nonneg).
+    # Single-source defense: both the caps AND the step sizes are magnitude-bounded
+    # here, so any caller is safe. A NEGATIVE or non-finite value fail-stops to 0.0
+    # — never a sign flip: a negative cap would invert the symmetric clamp into a
+    # runaway (clamp_velocity(v, -m) -> +m, > the hard cap) and a negative step
+    # would invert the drive direction. The node also bounds its params
+    # (teleop_keyboard._nonneg), defense-in-depth.
     max_speed = max_speed if math.isfinite(max_speed) and max_speed >= 0.0 else 0.0
     max_angular = max_angular if math.isfinite(max_angular) and max_angular >= 0.0 else 0.0
+    lin_step = lin_step if math.isfinite(lin_step) and lin_step >= 0.0 else 0.0
+    ang_step = ang_step if math.isfinite(ang_step) and ang_step >= 0.0 else 0.0
     token = key.lower()
     vx = 0.0
     wz = 0.0
