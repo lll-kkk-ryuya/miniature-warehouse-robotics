@@ -88,7 +88,7 @@ Mode Cでは交通管理フィールドを省略し、Open-RMFからの交通状
 
 Mode Cのsituation JSONはMode A/B版より約200トークン少ない（predicted_position_3s、velocity、heading、obstacle_ahead、obstacle_distance を省略）。
 
-> **`traffic` は凍結 `Situation` 契約外の top-level 追加キー（Mode C 限定・Bridge が mode 連動で付与）**。凍結契約 `warehouse_interfaces.schemas.Situation`（`ws/src/warehouse_interfaces/warehouse_interfaces/schemas.py:125-132`）は `timestamp / turn / gen_id / warehouse / robots / pending_tasks / history` のみで `traffic` を**含まない**。`Situation` は `extra="ignore"`（`schemas.py:25`）のため、LLM Bridge が Mode C で付与する `traffic`（中身は producer `11c RMFTrafficManager.get_traffic_state()` の戻り値そのもの＝`mode / aisles / conflicts / adjustments_since_last / escalation` の5キー、`11c §2（producer〜キー集合）`＝`11c-traffic-mode-c.md:75-177`）は**契約安全に共存**し、frozen schema の再 validate 時に無視される。これは State Cache が `emergency` を `StateSnapshot` 外の追加 top-level キーとして付与するのと同じパターン（`../architecture/12-infrastructure-common.md:256`）。`traffic` の各キー（特に `escalation`）を凍結 schema に昇格するかは将来の contract 判断（producer 昇格の owner は #4、`parallel-workflow.md §4`）。Mode A/B では `traffic` のキー集合が異なる（`mode / aisles / conflicts`、`mode-a/11a`／`warehouse_traffic.traffic_logic` の `TrafficState = dict[str, Any]`）ため、付与は **mode 連動**である。
+> **`traffic` は凍結 `Situation` 契約外の top-level 追加キー（Mode C 限定・Bridge が mode 連動で付与）**。凍結契約 `warehouse_interfaces.schemas.Situation`（`ws/src/warehouse_interfaces/warehouse_interfaces/schemas.py:125-132`）は `timestamp / turn / gen_id / warehouse / robots / pending_tasks / history` のみで `traffic` を**含まない**。`Situation` は `extra="ignore"`（`schemas.py:25`）のため、LLM Bridge が Mode C で付与する `traffic`（中身は producer `11c RMFTrafficManager.get_traffic_state()` の戻り値そのもの＝`mode / aisles / conflicts / adjustments_since_last / escalation` の5キー、`11c §2（producer〜キー集合）`＝`11c-traffic-mode-c.md:75-179`）は**契約安全に共存**し、frozen schema の再 validate 時に無視される。これは State Cache が `emergency` を `StateSnapshot` 外の追加 top-level キーとして付与するのと同じパターン（`../architecture/12-infrastructure-common.md:256`）。`traffic` の各キー（特に `escalation`）を凍結 schema に昇格するかは将来の contract 判断（producer 昇格の owner は #4、`parallel-workflow.md §4`）。Mode A/B では `traffic` のキー集合が異なる（`mode / aisles / conflicts`、`mode-a/11a`／`warehouse_traffic.traffic_logic` の `TrafficState = dict[str, Any]`）ため、付与は **mode 連動**である。
 
 ### Mode C RobotState 正規形（凍結契約）
 
@@ -263,7 +263,7 @@ Nav2（50ms）     → Open-RMF（即時）  → Claude（1-3秒）
 - Open-RMFは「どう実現するか（HOW: 経路・衝突回避・待機時間）」を担当
 - Mode Cでは、Claudeの指示はOpen-RMF Task API経由でNav2に送る（Nav2 MCP Serverは使わない）
 - Open-RMFの調整中（conflicts.status = "in_progress"）はClaudeは介入しない
-- Open-RMFの調整が3回失敗した場合のみClaudeにエスカレーション。**通知経路**: producer `11c RMFTrafficManager.get_traffic_state()` が解消不能な衝突を situation の `traffic.escalation`（非null）に載せる → 司令官は §システムプロンプト の `traffic.escalation` gate で介入する（階層は §エスカレーション階層 / `11c §6`＝`11c-traffic-mode-c.md:245-273`）
+- Open-RMFの調整が3回失敗した場合のみClaudeにエスカレーション。**通知経路**: producer `11c RMFTrafficManager.get_traffic_state()` が解消不能な衝突を situation の `traffic.escalation`（非null）に載せる → 司令官は §システムプロンプト の `traffic.escalation` gate で介入する（階層は §エスカレーション階層 / `11c §6`＝`11c-traffic-mode-c.md:247-275`）
 - Claudeが強制的にOpen-RMFを無視する仕組み（override等）は設けない
 
 ## 通信フロー（タイミング）
