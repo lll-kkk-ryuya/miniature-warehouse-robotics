@@ -24,8 +24,9 @@ Composition (each layer cited; ordering = doc12a:398-412 systemd chain, sim swap
              (doc12:95-151). Params self-loaded from config; no launch params needed. Always-on.
   5. nav2_bridge  Node(warehouse_nav2_bridge/nav2_bridge) — FastAPI :8645 + rclpy; the REST
              action sink the in-process MCP tools POST to (doc12a:150-415, #86/#104). Mode A/B
-             ONLY (gated OFF under traffic_mode==open-rmf, where Open-RMF replaces it,
-             doc15:211). Also gated by ``llm`` (it only matters when the commander runs).
+             ONLY — positive allowlist ``traffic_mode in {none,simple}`` mirroring llm_bridge
+             NAV2_BRIDGE_MODES (llm_bridge.py:71, doc15:211-219); open-rmf (Mode C) uses
+             Open-RMF instead. Also gated by ``llm`` (it only matters when the commander runs).
   6. llm     Node(warehouse_llm_bridge/llm_bridge) — the 3 s commander cycle: reads state.json,
              POSTs Hermes, maps the Command JSON via action_map and dispatches the MCP 7-tools
              IN-PROCESS (WarehouseTools().dispatch, doc15:50 / doc16:55), forwarding accepted
@@ -57,12 +58,16 @@ tolerates not-yet-ready dependencies, so no fragile TimerAction barriers are use
   - llm_bridge falls back to Nav2-only on Hermes outage and sees an empty situation until
     state.json is populated.
 
-KNOWN GAP (#44, blocks the live LLM-drive, NOT bring-up): the sim publishes no
-/bot{n}/battery (Gazebo has no battery sensor, doc03:81), but State Cache requires
-pose+velocity+battery before emitting a bot, so under pure sim state.json stays empty and the
-commander sees no robots. Closing it is a warehouse_sim change (a sim-only fake BatteryState
-publisher) owned by the sim track — out of this skeleton-owned launch slice. Tracked for
-slice2/3 of #156.
+SIM BATTERY (#44 RESOLVED for sim by #160): State Cache emits a bot only once
+pose+velocity+battery are all present (doc12:207), and Gazebo has no battery sensor — so
+sim.launch.py composes the synthetic ``warehouse_sim`` ``sim_battery_publisher`` (gated
+``battery:=true`` DEFAULT-ON, doc03:79 table / :82 note), publishing /bot{n}/battery in the
+config ``safety.battery_percentage_scale`` (single source, split-brain-proof). This top-level
+launch includes sim.launch.py WITHOUT passing ``battery:=``, so it inherits #160's default-on:
+pure sim populates state.json and the commander sees both bots. #44 stays OPEN only for the
+Phase-1 real-hardware scale measurement. (A low-battery estop demo tunes sim.launch.py's
+battery_initial_percent/floor args, which this top-level launch does not forward — run
+sim.launch.py directly for that, or add a forward in a follow-up.)
 
 Edit boundary: this file is skeleton-owned (doc16:183). sim.launch.py (sim), nav2_bringup.launch.py
 + config/ (nav-traffic), and the state/safety/bridge node executables (their tracks) are
@@ -194,7 +199,10 @@ def generate_launch_description() -> LaunchDescription:
     )
 
     # 5. Nav2 Bridge — FastAPI :8645 + rclpy; the REST action sink for accepted MCP motion
-    # tools. Mode A/B only (OFF under open-rmf, doc15:211) AND only when the commander runs.
+    # tools. Mode A/B only AND only when the commander runs. POSITIVE allowlist
+    # traffic_mode in {none,simple} mirrors llm_bridge NAV2_BRIDGE_MODES (llm_bridge.py:71,
+    # doc15:211-219) — so an unknown/typo mode fails closed (no bridge) exactly as the bridge
+    # would skip forwarding, and open-rmf (Mode C, Open-RMF replaces it) stays off.
     nav2_bridge = Node(
         package="warehouse_nav2_bridge",
         executable="nav2_bridge",
@@ -202,7 +210,7 @@ def generate_launch_description() -> LaunchDescription:
         output="screen",
         condition=IfCondition(
             PythonExpression(
-                ["'", llm_enabled, "' == 'true' and '", traffic_mode, "' != 'open-rmf'"]
+                ["'", llm_enabled, "' == 'true' and '", traffic_mode, "' in ('none', 'simple')"]
             )
         ),
     )
