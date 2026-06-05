@@ -1,9 +1,12 @@
 [Unit]
 # Nav2 stack — composes the per-bot Nav2 + twist_mux + VirtualScan via the
 # top-level bring-up (warehouse_bringup/launch/bringup.launch.py; itself Includes
-# nav2_bringup.launch.py). NOTE: that composition lands with #75 — until #75
-# merges, bringup.launch.py is an empty placeholder and the launch args below are
-# inert no-ops (Depends on #75).
+# nav2_bringup.launch.py — nav2 composed by #75/PR#93, full Phase 0.5 stack by #156/PR#162).
+# bringup.launch.py now DEFAULTS to sim:=true / llm:=true for the Mac M4 capstone
+# (bringup.launch.py:148-149,154-155). prod is real hardware (no Gazebo) and runs the
+# LLM commander as its own unit (warehouse-bridge.service), so the ExecStart below pins
+# sim:=false llm:=false to keep this a nav2-only / safety-only bring-up and avoid
+# double-starting gz sim or the llm/nav2 bridge (#156 cross-lane -> #127).
 # This unit MOVES the real robots, so it BindsTo= the Emergency Guardian:
 # BindsTo + After guarantees Nav2 is never active without Layer 1 safety active
 # and — unlike Requires= — also stops Nav2 when the guardian terminates
@@ -23,7 +26,7 @@ Group=warehouse
 # RPLiDAR A1 over USB (doc02:180); dialout = serial-access group. use_sim_time:=false
 # on real hardware; traffic_mode / map from the env file (see warehouse.env.example).
 SupplementaryGroups=dialout
-ExecStart=/opt/warehouse/deploy/jetson/bin/ros-exec.sh ros2 launch warehouse_bringup bringup.launch.py use_sim_time:=false traffic_mode:=${WAREHOUSE_TRAFFIC_MODE} map:=${WAREHOUSE_MAP}
+ExecStart=/opt/warehouse/deploy/jetson/bin/ros-exec.sh ros2 launch warehouse_bringup bringup.launch.py use_sim_time:=false sim:=false llm:=false traffic_mode:=${WAREHOUSE_TRAFFIC_MODE} map:=${WAREHOUSE_MAP}
 Restart=on-failure
 RestartSec=5
 

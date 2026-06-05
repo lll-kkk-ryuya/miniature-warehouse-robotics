@@ -7,7 +7,7 @@
 > 起動/監視・手順）を正本化する。実 OS 焼き込み・実機制御は **Phase 1**（Jetson 到着後、
 > doc02:140-164 / doc06 Phase 0.5→1）。
 >
-> **設計正本**: [doc19 環境分離](../architecture/19-environments-and-config.md)（prod 行・`/run/warehouse`・git タグ）/ [doc02 ハードウェア](../shared/02-hardware-design.md):134-164（Jetson 準備）/ [doc12 安全4層](../architecture/12-infrastructure-common.md):75-84,380-390（Layer 0/1）/ `paths.py`:22-57（runtime/config パス）/ `.claude/rules/safety.md`・`environments.md`。
+> **設計正本**: [doc19 環境分離](../architecture/19-environments-and-config.md)（prod 行・`/run/warehouse`・git タグ）/ [doc02 ハードウェア](../shared/02-hardware-design.md):134-164（Jetson 準備）/ [doc12 安全4層](../architecture/12-infrastructure-common.md):75-84,469-481（Layer 0/1）/ `paths.py`:22-57（runtime/config パス）/ `.claude/rules/safety.md`・`environments.md`。
 > **実装**: [deploy/jetson/](../../deploy/jetson/)（unit・スクリプト・env 雛形）。
 
 ---
@@ -87,9 +87,12 @@ sudo systemctl enable --now warehouse.target
 起動順は unit の `After=/BindsTo=` で制御: micro-ROS Agent → State Cache → Emergency Guardian
 → Nav2（guardian に `BindsTo`）→ LLM Bridge。
 
-> **Depends on #75**: `warehouse-nav2.service` は `ros2 launch warehouse_bringup bringup.launch.py`
-> に `traffic_mode` / `map` 等を渡すが、**#75 マージ前の `bringup.launch.py` は空の placeholder**
-> （`LaunchDescription([])`）で、これら launch 引数は**無視される no-op**。#75 着地後に有効化。
+> **prod launch 引数（nav2-only 固定）**: `warehouse-nav2.service` は `ros2 launch warehouse_bringup
+> bringup.launch.py use_sim_time:=false sim:=false llm:=false …` を渡す。`bringup.launch.py` は
+> #75/PR#93・#156/PR#162 でフルスタック合成済（既定 `sim:=true`/`llm:=true`＝Mac M4 capstone・
+> bringup.launch.py:148-149,154-155）。prod は実機（gz 無し）＋ LLM を専用 unit（`warehouse-bridge.service`）で
+> 動かすため `sim:=false llm:=false` を固定して **nav2-only** 化し、gz sim / llm・nav2 bridge の二重起動を防ぐ
+> （#156 cross-lane→#127）。
 > `traffic_mode` の prod 値は `config/prod/warehouse.yaml:13`（`open-rmf`＝Mode C）と一致させる
 > （`/etc/warehouse/warehouse.env` の `WAREHOUSE_TRAFFIC_MODE`。doc19:54 単一ソース）。
 
@@ -127,10 +130,10 @@ sudo systemctl restart warehouse.target
 
 | unit | 役割 | 依存 | runtime dir |
 |---|---|---|:---:|
-| `warehouse-microros-agent.service` | micro-ROS Agent（WiFi/UDP, doc02:71） | `network-online.target` | — |
+| `warehouse-microros-agent.service` | micro-ROS Agent（WiFi/UDP, doc02:81） | `network-online.target` | — |
 | `warehouse-state-cache.service` | State Cache（`state.json`, doc12 §State Cache Node） | microros | `/run/warehouse`（作成・Preserve） |
 | `warehouse-safety.service` | Emergency Guardian（Layer 1, doc12:80-84） | state-cache | `/run/warehouse` |
-| `warehouse-nav2.service` | Nav2 bring-up（`bringup.launch.py`・**#75 着地後**有効） | **BindsTo safety** | — |
+| `warehouse-nav2.service` | Nav2 bring-up（`bringup.launch.py`・**prod は `sim:=false llm:=false`＝nav2-only**） | **BindsTo safety** | — |
 | `warehouse-bridge.service` | LLM Bridge（→ GCP Hermes） | nav2 / state-cache | `/run/warehouse` |
 
 `RuntimeDirectory=warehouse` + `RuntimeDirectoryPreserve=yes` で `/run/warehouse`（prod

@@ -22,10 +22,10 @@ guardian が**異常終了/クラッシュしても nav2 を停止**する（`Re
 | パス | 役割 |
 |---|---|
 | `systemd/warehouse.target` | スタック一括 target（5 unit を Wants） |
-| `systemd/warehouse-microros-agent.service` | micro-ROS Agent（ESP32 minicar / WiFi・UDP, doc02:71） |
-| `systemd/warehouse-state-cache.service` | State Cache（`/run/warehouse/state.json`, doc12:384） |
+| `systemd/warehouse-microros-agent.service` | micro-ROS Agent（ESP32 minicar / WiFi・UDP, doc02:81） |
+| `systemd/warehouse-state-cache.service` | State Cache（`/run/warehouse/state.json`, path 正本 doc19:18・paths.py:22-30・100ms 周期 doc12:475） |
 | `systemd/warehouse-safety.service` | Emergency Guardian（Layer 1, doc12:80-84） |
-| `systemd/warehouse-nav2.service` | Nav2 bring-up（`bringup.launch.py`・**#75 着地後**有効・guardian を BindsTo） |
+| `systemd/warehouse-nav2.service` | Nav2 bring-up（`bringup.launch.py`・**prod は `sim:=false llm:=false` で nav2-only**・guardian を BindsTo） |
 | `systemd/warehouse-bridge.service` | LLM Bridge Node（→ GCP Hermes, doc19:18,86） |
 | `env/warehouse.env.example` | `/etc/warehouse/warehouse.env` の雛形（**secrets 無し**） |
 | `bin/ros-exec.sh` | ROS 2 underlay + workspace overlay を source して node を exec |
@@ -43,6 +43,41 @@ deploy/jetson/bin/healthcheck.sh
 ```
 
 詳細・前提・ロールバックは [docs/setup/jetson-deploy.md](../../docs/setup/jetson-deploy.md)。
+
+## 忠実度ギャップと実機投入前ゲート（#127）
+
+現状ソフトは **Mac M4(arm64) + tiryoh(ARM64)** で検証中。実 Jetson Orin Nano Super
+（arm64 Ubuntu 24.04）との **忠実度ギャップ**（GPU/CUDA・実時間性 R-40・micro-ROS 2台 R-37・
+8GB ユニファイドメモリ R-38）と、**実機投入前ゲート（G0-G7・合否基準付き）**の正本は
+[docs/jetson/01-fidelity-and-validation.md](../../docs/jetson/01-fidelity-and-validation.md)。
+要点は [doc19 §7](../../docs/architecture/19-environments-and-config.md) にも固定。
+
+**この scaffold の整合（doc19 / doc17 §4 と突合・修正不要）**:
+
+| 項目 | 期待（正本） | 本 scaffold | 判定 |
+|---|---|:---:|:---:|
+| prod=別マシン clone | doc17:88 / doc19:94（git タグ） | `install.sh` が clone 先自動検出・ExecStart 書換 | ◯ |
+| prod runtime dir | doc19:18（`/run/warehouse`） | data unit が `RuntimeDirectory=warehouse`+`Preserve=yes` | ◯ |
+| 起動順 | doc02:138 / doc12 層構造 | microros→state-cache→safety→nav2→bridge | ◯ |
+| 安全トポロジ | doc12:80-84 / safety.md | nav2 が safety を **`BindsTo=`**（guardian クラッシュで nav2 停止） | ◯ |
+| 安全ゲート | doc16:211-214 / doc19:21 | `install.sh` は導入のみ（enable/start しない） | ◯ |
+| Hermes=GCP | doc19:18,86 | bridge/healthcheck が GCP を read-only 言及 | ◯ |
+| prod launch 引数 | #156: `bringup.launch.py` 既定 `sim:=true`/`llm:=true`（Mac capstone, :148-149,154-155） | `nav2.service` が `sim:=false llm:=false` 固定＝nav2-only・gz/bridge 二重起動防止 | ◯ |
+
+## 検証（実機なしでできる）
+
+実機を動かさず静的に検査できる範囲（**G0-G7 の実機ゲートは Jetson 到着後**＝忠実度 doc §4）:
+
+```bash
+# unit 構文・依存（After/BindsTo/Wants）の静的検査（ROS 不要）
+systemd-analyze verify deploy/jetson/systemd/*.service deploy/jetson/systemd/*.target
+# スクリプト構文
+bash -n deploy/jetson/bin/*.sh && shellcheck deploy/jetson/bin/*.sh
+# env 解決（prod=/run/warehouse）は既存 unit テストで回帰（WAREHOUSE_ENV=prod）
+```
+
+> 実機投入は §0 安全ゲート（G0: Layer 0 ≤0.3 m/s クランプ・近接 e-stop / Layer 1 Guardian unit）
+> 通過後のみ。メモリ Go/No-Go（G1・残RAM≥500MB）が Mode C 採否を分岐する（doc06:98 / 忠実度 doc §4）。
 
 ## まだ無い unit（Phase 1 で追加）
 

@@ -1,5 +1,5 @@
 [Unit]
-# LLM Bridge Node — the commander cycle (doc12:386 Mode A 3s / Mode C 5s). Reads
+# LLM Bridge Node — the commander cycle (doc12:477 Mode A 3s / Mode C 5s). Reads
 # /run/warehouse/state.json, calls the GCP Hermes Gateway (doc19:18,86 — prod
 # Hermes is on GCP 34.4.104.112, NOT the Jetson), and issues goals. Starts last,
 # once nav2 + safety are up. Secrets (API_SERVER_KEY, Langfuse) come from
