@@ -7,7 +7,7 @@
 > 起動/監視・手順）を正本化する。実 OS 焼き込み・実機制御は **Phase 1**（Jetson 到着後、
 > doc02:140-164 / doc06 Phase 0.5→1）。
 >
-> **設計正本**: [doc19 環境分離](../architecture/19-environments-and-config.md)（prod 行・`/run/warehouse`・git タグ）/ [doc02 ハードウェア](../shared/02-hardware-design.md):134-164（Jetson 準備）/ [doc12 安全4層](../architecture/12-infrastructure-common.md):75-84,380-390（Layer 0/1）/ `paths.py`:22-57（runtime/config パス）/ `.claude/rules/safety.md`・`environments.md`。
+> **設計正本**: [doc19 環境分離](../architecture/19-environments-and-config.md)（prod 行・`/run/warehouse`・git タグ）/ [doc02 ハードウェア](../shared/02-hardware-design.md):134-164（Jetson 準備）/ [doc12 安全4層](../architecture/12-infrastructure-common.md):75-84,469-481（Layer 0/1）/ `paths.py`:22-57（runtime/config パス）/ `.claude/rules/safety.md`・`environments.md`。
 > **実装**: [deploy/jetson/](../../deploy/jetson/)（unit・スクリプト・env 雛形）。
 
 ---
