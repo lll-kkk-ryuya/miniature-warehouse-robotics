@@ -35,3 +35,18 @@ def test_sim_launch_declares_and_propagates_use_sim_time() -> None:
     assert '"use_sim_time": use_sim_time' in src
     # the bool form feeds the parameter_bridge + rviz node params (sim time everywhere)
     assert "use_sim_time_bool" in src
+
+
+@pytest.mark.unit
+def test_sim_launch_composes_the_battery_publisher() -> None:
+    # #44/#156: gz has no battery sensor, but the State Cache gates a bot's snapshot on
+    # pose+velocity+battery (doc12:207), so the sim must publish /bot{n}/battery for the
+    # bot to reach the LLM's situation JSON. Default-on, gated by the `battery` arg.
+    src = _SIM_LAUNCH.read_text()
+    assert '"sim_battery_publisher"' in src
+    assert 'DeclareLaunchArgument(\n                "battery"' in src
+    assert 'LaunchConfiguration("battery")' in src  # IfCondition gate
+    # the scale is NOT threaded from launch as a node param — the node reads the single
+    # config source (safety.battery_percentage_scale) itself, like the State Cache /
+    # Guardian (#44). So it must not appear as a passed parameter key.
+    assert '"battery_percentage_scale":' not in src

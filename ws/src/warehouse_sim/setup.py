@@ -24,6 +24,11 @@ setup(
     license="Apache-2.0",
     tests_require=["pytest"],
     entry_points={
-        "console_scripts": [],
+        "console_scripts": [
+            # Synthetic battery publisher (#44/#156): gz has no battery sensor, but the
+            # State Cache gates a bot's snapshot on battery (doc12:207), so the bot needs
+            # /bot{n}/battery to reach the LLM's situation JSON. See warehouse_sim.battery.
+            "sim_battery_publisher = warehouse_sim.battery_publisher:main",
+        ],
     },
 )
