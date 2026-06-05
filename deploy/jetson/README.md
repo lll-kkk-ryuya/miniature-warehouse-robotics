@@ -23,9 +23,9 @@ guardian が**異常終了/クラッシュしても nav2 を停止**する（`Re
 |---|---|
 | `systemd/warehouse.target` | スタック一括 target（5 unit を Wants） |
 | `systemd/warehouse-microros-agent.service` | micro-ROS Agent（ESP32 minicar / WiFi・UDP, doc02:81） |
-| `systemd/warehouse-state-cache.service` | State Cache（`/run/warehouse/state.json`, doc12:391） |
+| `systemd/warehouse-state-cache.service` | State Cache（`/run/warehouse/state.json`, path 正本 doc12:260・100ms 周期 doc12:475） |
 | `systemd/warehouse-safety.service` | Emergency Guardian（Layer 1, doc12:80-84） |
-| `systemd/warehouse-nav2.service` | Nav2 bring-up（`bringup.launch.py`・**#75 着地後**有効・guardian を BindsTo） |
+| `systemd/warehouse-nav2.service` | Nav2 bring-up（`bringup.launch.py`・**prod は `sim:=false llm:=false` で nav2-only**・guardian を BindsTo） |
 | `systemd/warehouse-bridge.service` | LLM Bridge Node（→ GCP Hermes, doc19:18,86） |
 | `env/warehouse.env.example` | `/etc/warehouse/warehouse.env` の雛形（**secrets 無し**） |
 | `bin/ros-exec.sh` | ROS 2 underlay + workspace overlay を source して node を exec |
@@ -62,6 +62,7 @@ deploy/jetson/bin/healthcheck.sh
 | 安全トポロジ | doc12:80-84 / safety.md | nav2 が safety を **`BindsTo=`**（guardian クラッシュで nav2 停止） | ◯ |
 | 安全ゲート | doc16:211-214 / doc19:21 | `install.sh` は導入のみ（enable/start しない） | ◯ |
 | Hermes=GCP | doc19:18,86 | bridge/healthcheck が GCP を read-only 言及 | ◯ |
+| prod launch 引数 | #156: `bringup.launch.py` 既定 `sim:=true`/`llm:=true`（Mac capstone, :147-148,153-154） | `nav2.service` が `sim:=false llm:=false` 固定＝nav2-only・gz/bridge 二重起動防止 | ◯ |
 
 ## 検証（実機なしでできる）
 

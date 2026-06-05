@@ -1,7 +1,7 @@
 [Unit]
 # State Cache — aggregates the ROS 2 state and writes the atomic snapshot
 # /run/warehouse/state.json (+ gen_store / idempotency_store / audit.jsonl)
-# consumed by the LLM Bridge and MCP Server (doc12:391 100ms target,
+# consumed by the LLM Bridge and MCP Server (doc12:475 100ms target,
 # paths.py:33-51). The shared runtime dir is declared + preserved by every data
 # unit (state-cache / safety / bridge); whichever starts first creates it.
 Description=Warehouse State Cache (state.json @ /run/warehouse)
