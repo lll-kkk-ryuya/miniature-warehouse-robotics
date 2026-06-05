@@ -29,7 +29,7 @@ Composition (each layer cited; ordering = doc12a:398-412 systemd chain, sim swap
   6. llm     Node(warehouse_llm_bridge/llm_bridge) — the 3 s commander cycle: reads state.json,
              POSTs Hermes, maps the Command JSON via action_map and dispatches the MCP 7-tools
              IN-PROCESS (WarehouseTools().dispatch, doc15:50 / doc16:55), forwarding accepted
-             motion to the Nav2 Bridge REST (doc08:250-252). Last to start (doc12a:411). Gated
+             motion to the Nav2 Bridge REST (doc15:211). Last to start (doc12a:411). Gated
              by ``llm:=true``. Plain rclpy node; degrades to Nav2-only if Hermes is unreachable
              (doc08:291 — "LLM API 接続障害 → Nav2単体で自律走行を継続"), so it brings up
              cleanly even without keys.
@@ -208,7 +208,7 @@ def generate_launch_description() -> LaunchDescription:
     )
 
     # 6. LLM Bridge — the commander cycle (last to start, doc12a:411). In-process MCP dispatch;
-    # degrades to Nav2-only if Hermes is unreachable (doc08:287-288).
+    # degrades to Nav2-only if Hermes is unreachable (doc08:291).
     llm_bridge = Node(
         package="warehouse_llm_bridge",
         executable="llm_bridge",
