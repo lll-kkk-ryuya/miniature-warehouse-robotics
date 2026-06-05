@@ -112,7 +112,7 @@ Warehouse MCP Server は rclpy を持たないため、Nav2 制御用の薄い B
 │  ┌───────────────────────▼──────────────────────────────┐ │
 │  │  Hermes Gateway（daemon, port 8642）                 │ │
 │  │  ├── Provider: Claude / GPT / Gemini / Grok          │ │
-│  │  ├── Memory（判断パターン永続化、FTS5）               │ │
+│  │  ├── Memory（判断パターン永続化）                     │ │
 │  │  ├── Skills（成功パターン学習）                       │ │
 │  │  ├── Langfuse Plugin（LLMトレース自動記録）           │ │
 │  │  └── MCP Client → Warehouse MCP Server（stdio）      │ │

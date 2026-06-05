@@ -244,7 +244,7 @@
 - [ ] Hermes Agent で ChatGPT Provider の接続確認
 - [ ] Hermes Agent で Gemini Provider の接続確認
 - [ ] Hermes Agent で Grok（xAI）Provider の接続確認
-- [ ] **比較公平性ガード**: 比較 run は Hermes Memory/Skills OFF を起動時に assert（`memory.enabled:false`/`skills.enabled:false`、[08-llm-bridge-common.md](../architecture/08-llm-bridge-common.md) §比較の公平性 / R-36 / #103）
+- [ ] **比較公平性ガード**: 比較 run は Hermes の自己学習（memory/skills/session_search）OFF を保証。実 OFF=Hermes config（`memory.memory_enabled:false`＋`user_profile_enabled:false`＋`skills`/`session_search` toolset 除外）。Bridge は `comparison_run` 下の memory/skills ON 宣言を起動時に assert＋ログ（intent ガード、[08-llm-bridge-common.md](../architecture/08-llm-bridge-common.md) §比較の公平性 / R-36 / #103）
 - [ ] **LLM比較シナリオの実行**（4社LLMで同一シナリオ）
   - シナリオ1: 通常搬送（障害物なし）
   - シナリオ2: 障害物出現→迂回判断
