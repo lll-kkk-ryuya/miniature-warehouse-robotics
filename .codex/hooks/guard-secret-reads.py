@@ -38,10 +38,8 @@ def _is_secret_path(value: str) -> bool:
 
     if os.path.basename(normalized) == ".env":
         return True
-    if "secrets" in parts:
-        return True
 
-    return False
+    return "secrets" in parts
 
 
 def _strings(value: object) -> list[str]:

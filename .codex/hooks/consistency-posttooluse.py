@@ -8,8 +8,12 @@ import os
 import subprocess
 import sys
 
-
-WATCH_PREFIXES = ("docs/", "ws/src/warehouse_interfaces/", "ws/src/warehouse_description/", "config/")
+WATCH_PREFIXES = (
+    "docs/",
+    "ws/src/warehouse_interfaces/",
+    "ws/src/warehouse_description/",
+    "config/",
+)
 
 
 def _changed_paths(data: dict) -> list[str]:
