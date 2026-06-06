@@ -68,9 +68,7 @@ def _setup(context, *args, **kwargs):
     # + scans + occupancy map; #156). The default is unchanged → back-compat.
     rviz_config = LaunchConfiguration("rviz_config").perform(context)
     if rviz_config == "record":
-        rviz_cfg = os.path.join(
-            get_package_share_directory("warehouse_sim"), "rviz", "record.rviz"
-        )
+        rviz_cfg = os.path.join(get_package_share_directory("warehouse_sim"), "rviz", "record.rviz")
     else:
         rviz_cfg = os.path.join(
             get_package_share_directory("warehouse_description"), "rviz", "minicar.rviz"

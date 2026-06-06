@@ -41,8 +41,7 @@ def test_head_on_spawns_cover_robots_in_bounds_and_clear() -> None:
         # the spawn footprint (inflated by ROBOT_RADIUS) never overlaps a 200mm pinch wall
         for b in layout.bottleneck_walls(cfg):
             inside = (
-                abs(x - b.x) <= b.sx / 2 + ROBOT_RADIUS
-                and abs(y - b.y) <= b.sy / 2 + ROBOT_RADIUS
+                abs(x - b.x) <= b.sx / 2 + ROBOT_RADIUS and abs(y - b.y) <= b.sy / 2 + ROBOT_RADIUS
             )
             assert not inside, (rid, b.name)
         xy.append((x, y))
