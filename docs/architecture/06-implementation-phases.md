@@ -214,7 +214,7 @@
 
 #### Phase 3 後半（Open-RMF導入＝モードC：初回公開の必須ゲートではない。実装は R-38 メモリゲート（`../shared/07-research-notes.md:243`）通過後の **Phase 3 後半・別 Issue へ defer**＝正本 [`mode-c/11c`](../mode-c/11c-traffic-mode-c.md) §3.5 D / research-notes `:254` の既決。R-17 `:182`）
 - [ ] RMFTrafficManager 実装（モードC）
-- [ ] free_fleet ベースの Fleet Adapter 作成
+- [ ] Fleet Adapter 作成（EasyFullControl 自作・R-44 / 11c §3.5。free_fleet 不採用）
 - [ ] Navigation Graph 定義（通路2-3本）
 - [ ] Claude + Open-RMF の統合テスト
 - [ ] Open-RMF Dashboard（rmf-web）の起動・接続確認
