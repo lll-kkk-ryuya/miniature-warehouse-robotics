@@ -26,6 +26,7 @@ from launch_ros.actions import Node
 from warehouse_interfaces.config import load_config
 from warehouse_sim.bridge import bridge_pairs
 from warehouse_sim.layout import spawn_poses, validate_in_bounds
+from warehouse_sim.scenarios import HEAD_ON, head_on_spawn_poses
 from warehouse_sim.world_generator import WORLD_NAME, build_world_sdf
 
 
@@ -62,9 +63,16 @@ def _setup(context, *args, **kwargs):
         "launch",
         "description.launch.py",
     )
-    rviz_cfg = os.path.join(
-        get_package_share_directory("warehouse_description"), "rviz", "minicar.rviz"
-    )
+    # RViz config selector (additive ``rviz_config:=`` arg; default keeps the minimal description
+    # cfg). ``record`` selects warehouse_sim's overview cfg for YouTube capture (both footprints
+    # + scans + occupancy map; #156). The default is unchanged → back-compat.
+    rviz_config = LaunchConfiguration("rviz_config").perform(context)
+    if rviz_config == "record":
+        rviz_cfg = os.path.join(get_package_share_directory("warehouse_sim"), "rviz", "record.rviz")
+    else:
+        rviz_cfg = os.path.join(
+            get_package_share_directory("warehouse_description"), "rviz", "minicar.rviz"
+        )
 
     actions: list = [
         # gz server, headless — exactly the invocation proven in the environment spike.
@@ -74,7 +82,13 @@ def _setup(context, *args, **kwargs):
             output="screen",
         )
     ]
-    poses = spawn_poses(cfg)
+    # Spawn preset selector (additive ``scenario:=`` arg). ``head_on`` places the two bots on the
+    # aisle-A centreline facing off across the 200mm pinch for a deterministic standoff (#156
+    # capstone); the default keeps the berth spawn → back-compat. The head-on goal列 (where the
+    # bots are driven) is documented data owned by L1/L4 — the sim never publishes a goal topic
+    # (kickoff §3; warehouse_sim.scenarios.head_on_goals).
+    scenario = LaunchConfiguration("scenario").perform(context)
+    poses = head_on_spawn_poses(cfg) if scenario == HEAD_ON else spawn_poses(cfg)
     for rid in robot_ids:
         x, y, z, yaw = poses[rid]
         actions.append(
@@ -150,6 +164,18 @@ def generate_launch_description() -> LaunchDescription:
     return LaunchDescription(
         [
             DeclareLaunchArgument("rviz", default_value="false"),
+            DeclareLaunchArgument(
+                "rviz_config",
+                default_value="minicar",
+                description="RViz config: 'minicar' (default, minimal) or 'record' "
+                "(warehouse_sim overview cfg for #156 recording).",
+            ),
+            DeclareLaunchArgument(
+                "scenario",
+                default_value="default",
+                description="Spawn preset: 'default' (berths) or 'head_on' (deterministic 200mm "
+                "aisle-A standoff for the #156 capstone). Goals are driven by L1/L4, not the sim.",
+            ),
             DeclareLaunchArgument(
                 "use_sim_time",
                 default_value="true",
