@@ -214,7 +214,7 @@
 
 #### Phase 3 後半（Open-RMF導入 — 主方針）
 - [ ] RMFTrafficManager 実装（モードC）
-- [ ] free_fleet ベースの Fleet Adapter 作成
+- [ ] Fleet Adapter 作成（EasyFullControl 自作・R-44 / 11c §3.5。free_fleet 不採用）
 - [ ] Navigation Graph 定義（通路2-3本）
 - [ ] Claude + Open-RMF の統合テスト
 - [ ] Open-RMF Dashboard（rmf-web）の起動・接続確認
