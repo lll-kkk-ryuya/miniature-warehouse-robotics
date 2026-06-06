@@ -197,3 +197,61 @@ def test_current_task_filled_in_mode_c(tmp_path: Path) -> None:
     robot = sit["robots"]["bot1"]
     assert robot["current_task"] == "shelf_2"
     assert set(robot) == {"position", "status", "battery", "current_task"}
+
+
+@pytest.mark.unit
+def test_mode_a_head_on_carries_deadlock_judgement_fields(tmp_path: Path) -> None:
+    # Pattern-1 head-on (doc08a:290-291): two idle bots facing each other, both holding a
+    # current_task. Judgement A (08a:281) — the commander derives distance + heading-diff
+    # from raw per-robot fields, so NO pre-computed pairwise signal is added; the builder
+    # must instead ship the material for all 3 deadlock conditions (08a:273-279).
+    store = _store(
+        tmp_path,
+        {
+            "bot1": _robot(
+                position={"x": 0.5, "y": 0.5},
+                heading=0.0,
+                velocity={"linear": 0.0, "angular": 0.0},
+                status="idle",
+            ),
+            "bot2": _robot(
+                position={"x": 0.7, "y": 0.5},
+                heading=3.14,
+                velocity={"linear": 0.0, "angular": 0.0},
+                status="idle",
+            ),
+        },
+    )
+    sit = SituationBuilder(store).build(
+        turn=1, gen_id=1, current_tasks={"bot1": "shelf_1", "bot2": "shelf_2"}
+    )
+    assert sit is not None
+    for bot in ("bot1", "bot2"):
+        robot = sit["robots"][bot]
+        for field in ("position", "heading", "velocity", "status", "current_task"):
+            assert field in robot, (bot, field)
+        assert robot["status"] == "idle"  # condition 1a
+        assert robot["current_task"] is not None  # condition 1b
+    b1, b2 = sit["robots"]["bot1"], sit["robots"]["bot2"]
+    # condition 2: distance < 0.4m, computable from raw positions (0.2m here).
+    distance = math.hypot(
+        b1["position"]["x"] - b2["position"]["x"], b1["position"]["y"] - b2["position"]["y"]
+    )
+    assert distance < 0.4
+    # condition 3: |heading diff| > 2.5rad (opposing), computable from raw headings.
+    assert abs(b1["heading"] - b2["heading"]) > 2.5
+
+
+@pytest.mark.unit
+def test_pending_tasks_emit_canonical_from_wire_key(tmp_path: Path) -> None:
+    # pending_tasks serialize with the wire key `from` (doc08a:79-81), NOT the pydantic
+    # field name `from_` (schemas.py:111 alias) — by_alias=True in build().
+    builder = SituationBuilder(_store(tmp_path, {"bot1": _robot()}))
+    sit = builder.build(
+        turn=1,
+        gen_id=1,
+        pending_tasks=[{"id": "task_1", "from": "shelf_3", "to": "berth_B"}],
+    )
+    assert sit is not None
+    assert sit["pending_tasks"] == [{"id": "task_1", "from": "shelf_3", "to": "berth_B"}]
+    assert "from_" not in sit["pending_tasks"][0]

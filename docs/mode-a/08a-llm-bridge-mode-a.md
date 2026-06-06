@@ -465,7 +465,7 @@ class CommandParser:
 
 - **`current_task`**: Bridge が受理 dispatch（`status=="ok"`）から追跡する **in-flight の行先（destination 単体）**。§入力例の `"shelf_1 → berth_A"`（起点→終点）は **illustrative** で、Bridge は起点（pickup）を保持しないため**終点のみ**を格納する（`navigate`→destination / `yield`→retreat_to / `charge`→`charging_station` を set、`stop` で clear、`wait` は据置）。凍結契約 `RobotState.current_task: str | None` は形式無制約なので終点単体で契約合法。
 - **`history`**: Bridge が保持する**有界リング（直近5サイクル）**。`{turn, action:"<bot> <action> <target>", result:<dispatch status>}`。`result` は実際には dispatch の戻り値（`ok`/`rejected`/`error`）。§入力例・パターン2例も実値 `ok` を用いる（`"blocked"` を産出する dispatch 経路は無い＝#55。デッドロックの非進捗は `result` ではなく `status=="idle"` で判断する）。
-- **`pending_tasks`**: タスクキュー。**現状 producer は未配線**で、供給元（将来的に Warehouse Orchestrator #6 / `get_task_queue`（doc15）想定だが**本設計では未確定**）が決まるまで LLM Bridge は **`pending_tasks: []`** を出力する（空でよい＝#102 の判断）。
+- **`pending_tasks`**: タスクキュー（各要素は `{id, from, to}` ＝凍結 `PendingTask`、§入力例:79-81）。**恒久 producer は未確定**（将来 Warehouse Orchestrator #6 / `get_task_queue`（doc15）想定）。当面の供給元は **デモ用シード `WAREHOUSE_TASKS` env**（JSON 配列。`llm_bridge` が起動時に読み `scheduler.parse_seed_tasks` で検証して `pending_tasks` キューへ投入。未設定なら `[]`＝非デモ run は不変。#181）。司令官は idle で `current_task` の無い bot にこのキューのタスクを `navigate`（行先＝task の `to`）で割り当て、受理 navigate（`to` 一致）でキューから消費する（これにより両 bot が `current_task` を持ち head-on デッドロックが成立・検出可能になる＝§デッドロック検出の前提）。`pending_tasks` は既に凍結 `Situation` フィールドのため**契約変更なし（additive）**。シリアライズは `model_dump(by_alias=True)` で `from`（pydantic 名 `from_` でなく）を出力する。
 
 ## References
 

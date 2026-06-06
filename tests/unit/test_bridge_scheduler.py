@@ -23,7 +23,7 @@ from warehouse_interfaces.stores import FileGenStore, FileIdempotencyStore, File
 from warehouse_llm_bridge.action_map import command_to_tool_calls
 from warehouse_llm_bridge.executor import DispatchToolExecutor, RecordingToolExecutor
 from warehouse_llm_bridge.llm_client import LLMUnavailableError
-from warehouse_llm_bridge.scheduler import HISTORY_MAXLEN, BridgeScheduler
+from warehouse_llm_bridge.scheduler import HISTORY_MAXLEN, BridgeScheduler, parse_seed_tasks
 from warehouse_mcp_server.audit import CommandAuditLog
 from warehouse_mcp_server.gen_check import GenChecker
 from warehouse_mcp_server.nav2_client import RecordingNav2Forwarder
@@ -62,12 +62,14 @@ class FakeSituation:
         self.ready = ready
         self.last_history: list | None = None
         self.last_current_tasks: dict | None = None
+        self.last_pending_tasks: list | None = None
 
     def build(
         self, *, turn: int, gen_id: int, history=None, pending_tasks=None, current_tasks=None
     ) -> dict | None:
         self.last_history = history
         self.last_current_tasks = current_tasks
+        self.last_pending_tasks = pending_tasks
         if not self.ready:
             return None
         return {"turn": turn, "gen_id": gen_id, "robots": {}}
@@ -199,6 +201,114 @@ def test_history_carries_blocked_for_deadlock_pattern2(tmp_path: Path) -> None:
     asyncio.run(sched.run_cycle())  # the 3rd build receives the two blocked entries
     carried = [h for h in sched._situation_builder.last_history if h["result"] == "blocked"]
     assert len(carried) >= 2
+
+
+# ── task injection: pending_tasks seed + consume (#181, doc08a:79-81,468) ─────
+
+
+_SEED = [
+    {"id": "task_1", "from": "berth_A", "to": "shelf_1"},
+    {"id": "task_2", "from": "berth_B", "to": "shelf_3"},
+]
+
+
+@pytest.mark.unit
+def test_seeded_pending_tasks_surfaced_to_situation(tmp_path: Path) -> None:
+    # The demo seed (#181) reaches the commander: the scheduler passes its queue into
+    # build() each cycle, so the LLM HAS tasks to allocate (resolving the chicken-and-egg
+    # where current_task is only ever set after a dispatch).
+    sched, _ = _scheduler(tmp_path, FakeLLM(), RecordingToolExecutor(), pending_tasks=_SEED)
+    asyncio.run(sched.run_cycle())
+    assert sched._situation_builder.last_pending_tasks == _SEED
+
+
+@pytest.mark.unit
+def test_accepted_navigate_consumes_matching_pending_task(tmp_path: Path) -> None:
+    # The commander claims a queued task by navigating a bot to its `to`; that entry is
+    # dropped so it is not re-offered (and re-dispatched) every cycle. Match is by
+    # destination == to (PendingTask carries no bot).
+    llm = FakeLLM(_nav_response("bot1", "shelf_1"))
+    sched, _ = _scheduler(tmp_path, llm, RecordingToolExecutor(), pending_tasks=list(_SEED))
+    asyncio.run(sched.run_cycle())
+    assert sched._pending_tasks == [{"id": "task_2", "from": "berth_B", "to": "shelf_3"}]
+
+
+@pytest.mark.unit
+def test_consume_drops_the_matching_not_the_first_entry(tmp_path: Path) -> None:
+    # Navigate to shelf_3 (queue index 1): the MATCHED entry is removed, not index 0 —
+    # so a buggy `del [0]` that ignored the `to` match would be caught.
+    llm = FakeLLM(_nav_response("bot1", "shelf_3"))
+    sched, _ = _scheduler(tmp_path, llm, RecordingToolExecutor(), pending_tasks=list(_SEED))
+    asyncio.run(sched.run_cycle())
+    assert sched._pending_tasks == [{"id": "task_1", "from": "berth_A", "to": "shelf_1"}]
+
+
+@pytest.mark.unit
+def test_accepted_navigate_to_unqueued_destination_is_noop(tmp_path: Path) -> None:
+    # An accepted navigate whose destination is NOT in the queue consumes nothing (the
+    # match loop finds no `to`) — e.g. a yield/charge-style move or an ad-hoc navigate.
+    llm = FakeLLM(_nav_response("bot1", "charging_station"))
+    sched, _ = _scheduler(tmp_path, llm, RecordingToolExecutor(), pending_tasks=list(_SEED))
+    asyncio.run(sched.run_cycle())
+    assert sched._pending_tasks == _SEED
+
+
+@pytest.mark.unit
+def test_rejected_navigate_keeps_pending_task(tmp_path: Path) -> None:
+    # A rejected dispatch must not consume the task (it was never actually claimed).
+    executor = RecordingToolExecutor(result={"status": "rejected", "reason": "battery_critical"})
+    llm = FakeLLM(_nav_response("bot1", "shelf_1"))
+    sched, _ = _scheduler(tmp_path, llm, executor, pending_tasks=list(_SEED))
+    asyncio.run(sched.run_cycle())
+    assert sched._pending_tasks == _SEED
+
+
+@pytest.mark.unit
+def test_non_navigate_action_keeps_pending_tasks(tmp_path: Path) -> None:
+    # wait/stop/yield/charge do not consume the queue — only an accepted navigate does.
+    llm = FakeLLM(
+        {"reasoning": "hold", "commands": [{"bot": "bot1", "action": "wait", "duration": 5}]}
+    )
+    sched, _ = _scheduler(tmp_path, llm, RecordingToolExecutor(), pending_tasks=list(_SEED))
+    asyncio.run(sched.run_cycle())
+    assert sched._pending_tasks == _SEED
+
+
+@pytest.mark.unit
+def test_default_pending_tasks_empty(tmp_path: Path) -> None:
+    # No seed -> empty queue -> situation pending_tasks=[] (non-demo runs unaffected).
+    sched, _ = _scheduler(tmp_path, FakeLLM(), RecordingToolExecutor())
+    asyncio.run(sched.run_cycle())
+    assert sched._pending_tasks == []
+    assert sched._situation_builder.last_pending_tasks == []
+
+
+@pytest.mark.unit
+def test_parse_seed_tasks_none_and_empty_yield_empty() -> None:
+    assert parse_seed_tasks(None) == []
+    assert parse_seed_tasks("") == []
+
+
+@pytest.mark.unit
+def test_parse_seed_tasks_valid_normalizes_from_alias() -> None:
+    # Returns the canonical wire shape with `from` (not the pydantic field name `from_`).
+    out = parse_seed_tasks('[{"id": "task_1", "from": "berth_A", "to": "shelf_1"}]')
+    assert out == [{"id": "task_1", "from": "berth_A", "to": "shelf_1"}]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "not json",  # not JSON
+        '{"id": "x", "from": "berth_A", "to": "shelf_1"}',  # a dict, not a list
+        '[{"id": "x", "to": "shelf_1"}]',  # entry missing required `from`
+    ],
+)
+def test_parse_seed_tasks_malformed_raises(raw: str) -> None:
+    # Malformed seed raises ValueError so the node can fail OPEN (run with no demo tasks).
+    with pytest.raises(ValueError):
+        parse_seed_tasks(raw)
 
 
 # ── fallback (Layer A + outage) ───────────────────────────────────────────────
