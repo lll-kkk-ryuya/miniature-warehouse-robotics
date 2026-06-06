@@ -1,0 +1,90 @@
+# RViz2 config for #156 recording — diorama overview (both bots) for YouTube capture.
+# Derived from warehouse_description/rviz/minicar.rviz (read-only original); adds the occupancy
+# Map + both RobotModels for the full-stack capstone, where nav2 map_server + per-bot AMCL give
+# a `map` frame so both bots render together (and the 200mm aisle pinch is legible from the map).
+# For sim-standalone (no nav2/map), use the default minicar.rviz (Fixed Frame bot1/odom) — the
+# `map` frame won't exist here. No CTRV/predicted-position marker: predicted_position_3s is a
+# Situation field, not a published topic (kickoff 現状の地形), so there is nothing to display.
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+    Property Tree Widget:
+      Expanded: true
+Visualization Manager:
+  Class: ""
+  Name: root
+  Global Options:
+    Fixed Frame: map
+    Frame Rate: 30
+    Background Color: 48; 48; 48
+  Displays:
+    - Class: rviz_default_plugins/Grid
+      Name: Grid
+      Enabled: true
+      Cell Size: 0.1
+      Plane Cell Count: 20
+      Color: 160; 160; 164
+    - Class: rviz_default_plugins/Map
+      Name: Map
+      Enabled: true
+      Topic:
+        Value: /map
+        Durability Policy: Transient Local
+        Reliability Policy: Reliable
+      Color Scheme: map
+      Alpha: 0.7
+    - Class: rviz_default_plugins/TF
+      Name: TF
+      Enabled: true
+      Show Names: true
+      Marker Scale: 0.2
+    - Class: rviz_default_plugins/RobotModel
+      Name: bot1 RobotModel
+      Enabled: true
+      Visual Enabled: true
+      Description Source: Topic
+      Description Topic:
+        Value: /bot1/robot_description
+        Durability Policy: Transient Local
+        Reliability Policy: Reliable
+    - Class: rviz_default_plugins/RobotModel
+      Name: bot2 RobotModel
+      Enabled: true
+      Visual Enabled: true
+      Description Source: Topic
+      Description Topic:
+        Value: /bot2/robot_description
+        Durability Policy: Transient Local
+        Reliability Policy: Reliable
+    - Class: rviz_default_plugins/LaserScan
+      Name: bot1/scan
+      Enabled: true
+      Topic:
+        Value: /bot1/scan
+        Reliability Policy: Best Effort
+      Size (m): 0.01
+      Color Transformer: FlatColor
+      Color: 0; 255; 0
+    - Class: rviz_default_plugins/LaserScan
+      Name: bot2/scan
+      Enabled: true
+      Topic:
+        Value: /bot2/scan
+        Reliability Policy: Best Effort
+      Size (m): 0.01
+      Color Transformer: FlatColor
+      Color: 255; 0; 0
+  Tools:
+    - Class: rviz_default_plugins/MoveCamera
+  Views:
+    Current:
+      Class: rviz_default_plugins/Orbit
+      Name: Overview
+      Distance: 1.6
+      Focal Point:
+        X: 0.9
+        Y: 0.45
+        Z: 0.0
+      Pitch: 1.2
+      Yaw: 0.0
+      Near Clip Distance: 0.01
