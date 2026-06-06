@@ -23,7 +23,7 @@ guardian が**異常終了/クラッシュしても nav2 を停止**する（`Re
 |---|---|
 | `systemd/warehouse.target` | スタック一括 target（5 unit を Wants） |
 | `systemd/warehouse-microros-agent.service` | micro-ROS Agent（ESP32 minicar / WiFi・UDP, doc02:81） |
-| `systemd/warehouse-state-cache.service` | State Cache（`/run/warehouse/state.json`, path 正本 doc19:18・paths.py:22-30・100ms 周期 doc12:475） |
+| `systemd/warehouse-state-cache.service` | State Cache（`/run/warehouse/state.json`, path 正本 doc19:18・paths.py:22-30・100ms 周期 doc12:477） |
 | `systemd/warehouse-safety.service` | Emergency Guardian（Layer 1, doc12:80-84） |
 | `systemd/warehouse-nav2.service` | Nav2 bring-up（`bringup.launch.py`・**prod は `sim:=false llm:=false` で nav2-only**・guardian を BindsTo） |
 | `systemd/warehouse-bridge.service` | LLM Bridge Node（→ GCP Hermes, doc19:18,86） |
