@@ -1,0 +1,52 @@
+# Codex command approval rules migrated from .claude/settings.json.
+# Codex rules control commands that run outside the sandbox; behavioral guidance
+# lives in AGENTS.md and .codex/guidance/.
+
+prefix_rule(
+    pattern = ["colcon", "build"],
+    decision = "prompt",
+    justification = "ROS 2 builds are expected project operations but should remain visible.",
+    match = ["colcon build --symlink-install"],
+)
+
+prefix_rule(
+    pattern = ["colcon", "test"],
+    decision = "prompt",
+    justification = "ROS 2 tests are expected project operations but should remain visible.",
+    match = ["colcon test"],
+)
+
+prefix_rule(
+    pattern = ["ros2", "launch"],
+    decision = "prompt",
+    justification = "Launching ROS 2 stacks can affect local simulators or robots.",
+    match = ["ros2 launch warehouse_bringup bringup.launch.py"],
+)
+
+prefix_rule(
+    pattern = ["ros2", "topic"],
+    decision = "prompt",
+    justification = "ROS 2 topic inspection is expected but may depend on active local systems.",
+    match = ["ros2 topic list"],
+)
+
+prefix_rule(
+    pattern = ["ros2", "param"],
+    decision = "prompt",
+    justification = "ROS 2 parameter inspection or mutation should stay visible.",
+    match = ["ros2 param list"],
+)
+
+prefix_rule(
+    pattern = ["python3", "-m", "pytest"],
+    decision = "prompt",
+    justification = "Python tests are expected project operations.",
+    match = ["python3 -m pytest tests"],
+)
+
+prefix_rule(
+    pattern = ["rm", "-rf"],
+    decision = "forbidden",
+    justification = "Destructive recursive deletion is blocked by project policy; ask the user for explicit approval and scope.",
+    match = ["rm -rf build"],
+)
