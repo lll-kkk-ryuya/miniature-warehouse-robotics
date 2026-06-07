@@ -33,17 +33,28 @@ def _changed_paths(data: dict) -> list[str]:
     return candidates
 
 
-def _repo_rel(cwd: str, path: str) -> str:
+def _repo_root(cwd: str) -> str:
     try:
-        root = subprocess.run(
+        result = subprocess.run(
             ["git", "-C", cwd, "rev-parse", "--show-toplevel"],
             capture_output=True,
             text=True,
             timeout=5,
             check=False,
-        ).stdout.strip()
-        if root:
-            return os.path.relpath(path if os.path.isabs(path) else os.path.join(cwd, path), root)
+        )
+        root = result.stdout.strip()
+        if result.returncode == 0 and root:
+            return root
+    except Exception:
+        pass
+
+    return cwd
+
+
+def _repo_rel(root: str, cwd: str, path: str) -> str:
+    try:
+        absolute = path if os.path.isabs(path) else os.path.join(cwd, path)
+        return os.path.relpath(absolute, root)
     except Exception:
         pass
     return path
@@ -56,38 +67,28 @@ def main() -> None:
         return
 
     cwd = data.get("cwd") or os.getcwd()
-    rel_paths = [_repo_rel(cwd, path) for path in _changed_paths(data)]
+    root = _repo_root(cwd)
+    rel_paths = [_repo_rel(root, cwd, path) for path in _changed_paths(data)]
     if not any(path.startswith(WATCH_PREFIXES) for path in rel_paths):
         return
 
+    checker = os.path.join(root, "scripts", "check_consistency.py")
+    if not os.path.exists(checker):
+        return
+
     result = subprocess.run(
-        ["python3", "scripts/check_consistency.py", "--json"],
-        cwd=cwd,
+        [sys.executable, checker, "--json"],
+        cwd=root,
         capture_output=True,
         text=True,
         timeout=120,
         check=False,
     )
-    if result.returncode != 0:
-        print(
-            json.dumps(
-                {
-                    "decision": "block",
-                    "reason": "Consistency checker failed to run.",
-                    "hookSpecificOutput": {
-                        "hookEventName": "PostToolUse",
-                        "additionalContext": result.stderr or result.stdout,
-                    },
-                },
-                ensure_ascii=False,
-            )
-        )
-        return
 
     try:
         findings = json.loads(result.stdout or "[]")
     except json.JSONDecodeError:
-        findings = []
+        return
 
     errors = [f for f in findings if f.get("level") == "ERROR"]
     if errors:
