@@ -57,7 +57,10 @@ else
 fi
 
 # --- Wrapper + scripts executable -------------------------------------------
-chmod 0755 "${JETSON_DIR}/bin/ros-exec.sh" "${JETSON_DIR}/bin/healthcheck.sh"
+chmod 0755 \
+  "${JETSON_DIR}/bin/ros-exec.sh" \
+  "${JETSON_DIR}/bin/healthcheck.sh" \
+  "${JETSON_DIR}/bin/preflight.sh"
 
 # --- Unit files (rewrite the /opt/warehouse prefix to the real clone) -------
 # NOTE: this is a GLOBAL substitution of ${CANONICAL_PREFIX}. Every /opt/warehouse

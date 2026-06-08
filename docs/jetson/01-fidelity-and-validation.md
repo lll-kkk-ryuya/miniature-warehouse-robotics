@@ -108,6 +108,9 @@ doc06:112、sim 範囲。実 bot E2E は sim track #8/#156）。→ F1-F3。**AR
 > **ゲートと昇格の関係**: G0 は無条件必須。G1（メモリ Go/No-Go）が **Mode C 採否**を分岐する最大の🔴
 > （R-02/R-38）。G2-G6 は実機固有値の確定。G7 は撮影前リハ（stg 相当の最終確認）。**すべて PASS で
 > prod（実ロボット駆動・撮影）へ昇格**。Jetson 到着前は本表の合否基準を凍結し、到着後に値を埋める。
+> `deploy/jetson/bin/preflight.sh --arrival --gates G0,G1,G7` は本表のうち自動判定できる部分を補助する。
+> Layer 0 速度クランプ/e-stop、実機 2台通信、測距誤差などの実測は MANUAL として記録し、script の PASS だけで
+> prod 昇格とはしない。
 
 ---
 
@@ -135,6 +138,7 @@ doc06:112、sim 範囲。実 bot E2E は sim track #8/#156）。→ F1-F3。**AR
 - `systemd-analyze verify deploy/jetson/systemd/*.service deploy/jetson/systemd/*.target`（unit 構文・依存の静的検査。ROS 不要）。
 - `bash -n` / `shellcheck deploy/jetson/bin/*.sh`（スクリプト構文）。
 - env 解決（prod=`/run/warehouse`）は既存 unit テストで回帰（`WAREHOUSE_ENV=prod`）。
+- `deploy/jetson/bin/preflight.sh --offline`（上記を束ねる到着前 check。Linux 専用コマンドが無い host では SKIP として報告）。
 - **実機投入は §4 の各ゲート通過後**（G0 安全ゲート最優先）。
 
 ---
