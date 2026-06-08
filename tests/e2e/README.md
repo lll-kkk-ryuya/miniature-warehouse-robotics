@@ -32,7 +32,7 @@ Nav2 の HTTP transport。両端は**本番コード**が走る:
 | `test_headon_yield_forwards_both_motions` | **slice2 headline**: 実 head-on `state.json` → 実 `SituationBuilder` → 実 Hermes parser → action_map → 実 `WarehouseTools.dispatch` → forward。**08a:342-347 の正本デッドロック解消**（**bot2=yield→`/api/v1/navigate` retreat_B / bot1=wait→`/api/v1/wait` 5s**）の2 POST を doc 指定の順で**正確に**発火（配線の end-to-end）。 |
 | `test_real_situation_builder_enriches_headon` | 実 `SituationBuilder`（Mode A）が head-on 生 snapshot を `obstacle_ahead=True` + CTRV `predicted_position_3s` + 全 traffic フィールドに enrich（commander が見る situation が**実物**＝stub でない）。 |
 | `test_valid_json_but_invalid_command_is_ignored_no_forward` | 実 parser が valid-JSON-but-invalid-Command を dict 化 → scheduler の `Command.model_validate` が reject → cycle 無視・**0 forward**・loop 生存（parser↔scheduler を実接続）。 |
-| `test_nonjson_reply_surfaces_scheduler_robustness_gap` | **統合 FINDING（→ L4 #181/#4）**: 非JSON応答で `decide()` の `ValueError` が `scheduler.run_cycle` を**伝播**（下記§FINDING）。現挙動を pin する tripwire。 |
+| `test_nonjson_reply_is_ignored_no_forward` | 非JSON応答で `decide()` の `ValueError` が出ても、scheduler が cycle ignore として扱い、**0 forward**・loop 生存を保証する（#192）。 |
 
 ## ここでは証明しない（責務分界・隠さない）
 
@@ -48,14 +48,16 @@ Nav2 の HTTP transport。両端は**本番コード**が走る:
   本 harness は **Mode-A `yield` コマンドの forward 配線**を、契約有効な `retreat_A/B`+`shelf_1`
   の**代理キー**で pin するだけ（座標ゴール・route ロックは slice3 live が扱う）。
 - **デッドロック検出**は LLM 側推論（`11a:153`）。ここでは fake commander が代行。
-  **実 Mode-A プロンプトは未配線（#181）**＝live で本物の yield 判断を出すのは slice3。
+  **Mode-A プロンプト + デモ用 `pending_tasks` seed は #181 で配線済み**。live で本物の
+  yield 判断を出す検証は slice3。
 
 ## slice3 live demo runbook（実 Hermes / RViz / noVNC 録画）
 
 > **= 3段リリース第1段の素材**（sim 録画版が最初の公開/営業送付可成果物・round 戦略 2026-06-06）。
-> **着手の前提**: ① **#181 land**（task 注入 + Mode-A system prompt＝L4 所有・slice2 blocker）
-> ② **L6 のサイクル長確定**（API p95>2.5s なら 3秒→4-5秒・デモ尺の作り直しを断つ）
-> ③ 下記 §FINDING（非JSON応答 robustness）の L4 対応。①②③が揃うまで本 runbook は**手順の据え置き**。
+> **着手の前提**: ① **#181 land 済み**（task 注入 + Mode-A system prompt）
+> ② **#192 land 済み**（非JSON応答を cycle ignore）
+> ③ **L6 のサイクル長確認**（API p95>2.5s なら 3秒→4-5秒・デモ尺の作り直しを断つ）。
+> ①②は host harness で回帰確認、③は live Hermes/provider で測る。
 
 tiryoh コンテナ（host py3.12 では ROS/launch/Gazebo 不可＝`reference_local_gate_execution`）で:
 
@@ -69,7 +71,7 @@ ros2 launch warehouse_bringup bringup.launch.py llm:=false sim:=true
 #   → Nav2 lifecycle 全 bot active / state_cache が state.json を 100ms 書出 /
 #     guardian 50ms reflex / llm:=false でも起動（Hermes 無し fallback）を確認。
 
-# 2) slice2/3 full stack（#181 land 後）
+# 2) slice2/3 full stack（#181/#192 land 後）
 ros2 launch warehouse_bringup bringup.launch.py sim:=true llm:=true traffic_mode:=none rviz:=true
 #   sim+nav2+state+safety+nav2_bridge(:211-214 allowlist)+llm を合成（#162）。
 #   2台に対向タスク（§9.2 北 staging ↔ 通路A 南端の座標ゴール・route_A はロックキー）を投入し、
@@ -83,18 +85,16 @@ ros2 launch warehouse_bringup bringup.launch.py sim:=true llm:=true traffic_mode
 #    比較 run は Memory/session_search OFF（#103 fairness・llm_bridge.py:89-97 起動ガード）。
 ```
 
-**注入手段の現状**（slice2 が live で未成立な構造ブロック・#156 コメント 2026-06-06）:
-pending_tasks の producer 未配線（`situation.py:106` / #102）・current_task は dispatch 受理後 set・
-bridge は task topic 非購読 → **対向タスクの注入経路と Mode-A プロンプトは #181（L4）**。
-決定論 yield は `#153` 実証済・本 harness は**配線の正しさ**まで（live 判断は #181 land 後）。
+**注入手段の現状**:
+対向タスクは恒久 producer ではなく **`WAREHOUSE_TASKS` env のデモ用 seed** で注入する（#181）。
+`current_task` は dispatch 受理後に scheduler が set し、受理 navigate の `to` 一致で
+`pending_tasks` を消費する。恒久 producer は将来 Warehouse Orchestrator #6 / task queue 側で
+決める。本 harness は**配線の正しさ**までを証明し、live provider の yield 判断は slice3 で確認する。
 
-## FINDING（→ L4 #181 / #4・本レーンは fix しない＝scheduler.py は L4 所有）
+## FIXED（#192）非JSON応答 robustness
 
 `HermesClient.decide()` は**非JSON/散文ラップ応答**で `ValueError` を投げる（その明文契約
 「malformed body → ignore this cycle」＝`llm_client.py:36-44` / `hermes_client.py:55-70`）。
-だが `scheduler.run_cycle` は `ValueError` を **`Command.model_validate` の周りでしか catch せず
-`decide()` の周りで catch しない**（`scheduler.py:162-178`）→ `ValueError` が cycle を**伝播**し、
-commander スレッドを落としうる（`llm_bridge._run_loop` は `CancelledError` のみ suppress）。
-JSON を ``` fence で包む“おしゃべりな”LLM が slice3 live でこれを踏む。
-`test_nonjson_reply_surfaces_scheduler_robustness_gap` が現挙動を pin（CI 可視・L4 修正で trip→
-修正後は `assert forwarder.requests == []` へ反転）。**修正は L4 の仕事**（編集境界外）。
+`scheduler.run_cycle` は `decide()` 由来の `ValueError` / `TypeError` も
+`Command.model_validate` 由来の不正 schema と同じ `_on_invalid_response` に流し、cycle ignore とする。
+`test_nonjson_reply_is_ignored_no_forward` が **0 forward・loop 生存・Nav2-only 不遷移**を pin する。

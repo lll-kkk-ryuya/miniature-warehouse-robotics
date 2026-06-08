@@ -29,8 +29,8 @@ COORDINATE goals, 11a:435,453,455 — a structurally different mechanism) is a L
 Gazebo measurement proven in slice3, NOT asserted here: this harness proves the
 WIRING of the Mode-A yield/wait commands, not the physics. Deadlock DETECTION itself
 is the LLM's job (08a:321-334 / 11a:153); here a fake commander stands in for it so
-the wiring can be tested without a live, mode-A-prompted Hermes (that prompt is still
-unwired — #181, the slice2 blocker).
+the wiring can be tested without a live Hermes/provider run. The Mode-A prompt and
+demo task seed path are wired by #181; live provider judgment remains slice3 scope.
 """
 
 import asyncio
@@ -244,31 +244,19 @@ def test_valid_json_but_invalid_command_is_ignored_no_forward(e2e_runtime) -> No
 
 
 @pytest.mark.e2e
-def test_nonjson_reply_surfaces_scheduler_robustness_gap(e2e_runtime) -> None:
-    """INTEGRATION FINDING — report to L4 (#181 / #4); DO NOT fix here (scheduler.py is
-    L4-owned, this lane only composes/launches).
+def test_nonjson_reply_is_ignored_no_forward(e2e_runtime) -> None:
+    """A non-JSON / prose-wrapped Hermes reply is ignored for the cycle.
 
-    The real ``HermesClient.decide`` raises ``ValueError`` on a non-JSON / prose-wrapped
-    reply — its DOCUMENTED contract ("malformed body → ignore this cycle",
-    llm_client.py:36-44 / hermes_client.py:55-70). But ``scheduler.run_cycle`` only
-    catches ``ValueError`` around ``Command.model_validate``, NOT around ``decide``
-    (scheduler.py:162-178) — so that ``ValueError`` PROPAGATES out of the cycle and
-    would kill the commander thread (``llm_bridge._run_loop`` suppresses only
-    ``CancelledError``). Chatty LLMs that wrap JSON in ``` fences hit this in the
-    slice3 live demo. No existing test catches it: ``test_bridge_scheduler``'s
-    ``FakeLLM`` only ever raises ``LLMUnavailableError`` (caught at scheduler.py:169),
-    never a bare ``ValueError`` from ``decide``; ``test_hermes_client_parse`` tests the
-    parser in isolation.
-
-    This test PINS the current (gap) behavior so it is CI-visible and trips the day
-    L4 routes ``decide``'s ``ValueError`` to the ignore-this-cycle path — at which
-    point flip it to ``assert forwarder.requests == []`` with no ``pytest.raises``.
+    The real ``HermesClient.decide`` raises ``ValueError`` on this content per its
+    malformed-body contract. The scheduler catches that parser error at the ``decide``
+    boundary, keeps the commander loop alive, and emits no Nav2 forward.
     """
     llm = FakeHermesClient("Sure! Here is the plan:\n```json\n{}\n```")  # not JSON to json.loads
     scheduler, forwarder, state_store = wire_commander(llm)
     write_headon_snapshot(state_store)
 
-    with pytest.raises(ValueError):
-        asyncio.run(scheduler.run_cycle())
+    asyncio.run(scheduler.run_cycle())
 
-    assert forwarder.requests == []  # propagated before any dispatch → nothing actuated
+    assert forwarder.requests == []
+    assert scheduler.last_command is None
+    assert scheduler.nav2_only is False
