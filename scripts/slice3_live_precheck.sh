@@ -99,10 +99,18 @@ py_path() {
     "${REPO_ROOT}/ws/src/warehouse_nav2_bridge"
 }
 
+repo_pythonpath() {
+  if [[ -n "${PYTHONPATH:-}" ]]; then
+    printf '%s:%s\n' "$(py_path)" "${PYTHONPATH}"
+  else
+    py_path
+  fi
+}
+
 validate_tasks() {
   local py="$1"
   local raw="$2"
-  PYTHONPATH="$(py_path)" WAREHOUSE_TASKS_RAW="${raw}" "${py}" - <<'PY'
+  PYTHONPATH="$(repo_pythonpath)" WAREHOUSE_TASKS_RAW="${raw}" "${py}" - <<'PY'
 import json
 import os
 import sys
@@ -192,7 +200,7 @@ run_static_checks() {
   fi
 
   if [[ "${RUN_TESTS}" -eq 1 ]]; then
-    if "${py}" -m pytest "${REPO_ROOT}/tests/e2e/" -q; then
+    if PYTHONPATH="$(repo_pythonpath)" "${py}" -m pytest "${REPO_ROOT}/tests/e2e/" -q; then
       pass "host e2e harness"
     else
       fail "host e2e harness"
@@ -216,19 +224,18 @@ run_live_checks() {
     return
   fi
 
-  if check_http_health "${py}" "Hermes Gateway" "${HERMES_BASE_URL}" >/tmp/slice3_hermes_health.$$ 2>/tmp/slice3_hermes_err.$$; then
+  local output
+  if output="$(check_http_health "${py}" "Hermes Gateway" "${HERMES_BASE_URL}" 2>&1)"; then
     pass "Hermes Gateway /health reachable at ${HERMES_BASE_URL}"
   else
-    fail "Hermes Gateway /health unreachable at ${HERMES_BASE_URL}: $(cat /tmp/slice3_hermes_err.$$)"
+    fail "Hermes Gateway /health unreachable at ${HERMES_BASE_URL}: ${output}"
   fi
-  rm -f /tmp/slice3_hermes_health.$$ /tmp/slice3_hermes_err.$$
 
-  if check_http_health "${py}" "Nav2 Bridge" "${NAV2_BRIDGE_BASE_URL}" >/tmp/slice3_nav2_health.$$ 2>/tmp/slice3_nav2_err.$$; then
+  if output="$(check_http_health "${py}" "Nav2 Bridge" "${NAV2_BRIDGE_BASE_URL}" 2>&1)"; then
     pass "Nav2 Bridge /health reachable at ${NAV2_BRIDGE_BASE_URL}"
   else
-    fail "Nav2 Bridge /health unreachable at ${NAV2_BRIDGE_BASE_URL}: $(cat /tmp/slice3_nav2_err.$$)"
+    fail "Nav2 Bridge /health unreachable at ${NAV2_BRIDGE_BASE_URL}: ${output}"
   fi
-  rm -f /tmp/slice3_nav2_health.$$ /tmp/slice3_nav2_err.$$
 }
 
 print_next_steps() {
@@ -297,13 +304,17 @@ if [[ "${FAIL_COUNT}" -eq 0 && "${STRICT_BLOCK}" -eq 0 ]]; then
   print_next_steps
 else
   printf '\n== launch commands ==\n'
-  printf 'SKIP   launch commands suppressed because the precheck did not pass cleanly\n'
+  if [[ "${STRICT_BLOCK}" -eq 1 ]]; then
+    printf 'SKIP   launch commands suppressed because --strict treats WARN/SKIP as failure\n'
+  else
+    printf 'SKIP   launch commands suppressed because the precheck did not pass cleanly\n'
+  fi
 fi
 
 printf '\n== summary ==\n'
 printf 'PASS=%s FAIL=%s WARN=%s SKIP=%s\n' "${PASS_COUNT}" "${FAIL_COUNT}" "${WARN_COUNT}" "${SKIP_COUNT}"
 
-if [[ "${STRICT}" -eq 1 && $((WARN_COUNT + SKIP_COUNT)) -gt 0 ]]; then
+if [[ "${STRICT_BLOCK}" -eq 1 ]]; then
   exit 1
 fi
 if [[ "${FAIL_COUNT}" -gt 0 ]]; then
