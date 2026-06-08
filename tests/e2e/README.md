@@ -62,6 +62,11 @@ Nav2 の HTTP transport。両端は**本番コード**が走る:
 tiryoh コンテナ（host py3.12 では ROS/launch/Gazebo 不可＝`reference_local_gate_execution`）で:
 
 ```bash
+# -1) host precheck（ROS/network/Gazebo 不要）
+scripts/slice3_live_precheck.sh --offline
+#   → tests/e2e 回帰 + WAREHOUSE_TASKS seed 検証 + launch command 表示。
+#     Hermes/Nav2 Bridge を起動済みなら `--live` で /health も確認する。
+
 # 0) 外部 daemon（launch では合成しない・bringup.launch.py:38-47）
 #    Hermes Gateway :8642（dev キー疎通済＝memory project_api_keys_dev_setup）
 #    Nav2 Bridge   :8645（REST→BasicNavigator, #86）を別途起動。
