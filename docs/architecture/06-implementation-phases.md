@@ -109,7 +109,7 @@
 - LLM Bridge Node（Hermes Gateway + Warehouse MCP Server）が Gazebo上で動作する
 - Hermes の Provider 切替で Claude → GPT が1行で切り替えられることを確認
 
-> **進捗（2026-05-30, PR #43）**: 環境スパイク **GO**（doc16 §10）。環境成立（headless `gz sim` + `gpu_lidar`/ogre2 software GL + `ros_gz_bridge`）は **単一 bot（汎用ボックスモデル, `/bot1/{scan,odom,cmd_vel}`）の spike で確認**、`docker run --memory=6g` で OOM なし（メモリ検証 段階1 の sim サブセット）。本実装の `warehouse_sim` / `warehouse_description`（1.8×0.9 world 単一定数生成 + minicar URDF 凍結フレーム `bot{n}/base_link→{lidar_link,imu_link}` + `sim.launch.py` の bot1/bot2 spawn）は **単体テスト（`tests/unit/test_sim_*`）で text レベル検証**済。**実 bot1/bot2 の Gazebo E2E は未実施**（Nav2 E2E と併せ #8）。**残り**: Nav2 自律走行（#8 nav-traffic）／LLM Bridge E2E／Provider 切替／メモリ検証 段階2（Jetson 実測）。
+> **進捗（2026-05-30, PR #43）**: 環境スパイク **GO**（doc16 §10）。環境成立（headless `gz sim` + `gpu_lidar`/ogre2 software GL + `ros_gz_bridge`）は **単一 bot（汎用ボックスモデル, `/bot1/{scan,odom,cmd_vel}`）の spike で確認**、`docker run --memory=6g` で OOM なし（メモリ検証 段階1 の sim サブセット）。本実装の `warehouse_sim` / `warehouse_description`（1.8×0.9 world 単一定数生成 + minicar URDF 凍結フレーム `bot{n}/base_link→{lidar_link,imu_link}` + `sim.launch.py` の bot1/bot2 spawn）は **単体テスト（`tests/unit/test_sim_*`）で text レベル検証**済。これは当時の進捗メモで、現在の2台 Gazebo/Nav2 E2E コアゲート #67 は close 済み（最新は [STATUS](../STATUS.md) を参照）。**残り**: LLM Bridge live E2E／Provider 切替／メモリ検証 段階2（Jetson 実測）。
 
 ### このフェーズの重要性
 

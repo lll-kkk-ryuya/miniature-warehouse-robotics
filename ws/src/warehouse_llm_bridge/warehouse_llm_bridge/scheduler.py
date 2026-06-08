@@ -196,12 +196,14 @@ class BridgeScheduler:
             except LLMUnavailableError as exc:
                 self._on_outage(gen, exc)
                 return
+            except (ValueError, TypeError) as exc:
+                self._on_invalid_response(gen, exc)
+                return
 
             try:
                 command = Command.model_validate(response)
             except (ValueError, TypeError) as exc:  # malformed JSON / schema (doc08:289-291)
-                self._consecutive_failures += 1
-                log.warning("invalid command gen=%s: %s; ignoring this cycle", gen, exc)
+                self._on_invalid_response(gen, exc)
                 return
 
             await self._dispatch_command(command, gen)
@@ -308,3 +310,8 @@ class BridgeScheduler:
         self._consecutive_failures += 1
         self.nav2_only = True
         log.error("LLM unavailable gen=%s: %s → Nav2-only fallback", gen, exc)
+
+    def _on_invalid_response(self, gen: int, exc: Exception) -> None:
+        """Malformed LLM body/schema: ignore this cycle without forwarding."""
+        self._consecutive_failures += 1
+        log.warning("invalid command gen=%s: %s; ignoring this cycle", gen, exc)
