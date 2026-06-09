@@ -21,6 +21,7 @@
 | [02-operator-runbook](02-operator-runbook.md) | 人間オペレーターの手順書（人間専任オペ・GO/NO-GO ゲート・マージ承認） |
 | [03-retrospectives](03-retrospectives.md) | 教訓ログ（living doc。各並列開発サイクルの反省を追記） |
 | [04-consistency-system](04-consistency-system.md) | docs↔code 整合システム（`scripts/check_consistency.py` を pre-commit/CI/hook で／意味的矛盾は `/consistency-audit` skill） |
+| [05-session-handoff](05-session-handoff.md) | コンテキスト消失後の再開用 handoff（直近の実行状態・検証結果・次の操作） |
 
 ## 関連正本
 
