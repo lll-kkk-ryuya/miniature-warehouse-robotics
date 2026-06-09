@@ -72,13 +72,21 @@ scripts/slice3_live_precheck.sh --offline
 #    Nav2 Bridge   :8645（REST→BasicNavigator, #86）を別途起動。
 
 # 1) slice1 health（upstream 不要・今すぐ可能。DoD step1）
+export WAREHOUSE_CONFIG_DIR=/ws/config
+export WAREHOUSE_ENV=dev
+# sim 録画限定: AMCL が初期 pose 以外を継続 publish しないことがあるため freshness を緩和する。
+export WAREHOUSE__SAFETY__POSE_FRESHNESS_TIMEOUT=999
 ros2 launch warehouse_bringup bringup.launch.py llm:=false sim:=true
 #   → Nav2 lifecycle 全 bot active / state_cache が state.json を 100ms 書出 /
 #     guardian 50ms reflex / llm:=false でも起動（Hermes 無し fallback）を確認。
+#   → 別 shell で ROS setup を source し、Nav2 lifecycle active 後に:
+#     cd /ws && scripts/slice3_seed_initialpose.sh
+#     State Cache が両 bot の pose を取り込むことを確認。
 
 # 2) slice2/3 full stack（#181/#192 land 後）
 ros2 launch warehouse_bringup bringup.launch.py sim:=true llm:=true traffic_mode:=none rviz:=true
 #   sim+nav2+state+safety+nav2_bridge(:211-214 allowlist)+llm を合成（#162）。
+#   full stack でも lifecycle active 後に `cd /ws && scripts/slice3_seed_initialpose.sh` を再実行。
 #   2台に対向タスク（§9.2 北 staging ↔ 通路A 南端の座標ゴール・route_A はロックキー）を投入し、
 #   LLM が 08a:337-359 の yield+wait → MCP → nav2_bridge → Nav2 で最接近 ≥0.15m を計測（11a:446）。
 
