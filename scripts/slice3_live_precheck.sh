@@ -200,7 +200,7 @@ run_static_checks() {
   fi
 
   if [[ "${RUN_TESTS}" -eq 1 ]]; then
-    if PYTHONPATH="$(repo_pythonpath)" "${py}" -m pytest "${REPO_ROOT}/tests/e2e/" -q; then
+    if PYTHONPATH="$(repo_pythonpath)" "${py}" -m pytest -p no:cacheprovider "${REPO_ROOT}/tests/e2e/" -q; then
       pass "host e2e harness"
     else
       fail "host e2e harness"
@@ -242,12 +242,20 @@ print_next_steps() {
   printf '\n== launch commands ==\n'
   printf "export WAREHOUSE_TASKS='%s'\n" "${TASKS_JSON:-${DEFAULT_TASKS}}"
   cat <<'EOF'
+export WAREHOUSE_CONFIG_DIR=/ws/config
+export WAREHOUSE_ENV=dev
+# sim idle only: AMCL may publish initial pose once, so avoid false pose_stale while recording.
+export WAREHOUSE__SAFETY__POSE_FRESHNESS_TIMEOUT=999
 
 # slice1 health (Hermes not required)
 ros2 launch warehouse_bringup bringup.launch.py llm:=false sim:=true
+# In another ROS-sourced shell after both Nav2 lifecycle managers report active:
+cd /ws && scripts/slice3_seed_initialpose.sh
 
 # slice2/3 full stack (Hermes Gateway :8642 and Nav2 Bridge :8645 already running)
 ros2 launch warehouse_bringup bringup.launch.py sim:=true llm:=true traffic_mode:=none rviz:=true
+# Repeat initialpose seeding after full-stack launch reaches active lifecycle.
+cd /ws && scripts/slice3_seed_initialpose.sh
 EOF
 }
 
