@@ -324,6 +324,27 @@ run_static_checks() {
   [[ -f "${REPO_ROOT}/ws/src/warehouse_llm_bridge/warehouse_llm_bridge/scheduler.py" ]] && pass "llm scheduler exists" || fail "llm scheduler missing"
   [[ -f "${REPO_ROOT}/ws/src/warehouse_bringup/launch/bringup.launch.py" ]] && pass "bringup.launch.py exists" || fail "bringup.launch.py missing"
 
+  # The full-stack record command depends on scenario/rviz_config reaching the sim include; assert
+  # the pass-through forward is still wired (the demo-breaking gap #156/#204 closed). The unit
+  # test test_bringup_launch.py:152-165 guards it in CI — this is the operator's last static gate
+  # before a ~paid live run, where a silently-dropped forward records the berth spawn instead.
+  local bringup="${REPO_ROOT}/ws/src/warehouse_bringup/launch/bringup.launch.py"
+  if grep -q '"scenario": LaunchConfiguration' "${bringup}" &&
+    grep -q '"rviz_config": LaunchConfiguration' "${bringup}"; then
+    pass "bringup forwards scenario/rviz_config to sim (record knobs wired)"
+  else
+    fail "bringup does NOT forward scenario/rviz_config to sim — head_on/record would be dropped"
+  fi
+
+  # seed_initialpose and the --live state.json snapshot check must agree on the bot namespaces; a
+  # rename in one that desyncs from the other would seed/assert the wrong bot while staying green.
+  local seed="${REPO_ROOT}/scripts/slice3_seed_initialpose.sh"
+  if grep -q 'publish_pose bot1' "${seed}" && grep -q 'publish_pose bot2' "${seed}"; then
+    pass "seed_initialpose targets bot1/bot2 (matches state snapshot check)"
+  else
+    warn "seed_initialpose bot namespaces not bot1/bot2 as expected (snapshot check may desync)"
+  fi
+
   local py
   if ! py="$(python_cmd)"; then
     fail "python3.12 or python>=3.11 is required"
@@ -415,14 +436,17 @@ ros2 launch warehouse_bringup bringup.launch.py llm:=false sim:=true
 # In another ROS-sourced shell after both Nav2 lifecycle managers report active:
 cd /ws && scripts/slice3_seed_initialpose.sh
 
-# slice2/3 full stack (Hermes Gateway :8642 and Nav2 Bridge :8645 already running).
-# Inside the tiryoh container, reach the host Hermes (loopback won't) via the config override:
+# slice2/3 full stack. ONLY Hermes Gateway :8642 is pre-started (step 0); Nav2 Bridge :8645 is
+# composed IN-PROCESS by this launch (llm:=true + traffic_mode in {none,simple}) — do NOT pre-start
+# it or :8645 double-binds and the launch fails. Inside tiryoh, reach the host Hermes (loopback
+# won't) via the config override:
 export WAREHOUSE__HERMES__BASE_URL=http://host.docker.internal:8642
 # scenario:=head_on records the 200mm head-on standoff; rviz_config:=record selects the overview
 # RViz cfg (bringup forwards both to the sim — slice3). Without them the recording shows berths.
 ros2 launch warehouse_bringup bringup.launch.py sim:=true llm:=true traffic_mode:=none rviz:=true scenario:=head_on rviz_config:=record
-# Repeat initialpose seeding after full-stack launch reaches active lifecycle.
-cd /ws && scripts/slice3_seed_initialpose.sh
+# Re-seed after the full-stack launch reaches active lifecycle. head_on spawns on the aisle
+# centreline (NOT the berths) — SCENARIO=head_on seeds the matching poses or AMCL mislocalizes.
+cd /ws && SCENARIO=head_on scripts/slice3_seed_initialpose.sh
 # Wrap the noVNC/screen capture (actual recording is human-gated):
 scripts/slice3_record.sh start    # ... run the demo ... then: scripts/slice3_record.sh stop
 EOF

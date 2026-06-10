@@ -67,9 +67,14 @@ scripts/slice3_live_precheck.sh --offline
 #   → tests/e2e 回帰 + WAREHOUSE_TASKS seed 検証 + launch command 表示。
 #     Hermes/Nav2 Bridge を起動済みなら `--live` で /health も確認する。
 
-# 0) 外部 daemon（launch では合成しない・bringup.launch.py:38-47）
-#    Hermes Gateway :8642（dev キー疎通済＝memory project_api_keys_dev_setup）
-#    Nav2 Bridge   :8645（REST→BasicNavigator, #86）を別途起動。
+# 0) 外部 daemon は Hermes Gateway :8642 のみを別途起動
+#    （launch では合成しない＝bringup.launch.py:38「DELIBERATELY NOT launched」, :45。
+#     dev キー疎通済＝memory project_api_keys_dev_setup）。
+#    ⚠ Nav2 Bridge :8645 は外部 daemon ではない＝本 launch が in-process Node 合成する
+#      （bringup.launch.py:226 nav2_bridge=Node / :233 gate＝llm:=true ∧ traffic_mode∈{none,simple}）。
+#      step 2-4（llm:=true）では別途起動しないこと＝:8645 を二重 bind して起動失敗/競合する
+#      （nav2_bridge.py:41 DEFAULT_PORT=8645 / :166 uvicorn.run）。standalone Nav2 Bridge が要るのは
+#      llm:=false の nav2-only 実験時のみ（その時は llm_bridge も nav2_bridge も合成されない）。
 #    ⚠ tiryoh container 内から host の Hermes に届かせるには loopback ではなく:
 #      export WAREHOUSE__HERMES__BASE_URL=http://host.docker.internal:8642
 #      （config override 機構 config.py:28,48-66 が hermes.base_url を上書き）。
@@ -93,9 +98,22 @@ ros2 launch warehouse_bringup bringup.launch.py llm:=false sim:=true
 #    無いと berth 横並びを録画してしまう＝デモの核が映らない）。
 ros2 launch warehouse_bringup bringup.launch.py sim:=true llm:=true traffic_mode:=none rviz:=true scenario:=head_on rviz_config:=record
 #   sim+nav2+state+safety+nav2_bridge(正 allowlist traffic_mode∈{none,simple}, #166)+llm を合成（#162）。
-#   full stack でも lifecycle active 後に `cd /ws && scripts/slice3_seed_initialpose.sh` を再実行。
-#   2台に対向タスク（§9.2 北 staging ↔ 通路A 南端の座標ゴール・route_A はロックキー）を投入し、
-#   LLM が 08a:337-359 の yield+wait → MCP → nav2_bridge → Nav2 で最接近 ≥0.15m を計測（11a:446）。
+#   Nav2 Bridge :8645 は↑が in-process 合成する＝step 0 の通り別途起動しない（二重 bind 回避）。
+#   full stack の lifecycle active 後、head_on spawn に合わせて初期 pose を seed:
+#     cd /ws && SCENARIO=head_on scripts/slice3_seed_initialpose.sh
+#     （head_on は 2 台を通路A 中心線に対向 spawn＝berth と座標が違う。SCENARIO 無指定だと berth
+#       座標を publish して AMCL が誤定位し録画が崩れる。座標は sim の head_on_spawn_poses から導出）。
+#
+#   ▼ 今 達成可能な live デモ（headline）: head_on spawn の正面睨み合いを LLM 司令官が検出し、
+#     08a:337-359 の yield+wait で解消する（bot2=yield→navigate retreat_B / bot1=wait 5s →
+#     MCP → nav2_bridge → Nav2）。retreat_A/B は KNOWN_LOCATIONS＝named navigate で配線済
+#     （nav2_bridge core.py:110-117）＝録画可能。decision の決定論版は #153 で実証済。
+#   ▼ DEFERRED（このスタックでは未配線・PENDING）: 11a:446「相互通過時の最接近 ≥0.15m」の幾何計測。
+#     これは §9 の座標ゴール+route_A/B ロック（11a:435,453,455）で 2 台を通路A 経由に端→端 swap させる
+#     必要があるが、座標ゴール injector（head_on_goals→/bot{n}/goal_pose の consumer）が未実装＝
+#     head_on_goals は DATA のみで consumer ゼロ（scenarios.py:118-133）・nav2_bridge.navigate は
+#     named location 専用（core.py:110-117 が KNOWN_LOCATIONS 解決＝座標 navigate 無し）。
+#     ≥0.15m 計測は injector 実装後（別レーン llm-bridge/nav-traffic 所有）に回す＝follow-up issue 要。
 
 # 3) 録画: rviz:=true ∧ rviz_config:=record で warehouse_sim/rviz/record.rviz（両 footprint+
 #    scan+占有 map の俯瞰 cfg。既定 minicar.rviz は最小レイアウト, sim.launch.py:66-75）を選択し、
@@ -105,7 +123,7 @@ ros2 launch warehouse_bringup bringup.launch.py sim:=true llm:=true traffic_mode
 
 # 4) 4 provider 切替（DoD: fairness）: Hermes config の active_provider を
 #    Claude→GPT→Gemini→Grok で切替え各々 slice2 を確認。
-#    比較 run は Memory/session_search OFF（#103 fairness・llm_bridge.py:89-97 起動ガード）。
+#    比較 run は Memory/session_search OFF（#103 fairness・llm_bridge.py:100-102 起動ガード）。
 ```
 
 **注入手段の現状**:
@@ -121,3 +139,22 @@ ros2 launch warehouse_bringup bringup.launch.py sim:=true llm:=true traffic_mode
 `scheduler.run_cycle` は `decide()` 由来の `ValueError` / `TypeError` も
 `Command.model_validate` 由来の不正 schema と同じ `_on_invalid_response` に流し、cycle ignore とする。
 `test_nonjson_reply_is_ignored_no_forward` が **0 forward・loop 生存・Nav2-only 不遷移**を pin する。
+
+## slice3-live host 回帰（live 前にデモ事故を防ぐ・全て host で動く＝ROS/Gazebo 不要）
+
+実 live は人間ゲート（鍵注入・録画・有料）だが、**そこへ持ち込む前の配線**を host で pin する:
+
+- **`test_slice3_initialpose_seed.py`** — `slice3_seed_initialpose.sh` の `DRY_RUN` 出力が
+  scenario と整合することを pin: `SCENARIO=default` → berth_A/berth_B（config locations）・両者南向き、
+  `SCENARIO=head_on` → sim の `head_on_spawn_poses` と**完全一致**（中心線同一 x・対向 y・bot2 は北向き）。
+  これにより「head_on で berth 座標を seed → AMCL 誤定位」のデモ事故を回帰で塞ぐ（上記 step 2 の seed）。
+- **`test_slice3_task_seed_forward.py`** — `WAREHOUSE_TASKS`→`parse_seed_tasks`→`pending_tasks`→実
+  `SituationBuilder`→commander→`navigate` forward & consume の #181 連鎖を slice2 と同じ本番シームで
+  end-to-end 検証（従来 unit のみ＝`test_bridge_scheduler.py`）。司令官が見る situation に seed が surface
+  し、受理 navigate が `to` 一致タスクを消費することを pin。
+- **`test_slice3_precheck_offline.py`** — `slice3_live_precheck.sh` の seed バリデータ拒否クラス
+  （<2 task / KNOWN_LOCATIONS 外 / 重複 id / from==to / 宛先<2＝二台同目的）を subprocess で pin
+  （従来 pytest 未カバー＝人間が走らせて初めて分かる退行を CI 化）。
+- **precheck `--offline` の追加静的チェック** — `bringup.launch.py` が sim include に
+  `scenario`/`rviz_config` を forward していること、seed と snapshot チェックの bot namespace が
+  一致することを grep で確認（録画前の最後の砦・unit pin の belt-and-suspenders）。
