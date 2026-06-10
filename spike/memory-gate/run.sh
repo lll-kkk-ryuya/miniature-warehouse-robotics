@@ -159,6 +159,16 @@ floor_notes() {
   return 0
 }
 
+# Top-line verdict tag — pure/offline (selftest). $1=hermes_present (yes/no/unknown). When Hermes
+# is NOT counted the run is a FLOOR (Mode A/B resident footprint missing), so a reader scanning the
+# VERDICT line ALONE must see FLOOR/NOT-a-GO, not the underlying compute_verdict_awk "GO-leaning"
+# (which is printed below it for the headroom detail). Hermes counted => no tag (empty), and the
+# compute_verdict_awk "VERDICT (R-38)" line stands as the verdict.
+verdict_line() {
+  [ "${1:-}" != yes ] && echo "VERDICT: FLOOR — NOT a GO (Hermes 未計上 — 常駐分が欠落)"
+  return 0
+}
+
 # Refuse to proceed on a Hermes-less FLOOR when the operator demanded Hermes be counted.
 # $1 = hermes_present (yes|no|unknown). Pure/offline — exercised by selftest. Applies to every
 # entry point (run/measure/report), not just run, so a direct `./run.sh measure|report` (or a run
@@ -351,6 +361,9 @@ case "${1:-}" in
       echo "⚠️  run_bringup.log shows a NODE FAILURE — the measured stack is INCOMPLETE:"
       grep -niE "Traceback|ModuleNotFoundError|process has died|has died|No module named" "$SPIKE_DIR/logs/run_bringup.log" | head -10
     fi
+    # On a Hermes-less FLOOR, tag the TOP VERDICT line unambiguously so a reader scanning it alone
+    # cannot misread the compute_verdict_awk "段階1 GO-leaning" (printed below) as a real GO.
+    verdict_line "$HERMES_PRESENT"
     compute_verdict_awk "$TS" "$HEADROOM_FLOOR_MB"
     floor_notes "$HERMES_PRESENT" "$STACK_LIVE"
     echo "--- full-stack node presence (per-bot nav2 expects 2; core expects 1; src: $(basename "$NODES")) ---"
@@ -410,6 +423,10 @@ case "${1:-}" in
     _chk "floor: hermes-absent note" "Hermes daemon NOT counted" "$(floor_notes no yes)"
     _chk "floor: stack-not-live note" "core stack was not fully live" "$(floor_notes yes no)"
     _chk "floor: all-live => silent"  "" "$(floor_notes yes yes)"
+    # verdict_line: Hermes-less => top VERDICT line tagged FLOOR/NOT-a-GO; Hermes counted => silent.
+    _chk "verdict: hermes-absent => FLOOR tag" "FLOOR — NOT a GO" "$(verdict_line no)"
+    _chk "verdict: hermes-unknown => FLOOR tag" "FLOOR — NOT a GO" "$(verdict_line unknown)"
+    _chk "verdict: hermes-counted => silent"  "" "$(verdict_line yes)"
     # require_hermes_or_refuse: exercise refuse/pass in a SUBSHELL so its `exit 3` cannot kill us.
     _rc() {  # $1=name $2=expected-exit-code $3=actual-exit-code
       local name="$1" want="$2" got="$3"
