@@ -23,13 +23,14 @@ guardian が**異常終了/クラッシュしても nav2 を停止**する（`Re
 |---|---|
 | `systemd/warehouse.target` | スタック一括 target（5 unit を Wants） |
 | `systemd/warehouse-microros-agent.service` | micro-ROS Agent（ESP32 minicar / WiFi・UDP, doc02:81） |
-| `systemd/warehouse-state-cache.service` | State Cache（`/run/warehouse/state.json`, path 正本 doc19:18・paths.py:22-30・100ms 周期 doc12:475） |
+| `systemd/warehouse-state-cache.service` | State Cache（`/run/warehouse/state.json`, path 正本 doc19:18・paths.py:22-30・100ms 周期 doc12:477） |
 | `systemd/warehouse-safety.service` | Emergency Guardian（Layer 1, doc12:80-84） |
 | `systemd/warehouse-nav2.service` | Nav2 bring-up（`bringup.launch.py`・**prod は `sim:=false llm:=false` で nav2-only**・guardian を BindsTo） |
 | `systemd/warehouse-bridge.service` | LLM Bridge Node（→ GCP Hermes, doc19:18,86） |
 | `env/warehouse.env.example` | `/etc/warehouse/warehouse.env` の雛形（**secrets 無し**） |
 | `bin/ros-exec.sh` | ROS 2 underlay + workspace overlay を source して node を exec |
 | `bin/install.sh` | unit/env/サービスアカウント導入（enable/start しない） |
+| `bin/preflight.sh` | 到着前 static check + 到着後 G0/G1/G7 読み取り preflight（enable/start しない） |
 | `bin/healthcheck.sh` | unit liveness + state.json 鮮度 + Hermes 到達性（監視 scaffold） |
 
 ## クイックスタート（prod・安全ゲート通過後）
@@ -37,7 +38,10 @@ guardian が**異常終了/クラッシュしても nav2 を停止**する（`Re
 ```bash
 # 1. リリースタグを /opt/warehouse に clone（doc19:94）し colcon build
 # 2. secrets を配置（config/prod/.env + ~/.hermes/.env, doc19 §4）
+deploy/jetson/bin/preflight.sh --offline  # 到着前/導入前の静的検査
 sudo deploy/jetson/bin/install.sh          # 導入のみ
+deploy/jetson/bin/preflight.sh --arrival   # Jetson 到着後の読み取り検査
+# G0 通過後のみ:
 sudo systemctl enable --now warehouse.target
 deploy/jetson/bin/healthcheck.sh
 ```
@@ -70,6 +74,8 @@ deploy/jetson/bin/healthcheck.sh
 
 ```bash
 # unit 構文・依存（After/BindsTo/Wants）の静的検査（ROS 不要）
+deploy/jetson/bin/preflight.sh --offline
+# Linux/Jetson では preflight 内で下記も実行（macOS では SKIP）
 systemd-analyze verify deploy/jetson/systemd/*.service deploy/jetson/systemd/*.target
 # スクリプト構文
 bash -n deploy/jetson/bin/*.sh && shellcheck deploy/jetson/bin/*.sh
@@ -78,6 +84,8 @@ bash -n deploy/jetson/bin/*.sh && shellcheck deploy/jetson/bin/*.sh
 
 > 実機投入は §0 安全ゲート（G0: Layer 0 ≤0.3 m/s クランプ・近接 e-stop / Layer 1 Guardian unit）
 > 通過後のみ。メモリ Go/No-Go（G1・残RAM≥500MB）が Mode C 採否を分岐する（doc06:98 / 忠実度 doc §4）。
+> Jetson 到着後は `deploy/jetson/bin/preflight.sh --arrival --gates G0,G1,G7` を使い、
+> 自動判定できない Layer 0 実測や Bridge 認証サイクルは MANUAL 項目として記録する。
 
 ## まだ無い unit（Phase 1 で追加）
 

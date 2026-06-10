@@ -19,6 +19,9 @@
 - 静的占有マップ: `maps/map.pgm`(P5) + `maps/map.yaml`（resolution 0.01, origin world 角 `[0,0,0]`, 180×90, 壁+棚+通路A/B 200mm 隘路壁のみ占有・marker 除外）。Nav2 map_server が `nav2_bringup map:=<share>/maps/map.yaml` で消費（doc09:255-257）。`map_generator.py`（pure）で `layout` から生成・committ、再生成は `python3 -m warehouse_sim.map_generator`
 - launch arg: `sim.launch.py` / `description.launch.py` の `use_sim_time`（default true, consumer `nav2_bringup.launch.py:187` と一致）。robot_state_publisher / bridge / rviz に thread
 - launch: `sim.launch.py`（headless `gz sim -s -r`、bot1/bot2 spawn、ros_gz_bridge、`rviz:=true` 任意）
+- launch arg（#156 capstone, additive・後方互換）: `scenario`（`default`=berth spawn / `head_on`=2台が通路A 200mm 隘路で対向する決定論 spawn）・`rviz_config`（`minicar`=既定の最小 cfg / `record`=録画用俯瞰 cfg `rviz/record.rviz`）。引数無し＝現行と完全同一
+- `scenarios.py`（pure）: `head_on_spawn_poses(cfg)`（principals を aisle-A 中心線 retreat_A x に対向配置）・`head_on_goals(cfg)`（**DATA のみ**＝L1/L4 が Nav2 で駆動する goal列。sim は goal topic を publish しない＝契約発明なし, kickoff §3）・`aisle_a_channel(cfg)`/`segment_intersects_channel`。座標は (b) config/doc 例示（Phase 2 暫定、layout から導出）。goal列は **import 契約ではない**（cross-track import 禁止 parallel-workflow §2.1）＝documented coords が hand-off 面
+- 録画 RViz cfg: `rviz/record.rviz`（Fixed Frame=`map`〔full-stack capstone の map_server+AMCL 前提〕・占有 Map・両 RobotModel・両 scan・TF・Orbit 俯瞰）。`setup.py` で `share/warehouse_sim/rviz/` に install
 - `layout.py`: `WORLD_X=1.8`/`WORLD_Y=0.9` + 棚/通路/バース寸法 + `bottleneck_walls()`（通路A/B を `AISLE_BOTTLENECK_WIDTH=0.2` に絞る単一ソース。map・SDF 両系が消費＝drift なし）（単一定数、Phase 5 Isaac 参照）
 - `world_generator.build_world_sdf()` / `bridge.bridge_pairs()` / `map_generator.build_map()`（純関数・テスト可能）
 - スパイク成果物 `spike/`（環境スパイク GO の再現コード・証跡）
@@ -33,6 +36,8 @@
 - `# TODO(Phase 2)` location 座標は暫定。軸対応: `loc.x→world +X(長辺1.8m)` / `loc.y→world +Y(短辺0.9m)`
 - ✅ 200mm ボトルネック通路を実装（#124）: `bottleneck_walls()` が通路A/B を実 200mm に narrow（座標から算出＝Phase 2 再測でも 200mm 維持、map↔SDF 単一ソース、retreat_A/B が channel 中心）。回避マージン（0.128→≥0.15m）/goal 許容は #125（nav）へ委譲
 - `# TODO(R-43)` sim lidar 360pts/1°（実機 MS200 0.4°/900pts ダウンサンプル想定）
+- `# TODO(#156)` `record.rviz` に CTRV/予測 marker は**出さない**：`predicted_position_3s` は `Situation` のフィールドで publish 経路ゼロ（`schemas.py:58` + `situation.py:165` で Bridge が計算するのみ）。出すなら別レーン（L4/L1）所有の新トピック＝予告経由
+- `# TODO(#156)` head_on goal列の座標は Phase 2 暫定（config 例示）。隘路の南側は狭く（棚列が南壁寄り）south 機の clearance が preset 内で最小＝`_SOUTH_STAGING_CLEARANCE`。Phase 2 再測で座標が動けば unit（spawn clear / goal line crosses channel）が検知
 - 周期(50/100ms)は Mac Docker では非検証（ロジックのみ）。実測は Jetson 段階2（doc16 §11:212）
 
 > 雛形(#1)を実装で置換済（feat/sim-gazebo, 環境スパイク GO 後）。

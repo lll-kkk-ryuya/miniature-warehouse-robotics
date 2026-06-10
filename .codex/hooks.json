@@ -1,0 +1,52 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|mcp__filesystem__.*|mcp__fs__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/usr/bin/python3 \"$(git rev-parse --show-toplevel)/.codex/hooks/guard-secret-reads.py\"",
+            "timeout": 10,
+            "statusMessage": "Checking secret read boundary"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write|apply_patch",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/usr/bin/python3 \"$(git rev-parse --show-toplevel)/.codex/hooks/guard-boundaries.py\"",
+            "timeout": 10,
+            "statusMessage": "Checking worktree boundary"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/bin/bash \"$(git rev-parse --show-toplevel)/.codex/hooks/remind-gh-authoring.sh\"",
+            "timeout": 10,
+            "statusMessage": "Checking GitHub authoring context"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|apply_patch",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/usr/bin/python3 \"$(git rev-parse --show-toplevel)/.codex/hooks/consistency-posttooluse.py\"",
+            "timeout": 30,
+            "statusMessage": "Checking docs/code consistency"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -55,8 +55,13 @@ from warehouse_mcp_server.tools import WarehouseTools
 
 from warehouse_llm_bridge.executor import DispatchToolExecutor
 from warehouse_llm_bridge.fairness import assert_fairness, fairness_log_line, resolve_memory_policy
-from warehouse_llm_bridge.hermes_client import HermesClient
-from warehouse_llm_bridge.scheduler import CYCLE_WAIT_SEC, DEFAULT_CYCLE_WAIT_SEC, BridgeScheduler
+from warehouse_llm_bridge.hermes_client import HermesClient, build_system_prompt
+from warehouse_llm_bridge.scheduler import (
+    CYCLE_WAIT_SEC,
+    DEFAULT_CYCLE_WAIT_SEC,
+    BridgeScheduler,
+    parse_seed_tasks,
+)
 from warehouse_llm_bridge.situation import DEFAULT_EMERGENCY_MIN_DISTANCE, SituationBuilder
 from warehouse_llm_bridge.tracing import LangfuseTracer, build_session_id, resolve_run_id
 
@@ -103,6 +108,18 @@ class LlmBridge(Node):
         provider = os.environ.get("WAREHOUSE_PROVIDER", "default")
         scenario = os.environ.get("WAREHOUSE_SCENARIO", "demo")
         session_id = build_session_id(mode, provider, scenario, time.strftime("%Y%m%d_%H%M%S"))
+        # Demo task injection (#181): WAREHOUSE_TASKS is a JSON list of {id,from,to} that
+        # seeds the commander's pending_tasks queue so it HAS tasks to allocate — that is
+        # what gives both bots a current_task (set-on-accept) and lets a head-on deadlock
+        # form/be detected (08a:277). Empty/unset -> [] so normal runs are unaffected.
+        # pending_tasks is already a frozen Situation field, so this is additive (no
+        # contract change; demo source defined in doc08a:468). Fail-OPEN: a malformed
+        # seed logs a warning and runs with no demo tasks rather than crashing the node.
+        try:
+            seed_tasks = parse_seed_tasks(os.environ.get("WAREHOUSE_TASKS"))
+        except ValueError as exc:
+            self.get_logger().warning(f"ignoring malformed WAREHOUSE_TASKS: {exc}")
+            seed_tasks = []
 
         self._reasoning_pub = self.create_publisher(String, "/llm/reasoning", 10)
         self._command_pub = self.create_publisher(String, "/llm/command", 10)
@@ -129,8 +146,13 @@ class LlmBridge(Node):
         # display label / fallback when WAREHOUSE_RUN_ID is unset (#108).
         run_id = resolve_run_id(os.environ.get("WAREHOUSE_RUN_ID"), session_id)
         tracer = LangfuseTracer(run_id=run_id, session_id=session_id, provider=provider, mode=mode)
+        # Mode-aware commander prompt (#181): Mode A/B (none/simple) get the deadlock
+        # detection + yield rules appended; Mode C (open-rmf) gets the base prompt only,
+        # since Open-RMF owns traffic (doc14:163-164 / 08a:316-334).
         self._scheduler = BridgeScheduler(
-            llm_client=HermesClient(base_url, api_key=api_key),
+            llm_client=HermesClient(
+                base_url, api_key=api_key, system_prompt=build_system_prompt(mode)
+            ),
             situation_builder=SituationBuilder(
                 state_store, mode=mode, emergency_min_distance=emergency_min_distance
             ),
@@ -139,6 +161,7 @@ class LlmBridge(Node):
             publish_reasoning=self._publish_reasoning,
             publish_command=self._publish_command,
             tracer=tracer,
+            pending_tasks=seed_tasks,
             cycle_wait_sec=cycle_wait,
         )
 
@@ -147,7 +170,7 @@ class LlmBridge(Node):
         nav2_desc = nav2_base_url if nav2_forwarder is not None else "off (Open-RMF)"
         self.get_logger().info(
             f"llm_bridge ready (mode={mode}, hermes={base_url}, nav2_bridge={nav2_desc}, "
-            f"cycle_wait={cycle_wait}s, session={session_id})"
+            f"cycle_wait={cycle_wait}s, seed_tasks={len(seed_tasks)}, session={session_id})"
         )
 
     def _publish_reasoning(self, text: str) -> None:

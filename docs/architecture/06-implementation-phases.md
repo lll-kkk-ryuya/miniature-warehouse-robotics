@@ -2,7 +2,7 @@
 
 作成日: 2026-05-21
 更新日: 2026-05-23
-期間: 約3.5ヶ月（15週間）
+期間: 約3.5ヶ月（15週間）→ **2026-06-06 に実機 ETA（〜2週間以内）起点で再基準化（下記「## スケジュール再基準化」）。R-16（`../shared/07-research-notes.md:157`）対応＝この 15週間は実機到着前提の初期見積もり**
 
 ## フェーズ一覧
 
@@ -17,7 +17,7 @@
 | Phase 5 | 2週間 | Isaac Sim連携 | デジタルツイン映像 | Phase 4 |
 | Phase 6 | 2週間 | 撮影・編集・公開 | YouTube動画完成 | Phase 5 |
 
-※ Phase 0.5 は Phase 1 と並行実行可能（Mac上のシミュレーションのため実機不要）。並行した場合の実質期間は約13週間。
+※ Phase 0.5 は Phase 1 と並行実行可能（Mac上のシミュレーションのため実機不要）。並行した場合の実質期間は約13週間（**実機 ETA 起点で「## スケジュール再基準化」に上書きされる暫定値**）。
 
 ### ガントチャート概要
 
@@ -109,7 +109,7 @@
 - LLM Bridge Node（Hermes Gateway + Warehouse MCP Server）が Gazebo上で動作する
 - Hermes の Provider 切替で Claude → GPT が1行で切り替えられることを確認
 
-> **進捗（2026-05-30, PR #43）**: 環境スパイク **GO**（doc16 §10）。環境成立（headless `gz sim` + `gpu_lidar`/ogre2 software GL + `ros_gz_bridge`）は **単一 bot（汎用ボックスモデル, `/bot1/{scan,odom,cmd_vel}`）の spike で確認**、`docker run --memory=6g` で OOM なし（メモリ検証 段階1 の sim サブセット）。本実装の `warehouse_sim` / `warehouse_description`（1.8×0.9 world 単一定数生成 + minicar URDF 凍結フレーム `bot{n}/base_link→{lidar_link,imu_link}` + `sim.launch.py` の bot1/bot2 spawn）は **単体テスト（`tests/unit/test_sim_*`）で text レベル検証**済。**実 bot1/bot2 の Gazebo E2E は未実施**（Nav2 E2E と併せ #8）。**残り**: Nav2 自律走行（#8 nav-traffic）／LLM Bridge E2E／Provider 切替／メモリ検証 段階2（Jetson 実測）。
+> **進捗（2026-05-30, PR #43）**: 環境スパイク **GO**（doc16 §10）。環境成立（headless `gz sim` + `gpu_lidar`/ogre2 software GL + `ros_gz_bridge`）は **単一 bot（汎用ボックスモデル, `/bot1/{scan,odom,cmd_vel}`）の spike で確認**、`docker run --memory=6g` で OOM なし（メモリ検証 段階1 の sim サブセット）。本実装の `warehouse_sim` / `warehouse_description`（1.8×0.9 world 単一定数生成 + minicar URDF 凍結フレーム `bot{n}/base_link→{lidar_link,imu_link}` + `sim.launch.py` の bot1/bot2 spawn）は **単体テスト（`tests/unit/test_sim_*`）で text レベル検証**済。これは当時の進捗メモで、現在の2台 Gazebo/Nav2 E2E コアゲート #67 は close 済み（最新は [STATUS](../STATUS.md) を参照）。**残り**: LLM Bridge live E2E／Provider 切替／メモリ検証 段階2（Jetson 実測）。
 
 ### このフェーズの重要性
 
@@ -212,9 +212,9 @@
 - [ ] twist_mux 導入（Emergency=100, Nav2=10）— `15-mcp-platform.md §1. cmd_vel 多重 publisher`
 - [ ] active_tasks Lock / Policy Gate atomic 実装
 
-#### Phase 3 後半（Open-RMF導入 — 主方針）
+#### Phase 3 後半（Open-RMF導入＝モードC：初回公開の必須ゲートではない。実装は R-38 メモリゲート（`../shared/07-research-notes.md:243`）通過後の **Phase 3 後半・別 Issue へ defer**＝正本 [`mode-c/11c`](../mode-c/11c-traffic-mode-c.md) §3.5 D / research-notes `:254` の既決。R-17 `:182`）
 - [ ] RMFTrafficManager 実装（モードC）
-- [ ] free_fleet ベースの Fleet Adapter 作成
+- [ ] Fleet Adapter 作成（EasyFullControl 自作・R-44 / 11c §3.5。free_fleet 不採用）
 - [ ] Navigation Graph 定義（通路2-3本）
 - [ ] Claude + Open-RMF の統合テスト
 - [ ] Open-RMF Dashboard（rmf-web）の起動・接続確認
@@ -222,17 +222,17 @@
 ### 完了条件
 
 - Claudeの指示で2台のロボットが協調動作する
-- **モードC（Open-RMF）が動作し、交通管理はOpen-RMFが自動処理する**
+- **モードA/B（自作交通管理＝NoTrafficManager／SimpleTrafficManager）が動作する**ことを**初回公開の必須ゲート**とする（衝突回避は Multi-Robot Costmap Layer `:170` で担保）。**モードC（Open-RMF）は初回公開の必須ゲートに含めない**＝実装は R-38 メモリゲート（`../shared/07-research-notes.md:243`）通過後の **Phase 3 後半・別 Issue へ defer**（research-notes `:254`／[`mode-c/11c`](../mode-c/11c-traffic-mode-c.md) §3.5 D の既決。R-17 `:182`／R-44 `:254` No-Go・EasyFullControl 採用）
 - モードA/B/Cの切り替えがconfig.yaml 1行で可能
-- Open-RMF Dashboard でロボット位置・タスク状態がリアルタイム表示される
-- デッドロック検出→Open-RMF解消→失敗時Claude介入が動作する
+- （**検証回**）Open-RMF Dashboard でロボット位置・タスク状態がリアルタイム表示される（モードC 検証回の完了条件＝初回公開ゲート外）
+- デッドロック検出→**モードA/B（司令官＝Claude 介入／SimpleTrafficManager 排他制御）で解消**する（初回公開の必須ゲート）。Open-RMF による自動解消の実証は **R-38 ゲート後の別 Issue**（本 doc 下記「### リスク」§の Mode C 分離項目）で行い、比較計測は本 doc Phase 4「交通管理4パターン比較」のパターン4（「実装済みの場合」）に載せる
 - WiFi経由での2台同時制御が安定している
 
 ### リスク
 
 - 2台同時のWiFi通信で遅延が発生する場合 → チャンネル分離、通信頻度調整
 - Claude API遅延が大きい場合 → Mode A の待機時間を1秒→2秒に拡大（サイクル長 3秒→4秒）
-- Open-RMF導入が間に合わない場合 → モードA/Bで一時的に撮影し、Open-RMF完成後に再撮影
+- **モードC（Open-RMF）は初回公開の必須ゲートから正式に分離**する＝実装は **R-38 メモリゲート（`../shared/07-research-notes.md:243`）通過後の Phase 3 後半・別 Issue へ defer**（research-notes `:254`／[`mode-c/11c`](../mode-c/11c-traffic-mode-c.md) §3.5 D の既決。R-17 `:182`）。初回公開はモードA/Bで撮影＝**実機本番の納期を Open-RMF に律速させない**。Mode C を主役にした**実用検証回**（動画エピソード。[`mode-c/README`](../mode-c/README.md) §動画的位置づけ＝Mode A エンタメ回の対比）は初回公開の後に公開する（旧「Open-RMF が間に合わない場合の一時撮影」フォールバックの格上げ）
 
 ---
 
@@ -278,7 +278,7 @@
 
 ---
 
-## Phase 5: Isaac Sim連携・デジタルツイン（2週間）
+## Phase 5: Isaac Sim連携・デジタルツイン（2週間 — **確定オプション**＝間に合わなければカット。R-18（`../shared/07-research-notes.md:183`）／推奨アクション #4（`:214`）。動画は実機本番版＋sim 先行リリース版で成立する）
 
 ### タスク
 
@@ -327,13 +327,27 @@
 | 時期 | マイルストーン |
 |------|--------------|
 | Phase 0 完了 | 「環境が整った」 |
-| Phase 0.5 完了 | 「シミュレーションで動いた」← Macだけで到達可能 |
+| Phase 0.5 完了 | 「シミュレーションで動いた」← Macだけで到達可能。**＝最初の公開／営業送付可成果物（sim録画版。[`05-video-storyboard.md`](../shared/05-video-storyboard.md) §先行リリース構成）** |
 | Phase 1 完了 | 「実機1台が動いた」← 最初の感動ポイント |
 | Phase 2 完了 | 「自律走行できた」 |
 | Phase 3 完了 | 「AIが2台を指揮できた」← 技術的な核心 |
 | Phase 4 完了 | 「4社LLM比較ができた」← コンテンツの核心 |
 | Phase 5 完了 | 「デジタルツインができた」 |
 | Phase 6 完了 | 「映像が公開された」← 営業開始 |
+| **先行リリース（Phase 0.5 完了後）** | **「sim録画版で営業開始」← 実機を待たず最初の公開／営業送付可URL**（[`05-video-storyboard.md`](../shared/05-video-storyboard.md) §先行リリース構成。実機完成後に本番版へ差し替え） |
+
+> **公開／営業可能 event は2つ**: ① **先行リリース**＝Phase 0.5 完了直後（sim録画版・実機不要）／② **本番公開**＝Phase 6 完了（実機本番映像）。実機遅延でも ① で営業 URL が出るため「実機遅延＝成果物ゼロ」の構造盲点を解消する（位置づけ: 凍結契約ではなく 2026-06-06 ユーザー決定の docs 戦略）。
+
+---
+
+## スケジュール再基準化（2026-06-06 戦略確定）
+
+> **位置づけ**: 凍結契約ではなく **docs 戦略**（2026-06-06 ユーザー決定 ＋ 既存リスク R-16/R-18 の昇格）。**新しい週数を発明せず**、[`07-research-notes.md`](../shared/07-research-notes.md) 推奨アクション #4（`:214`「15週→20週、または Isaac Sim カット」）の方針を採用する。本節は方針のみを固定し、確定週数は実機 ETA 確定後に埋める。
+
+- **起点を実機 ETA（〜2週間以内）へ再基準化**: 冒頭 `:5` の「15週間」／ `:20` の「実質13週間」は実機到着前提の初期見積もり。実機 ETA を起点に rebaseline する（R-16, `../shared/07-research-notes.md:157`、検証タイミング＝「Phase 0 で再見積もり」）。
+- **Phase 1-2 に「実測→再設計バッファ」を明示確保**: 実機実測（R-04 寸法 `../shared/07-research-notes.md:154`／R-08 WiFi `:155`／R-37 micro-ROS 2台接続 `:242`／R-41-42 通路×車体 `:251`-`:252`）の結果で Nav2・通路幅・footprint を再設計する余地を Phase 1-2 に持たせる。実測値が初期前提（通路200mm／車体寸法）を崩す可能性があるため、固定週数を確約しない。
+- **Phase 5（Isaac Sim）を確定オプションへ降格**: R-18（`../shared/07-research-notes.md:183`「Isaac Sim なしでも動画成立」）／推奨 #4（`:214`「Phase 5 を完全オプション化」）に従い、間に合わなければカット。動画は **実機本番版**（タイムライン）＋ **sim 先行リリース版**（[`05-video-storyboard.md`](../shared/05-video-storyboard.md) §先行リリース構成）で成立する。
+- **暫定（未決）**: 具体的な再見積もり週数は実機 ETA 確定後に算出（R-16 検証タイミング＝Phase 0）。Phase 5 カットの最終判断は Phase 4 後。sim 先行リリース版の素材比率（Gazebo 俯瞰／RViz/Foxglove／思考ログ）は Phase 0.5 の sim 進捗に依存。
 
 ---
 
