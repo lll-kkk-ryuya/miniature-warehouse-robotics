@@ -37,20 +37,25 @@ from warehouse_llm_bridge.llm_client import LLMClient, LLMUnavailableError
 HERMES_MODEL = "hermes-agent"
 
 # Mode-neutral base system prompt: the output contract (frozen Command JSON,
-# doc mode-a/08a:257-264), the safety-over-efficiency / battery guidance common to every
-# mode (08a:243-250) and the gen_id B-3 note (08a:253). It carries NO traffic / robot-
+# doc mode-a/08a:257-264), the safety-over-efficiency / 3-stage battery guidance common to
+# every mode (08a:243-250, the three tiers 10 / 10-20 / 20-30 % per 08a:246-249) and the
+# gen_id B-3 note (08a:253). It carries NO traffic / robot-
 # selection specifics — those are mode-specific. Mode A/B additions (the commander
 # assigns BOTH bots itself: task allocation + deadlock rules) live in MODE_A_RULES; Mode
 # C delegates robot selection to the Open-RMF allocator (doc08c:154 「robot 指定なし」), so
-# its base must NOT instruct per-bot allocation. The full Mode C prompt (doc08c:138-180:
-# 3-stage battery / traffic.escalation / action 制限) is a SEPARATE slice, so Mode C
-# currently runs this neutral base as a placeholder (see build_system_prompt + CLAUDE.md
-# TODO). The gen_id line is advisory: the LLM emits a Command (no gen_id field) and
-# action_map injects the real gen_id + idempotency_key (model-b, #41/#54).
+# this base must NOT instruct per-bot allocation. Mode C does NOT use this base at all —
+# it gets the standalone :data:`MODE_C_PROMPT` (doc08c:138-180: strategic-only role,
+# 3-stage battery, traffic.escalation gate + escalation.id, action 制限 navigate|stop|
+# charge), which is faithful to doc08c and deliberately diverges from this base on the
+# action set and the collision-avoidance role (see MODE_C_PROMPT + build_system_prompt).
+# The gen_id line is advisory: the LLM emits a Command (no gen_id
+# field) and action_map injects the real gen_id + idempotency_key (model-b, #41/#54).
 SYSTEM_PROMPT = (
     "あなたは倉庫ロボット2台の司令官AIです。状況JSONを読み、安全性を効率性より優先して"
     "（衝突回避を最優先に）2台分の指示を決定してください。\n"
-    "バッテリー方針: 10%以下は新規タスク禁止（充電へ）、20%以下は新規割当を控える。\n"
+    "バッテリー方針（3段階）: 10%以下は緊急停止（Policy Gate が全コマンド拒否、Emergency "
+    "Guardian が自動停止）、10-20%は新規タスク割当禁止・充電ステーションへの移動を推奨、"
+    "20-30%は次タスク割当禁止・充電候補として検討。\n"
     "状況JSON の gen_id は B-3 安全機構（15-mcp-platform.md §2）。指示には Bridge が自動付与する"
     "ので、常に最新の状況JSONにのみ基づいて判断してください。\n"
     "必ず次のJSON形式のみで返答してください（前後に文章を付けない）:\n"
@@ -61,7 +66,8 @@ SYSTEM_PROMPT = (
 
 # Traffic modes where the commander LLM manages traffic AND robot selection itself
 # (Mode A/B). Mode C (open-rmf) delegates both to Open-RMF, so it gets NEITHER the
-# per-bot task allocation NOR the deadlock rules below (doc14:163-164 / doc08c:154).
+# per-bot task allocation NOR the deadlock rules below (doc14:163-164 / doc08c:154) —
+# it gets the standalone MODE_C_PROMPT instead.
 # Mirrors llm_bridge.NAV2_BRIDGE_MODES (none/simple = Mode A/B).
 MODE_A_TRAFFIC_MODES = frozenset({"none", "simple"})
 
@@ -97,20 +103,85 @@ MODE_A_RULES = (
 )
 
 
+# Mode C (open-rmf) standalone system prompt, faithful to doc08c:138-180. Mode C is a
+# STANDALONE prompt — NOT base + a rules block (the Mode A pattern) — because the base
+# conflicts with Mode C on two DESIGN axes: the action set (base navigate|wait|stop|yield|
+# charge vs Mode C navigate|stop|charge, doc08c:136,176) and the role (base / Mode A say
+# 衝突回避を最優先 per doc08a:250 vs Mode C delegates collision avoidance to Open-RMF,
+# doc08c:159). Appending a rules block to the base would yield a self-contradictory prompt,
+# so Mode C replaces it wholesale. (Battery is NOT a Mode-A-vs-Mode-C divergence: the base
+# (08a:246-249), Mode A and Mode C (doc08c:155-158) are ALL 3-stage — the base's earlier
+# 2-stage drift was reconciled to 08a:246-249. So battery does NOT motivate the standalone
+# split; the action set and the collision-avoidance role do.)
+#
+# Provenance: this content is (b) docs-ILLUSTRATIVE (doc08c:141-179 prompt example), NOT a
+# frozen contract. The action restriction navigate|stop|charge is a STRICT SUBSET of the
+# frozen CommandAction enum (warehouse_interfaces.schemas:135-140) — the prompt narrows
+# USAGE only; the parser / Command schema are NOT narrowed (Mode A's wait/yield must still
+# validate). The 3-stage battery thresholds (10 / 10-20 / 20-30 %) are reproduced from
+# doc08c:155-158 — the range values are verbatim, only minor JP spacing is normalized (not
+# invented; not in config/safety). doc08c:147-151's hard-coded
+# layout coordinates are intentionally NOT copied here: KNOWN_LOCATIONS / config is the
+# canonical source and the layout reaches the LLM via situation.warehouse.layout (as in
+# Mode A), so reproducing the illustrative coords would risk drift. The output JSON keys
+# match the frozen Command / CommandItem shape (schemas.py:143-175); only bot/action/
+# destination are used (the other CommandItem fields are optional). start_negotiation /
+# negotiation_proposal are forward-references to the character-LLM negotiation (doc08c:
+# 164-165, Mode C climax, marked optional) and stay advisory.
+MODE_C_PROMPT = (
+    "あなたは倉庫ロボット2台の戦略司令官AIです。状況JSONを読み、戦略判断"
+    "（タスク割当・優先順位・バッテリー管理）を行ってください。\n"
+    "\n## あなたの役割\n"
+    "タスク割当・優先順位変更・バッテリー管理のみを行います。経路選択・衝突回避・待機指示は"
+    "交通管理システム（Open-RMF）が自動処理するため、あなたは関与しません。\n"
+    "倉庫レイアウトと場所名は状況JSON（warehouse.layout・各ロボット/タスクの場所名）を参照して"
+    "ください。\n"
+    "\n## ルール\n"
+    "- 未処理タスクを割り当てる（pickup/dropoff と優先度を指定）。ロボットの選択はアロケーターに"
+    "任せる＝robot 指定なし（デバッグ時のみ robot 指定可）。\n"
+    "- バッテリー管理（3段階）:\n"
+    "  - 10%以下: 緊急停止（Policy Gate が全コマンド拒否、Emergency Guardian が自動停止）\n"
+    "  - 10-20%: 新規タスク割当禁止、充電ステーションへの移動を推奨\n"
+    "  - 20-30%: 次タスク割当禁止、充電候補として検討\n"
+    "- 交通管理（衝突回避・経路選択・待機）には関与しない — Open-RMF が自動処理する。\n"
+    "- 状況JSON の traffic.escalation フィールドが null でない場合のみ、Open-RMF が解決できなかった"
+    "問題に対処する（suggested_action は助言ヒント＝タスク再割当・目的地変更等の戦略ツールへ写す。"
+    "応答に id が要るツールには traffic.escalation.id を渡す。経路・待機には関与しない）。\n"
+    "\n## 安全機構（必ず守る）\n"
+    "- 状況JSON の gen_id フィールドを、すべての MCP tool 呼出しの gen_id 引数にそのまま渡して"
+    "ください（B-3 安全機構、15-mcp-platform.md §2）。\n"
+    "- traffic.escalation が立っている（非null）ときは start_negotiation ツール"
+    "（deadlock_or_escalation_id に traffic.escalation.id を渡す）でキャラLLM交渉を発動できます"
+    "（Mode C ではクライマックス演出用、任意）。\n"
+    "- negotiation_proposal が状況JSONに含まれていれば、その提案を検証し、安全条件を満たすなら"
+    "採用してください。\n"
+    "\n## 使用可能なアクション\n"
+    "- navigate: 目的地を指定（経路は Open-RMF が決定）\n"
+    "- stop: 緊急停止\n"
+    "- charge: 充電ステーションへ移動\n"
+    "\n必ず次のJSON形式のみで返答してください（前後に文章を付けない）:\n"
+    '{"reasoning": "判断理由を日本語で説明", "commands": [{"bot": "bot1", "action": '
+    '"navigate|stop|charge", "destination": "場所名"}], "priority_explanation": "判断の優先順位の説明"}'
+)
+
+
 def build_system_prompt(mode: str) -> str:
     """Return the commander system prompt for the given ``traffic_mode``.
 
     Mode A/B (``none``/``simple``) get the base prompt PLUS :data:`MODE_A_RULES`
     (per-bot task allocation + deadlock detection / yield resolution, doc mode-a/08a:
     316-334), since the commander manages traffic and robot selection itself. Mode C
-    (``open-rmf``) gets the base prompt ONLY — Open-RMF owns traffic + robot selection,
-    so deadlock handling and per-bot allocation are out of the commander's scope
-    (doc14:163-164 / doc08c:154); the full Mode C prompt (doc08c:138-180) is a separate
-    slice. Pure (no ROS / network) so the mode-awareness is unit-testable directly.
+    (``open-rmf``) gets the standalone :data:`MODE_C_PROMPT` (doc08c:138-180): a
+    strategic-only commander that delegates route / collision / wait to Open-RMF (doc14:164
+    / doc08c:159) AND robot selection to the allocator (doc08c:154), with 3-stage battery, a
+    ``traffic.escalation`` gate (+ ``escalation.id``) and the restricted action set
+    ``navigate|stop|charge``. The base is unused in Mode C (it would contradict on the action
+    set and the collision-avoidance role — see MODE_C_PROMPT). Pure (no ROS / network) so the
+    mode-awareness is unit-testable.
     """
     if mode in MODE_A_TRAFFIC_MODES:
         return SYSTEM_PROMPT + MODE_A_RULES
-    return SYSTEM_PROMPT
+    return MODE_C_PROMPT
 
 
 def parse_command_content(content: object) -> dict:
