@@ -92,7 +92,7 @@ ros2 launch warehouse_bringup bringup.launch.py llm:=false sim:=true
 #    rviz_config:=record で録画用俯瞰 cfg を選択（bringup が両 arg を sim へ forward＝slice3。
 #    無いと berth 横並びを録画してしまう＝デモの核が映らない）。
 ros2 launch warehouse_bringup bringup.launch.py sim:=true llm:=true traffic_mode:=none rviz:=true scenario:=head_on rviz_config:=record
-#   sim+nav2+state+safety+nav2_bridge(:211-214 allowlist)+llm を合成（#162）。
+#   sim+nav2+state+safety+nav2_bridge(正 allowlist traffic_mode∈{none,simple}, #166)+llm を合成（#162）。
 #   full stack でも lifecycle active 後に `cd /ws && scripts/slice3_seed_initialpose.sh` を再実行。
 #   2台に対向タスク（§9.2 北 staging ↔ 通路A 南端の座標ゴール・route_A はロックキー）を投入し、
 #   LLM が 08a:337-359 の yield+wait → MCP → nav2_bridge → Nav2 で最接近 ≥0.15m を計測（11a:446）。
