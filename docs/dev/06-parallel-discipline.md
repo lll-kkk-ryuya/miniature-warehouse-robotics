@@ -14,7 +14,7 @@
 
 ## 1. 編集境界・所有権（自分の庭だけ耕す）
 
-- **自トラックの担当ディレクトリのみ編集**する。他トラックのフォルダ・共有契約は触らない (正本: `.claude/rules/parallel-workflow.md` §1, :13 / 担当ディレクトリ表 `docs/architecture/17-development-workflow.md` :182)。
+- **自トラックの担当ディレクトリのみ編集**する。他トラックのフォルダ・共有契約は触らない (正本: `.claude/rules/parallel-workflow.md` §1, :13 / 担当ディレクトリ表 `docs/architecture/16-repository-and-conventions.md` :182)。
 - **他トラックの内部モジュールを import しない**。依存は凍結契約ハブ経由のみ（疎結合・循環禁止） (正本: `.claude/rules/parallel-workflow.md` §2.1, :74-75 / `.claude/rules/implementation-and-dependencies.md` §1)。
 - **共有ファイルは単一所有者 or contract-PR**。所有者以外が変えたい時は所有トラックの Issue に先頭 worktree タグ付きで予告→合意→編集 (正本: `.claude/rules/parallel-workflow.md` §7.1, :179-187)。
   - `ws/src/warehouse_interfaces/**`=skeleton（contract-PR）／`config/warehouse.base.yaml`=bringup/skeleton／`warehouse_bringup/config/<file>.yaml`=1ファイル1責務で各担当（別ファイルなら自由）／`docs/STATUS.md`=orchestrator（自節のみ追記）／`.claude/**`・`.github/**`=governance(`track:docs`)・メタ作業は直列化 (正本: `.claude/rules/parallel-workflow.md` §7.1 表, :183-187)。
@@ -52,7 +52,7 @@
 
 - PR を出す前に **`git merge main`（origin/main 最新）** で取り込み、衝突を手元で解消してから提出する（並列で main は常に進む） (正本: `.claude/rules/parallel-workflow.md` §PR規約, :115 / `.claude/rules/merge-and-communication.md` §1, :9)。
 - **マージ済み PR のレビュー / 自分の進捗確認はローカル作業ツリーを正本にしない**。先に `HEAD...origin/main` で遅れを確認し、**origin/main を正本として検証**する（ローカルが古いと幽霊バグを追う） (正本: `.claude/rules/docs-first.md` §引用 = 出典を再検証できる形にする, :47)。
-- **本文中に `docs/path:line` で引用する時は、上方や他者の行を書き換えない**。in-body への挿入は行ズレで下流の file:line 引用を silent に腐らせる（#165 が doc12 line92 に+84挿入し cross-track 参照~37件をドリフトさせ、check_consistency が拾えなかった実例） (正本: `docs/dev/03-retrospectives.md` 教訓ログ運用 = 観測→対策→反映先, :2 / `.claude/rules/docs-first.md` §引用 file:line 一次ソース, :47)。
+- **本文中に `docs/path:line` で引用する時は、上方や他者の行を書き換えない**。in-body への挿入は行ズレで下流の file:line 引用を silent に腐らせる（#165 が doc12 line92 に+84挿入し cross-track 参照~37件をドリフトさせ、check_consistency が拾えなかった実例） (正本: `docs/dev/03-retrospectives.md` 教訓ログ運用 = 観測→対策→反映先, :3 / `.claude/rules/docs-first.md` §引用 file:line 一次ソース, :47)。
 - 周辺で参照していた file:line がズレたら**自分の引用を再 pin**（grep で実位置を取り直す）。記憶の行番号を据え置かない (正本: `.claude/rules/docs-first.md` §引用, :49)。
 - 自分の編集が cross-track 参照に影響しうる時（共有 doc の行挿入等）は、影響先トラックの Issue に予告し、可能なら**末尾 / 該当節末尾に追記**して上方の行を動かさない (正本: `.claude/rules/parallel-workflow.md` §7.1, :179)。
 
@@ -135,7 +135,7 @@
 
 ## 自己改善（このドキュメントの育て方）
 
-- 並列をスムーズにする学び / 改善は **PR を立てて本ドキュメントに追記**（governance ブランチ＝`.claude/**`・`docs/**` は governance 単一所有）。PR 本文に**作成意図＋周辺の詳細**（観測・対策・反映先）を必ず書く (正本: `.claude/rules/parallel-workflow.md` §7.1 governance 所有, :187 / `docs/dev/03-retrospectives.md` 教訓ログ運用, :2)。
+- 並列をスムーズにする学び / 改善は **PR を立てて本ドキュメントに追記**（governance ブランチ＝`.claude/**`・`docs/**` は governance 単一所有）。PR 本文に**作成意図＋周辺の詳細**（観測・対策・反映先）を必ず書く (正本: `.claude/rules/parallel-workflow.md` §7.1 governance 所有, :187 / `docs/dev/03-retrospectives.md` 教訓ログ運用, :3)。
 - **追記は EOF または該当節末尾に**。他者の行・上方の file:line 引用を書き換えない（#165 の行ドリフト / dual-session collision の教訓）。in-body 挿入は下流参照を silent に腐らせる (正本: `docs/dev/03-retrospectives.md` L6 / 行ドリフト運用, :18 / `.claude/rules/docs-first.md` §引用 file:line 一次ソース, :47)。
 - 1エントリの書式: `- [YYYY-MM-DD][worktree タグ] 学び`。
 - **緊急の運用メモは Issue / PR コメントで surface**（即時性が要るものを doc 追記まで待たない。GitHub が唯一の再起動耐性チャネル） (正本: `.claude/rules/session-orchestration.md` §0③, :13)。
