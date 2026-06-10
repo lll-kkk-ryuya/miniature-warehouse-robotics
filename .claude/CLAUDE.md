@@ -38,6 +38,7 @@
 - **docs 中心主義（docs-first）**: 実装・plan は docs を正本とする。着手前に該当 doc を読み、コードは docs を検証する側＝docs に無い契約/トピック/スキーマ/しきい値を発明しない。詳細 → [.claude/rules/docs-first.md](rules/docs-first.md)
 - docs/ 配下にMarkdownで管理
 - 新規ドキュメントは既存の番号体系に従う（00-xx, 01-xx, ...）
+- 短期 handoff / local memory は [local-memory.md](local-memory.md) を参照する（設計正本ではなく、再開用の実行状態メモ）。
 
 ## Issue / PR 作成
 - **作成前に必ず `docs/` を確認**（`docs/README.md` で設計正本を特定）。Issue / PR 本文に**設計正本へのリンクを必須**とする。
@@ -53,3 +54,4 @@
 - `docs/architecture/12-infrastructure-common.md` - 共通インフラ設計（Emergency Guardian, State Cache, Policy Gate等）
 - `docs/mode-a/` - Mode A/B設計（LLM単独交通管理）
 - `docs/mode-c/` - Mode C設計（LLM + Open-RMF、主方針）
+- `.claude/local-memory.md` - Claude Code向けの短期 handoff / 再開メモ
