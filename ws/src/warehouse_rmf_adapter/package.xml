@@ -1,0 +1,35 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>warehouse_rmf_adapter</name>
+  <version>0.0.0</version>
+  <description>
+    GATE-前 設計スキャフォールド: Mode C 案A の自作 EasyFullControl Fleet Adapter
+    （中央 namespaced /bot{n} Nav2 を zenoh 無しで直駆動）。DESIGN ONLY — 実装/ビルド/live は
+    R-38 メモリゲート（#187）通過後。設計正本: docs/mode-c/11c-traffic-mode-c.md §3.5。
+  </description>
+  <maintainer email="ryu3124ruyu@gmail.com">kawaguchiryuya</maintainer>
+  <license>Apache-2.0</license>
+
+  <exec_depend>rclpy</exec_depend>
+  <!-- 凍結契約: config.load_config / 凍結 locations（waypoint/lane は発明しない, 11c:283） -->
+  <exec_depend>warehouse_interfaces</exec_depend>
+  <!-- navigate() は namespace 毎 Nav2 NavigateToPose action client で駆動（11c:252） -->
+  <exec_depend>nav2_msgs</exec_depend>
+  <exec_depend>action_msgs</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+
+  <!-- TODO(R-38 GATE後 / #187): RMF 依存は GATE 通過後に有効化（GATE 前は実 apt なし, 11c:281）。
+       バイナリ ros-jazzy-rmf-fleet-adapter が jazzy ブランチ source と同一 EasyFullControl
+       API か pin 確認も GATE 後（11c:281 残未決3）。
+    <exec_depend>rmf_fleet_adapter</exec_depend>
+    <exec_depend>rmf_fleet_adapter_python</exec_depend>
+    <exec_depend>rmf_task_ros2</exec_depend>
+  -->
+
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

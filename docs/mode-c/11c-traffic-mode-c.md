@@ -424,3 +424,54 @@ Phase 4: YouTube比較検証
 - [rmf_fleet_adapter EasyFullControl::FleetConfiguration（Jazzy doc, 2.7.2）](https://docs.ros.org/en/jazzy/p/rmf_fleet_adapter/generated/classrmf__fleet__adapter_1_1agv_1_1EasyFullControl_1_1FleetConfiguration.html) — 参照日: 2026-06-05
 - [free_fleet — nav2_robot_adapter.py（zenoh 経由 NavigateToPose・案A で模倣する配線, zenoh 抜き）](https://github.com/open-rmf/free_fleet/blob/main/free_fleet_adapter/free_fleet_adapter/nav2_robot_adapter.py) — 参照日: 2026-06-05
 - [micro-ROS — Micro XRCE-DDS（client/agent split: ESP32 は full ROS 2 不可）](https://micro.vulcanexus.org/docs/concepts/middleware/Micro_XRCE-DDS/) — 参照日: 2026-06-05
+
+---
+
+## 付録: §3.5 GATE-前 ステータス（R-38 #187 待ち・feat/rmf-adapter / #180）
+
+> **配置の注記**: 本付録は論理的には §3.5 D（`:273`）の続き（GATE-前ステータス追記）だが、§3.5 D は
+> ファイル中段にあり、そこへ挿入すると以下の行が全てズレて **`docs/mode-c/08c-llm-bridge-mode-c.md:266`
+> → `11c:343-371`** などの inbound file:line 参照を silent に壊す（教訓: docs/dev/03-retrospectives）。
+> よって **行ドリフト回避のため EOF に追記**する。内容は §3.5 D の残未決（`:278-286`）に対応する。
+
+**as-of 2026-06-10。** レーン `feat/rmf-adapter`（worktree `mwr-rmf-adapter`・track #180）。R-38 メモリ
+ゲート（#187, `docs/shared/07-research-notes.md:243`）は **OPEN（Go/No-Go 未確定）**。よって本レーンは
+**BLOCKED**＝GATE-前の成果は **設計／docs／パッケージ scaffold のみ**（実装・`colcon build`・apt・live は
+GATE 通過後）。新規 scaffold = `ws/src/warehouse_rmf_adapter/`（`fleet_adapter.py` = `navigate`/`stop`/
+`execute_action`/`update_robot_state` の docstring 骨子 + `NotImplementedError`。RMF/rclpy は未 import）。
+
+### 残未決（§3.5 D `:278-286`）の GATE-前 ステータス
+
+| # | 残未決（出所行） | GATE-前 で確定したこと | GATE 後（R-38 GO 後）に要すること |
+|---|---|---|---|
+| 1 | end-to-end 実例未確認（`:279`・最大の未証明前提） | adapter IF 骨子（3 コールバック + RobotState）を docstring 化。合成元（rmf_demos 足場 + free_fleet `NavigateToPose` − zenoh）を明文化 | 実 adapter が `/bot1`/`/bot2` を in-process action client で駆動する実証 |
+| 2 | 1 プロセス 2 namespace 駆動（`:280`・integrator 実装） | 「namespace 毎 action client を `__init__` で生成」を設計に固定 | 実装・2 台同時駆動の検証 |
+| 3 | バイナリ ↔ jazzy source の API pin（`:281`） | **下記「バイナリ ↔ source pin 調査」** に文献事実を記録（実 apt は GATE 後） | `apt-cache policy ros-jazzy-rmf-fleet-adapter` で実バージョン pin + API 一致確認 |
+| 4 | `rmf_traffic` schedule/negotiation 配線負荷（`:282`） | RMF core が交通管理を担い adapter は配線先（`:256`）と整理。定量は未 | Navigation Graph / traffic profile / footprint の工数定量 |
+| 5 | nav-graph ↔ 9 locations 整合（`:283`） | **方針固定**: 凍結 `warehouse_interfaces.locations` に waypoint/lane を**発明しない**。nav-graph は契約外（要れば別 contract PR） | 実 nav-graph を 9 locations / Gazebo 地図に整合 |
+| 6 | 200mm 隘路（#124）・≤0.3 m/s デコンフリクト（`:284`） | sim 検証待ち（#124 真隘路が渋滞デモ前提） | 隘路 sim + 2 台 E2E で RMF デコンフリクト有効性を検証 |
+
+### バイナリ ↔ jazzy source の API pin 調査（残未決3・GATE-前は文献のみ）
+
+- **文献事実（既出・`:253`）**: `EasyFullControl.hpp` は rmf_ros2 `jazzy` ブランチに在中。`docs.ros.org/jazzy`
+  は `EasyFullControl::FleetConfiguration` を **rmf_fleet_adapter 2.7.2 = Jazzy** として公開。
+- **未確定（GATE 後の実機/コンテナで確認）**: tiryoh/Jetson の **実 apt バージョン**（`apt-cache policy
+  ros-jazzy-rmf-fleet-adapter` / `rmf_fleet_adapter_python`）が 2.7.2 と一致するか、`FleetConfiguration` の
+  シグネチャ差が無いか。**GATE-前は実 apt を行わない**（07:243）ため pin は GATE 後（DoD）。
+
+### Nav2 直駆動の契約整理（doc03:97 を変えない＝scope item 2）
+
+- doc03:97 は「`/bot{n}/goal_pose`（`geometry_msgs/PoseStamped`）= モードC: Fleet Adapter 発行」を**既に**固定。
+  本レーンは **これを変更せず**、`warehouse_interfaces` に `NavigateToPose` 等の action 型を**足さない**
+  （`NavigateToPose` は標準 `nav2_msgs` action であり本プロジェクトの凍結契約ではない）。
+- topic 契約（goal_pose）↔ 機構（`NavigateToPose` action, `:252`）の対応は `fleet_adapter.py` の「設計メモ」に
+  記述。どちらでも「adapter が唯一の Nav2 writer」（`:63`）は満たす。最終確定は GATE 後 impl。
+
+### governance（本レーン編集境界外＝orchestrator 調整）
+
+- **doc16 §9 ブランチ表**（`docs/architecture/16-repository-and-conventions.md:182-191`・§9 見出し `:178`）に `feat/rmf-adapter`
+  / `warehouse_rmf_adapter` 行が**未記載**。CI の越境 import チェック `tracks` map（`.github/workflows/ci.yml`）も
+  同様。現状 `warehouse_interfaces` のみ依存で CI は通るが、両者を **nav-traffic** として揃える追記が要る。
+- **#180 の `Blocked by`** が「R-38（issue 無し）」表記 → **#187** へ張替推奨。
+- **#180 本文の worktree タグ** `mwr-modec-fleet` / `feat/modec-fleet-adapter` が本レーンの実名
+  `mwr-rmf-adapter` / `feat/rmf-adapter` と**不一致** → orchestrator で統一要。
