@@ -11,7 +11,7 @@ testable with fakes (mirrors the bridge's fake-injection testability, doc16 §11
 """
 
 import pytest
-from measure import Sample, _build_report, run_measurement
+from measure import Sample, _build_report, _print_summary, run_measurement
 from stats import percentile, summarize
 
 
@@ -115,3 +115,87 @@ def test_build_report_missed_cycle_rate() -> None:
     assert rep["n_over_in_cycle_timeout"] == 1  # the 3.0s success is a missed cycle
     assert rep["missed_cycle_rate"] == 0.4  # (1 err + 1 over) / 5 requested
     assert rep["gateway_host"] == "127.0.0.1"
+
+
+def test_build_report_in_cycle_boundary_is_strict() -> None:
+    # 2.5s EXACTLY is within the cycle (strict ``>`` in measure.py); only 2.5001 misses.
+    result = {"latencies": [2.5, 2.5001], "errors": [], "tokens": [], "n_requested": 2, "warmup": 0}
+    rep = _build_report("openai", "default", "http://127.0.0.1:8642", result, None, 60.0)
+    assert rep["n_over_in_cycle_timeout"] == 1  # only the 2.5001s sample
+    assert rep["missed_cycle_rate"] == 0.5  # (0 err + 1 over) / 2 requested
+
+
+def test_build_report_zero_requests_no_div0() -> None:
+    # n_requested==0 must not ZeroDivisionError; miss_rate falls back to 0.0 and no summary block.
+    result = {"latencies": [], "errors": [], "tokens": [], "n_requested": 0, "warmup": 0}
+    rep = _build_report("google", "unknown", "http://127.0.0.1:8642", result, 0.012, 60.0)
+    assert rep["missed_cycle_rate"] == 0.0
+    assert rep["gateway_floor_s"] == 0.012  # floor passthrough
+    assert "summary_s" not in rep  # no latencies -> no percentile block
+
+
+def test_build_report_all_errors_summary_absent() -> None:
+    # 100% errors: every cycle missed, and there is no latency distribution to summarise.
+    result = {"latencies": [], "errors": ["E1", "E2"], "tokens": [], "n_requested": 2, "warmup": 0}
+    rep = _build_report("xai", "fairness-off", "http://127.0.0.1:8642", result, None, 60.0)
+    assert rep["n_ok"] == 0
+    assert rep["n_err"] == 2
+    assert rep["missed_cycle_rate"] == 1.0
+    assert "summary_s" not in rep
+
+
+def test_build_report_clean_run_no_miss() -> None:
+    # Fast, error-free run: no missed cycles, percentile block present.
+    result = {"latencies": [0.5, 1.0, 2.0], "errors": [], "tokens": [], "n_requested": 3, "warmup": 0}
+    rep = _build_report("anthropic", "fairness-off", "http://127.0.0.1:8642", result, None, 60.0)
+    assert rep["n_over_in_cycle_timeout"] == 0
+    assert rep["missed_cycle_rate"] == 0.0
+    assert "summary_s" in rep
+
+
+def _report(latencies: list[float], errors: list[str], n_requested: int) -> dict:
+    """Build a report from the given measurement shape (fairness-off, no floor)."""
+    result = {
+        "latencies": list(latencies),
+        "errors": list(errors),
+        "tokens": [],
+        "n_requested": n_requested,
+        "warmup": 0,
+    }
+    return _build_report("anthropic", "fairness-off", "http://127.0.0.1:8642", result, None, 60.0)
+
+
+def test_print_summary_cycle_holds(capsys) -> None:
+    # p95 fast (≤2.5s) AND no missed cycles -> the 3s Mode-A cycle holds (doc06:104).
+    _print_summary(_report([0.5] * 20, [], 20))
+    out = capsys.readouterr().out
+    assert "3s Mode-A cycle holds" in out
+    assert "does NOT hold" not in out
+    assert "WARN: high missed-cycle rate" not in out
+
+
+def test_print_summary_p95_over(capsys) -> None:
+    # p95 = 3000ms > 2.5s -> cycle does NOT hold, p95 stated as a reason (doc08:140).
+    _print_summary(_report([3.0] * 20, [], 20))
+    out = capsys.readouterr().out
+    assert "does NOT hold" in out
+    assert "p95=3000ms > 2.5s" in out
+
+
+def test_print_summary_miss_over_via_errors(capsys) -> None:
+    # Survivorship-bias guard: p95 is fast (≤2.5s) but a 10% ERROR fraction still misses cycles,
+    # so the verdict must fail on missed-rate alone and emit the WARN. p95 is NOT a stated reason.
+    _print_summary(_report([0.5] * 18, ["E", "E"], 20))
+    out = capsys.readouterr().out
+    assert "does NOT hold" in out
+    assert "missed 10.0% > 5%" in out
+    assert "ms > 2.5s" not in out  # p95 fast -> not a stated failure reason
+    assert "WARN: high missed-cycle rate" in out
+
+
+def test_print_summary_no_successful_samples(capsys) -> None:
+    # All calls errored: no percentiles to compute, cycle not viable (100% missed).
+    _print_summary(_report([], ["E"] * 5, 5))
+    out = capsys.readouterr().out
+    assert "NO successful samples" in out
+    assert "p50" not in out  # returns before the percentile table

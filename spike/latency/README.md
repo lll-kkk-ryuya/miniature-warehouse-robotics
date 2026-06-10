@@ -1,4 +1,4 @@
-[worktree: mwr-derisk-latency | branch: feat/derisk-latency | track: #N（要起票・R-07/R-46）]
+[worktree: mwr-derisk-latency | branch: feat/derisk-latency | track: #200]
 
 # spike/latency — 実行手順（4 provider レイテンシ実測）
 

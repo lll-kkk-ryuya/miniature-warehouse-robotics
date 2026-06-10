@@ -1,4 +1,4 @@
-[worktree: mwr-derisk-latency | branch: feat/derisk-latency | track: #N（要起票・R-07/R-46）]
+[worktree: mwr-derisk-latency | branch: feat/derisk-latency | track: #200]
 
 # RESULT — Hermes Gateway 司令官呼び出しレイテンシ実測（R-07 / R-46）
 
