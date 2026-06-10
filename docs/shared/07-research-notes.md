@@ -176,7 +176,7 @@
 | R-07 | LLM API レイテンシ + Hermes オーバーヘッドが3秒サイクルに収まるか | Phase 0.5 |
 | R-09 | Jetson Orin Nano が唯一の計算ノード（熱暴走・クラッシュで全機能喪失） | Phase 1 |
 | R-10 | Hermes Gateway が SPOF（クラッシュで新規タスク・ログ全停止） | Phase 0.5 |
-| R-13 | Open-RMF + free_fleet + zenoh + Nav2 の統合チェーン | Phase 3 後半 |
+| R-13 | Open-RMF + Fleet Adapter（EasyFullControl 自作） + Nav2 の統合チェーン（free_fleet/zenoh 不採用＝R-44 / 11c §3.5） | Phase 3 後半 |
 | R-14 | Hermes MCP stdio通信 と Warehouse MCP Server の安定性 | Phase 0.5 |
 | R-15 | Emergency Guardian の cmd_vel と Nav2 Controller の競合（タイミングウィンドウ） | Phase 2 |
 | R-17 | Open-RMF の学習曲線（「3-5日」は楽観的） | Phase 3 |
