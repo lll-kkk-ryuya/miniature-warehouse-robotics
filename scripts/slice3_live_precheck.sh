@@ -31,8 +31,10 @@ Usage:
   scripts/slice3_live_precheck.sh [--offline|--live] [--tasks JSON] [--skip-tests] [--strict]
 
 Modes:
-  --offline    Validate host e2e harness and WAREHOUSE_TASKS seed. Default.
-  --live       Offline checks plus Hermes/Nav2 Bridge /health checks.
+  --offline    Validate host e2e harness and WAREHOUSE_TASKS seed. Default. Inside a container
+               with a loopback HERMES_BASE_URL it WARNs to use host.docker.internal.
+  --live       Offline checks plus Hermes/Nav2 Bridge /health, a live state.json check (both
+               bots present + snapshot freshness), and stack process liveness.
 
 Options:
   --tasks JSON    Demo WAREHOUSE_TASKS seed. Defaults to a known-location two-task seed.
@@ -40,9 +42,11 @@ Options:
   --strict        Treat WARN/SKIP as failure.
 
 Environment:
-  WAREHOUSE_TASKS          Used when --tasks is not provided.
-  HERMES_BASE_URL          Default: http://127.0.0.1:8642
-  NAV2_BRIDGE_BASE_URL     Default: http://127.0.0.1:8645
+  WAREHOUSE_TASKS            Used when --tasks is not provided.
+  HERMES_BASE_URL            Default: http://127.0.0.1:8642 (in a container use
+                             http://host.docker.internal:8642 to reach the host Hermes).
+  NAV2_BRIDGE_BASE_URL       Default: http://127.0.0.1:8645
+  STATE_FRESHNESS_LIMIT_SEC  --live state.json max age in seconds. Default: 5
 
 Output:
   Prints the exact export/launch commands to use after the precheck passes.
@@ -71,6 +75,31 @@ skip() {
 
 have() {
   command -v "$1" >/dev/null 2>&1
+}
+
+in_container() {
+  # tiryoh ROS image runs in Docker; the host Hermes is NOT reachable via loopback from here.
+  [[ -f /.dockerenv ]] || grep -qaE '(docker|containerd|kubepods)' /proc/1/cgroup 2>/dev/null
+}
+
+url_host() {
+  # Extract the host from http(s)://host[:port][/path] using parameter expansion (no sed).
+  local rest="${1#*://}"
+  printf '%s\n' "${rest%%[:/]*}"
+}
+
+hermes_container_hint() {
+  # Surface the #1 demo-day live-failure mode: inside the tiryoh container, a loopback
+  # HERMES_BASE_URL cannot reach a host-side Hermes Gateway. A green --offline run must not
+  # mask that. The fix is the config override mechanism (config.py:28,48-66): point the bridge
+  # at host.docker.internal. WARN (non-fatal) so --offline still passes while flagging the gap.
+  local host
+  host="$(url_host "${HERMES_BASE_URL}")"
+  if in_container && [[ "${host}" == "127.0.0.1" || "${host}" == "localhost" ]]; then
+    warn "container detected + Hermes at ${host}: host Hermes is unreachable via loopback. \
+For the full stack: export WAREHOUSE__HERMES__BASE_URL=http://host.docker.internal:8642 \
+(and run --live with HERMES_BASE_URL=http://host.docker.internal:8642)."
+  fi
 }
 
 python_cmd() {
@@ -142,6 +171,32 @@ if bad:
     )
     raise SystemExit(1)
 
+# Beyond location membership: the seed must set up a genuine TWO-BOT opposition — two distinct
+# tasks sending two bots to two DIFFERENT goals (a single shared destination or a copy-pasted
+# task never creates the head-on the demo records). This is a STRUCTURAL precondition, NOT a
+# geometric channel-crossing test: the named tasks are PROXY keys (the live head-on is driven by
+# COORDINATE goals + route_A/route_B locks, tests/e2e/README.md:46-49), and the documented default
+# seed (berth_A->shelf_1 / berth_B->shelf_3) does not geometrically cross one aisle — so asserting
+# geometry here would wrongly reject the default. We validate intent, not coordinates.
+ids = [task.get("id") for task in tasks]
+if len(set(ids)) != len(ids):
+    print(f"WAREHOUSE_TASKS has duplicate task ids: {ids}", file=sys.stderr)
+    raise SystemExit(1)
+
+degenerate = [task.get("id") for task in tasks if task.get("from") == task.get("to")]
+if degenerate:
+    print(f"WAREHOUSE_TASKS has zero-length task(s) (from == to): {degenerate}", file=sys.stderr)
+    raise SystemExit(1)
+
+destinations = {task.get("to") for task in tasks}
+if len(destinations) < 2:
+    print(
+        "WAREHOUSE_TASKS needs >=2 distinct destinations so two bots get different goals "
+        f"(opposing-traffic precondition); got {sorted(destinations)}",
+        file=sys.stderr,
+    )
+    raise SystemExit(1)
+
 print(json.dumps(tasks, ensure_ascii=False, separators=(",", ":")))
 PY
 }
@@ -176,6 +231,92 @@ except (urllib.error.URLError, TimeoutError, OSError) as exc:
 PY
 }
 
+check_state_snapshot() {
+  # Automates the slice3 live spot-check: read the live state.json via the SAME path the stack
+  # writes (FileStateStore -> runtime_dir, doc12:262) and confirm BOTH configured bots are
+  # present in a fresh snapshot. A MISSING bot = State Cache omitted it (doc12:293 — a bot whose
+  # pose+velocity+battery are not all present is dropped, i.e. the pose_stale case); a STALE
+  # top-level timestamp (doc12:288, datetime.now(UTC)) = the 100ms write loop (doc12:284) died.
+  # Honors WAREHOUSE_ENV / WAREHOUSE_RUNTIME_DIR so it resolves the same state.json as the run.
+  local py="$1"
+  PYTHONPATH="$(repo_pythonpath)" STATE_FRESHNESS_LIMIT_SEC="${STATE_FRESHNESS_LIMIT_SEC:-5}" \
+    "${py}" - <<'PY'
+import os
+import sys
+from datetime import datetime
+
+from warehouse_interfaces.config import load_config
+from warehouse_interfaces.schemas import StateSnapshot
+from warehouse_interfaces.stores import FileStateStore
+
+try:
+    raw = FileStateStore().read()
+except Exception as exc:  # FileStateStore.read() only guards FileNotFoundError; a corrupt /
+    print(f"state.json unreadable: {exc}", file=sys.stderr)  # truncated file raises JSONDecodeError
+    raise SystemExit(1)
+if raw is None:
+    print("state.json not written yet (State Cache idle or not running)", file=sys.stderr)
+    raise SystemExit(1)
+try:
+    snap = StateSnapshot.model_validate(raw)
+except Exception as exc:
+    print(f"state.json is not a valid StateSnapshot: {exc}", file=sys.stderr)
+    raise SystemExit(1)
+
+try:
+    expected = {r["id"] for r in load_config().get("robots", [])}
+except Exception:
+    expected = set()
+expected = expected or {"bot1", "bot2"}
+present = set(snap.robots)
+missing = expected - present
+if missing:
+    print(
+        f"state.json missing bot(s) {sorted(missing)} (present={sorted(present)}): "
+        "initialpose not seeded yet or pose_stale dropped a bot",
+        file=sys.stderr,
+    )
+    raise SystemExit(1)
+
+try:
+    ts = datetime.fromisoformat(snap.timestamp)
+except ValueError as exc:
+    print(f"state.json timestamp unparseable: {exc}", file=sys.stderr)
+    raise SystemExit(1)
+now = datetime.now(ts.tzinfo) if ts.tzinfo else datetime.now()
+age = (now - ts).total_seconds()
+# 5s default is a deliberate liveness FLOOR (~50 missed 100ms cycles = State Cache clearly
+# dead), intentionally looser than doc12:350-351's Policy Gate stale(0.5s)/unavailable(2.0s)
+# bands, which gate command ACCEPTANCE, not process liveness. Override via env if needed.
+limit = float(os.environ["STATE_FRESHNESS_LIMIT_SEC"])
+if age > limit:
+    print(
+        f"state.json is stale by {age:.1f}s (> {limit:.0f}s): State Cache stopped writing?",
+        file=sys.stderr,
+    )
+    raise SystemExit(1)
+print(f"both bots present ({sorted(present)}), snapshot {age:.1f}s old")
+PY
+}
+
+check_process_liveness() {
+  # Supplementary to the state.json freshness check (which authoritatively proves State Cache
+  # is alive): pgrep the stack's anchor processes. WARN (not fail) — the precheck may run in a
+  # different shell/namespace than the launch, and process names vary by ROS distro.
+  if ! have pgrep; then
+    skip "process liveness (pgrep unavailable)"
+    return
+  fi
+  local proc
+  for proc in "gz sim" "state_cache"; do
+    if pgrep -f "${proc}" >/dev/null 2>&1; then
+      pass "process alive: ${proc}"
+    else
+      warn "process not found: ${proc} (stack not running in this namespace?)"
+    fi
+  done
+}
+
 run_static_checks() {
   printf '== slice3 offline precheck ==\n'
   [[ -f "${REPO_ROOT}/tests/e2e/README.md" ]] && pass "tests/e2e runbook exists" || fail "tests/e2e runbook missing"
@@ -193,7 +334,7 @@ run_static_checks() {
   local tasks="${TASKS_JSON:-${DEFAULT_TASKS}}"
   local normalized
   if normalized="$(validate_tasks "${py}" "${tasks}")"; then
-    pass "WAREHOUSE_TASKS seed validates against PendingTask + KNOWN_LOCATIONS"
+    pass "WAREHOUSE_TASKS seed validates (PendingTask + KNOWN_LOCATIONS + two-bot opposition)"
     TASKS_JSON="${normalized}"
   else
     fail "WAREHOUSE_TASKS seed validation"
@@ -214,6 +355,8 @@ run_static_checks() {
   else
     skip "ros2 command not available on this host; run launch commands inside tiryoh ROS container"
   fi
+
+  hermes_container_hint
 }
 
 run_live_checks() {
@@ -229,6 +372,16 @@ run_live_checks() {
     pass "Hermes Gateway /health reachable at ${HERMES_BASE_URL}"
   else
     fail "Hermes Gateway /health unreachable at ${HERMES_BASE_URL}: ${output}"
+    # Containerized + loopback is the classic miss: probe host.docker.internal so the operator
+    # learns Hermes IS up, just at the wrong address (the config override resolves it).
+    local hhost
+    hhost="$(url_host "${HERMES_BASE_URL}")"
+    if in_container && [[ "${hhost}" == "127.0.0.1" || "${hhost}" == "localhost" ]] &&
+      check_http_health "${py}" "Hermes" "http://host.docker.internal:8642" >/dev/null 2>&1; then
+      warn "Hermes IS reachable at http://host.docker.internal:8642 — export \
+WAREHOUSE__HERMES__BASE_URL=http://host.docker.internal:8642 (and rerun --live with \
+HERMES_BASE_URL=http://host.docker.internal:8642)."
+    fi
   fi
 
   if output="$(check_http_health "${py}" "Nav2 Bridge" "${NAV2_BRIDGE_BASE_URL}" 2>&1)"; then
@@ -236,6 +389,16 @@ run_live_checks() {
   else
     fail "Nav2 Bridge /health unreachable at ${NAV2_BRIDGE_BASE_URL}: ${output}"
   fi
+
+  # Stack health (requires the launch to be running + initialpose seeded): both bots in a
+  # fresh state.json (automates the post-197 manual spot-check) + anchor-process liveness.
+  if output="$(check_state_snapshot "${py}" 2>&1)"; then
+    pass "state.json: ${output}"
+  else
+    fail "state.json check: ${output}"
+  fi
+
+  check_process_liveness
 }
 
 print_next_steps() {
@@ -252,10 +415,16 @@ ros2 launch warehouse_bringup bringup.launch.py llm:=false sim:=true
 # In another ROS-sourced shell after both Nav2 lifecycle managers report active:
 cd /ws && scripts/slice3_seed_initialpose.sh
 
-# slice2/3 full stack (Hermes Gateway :8642 and Nav2 Bridge :8645 already running)
-ros2 launch warehouse_bringup bringup.launch.py sim:=true llm:=true traffic_mode:=none rviz:=true
+# slice2/3 full stack (Hermes Gateway :8642 and Nav2 Bridge :8645 already running).
+# Inside the tiryoh container, reach the host Hermes (loopback won't) via the config override:
+export WAREHOUSE__HERMES__BASE_URL=http://host.docker.internal:8642
+# scenario:=head_on records the 200mm head-on standoff; rviz_config:=record selects the overview
+# RViz cfg (bringup forwards both to the sim — slice3). Without them the recording shows berths.
+ros2 launch warehouse_bringup bringup.launch.py sim:=true llm:=true traffic_mode:=none rviz:=true scenario:=head_on rviz_config:=record
 # Repeat initialpose seeding after full-stack launch reaches active lifecycle.
 cd /ws && scripts/slice3_seed_initialpose.sh
+# Wrap the noVNC/screen capture (actual recording is human-gated):
+scripts/slice3_record.sh start    # ... run the demo ... then: scripts/slice3_record.sh stop
 EOF
 }
 
