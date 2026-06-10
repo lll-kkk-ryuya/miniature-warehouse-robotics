@@ -77,7 +77,18 @@ def _validate_safety(cfg: dict[str, Any]) -> None:
     # is absent, since it silently disables the battery estop).
     cap = safety.get("max_linear_velocity")
     if cap is not None:
-        # Fail LOUD on a degenerate cap first (#169): a non-positive / non-finite
+        # Reject a NON-NUMERIC / bool cap FIRST (#175, follow-up of #169): a YAML
+        # typo (bare word, quoted string, list, mapping) makes ``math.isfinite(cap)``
+        # raise a raw ``TypeError`` instead of a config ``ValueError``, and a
+        # ``true``/``false`` cap (bool is an int subclass) would otherwise be read as
+        # 1/0 m/s and rejected with a misleading numeric message. Exclude bool
+        # explicitly and require (int|float) before any numeric comparison.
+        if isinstance(cap, bool) or not isinstance(cap, (int, float)):
+            raise ValueError(
+                f"config safety.max_linear_velocity={cap!r} must be a number "
+                f"(int or float), got {type(cap).__name__} (rules/safety.md)"
+            )
+        # Fail LOUD on a degenerate cap (#169): a non-positive / non-finite
         # value would otherwise slip past the upper-bound check (-0.5 / 0 / NaN are
         # all NOT `> MAX`), then invert the symmetric clamp in consumers / pass a
         # negative vx_max to Nav2. NaN must be rejected explicitly: both `> MAX`
@@ -107,7 +118,7 @@ def load_config(paths: list[Path] | None = None) -> dict[str, Any]:
     ``WAREHOUSE__*`` environment variables. ``paths`` overrides the resolved file
     paths (for tests). Missing files are skipped, so a partial overlay merges
     cleanly onto the base. Raises ``ValueError`` if the resulting speed cap is
-    non-positive, non-finite, or exceeds ``safety.MAX_LINEAR_VELOCITY``.
+    non-numeric, non-positive, non-finite, or exceeds ``safety.MAX_LINEAR_VELOCITY``.
     """
     resolved = config_paths() if paths is None else paths
     merged: dict[str, Any] = {}

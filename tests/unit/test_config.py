@@ -127,6 +127,42 @@ def test_non_finite_cap_via_env_var_rejected(
 
 
 @pytest.mark.safety
+@pytest.mark.parametrize(
+    "bad_yaml, type_name",
+    [
+        ("abc", "str"),  # bare word -> str (math.isfinite would raise TypeError)
+        ('"abc"', "str"),  # quoted string
+        ("true", "bool"),  # bool True (int subclass) -> would read as 1 m/s
+        ("false", "bool"),  # bool False -> would read as 0 m/s ("finite positive")
+        ("[]", "list"),  # empty list
+        ("[1, 2]", "list"),  # non-empty list
+        ("{a: 1}", "dict"),  # flow mapping
+    ],
+)
+def test_non_numeric_cap_rejected(tmp_path: Path, bad_yaml: str, type_name: str) -> None:
+    # #175 (follow-up of #169): a non-numeric / bool speed cap must fail LOUD with a
+    # clear ValueError naming the type, NOT a raw TypeError from math.isfinite()
+    # (str/list/dict) nor a misleading numeric message (bool true/false are int
+    # subclasses). The isinstance guard runs BEFORE the finite/positive + hard-cap
+    # checks (R-26: the speed cap is a safety invariant).
+    base = _write(tmp_path / "base.yaml", f"safety:\n  max_linear_velocity: {bad_yaml}\n")
+    with pytest.raises(ValueError, match=rf"must be a number.*got {type_name}"):
+        load_config([base])
+
+
+@pytest.mark.safety
+def test_non_numeric_cap_via_env_var_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The override path (WAREHOUSE__*) is type-guarded too: a string injected via env
+    # (yaml.safe_load keeps "fast" a str) must raise the type ValueError, not TypeError.
+    base = _write(tmp_path / "base.yaml", "safety:\n  max_linear_velocity: 0.3\n")
+    monkeypatch.setenv("WAREHOUSE__SAFETY__MAX_LINEAR_VELOCITY", "fast")
+    with pytest.raises(ValueError, match="must be a number"):
+        load_config([base])
+
+
+@pytest.mark.safety
 def test_cap_at_hard_cap_loads(tmp_path: Path) -> None:
     # Boundary: the exact hard cap is valid — load succeeds and the value is kept.
     base = _write(tmp_path / "base.yaml", "safety:\n  max_linear_velocity: 0.3\n")
