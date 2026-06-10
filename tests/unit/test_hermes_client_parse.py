@@ -7,6 +7,7 @@ scheduler ignores the cycle rather than dispatching garbage (doc08:289).
 """
 
 import json
+import re
 
 import pytest
 from warehouse_interfaces.schemas import CommandAction
@@ -124,7 +125,13 @@ def test_mode_c_action_set_is_strict_subset_of_frozen_enum() -> None:
     # via the prompt only; the parser / Command schema are NOT narrowed, so Mode A's
     # wait/yield still validate. Guard that invariant here.
     frozen = {a.value for a in CommandAction}
-    mode_c_actions = {"navigate", "stop", "charge"}
+    # Derive the advertised Mode C action set FROM the prompt (not a hardcoded literal) so
+    # this guard tracks the actual prompt: pull the "navigate|stop|charge" token out of the
+    # output-contract line and split it.
+    match = re.search(r'"action": "([a-z|]+)"', MODE_C_PROMPT)
+    assert match is not None, "MODE_C_PROMPT must advertise an action set in its output JSON"
+    mode_c_actions = set(match.group(1).split("|"))
+    assert mode_c_actions == {"navigate", "stop", "charge"}  # exactly the doc08c:136,176 set
     assert mode_c_actions < frozen  # strict subset: prompt narrows usage, schema unchanged
     assert {"wait", "yield"} <= frozen  # Mode A actions remain valid in the frozen schema
     # The Mode C prompt advertises the restricted set, NOT the base 5-action contract.
@@ -140,3 +147,8 @@ def test_base_prompt_is_mode_neutral() -> None:
     assert "navigate|wait|stop|yield|charge" in SYSTEM_PROMPT
     assert "gen_id" in SYSTEM_PROMPT
     assert "pending_tasks" not in SYSTEM_PROMPT
+    # Battery is the 3-stage policy faithful to doc08a:246-249 (reconciled from the earlier
+    # 2-stage drift) — the same three tiers Mode A's SOT and Mode C (doc08c:155-158) use.
+    assert "3段階" in SYSTEM_PROMPT
+    assert "10-20%" in SYSTEM_PROMPT and "20-30%" in SYSTEM_PROMPT
+    assert "20%以下は新規割当を控える" not in SYSTEM_PROMPT  # old 2-stage phrasing is gone

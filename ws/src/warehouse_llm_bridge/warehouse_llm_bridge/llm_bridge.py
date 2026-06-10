@@ -146,9 +146,10 @@ class LlmBridge(Node):
         # display label / fallback when WAREHOUSE_RUN_ID is unset (#108).
         run_id = resolve_run_id(os.environ.get("WAREHOUSE_RUN_ID"), session_id)
         tracer = LangfuseTracer(run_id=run_id, session_id=session_id, provider=provider, mode=mode)
-        # Mode-aware commander prompt (#181): Mode A/B (none/simple) get the deadlock
-        # detection + yield rules appended; Mode C (open-rmf) gets the base prompt only,
-        # since Open-RMF owns traffic (doc14:163-164 / 08a:316-334).
+        # Mode-aware commander prompt: Mode A/B (none/simple) get the base prompt + deadlock
+        # detection + yield rules (MODE_A_RULES, #181); Mode C (open-rmf) gets the standalone
+        # MODE_C_PROMPT (doc08c:138-180, #203), since Open-RMF owns traffic (doc14:164 /
+        # 08a:316-334) and robot selection (doc08c:154).
         self._scheduler = BridgeScheduler(
             llm_client=HermesClient(
                 base_url, api_key=api_key, system_prompt=build_system_prompt(mode)

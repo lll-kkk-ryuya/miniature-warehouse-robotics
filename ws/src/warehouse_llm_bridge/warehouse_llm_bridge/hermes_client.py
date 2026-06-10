@@ -37,8 +37,9 @@ from warehouse_llm_bridge.llm_client import LLMClient, LLMUnavailableError
 HERMES_MODEL = "hermes-agent"
 
 # Mode-neutral base system prompt: the output contract (frozen Command JSON,
-# doc mode-a/08a:257-264), the safety-over-efficiency / battery guidance common to every
-# mode (08a:243-250) and the gen_id B-3 note (08a:253). It carries NO traffic / robot-
+# doc mode-a/08a:257-264), the safety-over-efficiency / 3-stage battery guidance common to
+# every mode (08a:243-250, the three tiers 10 / 10-20 / 20-30 % per 08a:246-249) and the
+# gen_id B-3 note (08a:253). It carries NO traffic / robot-
 # selection specifics — those are mode-specific. Mode A/B additions (the commander
 # assigns BOTH bots itself: task allocation + deadlock rules) live in MODE_A_RULES; Mode
 # C delegates robot selection to the Open-RMF allocator (doc08c:154 「robot 指定なし」), so
@@ -52,7 +53,9 @@ HERMES_MODEL = "hermes-agent"
 SYSTEM_PROMPT = (
     "あなたは倉庫ロボット2台の司令官AIです。状況JSONを読み、安全性を効率性より優先して"
     "（衝突回避を最優先に）2台分の指示を決定してください。\n"
-    "バッテリー方針: 10%以下は新規タスク禁止（充電へ）、20%以下は新規割当を控える。\n"
+    "バッテリー方針（3段階）: 10%以下は緊急停止（Policy Gate が全コマンド拒否、Emergency "
+    "Guardian が自動停止）、10-20%は新規タスク割当禁止・充電ステーションへの移動を推奨、"
+    "20-30%は次タスク割当禁止・充電候補として検討。\n"
     "状況JSON の gen_id は B-3 安全機構（15-mcp-platform.md §2）。指示には Bridge が自動付与する"
     "ので、常に最新の状況JSONにのみ基づいて判断してください。\n"
     "必ず次のJSON形式のみで返答してください（前後に文章を付けない）:\n"
@@ -106,9 +109,10 @@ MODE_A_RULES = (
 # charge vs Mode C navigate|stop|charge, doc08c:136,176) and the role (base / Mode A say
 # 衝突回避を最優先 per doc08a:250 vs Mode C delegates collision avoidance to Open-RMF,
 # doc08c:159). Appending a rules block to the base would yield a self-contradictory prompt,
-# so Mode C replaces it wholesale. (Battery is NOT a Mode-A-vs-Mode-C divergence: doc08a:
-# 246-249 and doc08c:155-158 are BOTH 3-stage. The base prompt's as-written 2-stage battery
-# is a pre-existing drift from doc08a:246-249, independent of this slice — follow-up.)
+# so Mode C replaces it wholesale. (Battery is NOT a Mode-A-vs-Mode-C divergence: the base
+# (08a:246-249), Mode A and Mode C (doc08c:155-158) are ALL 3-stage — the base's earlier
+# 2-stage drift was reconciled to 08a:246-249. So battery does NOT motivate the standalone
+# split; the action set and the collision-avoidance role do.)
 #
 # Provenance: this content is (b) docs-ILLUSTRATIVE (doc08c:141-179 prompt example), NOT a
 # frozen contract. The action restriction navigate|stop|charge is a STRICT SUBSET of the
