@@ -366,6 +366,19 @@ def test_invalid_response_ignored(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
+def test_malformed_decide_response_ignored(tmp_path: Path) -> None:
+    # Hermes parser raises ValueError on non-JSON / prose-wrapped content; the scheduler
+    # treats it like a malformed Command and ignores the cycle without forwarding.
+    llm = FakeLLM(raises=ValueError("malformed body"))
+    executor = RecordingToolExecutor()
+    sched, _ = _scheduler(tmp_path, llm, executor)
+    asyncio.run(sched.run_cycle())
+    assert executor.calls == []
+    assert sched.last_command is None
+    assert sched.nav2_only is False
+
+
+@pytest.mark.unit
 def test_no_snapshot_skips_llm_but_still_bumps_gen(tmp_path: Path) -> None:
     llm = FakeLLM()
     sched, gen_store = _scheduler(tmp_path, llm, RecordingToolExecutor(), ready=False)
