@@ -144,6 +144,21 @@ def generate_launch_description() -> LaunchDescription:
             default_value="false",
             description="Forwarded to sim.launch.py — start RViz2 to visualize the headless sim.",
         ),
+        # Recording knobs (#156 capstone) forwarded to sim.launch.py. Defaults MATCH sim's own
+        # (sim.launch.py:66-91) so a no-arg launch is unchanged (back-compat); a top-level
+        # scenario:=head_on / rviz_config:=record now reaches the sim instead of being dropped.
+        DeclareLaunchArgument(
+            "rviz_config",
+            default_value="minicar",
+            description="Forwarded to sim.launch.py — RViz layout 'minicar' (minimal) or "
+            "'record' (#156 overview). Inert unless rviz:=true.",
+        ),
+        DeclareLaunchArgument(
+            "scenario",
+            default_value="default",
+            description="Forwarded to sim.launch.py — spawn preset 'default' (berths) or "
+            "'head_on' (deterministic 200mm aisle-A standoff for #156 recording).",
+        ),
         DeclareLaunchArgument(
             "sim",
             default_value="true",
@@ -169,6 +184,11 @@ def generate_launch_description() -> LaunchDescription:
         launch_arguments={
             "use_sim_time": use_sim_time,
             "rviz": LaunchConfiguration("rviz"),
+            # Recording knobs forwarded so `scenario:=head_on rviz_config:=record` engages the
+            # #156 standoff + record RViz cfg (sim.launch.py:66-91); dropping them recorded the
+            # default side-by-side berth spawn — the demo-breaking gap this slice closes.
+            "rviz_config": LaunchConfiguration("rviz_config"),
+            "scenario": LaunchConfiguration("scenario"),
         }.items(),
         condition=sim_enabled,
     )

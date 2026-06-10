@@ -10,7 +10,9 @@ FindPackageShare("warehouse_sim") resolutions also need the built workspace).
 Verifies the #156 slice1 composition of bringup.launch.py:
   * sim (warehouse_sim/launch/sim.launch.py) AND nav2 (nav2_bringup.launch.py) are each
     included exactly once; the nav2 include forwards the Nav2 arg set and the sim include
-    forwards use_sim_time + rviz.
+    forwards use_sim_time + rviz + the #156 recording knobs scenario/rviz_config, the last
+    two as a pass-through so a top-level ``scenario:=head_on rviz_config:=record`` actually
+    reaches the sim (without it the capstone records the default side-by-side berth spawn).
   * the four launch-less nodes are composed as Node()s: state_cache, emergency_guardian,
     nav2_bridge, llm_bridge (doc16:117-120 — bringup owns launch, node pkgs own none).
   * State Cache + Emergency Guardian are core infra (always-on, no condition).
@@ -30,7 +32,7 @@ pytest.importorskip("launch")  # ROS 2 launch — skip in non-ROS (pure-CI) envs
 pytest.importorskip("launch_ros")  # bringup.launch.py imports Node / FindPackageShare
 
 from launch import LaunchContext  # noqa: E402
-from launch.actions import IncludeLaunchDescription  # noqa: E402
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription  # noqa: E402
 from launch.utilities import normalize_to_list_of_substitutions, perform_substitutions  # noqa: E402
 from launch_ros.actions import Node  # noqa: E402
 
@@ -96,6 +98,30 @@ def _evaluate(action, **configs) -> bool:
     return action.condition.evaluate(ctx)
 
 
+def _forwarded_value(inc, key: str, **configs) -> str:
+    """Resolve the value an include forwards for ``key`` under the given launch configs.
+
+    A pass-through forward (``LaunchConfiguration(key)``) echoes whatever the top-level
+    config is set to, so setting a sentinel and resolving proves the include forwards the
+    *config* rather than a constant. Mirrors ``_node_executable``'s substitution resolution.
+    """
+    value = next(v for k, v in inc.launch_arguments if k == key)
+    ctx = LaunchContext()
+    for cfg_key, cfg_value in configs.items():
+        ctx.launch_configurations[cfg_key] = cfg_value
+    return perform_substitutions(ctx, normalize_to_list_of_substitutions(value))
+
+
+def _declared_default(ld, name: str) -> str:
+    """Resolve the ``default_value`` of a top-level DeclareLaunchArgument (back-compat check)."""
+    arg = next(
+        a for a in ld.entities if isinstance(a, DeclareLaunchArgument) and a.name == name
+    )
+    return perform_substitutions(
+        LaunchContext(), normalize_to_list_of_substitutions(arg.default_value)
+    )
+
+
 @pytest.mark.unit
 def test_includes_are_exactly_sim_and_nav2() -> None:
     # The full stack composes the two launch files with their own launch files (sim, nav2);
@@ -118,10 +144,27 @@ def test_sim_include_forwards_sim_args_and_is_gated_by_sim() -> None:
     ld = _load_ld()
     sim = _include_by_name(ld, "sim.launch.py")
     keys = {key for key, _value in sim.launch_arguments}
-    assert keys == {"use_sim_time", "rviz"}
+    # use_sim_time + rviz + the #156 recording knobs (scenario/rviz_config) all forward to sim.
+    assert keys == {"use_sim_time", "rviz", "rviz_config", "scenario"}
     # sim:=true includes Gazebo; sim:=false (real hardware) omits it (doc12a:403).
     assert _evaluate(sim, sim="true") is True
     assert _evaluate(sim, sim="false") is False
+
+
+@pytest.mark.unit
+def test_sim_include_forwards_recording_knobs_passthrough_and_defaults() -> None:
+    # #156 capstone gap: the head-on standoff + record RViz cfg only engage if bringup forwards
+    # scenario/rviz_config STRAIGHT THROUGH to sim (sim.launch.py:85-91 / :66-75). Prove the
+    # forward is a pass-through (a sentinel set on the top-level config reaches the include) — a
+    # hardcoded constant would not echo it, which is exactly the bug where `scenario:=head_on
+    # rviz_config:=record` was silently dropped and the demo recorded side-by-side berth spawns.
+    ld = _load_ld()
+    sim = _include_by_name(ld, "sim.launch.py")
+    assert _forwarded_value(sim, "scenario", scenario="head_on") == "head_on"
+    assert _forwarded_value(sim, "rviz_config", rviz_config="record") == "record"
+    # Defaults MATCH sim's own (sim.launch.py:69,90) so a no-arg launch is unchanged (back-compat).
+    assert _declared_default(ld, "scenario") == "default"
+    assert _declared_default(ld, "rviz_config") == "minicar"
 
 
 @pytest.mark.unit

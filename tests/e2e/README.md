@@ -70,6 +70,11 @@ scripts/slice3_live_precheck.sh --offline
 # 0) 外部 daemon（launch では合成しない・bringup.launch.py:38-47）
 #    Hermes Gateway :8642（dev キー疎通済＝memory project_api_keys_dev_setup）
 #    Nav2 Bridge   :8645（REST→BasicNavigator, #86）を別途起動。
+#    ⚠ tiryoh container 内から host の Hermes に届かせるには loopback ではなく:
+#      export WAREHOUSE__HERMES__BASE_URL=http://host.docker.internal:8642
+#      （config override 機構 config.py:28,48-66 が hermes.base_url を上書き）。
+#      precheck --live も同様に HERMES_BASE_URL=http://host.docker.internal:8642 を渡して確認する
+#      （precheck は container を自動検知し loopback 設定時に host.docker.internal を WARN 提示）。
 
 # 1) slice1 health（upstream 不要・今すぐ可能。DoD step1）
 export WAREHOUSE_CONFIG_DIR=/ws/config
@@ -83,15 +88,20 @@ ros2 launch warehouse_bringup bringup.launch.py llm:=false sim:=true
 #     cd /ws && scripts/slice3_seed_initialpose.sh
 #     State Cache が両 bot の pose を取り込むことを確認。
 
-# 2) slice2/3 full stack（#181/#192 land 後）
-ros2 launch warehouse_bringup bringup.launch.py sim:=true llm:=true traffic_mode:=none rviz:=true
+# 2) slice2/3 full stack（#181/#192 land 後）。scenario:=head_on で 200mm 隘路の正面対向 spawn、
+#    rviz_config:=record で録画用俯瞰 cfg を選択（bringup が両 arg を sim へ forward＝slice3。
+#    無いと berth 横並びを録画してしまう＝デモの核が映らない）。
+ros2 launch warehouse_bringup bringup.launch.py sim:=true llm:=true traffic_mode:=none rviz:=true scenario:=head_on rviz_config:=record
 #   sim+nav2+state+safety+nav2_bridge(:211-214 allowlist)+llm を合成（#162）。
 #   full stack でも lifecycle active 後に `cd /ws && scripts/slice3_seed_initialpose.sh` を再実行。
 #   2台に対向タスク（§9.2 北 staging ↔ 通路A 南端の座標ゴール・route_A はロックキー）を投入し、
 #   LLM が 08a:337-359 の yield+wait → MCP → nav2_bridge → Nav2 で最接近 ≥0.15m を計測（11a:446）。
 
-# 3) 録画: noVNC 画面（rviz:=true で minicar.rviz = warehouse_description 所有/L2）を録画。
-#    RViz レイアウトが不足なら L2(sim) へ予告（本レーンは設定を変更しない）。
+# 3) 録画: rviz:=true ∧ rviz_config:=record で warehouse_sim/rviz/record.rviz（両 footprint+
+#    scan+占有 map の俯瞰 cfg。既定 minicar.rviz は最小レイアウト, sim.launch.py:66-75）を選択し、
+#    `scripts/slice3_record.sh start` / `... stop` で noVNC/screen-capture をラップ録画する
+#    （実キャプチャ＝人間ゲート）。record.rviz は sim 所有＝レイアウト不足は L2(sim) へ予告
+#    （本レーンは cfg 自体を変更しない）。
 
 # 4) 4 provider 切替（DoD: fairness）: Hermes config の active_provider を
 #    Claude→GPT→Gemini→Grok で切替え各々 slice2 を確認。
