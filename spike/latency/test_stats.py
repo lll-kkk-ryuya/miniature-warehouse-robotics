@@ -10,6 +10,7 @@ inside ``make_caller`` only, so the percentile math and the measurement loop are
 testable with fakes (mirrors the bridge's fake-injection testability, doc16 §11).
 """
 
+import measure
 import pytest
 from measure import Sample, _build_report, _print_summary, run_measurement
 from stats import percentile, summarize
@@ -205,3 +206,89 @@ def test_print_summary_no_successful_samples(capsys) -> None:
     out = capsys.readouterr().out
     assert "NO successful samples" in out
     assert "p50" not in out  # returns before the percentile table
+
+
+# p95_over branch (PR#202 review nit 1): strict-boundary pin (the negative side). NOTE: the in-cycle
+# timeout (2.5s) is used for BOTH the p95 cutoff AND the missed-cycle count, and MAX_MISS_RATE = 5% =
+# (100-95)%, so nearest-rank p95 > 2.5s STRUCTURALLY implies missed-rate > 5% — p95_over cannot be
+# isolated from miss_over via over-latencies. The positive pin is the p95 REASON string
+# (test_print_summary_p95_over); this boundary test pins the branch negatively.
+def test_print_summary_p95_at_boundary_holds(capsys) -> None:
+    _print_summary(_report([2.5] * 20, [], 20))  # p95 = 2.5, NOT > 2.5 (strict); n_over = 0
+    out = capsys.readouterr().out
+    assert "3s Mode-A cycle holds" in out
+    assert "does NOT hold" not in out
+    assert "ms > 2.5s" not in out  # the 2.5s boundary is NOT a failure reason
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Spend-guard regression pins (PR#202 review nit 2 — the crux: "no accidental spend"). These
+# exercise measure.py's dev-only / key-required / dry-run guards DIRECTLY, so a future edit that
+# silently weakens spend prevention fails here. NO network, NO openai SDK, NO paid call is made.
+
+
+def _boom(*_a, **_k):  # a paid/network seam that must NEVER be reached in these guard tests
+    raise AssertionError("spend guard breached — a paid/network seam was reached")
+
+
+def test_assert_dev_only_refuses_prod(monkeypatch) -> None:
+    monkeypatch.setenv("WAREHOUSE_ENV", "prod")
+    with pytest.raises(SystemExit) as exc:
+        measure.assert_dev_only("http://127.0.0.1:8642", allow_remote=False)
+    assert "prod" in str(exc.value)
+
+
+def test_assert_dev_only_refuses_nonloopback(monkeypatch) -> None:
+    monkeypatch.delenv("WAREHOUSE_ENV", raising=False)  # default dev
+    with pytest.raises(SystemExit) as exc:
+        measure.assert_dev_only("http://10.0.0.5:8642", allow_remote=False)
+    assert "non-loopback" in str(exc.value)
+
+
+def test_assert_dev_only_allows_loopback(monkeypatch) -> None:
+    monkeypatch.delenv("WAREHOUSE_ENV", raising=False)
+    for url in ("http://127.0.0.1:8642", "http://localhost:8642", "http://[::1]:8642"):
+        assert measure.assert_dev_only(url, allow_remote=False) is None  # no raise
+
+
+def test_assert_dev_only_allow_remote_warns(monkeypatch, capsys) -> None:
+    # --allow-remote bypasses the loopback guard but MUST warn loudly (dev-only escape hatch).
+    monkeypatch.delenv("WAREHOUSE_ENV", raising=False)
+    measure.assert_dev_only("http://10.0.0.5:8642", allow_remote=True)  # no raise
+    err = capsys.readouterr().err
+    assert "WARNING" in err
+    assert "NON-loopback" in err
+
+
+def test_main_dry_run_makes_no_paid_call(monkeypatch, capsys) -> None:
+    # Dry-run validates + prints the plan and returns 0 WITHOUT touching a caller or the gateway.
+    monkeypatch.delenv("API_SERVER_KEY", raising=False)
+    monkeypatch.delenv("WAREHOUSE_ENV", raising=False)
+    monkeypatch.setattr(measure, "make_caller", _boom)
+    monkeypatch.setattr(measure, "gateway_floor", _boom)
+    rc = measure.main(["-p", "anthropic", "--dry-run", "--env-file", "/nonexistent/.env"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "DRY RUN (no API calls)" in out
+    assert "ABSENT" in out  # key absent, never shown
+
+
+def test_main_refuses_without_key_before_any_call(monkeypatch) -> None:
+    # No key + non-dry MUST sys.exit BEFORE any network seam (the refusal precedes spend).
+    monkeypatch.delenv("API_SERVER_KEY", raising=False)
+    monkeypatch.delenv("WAREHOUSE_ENV", raising=False)
+    monkeypatch.setattr(measure, "make_caller", _boom)
+    monkeypatch.setattr(measure, "gateway_floor", _boom)
+    with pytest.raises(SystemExit) as exc:
+        measure.main(["-p", "anthropic", "--env-file", "/nonexistent/.env"])
+    assert "API_SERVER_KEY" in str(exc.value)
+
+
+def test_load_api_server_key_env_first_then_file(monkeypatch, tmp_path) -> None:
+    env_file = tmp_path / ".env"
+    env_file.write_text('API_SERVER_KEY="FILEKEY"\n', encoding="utf-8")
+    monkeypatch.setenv("API_SERVER_KEY", "ENVKEY")
+    assert measure.load_api_server_key(env_file) == "ENVKEY"  # env wins over file
+    monkeypatch.delenv("API_SERVER_KEY", raising=False)
+    assert measure.load_api_server_key(env_file) == "FILEKEY"  # file fallback
+    assert measure.load_api_server_key(tmp_path / "missing.env") == ""  # absent -> ""
