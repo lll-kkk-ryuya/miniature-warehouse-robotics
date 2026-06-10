@@ -6,7 +6,7 @@ live 駆動は **R-38 メモリゲート（#187, docs/shared/07-research-notes.m
 （docs/mode-c/11c-traffic-mode-c.md:273 §3.5 D / docs/architecture/06-implementation-phases.md:215-221）。
 
 設計正本（たどれる file:line）:
-  - 採用方針・案A 詳細・Go/No-Go: docs/mode-c/11c-traffic-mode-c.md:243-265（§3.5 B/C）
+  - 採用方針・案A 詳細・Go/No-Go: docs/mode-c/11c-traffic-mode-c.md:243-271（§3.5 B/C）
   - 3 コールバック（navigate/stop/execute_action）+ RobotState 更新: 11c:252
   - 不変条件「Fleet Adapter が唯一の Nav2 制御パス」: 11c:63
   - Nav2 直駆動トピック契約 /bot{n}/goal_pose（PoseStamped, Fleet Adapter 発行）:

@@ -431,8 +431,8 @@ Phase 4: YouTube比較検証
 
 > **配置の注記**: 本付録は論理的には §3.5 D（`:273`）の続き（GATE-前ステータス追記）だが、§3.5 D は
 > ファイル中段にあり、そこへ挿入すると以下の行が全てズレて **`docs/mode-c/08c-llm-bridge-mode-c.md:266`
-> → `11c:343-371`** などの inbound file:line 参照を silent に壊す（教訓: docs/dev/03-retrospectives）。
-> よって **行ドリフト回避のため EOF に追記**する。内容は §3.5 D の残未決（`:278-286`）に対応する。
+> → `11c:343-371`** などの inbound file:line 参照を silent に壊す（cross-doc の file:line 参照が腐敗する）。
+> よって **行ドリフト回避のため EOF に追記**する。内容は §3.5 D の残未決（`:279-284`）に対応する。
 
 **as-of 2026-06-10。** レーン `feat/rmf-adapter`（worktree `mwr-rmf-adapter`・track #180）。R-38 メモリ
 ゲート（#187, `docs/shared/07-research-notes.md:243`）は **OPEN（Go/No-Go 未確定）**。よって本レーンは
@@ -440,7 +440,7 @@ Phase 4: YouTube比較検証
 GATE 通過後）。新規 scaffold = `ws/src/warehouse_rmf_adapter/`（`fleet_adapter.py` = `navigate`/`stop`/
 `execute_action`/`update_robot_state` の docstring 骨子 + `NotImplementedError`。RMF/rclpy は未 import）。
 
-### 残未決（§3.5 D `:278-286`）の GATE-前 ステータス
+### 残未決（§3.5 D `:279-284`）の GATE-前 ステータス
 
 | # | 残未決（出所行） | GATE-前 で確定したこと | GATE 後（R-38 GO 後）に要すること |
 |---|---|---|---|
@@ -469,9 +469,12 @@ GATE 通過後）。新規 scaffold = `ws/src/warehouse_rmf_adapter/`（`fleet_a
 
 ### governance（本レーン編集境界外＝orchestrator 調整）
 
-- **doc16 §9 ブランチ表**（`docs/architecture/16-repository-and-conventions.md:182-191`・§9 見出し `:178`）に `feat/rmf-adapter`
-  / `warehouse_rmf_adapter` 行が**未記載**。CI の越境 import チェック `tracks` map（`.github/workflows/ci.yml`）も
-  同様。現状 `warehouse_interfaces` のみ依存で CI は通るが、両者を **nav-traffic** として揃える追記が要る。
+- **新 pkg `warehouse_rmf_adapter`(nav-traffic) の登録が doc16 の 4 箇所 + CI map で未追記**:
+  ① §1 ディレクトリツリー（`docs/architecture/16-repository-and-conventions.md:24-51`・`warehouse_traffic/` の隣）
+  ② §2 パッケージ命名・責務一覧（`:60-77`・`warehouse_traffic`/`warehouse_nav2_bridge` 行の隣）
+  ③ §9 ブランチ表（`:182-191`・§9 見出し `:178`・`feat/nav-traffic` 行に担当ディレクトリ追記）
+  ④ CI の越境 import チェック `tracks` map（`.github/workflows/ci.yml`）。
+  現状 `warehouse_interfaces` のみ依存（実 import は `from __future__` のみ）で CI は通るが、①〜④を **nav-traffic** として揃える追記が要る。
 - **#180 の `Blocked by`** が「R-38（issue 無し）」表記 → **#187** へ張替推奨。
 - **#180 本文の worktree タグ** `mwr-modec-fleet` / `feat/modec-fleet-adapter` が本レーンの実名
   `mwr-rmf-adapter` / `feat/rmf-adapter` と**不一致** → orchestrator で統一要。

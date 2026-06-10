@@ -11,7 +11,7 @@
   共有契約 `warehouse_interfaces` は変更不可（`.claude/rules/parallel-workflow.md` §4）。`warehouse_nav2_bridge`
   （案B・llm-bridge 所有）/ nav2 launch・params（別ファイル新規優先・GATE 後）は触らない。
 - **設計正本**:
-  - docs/mode-c/11c-traffic-mode-c.md:203-289（§3.5 R-44 評価・案A/案B・Go/No-Go・残未決 D）／ `:63`（不変条件）／ `:197-199`（RMF 機能の使用/無効化）／ `:252`（3 コールバック + NavigateToPose action client）
+  - docs/mode-c/11c-traffic-mode-c.md:203-296（§3.5 R-44 評価・案A/案B・Go/No-Go・残未決 D、§4 は :299）／ `:63`（不変条件）／ `:197-199`（RMF 機能の使用/無効化）／ `:252`（3 コールバック + NavigateToPose action client）
   - docs/shared/07-research-notes.md:254（R-44 結論）／ `:243`（R-38 ゲート＝blocker）
   - docs/architecture/03-software-architecture.md:97（`/bot{n}/goal_pose` PoseStamped, Fleet Adapter 発行）／ `:77`（odom）／ `:94`（amcl_pose）
   - docs/mode-c/12c-integration-mode-c.md:142（`NAV2_BRIDGE_MODES`）／ `:202`（既存フォールバック「直接 ROS 2 Action Client」＝案A の実体）
@@ -60,9 +60,12 @@
   5. RMF Navigation Graph ↔ 9 locations / Gazebo 地図の整合（waypoint/lane を発明しない）。
   6. 200mm 隘路（#124）・≤0.3 m/s で RMF デコンフリクトが有効か sim 検証。
 - **governance（本レーン編集境界外＝orchestrator 調整）**:
-  - doc16 §9 ブランチ表（docs/architecture/16-repository-and-conventions.md:182-191・§9 見出し `:178`）に `feat/rmf-adapter` / `warehouse_rmf_adapter` 行が未記載。
-    CI 越境 import チェックの `tracks` map（`.github/workflows/ci.yml`）も同様に未掲載（現状 `warehouse_interfaces`
-    のみ依存なので CI は通るが、§9 と map を nav-traffic として揃える追記が要る）。
+  - 新 pkg `warehouse_rmf_adapter`(nav-traffic) の登録は doc16 の **4 箇所** + CI map が未追記:
+    ① §1 ディレクトリツリー（docs/architecture/16-repository-and-conventions.md:24-51・`warehouse_traffic/` の隣）
+    ② §2 パッケージ命名・責務一覧（`:60-77`・`warehouse_traffic`/`warehouse_nav2_bridge` 行の隣）
+    ③ §9 ブランチ表（`:182-191`・§9 見出し `:178`・`feat/nav-traffic` 行に担当ディレクトリ追記）
+    ④ CI 越境 import チェックの `tracks` map（`.github/workflows/ci.yml`）。
+    現状 `warehouse_interfaces` のみ依存（実 import は `from __future__` のみ）なので CI は通るが、①〜④を nav-traffic として揃える追記が要る。
   - #180 の `Blocked by` が「R-38（issue 無し）」表記 → #187 へ張替推奨。
   - issue #180 本文の worktree タグは `mwr-modec-fleet` / `feat/modec-fleet-adapter`（本レーンの実名
     `mwr-rmf-adapter` / `feat/rmf-adapter` と不一致）→ orchestrator で統一要。
