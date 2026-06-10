@@ -21,6 +21,7 @@
 | [02-operator-runbook](02-operator-runbook.md) | 人間オペレーターの手順書（人間専任オペ・GO/NO-GO ゲート・マージ承認） |
 | [03-retrospectives](03-retrospectives.md) | 教訓ログ（living doc。各並列開発サイクルの反省を追記） |
 | [04-consistency-system](04-consistency-system.md) | docs↔code 整合システム（`scripts/check_consistency.py` を pre-commit/CI/hook で／意味的矛盾は `/consistency-audit` skill） |
+| [06-parallel-discipline](06-parallel-discipline.md) | 並列セッションの実装規律（気をつけること洗い出し。着手前＋毎サイクル参照） |
 
 ## 関連正本
 
