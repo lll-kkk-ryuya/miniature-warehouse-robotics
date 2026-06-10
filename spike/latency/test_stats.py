@@ -11,7 +11,16 @@ testable with fakes (mirrors the bridge's fake-injection testability, doc16 §11
 """
 
 import pytest
-from measure import Sample, _build_report, _print_summary, run_measurement
+from measure import (
+    Sample,
+    _build_report,
+    _parse_env_file,
+    _print_summary,
+    assert_dev_only,
+    load_api_server_key,
+    main,
+    run_measurement,
+)
 from stats import percentile, summarize
 
 
@@ -205,3 +214,156 @@ def test_print_summary_no_successful_samples(capsys) -> None:
     out = capsys.readouterr().out
     assert "NO successful samples" in out
     assert "p50" not in out  # returns before the percentile table
+
+
+def test_print_summary_clean_run_negative_markers(capsys) -> None:
+    # Negative-assertion counterpart to test_print_summary_p95_over: a fast, error-free
+    # run prints the PASS verdict and NONE of the FAIL/over markers. This pins that the
+    # `if p95_over or miss_over` branch is NOT taken on a clean run (mirrors
+    # test_print_summary_cycle_holds, which only asserts the "holds" reason text).
+    _print_summary(_report([0.5] * 20, [], 20))
+    out = capsys.readouterr().out
+    assert "3s Mode-A cycle holds" in out
+    # FAIL / over markers must be absent on a clean run.
+    assert "does NOT hold" not in out
+    assert "> 2.5s" not in out  # no p95-over reason
+    assert "> 5%" not in out  # no missed-rate-over reason
+    assert "WARN: high missed-cycle rate" not in out
+
+
+def test_print_summary_p95_and_miss_are_coupled(capsys) -> None:
+    # Intentional COUPLING (NOT a separable isolation): the missed-cycle gate and the p95
+    # gate share the SAME 2.5s in-cycle timeout (IN_CYCLE_TIMEOUT_S, measure.py:55). A run
+    # whose p95 > 2.5s therefore NECESSARILY has miss_rate ≥ 5% (every >2.5s sample is a
+    # missed cycle, _build_report counts it in n_over → missed_cycle_rate). So `p95_over`
+    # can never fire WITHOUT `miss_over` co-firing under `if p95_over or miss_over`
+    # (measure.py:344). Constructing p95_over-but-not-miss_over is mathematically
+    # IMPOSSIBLE by design; we pin that BOTH reasons surface together instead.
+    # 20 samples all at 3.0s: p95 = 3000ms > 2.5s AND 100% of cycles missed.
+    _print_summary(_report([3.0] * 20, [], 20))
+    out = capsys.readouterr().out
+    assert "does NOT hold" in out
+    assert "p95=3000ms > 2.5s" in out  # p95 reason surfaces
+    assert "missed 100.0% > 5%" in out  # miss reason ALSO surfaces (coupled)
+    assert "WARN: high missed-cycle rate" in out  # miss_over WARN co-fires
+
+
+# ---------------------------------------------------------------------------
+# Spend-guard regression pins (review of PR #202 / follow-up #200): the existing
+# tests above cover only the pure math/report path; the fail-closed guards that
+# prevent ACCIDENTAL paid API spend (~480 calls/run) had no regression pin. The
+# tests below pin assert_dev_only / load_api_server_key / _parse_env_file and the
+# two main() spend gates (--dry-run fires NO call; key-absent REFUSES before any call).
+# All are hermetic: WAREHOUSE_ENV is always explicitly set/cleared, env-file points
+# at a tmp_path (never the real config/dev/.env), and make_caller is monkeypatched
+# to raise if the network path is ever reached.
+# ---------------------------------------------------------------------------
+
+
+def test_assert_dev_only_refuses_prod(monkeypatch) -> None:
+    # WAREHOUSE_ENV=prod is fail-closed (safety.md / environments.md): this spike is dev-only.
+    monkeypatch.setenv("WAREHOUSE_ENV", "prod")
+    with pytest.raises(SystemExit) as exc:
+        assert_dev_only("http://127.0.0.1:8642", allow_remote=False)
+    assert "prod" in str(exc.value)
+
+
+def test_assert_dev_only_refuses_non_loopback(monkeypatch) -> None:
+    # A non-loopback gateway host without --allow-remote is refused (could be a prod/GCP gateway).
+    monkeypatch.delenv("WAREHOUSE_ENV", raising=False)  # default dev
+    with pytest.raises(SystemExit) as exc:
+        assert_dev_only("http://34.4.104.112:8642", allow_remote=False)
+    assert "non-loopback" in str(exc.value)
+
+
+def test_assert_dev_only_non_loopback_with_allow_remote_warns(monkeypatch, capsys) -> None:
+    # --allow-remote bypasses the loopback guard but WARNs loudly on stderr (dev-only override).
+    monkeypatch.delenv("WAREHOUSE_ENV", raising=False)  # default dev
+    assert assert_dev_only("http://34.4.104.112:8642", allow_remote=True) is None  # no exit
+    err = capsys.readouterr().err
+    assert "WARNING" in err
+    assert "--allow-remote" in err
+
+
+def test_assert_dev_only_loopback_dev_ok(monkeypatch) -> None:
+    # The default loopback gateway in a dev env passes the guard (returns None, no exit).
+    monkeypatch.setenv("WAREHOUSE_ENV", "dev")
+    assert assert_dev_only("http://127.0.0.1:8642", allow_remote=False) is None
+
+
+def test_load_api_server_key_env_wins_without_reading_file(monkeypatch, tmp_path) -> None:
+    # The environment variable takes precedence and the (non-existent) env_file is NOT read.
+    monkeypatch.setenv("API_SERVER_KEY", "env-key")
+    missing = tmp_path / "does_not_exist.env"
+    assert load_api_server_key(missing) == "env-key"
+    assert not missing.exists()  # confirm the file was never created/required
+
+
+def test_load_api_server_key_reads_env_file(monkeypatch, tmp_path) -> None:
+    # With the env var unset, the value is parsed from the env file: quotes stripped,
+    # comment + blank lines skipped (minimal KEY=VALUE parser, _parse_env_file).
+    monkeypatch.delenv("API_SERVER_KEY", raising=False)
+    env_file = tmp_path / "dev.env"
+    env_file.write_text(
+        '# a comment line\n\nAPI_SERVER_KEY="secret"\n',
+        encoding="utf-8",
+    )
+    assert load_api_server_key(env_file) == "secret"
+
+
+def test_load_api_server_key_none_file_returns_empty(monkeypatch) -> None:
+    # No env var and no env file -> "" (caller refuses BEFORE any call when empty).
+    monkeypatch.delenv("API_SERVER_KEY", raising=False)
+    assert load_api_server_key(None) == ""
+
+
+def test_parse_env_file_strips_quotes_skips_comments(tmp_path) -> None:
+    # Direct pin on the minimal parser: comment / blank lines skipped, surrounding quotes stripped.
+    env_file = tmp_path / "dev.env"
+    env_file.write_text(
+        "# header comment\n\nOTHER=ignored\nAPI_SERVER_KEY='single-quoted'\n",
+        encoding="utf-8",
+    )
+    assert _parse_env_file(env_file, "API_SERVER_KEY") == "single-quoted"
+    assert _parse_env_file(env_file, "OTHER") == "ignored"
+    assert _parse_env_file(env_file, "ABSENT") == ""  # missing key -> ""
+
+
+def test_parse_env_file_missing_path_returns_empty(tmp_path) -> None:
+    # A non-existent file is tolerated (OSError -> ""), never raised.
+    assert _parse_env_file(tmp_path / "nope.env", "API_SERVER_KEY") == ""
+
+
+def test_main_dry_run_fires_no_api_call(monkeypatch, tmp_path, capsys) -> None:
+    # --dry-run validates config and prints the plan WITHOUT any paid API call (spend guard).
+    # make_caller is replaced with a poison that raises if invoked; it must NEVER be reached.
+    def _poison(*_args, **_kwargs):
+        raise AssertionError("network call attempted")
+
+    monkeypatch.setattr("measure.make_caller", _poison)
+    monkeypatch.delenv("API_SERVER_KEY", raising=False)  # key ABSENT
+    monkeypatch.setenv("WAREHOUSE_ENV", "dev")
+    missing_env = tmp_path / "absent.env"  # never read on --dry-run
+    rc = main(["-p", "anthropic", "--dry-run", "--env-file", str(missing_env)])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "=== DRY RUN (no API calls) ===" in out
+    assert "API_SERVER_KEY  : ABSENT" in out  # key absent, plan still printed
+    # _poison was never called (it would have raised) -> no network path taken.
+
+
+def test_main_key_absent_refuses_before_any_call(monkeypatch, tmp_path) -> None:
+    # No --dry-run + no API_SERVER_KEY (env unset, env_file absent) -> REFUSED before any call.
+    # The poison make_caller proves the refusal happens BEFORE make_caller is ever built.
+    def _poison(*_args, **_kwargs):
+        raise AssertionError("network call attempted")
+
+    monkeypatch.setattr("measure.make_caller", _poison)
+    monkeypatch.delenv("API_SERVER_KEY", raising=False)
+    monkeypatch.setenv("WAREHOUSE_ENV", "dev")
+    missing_env = tmp_path / "absent.env"  # not present -> key resolves to ""
+    with pytest.raises(SystemExit) as exc:
+        main(["-p", "anthropic", "--env-file", str(missing_env)])
+    msg = str(exc.value)
+    assert "REFUSED" in msg
+    assert "API_SERVER_KEY" in msg
