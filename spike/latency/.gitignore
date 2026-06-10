@@ -1,0 +1,4 @@
+# Raw per-run latency dumps (measure.py output). The distilled tables live in
+# RESULT.md; raw JSON dumps stay uncommitted. They contain no secrets, but are
+# run-specific artifacts, not source.
+out/
