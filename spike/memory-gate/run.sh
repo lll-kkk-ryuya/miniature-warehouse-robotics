@@ -45,10 +45,12 @@
 #   ./run.sh measure   # poll liveness, then sample cgroup + docker stats + free -h every 30s; OOM check
 #   ./run.sh report    # summarise logs/ into a table (peak, headroom vs 500MB, OOM, node presence)
 #   ./run.sh all       # setup -> run -> measure -> report
+#   ./run.sh selftest  # OFFLINE branch self-test (no docker/network): verdict awk + FLOOR notes
 #   ./run.sh clean     # remove the container
 #
 # Tunables (env): MEMGATE_SAMPLES (default 21 = ~10min @30s), MEMGATE_INTERVAL (default 30s),
-#                 MEMGATE_SETTLE (default 120s liveness-poll timeout), MEMGATE_MEM (default 6g).
+#                 MEMGATE_SETTLE (default 120s liveness-poll timeout), MEMGATE_MEM (default 6g),
+#                 MEMGATE_REQUIRE_HERMES=1 (hard-fail `run` if Hermes absent, vs a FLOOR run).
 set -uo pipefail
 
 IMAGE="tiryoh/ros2-desktop-vnc:jazzy"
@@ -111,6 +113,52 @@ cgroup_snapshot() {
   ' | awk '/^CGSNAP/{print $2, $3, $4, $5}' | tail -n1
 }
 
+# --- pure, offline-testable helpers (no docker / no network) — exercised by `selftest` ---
+
+# R-38 verdict from a measure timeseries TSV. $1=TSV path, $2=headroom floor (decimal MB).
+# Kept awk-only (no container) so the Go/No-Go branch logic is unit-testable with synthetic
+# input (#187 DoD "verdict awk 分岐 unit-test"). Emits the summary + the "VERDICT (R-38)" line.
+compute_verdict_awk() {
+  awk -F'\t' -v floor="$2" '
+    NR>1 {
+      c=$3; l=$4; p=$5; o=$6; n++;
+      if (c ~ /^[0-9]+$/) { valid++; if (c+0>maxc) maxc=c+0 }
+      if (p ~ /^[0-9]+$/ && p+0>maxp) maxp=p+0;
+      if (l ~ /^[0-9]+$/ && l+0>maxl) maxl=l+0;   # max non-negative limit (static; -1 on a flaky read)
+      if (o ~ /^[0-9]+$/) { if (o+0>maxo) maxo=o+0 } else oomunknown=1;
+    }
+    END {
+      if (n==0) { print "no samples — run measure"; exit }
+      peak=(maxp>maxc)?maxp:maxc; lim=maxl; MB=1000000;   # decimal MB to match doc06:98 "500MB"
+      printf "samples           : %d (valid cgroup rows: %d)\n", n, valid+0;
+      if (lim>0 && peak>0) {
+        headroom = lim - peak;
+        printf "cgroup limit      : %.0f MB\n", lim/MB;
+        printf "peak usage        : %.0f MB  (cgroup memory.peak/max_usage if present, else sampled current max)\n", peak/MB;
+        printf "headroom @peak    : %.0f MB  (limit - peak; floor = %d MB, doc06:98/07:212)\n", headroom/MB, floor;
+      }
+      if (oomunknown && maxo==0) print "cgroup oom_kill   : UNKNOWN (counter unreadable on some samples; confirm via measure_oom.txt)";
+      else printf "cgroup oom_kill   : %d\n", maxo;
+      # OOM is the definitive FAIL — report it even if headroom accounting is partial.
+      if (maxo>0) { print "VERDICT (R-38)    : OOM OBSERVED => 段階1 FAIL (design dies on Jetson too, doc06:94)"; exit }
+      if (valid+0==0 || lim<=0 || peak<=0) {
+        print "VERDICT (R-38)    : INVALID — cgroup accounting unavailable/garbage; re-run measure (check cgroup path/exec noise)."; exit }
+      verdict = (oomunknown) ? "OOM UNKNOWN (cgroup counter unavailable) — confirm measure_oom.txt before trusting a GO" \
+              : (headroom/MB < floor) ? "headroom < 500MB => Open-RMF (Mode C) No-Go-leaning (doc06:98 / 07:212); R-38 gate trips" \
+              : "no OOM and headroom >= 500MB => 段階1 GO-leaning; Open-RMF still UNMEASURED -> 段階2 required";
+      printf "VERDICT (R-38)    : %s\n", verdict;
+    }' "$1"
+}
+
+# FLOOR caveats — loud, offline-testable. $1=hermes_present (yes/no), $2=stack_live (yes/no).
+# A Hermes-less or not-fully-live run UNDER-measures Mode A/B, so the result is a FLOOR and must
+# not be read as a GO. Returns 0 (silent) only when both signals are "yes".
+floor_notes() {
+  [ "$1" != yes ] && echo "⚠️  FLOOR: Hermes daemon NOT counted in peak — Mode A/B under-measured by its resident footprint; do NOT read a GO."
+  [ "$2" != yes ] && echo "⚠️  FLOOR: core stack was not fully live — treat the headroom/verdict as a FLOOR, re-run after fixing startup."
+  return 0
+}
+
 case "${1:-}" in
   clean)
     docker rm -f "$CONTAINER" 2>/dev/null || true ;;
@@ -152,12 +200,42 @@ case "${1:-}" in
          colcon build --symlink-install > /spike/logs/setup_build.log 2>&1 \
            || { echo 'colcon build FAILED:'; tail -60 /spike/logs/setup_build.log; exit 1; }"
     echo "=== Hermes Gateway via official git installer (deploy/gcp/README.md:73 — NOT pip) ==="
-    # Copy mounted ~/.hermes to a writable, isolated container path so the daemon can write state.
-    dex "if [ -d /host-hermes ]; then rm -rf /root/.hermes; cp -r /host-hermes /root/.hermes; chmod -R u+w /root/.hermes; fi"
+    # The mounted host ~/.hermes/hermes-agent is a *macOS* install (Darwin venv); reusing it makes
+    # the Linux installer report "Existing install detected — keeping legacy layout" and SKIP, so no
+    # Linux launcher is ever created (root cause of the prior `hermes: command not found` FLOOR run —
+    # logs/setup_versions.txt). Fix: do a CLEAN Linux install FIRST, THEN inject only the host
+    # provider keys/config (.env/config.yaml) so they are not clobbered by installer defaults. The
+    # memory gate needs Hermes only RESIDENT (it makes no LLM call), so a minimal config suffices.
+    dex "rm -rf /root/.hermes /root/.local/bin/hermes"
     dex "$PATH_LOCAL; curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh \
-           | bash > /spike/logs/setup_hermes.log 2>&1 && hermes --version >> /spike/logs/setup_hermes.log 2>&1 \
-         && echo 'hermes installed' \
-         || echo 'HERMES INSTALL SKIPPED/FAILED — measure will run ROS-only (report annotates: Hermes NOT counted)'"
+           | bash > /spike/logs/setup_hermes.log 2>&1; echo \"installer exit: \$?\" >> /spike/logs/setup_hermes.log"
+    dex 'if [ -d /host-hermes ]; then mkdir -p /root/.hermes; \
+           for f in .env config.yaml; do [ -e "/host-hermes/$f" ] && cp "/host-hermes/$f" "/root/.hermes/$f"; done; \
+           chmod -R u+w /root/.hermes 2>/dev/null || true; fi'
+    # Robust launcher resolution (fresh install -> ~/.local/bin/hermes; else scan known locations &
+    # symlink) + a definitive marker (logs/hermes_install.txt) + a LOUD FLOOR banner if Hermes is
+    # still unresolved, so a Hermes-less footprint is never silently misread as a real Mode A/B figure.
+    dex "$PATH_LOCAL
+      if ! command -v hermes >/dev/null 2>&1; then
+        for cand in /root/.local/bin/hermes /usr/local/bin/hermes \
+                    /usr/local/lib/hermes-agent/hermes /root/.hermes/hermes-agent/hermes; do
+          [ -x \"\$cand\" ] && { mkdir -p /root/.local/bin; ln -sf \"\$cand\" /root/.local/bin/hermes; break; }
+        done
+      fi
+      if command -v hermes >/dev/null 2>&1 && hermes --version >> /spike/logs/setup_hermes.log 2>&1; then
+        echo installed > /spike/logs/hermes_install.txt
+        echo \"  hermes installed OK (\$(command -v hermes))\"
+      else
+        echo FAILED > /spike/logs/hermes_install.txt
+        printf '  %s\n' \
+          '############################################################' \
+          '## (!) HERMES NOT INSTALLED -> measure will be a FLOOR run ##' \
+          '## Hermes Gateway resident footprint is NOT counted, so    ##' \
+          '## the Mode A/B peak is UNDER-measured. Do NOT read a GO.   ##' \
+          '## See logs/setup_hermes.log. To refuse measuring a FLOOR, ##' \
+          '## re-run: MEMGATE_REQUIRE_HERMES=1 ./run.sh run            ##' \
+          '############################################################'
+      fi"
     echo "=== versions ==="
     dex "$PATH_LOCAL; $SRC_WS; { cat /etc/os-release | grep PRETTY_NAME; \
          echo \"gz: \$(gz sim --version 2>&1 | head -1)\"; \
@@ -185,6 +263,16 @@ case "${1:-}" in
       echo "  HERMES ABSENT — launching ROS stack only; llm_bridge degrades to Nav2-only (doc08:291)."
     fi
     echo "$HERMES_PRESENT" > "$SPIKE_DIR/logs/hermes_present.txt"
+    if [ "$HERMES_PRESENT" != yes ]; then
+      printf '  %s\n' \
+        '⚠️  FLOOR RUN — Hermes Gateway is NOT counted in this measurement.' \
+        '    The Mode A/B peak will be UNDER-measured by the Hermes resident footprint;' \
+        '    do NOT read a GO from a Hermes-less run. Re-run setup to fix the install.'
+      if [ "${MEMGATE_REQUIRE_HERMES:-0}" = 1 ]; then
+        echo "  REFUSED: MEMGATE_REQUIRE_HERMES=1 but Hermes is absent — refusing to measure a FLOOR. Fix setup first." >&2
+        exit 3
+      fi
+    fi
     echo "=== launch full stack: bringup.launch.py sim:=true llm:=true ==="
     # config resolves via WAREHOUSE_CONFIG_DIR (set on docker run). MCP = in-process inside
     # llm_bridge (doc15:50); Hermes = external daemon above; no micro-ROS — the sim layer stands
@@ -245,37 +333,8 @@ case "${1:-}" in
       echo "⚠️  run_bringup.log shows a NODE FAILURE — the measured stack is INCOMPLETE:"
       grep -niE "Traceback|ModuleNotFoundError|process has died|has died|No module named" "$SPIKE_DIR/logs/run_bringup.log" | head -10
     fi
-    awk -F'\t' -v floor="$HEADROOM_FLOOR_MB" '
-      NR>1 {
-        c=$3; l=$4; p=$5; o=$6; n++;
-        if (c ~ /^[0-9]+$/) { valid++; if (c+0>maxc) maxc=c+0 }
-        if (p ~ /^[0-9]+$/ && p+0>maxp) maxp=p+0;
-        if (l ~ /^[0-9]+$/ && l+0>maxl) maxl=l+0;   # max non-negative limit (static; -1 on a flaky read)
-        if (o ~ /^[0-9]+$/) { if (o+0>maxo) maxo=o+0 } else oomunknown=1;
-      }
-      END {
-        if (n==0) { print "no samples — run measure"; exit }
-        peak=(maxp>maxc)?maxp:maxc; lim=maxl; MB=1000000;   # decimal MB to match doc06:98 "500MB"
-        printf "samples           : %d (valid cgroup rows: %d)\n", n, valid+0;
-        if (lim>0 && peak>0) {
-          headroom = lim - peak;
-          printf "cgroup limit      : %.0f MB\n", lim/MB;
-          printf "peak usage        : %.0f MB  (cgroup memory.peak/max_usage if present, else sampled current max)\n", peak/MB;
-          printf "headroom @peak    : %.0f MB  (limit - peak; floor = %d MB, doc06:98/07:212)\n", headroom/MB, floor;
-        }
-        if (oomunknown && maxo==0) print "cgroup oom_kill   : UNKNOWN (counter unreadable on some samples; confirm via measure_oom.txt)";
-        else printf "cgroup oom_kill   : %d\n", maxo;
-        # OOM is the definitive FAIL — report it even if headroom accounting is partial.
-        if (maxo>0) { print "VERDICT (R-38)    : OOM OBSERVED => 段階1 FAIL (design dies on Jetson too, doc06:94)"; exit }
-        if (valid+0==0 || lim<=0 || peak<=0) {
-          print "VERDICT (R-38)    : INVALID — cgroup accounting unavailable/garbage; re-run measure (check cgroup path/exec noise)."; exit }
-        verdict = (oomunknown) ? "OOM UNKNOWN (cgroup counter unavailable) — confirm measure_oom.txt before trusting a GO" \
-                : (headroom/MB < floor) ? "headroom < 500MB => Open-RMF (Mode C) No-Go-leaning (doc06:98 / 07:212); R-38 gate trips" \
-                : "no OOM and headroom >= 500MB => 段階1 GO-leaning; Open-RMF still UNMEASURED -> 段階2 required";
-        printf "VERDICT (R-38)    : %s\n", verdict;
-      }' "$TS"
-    [ "$HERMES_PRESENT" != yes ] && echo "NOTE: Hermes daemon NOT counted in peak — add its resident footprint for a true Mode A/B figure."
-    [ "$STACK_LIVE" != yes ] && echo "NOTE: core stack was not fully live — treat the headroom/verdict as a FLOOR, re-run after fixing startup."
+    compute_verdict_awk "$TS" "$HEADROOM_FLOOR_MB"
+    floor_notes "$HERMES_PRESENT" "$STACK_LIVE"
     echo "--- full-stack node presence (per-bot nav2 expects 2; core expects 1; src: $(basename "$NODES")) ---"
     if [ -f "$NODES" ]; then
       for pair in controller_server:2 planner_server:2 bt_navigator:2 amcl:2 \
@@ -292,6 +351,49 @@ case "${1:-}" in
     SELF="$SPIKE_DIR/$(basename "${BASH_SOURCE[0]}")"
     bash "$SELF" setup && bash "$SELF" run && bash "$SELF" measure && bash "$SELF" report ;;
 
+  selftest)
+    # Offline self-test (NO docker, NO network): drives compute_verdict_awk through every R-38
+    # branch with synthetic cgroup timeseries, and floor_notes through its FLOOR-annotation
+    # branches. Pair with `bash -n run.sh`. Exits non-zero on any failed assertion.
+    tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
+    pass=0; fail=0
+    HDR='sample\tt_s\tcgroup_current_b\tcgroup_limit_b\tcgroup_peak_b\toom_kill\tdocker_stats_memusage'
+    LIM=6442450944   # 6 GiB cgroup limit (decimal bytes); awk MB divisor = 1e6, floor = 500 MB
+    _v() {  # $1=name $2=expected-substr ; reads the TSV at $tmp/ts.tsv
+      local name="$1" want="$2" out
+      out="$(compute_verdict_awk "$tmp/ts.tsv" "$HEADROOM_FLOOR_MB")"
+      if printf '%s' "$out" | grep -qF "$want"; then pass=$((pass+1)); echo "  PASS  $name"
+      else fail=$((fail+1)); echo "  FAIL  $name (want substr: $want)"; printf '%s\n' "$out" | sed 's/^/        got: /'; fi
+    }
+    _chk() {  # $1=name $2=expected-substr ($3 empty => assert silent) $4=actual
+      local name="$1" want="$2" actual="$3"
+      if [ -z "$want" ]; then
+        [ -z "$actual" ] && { pass=$((pass+1)); echo "  PASS  $name"; } || { fail=$((fail+1)); echo "  FAIL  $name (expected silence, got: $actual)"; }
+      elif printf '%s' "$actual" | grep -qF "$want"; then pass=$((pass+1)); echo "  PASS  $name"
+      else fail=$((fail+1)); echo "  FAIL  $name (want substr: $want)"; fi
+    }
+    # OOM observed (oom_kill>0) => 段階1 FAIL (takes precedence over headroom)
+    { printf "$HDR\n"; printf "1\t0\t6000000000\t$LIM\t6000000000\t2\tNA\n"; } > "$tmp/ts.tsv"
+    _v "OOM => FAIL" "OOM OBSERVED"
+    # no OOM, headroom 442MB < 500MB floor => No-Go-leaning
+    { printf "$HDR\n"; printf "1\t0\t6000000000\t$LIM\t6000000000\t0\tNA\n"; } > "$tmp/ts.tsv"
+    _v "headroom<floor => No-Go" "No-Go-leaning"
+    # no OOM, headroom 1442MB >= 500MB floor => GO-leaning
+    { printf "$HDR\n"; printf "1\t0\t5000000000\t$LIM\t5000000000\t0\tNA\n"; } > "$tmp/ts.tsv"
+    _v "headroom>=floor => GO" "GO-leaning"
+    # garbage cgroup (all -1) => INVALID
+    { printf "$HDR\n"; printf "1\t0\t-1\t-1\t-1\t-1\tNA\n"; } > "$tmp/ts.tsv"
+    _v "garbage cgroup => INVALID" "INVALID"
+    # cgroup v1 (oom_kill counter -1, numeric mem) => OOM UNKNOWN
+    { printf "$HDR\n"; printf "1\t0\t5000000000\t$LIM\t5000000000\t-1\tNA\n"; } > "$tmp/ts.tsv"
+    _v "v1 oom counter => UNKNOWN" "OOM UNKNOWN"
+    # FLOOR-annotation branches
+    _chk "floor: hermes-absent note" "Hermes daemon NOT counted" "$(floor_notes no yes)"
+    _chk "floor: stack-not-live note" "core stack was not fully live" "$(floor_notes yes no)"
+    _chk "floor: all-live => silent"  "" "$(floor_notes yes yes)"
+    echo "selftest: $pass passed, $fail failed"
+    [ "$fail" -eq 0 ] || exit 1 ;;
+
   *)
-    echo "usage: $0 {setup|run|measure|report|all|clean}"; exit 2 ;;
+    echo "usage: $0 {setup|run|measure|report|all|selftest|clean}"; exit 2 ;;
 esac

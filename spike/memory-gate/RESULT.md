@@ -17,17 +17,19 @@
 > ③ 本測定に **Open-RMF（Mode C）実体は未搭載**＝Open-RMF 追加分は「残RAM に載る余地」の**所見**のみ
 > （最終は段階2＋Open-RMF 実測＝[07:254](../../docs/shared/07-research-notes.md) で R-38 ゲート後に defer）。
 
-## 環境 / 版数（実測後に記入）
+## 環境 / 版数（既知値は prefill 済・ライブ計測値のみ PENDING）
+> 版数は 2026-06-06 の `./run.sh setup`（`logs/setup_versions.txt`）由来＝**環境固定値**であり、ライブ計測（peak/headroom/OOM）とは独立。Docker 版・image digest は実行ホスト固有のため実行時に転記。
 | 項目 | 値 |
 |---|---|
-| Image | `tiryoh/ros2-desktop-vnc:jazzy` @ _sha256:TBD_ (ARM64) |
-| Docker | _TBD_ |
-| OS | Ubuntu 24.04（tiryoh jazzy）|
+| Image | `tiryoh/ros2-desktop-vnc:jazzy`（ARM64）@ _sha256:TBD（`docker image inspect` で転記）_ |
+| Docker | _TBD（`docker version` で転記）_ |
+| OS | **Ubuntu 24.04.4 LTS**（tiryoh jazzy）|
 | ROS 2 | Jazzy（`/opt/ros/jazzy`）|
-| Nav2 | `ros-jazzy-navigation2` _TBD_ |
-| gz | Gazebo Sim _TBD_（Harmonic / gz-sim8）|
-| Hermes Gateway | _TBD_（無ければ「ROS-only 上限スタック測定＝Hermes 常駐分は別途加算」）|
-| ws build | `colcon build` 緑/赤: _TBD_（`logs/setup_build.log`）|
+| Nav2 | `ros-jazzy-navigation2` **1.3.11** |
+| gz | **Gazebo Sim 8.11.0**（Harmonic / gz-sim8）|
+| Python | **3.12.3** |
+| Hermes Gateway | **要・setup 修正後に再取得**: 2026-06-06 の setup は Hermes が PATH に乗らず（`hermes: command not found`）＝**Hermes 未計上の FLOOR**だった。`run.sh` の install/PATH 検出を堅牢化済（macOS install 再利用をやめ clean Linux install ＋未解決時 loud FLOOR / `MEMGATE_REQUIRE_HERMES=1` 拒否）→ 実測前に再 setup し版数・常駐分を確定する |
+| ws build | **緑**（`colcon build`: 12 packages finished・`logs/setup_build.log`）|
 
 ## 計測結果（段階1 — cgroup が正準・`free -h` は参考, `--memory=6g`）
 > 取得: `run.sh measure`（30秒×21 サンプル ≈ 10 分, doc06:96 cadence）→ `logs/measure_timeseries.tsv`。
@@ -83,10 +85,12 @@ _所見（実測後）_: _TBD_
 ## 再現
 ```bash
 cd spike/memory-gate
-./run.sh all       # setup -> run -> measure -> report
+./run.sh selftest  # OFFLINE: verdict awk 5分岐 + FLOOR 注記の自己テスト（docker/network 不要）
+./run.sh all       # setup -> run -> measure -> report（要 Docker・重い・実測は人間ゲート）
 # or step-by-step: setup / run / measure / report / clean
+# MEMGATE_REQUIRE_HERMES=1 ./run.sh run  # Hermes 未解決なら FLOOR を測らず hard-fail
 ```
-証跡は `logs/`（`measure_timeseries.tsv`・`measure_oom.txt`・`measure_nodes.txt`・`setup_*.log`）。
+証跡は `logs/`（`measure_timeseries.tsv`・`measure_oom.txt`・`measure_nodes.txt`・`setup_*.log`・`hermes_install.txt`）。
 
 ## 設計正本 / 関連
 - [docs/architecture/06-implementation-phases.md:89-104](../../docs/architecture/06-implementation-phases.md)（二段構え・6GB/500MB/30s の出所）
