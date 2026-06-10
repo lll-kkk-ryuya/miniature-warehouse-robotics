@@ -1,0 +1,3 @@
+# Spike evidence (memory time-series, free -h, node/topic lists, build/apt logs) is generated
+# by run.sh — not tracked. RESULT.md carries the distilled numbers.
+logs/
