@@ -28,7 +28,7 @@ orchestrator が指示を **ground truth で裏取り→ドラフト→ユーザ
 ## 0. 不変条件（絶対に外さない）
 1. **post は外向き・取り消しにくい** → `gh issue comment` / `gh pr comment` を打つ前に、**ドラフトをユーザーに提示し明示承認を得る**（create-issue skill §0 と同型）。
 2. **terminal 直注入は不可**（session-orchestration.md:7 §0①②）。配信は GitHub コメント（post→worker poll）。`SendMessage` を独立 session に向けない。
-3. **docs-first**: 指示内の全引用は **実 Read した file:line**。記憶・subagent 要約を転記しない（docs-first.md §引用）。
+3. **docs-first**: 指示内の全引用は **実 Read した file:line**。記憶・subagent 要約を転記しない（docs-first.md:42（§引用））。
 4. **1 dispatch = 1 lane = 1 worktree = 1 epic**。
 5. **ガバナンス境界**: `.claude/**`・`.github/**` 改修を伴う指示でも、その land は governance ブランチ→PR（main 直 push 禁止）。
 

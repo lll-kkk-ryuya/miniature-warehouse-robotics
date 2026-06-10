@@ -82,7 +82,7 @@ check_consistency.py ─┤
 ## 5. 既知の限界・運用
 
 - 決定論チェッカーは**列挙した不変条件のみ**検出。新しい契約値を凍結したら `CHECKS` に追加する（さもないと silent gap）。
-- **`B4`（cross-file `doc:line` 参照 drift, #177）**: 構造的に壊れた参照のみ WARN（参照先が EOF 超過／空行／表区切り／水平線＝アンカー喪失）。アンカー*本文*の一致は検証しない（凍結アンカーマップが無い＝text judgment は `/consistency-audit` 側）。曖昧な doc 番号（例 `03` を複数ファイルが共有）は flag せず skip、**full-scan のみ**（per-file hook / pre-commit の `only` モードでは no-op）。FN 許容は既存方針（narrow FN）と同じ。re-pin は**参照元の所有トラック**（#165 由来の cross-track drift は bulk 自動修正しない §7.1）。現状 main で **65 WARN**＝実在の #165 クラス drift（warehouse_sim が指す doc12 行207 の空行化ほか、doc08/doc13 も複数）を surface（doc 内では参照例を `docNN:LINE` 形で literal 化しない＝自検出を避ける）。
+- **`B4`（cross-file `doc:line` 参照 drift, #177）**: 構造的に壊れた参照のみ WARN（参照先が EOF 超過／空行／表区切り／水平線＝アンカー喪失）。アンカー*本文*の一致は検証しない（凍結アンカーマップが無い＝text judgment は `/consistency-audit` 側）。曖昧な doc 番号（例 `03` を複数ファイルが共有）は flag せず skip、**full-scan のみ**（per-file hook / pre-commit の `only` モードでは no-op）。FN 許容は既存方針（narrow FN）と同じ。re-pin は**参照元の所有トラック**（#165 由来の cross-track drift は bulk 自動修正しない §7.1）。本ブランチの full-scan で **64 WARN**（うち B4=62 が実在の #165 クラス drift＝warehouse_sim が指す doc12 行207 の空行化ほか doc08/doc13 も複数、残り C1 STATUS-SHA ×2）を surface（doc 内では参照例を `docNN:LINE` 形で literal 化しない＝自検出を避ける）。
 - **WARN を一括自動修正しない**（境界条件は所有トラックの設計判断。surface に留める。parallel-workflow §7.1）。
 - 意味的監査（skill）はモデル判定＝完全保証ではない。**CI（決定論）が唯一の hard gate**。
 - 現状 main で出る WARN（STATUS SHA ×2）は本 PR では**修正せず surface**（鮮度は次回 STATUS 更新で追従）。※ battery 境界 ×5 は #90 で解消済（doc 群を凍結 `safety.battery_is_critical` の `≤ 10%` に整合）。

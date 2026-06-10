@@ -355,9 +355,9 @@ def _git(*args: str, check_only: bool = False) -> str:
 # file is usually another lane's package CLAUDE.md / source; consistency-check.md:22,31
 # and parallel-workflow.md:177 §7.1 forbid bulk auto-fix), and the heuristic tolerates
 # false negatives by design — the same narrow-FN-tolerated stance as the existing checks
-# (docs/dev/04-consistency-system.md §5). NOTE: B4 is newly added to CHECKS and is NOT yet
-# enumerated in doc04 §2 (severity table) / §5 (limitations); adding that 1-2 line note is a
-# pending governance follow-up (doc04 owner confirmation) — tracked in this PR's residuals.
+# (docs/dev/04-consistency-system.md §5). B4 is enumerated in doc04 §2 (severity table,
+# docs/dev/04-consistency-system.md:31) and §5 (limitations,
+# docs/dev/04-consistency-system.md:85).
 #
 # doc-number → path: no frozen table exists, so ``docs/**/*.md`` is indexed by the
 # leading ``NN-`` prefix. A number owned by >1 file (e.g. ``03-software-architecture``
