@@ -321,10 +321,7 @@ def test_parse_env_file_strips_quotes_skips_comments(tmp_path) -> None:
     # Direct pin on the minimal parser: comment / blank lines skipped, surrounding quotes stripped.
     env_file = tmp_path / "dev.env"
     env_file.write_text(
-        "# header comment\n"
-        "\n"
-        "OTHER=ignored\n"
-        "API_SERVER_KEY='single-quoted'\n",
+        "# header comment\n\nOTHER=ignored\nAPI_SERVER_KEY='single-quoted'\n",
         encoding="utf-8",
     )
     assert _parse_env_file(env_file, "API_SERVER_KEY") == "single-quoted"
