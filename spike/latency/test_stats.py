@@ -146,7 +146,13 @@ def test_build_report_all_errors_summary_absent() -> None:
 
 def test_build_report_clean_run_no_miss() -> None:
     # Fast, error-free run: no missed cycles, percentile block present.
-    result = {"latencies": [0.5, 1.0, 2.0], "errors": [], "tokens": [], "n_requested": 3, "warmup": 0}
+    result = {
+        "latencies": [0.5, 1.0, 2.0],
+        "errors": [],
+        "tokens": [],
+        "n_requested": 3,
+        "warmup": 0,
+    }
     rep = _build_report("anthropic", "fairness-off", "http://127.0.0.1:8642", result, None, 60.0)
     assert rep["n_over_in_cycle_timeout"] == 0
     assert rep["missed_cycle_rate"] == 0.0
