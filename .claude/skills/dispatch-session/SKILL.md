@@ -17,18 +17,18 @@ allowed-tools: Read, Grep, Glob, Bash
 orchestrator が指示を **ground truth で裏取り→ドラフト→ユーザー承認→`gh` で post** する手順。
 
 正本ルール（真実はこちら。本 skill はその適用手順）:
-- `.claude/rules/session-orchestration.md`（§0 公式の能力境界 / §2 非衝突 / §3 配信 / §4-5 テンプレ / §6 ゲート）
-- `.claude/rules/merge-and-communication.md` §2（GitHub 連絡・先頭 worktree タグ）
-- `.claude/rules/parallel-workflow.md`（§1 worktree / §1.1 docs-first ゲート / §7.1 所有）
+- `.claude/rules/session-orchestration.md`（:7 §0 能力境界 / :32 §2 非衝突 / :39 §3 配信 / :45 §4・:56 §5 テンプレ / :63 §6 ゲート）
+- `.claude/rules/merge-and-communication.md`:19（§2 GitHub 連絡・先頭 worktree タグ）
+- `.claude/rules/parallel-workflow.md`（:9 §1 worktree / :46 §1.1 docs-first ゲート / :177 §7.1 所有）
 - `.claude/rules/docs-first.md`（file:line 引用・記憶禁止）
-- precedent: `.claude/skills/create-issue/SKILL.md` §0（外向きアクションは gh 前に承認）
+- precedent: `.claude/skills/create-issue/SKILL.md`:27（§0 外向きアクションは gh 前に承認）
 
 ---
 
 ## 0. 不変条件（絶対に外さない）
 1. **post は外向き・取り消しにくい** → `gh issue comment` / `gh pr comment` を打つ前に、**ドラフトをユーザーに提示し明示承認を得る**（create-issue skill §0 と同型）。
-2. **terminal 直注入は不可**（session-orchestration.md §0①②）。配信は GitHub コメント（post→worker poll）。`SendMessage` を独立 session に向けない。
-3. **docs-first**: 指示内の全引用は **実 Read した file:line**。記憶・subagent 要約を転記しない（docs-first.md §引用）。
+2. **terminal 直注入は不可**（session-orchestration.md:7 §0①②）。配信は GitHub コメント（post→worker poll）。`SendMessage` を独立 session に向けない。
+3. **docs-first**: 指示内の全引用は **実 Read した file:line**。記憶・subagent 要約を転記しない（docs-first.md:42（§引用））。
 4. **1 dispatch = 1 lane = 1 worktree = 1 epic**。
 5. **ガバナンス境界**: `.claude/**`・`.github/**` 改修を伴う指示でも、その land は governance ブランチ→PR（main 直 push 禁止）。
 
@@ -74,5 +74,5 @@ orchestrator が指示を **ground truth で裏取り→ドラフト→ユーザ
 ## やってはいけない
 - 承認前の post / 独立 session への `SendMessage`・terminal 注入の前提化。
 - 記憶での file:line 捏造（subagent の引用も自分で grep/Read 裏取り）。
-- `settings.json` の自己改変（hooks 有効化は人間。session-orchestration.md §0④）。
+- `settings.json` の自己改変（hooks 有効化は人間。session-orchestration.md:7 §0④）。
 - 編集境界の重なるレーンへ「独立」として kickoff を出す（§2）。
