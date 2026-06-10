@@ -7,7 +7,7 @@ Emergency Guardian + nav2_bridge + LLM Bridge ＋ 外部 Hermes Gateway ＋ in-p
 MCP）を起動し、**OOM Killer 発火の有無**と**残RAM/ピーク**を計測する。ここは**使い捨ての検証
 コード**であり実機能ではない（実装は `ws/src/warehouse_*`、launch は `warehouse_bringup`）。
 
-正本: [docs/architecture/06-implementation-phases.md:89-104](../../docs/architecture/06-implementation-phases.md)
+正本: [docs/architecture/06-implementation-phases.md:89-102](../../docs/architecture/06-implementation-phases.md)
 （メモリ検証「二段構え」）/ [docs/shared/07-research-notes.md:153](../../docs/shared/07-research-notes.md)（R-02）
 ・`:212`（Action 2 = 500MB 判定）・`:243`（R-38）・`:254`（R-44 が R-38 ゲートを参照）。
 
@@ -83,11 +83,16 @@ cd spike/memory-gate
   **設定しないと `load_config()` が `{}` を返し、`emergency_guardian.py:53` が KeyError でクラッシュ**
   ＝Layer-1 安全ノードが欠落した別物のスタックを測ることになる。
 - **Hermes Gateway**: 公式 **git インストーラ**で入れる（`curl -fsSL .../scripts/install.sh | bash`
-  → `~/.local/bin/hermes`、`hermes gateway`）。`pip install hermes-agent` **ではない**
-  （[deploy/gcp/README.md:73,86](../../deploy/gcp/README.md)）。dev キー `~/.hermes/.env` はコンテナの
-  書込可パスへコピーして使う。`run` が :8642 の liveness を確認し `logs/hermes_present.txt` に記録。
-  **install/起動が無ければ Hermes 抜きの「上限スタック」測定に縮退**し、report が verdict 行に
-  「Hermes NOT counted（常駐分を別途加算）」と注記する（brief §依存）。
+  → `~/.local/bin/hermes`、`hermes gateway`）。`pipx install hermes-agent` **ではない**
+  （[deploy/gcp/README.md:73,86](../../deploy/gcp/README.md)）。setup は **clean な Linux install を先に
+  行ってから**ホストの provider キー/config（`~/.hermes` の `.env`/`config.yaml`）を注入する（macOS
+  install を再利用すると Linux 用ランチャが生成されず `hermes: command not found` で FLOOR になるため）。
+  `run` の liveness は **`:8642` への SERVING プローブ**（`curl` で HTTP 応答 / `ss` で LISTEN を確認）で
+  判定し `logs/hermes_present.txt` に記録する。`run_hermes.log` の grep は liveness に**使わない**（bind
+  失敗行で false-positive するため）。**install/起動が無ければ Hermes 抜きの「上限スタック」測定に縮退**
+  し、その FLOOR は loud に表示される（report の verdict 行は Hermes 未計上時に「FLOOR — NOT a GO」と
+  タグされ、`floor_notes` でも「Hermes NOT counted（常駐分を別途加算）」と注記）。
+  `MEMGATE_REQUIRE_HERMES=1` を渡すと **run/measure/report が FLOOR を測らず hard-fail（exit 3）**する。
 - **Docker Desktop on Mac の Desktop アクセス権**: `docker run -v` のバインドマウントに失敗するなら
   端末（Ghostty 等）の Full Disk Access を確認（`feedback_ghostty_desktop_tcc`）。
 
@@ -97,7 +102,7 @@ cd spike/memory-gate
   知見は PR 本文の「docs 反映 follow-up 提案」に列挙するに留める。
 
 ## 設計正本 / 関連
-- [docs/architecture/06-implementation-phases.md:89-104](../../docs/architecture/06-implementation-phases.md)（二段構え・6GB/500MB/30s の出所）
+- [docs/architecture/06-implementation-phases.md:89-102](../../docs/architecture/06-implementation-phases.md)（二段構え・6GB/500MB/30s の出所）
 - [docs/shared/07-research-notes.md:153](../../docs/shared/07-research-notes.md)（R-02）/ `:212`（Action 2）/ `:243`（R-38）/ `:254`（R-44 defer）
 - [ws/src/warehouse_bringup/launch/bringup.launch.py:1-79](../../ws/src/warehouse_bringup/launch/bringup.launch.py)（合成構成・非合成境界＝MCP in-process / Hermes 外部 / micro-ROS は Phase1）
 - 先例: [ws/src/warehouse_sim/spike/](../../ws/src/warehouse_sim/spike/)（環境スパイク）・[firmware/spike/](../../firmware/spike/)（R-37）
