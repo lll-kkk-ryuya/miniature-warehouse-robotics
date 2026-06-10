@@ -114,9 +114,7 @@ def _forwarded_value(inc, key: str, **configs) -> str:
 
 def _declared_default(ld, name: str) -> str:
     """Resolve the ``default_value`` of a top-level DeclareLaunchArgument (back-compat check)."""
-    arg = next(
-        a for a in ld.entities if isinstance(a, DeclareLaunchArgument) and a.name == name
-    )
+    arg = next(a for a in ld.entities if isinstance(a, DeclareLaunchArgument) and a.name == name)
     return perform_substitutions(
         LaunchContext(), normalize_to_list_of_substitutions(arg.default_value)
     )
