@@ -26,6 +26,7 @@ import argparse
 import ast
 import contextlib
 import json
+import os
 import re
 import subprocess
 from dataclasses import dataclass, field
@@ -336,6 +337,170 @@ def _git(*args: str, check_only: bool = False) -> str:
     return r.stdout.strip() if r.returncode == 0 else ""
 
 
+# ── cross-file doc:line reference drift (B4) ──────────────────────────────────
+#
+# This repo cites design docs by absolute LINE: ``docNN:LINE`` (e.g. ``doc12:254``),
+# a path form ``<…>.md:LINE`` (e.g. ``docs/shared/07-research-notes.md:254``), and
+# ranges ``docNN:START-END``. When a doc inserts/deletes lines, every such reference
+# silently points at the wrong line — the exact failure of #165 (doc12 gained 84
+# lines; ``doc12:207`` now lands on a blank line, ``:249`` on a table separator,
+# ``:372`` on a ``---`` rule). The deterministic checker did NOT parse ``docNN:line``
+# refs, so that drift was invisible; this check closes that gap.
+#
+# We deliberately do NOT verify the anchored *text* (there is no frozen anchor map;
+# that judgment lives in /consistency-audit). We only flag references that are
+# OBVIOUSLY broken: (i) the line is past EOF, or (ii) the target line carries no
+# citable anchor — it is blank, a markdown table-separator row, or a horizontal rule.
+# Severity is WARN: a drifted line needs the OWNING track to re-pin (the referencing
+# file is usually another lane's package CLAUDE.md / source; consistency-check.md:22,31
+# and parallel-workflow.md:177 §7.1 forbid bulk auto-fix), and the heuristic tolerates
+# false negatives by design — the same narrow-FN-tolerated stance as the existing checks
+# (docs/dev/04-consistency-system.md §5). NOTE: B4 is newly added to CHECKS and is NOT yet
+# enumerated in doc04 §2 (severity table) / §5 (limitations); adding that 1-2 line note is a
+# pending governance follow-up (doc04 owner confirmation) — tracked in this PR's residuals.
+#
+# doc-number → path: no frozen table exists, so ``docs/**/*.md`` is indexed by the
+# leading ``NN-`` prefix. A number owned by >1 file (e.g. ``03-software-architecture``
+# vs ``03-retrospectives``) is AMBIGUOUS and dropped — those refs are SKIPPED, never
+# flagged, to avoid WARN noise on unresolvable numbers (mode-a/c siblings such as
+# ``12a``/``12c`` are addressed by full path, not ``docNN``).
+
+_DOC_NUM_RE = re.compile(r"doc(\d{1,2}):(\d+)(?:-(\d+))?")
+_DOC_PATH_RE = re.compile(r"([\w][\w./-]*\.md):(\d+)(?:-(\d+))?")
+_SCAN_EXTS = {".md", ".py", ".xml", ".yaml", ".yml", ".sh", ".txt"}
+_SCAN_SKIP_DIRS = {
+    ".git", "build", "install", "log", "__pycache__",
+    "node_modules", ".pytest_cache", ".ruff_cache", ".mypy_cache",
+}
+
+
+def _doc_number_index() -> dict[str, Path]:
+    """Map a two-digit doc number → its file, ONLY when unambiguous (else dropped)."""
+    seen: dict[str, Path | None] = {}
+    for p in DOCS.rglob("*.md"):
+        m = re.match(r"(\d{2})-", p.name)
+        if not m:
+            continue
+        key = m.group(1)
+        seen[key] = None if key in seen else p  # 2nd hit → ambiguous → drop
+    return {k: v for k, v in seen.items() if v is not None}
+
+
+def _resolve_doc_path(captured: str, referencing: Path) -> Path | None:
+    """Resolve a ``<path>.md`` ref: repo-root-relative first, then relative to the
+    referencing file's dir. Return the file iff it exists, else None (→ skip)."""
+    for base in (ROOT, referencing.parent):
+        cand = (base / captured).resolve()
+        if cand.is_file() and cand.suffix == ".md":
+            return cand
+    return None
+
+
+def _iter_ref_source_files():
+    """Text files under docs/ .claude/ ws/ that may CONTAIN doc-line refs
+    (skipping build artifacts)."""
+    for root in (DOCS, ROOT / ".claude", ROOT / "ws"):
+        if not root.exists():
+            continue
+        for dirpath, dirnames, filenames in os.walk(root):
+            dirnames[:] = [d for d in dirnames if d not in _SCAN_SKIP_DIRS]
+            for fn in filenames:
+                p = Path(dirpath) / fn
+                if p.suffix in _SCAN_EXTS:
+                    yield p
+
+
+def _anchor_lost(line: str) -> str | None:
+    """Reason string if ``line`` carries no citable anchor (blank / table-separator /
+    horizontal rule), else None."""
+    s = line.strip()
+    if s == "":
+        return "a blank line"
+    if "|" in s and "-" in s and set(s) <= set("|-: "):
+        return "a table-separator row"
+    if len(s) >= 3 and len(set(s)) == 1 and s[0] in "-*_":
+        return "a horizontal-rule line"
+    return None
+
+
+def check_cross_doc_line_refs(src: Sources, only) -> list[Finding]:
+    # Cross-file invariant (like B1/C1): only meaningful on a FULL scan. The per-file
+    # hook/pre-commit mode (``only`` set) would re-walk the whole tree per file → skip.
+    if only:
+        return []
+    num_index = _doc_number_index()
+    line_cache: dict[Path, list[str]] = {}
+
+    def lines_of(path: Path) -> list[str]:
+        if path not in line_cache:
+            line_cache[path] = path.read_text(
+                encoding="utf-8", errors="replace"
+            ).splitlines()
+        return line_cache[path]
+
+    out: list[Finding] = []
+    seen: set[tuple] = set()
+    for srcfile in _iter_ref_source_files():
+        try:
+            rel = str(srcfile.relative_to(ROOT))
+        except ValueError:
+            rel = str(srcfile)
+        for ln, line in enumerate(
+            srcfile.read_text(encoding="utf-8", errors="replace").splitlines(), 1
+        ):
+            refs: list[tuple[str, Path, int, int]] = []
+            for m in _DOC_NUM_RE.finditer(line):
+                target = num_index.get(m.group(1).zfill(2))
+                if target is None:
+                    continue  # unknown / ambiguous doc number → skip
+                start = int(m.group(2))
+                end = int(m.group(3)) if m.group(3) else start
+                refs.append((m.group(0), target, start, end))
+            for m in _DOC_PATH_RE.finditer(line):
+                target = _resolve_doc_path(m.group(1), srcfile)
+                if target is None:
+                    continue
+                start = int(m.group(2))
+                end = int(m.group(3)) if m.group(3) else start
+                refs.append((m.group(0), target, start, end))
+            for ref_text, target, start, end in refs:
+                tlines = lines_of(target)
+                n = len(tlines)
+                try:
+                    trel = str(target.relative_to(ROOT))
+                except ValueError:
+                    trel = str(target)
+                key = (rel, ln, trel, start, end)
+                if key in seen:
+                    continue
+                seen.add(key)
+                if start < 1 or max(start, end) > n:
+                    out.append(
+                        Finding(
+                            WARN,
+                            "B4-doc-line-ref",
+                            rel,
+                            ln,
+                            f"`{ref_text}` points past EOF of {trel} ({n} lines) — "
+                            "doc line drift; re-pin the reference.",
+                        )
+                    )
+                    continue
+                reason = _anchor_lost(tlines[start - 1])
+                if reason:
+                    out.append(
+                        Finding(
+                            WARN,
+                            "B4-doc-line-ref",
+                            rel,
+                            ln,
+                            f"`{ref_text}` → {trel}:{start} is {reason} "
+                            "(anchor lost — doc line drift; re-pin the reference).",
+                        )
+                    )
+    return out
+
+
 CHECKS = [
     check_robot_radius,
     check_battery_thresholds,
@@ -343,6 +508,7 @@ CHECKS = [
     check_laser_frame,
     check_location_keys,
     check_status_sha,
+    check_cross_doc_line_refs,
 ]
 
 

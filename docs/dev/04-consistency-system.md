@@ -28,7 +28,7 @@ check_consistency.py ─┤
 - 単一ソースを **AST で読む**（複製しない）: `safety.py`（0.3 / 10 / 20）・`robot_dimensions.py`（`ROBOT_RADIUS=0.075`）・`locations.py`（`KNOWN_LOCATIONS` 9キー）・`config/warehouse.base.yaml`。
 - **重大度の精度設計**:
   - **ERROR**（CI 赤）= 明白なドリフト: `A1` ROBOT_RADIUS 不一致 / `B1` config↔KNOWN_LOCATIONS 不一致 / `B2` 型表で `/llm/*`・`/wo/mission` が「カスタム」（doc16 §3 で `std_msgs/String` 確定）/ `B3` 旧 `laser` 系のセンサーフレーム名（凍結は `lidar_link`）/ `C1` STATUS が origin/main に**無い** SHA を固定。
-  - **WARN**（surface のみ・CI 緑）= 要レビュー: `A2` battery 境界 `<`/`<=`（緊急停止文言で意図的な可能性・別トラック所有）/ `C1` STATUS SHA が**古い祖先**（次回 STATUS 更新で追従）。
+  - **WARN**（surface のみ・CI 緑）= 要レビュー: `A2` battery 境界 `<`/`<=`（緊急停止文言で意図的な可能性・別トラック所有）/ `C1` STATUS SHA が**古い祖先**（次回 STATUS 更新で追従）/ `B4` cross-file `docNN:LINE`・`<path>.md:LINE` 参照の drift（参照先が EOF 超過／空行／表区切り／水平線＝アンカー喪失。#165 クラス。参照元の所有トラックが re-pin、bulk 自動修正しない §7.1）。
 - **誤検知ガード**: `矛盾/誤り/旧/conflict/deprecated/~~` を含む説明行は除外。`B2` は**テーブル行限定**（doc16 §3 の解決文＝散文は除外）。
 - 使い方:
   ```bash
@@ -82,6 +82,7 @@ check_consistency.py ─┤
 ## 5. 既知の限界・運用
 
 - 決定論チェッカーは**列挙した不変条件のみ**検出。新しい契約値を凍結したら `CHECKS` に追加する（さもないと silent gap）。
+- **`B4`（cross-file `doc:line` 参照 drift, #177）**: 構造的に壊れた参照のみ WARN（参照先が EOF 超過／空行／表区切り／水平線＝アンカー喪失）。アンカー*本文*の一致は検証しない（凍結アンカーマップが無い＝text judgment は `/consistency-audit` 側）。曖昧な doc 番号（例 `03` を複数ファイルが共有）は flag せず skip、**full-scan のみ**（per-file hook / pre-commit の `only` モードでは no-op）。FN 許容は既存方針（narrow FN）と同じ。re-pin は**参照元の所有トラック**（#165 由来の cross-track drift は bulk 自動修正しない §7.1）。現状 main で **65 WARN**＝実在の #165 クラス drift（warehouse_sim が指す doc12 行207 の空行化ほか、doc08/doc13 も複数）を surface（doc 内では参照例を `docNN:LINE` 形で literal 化しない＝自検出を避ける）。
 - **WARN を一括自動修正しない**（境界条件は所有トラックの設計判断。surface に留める。parallel-workflow §7.1）。
 - 意味的監査（skill）はモデル判定＝完全保証ではない。**CI（決定論）が唯一の hard gate**。
 - 現状 main で出る WARN（STATUS SHA ×2）は本 PR では**修正せず surface**（鮮度は次回 STATUS 更新で追従）。※ battery 境界 ×5 は #90 で解消済（doc 群を凍結 `safety.battery_is_critical` の `≤ 10%` に整合）。
