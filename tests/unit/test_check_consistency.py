@@ -154,9 +154,7 @@ def test_check_path_form_resolution(tmp_path, monkeypatch):
     rules = tmp_path / ".claude" / "rules"
     rules.mkdir(parents=True)
     # repo-root-relative path form → resolves via ROOT, line 2 is blank → WARN
-    (rules / "r.md").write_text(
-        "see docs/architecture/12-infra.md:2 here\n", encoding="utf-8"
-    )
+    (rules / "r.md").write_text("see docs/architecture/12-infra.md:2 here\n", encoding="utf-8")
     monkeypatch.setattr(cc, "ROOT", tmp_path)
     monkeypatch.setattr(cc, "DOCS", tmp_path / "docs")
 

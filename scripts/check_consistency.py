@@ -369,8 +369,15 @@ _DOC_NUM_RE = re.compile(r"doc(\d{1,2}):(\d+)(?:-(\d+))?")
 _DOC_PATH_RE = re.compile(r"([\w][\w./-]*\.md):(\d+)(?:-(\d+))?")
 _SCAN_EXTS = {".md", ".py", ".xml", ".yaml", ".yml", ".sh", ".txt"}
 _SCAN_SKIP_DIRS = {
-    ".git", "build", "install", "log", "__pycache__",
-    "node_modules", ".pytest_cache", ".ruff_cache", ".mypy_cache",
+    ".git",
+    "build",
+    "install",
+    "log",
+    "__pycache__",
+    "node_modules",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".mypy_cache",
 }
 
 
@@ -433,9 +440,7 @@ def check_cross_doc_line_refs(src: Sources, only) -> list[Finding]:
 
     def lines_of(path: Path) -> list[str]:
         if path not in line_cache:
-            line_cache[path] = path.read_text(
-                encoding="utf-8", errors="replace"
-            ).splitlines()
+            line_cache[path] = path.read_text(encoding="utf-8", errors="replace").splitlines()
         return line_cache[path]
 
     out: list[Finding] = []
