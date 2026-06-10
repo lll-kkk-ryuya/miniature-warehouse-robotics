@@ -93,7 +93,7 @@ cd spike/memory-gate
 証跡は `logs/`（`measure_timeseries.tsv`・`measure_oom.txt`・`measure_nodes.txt`・`setup_*.log`・`hermes_install.txt`）。
 
 ## 設計正本 / 関連
-- [docs/architecture/06-implementation-phases.md:89-104](../../docs/architecture/06-implementation-phases.md)（二段構え・6GB/500MB/30s の出所）
+- [docs/architecture/06-implementation-phases.md:89-102](../../docs/architecture/06-implementation-phases.md)（二段構え・6GB/500MB/30s の出所）
 - [docs/shared/07-research-notes.md:153](../../docs/shared/07-research-notes.md)（R-02）/ `:212`（Action 2 = 500MB 即決）/ `:243`（R-38）/ `:254`（R-44 defer）
 - [ws/src/warehouse_bringup/launch/bringup.launch.py:1-79](../../ws/src/warehouse_bringup/launch/bringup.launch.py)（合成構成・非合成境界）
 - 先例: [ws/src/warehouse_sim/spike/RESULT.md](../../ws/src/warehouse_sim/spike/RESULT.md)・[firmware/spike/RESULT.md](../../firmware/spike/RESULT.md)

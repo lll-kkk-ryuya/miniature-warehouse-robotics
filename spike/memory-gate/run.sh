@@ -35,7 +35,7 @@
 #   * fastapi/uvicorn (nav2_bridge eager import) and langfuse/openai (llm_bridge) are NOT apt/
 #     rosdep deps and colcon does not pip-install setup.py install_requires -> setup pip-installs
 #     them, else those nodes crash and are silently missing from the footprint.
-#   * Hermes is installed the documented way (git install.sh -> ~/.local/bin/hermes, NOT pip;
+#   * Hermes is installed the documented way (git install.sh -> ~/.local/bin/hermes, NOT pipx;
 #     deploy/gcp/README.md:73,86) and its liveness on :8642 is asserted; if absent the run
 #     degrades to ROS-only and report annotates "Hermes NOT counted".
 #
@@ -50,7 +50,7 @@
 #
 # Tunables (env): MEMGATE_SAMPLES (default 21 = ~10min @30s), MEMGATE_INTERVAL (default 30s),
 #                 MEMGATE_SETTLE (default 120s liveness-poll timeout), MEMGATE_MEM (default 6g),
-#                 MEMGATE_REQUIRE_HERMES=1 (hard-fail `run` if Hermes absent, vs a FLOOR run).
+#                 MEMGATE_REQUIRE_HERMES=1 (hard-fail `run`/`measure` if Hermes absent, vs a FLOOR run).
 set -uo pipefail
 
 IMAGE="tiryoh/ros2-desktop-vnc:jazzy"
@@ -115,11 +115,14 @@ cgroup_snapshot() {
 
 # --- pure, offline-testable helpers (no docker / no network) — exercised by `selftest` ---
 
-# R-38 verdict from a measure timeseries TSV. $1=TSV path, $2=headroom floor (decimal MB).
-# Kept awk-only (no container) so the Go/No-Go branch logic is unit-testable with synthetic
-# input (#187 DoD "verdict awk 分岐 unit-test"). Emits the summary + the "VERDICT (R-38)" line.
+# R-38 verdict from a measure timeseries TSV. $1=TSV path, $2=headroom floor (decimal MB),
+# $3=floorflag (non-empty => this run is a FLOOR: Hermes-less or stack-not-live). Kept awk-only
+# (no container) so the Go/No-Go branch logic is unit-testable with synthetic input (#187 DoD
+# "verdict awk 分岐 unit-test"). Emits the summary + the "VERDICT (R-38)" line. When floorflag is
+# set, a would-be GO-leaning verdict is replaced by an explicit "FLOOR — NOT a GO" (PR#201 nit:
+# the verdict LINE itself must not read GO when the measurement under-counts Mode A/B).
 compute_verdict_awk() {
-  awk -F'\t' -v floor="$2" '
+  awk -F'\t' -v floor="$2" -v floorflag="${3:-}" '
     NR>1 {
       c=$3; l=$4; p=$5; o=$6; n++;
       if (c ~ /^[0-9]+$/) { valid++; if (c+0>maxc) maxc=c+0 }
@@ -145,6 +148,7 @@ compute_verdict_awk() {
         print "VERDICT (R-38)    : INVALID — cgroup accounting unavailable/garbage; re-run measure (check cgroup path/exec noise)."; exit }
       verdict = (oomunknown) ? "OOM UNKNOWN (cgroup counter unavailable) — confirm measure_oom.txt before trusting a GO" \
               : (headroom/MB < floor) ? "headroom < 500MB => Open-RMF (Mode C) No-Go-leaning (doc06:98 / 07:212); R-38 gate trips" \
+              : (floorflag != "") ? "FLOOR (Hermes-less or stack-not-live) — NOT a GO: headroom >= 500MB only as a FLOOR; re-run with Hermes + live stack for a real 段階1 verdict" \
               : "no OOM and headroom >= 500MB => 段階1 GO-leaning; Open-RMF still UNMEASURED -> 段階2 required";
       printf "VERDICT (R-38)    : %s\n", verdict;
     }' "$1"
@@ -199,7 +203,7 @@ case "${1:-}" in
            || echo 'WARN: rosdep install non-zero (see logs/setup_rosdep.log) — colcon may still build'; \
          colcon build --symlink-install > /spike/logs/setup_build.log 2>&1 \
            || { echo 'colcon build FAILED:'; tail -60 /spike/logs/setup_build.log; exit 1; }"
-    echo "=== Hermes Gateway via official git installer (deploy/gcp/README.md:73 — NOT pip) ==="
+    echo "=== Hermes Gateway via official git installer (deploy/gcp/README.md:73,86 — NOT pipx) ==="
     # The mounted host ~/.hermes/hermes-agent is a *macOS* install (Darwin venv); reusing it makes
     # the Linux installer report "Existing install detected — keeping legacy layout" and SKIP, so no
     # Linux launcher is ever created (root cause of the prior `hermes: command not found` FLOOR run —
@@ -254,10 +258,15 @@ case "${1:-}" in
       # Independent service (doc12a:409 "独立"); HTTP API on :8642 (doc15:20-46). Reads ~/.hermes/.env.
       dexd "$PATH_LOCAL; exec hermes gateway > /spike/logs/run_hermes.log 2>&1"
       sleep 6
-      if dex 'curl -sf http://localhost:8642/ >/dev/null 2>&1 || (command -v ss >/dev/null && ss -ltn 2>/dev/null | grep -q :8642) || grep -qiE "listen|started|:8642" /spike/logs/run_hermes.log 2>/dev/null'; then
-        HERMES_PRESENT=yes; echo "  hermes daemon LIVE on :8642"
+      # Liveness = the daemon actually SERVES on :8642. Primary signal = HTTP status code: any
+      # non-000 code (200/401/404 — it answered) means up; "000" = connection refused/timeout = down.
+      # `ss` LISTEN is the secondary. The old run_hermes.log grep is DROPPED — a bind-FAILURE line
+      # ("could not start listener" / "address already in use") contains "listen"/":8642" and would
+      # false-positive HERMES_PRESENT=yes, bypassing the FLOOR refusal gate (PR#201 review nit).
+      if dex 'code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 4 http://localhost:8642/ 2>/dev/null); { [ -n "$code" ] && [ "$code" != "000" ]; } || { command -v ss >/dev/null && ss -ltn 2>/dev/null | grep -q ":8642"; }'; then
+        HERMES_PRESENT=yes; echo "  hermes daemon LIVE on :8642 (serving)"
       else
-        echo "  WARN: hermes launched but :8642 not confirmed (see logs/run_hermes.log) — treating as NOT counted"
+        echo "  WARN: hermes launched but :8642 not serving (see logs/run_hermes.log) — treating as NOT counted"
       fi
     else
       echo "  HERMES ABSENT — launching ROS stack only; llm_bridge degrades to Nav2-only (doc08:291)."
@@ -284,6 +293,14 @@ case "${1:-}" in
 
   measure)
     ensure_up
+    # FLOOR enforcement also applies to a DIRECT `measure` (not just `run`): a Hermes-less or
+    # not-live run under-measures Mode A/B, so MEMGATE_REQUIRE_HERMES=1 must refuse here too — else
+    # `measure`/`report` would still emit a GO-leaning verdict from a FLOOR (PR#201 review nit).
+    HERMES_PRESENT="$(cat "$SPIKE_DIR/logs/hermes_present.txt" 2>/dev/null || echo unknown)"
+    if [ "$HERMES_PRESENT" != yes ] && [ "${MEMGATE_REQUIRE_HERMES:-0}" = 1 ]; then
+      echo "  REFUSED: MEMGATE_REQUIRE_HERMES=1 but Hermes is absent (hermes_present.txt=$HERMES_PRESENT) — refusing to measure a FLOOR. Run setup/run with Hermes first." >&2
+      exit 3
+    fi
     TS="$SPIKE_DIR/logs/measure_timeseries.tsv"
     : > "$SPIKE_DIR/logs/measure_free.log"
     echo -e "sample\tt_s\tcgroup_current_b\tcgroup_limit_b\tcgroup_peak_b\toom_kill\tdocker_stats_memusage" > "$TS"
@@ -297,6 +314,11 @@ case "${1:-}" in
     done
     [ "$STACK_LIVE" = no ] && echo "  WARN: core nodes NOT all up after ${SETTLE}s — measuring anyway; report will flag."
     echo "$STACK_LIVE" > "$SPIKE_DIR/logs/stack_live.txt"
+    if [ "$HERMES_PRESENT" != yes ] || [ "$STACK_LIVE" != yes ]; then
+      printf '  %s\n' \
+        '⚠️  FLOOR MEASUREMENT — Hermes not counted and/or core stack not fully live;' \
+        '    the peak/headroom below UNDER-measure Mode A/B. Do NOT read a GO (report tags the verdict FLOOR).'
+    fi
     echo "=== snapshot node/topic list (timeout-wrapped) ==="
     dex "$SRC_WS; timeout 20 ros2 node list"  > "$SPIKE_DIR/logs/measure_nodes.txt"  2>&1 || true
     dex "$SRC_WS; timeout 20 ros2 topic list" > "$SPIKE_DIR/logs/measure_topics.txt" 2>&1 || true
@@ -333,7 +355,8 @@ case "${1:-}" in
       echo "⚠️  run_bringup.log shows a NODE FAILURE — the measured stack is INCOMPLETE:"
       grep -niE "Traceback|ModuleNotFoundError|process has died|has died|No module named" "$SPIKE_DIR/logs/run_bringup.log" | head -10
     fi
-    compute_verdict_awk "$TS" "$HEADROOM_FLOOR_MB"
+    floor_flag=""; { [ "$HERMES_PRESENT" != yes ] || [ "$STACK_LIVE" != yes ]; } && floor_flag=1
+    compute_verdict_awk "$TS" "$HEADROOM_FLOOR_MB" "$floor_flag"
     floor_notes "$HERMES_PRESENT" "$STACK_LIVE"
     echo "--- full-stack node presence (per-bot nav2 expects 2; core expects 1; src: $(basename "$NODES")) ---"
     if [ -f "$NODES" ]; then
@@ -359,9 +382,9 @@ case "${1:-}" in
     pass=0; fail=0
     HDR='sample\tt_s\tcgroup_current_b\tcgroup_limit_b\tcgroup_peak_b\toom_kill\tdocker_stats_memusage'
     LIM=6442450944   # 6 GiB cgroup limit (decimal bytes); awk MB divisor = 1e6, floor = 500 MB
-    _v() {  # $1=name $2=expected-substr ; reads the TSV at $tmp/ts.tsv
+    _v() {  # $1=name $2=expected-substr [$3=floorflag] ; reads the TSV at $tmp/ts.tsv
       local name="$1" want="$2" out
-      out="$(compute_verdict_awk "$tmp/ts.tsv" "$HEADROOM_FLOOR_MB")"
+      out="$(compute_verdict_awk "$tmp/ts.tsv" "$HEADROOM_FLOOR_MB" "${3:-}")"
       if printf '%s' "$out" | grep -qF "$want"; then pass=$((pass+1)); echo "  PASS  $name"
       else fail=$((fail+1)); echo "  FAIL  $name (want substr: $want)"; printf '%s\n' "$out" | sed 's/^/        got: /'; fi
     }
@@ -378,9 +401,14 @@ case "${1:-}" in
     # no OOM, headroom 442MB < 500MB floor => No-Go-leaning
     { printf "$HDR\n"; printf "1\t0\t6000000000\t$LIM\t6000000000\t0\tNA\n"; } > "$tmp/ts.tsv"
     _v "headroom<floor => No-Go" "No-Go-leaning"
-    # no OOM, headroom 1442MB >= 500MB floor => GO-leaning
+    # no OOM, headroom 1442MB >= 500MB floor, NOT a FLOOR => GO-leaning
     { printf "$HDR\n"; printf "1\t0\t5000000000\t$LIM\t5000000000\t0\tNA\n"; } > "$tmp/ts.tsv"
     _v "headroom>=floor => GO" "GO-leaning"
+    # same headroom but FLOOR flag set => the GO-leaning verdict is overridden to "NOT a GO"
+    _v "FLOOR+headroom-ok => NOT a GO" "NOT a GO" 1
+    # FLOOR flag must NOT soften a No-Go (under-measure only makes headroom worse)
+    { printf "$HDR\n"; printf "1\t0\t6000000000\t$LIM\t6000000000\t0\tNA\n"; } > "$tmp/ts.tsv"
+    _v "FLOOR+No-Go stays No-Go" "No-Go-leaning" 1
     # garbage cgroup (all -1) => INVALID
     { printf "$HDR\n"; printf "1\t0\t-1\t-1\t-1\t-1\tNA\n"; } > "$tmp/ts.tsv"
     _v "garbage cgroup => INVALID" "INVALID"
