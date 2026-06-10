@@ -131,3 +131,34 @@ def test_unknown_scenario_is_rejected() -> None:
     proc = _run_seed(SCENARIO="bogus")
     assert proc.returncode == 2
     assert "unknown SCENARIO" in proc.stderr
+
+
+@pytest.mark.e2e
+def test_head_on_derivation_failure_fails_hard() -> None:
+    # B1: head_on with a broken env (cannot derive the spawn) and NO explicit override must FAIL
+    # HARD (exit 2) — NEVER silently fall back to berth coords, which would mislocalize AMCL (the
+    # exact accident this script prevents). Asymmetry with the loud bogus-scenario exit 2 was the bug.
+    proc = _run_seed(SCENARIO="head_on", WAREHOUSE_CONFIG_DIR="/nonexistent")
+    assert proc.returncode == 2, f"stdout={proc.stdout}\nstderr={proc.stderr}"
+    assert "Refusing to seed berth" in proc.stderr
+    assert "bot1 x=0.2" not in proc.stdout  # did NOT emit the berth fallback
+
+
+@pytest.mark.e2e
+def test_head_on_derivation_failure_honors_explicit_override() -> None:
+    # The escape hatch: a head_on derivation failure is acceptable ONLY if the operator pinned both
+    # bots' poses explicitly (then they have taken manual control of localization).
+    proc = _run_seed(
+        SCENARIO="head_on",
+        WAREHOUSE_CONFIG_DIR="/nonexistent",
+        BOT1_X="0.45",
+        BOT1_Y="0.675",
+        BOT2_X="0.45",
+        BOT2_Y="0.135",
+        BOT2_YAW_Z="0.7071",
+        BOT2_YAW_W="0.7071",
+    )
+    assert proc.returncode == 0, f"stderr={proc.stderr}"
+    poses = _parse_poses(proc.stdout)
+    assert poses["bot2"][0] == pytest.approx(0.45, abs=_TOL)
+    assert poses["bot2"][2] > 0  # the north-facing yaw override was honored (not berth-south)

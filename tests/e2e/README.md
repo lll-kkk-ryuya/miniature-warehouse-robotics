@@ -96,6 +96,12 @@ ros2 launch warehouse_bringup bringup.launch.py llm:=false sim:=true
 # 2) slice2/3 full stack（#181/#192 land 後）。scenario:=head_on で 200mm 隘路の正面対向 spawn、
 #    rviz_config:=record で録画用俯瞰 cfg を選択（bringup が両 arg を sim へ forward＝slice3。
 #    無いと berth 横並びを録画してしまう＝デモの核が映らない）。
+# ⚠ headline 必須: 司令官に goal を持たせる WAREHOUSE_TASKS seed を **launch 前に export** する。
+#   scenario:=head_on は spawn の向きを作るだけで goal は注入しない（head_on_goals は consumer ゼロ）。
+#   goal は WAREHOUSE_TASKS→pending_tasks（llm_bridge.py:119,165 が起動時に parse_seed_tasks）のみ。
+#   無いと pending_tasks=[] で両 bot は spawn 位置に静止し、睨み合い/yield が起きない（駐機2台を録画）。
+#   この seed は precheck の print_next_steps / validate_tasks が emit・検証するものと同一。
+export WAREHOUSE_TASKS='[{"id":"task_1","from":"berth_A","to":"shelf_1"},{"id":"task_2","from":"berth_B","to":"shelf_3"}]'
 ros2 launch warehouse_bringup bringup.launch.py sim:=true llm:=true traffic_mode:=none rviz:=true scenario:=head_on rviz_config:=record
 #   sim+nav2+state+safety+nav2_bridge(正 allowlist traffic_mode∈{none,simple}, #166)+llm を合成（#162）。
 #   Nav2 Bridge :8645 は↑が in-process 合成する＝step 0 の通り別途起動しない（二重 bind 回避）。

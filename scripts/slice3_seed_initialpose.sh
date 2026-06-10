@@ -74,21 +74,31 @@ PY
 
 # -- Resolve per-bot poses from SCENARIO -------------------------------------------
 if [[ "${SCENARIO}" == "head_on" ]]; then
-  _ho_out=""
-  if _ho_out="$(derive_head_on)"; then :; else _ho_out=""; fi
-  _h1=""; _h2=""
-  if [[ -n "${_ho_out}" ]]; then
-    { IFS= read -r _h1; IFS= read -r _h2; } <<EOF
+  _h1=""
+  _h2=""
+  if _ho_out="$(derive_head_on)" && [[ -n "${_ho_out}" ]]; then
+    { IFS= read -r _h1 || true; IFS= read -r _h2 || true; } <<EOF
 ${_ho_out}
 EOF
   fi
   if [[ -n "${_h1}" && -n "${_h2}" ]]; then
     read -r DEF_BOT1_X DEF_BOT1_Y DEF_BOT1_YAW_Z DEF_BOT1_YAW_W <<<"${_h1}"
     read -r DEF_BOT2_X DEF_BOT2_Y DEF_BOT2_YAW_Z DEF_BOT2_YAW_W <<<"${_h2}"
+  elif [[ -n "${BOT1_X:-}" && -n "${BOT1_Y:-}" && -n "${BOT2_X:-}" && -n "${BOT2_Y:-}" ]]; then
+    # Escape hatch: derivation failed but the operator pinned both bots' positions explicitly.
+    # Honor them — but for head_on, BOT2 faces NORTH (opposite the berth-south default), so set
+    # BOT2_YAW_Z/W too or bot2 localizes facing the wrong way.
+    echo "WARN: head_on pose derivation failed; honoring explicit BOT{1,2}_{X,Y,...} overrides." \
+      "Set BOT2_YAW_Z/W to the north-facing quat for the head-on standoff." >&2
   else
-    echo "WARN: could not derive head_on poses from warehouse_sim.scenarios; falling back to" \
-      "berth defaults. Set BOT{1,2}_{X,Y,YAW_Z,YAW_W} explicitly to the head_on spawn or AMCL" \
-      "will mislocalize the head-on demo." >&2
+    # FAIL HARD (B1): silently seeding berth coords under head_on mislocalizes AMCL (~0.25m) — the
+    # exact accident this script exists to prevent (the header calls it garbage). Refuse rather than
+    # fall back, mirroring the loud `unknown SCENARIO` exit 2 (a silent failure here is far worse).
+    echo "ERROR: SCENARIO=head_on could not derive spawn poses from warehouse_sim.scenarios and no" \
+      "explicit BOT{1,2}_* override is set. Refusing to seed berth coords under head_on (would" \
+      "mislocalize AMCL). Fix WAREHOUSE_CONFIG_DIR / PYTHON_BIN / PYTHONPATH (warehouse_sim must be" \
+      "importable), or set BOT{1,2}_{X,Y,YAW_Z,YAW_W} explicitly to the head_on spawn." >&2
+    exit 2
   fi
 elif [[ "${SCENARIO}" != "default" ]]; then
   echo "unknown SCENARIO='${SCENARIO}' (expected 'default' or 'head_on')" >&2

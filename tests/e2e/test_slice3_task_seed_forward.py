@@ -96,4 +96,12 @@ def test_unaccepted_cycle_leaves_the_seed_queue_intact(e2e_runtime, monkeypatch)
     asyncio.run(scheduler.run_cycle())
 
     assert forwarder.requests == []  # nothing dispatched
+    # Distinguish the REJECT path (N1): the command was refused, not an accepted-but-empty cycle —
+    # otherwise the queue-intact assert below would also pass for {"reasoning":..,"commands":[]}.
+    assert (
+        scheduler.last_command is None
+    )  # Command.model_validate rejected it (no command accepted)
+    assert (
+        scheduler.nav2_only is False
+    )  # ignored for the cycle, not escalated to the outage fallback
     assert {t["id"] for t in scheduler._pending_tasks} == {"task_1", "task_2"}  # queue intact
