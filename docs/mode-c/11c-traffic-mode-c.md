@@ -287,12 +287,12 @@ Open-RMF を立てず、既存 `warehouse_nav2_bridge`（REST `:8645`、`POST /a
 
 ### E. cross-doc 整合（本レーン編集境界外＝別 PR で追従）
 
-本評価により Fleet Adapter の実体は free_fleet ではなく**自作 EasyFullControl adapter**となる。下記は本レーンの**編集境界外（読むのみ）**のため、Phase 3 実装 Issue の別 PR で反映する（本 PR では触らない）:
+本評価により Fleet Adapter の実体は free_fleet ではなく**自作 EasyFullControl adapter**となる。下記の cross-doc 表記追従は **docs follow-up PR（R-44, #117/#180 系）で反映済**:
 
-- `docs/mode-c/12c-integration-mode-c.md:129`「Fleet Adapter（free_fleet + battery拡張）」→ EasyFullControl 自作 adapter（+ battery 拡張）へ。
-- `docs/architecture/06-implementation-phases.md:217`「free_fleet ベースの Fleet Adapter 作成」→ EasyFullControl 自作へ。
-- `docs/shared/07-research-notes.md:179`（R-13）「Open-RMF + free_fleet + zenoh + Nav2 の統合チェーン」→ 「Open-RMF + EasyFullControl 直駆動 + Nav2」へ（free_fleet/zenoh をチェーンから除外）。
-- （本 11c 内の §3 表・§7 スケジュールの「free_fleet ベース」表記は本 PR で §3.5 への pointer に更新済み。）
+- ✅ `docs/mode-c/12c-integration-mode-c.md:129-131`: 「Fleet Adapter（free_fleet + battery拡張）」＋子の「zenoh bridge → Nav2」を EasyFullControl 自作 + Nav2 action 直駆動へ更新。
+- ✅ `docs/architecture/06-implementation-phases.md:217`: 「free_fleet ベースの Fleet Adapter 作成」→ EasyFullControl 自作へ更新。
+- ✅ `docs/shared/07-research-notes.md:179`（R-13）: 「Open-RMF + free_fleet + zenoh + Nav2」→ 「Open-RMF + EasyFullControl + Nav2」へ更新。
+- （本 11c 内の §3 表・§7 スケジュールの「free_fleet ベース」表記は #176 で §3.5 への pointer に更新済み。）
 
 ---
 

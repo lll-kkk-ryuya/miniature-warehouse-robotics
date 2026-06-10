@@ -102,9 +102,10 @@ class SituationBuilder:
         not reproduced since the Bridge has no pickup (Bridge-owned working memory
         the snapshot does not carry, doc12:249 / 08a:62,73,466). The scheduler tracks
         it from accepted dispatches; an absent/unmapped bot gets ``current_task=None``
-        (idle). ``pending_tasks`` has no wired producer yet — its source is not
-        specified in the design docs — so it stays ``[]`` by design for now
-        (08a:468 / #102).
+        (idle). ``pending_tasks`` is the commander's task queue ({id,from,to}, the
+        frozen ``PendingTask`` shape, doc08a:79-81): the scheduler passes its
+        demo-seeded queue (``WAREHOUSE_TASKS`` env, doc08a:468 / #181), defaulting to
+        ``[]`` so non-demo runs are unaffected.
         """
         raw = self._state_store.read()
         if raw is None:
@@ -128,7 +129,10 @@ class SituationBuilder:
         # doc 08c:108). Recursive: each RobotState honors its own model_fields_set,
         # so Mode A/B (every field set) is unchanged while Mode C keeps only the
         # strategic fields. exclude_none would NOT work (obstacle_ahead defaults False).
-        return situation.model_dump(exclude_unset=True)
+        # by_alias so PendingTask emits the canonical wire key ``from`` (doc08a:79-81),
+        # not the pydantic field name ``from_`` (schemas.py:111); PendingTask.from_ is
+        # the ONLY aliased field in the contract, so this is otherwise a no-op.
+        return situation.model_dump(by_alias=True, exclude_unset=True)
 
     def _enrich(self, snap: RobotSnapshot, *, current_task: str | None = None) -> RobotState:
         """Lift a raw ``RobotSnapshot`` into a ``RobotState`` (L2 -> L1, 08a:93-95).

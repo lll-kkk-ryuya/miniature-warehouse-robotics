@@ -147,6 +147,20 @@ def test_factory_unknown_mode_raises() -> None:
 
 
 @pytest.mark.unit
+def test_factory_passes_bridge_and_route_planner_to_simple() -> None:
+    # The factory is the public IF the LLM Bridge (#4) builds managers through
+    # (doc11a:47-54). A regression that dropped route_planner/nav2_bridge would silently
+    # disable Mode B exclusion (default no_route -> never waits) and never dispatch — pin
+    # both are wired through to SimpleTrafficManager.
+    bridge = _FakeNav2Bridge()
+    mgr = make_traffic_manager(MODE_SIMPLE, nav2_bridge=bridge, route_planner=_one_route("route_A"))
+    assert isinstance(mgr, SimpleTrafficManager)
+    assert mgr.submit_task("bot1", "berth_A", "shelf_1")["status"] == "sent"
+    assert bridge.calls == [("bot1", "shelf_1")]  # nav2_bridge wired through
+    assert mgr.submit_task("bot2", "berth_B", "shelf_1")["status"] == "waiting"  # planner wired
+
+
+@pytest.mark.unit
 def test_simple_no_partial_lock_when_later_aisle_blocked() -> None:
     # Two-phase check-all-then-lock-all (doc11a:100-109): if ANY aisle in the route
     # is occupied, NO aisle is locked. Guards against a lock-as-you-go refactor that

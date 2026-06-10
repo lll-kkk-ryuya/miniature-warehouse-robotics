@@ -28,10 +28,11 @@ rclpy — so the whole cycle is unit-testable with fakes (doc16 §11).
 """
 
 import asyncio
+import json
 import logging
 from collections import deque
 
-from warehouse_interfaces.schemas import Command, CommandAction, CommandItem
+from warehouse_interfaces.schemas import Command, CommandAction, CommandItem, PendingTask
 from warehouse_interfaces.stores import GenStore
 
 from warehouse_llm_bridge.action_map import command_to_tool_calls
@@ -64,6 +65,25 @@ HISTORY_MAXLEN = 5
 CHARGING_TASK = "charging_station"
 
 
+def parse_seed_tasks(raw: str | None) -> list[dict]:
+    """Parse the ``WAREHOUSE_TASKS`` env JSON into a validated pending_tasks seed (#181).
+
+    Returns a list of ``{"id", "from", "to"}`` dicts (the frozen ``PendingTask`` wire
+    shape, doc mode-a/08a:79-81) for the scheduler's queue. ``None`` / empty -> ``[]``
+    (the normal no-demo case, so non-demo runs are unaffected). Each entry is validated
+    against the frozen ``PendingTask`` and re-dumped ``by_alias`` so the queue holds the
+    canonical ``from`` key (NOT the pydantic field name ``from_``). Raises ``ValueError``
+    on a non-list / malformed entry so the caller fails OPEN (a bad demo seed must not
+    silently ship a wrong situation to the commander). Pure — unit-testable without ROS.
+    """
+    if not raw:
+        return []
+    data = json.loads(raw)
+    if not isinstance(data, list):
+        raise ValueError(f"WAREHOUSE_TASKS must be a JSON list, got {type(data).__name__}")
+    return [PendingTask.model_validate(task).model_dump(by_alias=True) for task in data]
+
+
 def _noop(_text: str) -> None:
     """Default publish sink (no ROS wired): drop the message."""
 
@@ -94,6 +114,7 @@ class BridgeScheduler:
         publish_reasoning=_noop,
         publish_command=_noop,
         tracer: Tracer | None = None,
+        pending_tasks: list[dict] | None = None,
         cycle_wait_sec: float = DEFAULT_CYCLE_WAIT_SEC,
         cycle_timeout_sec: float = CYCLE_TIMEOUT_SEC,
         outage_after_consecutive: int = OUTAGE_AFTER_CONSECUTIVE,
@@ -119,6 +140,11 @@ class BridgeScheduler:
         # Bridge-owned per-robot in-flight task (bot -> destination); set-on-accept /
         # clear-on-stop policy (doc12:249 / 08a:62,73). Bounded by fleet size.
         self._current_tasks: dict[str, str] = {}
+        # Bridge-owned pending task queue ({id,from,to} dicts, doc08a:79-81,468). Seeded
+        # for the demo (#181) so the commander HAS tasks to allocate — that is what gives
+        # bots a current_task (set-on-accept), which the deadlock detection requires
+        # (08a:277). An accepted navigate to a task's `to` consumes it; idle until then.
+        self._pending_tasks: list[dict] = list(pending_tasks or [])
         self._running = False
 
     async def run_forever(self) -> None:
@@ -141,14 +167,15 @@ class BridgeScheduler:
         gen = self.current_gen
         self._gen_store.set(gen)
 
-        # history + current_tasks are the bridge-owned working memory (08a:82-85,62,466);
-        # pending_tasks is omitted -> [] : it has no wired producer yet (source not
-        # specified in docs, 08a:468). current_tasks/history are copied so a later
+        # history + current_tasks + pending_tasks are the bridge-owned working memory
+        # (08a:82-85,62,466,468). pending_tasks is the demo-seeded queue the commander
+        # allocates from (#181); empty by default. All three are copied so a later
         # cycle's mutation cannot reach back into this turn's situation snapshot.
         situation = self._situation_builder.build(
             turn=self.turn,
             gen_id=gen,
             history=list(self._history),
+            pending_tasks=list(self._pending_tasks),
             current_tasks=dict(self._current_tasks),
         )
         if situation is None:
@@ -169,12 +196,14 @@ class BridgeScheduler:
             except LLMUnavailableError as exc:
                 self._on_outage(gen, exc)
                 return
+            except (ValueError, TypeError) as exc:
+                self._on_invalid_response(gen, exc)
+                return
 
             try:
                 command = Command.model_validate(response)
             except (ValueError, TypeError) as exc:  # malformed JSON / schema (doc08:289-291)
-                self._consecutive_failures += 1
-                log.warning("invalid command gen=%s: %s; ignoring this cycle", gen, exc)
+                self._on_invalid_response(gen, exc)
                 return
 
             await self._dispatch_command(command, gen)
@@ -195,6 +224,7 @@ class BridgeScheduler:
                 result = await self._executor.execute(tool_call)
             results.append(result)
             self._track_current_task(item, result)
+            self._consume_pending_task(item, result)
             self._history.append(
                 {
                     "turn": self.turn,
@@ -235,6 +265,25 @@ class BridgeScheduler:
             # WAIT (and a NAVIGATE/YIELD missing its dropoff): a hold on the
             # existing task -> current_task unchanged.
 
+    def _consume_pending_task(self, item: CommandItem, result: dict) -> None:
+        """Drop a seeded pending task once an accepted navigate claims it (#181).
+
+        The commander allocates a queued task by navigating a bot to its ``to``
+        destination; the first matching queue entry is removed so the same task is not
+        re-offered every cycle (which would re-dispatch the same goal endlessly). Only
+        an ACCEPTED (``status=="ok"``) navigate consumes — a rejected dispatch or a
+        non-navigate action leaves the queue intact. ``PendingTask`` carries no bot
+        ({id,from,to}, doc08a:79-81), so the match is destination == ``to``.
+        """
+        if result.get("status") != "ok" or item.action is not CommandAction.NAVIGATE:
+            return
+        if item.destination is None:
+            return
+        for index, task in enumerate(self._pending_tasks):
+            if task.get("to") == item.destination:
+                del self._pending_tasks[index]
+                return
+
     def _on_timeout(self, gen: int) -> None:
         """2.5s in-cycle timeout: keep the previous command, advance (doc08:286).
 
@@ -261,3 +310,8 @@ class BridgeScheduler:
         self._consecutive_failures += 1
         self.nav2_only = True
         log.error("LLM unavailable gen=%s: %s → Nav2-only fallback", gen, exc)
+
+    def _on_invalid_response(self, gen: int, exc: Exception) -> None:
+        """Malformed LLM body/schema: ignore this cycle without forwarding."""
+        self._consecutive_failures += 1
+        log.warning("invalid command gen=%s: %s; ignoring this cycle", gen, exc)
