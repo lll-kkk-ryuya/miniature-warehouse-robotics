@@ -159,6 +159,17 @@ floor_notes() {
   return 0
 }
 
+# Refuse to proceed on a Hermes-less FLOOR when the operator demanded Hermes be counted.
+# $1 = hermes_present (yes|no|unknown). Pure/offline — exercised by selftest. Applies to every
+# entry point (run/measure/report), not just run, so a direct `./run.sh measure|report` (or a run
+# against a stale logs/hermes_present.txt) cannot emit a GO-leaning verdict for an uncounted FLOOR.
+require_hermes_or_refuse() {
+  if [ "${MEMGATE_REQUIRE_HERMES:-0}" = 1 ] && [ "${1:-}" != yes ]; then
+    echo "  REFUSED: MEMGATE_REQUIRE_HERMES=1 but Hermes is ${1:-unknown} (not counted) — refusing to measure/report a FLOOR. Fix setup first." >&2
+    exit 3
+  fi
+}
+
 case "${1:-}" in
   clean)
     docker rm -f "$CONTAINER" 2>/dev/null || true ;;
@@ -254,7 +265,11 @@ case "${1:-}" in
       # Independent service (doc12a:409 "独立"); HTTP API on :8642 (doc15:20-46). Reads ~/.hermes/.env.
       dexd "$PATH_LOCAL; exec hermes gateway > /spike/logs/run_hermes.log 2>&1"
       sleep 6
-      if dex 'curl -sf http://localhost:8642/ >/dev/null 2>&1 || (command -v ss >/dev/null && ss -ltn 2>/dev/null | grep -q :8642) || grep -qiE "listen|started|:8642" /spike/logs/run_hermes.log 2>/dev/null'; then
+      # Liveness MUST be a POSITIVE probe: an HTTP response on :8642 or a listening socket. A log
+      # grep ("listen"/"started") false-positives on bind-FAILURE lines (e.g. "could not start
+      # listener"), which would bypass the FLOOR refusal. If BOTH curl and ss are unavailable the
+      # check conservatively reports NOT-counted -> loud FLOOR (the SAFE direction).
+      if dex 'curl -sf http://localhost:8642/ >/dev/null 2>&1 || (command -v ss >/dev/null && ss -ltn 2>/dev/null | grep -q :8642)'; then
         HERMES_PRESENT=yes; echo "  hermes daemon LIVE on :8642"
       else
         echo "  WARN: hermes launched but :8642 not confirmed (see logs/run_hermes.log) — treating as NOT counted"
@@ -268,10 +283,7 @@ case "${1:-}" in
         '⚠️  FLOOR RUN — Hermes Gateway is NOT counted in this measurement.' \
         '    The Mode A/B peak will be UNDER-measured by the Hermes resident footprint;' \
         '    do NOT read a GO from a Hermes-less run. Re-run setup to fix the install.'
-      if [ "${MEMGATE_REQUIRE_HERMES:-0}" = 1 ]; then
-        echo "  REFUSED: MEMGATE_REQUIRE_HERMES=1 but Hermes is absent — refusing to measure a FLOOR. Fix setup first." >&2
-        exit 3
-      fi
+      require_hermes_or_refuse "$HERMES_PRESENT"
     fi
     echo "=== launch full stack: bringup.launch.py sim:=true llm:=true ==="
     # config resolves via WAREHOUSE_CONFIG_DIR (set on docker run). MCP = in-process inside
@@ -284,6 +296,9 @@ case "${1:-}" in
 
   measure)
     ensure_up
+    # Honour MEMGATE_REQUIRE_HERMES at THIS entry point too (not only in run): a direct
+    # `./run.sh measure`, or a run against a stale logs/hermes_present.txt, must not measure a FLOOR.
+    require_hermes_or_refuse "$(cat "$SPIKE_DIR/logs/hermes_present.txt" 2>/dev/null || echo unknown)"
     TS="$SPIKE_DIR/logs/measure_timeseries.tsv"
     : > "$SPIKE_DIR/logs/measure_free.log"
     echo -e "sample\tt_s\tcgroup_current_b\tcgroup_limit_b\tcgroup_peak_b\toom_kill\tdocker_stats_memusage" > "$TS"
@@ -326,6 +341,9 @@ case "${1:-}" in
     NODES="$SPIKE_DIR/logs/measure_nodes_end.txt"; [ -f "$NODES" ] || NODES="$SPIKE_DIR/logs/measure_nodes.txt"
     HERMES_PRESENT="$(cat "$SPIKE_DIR/logs/hermes_present.txt" 2>/dev/null || echo unknown)"
     STACK_LIVE="$(cat "$SPIKE_DIR/logs/stack_live.txt" 2>/dev/null || echo unknown)"
+    # Refuse BEFORE printing any verdict: a stale/absent hermes_present.txt must not yield a
+    # GO-leaning report when the operator demanded Hermes be counted (reuses HERMES_PRESENT above).
+    require_hermes_or_refuse "$HERMES_PRESENT"
     echo "=== memory-gate report (段階1, --memory=$MEM) ==="
     echo "hermes daemon counted: $HERMES_PRESENT   |   core stack live: $STACK_LIVE"
     # Surface a crashed/incomplete launch so a low-memory reading is not misread as a benign GO.
@@ -353,8 +371,9 @@ case "${1:-}" in
 
   selftest)
     # Offline self-test (NO docker, NO network): drives compute_verdict_awk through every R-38
-    # branch with synthetic cgroup timeseries, and floor_notes through its FLOOR-annotation
-    # branches. Pair with `bash -n run.sh`. Exits non-zero on any failed assertion.
+    # branch with synthetic cgroup timeseries, floor_notes through its FLOOR-annotation branches,
+    # and require_hermes_or_refuse through its refuse/pass branches (in subshells so its exit 3
+    # does not kill selftest). Pair with `bash -n run.sh`. Exits non-zero on any failed assertion.
     tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
     pass=0; fail=0
     HDR='sample\tt_s\tcgroup_current_b\tcgroup_limit_b\tcgroup_peak_b\toom_kill\tdocker_stats_memusage'
@@ -391,6 +410,15 @@ case "${1:-}" in
     _chk "floor: hermes-absent note" "Hermes daemon NOT counted" "$(floor_notes no yes)"
     _chk "floor: stack-not-live note" "core stack was not fully live" "$(floor_notes yes no)"
     _chk "floor: all-live => silent"  "" "$(floor_notes yes yes)"
+    # require_hermes_or_refuse: exercise refuse/pass in a SUBSHELL so its `exit 3` cannot kill us.
+    _rc() {  # $1=name $2=expected-exit-code $3=actual-exit-code
+      local name="$1" want="$2" got="$3"
+      if [ "$got" -eq "$want" ]; then pass=$((pass+1)); echo "  PASS  $name"
+      else fail=$((fail+1)); echo "  FAIL  $name (want exit $want, got $got)"; fi
+    }
+    ( MEMGATE_REQUIRE_HERMES=1; require_hermes_or_refuse no ) >/dev/null 2>&1; _rc "require: on + absent => refuse(3)" 3 "$?"
+    ( MEMGATE_REQUIRE_HERMES=1; require_hermes_or_refuse yes ) >/dev/null 2>&1; _rc "require: on + present => pass(0)" 0 "$?"
+    ( MEMGATE_REQUIRE_HERMES=0; require_hermes_or_refuse no ) >/dev/null 2>&1; _rc "require: off + absent => pass(0)" 0 "$?"
     echo "selftest: $pass passed, $fail failed"
     [ "$fail" -eq 0 ] || exit 1 ;;
 
