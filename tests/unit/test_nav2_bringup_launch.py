@@ -58,8 +58,10 @@ def _active_virtualscan_count(ld, traffic_mode: str) -> int:
 
 @pytest.mark.unit
 def test_two_virtualscan_nodes_are_the_only_conditioned_actions() -> None:
-    # One VirtualScan node per robot (bot1, bot2), each IfCondition-gated; nothing else
-    # in the launch is conditional. Guards the assumption the gating-count test relies on.
+    # One VirtualScan node per robot (bot1, bot2), each IfCondition-gated, are the only
+    # conditioned TOP-LEVEL nodes. collision_monitor + its lifecycle_manager are IfCondition-
+    # gated too but nested in the per-bot GroupAction (#126, test_collision_monitor_launch.py),
+    # so this top-level count stays 2. Guards the assumption the gating-count test relies on.
     assert len(_conditioned_nodes(_load_ld())) == 2
 
 

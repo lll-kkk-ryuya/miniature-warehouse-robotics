@@ -1,0 +1,77 @@
+# collision_monitor.yaml — per-bot physical proximity reflex stop (R-39 / #126).
+#
+# WHY (doc/shared/07-research-notes.md:249 R-39): the Emergency Guardian's amcl_pose-based
+# proximity check is AMCL-rate-limited (~100-200ms effective stale) and Python (GC/GIL =
+# no bounded worst-case, R-40). The physical proximity reflex is DELEGATED to this C++,
+# high-rate, amcl-independent nav2_collision_monitor — "補完 not 置換" (doc12:545③): the
+# Guardian keeps battery / event / LLM-review / pose-freshness(#152) / blocked policy +
+# its prio-100 e-stop; collision_monitor only adds a fast scan-polygon stop on the nav path.
+#
+# TOPOLOGY (doc12:529-535) — inserted on the Nav2 velocity path, UPSTREAM of twist_mux's
+# priority-10 nav2 input (emergency priority-100 is FROZEN + untouched, doc15:389-395):
+#   controller_server --(remap cmd_vel -> cmd_vel/nav2_raw, Mode A/B)--> collision_monitor
+#       --> cmd_vel/nav2 (the EXISTING twist_mux prio-10 input) --> twist_mux --> /bot{n}/cmd_vel
+# collision_monitor publishes to cmd_vel/nav2 ONLY; it NEVER writes cmd_vel/emergency, so the
+# Guardian's prio-100 override semantics stay intact (doc12:545②, R-26 safety regression).
+#
+# PER-BOT: one instance per robot inside namespace /bot{n} (like nav2_params.yaml / twist_mux.
+# yaml). Topics are RELATIVE -> /bot{n}/cmd_vel/nav2_raw, /bot{n}/cmd_vel/nav2, /bot{n}/scan,
+# /bot{n}/virtual_scan. The "<robot_namespace>" frame token is substituted to bot1/bot2 by
+# ReplaceString in nav2_bringup.launch.py (TF frames are global, not namespaced by node ns).
+#
+# MODE (doc12:550, 11a:317): started ONLY in Mode A/B (traffic_mode != open-rmf). Mode C
+# (Open-RMF) owns inter-robot traffic, so the launch gates this node OFF and routes the
+# controller straight to cmd_vel/nav2 (the Mode-C real-/scan-only collision_monitor variant
+# is deferred to Mode-C impl, doc12:550).
+#
+# virtual_scan is a DUAL-CONSUMER (doc12:547): collision_monitor is an ADDITIONAL subscriber
+# of /bot{n}/virtual_scan; the costmap obstacle_layer (nav2_params.yaml:221,274) keeps it for
+# planning. Same topic, two consumers — not a move.
+#
+# PROVISIONAL VALUES (validated live = #126 PoC, 2-bot Gazebo, human Docker gate):
+#   * PolygonStop.radius / shape — footprint-grounded (ROBOT_RADIUS 0.075, frozen
+#     warehouse_interfaces) but the 200mm R-42 aisle (doc07:252) is the binding constraint:
+#     a stop zone wider than the wall clearance (~0.1m from centre) will trip on the aisle
+#     walls. Tune live; a forward-biased polygon may be needed (Open ② = doc12:552②).
+#   * source_timeout — nav2_collision_monitor treats a stale source as ABSENT (skips it),
+#     so "scan stale -> stop" (doc12:546) is NOT guaranteed native; pose-staleness is already
+#     covered by the Guardian (#152). Validate the stale-source behaviour live (Open ③ =
+#     doc12:552③); meanwhile this is a conservative source freshness bound, not a proven stop.
+#   * exact Jazzy param schema (e.g. polygon points format) needs colcon/launch container
+#     validation (#67 stack); this file is the wiring intent.
+collision_monitor:
+  ros__parameters:
+    use_sim_time: true   # launch RewrittenYaml overrides from use_sim_time arg (prod=false)
+    base_frame_id: "<robot_namespace>/base_link"
+    odom_frame_id: "<robot_namespace>/odom"
+    # Velocity gate: IN = controller output (remapped to cmd_vel/nav2_raw in Mode A/B),
+    # OUT = cmd_vel/nav2 = the existing twist_mux prio-10 input (prio-100 emergency untouched).
+    cmd_vel_in_topic: "cmd_vel/nav2_raw"
+    cmd_vel_out_topic: "cmd_vel/nav2"
+    state_topic: "collision_monitor_state"
+    transform_tolerance: 0.2
+    source_timeout: 1.0          # PROVISIONAL — stale-source semantics validated live (Open ③)
+    base_shift_correction: true
+    stop_pub_timeout: 2.0
+    polygons: ["PolygonStop"]
+    PolygonStop:
+      type: "circle"
+      # PROVISIONAL: > inscribed ROBOT_RADIUS 0.075 (frozen) + small reaction margin. The 200mm
+      # R-42 aisle (walls ~0.1m from centre) is the binding constraint — retune live (Open ②).
+      radius: 0.09
+      action_type: "stop"
+      min_points: 4              # Jazzy: # scan points inside the polygon to trigger the stop
+      visualize: true
+      polygon_pub_topic: "collision_monitor/polygon_stop"
+      enabled: true
+    # scan = real MS200 (doc03:78); virtual_scan = the other robot as a virtual obstacle
+    # (Mode A/B only, doc03:109). Both relative -> /bot{n}/{scan,virtual_scan}.
+    observation_sources: ["scan", "virtual_scan"]
+    scan:
+      type: "scan"
+      topic: "scan"
+      enabled: true
+    virtual_scan:
+      type: "scan"
+      topic: "virtual_scan"
+      enabled: true
