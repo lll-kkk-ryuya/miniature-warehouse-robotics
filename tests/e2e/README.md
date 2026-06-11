@@ -199,3 +199,65 @@ python3.12 -m pytest tests/e2e/test_min_separation_harness.py::test_live_recorde
 
 **注**: 座標ゴールは `/bot{n}/goal_pose` を **LLM Bridge が直接 publish しない**（doc03:97 / doc08:462）方針と整合
 ＝発行主体は nav2_bridge（Mode A/B の MCP 内部経路に相当）。raw goal_pose publisher は新設しない。
+
+## collision_monitor 2-bot 近接停止 PoC runbook（live · 人間 Docker ゲート）
+
+`#229`（`bce4853`）で配線した `nav2_collision_monitor`（per-bot・twist_mux prio10 上流・Mode A/B）の
+**物理近接反射**（R-39, `doc07:249`）を 2台 Gazebo で実走確認し、`#233` の **Closes #126 ゲート**
+（Open ②③ の live tune ＋ Go/No-Go）を満たすための runbook。設計正本:
+`docs/architecture/12-infrastructure-common.md:522-552`（トポロジ）＋ 同 §「Open 項目の確定（#233）」
+（⑤⑥① の確定）。実走＝**Gazebo 物理＝user docker 専有**（README:43）＝本節は手順のみ・観測値は実走後に
+転記（**fabricate しない**＝docs-first「発明しない」）。
+
+> **前提（false-pass 警告）**: collision_monitor は **Mode A/B でのみ起動**（`traffic_mode:=none|simple`）。
+> Mode C（`open-rmf`）は monitor を **gate OFF**（`nav2_bringup.launch.py:126` / `collision_monitor.yaml:22-25`）
+> ＝`open-rmf` で「近接でも止まらない」を **pass と誤読しない**（monitor がそもそも居ない）。
+
+```bash
+# Step 0: tiryoh コンテナ（ROS/colcon/Gazebo）・--memory=6g・ROS_DOMAIN_ID 隔離。host py3.7 では不可。
+export WAREHOUSE_CONFIG_DIR=/ws/config
+export WAREHOUSE_ENV=dev
+
+# Step 1: 2台フルスタックを Mode A/B で bring-up（LLM 不要＝近接反射は司令官非依存）。
+ros2 launch warehouse_bringup bringup.launch.py sim:=true llm:=false traffic_mode:=none rviz:=true
+#   ▼ head_on 幾何で当てたい場合は scenario:=head_on を足し、別 shell で seed（AMCL 誤定位回避）:
+#     SCENARIO=head_on scripts/slice3_seed_initialpose.sh   （berth 座標 seed → AMCL 誤定位の事故を塞ぐ）
+
+# Step 2: 近接停止を観測（別 shell）。collision_monitor の state / polygon / 出力 0 化を見る。
+ros2 topic echo /bot1/collision_monitor_state    # PolygonStop breach で state が立つ（state_topic, yaml:56）
+#   RViz: collision_monitor/polygon_stop（polygon_pub_topic, collision_monitor.yaml:72）を表示。
+#   ▼ 2台を polygon 内へ近づける（VirtualScan は >1.0m で無送信＝近接時のみ相手を見る）。breach 中は
+#     controller 出力（cmd_vel/nav2_raw）が monitor で 0 化され cmd_vel/nav2 が zero-Twist になる:
+ros2 topic echo /bot1/cmd_vel/nav2               # breach 中は linear/angular = 0
+
+# Step 3 (Open ②): PolygonStop circle radius（暫定 0.09, collision_monitor.yaml:68）を live tune。
+#   制約: R-42 200mm 隘路（壁 ~0.1m）で壁に trip しない ∧ #156 ≥0.15m head-on で相手表面 ~0.075m を
+#   潰して avoidance footage を mask しない（0.15m centres で 0.075m は 0.09 polygon 内＝要調整）。
+#   forward-biased polygon（円→前方寄せ）も選択肢。値変更は collision_monitor.yaml を編集し再 launch。
+
+# Step 4 (Open ③ + source_timeout sanity): /scan 鮮度の停止挙動を 2 方向で確認（「正しく silent」と
+#   「monitor 死亡」を区別する）。
+#   (a) 実 /scan 途絶 → STOP 発火: /bot1/scan の publisher（sim lidar bridge）を止め、node-level
+#       source_timeout 1.0（yaml:58）経過後に cmd_vel/nav2 が止まることを確認（lidar 途絶 stop, R-39）。
+#   (b) virtual_scan の >1.0m 無送信 → STOP 非発火: 2台を 1.0m 超に離し、通常走行で誤 STOP しないことを
+#       確認（per-source source_timeout 0.0, yaml:90 ＝「無送信＝相手居ない」を fault 扱いしない）。
+```
+
+**注**: 本 PoC は **物理反射（C++・amcl 非律速）** の検証であり、Guardian の policy 層（battery / event /
+`pose_stale`(#152) / blocked）と twist_mux emergency prio100（estop）は **対象外・不変**。collision_monitor
+出力は `cmd_vel/nav2`（prio10）**のみ**で `cmd_vel/emergency`（prio100）を**書かない**
+（`tests/unit/test_collision_monitor_config.py` で凍結）。event surfacing（⑤）は defer、Guardian
+`near_collision` 撤去（①）は本 PoC **Go 後の safety-state 判断**（doc12 §「Open 項目の確定（#233）」）。
+
+### Go/No-Go（PENDING — 実走後に転記・fabricate しない）
+
+| 観測 | 期待 | 値 | 判定 |
+|---|---|---|---|
+| ① R-39 reflex 成立 | 近接（polygon breach）で `cmd_vel/nav2` が zero-Twist | — | — |
+| ② R-42 隘路 非誤発火 | 200mm 隘路の壁（~0.1m）で STOP しない（通行可） | — | — |
+| ③ #156 head-on 非mask | ≥0.15m head-on で avoidance footage を polygon が潰さない | — | — |
+| ④ source_timeout 正 | 実 /scan 途絶→STOP ∧ virtual_scan >1.0m 無送信→非STOP | — | — |
+
+**GO** ＝ ①∧②∧③∧④ 全充足 → `doc12` / `doc03` / `doc07 R-39` に Go/No-Go と採用形（polygon 確定寸法・
+source_timeout 確定値）を反映する **follow-up PR で `Closes #126`**。いずれか **No** → polygon 再寸法（②）／
+source_timeout 再調整（③）／forward-bias 化を tune し再走（値が定まらなければ defer を記録）。
