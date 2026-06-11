@@ -2,7 +2,7 @@
 
 Gazebo has no battery sensor (doc03 §トピック設計), but the State Cache only emits a
 bot's ``StateSnapshot`` once it has pose + velocity + battery
-(``warehouse_state.aggregator.StateAggregator._is_complete``; doc12:207). So without a
+(``warehouse_state.aggregator.StateAggregator._is_complete``; doc12:293). So without a
 ``/bot{n}/battery`` stream the bot never reaches the LLM commander's situation JSON
 (``warehouse_llm_bridge.situation`` ``battery=snap.battery``) and the Phase-0.5
 LLM-in-Gazebo E2E (#156) is impossible.

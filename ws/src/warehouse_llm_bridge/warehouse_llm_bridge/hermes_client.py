@@ -22,7 +22,7 @@ Transport notes:
   (Layer A client-side); the explicit run ``/stop`` is dropped — in-process
   dispatch has no server-side run to stop (Issue #54 resolved, doc08:173-179).
 
-Failure contract (consumed by the scheduler, doc08:287-289): a transport / non-2xx
+Failure contract (consumed by the scheduler, doc08:288-293): a transport / non-2xx
 error raises :class:`LLMUnavailableError` (→ Nav2-only); a malformed body raises
 ``ValueError`` (→ ignore this cycle).
 """
@@ -188,7 +188,7 @@ def parse_command_content(content: object) -> dict:
     """Parse the assistant message *content* (a JSON string) into a Command dict.
 
     Raises ``ValueError`` for non-text / non-JSON / non-object content so the
-    scheduler treats it as an invalid response and ignores the cycle (doc08:289)
+    scheduler treats it as an invalid response and ignores the cycle (doc08:293)
     rather than dispatching garbage.
     """
     if not isinstance(content, str):
@@ -245,13 +245,13 @@ class HermesClient(LLMClient):
         """Call Hermes (traced) and return the parsed Command JSON dict.
 
         Raises :class:`LLMUnavailableError` on a transport / non-2xx error,
-        ``ValueError`` on a malformed response body (doc08:287-289).
+        ``ValueError`` on a malformed response body (doc08:288-293).
         """
         # Lazy: langfuse.openai is a pip extra and traces the generation under the
         # active Bridge-owned trace (tracing.LangfuseTracer.turn); openai supplies
         # the error types. Neither is needed by tests (they use a fake client). A
         # missing extra degrades to Nav2-only (LLMUnavailableError) rather than
-        # crashing the commander cycle (doc08:287-288 fallback).
+        # crashing the commander cycle (doc08:288-292 fallback).
         try:
             import openai
             from langfuse.openai import AsyncOpenAI

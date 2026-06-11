@@ -1,6 +1,6 @@
 """trace_id derivation / normalization for cross-lane Langfuse linking (#73, doc13 §7.5).
 
-The #73 cross-lane agreement (doc13:474-482) keys every self-sent Langfuse score to a
+The #73 cross-lane agreement (doc13:512-520) keys every self-sent Langfuse score to a
 ``trace_id`` that the LLM Bridge (#4) and this orchestrator (#6) derive **deterministically
 from the same seed**, so #6's scores attach to #4's generation trace with zero data
 dependency — and **no frozen-contract change** (trace_id is a Langfuse/Audit join key, not
@@ -16,7 +16,7 @@ a ROS message contract; ``warehouse_interfaces`` is untouched):
   for per-task live linking (predeclared on #4 / #73). Until then ``gen_id`` is usually
   ``None`` → derivation declines → the caller no-ops the score (graceful).
 
-Langfuse trace ids are **32 lowercase hex, no dashes** (W3C trace-context, doc13:478); a
+Langfuse trace ids are **32 lowercase hex, no dashes** (W3C trace-context, doc13:516); a
 dashed UUID is rejected by v4 and orphans the score, so we normalize at the boundary.
 
 Pure stdlib + a lazy/optional ``langfuse`` import (fail-open): with langfuse absent or the
@@ -43,7 +43,7 @@ def seed_for(run_id_value: str, gen_id: int) -> str:
 
 
 def normalize_trace_id(value: str) -> str:
-    """Return a Langfuse-valid 32-hex-no-dash trace id (doc13:478).
+    """Return a Langfuse-valid 32-hex-no-dash trace id (doc13:516).
 
     Strips dashes + lowercases (a 32-hex UUID, dashed or not, normalizes cleanly). Raises
     ``ValueError`` if the result is not 32 hex chars, so a malformed id fails at the boundary

@@ -1,7 +1,7 @@
 """Sim battery publisher node — feeds ``/bot{n}/battery`` so bots reach the situation JSON.
 
 Rationale + the split-brain-proof design live in :mod:`warehouse_sim.battery` (#44 / #156 /
-doc03 §トピック設計 / doc12:207). This node only marshals: read the robot list and the
+doc03 §トピック設計 / doc12:293). This node only marshals: read the robot list and the
 SINGLE battery scale from config — the same ``safety.battery_percentage_scale`` key the
 State Cache (``warehouse_state.state_cache``) and Emergency Guardian
 (``warehouse_safety.emergency_guardian``) read — validate it fail-fast

@@ -5,7 +5,7 @@
 - **ビルド**: ament_python
 - **ノード**: nav2_bridge（FastAPI :8645 + rclpy）
 - **編集境界**: このパッケージ配下のみ。共有契約 `warehouse_interfaces` は変更不可（`.claude/rules/parallel-workflow.md` §4）。
-- **設計正本**: docs/mode-a/12a-integration-mode-a.md:150-415（REST 仕様/エラーコード/200ms monitor）・docs/mode-a/08a-llm-bridge-mode-a.md:398-405・docs/architecture/16:72,187。
+- **設計正本**: docs/mode-a/12a-integration-mode-a.md:149-449（REST 仕様/エラーコード/200ms monitor）・docs/mode-a/08a-llm-bridge-mode-a.md:398-405・docs/architecture/16:72,187。
 
 ## モジュール構成（part 1 = nav2_bridge パッケージ）
 - `core.py` — `Nav2BridgeCore`（**純 / no rclpy / no FastAPI**）：validate → backend.go_to、task_id 採番、`active_tasks`（threading.Lock）、`poll_results`（200ms 完了監視, 注入 clock で wait 期限も判定）。location→coord は**凍結 `locations`**（config==`warehouse_interfaces.locations.KNOWN_LOCATIONS`）。`via` は **WAYPOINTS 契約が未凍結のため同じ凍結 `locations` で検証**（doc12a:351 の WAYPOINTS 辞書は発明しない＝docs-first）。
@@ -30,5 +30,5 @@
 ## 前提・未確定 (TODO / seam)
 - **part 2（実 tool dispatch）**: `warehouse_llm_bridge` の log スタブ executor を実 backend に差し替え。**#81 で同一トラック import が許可**（ci.yml track-aware）されたため in-process `WarehouseTools.dispatch` 注入で確定・採用（#104）。キャンセル手段は **#54 解決**（明示 Hermes `/v1/runs/{id}/stop` 撤回・Layer A は client-side cancel のみ・主担保 B-3+C）に整合。
 - **part 3（MCP→nav2_bridge 配線）**: `warehouse_mcp_server` の `dispatch_task`/`cancel_task` が Policy Gate accept 後に nav2_bridge REST（`/navigate`・`/stop`）へ POST（HTTP client を注入しテストは stub）。境界に `warehouse_mcp_server` 追加（承認済）。**安全クリティカル経路**のため part 1 とは別 commit で慎重に。
-- **Phase 3 実機 verify**: 2× `BasicNavigator` 同居の namespace/singleton 危険（doc12:372）と FastAPI↔rclpy スレッド競合（backend lock で緩和）、readiness（`waitUntilNav2Active`）、feedback の progress/eta は **実 sim/実機で確認**（#67 E2E）。
+- **Phase 3 実機 verify**: 2× `BasicNavigator` 同居の namespace/singleton 危険（doc12:459）と FastAPI↔rclpy スレッド競合（backend lock で緩和）、readiness（`waitUntilNav2Active`）、feedback の progress/eta は **実 sim/実機で確認**（#67 E2E）。
 - **via/WAYPOINTS**: doc12a:351 の WAYPOINTS 辞書は未凍結。現状 `via` は凍結 `locations` で検証。専用 waypoint 契約が要るなら contract PR（発明しない）。

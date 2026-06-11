@@ -65,7 +65,7 @@ jobs:
               "skeleton": {"warehouse_bringup"},
               "sim": {"warehouse_sim"},
               "safety-state": {"warehouse_safety", "warehouse_state"},
-              "nav-traffic": {"warehouse_traffic"},
+              "nav-traffic": {"warehouse_traffic", "warehouse_rmf_adapter"},
               "llm-bridge": {"warehouse_llm_bridge", "warehouse_mcp_server", "warehouse_nav2_bridge"},
               "wo": {"warehouse_orchestrator"},
               "teleop": {"warehouse_teleop"},

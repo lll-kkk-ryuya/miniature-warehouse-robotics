@@ -1,4 +1,4 @@
-# Nav2 parameters — single source for both robots (doc16 §5, doc16:118-119).
+# Nav2 parameters — single source for both robots (doc16 §5, doc16:117).
 #
 # Controller = MPPI (Model Predictive Path Integral). doc09:167-189 chooses MPPI
 # over DWB for the 200mm bottleneck aisle + smooth motion; R-49

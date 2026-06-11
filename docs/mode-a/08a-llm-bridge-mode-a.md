@@ -90,7 +90,7 @@ Mode A/BではClaude自身が交通管理を行うため、velocity、heading、
 
 `predicted_position_3s`は、Mode A/B（Open-RMFなし）でClaude自身が交通管理を行う場合の補助データ。
 
-**計算場所**: `predicted_position_3s` は LLM Bridge Node が State Cache JSON の `position` + `heading`（旧 `pose.yaw` 相当を独立フィールド化＝凍結 `StateSnapshot` に `pose`/`yaw` オブジェクトは無い, doc12:249）と `velocity`（`linear` + `angular`）から **CTRV（等速・等旋回）外挿**で計算する。State Cache Node 側には含めない（Mode C では不要なフィールドのため）。
+**計算場所**: `predicted_position_3s` は LLM Bridge Node が State Cache JSON の `position` + `heading`（旧 `pose.yaw` 相当を独立フィールド化＝凍結 `StateSnapshot` に `pose`/`yaw` オブジェクトは無い, doc12:337）と `velocity`（`linear` + `angular`）から **CTRV（等速・等旋回）外挿**で計算する。State Cache Node 側には含めない（Mode C では不要なフィールドのため）。
 
 一方 `obstacle_distance`（最近傍障害物までの距離 [m]）は **State Cache Node が `/bot{n}/scan` から集約し、`StateSnapshot.robots[].obstacle_distance` として state.json に出力する**（`warehouse_interfaces.schemas.RobotSnapshot`、フィールド名は Situation の `RobotState.obstacle_distance` と一致＝L2→L1 で写し替え不要）。LLM Bridge Node はこの距離から `obstacle_ahead`（真偽値）を導出する（例: `obstacle_distance is not None and obstacle_distance < emergency_min_distance`）。
 
@@ -461,7 +461,7 @@ class CommandParser:
 
 ## フィールド供給元: pending_tasks / current_task / history（#102）
 
-§入力の situation JSON は**形の例示**。各フィールドの実供給元は以下（いずれも LLM Bridge が `Situation` 構築時に付与し、State Cache `StateSnapshot` には含めない＝doc12:249）:
+§入力の situation JSON は**形の例示**。各フィールドの実供給元は以下（いずれも LLM Bridge が `Situation` 構築時に付与し、State Cache `StateSnapshot` には含めない＝doc12:337）:
 
 - **`current_task`**: Bridge が受理 dispatch（`status=="ok"`）から追跡する **in-flight の行先（destination 単体）**。§入力例の `"shelf_1 → berth_A"`（起点→終点）は **illustrative** で、Bridge は起点（pickup）を保持しないため**終点のみ**を格納する（`navigate`→destination / `yield`→retreat_to / `charge`→`charging_station` を set、`stop` で clear、`wait` は据置）。凍結契約 `RobotState.current_task: str | None` は形式無制約なので終点単体で契約合法。
 - **`history`**: Bridge が保持する**有界リング（直近5サイクル）**。`{turn, action:"<bot> <action> <target>", result:<dispatch status>}`。`result` は実際には dispatch の戻り値（`ok`/`rejected`/`error`）。§入力例・パターン2例も実値 `ok` を用いる（`"blocked"` を産出する dispatch 経路は無い＝#55。デッドロックの非進捗は `result` ではなく `status=="idle"` で判断する）。

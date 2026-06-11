@@ -68,9 +68,11 @@ class FakeHermesClient(LLMClient):
         self._contents = [content] if isinstance(content, str) else list(content)
         self._raises = raises
         self.calls = 0
+        self.last_situation: dict | None = None  # the situation the commander last saw
 
     async def decide(self, situation: dict) -> dict:
         self.calls += 1
+        self.last_situation = situation
         if self._raises is not None:
             raise self._raises
         content = self._contents[min(self.calls - 1, len(self._contents) - 1)]
@@ -80,7 +82,10 @@ class FakeHermesClient(LLMClient):
 
 
 def wire_commander(
-    llm: LLMClient, *, forwarder: RecordingNav2Forwarder | None = None
+    llm: LLMClient,
+    *,
+    forwarder: RecordingNav2Forwarder | None = None,
+    pending_tasks: list[dict] | None = None,
 ) -> tuple[BridgeScheduler, RecordingNav2Forwarder, FileStateStore]:
     """Mirror the production node wiring (``llm_bridge.py:110-143``) for the harness.
 
@@ -108,6 +113,9 @@ def wire_commander(
         situation_builder=SituationBuilder(state_store, mode="none"),
         executor=DispatchToolExecutor(tools.dispatch),
         gen_store=gen_store,
+        # Additive: the demo task queue (#181 WAREHOUSE_TASKS seed). Default None -> [] keeps
+        # the slice2 deadlock tests (which pass no tasks) byte-for-byte unchanged.
+        pending_tasks=pending_tasks,
     )
     return scheduler, forwarder, state_store
 

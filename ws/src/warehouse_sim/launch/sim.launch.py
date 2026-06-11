@@ -129,7 +129,7 @@ def _setup(context, *args, **kwargs):
         )
     )
     # Synthetic battery so the State Cache emits each bot (it gates a snapshot on
-    # pose+velocity+battery, doc12:207) → the LLM commander can see the bots (#156).
+    # pose+velocity+battery, doc12:293) → the LLM commander can see the bots (#156).
     # The node reads safety.battery_percentage_scale from config (single source, #44).
     actions.append(
         Node(
@@ -182,14 +182,14 @@ def generate_launch_description() -> LaunchDescription:
                 description="Use the Gazebo /clock sim time (matches nav2_bringup.launch.py:187).",
             ),
             # Synthetic battery publisher (#44/#156). Default on: required for the State
-            # Cache to emit a bot (doc12:207). Tune for a low-battery demo, e.g.
+            # Cache to emit a bot (doc12:293). Tune for a low-battery demo, e.g.
             # battery_initial_percent:=15 battery_floor_percent:=5 to exercise the
             # critical-battery estop / Policy Gate on camera.
             DeclareLaunchArgument(
                 "battery",
                 default_value="true",
                 description="Publish synthetic /bot{n}/battery (#44/#156); needed for bots to "
-                "reach the situation JSON (doc12:207).",
+                "reach the situation JSON (doc12:293).",
             ),
             DeclareLaunchArgument("battery_initial_percent", default_value="100.0"),
             DeclareLaunchArgument("battery_drain_per_min", default_value="1.0"),

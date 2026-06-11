@@ -83,7 +83,7 @@ pip install httpx pydantic  # ROS 2 ワークスペースの requirements に追
 
 本プロジェクト自作の MCP Server。Hermes Gateway が config.yaml に従って **stdio 子プロセスとして起動** するため、独立 daemon 化は不要。ただし `python -m warehouse_mcp_server` で起動できるよう、事前に Python パッケージとして導入しておく必要がある。
 
-> ▶ **dispatch 経路の補足（S2-PR2 HALF B / #4）**: この stdio 子プロセス起動は **Hermes ネイティブのツール実行経路 / 外部 MCP client 用**。S1+S2 採用の commander サイクルでは、Bridge が LLM の Command JSON を `action_map` で写像し `WarehouseTools().dispatch` を **同一トラック in-process** で呼ぶ（#81 / `docs/architecture/08-llm-bridge-common.md:166-168`）。本注記は MCP server 起動形態（§2.4）に対する補足で、Langfuse 観測（§5・#73 所有）には触れない。
+> ▶ **dispatch 経路の補足（S2-PR2 HALF B / #4）**: この stdio 子プロセス起動は **Hermes ネイティブのツール実行経路 / 外部 MCP client 用**。S1+S2 採用の commander サイクルでは、Bridge が LLM の Command JSON を `action_map` で写像し `WarehouseTools().dispatch` を **同一トラック in-process** で呼ぶ（#81 / `docs/architecture/08-llm-bridge-common.md:167-175`）。本注記は MCP server 起動形態（§2.4）に対する補足で、Langfuse 観測（§5・#73 所有）には触れない。
 
 ```bash
 # 開発環境（リポジトリ直下）
