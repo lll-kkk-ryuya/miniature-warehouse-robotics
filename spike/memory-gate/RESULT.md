@@ -1,5 +1,7 @@
 # メモリゲート spike 結果（R-02 / R-38, 段階1 Mac Docker）— **PENDING（未計測 / scaffold）**
 
+> 実行手順・判定・**転記マップ**は [OPERATOR.md](OPERATOR.md)（1枚カード）を参照。本ファイルは実測転記先。
+
 実行日: _TBD_ / ホスト: MacBook Pro M4 16GB, macOS, Docker _TBD_ /
 コンテナ: `mwr-memgate-spike`（`--memory=6g --memory-swap=6g`）。**Jetson 実機なし**の段階1 近似。
 
