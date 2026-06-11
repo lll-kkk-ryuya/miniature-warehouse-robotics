@@ -210,7 +210,7 @@ firmware/.pio/
 
 ## 11. テスト戦略（最小規約）
 
-- 安全機構（Emergency Guardian / Policy Gate）は**ユニットテスト必須**（doc07 R-26）。距離・バッテリー・stale・重複の各拒否ケースを偽入力で検証する。
+- 安全機構（Emergency Guardian / Policy Gate、および firmware の Layer-0 速度クランプ）は**ユニットテスト必須**（doc07 R-26）。距離・バッテリー・stale・重複の各拒否ケースを偽入力で検証する（Layer-0 クランプは非有限 `cmd_vel`→stop・上限超過→クランプを host R-26 unit `firmware/test/test_clamp` で固定。R-26 の本来の対象は Guardian/Policy Gate だが、Layer-0 firmware クランプも同規律の拡張）。
 - LLM Bridge / MCP Server は Gazebo・実機なしで E2E テストできる形に設計する（偽トピック・偽 State Cache JSON で先行検証）。
 - 周期保証（50ms/100ms）は非RT Linux でベストエフォート。Mac Docker では「ロジックの正しさ」のみ検証し、周期実測は Jetson 実機（Phase 0.5 段階2）へ送る。
 
