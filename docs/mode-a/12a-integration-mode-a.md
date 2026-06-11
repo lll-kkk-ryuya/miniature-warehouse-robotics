@@ -457,3 +457,63 @@ t=3.0s   次のサイクル開始
 | Hermes Gateway ARM64非対応 | 低 | **2026-05-26調査: Pure Python wheel、Docker ARM64対応済み、Jetsonユーザー実在。動作する可能性が高い** | 案D（SDK直接） |
 | レイテンシ > 4秒 | 中 | ポーリング間隔を適応的に調整 | 5秒間隔に延長 |
 | State Cache ファイルI/O遅延 | 低 | tmpfs使用（RAMディスク） | REST API方式に変更 |
+
+---
+
+## 補遺: POST /api/v1/navigate 座標ゴール variant と `INVALID_GOAL`（#223 additive）
+
+> 本節は §「[POST /api/v1/navigate](#post-apiv1navigate)」（:236）と §「[エラーコード](#エラーコード)」（:347）を**後方互換で補完**する追補。既存の `doc12a:NNN` 参照（`bringup.launch.py` / `core.py` / `errors.py` 等 ~30件）を動かさないため **doc 末尾に additive** で置く（中段挿入で行ズレ＝[#165 教訓](../dev/03-retrospectives.md)。`docs/architecture/16-repository-and-conventions.md` の末尾追記原則）。
+> 設計意図の正本は **`docs/mode-a/11a-traffic-mode-a.md:431-466`（§9, ≥0.15m head-on デモ）／:455**。実装の正本は `ws/src/warehouse_nav2_bridge/warehouse_nav2_bridge/core.py:106-148`（座標 helper）・`160-197`（`navigate` 入口）・`errors.py:13-21`・`app.py:29-48`。
+> **契約位置づけ**: 座標 `goal` は **本パッケージ自身の REST API の additive optional 引数**であり、凍結契約 `warehouse_interfaces`（`KNOWN_LOCATIONS` / `schemas`）には**座標キーを足さない**＝ `contract` ラベル不要。
+
+### なぜ座標ゴールが要るか（`11a-traffic-mode-a.md:455`）
+
+`#### POST /api/v1/navigate` の `destination` は凍結 `locations`（`KNOWN_LOCATIONS` 9地点）の**名前**に限られる。しかし ≥0.15m head-on デモ（doc11a §9）の南端ゴールは **隘路整列座標**（通路A 中心列 x≈0.45・通路B x≈0.95, y≈0.12）で、名前付き location には**存在しない**: 南側 `shipping_station` / `charging_station`（y=0.1）は shelf 直下で robot 中心を置けず**到達不能**（`11a-traffic-mode-a.md:455`）。そこで `navigate` に **inline 座標 `goal`** を additive に受理させる（`core.py:160-197`）。
+
+### Request（座標ゴール）
+
+名前 `destination` の**代わりに** `goal` 配列 `[x, y]`（または `[x, y, yaw]`）を渡す。`destination` と `goal` は **排他（XOR）**: 両方／両方無しは `INVALID_GOAL`(400)（`core.py:134-139`）。`via`（名前付きウェイポイント）は座標ゴールでも従来どおり前置できる（`core.py:141-142`）。
+
+```json
+{
+  "robot": "bot1",
+  "goal": [0.45, 0.12]
+}
+```
+
+- `goal` は `KNOWN_LOCATIONS` 名ではなく **map フレームの直接座標**。名前→座標の `_coord` を通さず backend へ直送される（`core.py:143-146`）。HTTP body の型は `list[float]`（`app.py:34-36`）。
+- 第3要素 `yaw` は受理されるが **drop される**: backend の `Pose` は `(x, y)`、goal orientation は `w=1.0` 固定（`nav2_bridge.py:73-80`）。yaw を効かせるのは別変更（**DEFERRED**）。
+- **map 範囲チェックは無い**: world extent は本 Bridge の所有物ではない（sim/Nav2 の領分）。到達不能ゴールは Nav2 planner が弾く（docs-first＝範囲境界を発明しない, `core.py:110-112`）。
+
+### Response (200)（座標ゴール）
+
+名前ゴールの応答は**従来どおり**（`{...,"destination":"shelf_1"}`・後方互換）。座標ゴールの応答は `destination` が `null`、`goal` に `[x, y]`（yaw は echo でも drop）を返す（`core.py:146`）:
+
+```json
+{
+  "task_id": "nav_001",
+  "status": "accepted",
+  "robot": "bot1",
+  "destination": null,
+  "goal": [0.45, 0.12]
+}
+```
+
+完了通知（`/nav2_bridge/goal_result`）・実行中（`ALREADY_NAVIGATING` 409）・未起動（`NAV2_NOT_READY` 503）の挙動は名前ゴールと同一（§「POST /api/v1/navigate」/ §「エラーコード」）。
+
+### エラーコード追補: `INVALID_GOAL`（400）
+
+§「エラーコード」の表に以下を**追加**（実装: `errors.py:13-21`・`core.py:114-139`）:
+
+| HTTP | エラーコード | 意味 |
+|------|------------|------|
+| 400 | `INVALID_GOAL` | `destination` と `goal` の **両方指定／両方未指定**（XOR 違反）、または `goal` が **(x, y) / (x, y, yaw) 以外**（文字列・要素数不正・非数値・非有限 NaN/Inf） |
+
+具体的な `detail`（`core.py`）:
+
+- XOR 違反（両方／両方無し）: `"navigate requires exactly one of destination (named) or goal (coordinate)"`（`core.py:134-139`）。
+- 形式不正（tuple/list でない・要素数が 2/3 でない・文字列）: `"goal must be (x, y) or (x, y, yaw)"`（`core.py:114-115`）。文字列は明示拒否（`"12"` の float 反復で `(1.0, 2.0)` 化する事故を防ぐ）。
+- 非数値: `"goal coordinates must be numbers"`（`core.py:116-119`）。
+- 非有限（NaN/Inf）: `"goal coordinates must be finite"`（`core.py:120-121`）。
+
+エラーレスポンス形式は §「エラーコード」と同一（`{"status":"error","error_code":"INVALID_GOAL","detail":...}`, `errors.py:31-33`）。
