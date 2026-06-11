@@ -20,11 +20,13 @@ Composition (doc09:232, doc11a:166-321, doc16 §5):
     used without this launch (#125).
   - per bot{n}: twist_mux (emergency prio100 > nav2 prio10, twist_mux.yaml),
     muxed output remapped cmd_vel_out -> cmd_vel => /bot{n}/cmd_vel (the topic the
-    sim ros_gz_bridge + real base consume). BOTH Nav2 velocity producers —
-    controller_server and behavior_server (recoveries) — remap cmd_vel ->
-    cmd_vel/nav2 so they enter twist_mux as the priority-10 input (a producer that
-    skipped the remap would write /bot{n}/cmd_vel directly and bypass the mux,
-    defeating the Emergency Guardian's prio-100 override).
+    sim ros_gz_bridge + real base consume). Every Nav2 velocity producer enters
+    twist_mux as the priority-10 input cmd_vel/nav2 (a producer writing /bot{n}/cmd_vel
+    directly would bypass the mux and defeat the Emergency Guardian's prio-100 override).
+    behavior_server (recoveries) remaps cmd_vel -> cmd_vel/nav2 (Open ⑥ bypass, #126).
+    controller_server's remap is MODE-CONDITIONAL (#126): Mode A/B -> cmd_vel/nav2_raw
+    (consumed by collision_monitor, which republishes cmd_vel/nav2); Mode C (open-rmf,
+    collision_monitor gated off) -> cmd_vel/nav2 directly.
   - VirtualScan x2, gated OFF under traffic_mode == open-rmf (doc11a:317): Mode C
     (Open-RMF) handles traffic, so the Multi-Robot Costmap Layer is not started.
 
@@ -101,6 +103,31 @@ def _per_robot_group(
         convert_types=True,
     )
 
+    # ── collision_monitor (R-39 #126) ──────────────────────────────────────────────
+    # Physical proximity reflex inserted on the Nav2 velocity path, UPSTREAM of twist_mux's
+    # prio-10 nav2 input (emergency prio-100 FROZEN + untouched, doc12:545②). Per-bot params:
+    # substitute the <robot_namespace> frame token, then inject use_sim_time (root_key=robot).
+    collision_params_file = PathJoinSubstitution(
+        [FindPackageShare("warehouse_bringup"), "config", "collision_monitor.yaml"]
+    )
+    ns_collision_params = ReplaceString(
+        source_file=collision_params_file,
+        replacements={"<robot_namespace>": robot},
+    )
+    configured_collision_params = RewrittenYaml(
+        source_file=ns_collision_params,
+        root_key=robot,
+        param_rewrites={"use_sim_time": use_sim_time},
+        convert_types=True,
+    )
+    # Mode A/B route the controller THROUGH collision_monitor; Mode C (open-rmf) gates the
+    # monitor OFF and the controller publishes cmd_vel/nav2 DIRECTLY — otherwise cmd_vel/nav2_raw
+    # would have no consumer and twist_mux's nav2 input would go dead (doc12:543,550 / 11a:317).
+    collision_active = IfCondition(PythonExpression(["'", traffic_mode, "' != 'open-rmf'"]))
+    controller_cmd_vel = PythonExpression(
+        ["'cmd_vel/nav2_raw' if '", traffic_mode, "' != 'open-rmf' else 'cmd_vel/nav2'"]
+    )
+
     nav_nodes = [
         PushRosNamespace(robot),
         SetParameter("use_sim_time", use_sim_time),
@@ -118,8 +145,10 @@ def _per_robot_group(
             name="controller_server",
             output="screen",
             parameters=[configured_params],
-            # Controller output -> twist_mux priority-10 input (twist_mux.yaml).
-            remappings=[("cmd_vel", "cmd_vel/nav2")],
+            # Controller output -> collision_monitor (cmd_vel/nav2_raw) in Mode A/B, or DIRECT to
+            # the twist_mux prio-10 input (cmd_vel/nav2) in Mode C where the monitor is gated off
+            # (#126). The target is mode-conditional so cmd_vel/nav2_raw always has a consumer.
+            remappings=[("cmd_vel", controller_cmd_vel)],
         ),
         Node(
             package="nav2_planner",
@@ -140,11 +169,13 @@ def _per_robot_group(
             name="behavior_server",
             output="screen",
             parameters=[configured_params],
-            # Recovery velocities (Spin/BackUp/DriveOnHeading) ALSO go through
-            # twist_mux as the priority-10 nav2 input — NOT directly to
-            # /bot{n}/cmd_vel — or they would bypass the mux and let a Nav2
-            # recovery overwrite the Emergency Guardian's prio-100 e-stop. Matches
-            # controller_server and the official Nav2 Jazzy navigation_launch.py.
+            # Recovery velocities (Spin/BackUp/DriveOnHeading) go to twist_mux's priority-10
+            # nav2 input — NOT directly to /bot{n}/cmd_vel — or they would bypass the mux and
+            # let a Nav2 recovery overwrite the Emergency Guardian's prio-100 e-stop.
+            # #126 Open ⑥ (doc12:552⑥): recovery currently BYPASSES collision_monitor (publishes
+            # cmd_vel/nav2 directly, NOT cmd_vel/nav2_raw). Recoveries move TOWARD the obstacle,
+            # so routing them through the stop polygon could deadlock in the R-42 200mm aisle;
+            # routing recovery through the monitor is deferred to the Open ⑥ decision (docs PR).
             remappings=[("cmd_vel", "cmd_vel/nav2")],
         ),
         Node(
@@ -163,6 +194,32 @@ def _per_robot_group(
                 {"autostart": autostart},
                 {"node_names": _LIFECYCLE_NODES},
             ],
+        ),
+        # collision_monitor: physical proximity reflex (R-39 #126). Subscribes the controller's
+        # cmd_vel/nav2_raw + /bot{n}/{scan,virtual_scan}; on a stop-polygon breach it republishes
+        # a zero Twist to cmd_vel/nav2 (twist_mux prio-10). Gated OFF under Mode C (Open-RMF owns
+        # traffic). Output is cmd_vel/nav2 ONLY — never cmd_vel/emergency — so the Guardian's
+        # prio-100 override stays intact (doc12:545②, R-26). It runs under its OWN gated
+        # lifecycle_manager: a conditional entry in _LIFECYCLE_NODES is not expressible against a
+        # runtime traffic_mode, and a single manager would orphan-wait on a Mode-C-absent node.
+        Node(
+            package="nav2_collision_monitor",
+            executable="collision_monitor",
+            name="collision_monitor",
+            output="screen",
+            parameters=[configured_collision_params],
+            condition=collision_active,
+        ),
+        Node(
+            package="nav2_lifecycle_manager",
+            executable="lifecycle_manager",
+            name="lifecycle_manager_collision_monitor",
+            output="screen",
+            parameters=[
+                {"autostart": autostart},
+                {"node_names": ["collision_monitor"]},
+            ],
+            condition=collision_active,
         ),
         # twist_mux: relative inputs cmd_vel/{emergency,nav2} resolve under /bot{n};
         # remap default output cmd_vel_out -> cmd_vel => /bot{n}/cmd_vel.
