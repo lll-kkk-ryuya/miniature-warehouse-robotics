@@ -434,7 +434,7 @@ Phase 4: YouTube比較検証
 > → `11c:343-371`** などの inbound file:line 参照を silent に壊す（cross-doc の file:line 参照が腐敗する）。
 > よって **行ドリフト回避のため EOF に追記**する。内容は §3.5 D の残未決（`:279-284`）に対応する。
 
-**as-of 2026-06-10。** レーン `feat/rmf-adapter`（worktree `mwr-rmf-adapter`・track #180）。R-38 メモリ
+**as-of 2026-06-11。** レーン `feat/rmf-adapter`（worktree `mwr-rmf-adapter`・track #180）。R-38 メモリ
 ゲート（#187, `docs/shared/07-research-notes.md:243`）は **OPEN（Go/No-Go 未確定）**。よって本レーンは
 **BLOCKED**＝GATE-前の成果は **設計／docs／パッケージ scaffold のみ**（実装・`colcon build`・apt・live は
 GATE 通過後）。新規 scaffold = `ws/src/warehouse_rmf_adapter/`（`fleet_adapter.py` = `navigate`/`stop`/
@@ -469,12 +469,14 @@ GATE 通過後）。新規 scaffold = `ws/src/warehouse_rmf_adapter/`（`fleet_a
 
 ### governance（本レーン編集境界外＝orchestrator 調整）
 
-- **新 pkg `warehouse_rmf_adapter`(nav-traffic) の登録が doc16 の 4 箇所 + CI map で未追記**:
-  ① §1 ディレクトリツリー（`docs/architecture/16-repository-and-conventions.md:24-51`・`warehouse_traffic/` の隣）
-  ② §2 パッケージ命名・責務一覧（`:60-77`・`warehouse_traffic`/`warehouse_nav2_bridge` 行の隣）
-  ③ §9 ブランチ表（`:182-191`・§9 見出し `:178`・`feat/nav-traffic` 行に担当ディレクトリ追記）
-  ④ CI の越境 import チェック `tracks` map（`.github/workflows/ci.yml`）。
-  現状 `warehouse_interfaces` のみ依存（実 import は `from __future__` のみ）で CI は通るが、①〜④を **nav-traffic** として揃える追記が要る。
+- **新 pkg `warehouse_rmf_adapter`(nav-traffic) の登録**（tracked: #221）:
+  - **④ CI の越境 import チェック `tracks` map（`.github/workflows/ci.yml`）= 完了済**（#222 / `a0ce17a` で
+    `warehouse_rmf_adapter` を nav-traffic に登録。main では本 PR 着地まで inert）。
+  - 残 doc16 **3 箇所**（行挿入が inbound file:line 参照をシフトするためクロストラック扱い・#221 で別 PR）:
+    ① §1 ディレクトリツリー（`docs/architecture/16-repository-and-conventions.md:24-51`・`warehouse_traffic/` の隣）
+    ② §2 パッケージ命名・責務一覧（`:60-77`・`warehouse_traffic`/`warehouse_nav2_bridge` 行の隣）
+    ③ §9 ブランチ表（`:182-191`・§9 見出し `:178`・`feat/nav-traffic` 行に担当ディレクトリ追記）
+    現状 `warehouse_interfaces` のみ依存（実 import は `from __future__` のみ）で CI は通る（④登録済でも import 検査は inert）。①〜③を **nav-traffic** として #221 で揃える。
 - **#180 の `Blocked by`** が「R-38（issue 無し）」表記 → **#187** へ張替推奨。
 - **#180 本文の worktree タグ** `mwr-modec-fleet` / `feat/modec-fleet-adapter` が本レーンの実名
   `mwr-rmf-adapter` / `feat/rmf-adapter` と**不一致** → orchestrator で統一要。

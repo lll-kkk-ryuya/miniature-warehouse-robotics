@@ -59,13 +59,14 @@
   4. `rmf_traffic` schedule/negotiation 配線負荷（Navigation Graph / traffic profile / footprint）の定量。
   5. RMF Navigation Graph ↔ 9 locations / Gazebo 地図の整合（waypoint/lane を発明しない）。
   6. 200mm 隘路（#124）・≤0.3 m/s で RMF デコンフリクトが有効か sim 検証。
-- **governance（本レーン編集境界外＝orchestrator 調整）**:
-  - 新 pkg `warehouse_rmf_adapter`(nav-traffic) の登録は doc16 の **4 箇所** + CI map が未追記:
+- **governance（本レーン編集境界外＝orchestrator 調整・tracked: #221）**:
+  - **④ CI 越境 import チェックの `tracks` map（`.github/workflows/ci.yml`）= 完了済**（#222 / `a0ce17a` で
+    `warehouse_rmf_adapter` を nav-traffic に登録。本 PR 着地まで inert）。
+  - 残 doc16 **3 箇所**（#221・行挿入が inbound file:line 参照をシフトするためクロストラック扱い・別 PR）:
     ① §1 ディレクトリツリー（docs/architecture/16-repository-and-conventions.md:24-51・`warehouse_traffic/` の隣）
     ② §2 パッケージ命名・責務一覧（`:60-77`・`warehouse_traffic`/`warehouse_nav2_bridge` 行の隣）
     ③ §9 ブランチ表（`:182-191`・§9 見出し `:178`・`feat/nav-traffic` 行に担当ディレクトリ追記）
-    ④ CI 越境 import チェックの `tracks` map（`.github/workflows/ci.yml`）。
-    現状 `warehouse_interfaces` のみ依存（実 import は `from __future__` のみ）なので CI は通るが、①〜④を nav-traffic として揃える追記が要る。
+    現状 `warehouse_interfaces` のみ依存（実 import は `from __future__` のみ）で CI は通る（④登録済でも import 検査は inert）。①〜③は #221 で nav-traffic として揃える。
   - #180 の `Blocked by` が「R-38（issue 無し）」表記 → #187 へ張替推奨。
   - issue #180 本文の worktree タグは `mwr-modec-fleet` / `feat/modec-fleet-adapter`（本レーンの実名
     `mwr-rmf-adapter` / `feat/rmf-adapter` と不一致）→ orchestrator で統一要。
