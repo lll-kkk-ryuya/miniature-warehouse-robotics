@@ -1,0 +1,5 @@
+# Raw per-run verify dumps (verify.py output). The distilled ①〜⑤ verdict lives in RESULT.md;
+# raw JSON dumps stay uncommitted. They carry NO secrets (verify.py never writes a key value),
+# but are run-specific artifacts, not source.
+out/
+logs/
