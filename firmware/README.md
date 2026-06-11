@@ -36,7 +36,7 @@ pio test -e native        # PlatformIO + Unity（pio がある場合）
 # pio が無い環境では g++/clang フォールバック（同梱 Unity shim）:
 bash test/run_host_test.sh
 ```
-- 固定する契約: 境界（>上限→上限 / <−上限→−上限 / 素通し / 上限ちょうど / 0）＋ `MAX_LINEAR_VELOCITY == 0.3 m/s`（safety.md / `docs/architecture/12-infrastructure-common.md:77`）＋ `MAX_*_VELOCITY > 0`（負上限=runaway ガード）。
+- 固定する契約: 境界（>上限→上限 / <−上限→−上限 / 素通し / 上限ちょうど / 0）＋ **非有限（NaN/±Inf）→ stop**（fail-safe・`warehouse_interfaces/safety.py:31-32` と一致）＋ `MAX_LINEAR_VELOCITY == 0.3 m/s`（safety.md / `docs/architecture/12-infrastructure-common.md:77`）＋ `MAX_*_VELOCITY > 0`（負上限=runaway ガード）。
 - `MAX_ANGULAR_VELOCITY=2.0`（`include/config.h:10`）は **Phase 1 実測 placeholder**＝テストは境界動作のみ固定。
 - CI 組込み（`.github/**`）は governance 所有のため本 PR では行わず follow-up 提案に留める。
 

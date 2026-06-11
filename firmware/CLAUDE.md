@@ -19,7 +19,7 @@
 ## テスト
 - **Layer-0 速度クランプ（R-26 安全 unit）**: 純ロジックを `include/safety_clamp.h`（Arduino 非依存）に抽出し、`test/test_clamp/` で host 検証する（ESP32 不要）。
   - `pio test -e native`（PlatformIO + Unity）。`pio` 不在なら `bash test/run_host_test.sh`（g++/clang + 同梱 Unity shim、同一テスト源）。**どちらも緑が必須**。
-  - 固定する契約: 境界（>上限→上限 / <−上限→−上限 / 範囲内素通し / 上限ちょうど / 0）＋ **`MAX_LINEAR_VELOCITY == 0.3 m/s`（safety.md / doc12:77）** ＋ `MAX_*_VELOCITY > 0`（負上限=runaway ガード）。`MAX_ANGULAR_VELOCITY=2.0` は Phase 1 実測 placeholder（境界動作のみ固定）。
+  - 固定する契約: 境界（>上限→上限 / <−上限→−上限 / 範囲内素通し / 上限ちょうど / 0）＋ **非有限（NaN/±Inf）→ stop**（fail-safe・`safety.py:31-32` と一致・#235）＋ **`MAX_LINEAR_VELOCITY == 0.3 m/s`（safety.md / doc12:77）** ＋ `MAX_*_VELOCITY > 0`（負上限=runaway ガード）。`MAX_ANGULAR_VELOCITY=2.0` は Phase 1 実測 placeholder（境界動作のみ固定）。
 - R-37 多重接続は `firmware/spike/run_spike.sh all`（ESP32 不要、Docker のみ）で再現・計測可能。
 
 ## 提供 (produce) / 消費 (consume)
