@@ -146,6 +146,7 @@ def test_mode_c_forwarder_none_charge_actuates_nothing(
     result = asyncio.run(DispatchToolExecutor(tools.dispatch).execute(tool_call))
 
     assert result["status"] == "ok"
+    assert result.get("robot") == "bot1"
     assert tools._nav2_forwarder is None
 
 
