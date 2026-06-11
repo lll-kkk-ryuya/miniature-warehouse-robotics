@@ -10,7 +10,7 @@
 #
 # WHY a harness (not ad-hoc): Phase 4's 4-provider × 3-mode comparison presumes a verifiable
 # observability layer — 1 Bridge-owned trace/cycle (no double generation), a deterministic
-# trace_id #4/#6 both derive, and cost≠0 for all four (incl. Grok). doc20 §8.4.3 says these are
+# trace_id #4/#6 both derive, and cost≠0 for all four (incl. Grok). doc20 §8.4 item3 says these are
 # confirmable ONLY against real Langfuse. Turnkey-ing the run keeps Phase 3→4 off the critical path.
 #
 # Usage:
@@ -50,7 +50,7 @@ case "${1:-}" in
     echo "selftest: PASS (offline core green)" ;;
 
   setup)
-    # Live verify needs the v4 SDK (doc13:514) + openai (Bridge-owned langfuse.openai path, doc08:517).
+    # Live verify needs the v4 SDK (doc13:514) + openai (Bridge-owned langfuse.openai path, doc13:517).
     # Offline selftest needs NEITHER — this is only for the human-gated live run.
     echo "=== pip install langfuse + openai (for LIVE verify only) ==="
     "$PY" -m pip install --quiet 'langfuse>=4.7,<5' 'openai>=1.0' \
@@ -79,7 +79,11 @@ BANNER
     GP_ARG=()
     [ -n "${LANGFUSE_GROK_PRICES:-}" ] && GP_ARG=(--grok-prices "$LANGFUSE_GROK_PRICES")
     echo "  verifying active_provider='$prov' against $BASE_URL ..."
-    "$PY" "$SPIKE_DIR/verify.py" -p "$prov" --base-url "$BASE_URL" --env-file "$ENV_FILE" "${GP_ARG[@]}"
+    # NOTE: "${GP_ARG[@]+"${GP_ARG[@]}"}" — guard the empty-array expansion. Under `set -u`, macOS
+    # bash 3.2 (the dev machine, CLAUDE.md) treats "${GP_ARG[@]}" on an EMPTY array as an unbound
+    # variable and aborts (exit 127) BEFORE verify.py runs. LANGFUSE_GROK_PRICES is optional/xAI-only
+    # (README §LIVE), so anthropic|openai|google leave it unset — this guard keeps them runnable.
+    "$PY" "$SPIKE_DIR/verify.py" -p "$prov" --base-url "$BASE_URL" --env-file "$ENV_FILE" "${GP_ARG[@]+"${GP_ARG[@]}"}"
     echo "  done. Repeat for the other providers, then: ./run.sh report" ;;
 
   report)

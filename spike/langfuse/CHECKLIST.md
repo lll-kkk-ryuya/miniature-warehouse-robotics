@@ -56,7 +56,7 @@
   - **v4 価格フィールドの形**（`prices:{input,output}` ネスト vs flat `input_price`/`output_price`）= live 確認。
   - 本書の単価は**期待値**。verify.py は価格を `--grok-prices`/`LANGFUSE_GROK_PRICES` で**注入**（コード固定しない）。
 
-## v4 score metadata group-by 可否（doc08:518 / doc20 §8.4.2）
+## v4 score metadata group-by 可否（doc08:518 / doc20 §8.4 item2）
 - 期待（live）: v4 で score の `metadata` に group-by できるか。**不可なら** doc08:515 の score `name` 符号化（例 `result__claude__open-rmf`）を採用。
 - [ ] live 取得値: _未計測_
 

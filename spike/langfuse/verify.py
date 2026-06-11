@@ -4,7 +4,7 @@
 Phase 4 compares 4 providers × 3 traffic modes, which presumes a verifiable Langfuse
 observability layer: **a single Bridge-owned trace per cycle (no double generation),
 a deterministic ``trace_id`` that #4 and #6 derive identically, and a non-zero cost for
-all four providers (incl. xAI Grok)**. doc20 §8.4.3 says these can be confirmed ONLY
+all four providers (incl. xAI Grok)**. doc20 §8.4 item3 says these can be confirmed ONLY
 against a real Langfuse (4.7.x) + Hermes + 4 provider keys — a paid, human-gated run.
 
 This module is the **turnkey harness** for that run, in two halves (mirroring
@@ -16,7 +16,7 @@ driver behind a human gate):
   the Grok offline-cost arithmetic, and the ①〜⑤ assertions. These are unit-tested with
   a **fake Langfuse client** (``test_verify.py``) and need no SDK, no network, no keys.
 * **Live driver (human gate)** — ``run_live`` calls Hermes through the Bridge-owned
-  ``langfuse.openai`` path (doc08:517), flushes, reads the trace back, and feeds the real
+  ``langfuse.openai`` path (doc13:517), flushes, reads the trace back, and feeds the real
   readback to the same predicates. Requires real keys + Hermes; **dev-only, fail-closed**.
 
 Boundary (kickoff / parallel-workflow §2.1): this spike is **independent of the ROS
@@ -211,7 +211,7 @@ def single_generation(trace: Mapping[str, object]) -> bool:
     """③ Exactly one generation per cycle trace — i.e. NO double generation (doc13:520③).
 
     A double generation (e.g. Hermes's own Langfuse plugin left enabled on top of the Bridge-owned
-    trace, doc08:517) would double-count cost/latency and corrupt the comparison.
+    trace, doc13:517) would double-count cost/latency and corrupt the comparison.
     """
     return len(generations_of(trace)) == 1
 
@@ -335,7 +335,7 @@ def sdk_version() -> str | None:
 def make_traced_call(
     base_url: str, api_key: str, public_key: str, secret_key: str
 ) -> Callable[[str], dict]:
-    """Build ``call(seed) -> readback`` that makes ONE Bridge-owned traced Hermes call (doc08:517).
+    """Build ``call(seed) -> readback`` that makes ONE Bridge-owned traced Hermes call (doc13:517).
 
     Mirrors the production trace ownership: a ``langfuse.openai`` OpenAI client (so the SDK owns the
     generation) pointed at Hermes (``base_url/v1``), with the trace id seeded from ``f"{run_id}:{gen_id}"``
@@ -344,7 +344,7 @@ def make_traced_call(
     the exact fetch field shapes are UNVERIFIED (doc08:508), so ``fetch_trace`` parses defensively.
     """
     from langfuse import get_client  # lazy/optional
-    from langfuse.openai import OpenAI  # lazy: Bridge-owned generation wrapper (doc08:517)
+    from langfuse.openai import OpenAI  # lazy: Bridge-owned generation wrapper (doc13:517)
 
     # langfuse reads its own creds from env; set them for this process if passed explicitly.
     os.environ.setdefault(_ENV_LF_PUBLIC, public_key)

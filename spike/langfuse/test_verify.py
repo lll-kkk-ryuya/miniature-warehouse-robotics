@@ -143,9 +143,13 @@ def test_grok_cost_arithmetic() -> None:
 
 
 def test_grok_cost_alias_keys_and_bool_excluded() -> None:
-    # OpenAI-compatible aliases parsed; a stray bool must NOT count as a token (bool ⊂ int).
-    usage = {"prompt_tokens": 1000, "completion_tokens": 200, "cached": True}
+    # OpenAI-compatible aliases are parsed (prompt_tokens/completion_tokens).
+    usage = {"prompt_tokens": 1000, "completion_tokens": 200}
     assert grok_cost_usd(usage, 1e-6, 2e-6) == pytest.approx(1000e-6 + 400e-6)
+    # A stray bool on a FIRST-inspected token key must count as 0, not 1 (bool ⊂ int): this exercises
+    # the `not isinstance(value, bool)` guard in _token_count. With the guard: 0 + 5*2e-6 = 10e-6;
+    # WITHOUT it the True coerces to 1 → 1e-6 + 10e-6 = 11e-6, so the assertion fails (mutation caught).
+    assert grok_cost_usd({"input": True, "output": 5}, 1e-6, 2e-6) == pytest.approx(10e-6)
 
 
 def test_grok_cost_zero_tokens_is_zero() -> None:
@@ -275,6 +279,37 @@ def test_evaluate_trace_no_price_fails_cost_check() -> None:
     tid = "0123456789abcdef0123456789abcdef"
     ev = evaluate_trace(_good_readback(tid), expected_trace_id=tid, grok_prices=None)
     assert not ev["check2_all_costs_nonzero"]
+
+
+def test_evaluate_trace_empty_generations_not_green() -> None:
+    # A readback with ZERO generations must NOT report ②/④ as pass: all([])==True would FALSE-GREEN
+    # the cost gate (a trace that captured no generation at all). Pins the `bool(per_gen) and ...` guards.
+    tid = "0123456789abcdef0123456789abcdef"
+    ev = evaluate_trace(
+        {"trace_id": tid, "generations": []}, expected_trace_id=tid, grok_prices=(1e-6, 2e-6)
+    )
+    assert not ev["check2_all_costs_nonzero"]
+    assert not ev["check4_any_managed_prompt"]
+    assert not ev["check3_single_generation"]
+
+
+def test_evaluate_trace_mixed_generations_pins_all_any() -> None:
+    # One priced+prompted gen and one unpriceable+prompt-less gen. ② uses all() → must be False (the
+    # exact ②-failure this spike catches if it slips to any()); ④ uses any() → must stay True.
+    tid = "0123456789abcdef0123456789abcdef"
+    rb = {
+        "trace_id": tid,
+        "generations": [
+            {"model": "claude", "cost": 0.01, "prompt": {"name": "commander", "version": 1}},
+            {
+                "model": "grok-4.3",
+                "usage_details": {"input": 100},
+            },  # no native cost, no price → unpriceable
+        ],
+    }
+    ev = evaluate_trace(rb, expected_trace_id=tid, grok_prices=None)
+    assert not ev["check2_all_costs_nonzero"]  # all([True, False]) == False
+    assert ev["check4_any_managed_prompt"]  # any([True, False]) == True
 
 
 # ── live guards (hermetic: no network, no real keys) ────────────────────────────────────────
