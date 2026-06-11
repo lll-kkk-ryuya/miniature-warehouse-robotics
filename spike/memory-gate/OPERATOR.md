@@ -18,7 +18,7 @@
 - [ ] `cd spike/memory-gate` にいる。
 
 ## 1. 実行（4ステップ・順に）
-`MEMGATE_REQUIRE_HERMES=1` を付ける＝**Hermes 未計上の FLOOR を測らせない**（GO の3条件の1つ）。
+`MEMGATE_REQUIRE_HERMES=1` を付ける＝**Hermes 未計上の FLOOR を測らせない**（GO 4条件の1つ＝Hermes counted。ただし stack-not-live FLOOR は別系統＝§2 参照）。
 
 ```bash
 cd spike/memory-gate
@@ -38,26 +38,33 @@ export MEMGATE_REQUIRE_HERMES=1            # FLOOR を hard-fail（exit 3）。G
 ./run.sh report | tee logs/report.txt     # 要約＋判定行を表示・保存（転記の元）
 ```
 
-## 2. 判定（`report` の判定行を上から読む）
-**`report` は2行の判定を出す。上から順に**:
+## 2. 判定（`report` を**末尾まで**読む）
+`report` は **FLOOR 信号を2系統**（**上段**と**末尾**）出し、その間に本体判定（R-38）を出す。**3つ全部**を見る:
 
-1. **`VERDICT: FLOOR — NOT a GO ...`** が出ていたら → **FLOOR**（Hermes 未計上＝Mode A/B 過小計測）。
+1. **上段 `VERDICT: FLOOR — NOT a GO ...`**（`verdict_line`・**Hermes 未計上時のみ**）→ **FLOOR**（Mode A/B 過小計測）。
    `MEMGATE_REQUIRE_HERMES=1` なら通常ここに来ず、`run`/`measure`/`report` が先に `REFUSED ...` で
    exit 3 する。出たら GO 不可 → §4 で Hermes を直して再 setup。
 
-2. **`VERDICT (R-38): ...`** ＝本体判定:
+2. **本体 `VERDICT (R-38): ...`**（`compute_verdict_awk`）:
 
-| `report` の文言 | 意味 | 判定 |
-|---|---|---|
-| `OOM OBSERVED => 段階1 FAIL` | OOM 発火（最優先） | **FAIL** — 実機でも落ちる(doc06:94)。設計縮退して再測 |
-| `headroom < 500MB => ... No-Go-leaning` | 残RAM<500MB | **No-Go 寄り**(07:243) |
-| `... headroom >= 500MB => 段階1 GO-leaning` | OOM無・残RAM≥500MB | **GO 寄り**（要段階2。Open-RMF 実体は未測） |
-| `OOM UNKNOWN ...` | cgroup v1 等で oom counter 不可 | `logs/measure_oom.txt` 確認後に判断 |
-| `INVALID ...` | cgroup 計測不能 | `./run.sh measure` 再実行 |
+   | `report` の文言 | 意味 | 判定 |
+   |---|---|---|
+   | `OOM OBSERVED => 段階1 FAIL` | OOM 発火（最優先） | **FAIL** — 実機でも落ちる(doc06:94)。設計縮退して再測 |
+   | `headroom < 500MB => ... No-Go-leaning` | 残RAM<500MB | **No-Go 寄り**(doc06:98/07:212; gate=07:243) |
+   | `... headroom >= 500MB => 段階1 GO-leaning` | OOM無・残RAM≥500MB | **GO 寄り**（ただし下の3・GO 4条件を**両方**満たす時だけ。要段階2） |
+   | `OOM UNKNOWN ...` | cgroup v1 等で oom counter 不可 | `logs/measure_oom.txt` 確認後に判断 |
+   | `INVALID ...` | cgroup 計測不能 | `./run.sh measure` 再実行。続く（stack 死亡の疑い）なら `run` → だめなら `clean && setup` |
 
-> **GO の3条件（すべて満たす）**: **OOM 無 ∧ 残RAM ≥ 500MB ∧ Hermes counted（＝FLOOR 行が出ていない）**。
+3. **末尾 `⚠️ FLOOR: ...`**（`floor_notes`・**0〜2本**）→ **1本でも出たら FLOOR＝GO 不可**:
+   - `⚠️ FLOOR: Hermes daemon NOT counted ...`（Hermes 未計上）
+   - `⚠️ FLOOR: core stack was not fully live ...`（**Nav2/gz が `SETTLE=120s` 内に出揃わず＝過小計測**。
+     `report` 冒頭の `core stack live: no` と対応）。⚠️ **`MEMGATE_REQUIRE_HERMES=1` はこの stack-not-live を
+     refuse しない**（Hermes だけを gate）＝`core stack live: yes` は手動で必ず確認する。
+
+> **GO の4条件（すべて満たす）**: **OOM 無 ∧ 残RAM ≥ 500MB ∧ Hermes counted ∧ core stack live**
+> ＝ `report` 冒頭が `hermes daemon counted: yes` **かつ** `core stack live: yes`、**かつ末尾に `⚠️ FLOOR` 行が1本も無い**。
 > - **GO** → **#180 rmf-adapter（Mode C 本実装）** + **#221 governance** を解錠。
-> - **No-Go / FAIL** → **Mode B 格下げ**（doc07:243）。Mode C は初回公開から分離（`project_release_strategy`）。
+> - **No-Go / FAIL / FLOOR** → **Mode B 格下げ**（doc07:243）。Mode C は初回公開から分離（`project_release_strategy`）。
 >
 > ⚠️ GO でも R-02/R-38 は**閉じない**: ユニファイドメモリ／JetPack 実消費は Mac で出ない＝
 > **最終判定は段階2＝実機 Jetson `free -h` 30s×10min**（doc06:96-101）。段階1 は早期スモーク。
@@ -69,6 +76,7 @@ export MEMGATE_REQUIRE_HERMES=1            # FLOOR を hard-fail（exit 3）。G
 
 | RESULT.md 欄 | 取得元 |
 |---|---|
+| 実行日 / ホスト | 実走日＝`date` / ホスト＝Mac M4 16GB（RESULT.md prefill 済） |
 | 結論一行 (L6) | `report` の `VERDICT (R-38)` 行（FLOOR 行が出ていればそれも） |
 | ピーク使用量 / 残RAM @peak | `report` の `peak usage` / `headroom @peak` 行 |
 | OOM 発火 | `report` の `cgroup oom_kill` 行 ＋ `logs/measure_oom.txt`（副信号） |
@@ -78,6 +86,7 @@ export MEMGATE_REQUIRE_HERMES=1            # FLOOR を hard-fail（exit 3）。G
 | Image digest | `docker image inspect tiryoh/ros2-desktop-vnc:jazzy --format '{{index .RepoDigests 0}}'` |
 | Docker 版 | `docker version --format '{{.Server.Version}}'` |
 | 版数(gz/nav2/py/hermes) | `cat logs/setup_versions.txt` |
+| **R-38 所見一行**（末尾 `_所見（実測後）_`） | §2 の **GO 4条件**で確定（`VERDICT (R-38)` 行 ＋ 末尾 `⚠️ FLOOR` の有無 ＋ headroom）＝結論一行と同根拠で詳述 |
 
 ## 4. トラブル / 詰まったら
 - **`HERMES NOT INSTALLED` / `REFUSED ... FLOOR`**: `cat logs/setup_hermes.log` で原因確認 → `~/.hermes/.env`
