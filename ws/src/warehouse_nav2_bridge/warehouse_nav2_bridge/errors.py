@@ -15,7 +15,10 @@ class Nav2BridgeError(Exception):
 
     ``error_code`` is one of the doc12a:347-354 codes (INVALID_ROBOT,
     INVALID_LOCATION, INVALID_VIA, INVALID_DURATION, ALREADY_NAVIGATING,
-    NAV2_NOT_READY); ``http_status`` is its 400/409/503 mapping.
+    NAV2_NOT_READY) plus ``INVALID_GOAL`` (400) — the coordinate-goal additive
+    extension for the head-on swap (#223): both/neither of destination|goal, or a
+    malformed/non-finite inline ``goal`` (x, y[, yaw]); ``http_status`` is its
+    400/409/503 mapping.
     """
 
     def __init__(self, error_code: str, detail: str, http_status: int) -> None:

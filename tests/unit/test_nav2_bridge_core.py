@@ -104,6 +104,115 @@ def test_navigate_already_navigating_conflict():
     assert exc.value.http_status == 409
 
 
+# ── navigate: inline coordinate goal (#223 head-on swap, doc11a:455) ──────────
+
+
+def test_navigate_accepts_coordinate_goal():
+    core, backend = make_core()
+    res = core.navigate("bot1", goal=(0.45, 0.12))
+    assert res == {
+        "task_id": "nav_001",
+        "status": "accepted",
+        "robot": "bot1",
+        "destination": None,
+        "goal": [0.45, 0.12],
+    }
+    # the coordinate flows straight to the backend as a single (x, y) waypoint.
+    assert backend.goals == [("bot1", [(0.45, 0.12)])]
+    # status surfaces no named destination for a coordinate goal (additive, not a name).
+    assert core.status("bot1")["destination"] is None
+
+
+def test_navigate_coordinate_goal_drops_yaw():
+    core, backend = make_core()
+    res = core.navigate("bot1", goal=(0.45, 0.12, 1.5707963))
+    # yaw is validated then dropped — backend.Pose is (x, y) (nav2_bridge.py:80).
+    assert backend.goals == [("bot1", [(0.45, 0.12)])]
+    assert res["goal"] == [0.45, 0.12]
+
+
+def test_navigate_coordinate_goal_with_via_prepends_named_waypoint():
+    core, backend = make_core()
+    core.navigate("bot1", via="retreat_A", goal=(0.45, 0.12))
+    assert backend.goals == [("bot1", [(0.45, 0.85), (0.45, 0.12)])]
+
+
+def test_navigate_both_destination_and_goal_is_invalid():
+    core, _ = make_core()
+    with pytest.raises(Nav2BridgeError) as exc:
+        core.navigate("bot1", "shelf_1", goal=(0.45, 0.12))
+    assert exc.value.error_code == "INVALID_GOAL"
+    assert exc.value.http_status == 400
+
+
+def test_navigate_neither_destination_nor_goal_is_invalid():
+    core, _ = make_core()
+    with pytest.raises(Nav2BridgeError) as exc:
+        core.navigate("bot1")
+    assert exc.value.error_code == "INVALID_GOAL"
+    assert exc.value.http_status == 400
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        (0.1,),  # arity: missing y
+        (0.1, 0.2, 0.3, 0.4),  # arity: too many
+        (math.nan, 0.2),  # non-finite x
+        (0.1, math.inf),  # non-finite y
+        ("a", "b"),  # non-numeric
+        "12",  # a string would float-iterate to (1.0, 2.0) without the str guard
+        0.45,  # scalar, not a coordinate pair
+    ],
+)
+def test_navigate_coordinate_goal_rejects_malformed(bad):
+    core, _ = make_core()
+    with pytest.raises(Nav2BridgeError) as exc:
+        core.navigate("bot1", goal=bad)
+    assert exc.value.error_code == "INVALID_GOAL"
+    assert exc.value.http_status == 400
+
+
+def test_navigate_coordinate_goal_unknown_robot():
+    core, _ = make_core()
+    with pytest.raises(Nav2BridgeError) as exc:
+        core.navigate("bot9", goal=(0.45, 0.12))
+    assert exc.value.error_code == "INVALID_ROBOT"
+
+
+def test_navigate_coordinate_goal_already_navigating_conflict():
+    core, _ = make_core()
+    core.navigate("bot1", goal=(0.45, 0.12))
+    with pytest.raises(Nav2BridgeError) as exc:
+        core.navigate("bot1", goal=(0.45, 0.80))
+    assert exc.value.error_code == "ALREADY_NAVIGATING"
+    assert exc.value.http_status == 409
+
+
+def test_navigate_coordinate_goal_nav2_not_ready():
+    core, _ = make_core(ready=set())
+    with pytest.raises(Nav2BridgeError) as exc:
+        core.navigate("bot1", goal=(0.45, 0.12))
+    assert exc.value.error_code == "NAV2_NOT_READY"
+    assert exc.value.http_status == 503
+
+
+@pytest.mark.safety
+def test_coordinate_navigate_commands_position_only_no_velocity():
+    """R-26: the coordinate-goal path places (x, y) positions only — it sets no velocity.
+
+    The hard cap MAX_LINEAR_VELOCITY (0.3, warehouse_interfaces/safety.py:18) is the frozen
+    contract enforced downstream by Nav2 params + Layer 0; this path neither sets a velocity
+    nor redefines the cap — it forwards positions, so there is nothing here that could exceed it.
+    """
+    core, backend = make_core()
+    core.navigate("bot1", goal=(0.45, 0.12, 9.9))  # a large yaw is dropped, not a speed
+    (_robot, poses) = backend.goals[0]
+    # every forwarded waypoint is a 2-float position — no twist / velocity field anywhere.
+    assert all(isinstance(p, tuple) and len(p) == 2 for p in poses)
+    assert all(isinstance(v, float) for p in poses for v in p)
+
+
 # ── wait ──────────────────────────────────────────────────────────────────────
 
 
