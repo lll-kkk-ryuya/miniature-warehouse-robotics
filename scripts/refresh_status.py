@@ -95,7 +95,7 @@ def cmd_check(actual: str) -> int:
         ancestor = _git("merge-base", "--is-ancestor", p, "origin/main", check_only=True)
         kind = "older ancestor — refresh due" if ancestor else "NOT on origin/main — investigate"
         print(f"⚠️  STATUS pins `{p}` but origin/main is `{actual}` ({kind}).")
-    print(f"   → run: python3 scripts/refresh_status.py --fix   (then add a --land block)")
+    print("   → run: python3 scripts/refresh_status.py --fix   (then add a --land block)")
     return 1
 
 
@@ -115,7 +115,7 @@ def cmd_fix(actual: str) -> int:
         print(f"✅ no pin change needed (origin/main = `{actual}`).")
         return 0
     STATUS.write_text(new, encoding="utf-8")
-    changed = sum(1 for a, b in zip(text.splitlines(), new.splitlines()) if a != b)
+    changed = sum(1 for a, b in zip(text.splitlines(), new.splitlines(), strict=False) if a != b)
     print(f"✏️  rewrote {changed} pin line(s) → origin/main = `{actual}`.")
     print("   NOW: add the land block (python3 scripts/refresh_status.py --land) + worktree state,")
     print("   then verify with: python3 scripts/check_consistency.py")
@@ -144,7 +144,9 @@ def cmd_land(actual: str, since: str | None, date: str) -> int:
     block = "/".join(entries)
     print("# DRAFT — paste into docs/STATUS.md land block, then edit:")
     print("#   - narrative (what closed / is blocked / is next) is NOT inferred")
-    print("#   - #NNN is the commit's trailing (#N); verify it is the PR# not a Refs# (e.g. squash kept (#223))")
+    print(
+        "#   - #NNN is the commit's trailing (#N); verify it is the PR# not a Refs# (e.g. squash kept (#223))"
+    )
     print(f"**{date} land（新しい順）: {block}**")
     return 0
 
@@ -152,11 +154,17 @@ def cmd_land(actual: str, since: str | None, date: str) -> int:
 def main() -> int:
     ap = argparse.ArgumentParser(description="STATUS.md refresh helper (see status-maintenance.md)")
     g = ap.add_mutually_exclusive_group()
-    g.add_argument("--check", action="store_true", help="read-only: are the SHA pins fresh? exit 1 if not")
-    g.add_argument("--fix", action="store_true", help="rewrite the SHA pins to origin/main (in place)")
+    g.add_argument(
+        "--check", action="store_true", help="read-only: are the SHA pins fresh? exit 1 if not"
+    )
+    g.add_argument(
+        "--fix", action="store_true", help="rewrite the SHA pins to origin/main (in place)"
+    )
     g.add_argument("--land", action="store_true", help="print a newest-first land-block template")
     ap.add_argument("--since", help="land: base ref (default = currently pinned sha)")
-    ap.add_argument("--date", default=datetime.date.today().isoformat(), help="land: date label (default today)")
+    ap.add_argument(
+        "--date", default=datetime.date.today().isoformat(), help="land: date label (default today)"
+    )
     args = ap.parse_args()
 
     actual = _actual()
