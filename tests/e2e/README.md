@@ -114,12 +114,16 @@ ros2 launch warehouse_bringup bringup.launch.py sim:=true llm:=true traffic_mode
 #     08a:337-359 の yield+wait で解消する（bot2=yield→navigate retreat_B / bot1=wait 5s →
 #     MCP → nav2_bridge → Nav2）。retreat_A/B は KNOWN_LOCATIONS＝named navigate で配線済
 #     （nav2_bridge core.py:110-117）＝録画可能。decision の決定論版は #153 で実証済。
-#   ▼ DEFERRED（このスタックでは未配線・PENDING）: 11a:446「相互通過時の最接近 ≥0.15m」の幾何計測。
-#     これは §9 の座標ゴール+route_A/B ロック（11a:435,453,455）で 2 台を通路A 経由に端→端 swap させる
-#     必要があるが、座標ゴール injector（head_on_goals→/bot{n}/goal_pose の consumer）が未実装＝
-#     head_on_goals は DATA のみで consumer ゼロ（scenarios.py:118-133）・nav2_bridge.navigate は
-#     named location 専用（core.py:110-117 が KNOWN_LOCATIONS 解決＝座標 navigate 無し）。
-#     ≥0.15m 計測は injector 実装後（別レーン llm-bridge/nav-traffic 所有）に回す＝follow-up issue 要。
+#   ▼ NOW WIRED（#223 座標ゴール injector）: 11a:446「相互通過時の最接近 ≥0.15m」の睨み合い→swap を
+#     実走可能化する座標ゴール経路を配線済。`nav2_bridge.navigate` が inline 座標 `goal=(x,y[,yaw])` を
+#     受理（core.py・additive・両/両無は INVALID_GOAL・yaw drop）＝KNOWN_LOCATIONS に無い隘路整列座標
+#     （11a:455）を発行できる。`head_on_injector.HeadOnInjector` が head_on_goals DATA を route_A 排他で
+#     直列化（先着 swap→後着は入口待機→解放→後着、11a:446/453/§9.3）。live 操作は
+#     `scripts/slice3_inject_swap.sh`（下記「slice3 swap injection + ≥0.15m gate」節）。
+#   ▼ DEFERRED（user docker のみ・PENDING）: ≥0.15m の **物理計測**は Gazebo 実走（host harness は物理を
+#     持たない＝README:43）。`tests/e2e/test_min_separation_harness.py` が gate ロジックを host 検証し
+#     （負例＝同時隘路進入 ~0.07m で FAIL＝teeth あり）、live-recorded `/bot{n}/amcl_pose` stream
+#     （`WAREHOUSE_MINSEP_STREAMS`）でのみ ≥0.15m を判定する。
 
 # 3) 録画: rviz:=true ∧ rviz_config:=record で warehouse_sim/rviz/record.rviz（両 footprint+
 #    scan+占有 map の俯瞰 cfg。既定 minicar.rviz は最小レイアウト, sim.launch.py:66-75）を選択し、
@@ -164,3 +168,34 @@ ros2 launch warehouse_bringup bringup.launch.py sim:=true llm:=true traffic_mode
 - **precheck `--offline` の追加静的チェック** — `bringup.launch.py` が sim include に
   `scenario`/`rviz_config` を forward していること、seed と snapshot チェックの bot namespace が
   一致することを grep で確認（録画前の最後の砦・unit pin の belt-and-suspenders）。
+
+## slice3 swap injection + ≥0.15m min-separation gate（#223 座標ゴール injector）
+
+slice3-live runbook の DEFERRED「相互通過時の最接近 ≥0.15m」（doc11a:446 §9）を実走可能化する。
+**座標ゴール経路**（`warehouse_nav2_bridge`）＝ `nav2_bridge.navigate(robot, goal=(x,y))`（additive・
+`INVALID_GOAL`）＋ `head_on_injector.HeadOnInjector`（head_on_goals DATA を route_A 排他で直列化）。
+実測 ≥0.15m は **Gazebo 物理＝user docker 専有**（README:43）。本節は WIRING のみ。
+
+```bash
+# 前提: step 2 の full stack（sim:=true llm:=true ... scenario:=head_on）が up かつ head_on で seed 済
+#       （Nav2 Bridge :8645 は bringup が in-process 合成＝別途起動しない、step 0 の二重 bind 注意）。
+
+# A) swap を発行（head_on_goals DATA を導出→座標 goal を REST /api/v1/navigate へ・status-poll で直列化）
+#    DRY_RUN=1 は API を叩かず導出ゴールと計画リクエストを print（host で確認可・ros2/curl 不要）。
+DRY_RUN=1 scripts/slice3_inject_swap.sh         # → bot1/bot2 の swap 座標と POST body を表示
+scripts/slice3_inject_swap.sh                    # live: 先着 bot を発行→通路クリア待ち→後着 bot を発行
+#   ▼ 直列化（fail-closed）: bot1 の goal が **succeeded**（南端到達＝隘路を抜けた）まで bot2 を出さない
+#     ＝両機が隘路に同時進入しない＝ ≥0.15m が成立する唯一の幾何（11a:446）。bot1 が **failed**（Nav2 abort
+#     ＝隘路内で停止しうる）/ timeout なら bot2 を出さず exit 2（#218 B1）。in-process の lock 版は
+#     HeadOnInjector（unit 実証）。
+
+# B) ≥0.15m を計測（user docker のみ）: swap 中に両 bot の /amcl_pose を JSON へ記録し gate にかける。
+#    記録形式: {"bot1": [[x,y],...], "bot2": [[x,y],...]}（時刻同期した (x,y) サンプル列）。
+#    例（別 shell で swap と並行に echo を JSON 整形して保存する等、録画オペレータが用意）:
+export WAREHOUSE_MINSEP_STREAMS=/tmp/warehouse/minsep_streams.json
+python3.12 -m pytest tests/e2e/test_min_separation_harness.py::test_live_recorded_swap_meets_min_separation -v
+#   → 最接近距離 ≥0.15m を assert（doc11a:446）。host では stream 未指定＝skip（gate ロジックは host 検証済）。
+```
+
+**注**: 座標ゴールは `/bot{n}/goal_pose` を **LLM Bridge が直接 publish しない**（doc03:97 / doc08:462）方針と整合
+＝発行主体は nav2_bridge（Mode A/B の MCP 内部経路に相当）。raw goal_pose publisher は新設しない。

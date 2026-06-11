@@ -28,8 +28,12 @@ def create_app(core: Nav2BridgeCore):
 
     class NavigateRequest(BaseModel):
         robot: str
-        destination: str
+        # Exactly one target: a named ``destination`` (back-compatible default) OR an
+        # inline coordinate ``goal`` [x, y] / [x, y, yaw] (#223 head-on swap, doc11a:455).
+        # Both/neither is rejected by the core as INVALID_GOAL.
+        destination: str | None = None
         via: str | None = None
+        goal: list[float] | None = None
 
     class WaitRequest(BaseModel):
         robot: str
@@ -40,7 +44,8 @@ def create_app(core: Nav2BridgeCore):
 
     @app.post("/api/v1/navigate")
     async def navigate(req: NavigateRequest) -> dict:
-        return core.navigate(req.robot, req.destination, req.via)
+        goal = tuple(req.goal) if req.goal is not None else None
+        return core.navigate(req.robot, req.destination, req.via, goal=goal)
 
     @app.post("/api/v1/wait")
     async def wait(req: WaitRequest) -> dict:
