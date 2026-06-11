@@ -17,5 +17,11 @@
 - jazzy/24.04 ビルド注意: `build_firmware.sh` は `-Werror`(rmw)・service introspection(std_srvs) で破綻 → 3フェーズ＋`-w`＋service skip で必要分のみビルド（`run_spike.sh setup` 参照）。
 
 ## テスト
-- 純ロジック（`clampLinear`/`clampAngular`）は実機なしで検証可能（将来 native env でユニットテスト化を検討）。
+- **Layer-0 速度クランプ（R-26 安全 unit）**: 純ロジックを `include/safety_clamp.h`（Arduino 非依存）に抽出し、`test/test_clamp/` で host 検証する（ESP32 不要）。
+  - `pio test -e native`（PlatformIO + Unity）。`pio` 不在なら `bash test/run_host_test.sh`（g++/clang + 同梱 Unity shim、同一テスト源）。**どちらも緑が必須**。
+  - 固定する契約: 境界（>上限→上限 / <−上限→−上限 / 範囲内素通し / 上限ちょうど / 0）＋ **`MAX_LINEAR_VELOCITY == 0.3 m/s`（safety.md / doc12:77）** ＋ `MAX_*_VELOCITY > 0`（負上限=runaway ガード）。`MAX_ANGULAR_VELOCITY=2.0` は Phase 1 実測 placeholder（境界動作のみ固定）。
 - R-37 多重接続は `firmware/spike/run_spike.sh all`（ESP32 不要、Docker のみ）で再現・計測可能。
+
+## 提供 (produce) / 消費 (consume)
+- **produce**: `include/safety_clamp.h`（`clamp_symmetric` / `clampLinear` / `clampAngular`）＝host-unit-tested Layer-0 クランプ。`main.cpp` が `onCmdVel` で消費。**新トピック/型/契約は産まない**（ROS 契約は doc03 のまま）。
+- **consume**: `config.h` の `MAX_LINEAR_VELOCITY`（build flag `MAX_LINEAR_VELOCITY_MMPS` 由来）/ `MAX_ANGULAR_VELOCITY`。`warehouse_interfaces` への依存なし（firmware は ROS 契約の外）。

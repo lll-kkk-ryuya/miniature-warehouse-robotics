@@ -535,7 +535,7 @@ Nav2 controller_server (FollowPath)
          polygons = stop（＋任意 slowdown）／ source_timeout（/scan 途絶→停止）
 Nav2 behavior_server (recovery: BackUp/DriveOnHeading/Spin)
   └→ collision_monitor 経由 か 直接 cmd_vel/nav2 へ bypass か = Open ⑥
-     （recovery は障害物方向へ動くため stop polygon に永続的に阻まれうる, nav2_bringup.launch.py:143-148）
+     （recovery は障害物方向へ動くため stop polygon に永続的に阻まれうる, nav2_bringup.launch.py:166-180）
   /bot{n}/cmd_vel/nav2 (prio10) ┐
   Guardian /bot{n}/cmd_vel/emergency (prio100) ┤→ twist_mux(/bot{n}) → /bot{n}/cmd_vel
 ```
@@ -549,7 +549,7 @@ Nav2 behavior_server (recovery: BackUp/DriveOnHeading/Spin)
 - **/emergency/event surfacing**: collision_monitor は Nav2 C++ node で `/emergency/event` を出さない。LLM-review stream へ出すなら Guardian（or 小 bridge）が collision_monitor の state を購読し **additive な新 `type`（例 `collision_monitor_stop`）** で発行する（#152 の additive 規約踏襲＝コア形 :141-150 不変。debounce 等のしきい値を設ける場合は #152 と同じ厳密 `>` 規約に従う）。機構詳細は impl slice。
 - **Mode 別**: Mode A/B = scan ＋ virtual_scan polygon（virtual_scan は Mode C で gating off, 11a:317）。Mode C = Open-RMF が交通調停＝collision_monitor は real `/scan` のみ or Open-RMF に委譲（詳細は Mode C impl 時。本 PR は Mode A/B 主眼）。
 - **defer / 触らない**: 配線は nav-traffic 所有（`nav2_bringup.launch.py` remap・collision_monitor config・lifecycle_manager 登録・`nav2_params.yaml`、doc16:187）＝ nav-traffic Issue へ予告し調整。nav_status gating（BlockTracker idle 誤検出解消）は Phase-2。**凍結契約 `warehouse_interfaces` 不変・twist_mux emergency prio100 不変**。
-- **impl slice で確定する Open 項目**: ① Guardian `near_collision` 撤去 vs backup、② collision_monitor polygon 寸法（隘路 200mm × 車体 150mm の R-42 と整合）、③ `source_timeout` 値、④ Mode C の scan 構成、⑤ event surfacing 機構、⑥ **behavior_server recovery（BackUp/DriveOnHeading/Spin）を collision_monitor 経由とするか直接 `cmd_vel/nav2` へ bypass するか**（recovery は障害物方向へ動くため stop polygon に阻まれうる ＝ R-42 隘路で deadlock 懸念。slowdown polygon 化／recovery 中 monitor 無効も選択肢, `nav2_bringup.launch.py:143-148`）。
+- **impl slice で確定する Open 項目**: ① Guardian `near_collision` 撤去 vs backup、② collision_monitor polygon 寸法（隘路 200mm × 車体 150mm の R-42 と整合）、③ `source_timeout` 値、④ Mode C の scan 構成、⑤ event surfacing 機構、⑥ **behavior_server recovery（BackUp/DriveOnHeading/Spin）を collision_monitor 経由とするか直接 `cmd_vel/nav2` へ bypass するか**（recovery は障害物方向へ動くため stop polygon に阻まれうる ＝ R-42 隘路で deadlock 懸念。slowdown polygon 化／recovery 中 monitor 無効も選択肢, `nav2_bringup.launch.py:166-180`）。
 
 ---
 
