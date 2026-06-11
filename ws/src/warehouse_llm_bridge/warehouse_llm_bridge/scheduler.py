@@ -138,7 +138,7 @@ class BridgeScheduler:
         self._consecutive_failures = 0
         self._history: deque[dict] = deque(maxlen=HISTORY_MAXLEN)
         # Bridge-owned per-robot in-flight task (bot -> destination); set-on-accept /
-        # clear-on-stop policy (doc12:249 / 08a:62,73). Bounded by fleet size.
+        # clear-on-stop policy (doc12:337 / 08a:62,73). Bounded by fleet size.
         self._current_tasks: dict[str, str] = {}
         # Bridge-owned pending task queue ({id,from,to} dicts, doc08a:79-81,468). Seeded
         # for the demo (#181) so the commander HAS tasks to allocate — that is what gives
@@ -202,7 +202,7 @@ class BridgeScheduler:
 
             try:
                 command = Command.model_validate(response)
-            except (ValueError, TypeError) as exc:  # malformed JSON / schema (doc08:289-291)
+            except (ValueError, TypeError) as exc:  # malformed JSON / schema (doc08:293-294)
                 self._on_invalid_response(gen, exc)
                 return
 
@@ -218,7 +218,7 @@ class BridgeScheduler:
         tool_calls = command_to_tool_calls(command, gen)
         results: list[dict] = []
         for item, tool_call in zip(command.commands, tool_calls, strict=True):
-            # Tool call as an observation under the turn trace (doc08:312); no-op
+            # Tool call as an observation under the turn trace (doc08:331); no-op
             # under NoopTracer so the cycle logic stays langfuse-free/testable.
             async with self._tracer.tool_span(tool_call.tool, gen):
                 result = await self._executor.execute(tool_call)
@@ -306,7 +306,7 @@ class BridgeScheduler:
             log.error("sustained no-response → Nav2-only fallback (doc08:141)")
 
     def _on_outage(self, gen: int, exc: Exception) -> None:
-        """Transport / non-2xx error: API outage → Nav2-only (doc08:287-288,293)."""
+        """Transport / non-2xx error: API outage → Nav2-only (doc08:288-292,293)."""
         self._consecutive_failures += 1
         self.nav2_only = True
         log.error("LLM unavailable gen=%s: %s → Nav2-only fallback", gen, exc)

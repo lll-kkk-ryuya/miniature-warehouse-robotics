@@ -100,7 +100,7 @@ class SituationBuilder:
         ``current_tasks`` maps ``bot -> destination`` for each robot's in-flight
         task — the DESTINATION only; the doc's illustrative "<from> → <to>" route is
         not reproduced since the Bridge has no pickup (Bridge-owned working memory
-        the snapshot does not carry, doc12:249 / 08a:62,73,466). The scheduler tracks
+        the snapshot does not carry, doc12:337 / 08a:62,73,466). The scheduler tracks
         it from accepted dispatches; an absent/unmapped bot gets ``current_task=None``
         (idle). ``pending_tasks`` is the commander's task queue ({id,from,to}, the
         frozen ``PendingTask`` shape, doc08a:79-81): the scheduler passes its
@@ -140,7 +140,7 @@ class SituationBuilder:
         ``current_task`` is the Bridge-owned in-flight DESTINATION for this robot
         (``None`` when idle/untracked); it is deliberately NOT in ``RobotSnapshot``
         — the State Cache omits it and the Bridge supplies it at build time
-        (doc12:249). BOTH modes carry it: Mode C's slim shape still includes
+        (doc12:337). BOTH modes carry it: Mode C's slim shape still includes
         current_task (08c:92,99), Mode A/B includes it alongside the full traffic
         fields (08a:62,73,466).
 
@@ -157,7 +157,7 @@ class SituationBuilder:
                 position=snap.position,
                 status=snap.status,
                 battery=snap.battery,
-                current_task=current_task,  # bridge-owned (doc12:249); None when idle
+                current_task=current_task,  # bridge-owned (doc12:337); None when idle
             )
         return RobotState(
             position=snap.position,
@@ -168,7 +168,7 @@ class SituationBuilder:
             obstacle_distance=snap.obstacle_distance,
             predicted_position_3s=self._predict(snap),
             obstacle_ahead=self._obstacle_ahead(snap.obstacle_distance),
-            current_task=current_task,  # bridge-owned (doc12:249); None when idle
+            current_task=current_task,  # bridge-owned (doc12:337); None when idle
         )
 
     def _predict(self, snap: RobotSnapshot) -> Position:

@@ -9,7 +9,7 @@ The #6 orchestrator self-sends the documented KPI scores to Langfuse (doc08 §�
 identically (see :mod:`trace_id`; doc13:516,519) — no frozen-contract change.
 
 Design:
-* **fail-open** (doc08:316/350) — a missing SDK / missing keys / network errors are swallowed;
+* **fail-open** (doc08:333/350) — a missing SDK / missing keys / network errors are swallowed;
   the caller's loop never breaks. ``flush()`` is best-effort.
 * **lazy/optional import** — ``langfuse`` is imported on demand (pip extra) so the package
   builds and tests run with langfuse absent.
@@ -46,7 +46,7 @@ DATA_TYPE_BOOLEAN = "BOOLEAN"  # Langfuse v4 score type for collision_free / agr
 # producers (Guardian near_collision, Nav2 replans, deadlock detector, negotiation system) are
 # unbuilt, so emitting these is Phase 3-4 (#88 / #133 scope = names only).
 SCORE_COLLISION_FREE = "collision_free"  # BOOLEAN, doc08:491 (Guardian near_collision absence)
-SCORE_REPLANS = "replans"  # NUMERIC, doc08:492 (Nav2 replan count)
+SCORE_REPLANS = "replans"  # NUMERIC, doc08:493 (Nav2 replan count)
 SCORE_MEAN_DECISION_LATENCY = "mean_decision_latency"  # NUMERIC, doc08:493 (generation.latency)
 SCORE_DEADLOCK = "deadlock"  # NUMERIC, doc08:494 (per-run detect count; #55/#128 doc08a:281)
 # Mode A negotiation scores — 演出専用・Phase 4 比較対象外 (doc08:496 / doc14 §交渉スコア).

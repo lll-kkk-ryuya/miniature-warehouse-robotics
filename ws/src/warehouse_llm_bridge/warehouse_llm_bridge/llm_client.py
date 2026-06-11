@@ -24,7 +24,7 @@ class LLMUnavailableError(Exception):
     status (doc08 §フォールバック: 接続障害 / 500 → Nav2 単体フォールバック,
     08-llm-bridge-common.md:287-288,293). The scheduler treats it as an API
     outage and drops to the Nav2-only fallback. A malformed-but-delivered
-    response is a different failure: raise ``ValueError`` for that (doc08:289).
+    response is a different failure: raise ``ValueError`` for that (doc08:293).
     """
 
 
@@ -38,7 +38,7 @@ class LLMClient(ABC):
         Implementations call the provider (Hermes Gateway). Failure contract:
         raise :class:`LLMUnavailable` on a transport/HTTP error (→ Nav2-only) and
         ``ValueError`` on a malformed/garbled response body (→ ignore this cycle,
-        doc08:289). A timeout is enforced by the caller (``asyncio.wait_for``),
+        doc08:293). A timeout is enforced by the caller (``asyncio.wait_for``),
         not here. ``gen_id`` from ``situation`` is threaded into every MCP tool
         call by ``action_map`` (B-3, doc15 §2), not echoed by the LLM.
         """

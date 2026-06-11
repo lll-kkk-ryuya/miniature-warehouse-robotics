@@ -81,7 +81,7 @@ def send_scores(
 
     Gates (any miss → ``(0, None)``, never raises):
 
-    * ``sink`` disabled (no Langfuse creds/client) — doc08:316/350 fail-open.
+    * ``sink`` disabled (no Langfuse creds/client) — doc08:333/350 fail-open.
     * ``run_id`` unset — cannot derive the cross-lane trace seed (#73 / doc13:519).
     * no derivable ``trace_id`` — ``gen_id`` is ``None`` until ``warehouse_mcp_server`` writes
       it into executed audit rows (predeclared #4/#73), so the live send stays inert/no-op.

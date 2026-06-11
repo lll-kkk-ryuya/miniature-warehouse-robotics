@@ -11,7 +11,7 @@ Heavy deps (rclpy, ``nav2_simple_commander``, uvicorn, fastapi) are imported at
 module load — that is fine because nothing imports this module except ``main()`` at
 runtime; the unit tests import only ``core`` / ``backend`` (no ROS).
 
-⚠️ doc12:372 / doc16 risk: two ``BasicNavigator`` instances in one process is a
+⚠️ doc12:459 / doc16 risk: two ``BasicNavigator`` instances in one process is a
 namespacing/singleton hazard, and the FastAPI thread (``go_to``) and the rclpy timer
 thread (``is_complete``) touch the same navigator — so backend access is serialized
 with a lock here. Real multi-robot Nav2 behaviour is a Phase-3 on-sim verify.
@@ -48,7 +48,7 @@ class BasicNavigatorBackend(NavigatorBackend):
 
     All navigator calls are serialized under a lock because ``BasicNavigator`` is
     not thread-safe and is reached from both the FastAPI and rclpy threads
-    (doc12:372). Readiness is set once each robot's Nav2 stack is lifecycle-active.
+    (doc12:459). Readiness is set once each robot's Nav2 stack is lifecycle-active.
     """
 
     def __init__(self, robots: list[str]) -> None:

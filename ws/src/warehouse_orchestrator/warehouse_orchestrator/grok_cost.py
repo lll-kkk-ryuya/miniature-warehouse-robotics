@@ -6,7 +6,7 @@ Langfuse's built-in model price table covers OpenAI / Anthropic / Google but **n
 so Grok generations get an empty ``cost`` and the 4-provider comparison breaks (doc13:486②).
 ``usage_details`` (input/output token counts) is captured independently of ``cost``, so #6 (wo)
 can derive Grok cost *offline* as ``tokens × static xAI price table`` — unlocking the comparison
-without depending on whether a custom model price is registered in Langfuse (doc08:503).
+without depending on whether a custom model price is registered in Langfuse (doc08:504).
 
 **Not live-verified — PLAN only here (doc08:506).** The exact ``usage_details`` key shape, the
 literal ``model`` string Hermes forwards to Grok, and the real per-token prices must be confirmed
@@ -71,7 +71,7 @@ def _token_count(usage_details: Mapping[str, object], keys: tuple[str, ...]) -> 
 
 
 def grok_cost(usage_details: Mapping[str, object], price: GrokPrice) -> float:
-    """Derive USD cost from token usage and an explicit per-token ``price`` (doc08:503).
+    """Derive USD cost from token usage and an explicit per-token ``price`` (doc08:504).
 
     ``cost = input_tokens * input_price + output_tokens * output_price``. Missing or zero token
     counts yield ``0.0`` (boundary). Pure — no model lookup, no SDK.

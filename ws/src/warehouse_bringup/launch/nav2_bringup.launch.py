@@ -6,7 +6,7 @@ top-level launch is expected to ``IncludeLaunchDescription`` this file once the
 other subsystems (micro-ROS agent, state cache, safety, bridge) are composed
 (bringup.launch.py:7 TODO(#1)).
 
-Composition (doc09:230-271, doc11a:166-321, doc16 §5):
+Composition (doc09:232, doc11a:166-321, doc16 §5):
   - one SHARED map_server publishing /map (doc09:253-255)
   - per bot{n} (namespace /bot{n}): amcl, planner_server, controller_server(MPPI),
     behavior_server, bt_navigator + a lifecycle_manager. Params come from the
