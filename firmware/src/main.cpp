@@ -12,20 +12,10 @@
 #include <Arduino.h>
 
 #include "config.h"
-
-// --- Layer 0 safety: velocity clamp (pure, unit-testable logic) -------------
-// ROS 側の指令値に関わらず、MCU 内で物理上限にクランプする。
-float clampLinear(float v) {
-  if (v > MAX_LINEAR_VELOCITY) return MAX_LINEAR_VELOCITY;
-  if (v < -MAX_LINEAR_VELOCITY) return -MAX_LINEAR_VELOCITY;
-  return v;
-}
-
-float clampAngular(float w) {
-  if (w > MAX_ANGULAR_VELOCITY) return MAX_ANGULAR_VELOCITY;
-  if (w < -MAX_ANGULAR_VELOCITY) return -MAX_ANGULAR_VELOCITY;
-  return w;
-}
+// Layer 0 safety: velocity clamp (pure, Arduino-independent, host-unit-tested R-26).
+// clampLinear / clampAngular live here so the same logic is pinned by
+// firmware/test/test_clamp (`pio test -e native` / run_host_test.sh).
+#include "safety_clamp.h"
 
 // --- /cmd_vel callback (skeleton) ------------------------------------------
 // micro-ROS の subscription から呼ばれる想定。受信した Twist をクランプして
