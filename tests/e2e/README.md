@@ -184,8 +184,10 @@ slice3-live runbook の DEFERRED「相互通過時の最接近 ≥0.15m」（doc
 #    DRY_RUN=1 は API を叩かず導出ゴールと計画リクエストを print（host で確認可・ros2/curl 不要）。
 DRY_RUN=1 scripts/slice3_inject_swap.sh         # → bot1/bot2 の swap 座標と POST body を表示
 scripts/slice3_inject_swap.sh                    # live: 先着 bot を発行→通路クリア待ち→後着 bot を発行
-#   ▼ 直列化: bot1 が通路Aを抜ける（status≠navigating）まで bot2 を出さない＝両機が隘路に同時進入しない
-#     ＝ ≥0.15m が成立する唯一の幾何（11a:446）。in-process の lock 版は HeadOnInjector（unit 実証）。
+#   ▼ 直列化（fail-closed）: bot1 の goal が **succeeded**（南端到達＝隘路を抜けた）まで bot2 を出さない
+#     ＝両機が隘路に同時進入しない＝ ≥0.15m が成立する唯一の幾何（11a:446）。bot1 が **failed**（Nav2 abort
+#     ＝隘路内で停止しうる）/ timeout なら bot2 を出さず exit 2（#218 B1）。in-process の lock 版は
+#     HeadOnInjector（unit 実証）。
 
 # B) ≥0.15m を計測（user docker のみ）: swap 中に両 bot の /amcl_pose を JSON へ記録し gate にかける。
 #    記録形式: {"bot1": [[x,y],...], "bot2": [[x,y],...]}（時刻同期した (x,y) サンプル列）。

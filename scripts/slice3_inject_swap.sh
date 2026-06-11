@@ -117,14 +117,28 @@ nav_status() {
 }
 
 wait_until_clear() {
-  # Return 0 once ${1} is no longer "navigating" (cleared the pinch); return 1 on POLL_TIMEOUT.
+  # Wait for ${1} to clear the pinch, distinguishing the terminal outcomes (nav2_bridge.py:103-107
+  # emits exactly "succeeded"/"failed"):
+  #   return 0  — goal SUCCEEDED ⇒ ${1} reached the south staging ⇒ it left the pinch (safe to swap).
+  #   return 2  — goal FAILED. A Nav2 abort (the #144 head-on stall is exactly this) can leave ${1}
+  #               stalled INSIDE the 200mm pinch, so "failed" is NOT a clear — dispatching the waiter
+  #               then would co-occupy the channel. Fail hard (the script header's fail-closed claim /
+  #               #218 B1), do not treat a failed goal as an exit.
+  #   return 1  — POLL_TIMEOUT (still "navigating"/"waiting"/idle/unreported ⇒ never confirmed clear).
   local robot="$1" waited=0 st
   while (( waited < POLL_TIMEOUT )); do
     st="$(nav_status "${robot}")"
-    if [[ "${st}" != "navigating" && -n "${st}" ]]; then
-      echo "${robot} cleared the aisle (nav_status=${st})"
-      return 0
-    fi
+    case "${st}" in
+      succeeded)
+        echo "${robot} cleared the aisle (nav_status=succeeded)"
+        return 0
+        ;;
+      failed)
+        echo "ERROR: ${robot} goal FAILED (nav_status=failed) — a Nav2 abort can leave it stalled" \
+          "inside the 200mm pinch; refusing to dispatch the waiter into a possible co-occupancy." >&2
+        return 2
+        ;;
+    esac
     sleep "${POLL_PERIOD}"
     waited=$(( waited + POLL_PERIOD ))
   done
@@ -133,14 +147,18 @@ wait_until_clear() {
 
 # -- Drive the serialized swap ---------------------------------------------------
 post_goal "${BOT1}" "${BOT1_X}" "${BOT1_Y}"     # first bot acquires the pinch
-# FAIL CLOSED on timeout: dispatching ${BOT2} while ${BOT1} is still inside would put BOTH bots
-# in the 200mm pinch — the head-on co-occupancy this serialization exists to prevent (11a:446).
-# Mirror slice3_seed_initialpose.sh:94-105 (#218 B1) and the in-process HeadOnInjector, which
-# never dispatch the waiter until the lock is genuinely free — refuse rather than fall open.
-if ! wait_until_clear "${BOT1}"; then
-  echo "ERROR: ${BOT1} did not clear aisle-A within ${POLL_TIMEOUT}s; refusing to dispatch" \
-    "${BOT2} into the pinch (would co-occupy the 200mm channel). Investigate ${BOT1}" \
-    "(stuck / replanning) or raise POLL_TIMEOUT, then re-run." >&2
-  exit 2
-fi
+# FAIL CLOSED: only dispatch ${BOT2} once ${BOT1}'s goal SUCCEEDED (it reached the south staging ⇒
+# exited the pinch). A POLL_TIMEOUT or a FAILED goal can leave ${BOT1} inside the 200mm pinch —
+# dispatching ${BOT2} then is the head-on co-occupancy this serialization exists to prevent (11a:446).
+# Mirror slice3_seed_initialpose.sh:94-105 (#218 B1) and the in-process HeadOnInjector, which never
+# dispatch the waiter until the lock is genuinely free — refuse rather than fall open.
+wait_until_clear "${BOT1}" || {
+  rc=$?
+  if (( rc == 1 )); then
+    echo "ERROR: ${BOT1} did not clear aisle-A within ${POLL_TIMEOUT}s; refusing to dispatch" \
+      "${BOT2} into the pinch (would co-occupy the 200mm channel). Investigate ${BOT1}" \
+      "(stuck / replanning) or raise POLL_TIMEOUT, then re-run." >&2
+  fi
+  exit 2  # rc==2 (FAILED) already printed its own diagnostic in wait_until_clear
+}
 post_goal "${BOT2}" "${BOT2_X}" "${BOT2_Y}"     # then swaps through (the mouth is now clear)

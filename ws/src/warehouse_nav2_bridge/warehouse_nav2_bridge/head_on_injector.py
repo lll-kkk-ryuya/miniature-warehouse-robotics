@@ -26,7 +26,11 @@ The two collaborators are DUCK-TYPED and INJECTED:
   {"status": "sent"|"waiting", ...}``, ``release_aisle(robot, aisle)``, and the
   ``aisle_locks`` ``{aisle: occupant}`` map. Construct it WITHOUT a ``nav2_bridge`` so
   ``submit_task`` only arbitrates the lock — this injector issues the coordinate navigate
-  itself (the manager's own ``navigate`` path is named-location only).
+  itself (the manager's own ``navigate`` path is named-location only) — AND WITH a
+  ``route_planner`` that maps the two opposing routes onto the SAME lock (both ->
+  ``["route_A"]``, 11a:453). With the default ``no_route`` (``[]``, traffic_logic.py:157) no
+  lock is ever contended, so both robots get ``status="sent"`` and dispatch at once — the
+  serialization (and the ≥0.15m it guarantees) silently falls open.
 
 Safety (R-26): the injector carries NO velocity — it only places position goals. The hard
 speed cap ``MAX_LINEAR_VELOCITY`` (warehouse_interfaces/safety.py:18) is enforced downstream
