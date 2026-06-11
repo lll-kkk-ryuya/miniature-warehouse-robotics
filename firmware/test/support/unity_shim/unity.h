@@ -33,6 +33,10 @@ inline void unity_fail(const char* file, int line, const char* what) {
 // operand) or ±inf (from an inf operand) -- is NEVER within and FAILs. Without the
 // !isfinite() guard, `fabs(NaN) > delta` is false, so a NaN `actual` would silently
 // PASS (a false GREEN that hides a regression of the clamp's non-finite fail-safe).
+// ONE divergence from real Unity: real Unity special-cases two SAME-SIGN infinities
+// as "within" (PASS); here the diff ∞−∞ = NaN, so an EXPECTED ±inf FAILs. Harmless
+// for this suite (every `expected` is finite -- 0.0/0.3/MAX_*); do NOT use this
+// assertion to compare an expected ±inf.
 #define TEST_ASSERT_FLOAT_WITHIN(delta, expected, actual)                       \
   do {                                                                          \
     const float _uw_diff = (float)(actual) - (float)(expected);                 \
