@@ -79,3 +79,19 @@ def test_frames_use_robot_namespace_token() -> None:
     p = _collision_params()
     assert p["base_frame_id"] == "<robot_namespace>/base_link"
     assert p["odom_frame_id"] == "<robot_namespace>/odom"
+
+
+@pytest.mark.unit
+def test_virtual_scan_stale_does_not_stop_but_real_scan_does() -> None:
+    # PR#229 review (MAJOR): collision_monitor STOPs on a stale source when source_timeout != 0
+    # (Jazzy collision_monitor_node.cpp; matches doc12:546). virtual_scan is a CONDITIONAL
+    # publisher — SILENT when robots are >1.0m apart (SUPPRESSION_RANGE, virtual_scan_logic.py:22)
+    # — so it MUST override source_timeout to 0.0 (absence = no nearby robot, not a fault), else
+    # normal >1.0m driving would spuriously STOP both bots. The REAL scan keeps the node-level
+    # (>0) timeout so a true lidar dropout still stops (R-39).
+    p = _collision_params()
+    assert p["virtual_scan"].get("source_timeout") == 0.0, (
+        "virtual_scan must disable stale-stop (it is silent when robots are far apart)"
+    )
+    assert "source_timeout" not in p["scan"], "real scan must inherit the node-level stale-stop"
+    assert p["source_timeout"] > 0, "node-level (real scan) must still STOP on a stale lidar"

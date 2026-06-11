@@ -130,3 +130,18 @@ def test_behavior_server_bypasses_collision_monitor(traffic_mode) -> None:
     assert behaviors, "no behavior_server node found"
     for b in behaviors:
         assert _cmd_vel_target(b, traffic_mode) == "cmd_vel/nav2"
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("traffic_mode", "expected"), [("none", 2), ("simple", 2), ("open-rmf", 0)]
+)
+def test_collision_lifecycle_manager_gated_with_monitor(traffic_mode, expected) -> None:
+    # PR#229 review (MINOR#4): the collision_monitor's OWN lifecycle_manager must be gated
+    # identically to the monitor — in Mode C it must NOT start, else it orphan-waits (bond
+    # timeout) on the absent collision_monitor. It is the only CONDITIONED lifecycle_manager in
+    # the per-bot group (lifecycle_manager_navigation is unconditioned).
+    ld = _load_ld()
+    mgrs = [n for n in _node_by_exe(ld, "lifecycle_manager") if n.condition is not None]
+    assert len(mgrs) == 2, "expected one gated collision lifecycle_manager per bot"
+    assert sum(1 for n in mgrs if _active(n, traffic_mode)) == expected

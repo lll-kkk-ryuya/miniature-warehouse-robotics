@@ -20,11 +20,13 @@ Composition (doc09:232, doc11a:166-321, doc16 §5):
     used without this launch (#125).
   - per bot{n}: twist_mux (emergency prio100 > nav2 prio10, twist_mux.yaml),
     muxed output remapped cmd_vel_out -> cmd_vel => /bot{n}/cmd_vel (the topic the
-    sim ros_gz_bridge + real base consume). BOTH Nav2 velocity producers —
-    controller_server and behavior_server (recoveries) — remap cmd_vel ->
-    cmd_vel/nav2 so they enter twist_mux as the priority-10 input (a producer that
-    skipped the remap would write /bot{n}/cmd_vel directly and bypass the mux,
-    defeating the Emergency Guardian's prio-100 override).
+    sim ros_gz_bridge + real base consume). Every Nav2 velocity producer enters
+    twist_mux as the priority-10 input cmd_vel/nav2 (a producer writing /bot{n}/cmd_vel
+    directly would bypass the mux and defeat the Emergency Guardian's prio-100 override).
+    behavior_server (recoveries) remaps cmd_vel -> cmd_vel/nav2 (Open ⑥ bypass, #126).
+    controller_server's remap is MODE-CONDITIONAL (#126): Mode A/B -> cmd_vel/nav2_raw
+    (consumed by collision_monitor, which republishes cmd_vel/nav2); Mode C (open-rmf,
+    collision_monitor gated off) -> cmd_vel/nav2 directly.
   - VirtualScan x2, gated OFF under traffic_mode == open-rmf (doc11a:317): Mode C
     (Open-RMF) handles traffic, so the Multi-Robot Costmap Layer is not started.
 
@@ -216,7 +218,6 @@ def _per_robot_group(
             parameters=[
                 {"autostart": autostart},
                 {"node_names": ["collision_monitor"]},
-                {"use_sim_time": use_sim_time},
             ],
             condition=collision_active,
         ),

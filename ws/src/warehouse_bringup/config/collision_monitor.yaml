@@ -29,14 +29,19 @@
 # planning. Same topic, two consumers — not a move.
 #
 # PROVISIONAL VALUES (validated live = #126 PoC, 2-bot Gazebo, human Docker gate):
-#   * PolygonStop.radius / shape — footprint-grounded (ROBOT_RADIUS 0.075, frozen
-#     warehouse_interfaces) but the 200mm R-42 aisle (doc07:252) is the binding constraint:
-#     a stop zone wider than the wall clearance (~0.1m from centre) will trip on the aisle
-#     walls. Tune live; a forward-biased polygon may be needed (Open ② = doc12:552②).
-#   * source_timeout — nav2_collision_monitor treats a stale source as ABSENT (skips it),
-#     so "scan stale -> stop" (doc12:546) is NOT guaranteed native; pose-staleness is already
-#     covered by the Guardian (#152). Validate the stale-source behaviour live (Open ③ =
-#     doc12:552③); meanwhile this is a conservative source freshness bound, not a proven stop.
+#   * PolygonStop.radius / shape — footprint-grounded (ROBOT_RADIUS 0.075 from
+#     warehouse_description.robot_dimensions, itself PROVISIONAL until Phase-1). TWO binding
+#     constraints (Open ② = doc12:552②): (a) the 200mm R-42 aisle (doc07:252) — a stop zone
+#     wider than the ~0.1m wall clearance trips on the walls; (b) the #156 head-on demo — at
+#     0.15m centres the other robot's surface is ~0.075m away (INSIDE this 0.09 stop), so it
+#     would mask the avoidance footage. Tune live; a forward-biased polygon may be needed.
+#   * source_timeout — a stale source (with timeout != 0) makes collision_monitor publish an
+#     "invalid source" STOP (Jazzy collision_monitor_node.cpp::process; this MATCHES doc12:546
+#     "/scan 途絶 -> stop"). virtual_scan is SILENT whenever the robots are >1.0m apart
+#     (SUPPRESSION_RANGE, virtual_scan_logic.py:22), so it gets a per-source source_timeout 0.0
+#     (absence = "no nearby robot", not a fault) — else normal >1.0m driving would spuriously
+#     STOP both bots. The REAL scan keeps node-level 1.0 (lidar dropout -> stop, R-39). The
+#     node-level 1.0 value is itself provisional (Open ③ = doc12:552③).
 #   * exact Jazzy param schema (e.g. polygon points format) needs colcon/launch container
 #     validation (#67 stack); this file is the wiring intent.
 collision_monitor:
@@ -50,14 +55,16 @@ collision_monitor:
     cmd_vel_out_topic: "cmd_vel/nav2"
     state_topic: "collision_monitor_state"
     transform_tolerance: 0.2
-    source_timeout: 1.0          # PROVISIONAL — stale-source semantics validated live (Open ③)
+    source_timeout: 1.0          # node-level: REAL /scan dropout (timeout != 0) -> STOP (R-39,
+                                 # doc12:546). virtual_scan overrides to 0.0 (it is silent >1.0m).
     base_shift_correction: true
     stop_pub_timeout: 2.0
     polygons: ["PolygonStop"]
     PolygonStop:
       type: "circle"
-      # PROVISIONAL: > inscribed ROBOT_RADIUS 0.075 (frozen) + small reaction margin. The 200mm
-      # R-42 aisle (walls ~0.1m from centre) is the binding constraint — retune live (Open ②).
+      # PROVISIONAL: > inscribed ROBOT_RADIUS 0.075 (warehouse_description.robot_dimensions;
+      # provisional until Phase-1) + reaction margin. Binding constraints: R-42 200mm aisle AND
+      # the #156 >=0.15m head-on demo (see header) — retune live (Open ②).
       radius: 0.09
       action_type: "stop"
       min_points: 4              # Jazzy: # scan points inside the polygon to trigger the stop
@@ -75,3 +82,9 @@ collision_monitor:
       type: "scan"
       topic: "virtual_scan"
       enabled: true
+      # virtual_scan is a CONDITIONAL publisher: SILENT when the robots are >1.0m apart
+      # (SUPPRESSION_RANGE, virtual_scan_logic.py:22). Its absence = "no nearby robot", NOT a
+      # sensor fault. timeout 0.0 skips the stale-source check for THIS source only
+      # (collision_monitor_node.cpp), so normal >1.0m driving does NOT trip an "invalid source"
+      # STOP. The real /scan keeps node-level source_timeout (1.0) for lidar-dropout safety.
+      source_timeout: 0.0
