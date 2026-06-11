@@ -32,6 +32,12 @@ from warehouse_nav2_bridge.errors import Nav2BridgeError
 # doc12a:352 — INVALID_DURATION when duration <= 0 or > 30s.
 DURATION_MAX_SEC: float = 30.0
 
+# An inline coordinate goal: (x, y) or (x, y, yaw). doc11a:455 — the aisle-A south demo
+# goal is a pinch-aligned coordinate, NOT a KNOWN_LOCATIONS name, so it cannot go through
+# ``_coord``. Any yaw (third element) is validated then DROPPED: ``backend.Pose`` is (x, y)
+# and ``nav2_bridge.py:80`` fixes ``orientation.w=1.0`` — yaw-aware goals are a separate change.
+GoalCoord = tuple[float, float] | tuple[float, float, float]
+
 # Task states surfaced as ``nav_status`` (doc12a:319-327). "navigating"/"waiting"
 # are the BUSY states that block a second goal (ALREADY_NAVIGATING).
 _BUSY = frozenset({"navigating", "waiting"})
@@ -97,6 +103,50 @@ class Nav2BridgeCore:
             raise Nav2BridgeError(error_code, f"Unknown location: {name}", 400)
         return coord
 
+    def _coord_from_goal(self, goal: GoalCoord) -> Pose:
+        """Validate an inline coordinate goal and return its ``(x, y)`` (yaw dropped).
+
+        Rejects non-tuples/lists, strings (``"12"`` would otherwise float-iterate to
+        ``(1.0, 2.0)``), wrong arity, and non-finite/non-numeric coords with INVALID_GOAL.
+        No map-bounds check: the bridge does not own the world extent (that is sim/Nav2);
+        an unreachable goal fails in the planner, not here (docs-first — no invented bound).
+        """
+        if isinstance(goal, str) or not isinstance(goal, (tuple, list)) or len(goal) not in (2, 3):
+            raise Nav2BridgeError("INVALID_GOAL", "goal must be (x, y) or (x, y, yaw)", 400)
+        try:
+            coords = [float(v) for v in goal]
+        except (TypeError, ValueError):
+            raise Nav2BridgeError("INVALID_GOAL", "goal coordinates must be numbers", 400) from None
+        if not all(math.isfinite(v) for v in coords):
+            raise Nav2BridgeError("INVALID_GOAL", "goal coordinates must be finite", 400)
+        return (coords[0], coords[1])  # yaw (coords[2] if present) is intentionally dropped
+
+    def _resolve_goal(
+        self, destination: str | None, via: str | None, goal: GoalCoord | None
+    ) -> tuple[list[Pose], dict]:
+        """Turn a named ``destination`` OR a coordinate ``goal`` into Nav2 ``poses``.
+
+        Exactly one of the two is required (XOR) — both or neither raises INVALID_GOAL.
+        ``via`` (always a named waypoint) prepends in either case. Returns the ordered
+        poses plus the response/record fields ({"destination": name} for named,
+        {"destination": None, "goal": [x, y]} for a coordinate goal).
+        """
+        if (destination is None) == (goal is None):
+            raise Nav2BridgeError(
+                "INVALID_GOAL",
+                "navigate requires exactly one of destination (named) or goal (coordinate)",
+                400,
+            )
+        poses: list[Pose] = []
+        if via is not None:
+            poses.append(self._coord(via, "INVALID_VIA"))
+        if goal is not None:
+            coord = self._coord_from_goal(goal)
+            poses.append(coord)
+            return poses, {"destination": None, "goal": [coord[0], coord[1]]}
+        poses.append(self._coord(destination, "INVALID_LOCATION"))
+        return poses, {"destination": destination}
+
     def _require_ready(self, robot: str) -> None:
         if not self._backend.ready(robot):
             raise Nav2BridgeError("NAV2_NOT_READY", f"Nav2 not ready for {robot}", 503)
@@ -107,18 +157,28 @@ class Nav2BridgeCore:
 
     # ── endpoints (doc12a:234-343) ──────────────────────────────────────────
 
-    def navigate(self, robot: str, destination: str, via: str | None = None) -> dict:
-        """POST /api/v1/navigate — send ``robot`` to ``destination`` (optional ``via``).
+    def navigate(
+        self,
+        robot: str,
+        destination: str | None = None,
+        via: str | None = None,
+        *,
+        goal: GoalCoord | None = None,
+    ) -> dict:
+        """POST /api/v1/navigate — send ``robot`` to a named ``destination`` OR a ``goal``.
+
+        Pass exactly one target: a frozen ``destination`` name (resolved through the
+        ``locations`` contract, doc12a:351) or an inline coordinate ``goal`` (x, y[, yaw];
+        doc11a:455 — the aisle-A south demo goal is a pinch-aligned coordinate, not a
+        KNOWN_LOCATIONS name). A coordinate goal bypasses ``_coord`` and forwards (x, y)
+        straight to the backend with yaw dropped (``GoalCoord`` note). ``via`` (always a
+        named waypoint) still prepends. Both/neither target → INVALID_GOAL.
 
         Fire-and-forget: returns ``accepted`` immediately; completion arrives via
         ``poll_results`` → ``/nav2_bridge/goal_result`` (doc12a:257,384-392).
         """
         self._require_robot(robot)
-        dest = self._coord(destination, "INVALID_LOCATION")
-        poses: list[Pose] = []
-        if via is not None:
-            poses.append(self._coord(via, "INVALID_VIA"))
-        poses.append(dest)
+        poses, fields = self._resolve_goal(destination, via, goal)
         self._require_ready(robot)
         with self._lock:
             if self._is_busy(robot):
@@ -132,14 +192,9 @@ class Nav2BridgeCore:
                 "task_id": task_id,
                 "nav_status": "navigating",
                 "action": "navigate",
-                "destination": destination,
+                "destination": fields["destination"],
             }
-        return {
-            "task_id": task_id,
-            "status": "accepted",
-            "robot": robot,
-            "destination": destination,
-        }
+        return {"task_id": task_id, "status": "accepted", "robot": robot, **fields}
 
     def wait(self, robot: str, duration: float) -> dict:
         """POST /api/v1/wait — hold ``robot`` for ``duration`` s (cancels current goal).
