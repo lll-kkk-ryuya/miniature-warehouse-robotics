@@ -114,6 +114,23 @@ jobs:
         # build; WARN is surfaced only. 正本: docs/dev/04-consistency-system.md
         run: python3 scripts/check_consistency.py
 
+  firmware-safety:
+    name: Firmware Layer-0 clamp (R-26 host unit)
+    runs-on: ubuntu-latest
+    # Gates the Layer-0 velocity-clamp safety unit (R-26) that no other job runs:
+    # python-quality's pytest collects ws/src Python only — never the C++
+    # firmware/test/test_clamp/. Without this, loosening the 0.3 m/s ceiling, the
+    # non-finite (NaN/±Inf)→stop fail-safe, or the negative-cap guard would not turn
+    # CI red (silent rot). Host-only: g++ + bundled Unity shim, no PlatformIO/ESP32,
+    # runs in seconds. 正本: docs/architecture/20-dev-quality-and-testing.md:75
+    # (Phase 0.5: 安全系ユニット R-26 を CI に追加),
+    # docs/architecture/16-repository-and-conventions.md:213 (§11 安全機構は R-26 unit 必須),
+    # .claude/rules/safety.md:4, docs/architecture/12-infrastructure-common.md:77 (≤0.3 m/s).
+    steps:
+      - uses: actions/checkout@v4
+      - name: Layer-0 clamp R-26 (host)
+        run: bash firmware/test/run_host_test.sh
+
   web-e2e:
     name: Playwright (web E2E)
     runs-on: ubuntu-latest
