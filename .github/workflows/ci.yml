@@ -115,7 +115,7 @@ jobs:
         run: python3 scripts/check_consistency.py
 
   firmware-safety:
-    name: Firmware Layer-0 clamp (R-26 host unit)
+    name: Firmware host gates (R-26 clamp + kinematics + compile)
     runs-on: ubuntu-latest
     # Gates the firmware host units that NO other job runs: python-quality's pytest
     # collects ws/src Python only — never the C++ under firmware/test/. All three steps
