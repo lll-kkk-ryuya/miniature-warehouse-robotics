@@ -150,6 +150,39 @@ def test_mode_c_forwarder_none_charge_actuates_nothing(
     assert tools._nav2_forwarder is None
 
 
+@pytest.mark.safety
+@pytest.mark.unit
+def test_mode_c_forwarder_none_stop_actuates_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # stop is the THIRD Mode C action (navigate|stop|charge, doc08c:136,176) AND the safety
+    # action — and it is a GENUINE actuating forward in Mode A/B: stop -> cancel_task ->
+    # POST /api/v1/stop {robot} (action_map.py:67-71 / nav2_client.py:99-103). So with
+    # forwarder=None an ACCEPTED stop must ALSO actuate nothing, completing the no-actuation
+    # contract for all three Mode C actions (navigate + charge already pinned above). To make
+    # the stop ACCEPTED (status ok, not no_active_task), first register an in-flight task with
+    # a navigate, then cancel it via the same "current:{bot}" form the real Bridge emits.
+    tools = _tools_without_forwarder(tmp_path, gen=1)
+    _forbid_forward_seam(monkeypatch)
+    executor = DispatchToolExecutor(tools.dispatch)
+
+    # register an active task so cancel_task("current:bot1") resolves to status ok
+    assert asyncio.run(executor.execute(_navigate_call("bot1", "berth_A", 1)))["status"] == "ok"
+
+    stop_cmd = Command.model_validate(
+        {"reasoning": "halt", "commands": [{"bot": "bot1", "action": "stop"}]}
+    )
+    [stop_call] = command_to_tool_calls(stop_cmd, gen_id=1)
+    assert stop_call.tool == "cancel_task"  # stop maps to cancel_task (action_map.py:67-71)
+
+    result = asyncio.run(executor.execute(stop_call))
+
+    assert result["status"] == "ok"  # the stop WAS accepted (active task resolved + cleared)
+    assert result.get("robot") == "bot1"
+    assert tools._nav2_forwarder is None
+    # _sentinel never raised ⇒ cancel_task's POST /api/v1/stop forward seam was never entered.
+
+
 # ── 2. Mode C selects no forwarder (the wiring constant llm_bridge.py:75) ──────────────
 
 
