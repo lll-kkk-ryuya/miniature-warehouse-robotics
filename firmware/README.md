@@ -5,14 +5,17 @@ ESP32 車載ファームウェア（micro-ROS / FreeRTOS、PlatformIO）。**現
 ## 構成
 ```
 firmware/
-├── platformio.ini        # ESP32 env + [env:native] host テスト env (build_flags: BOT_ID, 速度上限)
-├── include/config.h      # ピン・MAX_LINEAR_VELOCITY=0.3 ・通信(秘密は config_secret.h)
-├── include/safety_clamp.h# Layer 0 速度クランプ純ロジック(Arduino 非依存・host unit-tested)
-├── src/main.cpp          # ノード骨格 + 速度クランプ(Layer 0) + 各ドライバ TODO
-├── test/test_clamp/      # クランプ R-26 unit test (Unity・host 実行)
-├── test/run_host_test.sh # pio 不在時の g++ フォールバック(同一テスト源)
-├── CLAUDE.md             # 担当コンテキスト
-└── README.md             # 本ファイル
+├── platformio.ini          # ESP32 env + [env:native] host テスト env (build_flags: BOT_ID, 速度上限)
+├── include/config.h        # ピン・MAX_LINEAR_VELOCITY=0.3 ・通信(秘密は config_secret.h)
+├── include/safety_clamp.h  # Layer 0 速度クランプ純ロジック(Arduino 非依存・host unit-tested)
+├── src/main.cpp            # ノード骨格 + 速度クランプ(Layer 0) + モータ/各 publisher/MS200 stub
+├── PHASE1_CHECKLIST.md     # 実機到着時の配線ゲート(stub→実値・実ドライバ・file:line 根拠付)
+├── test/test_clamp/        # クランプ R-26 unit test (Unity・host 実行)
+├── test/run_host_test.sh   # クランプ unit を pio 不在でも g++ で(同一テスト源)
+├── test/run_host_compile.sh# skeleton(main.cpp)を Arduino shim で host 構文確認
+├── test/support/           # unity_shim(クランプ用) / arduino_shim(skeleton compile 用)
+├── CLAUDE.md               # 担当コンテキスト
+└── README.md               # 本ファイル
 ```
 
 ## ビルド / 書込（実機時）
@@ -38,7 +41,15 @@ bash test/run_host_test.sh
 ```
 - 固定する契約: 境界（>上限→上限 / <−上限→−上限 / 素通し / 上限ちょうど / 0）＋ **非有限（NaN/±Inf）→ stop**（fail-safe・`warehouse_interfaces/safety.py:31-32` と一致）＋ `MAX_LINEAR_VELOCITY == 0.3 m/s`（safety.md / `docs/architecture/12-infrastructure-common.md:77`）＋ `MAX_*_VELOCITY > 0`（負上限=runaway ガード）。
 - `MAX_ANGULAR_VELOCITY=2.0`（`include/config.h:10`）は **Phase 1 実測 placeholder**＝テストは境界動作のみ固定。
-- CI 組込み（`.github/**`）は governance 所有のため本 PR では行わず follow-up 提案に留める。
+- CI 組込み（`.github/**`）は governance 所有（人間配線）。R-26 クランプ unit（`run_host_test.sh`）の CI ゲート化は **#242 で進行中**（origin/main 未反映）。本 PR が追加する `run_host_compile.sh`（skeleton compile）も同様に CI 追加は governance follow-up に留める（本 PR では未配線）。
+
+### skeleton host コンパイル（ESP32 不要）
+micro-ROS / ドライバ stub を含む `src/main.cpp` を、最小 Arduino shim（`test/support/arduino_shim`・test 専用）で host 構文確認する。micro-ROS 呼出は Phase 1 の TODO コメントなので ROS ヘッダ不要:
+```bash
+cd firmware
+bash test/run_host_compile.sh   # main.cpp を -c で型検査（PASS で緑）
+```
+実ドライバ・実 rclc publish・モータ PWM・UART parse は Phase 1（[`PHASE1_CHECKLIST.md`](PHASE1_CHECKLIST.md)）。
 
 ## トピック（doc03 契約）
 - Pub: `/<ns>/odom`(`nav_msgs/Odometry`), `/<ns>/scan`(`sensor_msgs/LaserScan`, ORBBEC MS200), `/<ns>/battery`(`sensor_msgs/BatteryState`)
