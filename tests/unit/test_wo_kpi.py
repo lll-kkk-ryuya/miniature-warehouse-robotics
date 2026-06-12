@@ -342,6 +342,8 @@ def test_latest_gen_id_ignores_stale_reject_and_picks_max() -> None:
 # pyproject.toml). They pin the documented contracts of the percentile /
 # cancelled-exclusion / completion-pairing paths against silent regressions.
 
+_TOL = 1e-9  # absolute float slack for interpolated-percentile / mean comparisons
+
 
 @pytest.mark.unit
 def test_percentile_properties_over_random_samples() -> None:
@@ -359,9 +361,9 @@ def test_percentile_properties_over_random_samples() -> None:
         previous: float | None = None
         for value in results:  # quantiles are ascending → results non-decreasing
             assert value is not None
-            assert low - 1e-9 <= value <= high + 1e-9
+            assert low - _TOL <= value <= high + _TOL
             if previous is not None:
-                assert value >= previous - 1e-9
+                assert value >= previous - _TOL
             previous = value
         shuffled = values[:]
         rng.shuffle(shuffled)
@@ -371,8 +373,9 @@ def test_percentile_properties_over_random_samples() -> None:
 @pytest.mark.unit
 def test_percentile_hits_order_statistics_exactly() -> None:
     """When q lands exactly on an index (q = 100·k/(n-1)), _percentile returns the
-    k-th order statistic with no interpolation error — pins the rank→index mapping
-    (kpi.py:86-91)."""
+    k-th order statistic within float tolerance — pins the rank→index mapping. The
+    computed rank can be ~1 ULP off, so the interpolation branch may run; pytest.approx
+    absorbs the ~1e-13 residual (kpi.py:86-91)."""
     rng = random.Random(7)
     for _ in range(100):
         n = rng.randint(2, 30)
@@ -495,9 +498,15 @@ def test_completion_stats_invariants() -> None:
         assert stats.minimum == pytest.approx(min(times))
         assert stats.maximum == pytest.approx(max(times))
         assert stats.mean == pytest.approx(sum(times) / n)
+        assert stats.minimum - _TOL <= stats.mean <= stats.maximum + _TOL  # mean in range
+        # percentiles delegate to _percentile — pin them directly, not just via the
+        # ladder (guards a p95==p99==mean style regression the monotone ladder misses).
+        assert stats.p50 == pytest.approx(_percentile(times, 50))
+        assert stats.p95 == pytest.approx(_percentile(times, 95))
+        assert stats.p99 == pytest.approx(_percentile(times, 99))
         ladder = [stats.minimum, stats.p50, stats.p95, stats.p99, stats.maximum]
         for lower, upper in zip(ladder, ladder[1:], strict=False):  # sliding window
-            assert lower <= upper + 1e-9
+            assert lower <= upper + _TOL
         assert stats.records == list(records)
 
 
