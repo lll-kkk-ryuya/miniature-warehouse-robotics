@@ -6,12 +6,15 @@ with SYNTHETIC completion events (the live Nav2 source is Phase 3, doc08:336).
 """
 
 import json
+import random
 
 import pytest
 from warehouse_orchestrator.audit_reader import parse_lines
 from warehouse_orchestrator.kpi import (
+    CompletionRecord,
     DistanceAccumulator,
     _percentile,
+    cancelled_task_ids,
     completion_stats,
     compute_efficiency,
     compute_kpis,
@@ -331,3 +334,182 @@ def test_latest_gen_id_ignores_stale_reject_and_picks_max() -> None:
         ]
     )
     assert latest_gen_id(with_gen) == 8
+
+
+# ── property-style hardening (#88 wo-metrics) ────────────────────────────────
+# Invariants checked over many fixed-seed random samples: deterministic (so they are
+# reproducible in CI) and dependency-free (``hypothesis`` is not a project dep,
+# pyproject.toml). They pin the documented contracts of the percentile /
+# cancelled-exclusion / completion-pairing paths against silent regressions.
+
+
+@pytest.mark.unit
+def test_percentile_properties_over_random_samples() -> None:
+    """_percentile invariants for any sample (it sorts internally): p(0)=min,
+    p(100)=max, min ≤ p(q) ≤ max, non-decreasing in q, and order-independent
+    (kpi.py:79-91)."""
+    rng = random.Random(20260612)
+    quantiles = [0, 1, 25, 50, 75, 95, 99, 100]
+    for _ in range(300):
+        values = [rng.uniform(-50.0, 250.0) for _ in range(rng.randint(1, 40))]
+        low, high = min(values), max(values)
+        results = [_percentile(values, q) for q in quantiles]
+        assert results[0] == pytest.approx(low)  # q=0 → minimum
+        assert results[-1] == pytest.approx(high)  # q=100 → maximum
+        previous: float | None = None
+        for value in results:  # quantiles are ascending → results non-decreasing
+            assert value is not None
+            assert low - 1e-9 <= value <= high + 1e-9
+            if previous is not None:
+                assert value >= previous - 1e-9
+            previous = value
+        shuffled = values[:]
+        rng.shuffle(shuffled)
+        assert [_percentile(shuffled, q) for q in quantiles] == results
+
+
+@pytest.mark.unit
+def test_percentile_hits_order_statistics_exactly() -> None:
+    """When q lands exactly on an index (q = 100·k/(n-1)), _percentile returns the
+    k-th order statistic with no interpolation error — pins the rank→index mapping
+    (kpi.py:86-91)."""
+    rng = random.Random(7)
+    for _ in range(100):
+        n = rng.randint(2, 30)
+        values = [rng.uniform(0.0, 100.0) for _ in range(n)]
+        ordered = sorted(values)
+        for k in range(n):
+            assert _percentile(values, 100.0 * k / (n - 1)) == pytest.approx(ordered[k])
+
+
+@pytest.mark.unit
+def test_cancelled_task_ids_only_executed_cancel_rows() -> None:
+    """cancelled_task_ids returns exactly the task_ids of EXECUTED cancel_task rows
+    (kpi.py:252-263): other tools, non-executed cancels and missing task_ids never
+    contribute, and duplicates collapse to a set. Cross-checked vs an independent
+    oracle over random logs."""
+    rng = random.Random(99)
+    tools = ["dispatch_task", "cancel_task", "send_to_charging", "get_fleet_status"]
+    results = ["executed", "rejected", "error"]
+    for _ in range(200):
+        records = []
+        expected: set[str] = set()
+        for _ in range(rng.randint(0, 12)):
+            tool = rng.choice(tools)
+            result = rng.choice(results)
+            task_id = f"nav_{rng.randint(0, 4):03d}" if rng.random() < 0.8 else None
+            records.append(_rec(tool, result, detail={"task_id": task_id} if task_id else {}))
+            if tool == "cancel_task" and result == "executed" and task_id:
+                expected.add(task_id)
+        assert cancelled_task_ids(_entries(records)) == expected
+
+
+@pytest.mark.unit
+def test_pair_completion_times_invariants() -> None:
+    """Structural invariants over random audit logs (kpi.py:345-388): non-negative
+    durations (never premature), ≤1 record per task_id, dispatch_ts is the EARLIEST
+    executed dispatch start, and every output id was both supplied AND had an
+    executed dispatch."""
+    rng = random.Random(2024)
+    for _ in range(200):
+        task_ids = [f"nav_{i:03d}" for i in range(rng.randint(1, 6))]
+        records = []
+        starts: dict[str, list[float]] = {}
+        for _ in range(rng.randint(0, 15)):
+            task_id = rng.choice(task_ids)
+            tool = rng.choice(["dispatch_task", "send_to_charging"])
+            result = rng.choice(["executed", "executed", "rejected"])
+            ts = rng.uniform(0.0, 100.0)
+            records.append(_rec(tool, result, detail={"task_id": task_id}, ts=ts))
+            if result == "executed":
+                starts.setdefault(task_id, []).append(ts)
+        completions = {tid: rng.uniform(0.0, 200.0) for tid in task_ids if rng.random() < 0.7}
+        out = pair_completion_times(_entries(records), completions, exclude_cancelled=False)
+        seen: set[str] = set()
+        for record in out:
+            assert record.completion_time >= 0.0
+            assert record.completion_ts >= record.dispatch_ts
+            assert record.task_id not in seen  # at most one record per task_id
+            seen.add(record.task_id)
+            assert record.task_id in completions  # only supplied ids surface
+            assert record.task_id in starts  # only ids with an executed dispatch
+            assert record.dispatch_ts == pytest.approx(min(starts[record.task_id]))
+
+
+@pytest.mark.unit
+def test_pair_completion_times_exclusion_is_monotone_subset() -> None:
+    """exclude_cancelled=True yields a SUBSET of exclude_cancelled=False, dropping
+    exactly the task_ids resolved by an executed cancel_task — ties the exclusion to
+    cancelled_task_ids (kpi.py:360,375)."""
+    rng = random.Random(555)
+    for _ in range(150):
+        task_ids = [f"nav_{i:03d}" for i in range(rng.randint(1, 5))]
+        records = []
+        for _ in range(rng.randint(0, 12)):
+            task_id = rng.choice(task_ids)
+            roll = rng.random()
+            if roll < 0.6:
+                row = _rec(
+                    "dispatch_task", "executed", detail={"task_id": task_id}, ts=rng.uniform(0, 50)
+                )
+            elif roll < 0.85:
+                row = _rec(
+                    "cancel_task", "executed", detail={"task_id": task_id}, ts=rng.uniform(50, 100)
+                )
+            else:
+                row = _rec("cancel_task", "rejected", detail={"task_id": task_id})
+            records.append(row)
+        entries = _entries(records)
+        completions = {tid: rng.uniform(60.0, 200.0) for tid in task_ids}
+        kept_all = {
+            r.task_id for r in pair_completion_times(entries, completions, exclude_cancelled=False)
+        }
+        kept_excluded = {
+            r.task_id for r in pair_completion_times(entries, completions, exclude_cancelled=True)
+        }
+        cancelled = cancelled_task_ids(entries)
+        assert kept_excluded <= kept_all  # exclusion can only remove
+        assert kept_excluded == kept_all - cancelled  # removes exactly the cancelled
+
+
+@pytest.mark.unit
+def test_completion_stats_invariants() -> None:
+    """completion_stats aggregates obey min ≤ p50 ≤ p95 ≤ p99 ≤ max and
+    min ≤ mean ≤ max, with count == len(records) and records preserved verbatim
+    (kpi.py:391-403)."""
+    rng = random.Random(31337)
+    for _ in range(200):
+        n = rng.randint(1, 50)
+        records = [
+            CompletionRecord(
+                task_id=f"nav_{i:03d}",
+                robot=None,
+                dispatch_ts=0.0,
+                completion_ts=rng.uniform(0.0, 300.0),
+            )
+            for i in range(n)
+        ]
+        times = [record.completion_time for record in records]
+        stats = completion_stats(records)
+        assert stats.count == n
+        assert stats.minimum == pytest.approx(min(times))
+        assert stats.maximum == pytest.approx(max(times))
+        assert stats.mean == pytest.approx(sum(times) / n)
+        ladder = [stats.minimum, stats.p50, stats.p95, stats.p99, stats.maximum]
+        for lower, upper in zip(ladder, ladder[1:], strict=False):  # sliding window
+            assert lower <= upper + 1e-9
+        assert stats.records == list(records)
+
+
+@pytest.mark.unit
+def test_completion_stats_empty_is_all_none() -> None:
+    """Empty input → count 0 and every statistic None (kpi.py:391-403)."""
+    stats = completion_stats([])
+    assert stats.count == 0
+    assert stats.mean is None
+    assert stats.p50 is None
+    assert stats.p95 is None
+    assert stats.p99 is None
+    assert stats.minimum is None
+    assert stats.maximum is None
+    assert stats.records == []
