@@ -4,8 +4,9 @@
 #
 # Compiles firmware/test/test_kinematics/test_kinematics.cpp with the bundled
 # minimal Unity shim so the SAME test source runs under plain g++/clang when
-# PlatformIO is absent. Mirrors `pio test -e native`. Separate from the Layer-0
-# clamp R-26 gate (run_host_test.sh) so the safety gate stays pristine.
+# PlatformIO is absent. Mirrors the test_kinematics suite of `pio test -e native`
+# (the native env's test_filter runs test_clamp + test_kinematics). Separate from
+# the Layer-0 clamp R-26 gate (run_host_test.sh) so the safety gate stays pristine.
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"  # firmware/test
