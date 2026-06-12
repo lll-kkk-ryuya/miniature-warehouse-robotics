@@ -38,8 +38,8 @@ bot2 は `BOT_ID=2` でビルド（namespace `/bot2`）。
 クランプは安全機構ゆえ **unit テスト必須**（R-26 / `docs/architecture/16` §11・`docs/architecture/20-dev-quality-and-testing.md:75`）。同一テスト源（`test/test_clamp/test_clamp.cpp`）を host で2通り実行できる:
 ```bash
 cd firmware
-pio test -e native        # PlatformIO + Unity（pio がある場合）
-# pio が無い環境では g++/clang フォールバック（同梱 Unity shim）:
+pio test -e native        # PlatformIO + Unity（pio がある場合・native env は test_filter で clamp と kinematics を一括実行）
+# pio が無い環境では g++/clang フォールバック（同梱 Unity shim・clamp 単独・R-26 ゲート）:
 bash test/run_host_test.sh
 ```
 - 固定する契約: 境界（>上限→上限 / <−上限→−上限 / 素通し / 上限ちょうど / 0）＋ **非有限（NaN/±Inf）→ stop**（fail-safe・`warehouse_interfaces/safety.py:31-32` と一致）＋ `MAX_LINEAR_VELOCITY == 0.3 m/s`（safety.md / `docs/architecture/12-infrastructure-common.md:77`）＋ `MAX_*_VELOCITY > 0`（負上限=runaway ガード）。
@@ -50,9 +50,10 @@ bash test/run_host_test.sh
 skid-steer mix（`mixSkidSteer`）と dead-reckon odom（`integrateOdom`）の純ロジック（`include/kinematics.h`・Arduino 非依存・差動駆動の標準モデル）を host で検証する。hardware 値（`TRACK_WIDTH`・PWM duty 曲線・encoder scale・`dt`）は**引数**で渡し、ヘッダに定数を発明しない:
 ```bash
 cd firmware
-bash test/run_kinematics_test.sh   # 9/9 で緑（直進/その場旋回/dead-reckon 積分）
+pio test -e native                 # PlatformIO + Unity（test_filter allowlist が clamp と一括実行）
+bash test/run_kinematics_test.sh   # pio 不在の g++/clang フォールバック・9/9 で緑（直進/その場旋回/dead-reckon 積分）
 ```
-安全 R-26 クランプ gate（`run_host_test.sh`）とは**別ゲート**（クランプ gate は不変に保つ）。
+安全 R-26 クランプ gate（shell の `run_host_test.sh`＝clamp 単独・CI `firmware-safety` でゲート）とは**別ゲート**で、これは不変に保つ（`pio test -e native` の allowlist 拡張は dev 利便であり enforcement gate ではない）。
 
 ### skeleton host コンパイル（ESP32 不要）
 micro-ROS / ドライバ stub を含む `src/main.cpp` を、最小 Arduino shim（`test/support/arduino_shim`・test 専用）で host 構文確認する。micro-ROS 呼出は Phase 1 の TODO コメントなので ROS ヘッダ不要:

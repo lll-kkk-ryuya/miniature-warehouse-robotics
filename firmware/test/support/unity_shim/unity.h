@@ -1,16 +1,19 @@
 // Minimal Unity shim for HOST execution (g++/clang) when PlatformIO + Unity is
-// unavailable. Implements ONLY the subset of the Unity API used by test_clamp.cpp,
-// so a SINGLE test source runs under both:
-//   pio test -e native               -> real ThrowTheSwitch Unity (framework)
-//   firmware/test/run_host_test.sh   -> this shim (added via -I)
+// unavailable. Implements ONLY the subset of the Unity API used by the host test
+// suites (test_clamp.cpp, test_kinematics.cpp), so a SINGLE test source per suite
+// runs under both:
+//   pio test -e native                     -> real ThrowTheSwitch Unity (framework)
+//   firmware/test/run_host_test.sh         -> this shim (added via -I), clamp suite
+//   firmware/test/run_kinematics_test.sh   -> this shim (added via -I), kinematics suite
 //
 // Why this does not shadow the framework's <unity.h> under `pio test -e native`:
-// PlatformIO puts the running suite folder (test_clamp/) and the Unity framework on
-// the include path, but support/unity_shim/ has no `test` name prefix -- it is
-// treated as shared code, not a suite, and is not added recursively to CPPPATH -- so
-// the suite's `#include <unity.h>` resolves to real ThrowTheSwitch Unity
-// (test_framework = unity, platformio.ini:24). `test_filter = test_clamp` only
-// selects which suite RUNS; it is not what hides this shim.
+// PlatformIO puts the running suite folder (test_clamp/ or test_kinematics/) and the
+// Unity framework on the include path, but support/unity_shim/ has no `test` name
+// prefix -- it is treated as shared code, not a suite, and is not added recursively to
+// CPPPATH -- so the suite's `#include <unity.h>` resolves to real ThrowTheSwitch Unity
+// (test_framework = unity, platformio.ini:25). The `test_filter` allowlist
+// (test_clamp, test_kinematics) only selects which suites RUN; it is not what hides
+// this shim.
 #pragma once
 
 #include <cstdio>

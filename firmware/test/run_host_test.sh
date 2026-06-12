@@ -3,7 +3,8 @@
 #
 # Compiles firmware/test/test_clamp/test_clamp.cpp with a bundled minimal Unity
 # shim so the SAME test source runs under plain g++/clang when PlatformIO is not
-# installed. Mirrors `pio test -e native`; both must be green (R-26 safety unit).
+# installed. This is the pristine R-26 clamp gate (test_clamp only); it mirrors the
+# test_clamp suite of `pio test -e native` — both paths must be green (R-26 unit).
 #
 # Build flags mirror platformio.ini [env:native]: BOT_ID + the MCU velocity
 # ceiling MAX_LINEAR_VELOCITY_MMPS=300 (= 0.3 m/s, safety.md / doc12:77).
