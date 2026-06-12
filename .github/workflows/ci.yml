@@ -117,12 +117,22 @@ jobs:
   firmware-safety:
     name: Firmware Layer-0 clamp (R-26 host unit)
     runs-on: ubuntu-latest
-    # Gates the Layer-0 velocity-clamp safety unit (R-26) that no other job runs:
-    # python-quality's pytest collects ws/src Python only — never the C++
-    # firmware/test/test_clamp/. Without this, loosening the 0.3 m/s ceiling, the
-    # non-finite (NaN/±Inf)→stop fail-safe, or the negative-cap guard would not turn
-    # CI red (silent rot). Host-only: g++ + bundled Unity shim, no PlatformIO/ESP32,
-    # runs in seconds. 正本: docs/architecture/20-dev-quality-and-testing.md:75
+    # Gates the firmware host units that NO other job runs: python-quality's pytest
+    # collects ws/src Python only — never the C++ under firmware/test/. All three steps
+    # are host-only (g++ + bundled shims, no PlatformIO/ESP32, run in seconds):
+    #   1. R-26 Layer-0 velocity clamp (run_host_test.sh) — SAFETY anchor: without it,
+    #      loosening the 0.3 m/s ceiling, the non-finite (NaN/±Inf)→stop fail-safe, or
+    #      the negative-cap guard would not turn CI red (silent rot).
+    #   2. Differential-drive kinematics (run_kinematics_test.sh) — a sign error in the
+    #      skid-steer mix or a bad dead-reckon integration step would otherwise go
+    #      unnoticed.
+    #   3. Skeleton host compile (run_host_compile.sh) — a broken main.cpp stub
+    #      signature (motor sink / publisher / clamp call path) would otherwise stay
+    #      hidden until the on-target build.
+    # Steps 2-3 are NOT R-26 safety units; they are colocated here so ALL pio-free
+    # firmware host gates run in one job (firmware/README.md "テスト" §). The R-26 clamp
+    # gate source (run_host_test.sh) is left unchanged ("クランプ gate は不変に保つ").
+    # 正本: docs/architecture/20-dev-quality-and-testing.md:75
     # (Phase 0.5: 安全系ユニット R-26 を CI に追加),
     # docs/architecture/16-repository-and-conventions.md:213 (§11 安全機構は R-26 unit 必須),
     # .claude/rules/safety.md:4, docs/architecture/12-infrastructure-common.md:77 (≤0.3 m/s).
@@ -130,6 +140,10 @@ jobs:
       - uses: actions/checkout@v4
       - name: Layer-0 clamp R-26 (host)
         run: bash firmware/test/run_host_test.sh
+      - name: Kinematics host unit (skid-steer mix + dead-reckon odom)
+        run: bash firmware/test/run_kinematics_test.sh
+      - name: Skeleton host compile (main.cpp)
+        run: bash firmware/test/run_host_compile.sh
 
   web-e2e:
     name: Playwright (web E2E)
