@@ -255,3 +255,90 @@ def test_pending_tasks_emit_canonical_from_wire_key(tmp_path: Path) -> None:
     assert sit is not None
     assert sit["pending_tasks"] == [{"id": "task_1", "from": "shelf_3", "to": "berth_B"}]
     assert "from_" not in sit["pending_tasks"][0]
+
+
+@pytest.mark.unit
+def test_mode_a_approaching_bots_carry_pattern3_prediction_material(tmp_path: Path) -> None:
+    # Pattern-3 = approach (pre-collision) precursor (doc08a:307-314): two bots MOVING
+    # head-on whose predicted_position_3s converge to one point. Complements the existing
+    # STATIC pattern-1 test above (velocity=0); here both bots have linear>0 so CTRV
+    # (08a:89-129) extrapolates real motion, not a degenerate stay-put. The builder must
+    # ship the material the commander needs to infer the precursor (both bots'
+    # predicted_position_3s + velocity + heading) — it adds NO pre-computed pairwise
+    # convergence signal (that inference is the LLM's, 08a:316-334; no threshold here).
+    # Geometry: bot1 at x=0.5 heading 0 and bot2 at x=1.1 heading π, both v=0.1, both on
+    # y=0.5. Over T=3.0s each advances 0.3m toward the other -> both predict (0.8, 0.5).
+    store = _store(
+        tmp_path,
+        {
+            "bot1": _robot(
+                position={"x": 0.5, "y": 0.5},
+                heading=0.0,
+                velocity={"linear": 0.1, "angular": 0.0},
+                status="moving",
+            ),
+            "bot2": _robot(
+                position={"x": 1.1, "y": 0.5},
+                heading=math.pi,
+                velocity={"linear": 0.1, "angular": 0.0},
+                status="moving",
+            ),
+        },
+    )
+    sit = SituationBuilder(store).build(
+        turn=1, gen_id=1, current_tasks={"bot1": "shelf_1", "bot2": "shelf_2"}
+    )
+    assert sit is not None
+    b1, b2 = sit["robots"]["bot1"], sit["robots"]["bot2"]
+    for bot in (b1, b2):
+        # material for the pattern-3 inference is present (Mode A full shape, 08a:307-311)
+        for field in ("predicted_position_3s", "velocity", "heading"):
+            assert field in bot
+        assert bot["velocity"]["linear"] > 0  # MOVING — the distinction from static pattern-1
+    p1, p2 = b1["predicted_position_3s"], b2["predicted_position_3s"]
+    cur_dist = math.hypot(
+        b1["position"]["x"] - b2["position"]["x"], b1["position"]["y"] - b2["position"]["y"]
+    )
+    pred_dist = math.hypot(p1["x"] - p2["x"], p1["y"] - p2["y"])
+    assert pred_dist < cur_dist  # the predictions are approaching (precursor signal)
+    assert pred_dist == pytest.approx(0.0, abs=1e-6)  # converge to one point (08a:310-311)
+
+
+@pytest.mark.unit
+def test_mode_a_static_opposing_bots_predictions_do_not_converge(tmp_path: Path) -> None:
+    # Boundary of pattern-3 (doc08a:314,334): two STATIC opposing bots (velocity=0, the
+    # pattern-1 head-on shape) must NOT trigger the convergence precursor — CTRV degenerates
+    # each prediction to its CURRENT position (the §predicted_position_3s limit), so the two
+    # predictions stay as far apart as the bots themselves. This pins the doc's claim that a
+    # static standoff is detected by patterns 1/2, never by pattern-3 (08a:281). Mirrors the
+    # pattern-1 positions (0.5/0.7, 0.2m apart) so the contrast with the moving case is exact.
+    store = _store(
+        tmp_path,
+        {
+            "bot1": _robot(
+                position={"x": 0.5, "y": 0.5},
+                heading=0.0,
+                velocity={"linear": 0.0, "angular": 0.0},
+                status="idle",
+            ),
+            "bot2": _robot(
+                position={"x": 0.7, "y": 0.5},
+                heading=3.14,
+                velocity={"linear": 0.0, "angular": 0.0},
+                status="idle",
+            ),
+        },
+    )
+    sit = SituationBuilder(store).build(turn=1, gen_id=1)
+    assert sit is not None
+    b1, b2 = sit["robots"]["bot1"], sit["robots"]["bot2"]
+    # each prediction degenerates to the bot's own current position (linear=0 -> no advance)
+    for bot in (b1, b2):
+        assert bot["predicted_position_3s"]["x"] == pytest.approx(bot["position"]["x"])
+        assert bot["predicted_position_3s"]["y"] == pytest.approx(bot["position"]["y"])
+    p1, p2 = b1["predicted_position_3s"], b2["predicted_position_3s"]
+    cur_dist = math.hypot(
+        b1["position"]["x"] - b2["position"]["x"], b1["position"]["y"] - b2["position"]["y"]
+    )
+    pred_dist = math.hypot(p1["x"] - p2["x"], p1["y"] - p2["y"])
+    assert pred_dist == pytest.approx(cur_dist)  # NO convergence: static standoff != pattern-3
