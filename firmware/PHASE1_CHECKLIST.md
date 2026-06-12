@@ -28,14 +28,14 @@
 ## B. cmd_vel（Sub）・モータ — Layer 0
 
 - [ ] **`/<ns>/cmd_vel` subscriber を `onCmdVel` にバインド** — `doc03:88`（`/bot{n}/cmd_vel` = `geometry_msgs/Twist`）+ `doc06:128`（「`/cmd_vel` でロボットを遠隔操作（teleop）」）。`main.cpp:setup()` の `sub(cmd_vel → onCmdVel)` TODO を実装。
-- [ ] **`setMotorVelocity(v,w)` を実 PWM へ**（4輪スキッドステア・左右2ch）— `doc02:14`（「310エンコーダモーター × 4（4輪スキッドステアリング、左右2チャンネル制御）」）。`TRACK_WIDTH` と速度→duty 曲線を**実機実測で `config.h` に確定**（現状 stub の差動ミックスはコメント契約のみ）。**クランプ済み (v,w) 前提を崩さない**（`main.cpp:onCmdVel` → `clampLinear/clampAngular` → `setMotorVelocity`）。
+- [ ] **`setMotorVelocity(v,w)` を実 PWM へ**（4輪スキッドステア・左右2ch）— `doc02:14`（「310エンコーダモーター × 4（4輪スキッドステアリング、左右2チャンネル制御）」）。`TRACK_WIDTH` と速度→duty 曲線を**実機実測で `config.h` に確定**（差動ミックス `mixSkidSteer` は `include/kinematics.h` で **host-unit-tested 済**＝残りは `TRACK_WIDTH` 実測値と duty 曲線のみ）。**クランプ済み (v,w) 前提を崩さない**（`main.cpp:onCmdVel` → `clampLinear/clampAngular` → `setMotorVelocity`）。
 - [ ] **Layer-0 速度クランプの回帰確認**（実 build でも保持）— `safety_clamp.h`（凍結・触らない）+ `doc12:77,112`（MCU 内 0.3 m/s 上限＝最終防衛線）。実 PWM 配線後も `test/run_host_test.sh` が **9/9 緑**＝R-26（`doc16:213` §11 / `doc20:75`）を維持。
 - [ ] **近接センサ → motor enable OFF reflex** — ⚠️**doc06 外**＝`doc12:76`（「ToF/LiDAR近接物体検出 → モータPWM停止 / motor enable OFF（MCU内、通信不要）」）+ `doc12:78`（「bumper / 近接センサ → モータ停止（MCU内、OS・ROS 非依存）」）+ `doc12:112`（最終防衛線）。速度クランプの**下**にある MCU 内 reflex（通信非依存）。`main.cpp` の近接停止 TODO を実装。
 
 ## C. センサ publisher（Pub）— doc03 凍結契約
 
 - [ ] **MS200 LiDAR UART init + フレームパース → `/<ns>/scan`** — `doc02:15`（ORBBEC MS200 dToF 360°/0.03〜12m/4500Hz/0.4°）+ `doc02:26`（→ `/bot{n}/scan`）+ `doc03:78`（`sensor_msgs/LaserScan` 凍結）+ ピン `config.h:20-22`（RX18/TX17/230400）。`main.cpp:initMS200()` は `Serial1.begin(...)` まで stub 済 → 実フレームパースと `publishScan()` の rcl_publish を実装。**R-43 注意**: 360°/0.4°≈3.6KB/scan が UDP MTU 512B を超える → ダウンサンプル/フラグメンテーション対策（`doc07:253`、host spike 未検証）。
-- [ ] **エンコーダ dead-reckon → `/<ns>/odom`** — `doc02:28`（エンコーダ ×4 → オドメトリ）+ `doc03:77`（`nav_msgs/Odometry` 凍結）+ `doc06:129`（「`/odom` でオドメトリデータ受信確認」）。`main.cpp:publishOdom()` の [0,0,0] 起点 stub を実エンコーダ積分に置換。
+- [ ] **エンコーダ dead-reckon → `/<ns>/odom`** — `doc02:28`（エンコーダ ×4 → オドメトリ）+ `doc03:77`（`nav_msgs/Odometry` 凍結）+ `doc06:129`（「`/odom` でオドメトリデータ受信確認」）。`main.cpp:publishOdom()` の [0,0,0] 起点 stub を実エンコーダ積分に置換（dead-reckon 積分 `integrateOdom` は `include/kinematics.h` で **host-unit-tested 済**＝残りは encoder tick 読取と `dt` のみ）。
 - [ ] **バッテリー電圧 ADC → `/<ns>/battery`** — `doc02:17`（7.4V リポ）+ `doc03:79`（`sensor_msgs/BatteryState`・実機は micro-ROS firmware が供給 Phase 1+）。`publishBattery()` の `percentage` は config `safety.battery_percentage_scale` と**同一スケール**で出す（State Cache / Emergency Guardian の split-brain 回避、`doc03:79`）。
 - [ ] **IMU（6軸）読取** — `doc02:16`（6軸IMU）+ `doc02:27`（`/bot{n}/imu`「※要確認 / sim 未橋渡し」）。⚠️ **`/bot{n}/imu` は `doc03:81` で凍結トピック契約の外** → `publishImu()` は **publish 配線しない**（stub のまま）。必要になったら firmware 内で確定せず **epic #3 に上げて contract-PR 判断**（`implementation-and-dependencies.md §3`）。
 - [ ] **odom/scan/battery publisher を rclc に登録** — `doc03:77-79`（3トピックの名前・型は凍結＝そのまま consume）。`main.cpp:setup()` の `register pub(odom,scan,battery)` TODO を実装。**imu は登録しない**（上記）。

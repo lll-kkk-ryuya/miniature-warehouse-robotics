@@ -8,12 +8,15 @@ firmware/
 ├── platformio.ini          # ESP32 env + [env:native] host テスト env (build_flags: BOT_ID, 速度上限)
 ├── include/config.h        # ピン・MAX_LINEAR_VELOCITY=0.3 ・通信(秘密は config_secret.h)
 ├── include/safety_clamp.h  # Layer 0 速度クランプ純ロジック(Arduino 非依存・host unit-tested)
+├── include/kinematics.h    # skid-steer mix + dead-reckon odom 純ロジック(Arduino 非依存・host unit-tested)
 ├── src/main.cpp            # ノード骨格 + 速度クランプ(Layer 0) + モータ/各 publisher/MS200 stub
 ├── PHASE1_CHECKLIST.md     # 実機到着時の配線ゲート(stub→実値・実ドライバ・file:line 根拠付)
 ├── test/test_clamp/        # クランプ R-26 unit test (Unity・host 実行)
+├── test/test_kinematics/   # キネマティクス unit test (Unity・host 実行)
 ├── test/run_host_test.sh   # クランプ unit を pio 不在でも g++ で(同一テスト源)
+├── test/run_kinematics_test.sh # キネマティクス unit を g++ で(同梱 Unity shim)
 ├── test/run_host_compile.sh# skeleton(main.cpp)を Arduino shim で host 構文確認
-├── test/support/           # unity_shim(クランプ用) / arduino_shim(skeleton compile 用)
+├── test/support/           # unity_shim(クランプ/キネマ用) / arduino_shim(skeleton compile 用)
 ├── CLAUDE.md               # 担当コンテキスト
 └── README.md               # 本ファイル
 ```
@@ -41,7 +44,15 @@ bash test/run_host_test.sh
 ```
 - 固定する契約: 境界（>上限→上限 / <−上限→−上限 / 素通し / 上限ちょうど / 0）＋ **非有限（NaN/±Inf）→ stop**（fail-safe・`warehouse_interfaces/safety.py:31-32` と一致）＋ `MAX_LINEAR_VELOCITY == 0.3 m/s`（safety.md / `docs/architecture/12-infrastructure-common.md:77`）＋ `MAX_*_VELOCITY > 0`（負上限=runaway ガード）。
 - `MAX_ANGULAR_VELOCITY=2.0`（`include/config.h:10`）は **Phase 1 実測 placeholder**＝テストは境界動作のみ固定。
-- CI 組込み（`.github/**`）は governance 所有（人間配線）。R-26 クランプ unit（`run_host_test.sh`）の CI ゲート化は **#242 で進行中**（origin/main 未反映）。本 PR が追加する `run_host_compile.sh`（skeleton compile）も同様に CI 追加は governance follow-up に留める（本 PR では未配線）。
+- CI 組込み（`.github/**`）は governance 所有（人間配線）。R-26 クランプ unit（`run_host_test.sh`）は CI job **`firmware-safety` でゲート化済**（#244・origin/main）。本 PR 追加の `run_kinematics_test.sh` / `run_host_compile.sh` は未配線＝同 job への追加は governance follow-up（`.github/**` は本レーン境界外）。
+
+### キネマティクス host unit（ESP32 不要）
+skid-steer mix（`mixSkidSteer`）と dead-reckon odom（`integrateOdom`）の純ロジック（`include/kinematics.h`・Arduino 非依存・差動駆動の標準モデル）を host で検証する。hardware 値（`TRACK_WIDTH`・PWM duty 曲線・encoder scale・`dt`）は**引数**で渡し、ヘッダに定数を発明しない:
+```bash
+cd firmware
+bash test/run_kinematics_test.sh   # 9/9 で緑（直進/その場旋回/dead-reckon 積分）
+```
+安全 R-26 クランプ gate（`run_host_test.sh`）とは**別ゲート**（クランプ gate は不変に保つ）。
 
 ### skeleton host コンパイル（ESP32 不要）
 micro-ROS / ドライバ stub を含む `src/main.cpp` を、最小 Arduino shim（`test/support/arduino_shim`・test 専用）で host 構文確認する。micro-ROS 呼出は Phase 1 の TODO コメントなので ROS ヘッダ不要:

@@ -19,6 +19,10 @@
 // clampLinear / clampAngular live here so the same logic is pinned by
 // firmware/test/test_clamp (`pio test -e native` / run_host_test.sh). 呼ぶだけ・不変。
 #include "safety_clamp.h"
+// Pure differential-drive kinematics (skid-steer mix + dead-reckon odom), host-unit-
+// tested in firmware/test/test_kinematics. Hardware values (TRACK_WIDTH / PWM duty /
+// encoder scale / dt) stay Phase-1 TODO and are passed in as parameters.
+#include "kinematics.h"
 
 // =============================================================================
 //  Motor output — Layer 0 enforcement SINK (doc02:14, doc12:77)
@@ -34,11 +38,11 @@
 // PRECONDITION: v, w are ALREADY clamped by clampLinear/clampAngular (Layer 0):
 // this stub must never re-introduce a value above the MCU ceiling.
 void setMotorVelocity(float v, float w) {
-  // TODO(Phase 1): const float half = TRACK_WIDTH * 0.5f;            // measured (config.h)
-  //                const float left  = v - w * half;                 // m/s, left track
-  //                const float right = v + w * half;                 // m/s, right track
-  //                ledcWrite(L_PWM_CH, dutyFromSpeed(left));          // ESP32 LEDC PWM
-  //                ledcWrite(R_PWM_CH, dutyFromSpeed(right));
+  // The skid-steer mix (v,w -> left/right track speed) is host-tested in kinematics.h;
+  // only the measured TRACK_WIDTH and the track-speed -> PWM duty curve are Phase 1.
+  // TODO(Phase 1): const TrackSpeeds ts = mixSkidSteer(v, w, TRACK_WIDTH);  // measured (config.h)
+  //                ledcWrite(L_PWM_CH, dutyFromSpeed(ts.left));   // ESP32 LEDC PWM
+  //                ledcWrite(R_PWM_CH, dutyFromSpeed(ts.right));  // duty curve = Phase 1
   (void)v;
   (void)w;
 }
@@ -75,9 +79,14 @@ void publishScan() {
 // (v, w) over dt from encoder counts. Real encoder integration is Phase 1
 // (doc06:129 /odom receipt check). Hook point for setMotorVelocity feedback later.
 void publishOdom() {
-  // TODO(Phase 1): integrate encoder ticks -> (x, y, theta); build
-  //   nav_msgs__msg__Odometry{header.frame_id="odom", child_frame_id="base_link",
-  //   pose, twist} and rcl_publish(&odom_pub_, &msg, NULL).
+  // Dead-reckon pose accumulates here; the integration math is host-tested
+  // (kinematics.h integrateOdom). Encoder-tick read, tick->distance scale and dt
+  // are Phase 1 (doc06:129 /odom receipt check).
+  static Pose2D s_pose = {0.0f, 0.0f, 0.0f};  // starts at origin
+  // TODO(Phase 1): s_pose = integrateOdom(s_pose, v_meas, w_meas, dt);  // from encoders
+  //   build nav_msgs__msg__Odometry{header.frame_id="odom", child_frame_id="base_link",
+  //   pose=s_pose, twist=(v_meas,w_meas)} and rcl_publish(&odom_pub_, &msg, NULL).
+  (void)s_pose;
 }
 
 // /<ns>/battery : sensor_msgs/BatteryState — 7.4V LiPo (doc03:79, doc02:17).
