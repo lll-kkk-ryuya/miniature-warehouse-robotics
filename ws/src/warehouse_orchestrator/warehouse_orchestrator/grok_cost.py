@@ -8,11 +8,16 @@ so Grok generations get an empty ``cost`` and the 4-provider comparison breaks (
 can derive Grok cost *offline* as ``tokens × static xAI price table`` — unlocking the comparison
 without depending on whether a custom model price is registered in Langfuse (doc08:504).
 
-**Not live-verified — PLAN only here (doc08:506).** The exact ``usage_details`` key shape, the
-literal ``model`` string Hermes forwards to Grok, and the real per-token prices must be confirmed
-*live* in Phase 3 (#88) before the derived cost is trusted; they are NOT fixed by guessing. The
-price table values below are **placeholders** (``# TODO(#88 Phase3)``); every test injects its own
-table so correctness never depends on them — only the *structure* is frozen here.
+**Not live-verified end-to-end — see doc08:506,508.** The exact ``usage_details`` key shape and the
+literal ``model`` string Hermes forwards to Grok must be confirmed *live* in Phase 3 (#88) before any
+derived cost is trusted; they are NOT fixed by guessing. Two versioned tables are shipped:
+``GROK_PRICE_TABLE_2026_06_04`` holds **placeholder** values (``# TODO(#88 Phase3)``), while
+``GROK_PRICE_TABLE_2026_06_12`` holds the **current public xAI list prices** (cross-checked against
+the docs.x.ai public list). Even the latter is not end-to-end verified — which literal ``model``
+string actually reaches Grok and the v4 price-field form stay live-unconfirmed (doc08:508), so a
+cost derived from it is not "verified". Every test injects its own table so correctness never
+depends on the shipped values, and ``resolve_grok_price`` keeps its existing default (the new table
+is additive, opt-in) — only the *structure* of each shipped table is frozen here.
 
 Pure stdlib — no rclpy, no langfuse, no xAI SDK at import time → unit-testable per doc16 §11
 (R-26: the comparison-cost helper is verified with fakes, never a live SDK).
@@ -54,6 +59,38 @@ GROK_PRICE_TABLE_2026_06_04: dict[str, GrokPrice] = {
     "grok-3": GrokPrice(
         input_usd_per_token=3.0 / _USD_PER_MILLION,
         output_usd_per_token=15.0 / _USD_PER_MILLION,
+    ),
+}
+
+# Current public xAI list prices (USD per token). Date-stamped as an explicit *new* table so a price
+# change is never a silent edit of an older one (additive, opt-in — no function default points here).
+# Source: https://docs.x.ai/developers/models (xAI public model pricing page) — retrieved 2026-06-12.
+# Unlike the 2026_06_04 placeholders these are the real published list prices, but they are STILL not
+# verified end-to-end: which literal ``model`` string Hermes forwards to Grok and the live v4
+# price-field form remain unconfirmed (doc08:508), and ``grok-* cost_details.total > 0`` must be
+# asserted on a real Langfuse 4.7.x trace in Phase 3 (doc08:506 / doc13:520②). Do NOT treat a cost
+# derived from this table as "verified". xAI publishes USD per 1M tokens; divide by 1e6 per-token.
+# Keys are model-family prefixes (``resolve_grok_price`` longest-prefix match):
+#   "grok-4.3"       -> $1.25 in / $2.50 out per 1M (cached-input $0.20, not modeled here).
+#   "grok-4.20"      -> $1.25 in / $2.50 out per 1M; prefix covers the dated 4.20 variants
+#                       (-0309-reasoning / -0309-non-reasoning / -multi-agent-0309).
+#   "grok-build-0.1" -> $1.00 in / $2.00 out per 1M.
+# Models not on the current public page (older grok-4-0709 / grok-3) intentionally get **no row** here
+# -> resolve_grok_price returns the caller's ``default`` (None = unpriceable) instead of a guessed
+# price (doc08:508 "don't fix by guessing"). The 2026_06_04 table retains those families if a caller
+# explicitly wants a placeholder fallback.
+GROK_PRICE_TABLE_2026_06_12: dict[str, GrokPrice] = {
+    "grok-4.3": GrokPrice(
+        input_usd_per_token=1.25 / _USD_PER_MILLION,
+        output_usd_per_token=2.50 / _USD_PER_MILLION,
+    ),
+    "grok-4.20": GrokPrice(
+        input_usd_per_token=1.25 / _USD_PER_MILLION,
+        output_usd_per_token=2.50 / _USD_PER_MILLION,
+    ),
+    "grok-build-0.1": GrokPrice(
+        input_usd_per_token=1.00 / _USD_PER_MILLION,
+        output_usd_per_token=2.00 / _USD_PER_MILLION,
     ),
 }
 

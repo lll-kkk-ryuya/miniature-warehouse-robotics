@@ -6,9 +6,13 @@ injects its own price table so it never depends on the placeholder constant valu
 only the *structure* of the shipped table is asserted.
 """
 
+import inspect
+
 import pytest
+from warehouse_orchestrator import grok_cost as grok_cost_module
 from warehouse_orchestrator.grok_cost import (
     GROK_PRICE_TABLE_2026_06_04,
+    GROK_PRICE_TABLE_2026_06_12,
     GrokPrice,
     grok_cost,
     grok_cost_for_model,
@@ -88,3 +92,52 @@ def test_static_price_table_is_versioned_and_structured() -> None:
         assert isinstance(price, GrokPrice)
         assert price.input_usd_per_token > 0
         assert price.output_usd_per_token > 0
+
+
+@pytest.mark.unit
+def test_current_price_table_is_versioned_and_structured() -> None:
+    # Additive: the 2026-06-12 table mirrors the structure contract of the 06-04 placeholder table.
+    # Its values are the *current public* xAI list prices (USD-per-1M / 1e6) rather than placeholders,
+    # but they are still not end-to-end verified (literal model string / v4 field form = live,
+    # doc08:508).
+    assert GROK_PRICE_TABLE_2026_06_12  # non-empty
+    for price in GROK_PRICE_TABLE_2026_06_12.values():
+        assert isinstance(price, GrokPrice)
+        assert price.input_usd_per_token > 0
+        assert price.output_usd_per_token > 0
+    # Round-trip the *published* USD-per-1M numbers so the /1e6 conversion can't silently drift:
+    # 1M input + 1M output of grok-4.3 = $1.25 + $2.50 = $3.75; grok-build-0.1 = $1.00 + $2.00 = $3.00.
+    one_m = {"input": 1_000_000, "output": 1_000_000}
+    assert grok_cost_for_model("grok-4.3", one_m, GROK_PRICE_TABLE_2026_06_12) == pytest.approx(
+        3.75
+    )
+    assert grok_cost_for_model(
+        "grok-build-0.1", one_m, GROK_PRICE_TABLE_2026_06_12
+    ) == pytest.approx(3.00)
+
+
+@pytest.mark.unit
+def test_current_price_table_has_sourced_dated_provenance() -> None:
+    # doc08:504 requires the price source URL + retrieval date be recorded alongside the table.
+    # Guard that provenance can't be dropped when the table is edited (the comment lives in source).
+    src = inspect.getsource(grok_cost_module)
+    assert "GROK_PRICE_TABLE_2026_06_12" in src
+    assert "https://docs.x.ai/developers/models" in src
+    assert "retrieved 2026-06-12" in src
+
+
+@pytest.mark.unit
+def test_current_price_table_resolves_families_and_omits_unpriced() -> None:
+    # Family-prefix keys resolve the dated 4.20 variants and the 4.3 flagship (longest-prefix match).
+    assert (
+        resolve_grok_price("grok-4.3", GROK_PRICE_TABLE_2026_06_12)
+        is GROK_PRICE_TABLE_2026_06_12["grok-4.3"]
+    )
+    assert (
+        resolve_grok_price("grok-4.20-0309-reasoning", GROK_PRICE_TABLE_2026_06_12)
+        is GROK_PRICE_TABLE_2026_06_12["grok-4.20"]
+    )
+    # Older models absent from the current public page get NO guessed row → default (None), an honest
+    # "unpriceable" signal rather than a stale/invented price (doc08:508 "don't fix by guessing").
+    assert resolve_grok_price("grok-4-0709", GROK_PRICE_TABLE_2026_06_12) is None
+    assert resolve_grok_price("grok-3", GROK_PRICE_TABLE_2026_06_12) is None
