@@ -340,6 +340,10 @@ class WarehouseTools:
     ) -> dict[str, Any]:
         """Respond to an escalation (reassign / cancel / retry); shape-validated.
 
+        A second response to an already-resolved escalation is re-rejected
+        (``already_resolved``, doc15:337-338) — escalation-level idempotency,
+        distinct from the per-call gen/idempotency guard above.
+
         TODO(#escalation): the escalation registry is in-memory; a follow slice
         wires it to the shared escalation store/topic. Today an unknown id is
         rejected and the response is recorded but not acted on downstream.
@@ -358,7 +362,22 @@ class WarehouseTools:
             payload = {"status": "rejected", "reason": "unknown_escalation_id"}
             self._audit.record("escalation_response", "rejected", payload)
             return payload
+        # doc15:337-338: an escalation already resolved by a prior response is
+        # re-rejected, not acted on twice — idempotency at the escalation level
+        # (distinct from the per-call gen/B-3 + idempotency_key guard above). The
+        # resolved marker lives on the in-memory registry entry (TODO #escalation:
+        # a shared store replaces it). Action precedence is unchanged: a bogus
+        # action above still wins; this only adds the missing resolved-reject branch.
+        if self._escalations[escalation_id].get("resolved"):
+            payload = {
+                "status": "rejected",
+                "reason": "already_resolved",
+                "escalation_id": escalation_id,
+            }
+            self._audit.record("escalation_response", "rejected", payload)
+            return payload
 
+        self._escalations[escalation_id]["resolved"] = True
         payload = {
             "status": "ok",
             "escalation_id": escalation_id,

@@ -32,7 +32,7 @@
 - **pickup-optional 乖離（doc15 から）**: doc15 の `dispatch_task` は `pickup: str` 必須だが、`action_map` は `dropoff` のみ送り `pickup` を送らない。よって `dispatch_task(..., pickup: str | None = None, ...)` とし、pickup 関連検査は `pickup is not None` の時のみ実行する。action_map は変更しない。
 - **availability / emergency は契約に無い**: availability は `StateSnapshot.timestamp`（snapshot 全体の鮮度）から局所導出（>0.5s stale / >2s unavailable）。emergency は in-memory set（seed 可）。いずれ #5（safety-state）が producer を出す可能性 → 契約拡張は rules §4 で調整。# TODO(coordinate #5)
 - **#25 idempotency SEAM**: per-call UUID dedup は `gen_check.py` の `GenChecker.check` 内コメント `# SEAM(#25):` の位置に差し込む。`idempotency_key` 引数は受理済み・現状は無視。
-- **escalation / negotiation は stub**: escalation registry は in-memory（不明 id は拒否）、negotiation は id 採番のみ。`/negotiation/start` publish + proposal 取込は follow slice。# TODO(#escalation / #negotiation)
+- **escalation / negotiation は stub**: escalation registry は in-memory（不明 id は拒否、**解決済み id は `already_resolved` で再拒否**＝doc15:337-338・`resolved` マーカーは registry entry 上に持つ）、negotiation は id 採番のみ。`/negotiation/start` publish + proposal 取込は follow slice。dispatch 拒否/成功経路は `tests/unit/test_escalation_negotiation.py` で固定。# TODO(#escalation / #negotiation)
 - **(済) Nav2 Bridge 転送**: S2-PR2 HALF B で `nav2_client` を追加。`nav2_forwarder` 注入時（Mode A/B）は受理 motion tool を Nav2 Bridge REST へ転送する。**TrafficManager（none/simple/open-rmf 切替）と Open-RMF（Mode C）転送は未実装**＝forwarder=None なら従来どおり検証+bookkeeping のみ。実機到達確認・retry は後続。
 - **充電ステーションの単一占有は本層で未強制**: doc08「charging_station は2台共有・同時充電不可・先着順」だが、`validate_and_register_charging` は占有チェックをしない（2台同時 dispatch を許容）。物理的 first-come 制約の所有層は未定（下流 Nav2 / Open-RMF 想定）。# TODO(charging occupancy owner)
 - **MCP SDK のピン留め**: `mcp>=1.0`（pip extra）。Phase 0.5 で実バージョンを確定。
