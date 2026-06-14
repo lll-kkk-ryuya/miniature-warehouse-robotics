@@ -4,10 +4,11 @@
   <name>warehouse_rmf_adapter</name>
   <version>0.0.0</version>
   <description>
-    GATE-前 design scaffold for the Mode C 案A EasyFullControl Fleet Adapter
-    (self-built, drives the central namespaced /bot{n} Nav2 directly, no zenoh).
-    DESIGN ONLY — implementation/build/apt/live is BLOCKED on the R-38 memory gate
-    (#187). 設計正本: docs/mode-c/11c-traffic-mode-c.md §3.5.
+    Mode C 案A EasyFullControl Fleet Adapter (self-built, drives the central
+    namespaced /bot{n} Nav2 directly, no zenoh). GATE-前: the RMF-free offline core
+    (routing/namespacing/single-writer) is implemented and host-unit-tested;
+    EasyFullControl registration / colcon build / apt / live remain BLOCKED on the
+    R-38 memory gate (#187). 設計正本: docs/mode-c/11c-traffic-mode-c.md §3.5.
   </description>
   <maintainer email="ryu3124ruyu@gmail.com">kawaguchiryuya</maintainer>
   <license>Apache-2.0</license>

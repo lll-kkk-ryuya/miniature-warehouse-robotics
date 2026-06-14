@@ -21,6 +21,17 @@ GATE-前の制約（本レーン feat/rmf-adapter / #180）:
     実型（NavigateToPose.Goal / EasyFullControl / RobotUpdateHandle / Destination 等）は
     docstring 内に明記し、Python のシグネチャは stdlib 型で表す。
   - 凍結契約 warehouse_interfaces は **変更しない**。waypoint/lane を発明しない（11c:283）。
+
+実装オフロード（GATE-前に host で実装・unit 済の RMF 非依存コア / #180 offline スライス）:
+  本 EasyFullControl shell（``WarehouseRmfFleetAdapterDesign``、下記）は GATE 後に RMF を
+  import して登録する。一方、``rclpy`` / ``rmf_fleet_adapter`` / ``nav2_msgs`` に依存しない
+  routing / namespacing / single-writer ロジックは既に host 実装・unit 済で、GATE 後はここから
+  委譲する:
+    - ``nav2_router``  : location 名 → ``Nav2Goal``（座標は config 暫定値・発明しない / 11c:283）
+    - ``robot_driver`` : 1 namespace = 1 注入 port = 唯一の writer（11c:63）、navigate / stop
+    - ``fleet``        : config ``robots`` から 1 プロセス 2 namespace を構築（11c:280 残未決2 の core）
+  残実装は GATE 後の action client 実体化・EasyFullControl 登録のみ
+  （**11c:279 残未決1=in-process action client の end-to-end は依然 #187 ゲート後**）。
 """
 
 from __future__ import annotations
@@ -92,6 +103,8 @@ class WarehouseRmfFleetAdapterDesign:
         - 唯一の Nav2 writer 制約（11c:63）を満たす（他経路から goal を出さない）。
         - 模倣元: free_fleet ``nav2_robot_adapter.py`` の ``NavigateToPose`` 構築（zenoh 抜き,
           11c:279-280）。
+        - GATE 後の委譲先: ``fleet.WarehouseFleet.navigate(robot_name, destination)``
+          （routing/resolution は ``nav2_router`` + ``robot_driver`` で実装・host unit 済）。
         """
         raise NotImplementedError(_GATE_MSG)
 
@@ -101,6 +114,8 @@ class WarehouseRmfFleetAdapterDesign:
         当該 namespace の Nav2 ``NavigateToPose`` goal を cancel する（in-process action client）。
         本 adapter は RMF 起点の停止のみを扱う。物理安全停止の最終保証は ESP32 Layer0 /
         Emergency Guardian であり別系統（docs/architecture/12-infrastructure-common.md）。
+        GATE 後の委譲先: ``fleet.WarehouseFleet.stop(robot_name)`` →
+        ``robot_driver.RobotDriver.stop()``（port.cancel・host unit 済）。
         """
         raise NotImplementedError(_GATE_MSG)
 
