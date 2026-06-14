@@ -434,21 +434,36 @@ Phase 4: YouTube比較検証
 > → `11c:343-371`** などの inbound file:line 参照を silent に壊す（cross-doc の file:line 参照が腐敗する）。
 > よって **行ドリフト回避のため EOF に追記**する。内容は §3.5 D の残未決（`:279-284`）に対応する。
 
-**as-of 2026-06-11。** レーン `feat/rmf-adapter`（worktree `mwr-rmf-adapter`・track #180）。R-38 メモリ
-ゲート（#187, `docs/shared/07-research-notes.md:243`）は **OPEN（Go/No-Go 未確定）**。よって本レーンは
-**BLOCKED**＝GATE-前の成果は **設計／docs／パッケージ scaffold のみ**（実装・`colcon build`・apt・live は
-GATE 通過後）。新規 scaffold = `ws/src/warehouse_rmf_adapter/`（`fleet_adapter.py` = `navigate`/`stop`/
-`execute_action`/`update_robot_state` の docstring 骨子 + `NotImplementedError`。RMF/rclpy は未 import）。
+**as-of 2026-06-13。** レーン `feat/rmf-adapter`（worktree `mwr-rmf-adapter`・track #180）。R-38 メモリ
+ゲート（#187, `docs/shared/07-research-notes.md:243`）は **OPEN（Go/No-Go 未確定）**。RMF/EasyFullControl/
+rclpy 配線・`colcon build`・apt・live・sim・メモリ実測は引き続き **GATE 後**（§3.5 D `:273`）。
+
+**ただし RMF 非依存の offline コアは GATE-前に host 実装・unit 済**（2026-06-13・ユーザー指示による scope
+先行。§3.5 D の defer を上書きせず scope 細分）:
+
+- `ws/src/warehouse_rmf_adapter/nav2_router.py` — frozen `KNOWN_LOCATIONS`（`locations.py:23`）で
+  destination を検証し config 座標（暫定値・`config/warehouse.base.yaml:35-44`）から `Nav2Goal` を解決
+  （未登録座標は raise・捏造しない・`:283`）。namespace / action 名（`/bot1/navigate_to_pose`・`:252`）。
+- `robot_driver.py` — 1 namespace = 1 注入 port = 唯一の Nav2 writer（`:63`）。navigate=resolve→send /
+  stop=cancel。port の namespace 不一致を fail-closed 拒否。
+- `fleet.py` — config `robots` から 1 プロセス 2 namespace 構築（`:280` 残未決2 の core）。重複 namespace 拒否・
+  `writers()` で namespace ごと厳密 1 writer。
+- いずれも `rclpy`/`rmf_*`/`nav2_msgs` を import しない（host unit: `tests/unit/test_rmf_adapter_{router,fleet,offline_imports}.py`）。
+
+`fleet_adapter.py` の EasyFullControl shell は引き続き `navigate`/`stop`/`execute_action`/`update_robot_state`
+の docstring 骨子 + `NotImplementedError`（RMF 登録・action client 実体化＝**`:279` 残未決1 の end-to-end は
+#187 ゲート後**）。**de-risk したのは周辺ロジックのみで Mode C live の成立可否は未証明**（No-Go なら本コアごと
+不要になりうる・`07:243` / §3.5 A）。
 
 ### 残未決（§3.5 D `:279-284`）の GATE-前 ステータス
 
 | # | 残未決（出所行） | GATE-前 で確定したこと | GATE 後（R-38 GO 後）に要すること |
 |---|---|---|---|
-| 1 | end-to-end 実例未確認（`:279`・最大の未証明前提） | adapter IF 骨子（3 コールバック + RobotState）を docstring 化。合成元（rmf_demos 足場 + free_fleet `NavigateToPose` − zenoh）を明文化 | 実 adapter が `/bot1`/`/bot2` を in-process action client で駆動する実証 |
-| 2 | 1 プロセス 2 namespace 駆動（`:280`・integrator 実装） | 「namespace 毎 action client を `__init__` で生成」を設計に固定 | 実装・2 台同時駆動の検証 |
+| 1 | end-to-end 実例未確認（`:279`・最大の未証明前提） | adapter IF 骨子を docstring 化＋合成元（rmf_demos 足場 + free_fleet `NavigateToPose` − zenoh）明文化。**offline 実装**: action 名生成 / `Nav2Goal` 構築 / 注入 seam 経由 send・cancel を host unit 済 | 実 adapter が `/bot1`/`/bot2` を in-process action client で駆動する実証（**未証明・核心**） |
+| 2 | 1 プロセス 2 namespace 駆動（`:280`・integrator 実装） | 「namespace 毎 action client を `__init__` で生成」を設計に固定。**offline 実装**: `WarehouseFleet` が config から 2 namespace 構築・振り分け・単一 writer を host unit 済 | 実 action client での 2 台同時駆動の検証 |
 | 3 | バイナリ ↔ jazzy source の API pin（`:281`） | **下記「バイナリ ↔ source pin 調査」** に文献事実を記録（実 apt は GATE 後） | `apt-cache policy ros-jazzy-rmf-fleet-adapter` で実バージョン pin + API 一致確認 |
 | 4 | `rmf_traffic` schedule/negotiation 配線負荷（`:282`） | RMF core が交通管理を担い adapter は配線先（`:256`）と整理。定量は未 | Navigation Graph / traffic profile / footprint の工数定量 |
-| 5 | nav-graph ↔ 9 locations 整合（`:283`） | **方針固定**: 凍結 `warehouse_interfaces.locations` に waypoint/lane を**発明しない**。nav-graph は契約外（要れば別 contract PR） | 実 nav-graph を 9 locations / Gazebo 地図に整合 |
+| 5 | nav-graph ↔ 9 locations 整合（`:283`） | **方針固定**: 凍結 `warehouse_interfaces.locations` に waypoint/lane を**発明しない**。nav-graph は契約外（要れば別 contract PR）。**offline**: 全 9 凍結 location が base config に座標を持つことを unit 検証 | 実 nav-graph を 9 locations / Gazebo 地図に整合 |
 | 6 | 200mm 隘路（#124）・≤0.3 m/s デコンフリクト（`:284`） | sim 検証待ち（#124 真隘路が渋滞デモ前提） | 隘路 sim + 2 台 E2E で RMF デコンフリクト有効性を検証 |
 
 ### バイナリ ↔ jazzy source の API pin 調査（残未決3・GATE-前は文献のみ）
