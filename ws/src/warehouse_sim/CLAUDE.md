@@ -38,6 +38,6 @@
 - `# TODO(R-43)` sim lidar 360pts/1°（実機 MS200 0.4°/900pts ダウンサンプル想定）
 - `# TODO(#156)` `record.rviz` に CTRV/予測 marker は**出さない**：`predicted_position_3s` は `Situation` のフィールドで publish 経路ゼロ（`schemas.py:58` + `situation.py:165` で Bridge が計算するのみ）。出すなら別レーン（L4/L1）所有の新トピック＝予告経由
 - `# TODO(#156)` head_on goal列の座標は Phase 2 暫定（config 例示）。隘路の南側は狭く（棚列が南壁寄り）south 機の clearance が preset 内で最小＝`_SOUTH_STAGING_CLEARANCE`。Phase 2 再測で座標が動けば unit（spawn clear / goal line crosses channel）が検知
-- 周期(50/100ms)は Mac Docker では非検証（ロジックのみ）。実測は Jetson 段階2（doc16 §11:212）
+- 周期(50/100ms)は Mac Docker では非検証（ロジックのみ）。実測は Jetson 段階2（doc16 §11:214）
 
 > 雛形(#1)を実装で置換済（feat/sim-gazebo, 環境スパイク GO 後）。
