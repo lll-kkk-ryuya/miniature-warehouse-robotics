@@ -60,10 +60,19 @@ def test_offline_module_has_no_ros_or_rmf_import(mod: str) -> None:
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("mod", ("nav2_router", "robot_driver", "fleet"))
+@pytest.mark.parametrize("mod", _OFFLINE_MODULES)  # includes fleet_adapter — no hardcoded drift
 def test_offline_module_actually_imports_on_host(mod: str) -> None:
-    """Proves the slice is genuinely host-runnable (no hidden ROS import at module load)."""
+    """Proves every offline module (incl. the GATE shell) is host-importable at load."""
     # import_module raises on a ROS import leak; `is not None` is always true, so assert
     # the actual module identity instead of a tautology.
     obj = importlib.import_module(f"warehouse_rmf_adapter.{mod}")
     assert obj.__name__ == f"warehouse_rmf_adapter.{mod}"
+
+
+@pytest.mark.unit
+def test_gate_shell_still_raises_not_implemented() -> None:
+    """The GATE-time EasyFullControl shell must stay inert pre-#187 (no live wiring yet)."""
+    from warehouse_rmf_adapter.fleet_adapter import WarehouseRmfFleetAdapterDesign
+
+    with pytest.raises(NotImplementedError):
+        WarehouseRmfFleetAdapterDesign()

@@ -37,9 +37,9 @@ from warehouse_interfaces.locations import is_known_location
 _ROBOT_ID_RE = re.compile(r"[A-Za-z0-9_]+")
 
 # Global planning frame for /bot{n}/goal_pose. The canonical TF tree roots BOTH
-# robots at a single shared "map" frame (robot_dimensions.py:7 / doc09 TF tree);
-# only odom/base_link are per-namespace, never the map frame. Reading the contract,
-# not inventing a string — kept here as the one place the frame name is named.
+# robots at a single shared "map" frame (robot_dimensions.py:7 docstring / doc09 TF
+# tree); only odom/base_link are per-namespace, never the map frame. Reading the
+# documented frame, not inventing one (also named in doc08a:424).
 MAP_FRAME = "map"
 
 # Nav2's NavigateToPose action server, namespaced per robot. 11c:252 names it
@@ -120,7 +120,9 @@ class LocationResolver:
         """``(robot, destination)`` → :class:`Nav2Goal`, or raise (fail-closed).
 
         - ``destination`` not a frozen location → :class:`UnknownLocationError`.
-        - frozen but no {x, y} in config → :class:`MissingCoordinateError`.
+        - frozen but the config entry is missing / not a mapping / lacks {x, y} /
+          has non-numeric {x, y} → :class:`MissingCoordinateError` (never a bare
+          ``TypeError`` — the documented error contract holds for any bad coord).
 
         Either way **nothing is actuated**: the caller (RobotDriver) only sends a
         goal on a successful return, so an invalid destination can never reach Nav2.
@@ -128,14 +130,20 @@ class LocationResolver:
         if not is_known_location(destination):
             raise UnknownLocationError(destination)
         coord = self._locations.get(destination)
-        if coord is None or "x" not in coord or "y" not in coord:
+        # isinstance(coord, Mapping) first: a string coord would make `"x" not in coord`
+        # a substring test (False) and slip through to a bare TypeError on float(...).
+        if not isinstance(coord, Mapping) or "x" not in coord or "y" not in coord:
             raise MissingCoordinateError(destination)
+        try:
+            x, y = float(coord["x"]), float(coord["y"])
+        except (TypeError, ValueError) as exc:  # non-numeric coord = not a usable pose
+            raise MissingCoordinateError(destination) from exc
         return Nav2Goal(
             robot_name=robot_name,
             namespace=namespace_for(robot_name),
             action_name=nav2_action_name(robot_name),
             frame_id=MAP_FRAME,
-            x=float(coord["x"]),
-            y=float(coord["y"]),
+            x=x,
+            y=y,
             yaw=None,  # orientation is GATE-deferred (11c:279); no config yaw key today
         )

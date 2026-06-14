@@ -9,7 +9,12 @@ no ROS / RMF (doc16 §11). The EasyFullControl + real rclpy action client end-to
 
 import pytest
 from warehouse_rmf_adapter.fleet import UnknownRobotError, WarehouseFleet
-from warehouse_rmf_adapter.nav2_router import LocationResolver, Nav2Goal
+from warehouse_rmf_adapter.nav2_router import (
+    LocationResolver,
+    MissingCoordinateError,
+    Nav2Goal,
+    UnknownLocationError,
+)
 from warehouse_rmf_adapter.robot_driver import RobotDriver
 
 _LOCATIONS = {
@@ -97,11 +102,24 @@ def test_stop_cancels_only_target_namespace() -> None:
 @pytest.mark.unit
 @pytest.mark.safety
 def test_invalid_destination_actuates_nothing() -> None:
-    """Fail-closed: an unknown destination raises BEFORE any goal is sent."""
+    """Fail-closed: an UNKNOWN destination raises BEFORE any goal is sent."""
     fleet, ports, _calls = _fleet_with_ports()
-    with pytest.raises(KeyError):  # UnknownLocationError
+    with pytest.raises(UnknownLocationError):  # the specific type, not just base KeyError
         fleet.navigate("bot1", "warp_zone")
     assert ports["/bot1"].sent == []  # nothing reached the action port
+    assert fleet.driver("bot1").active_goal is None
+
+
+@pytest.mark.unit
+@pytest.mark.safety
+def test_uncoordinated_destination_actuates_nothing() -> None:
+    """Fail-closed for the OTHER bad-destination path: a frozen location with no config
+    coord raises MissingCoordinateError (distinct from UnknownLocation) and actuates nothing.
+    shelf_1 ∈ KNOWN_LOCATIONS but is absent from this fleet's _LOCATIONS coord map."""
+    fleet, ports, _calls = _fleet_with_ports()
+    with pytest.raises(MissingCoordinateError):
+        fleet.navigate("bot1", "shelf_1")
+    assert ports["/bot1"].sent == []
     assert fleet.driver("bot1").active_goal is None
 
 
@@ -151,3 +169,17 @@ def test_non_mapping_robot_entry_rejected() -> None:
     bad = {"robots": ["bot1"], "locations": _LOCATIONS}
     with pytest.raises(TypeError):
         WarehouseFleet.from_config(bad, LocationResolver(_LOCATIONS), lambda r, n: FakeNav2Port(n))
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("robots", [None, "bot1", {"id": "bot1"}])
+def test_missing_or_non_list_robots_fails_loud(robots: object) -> None:
+    """A missing/non-list `robots` must raise, not silently yield an empty fleet (2-bot premise)."""
+    with pytest.raises(TypeError):
+        WarehouseFleet.from_config(
+            {"robots": robots, "locations": _LOCATIONS}
+            if robots is not None
+            else {"locations": _LOCATIONS},
+            LocationResolver(_LOCATIONS),
+            lambda r, n: FakeNav2Port(n),
+        )

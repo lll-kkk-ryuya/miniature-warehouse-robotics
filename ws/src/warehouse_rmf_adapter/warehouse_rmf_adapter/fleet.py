@@ -42,12 +42,22 @@ class WarehouseFleet:
     ) -> WarehouseFleet:
         """Build the fleet from a loaded config dict.
 
-        One driver per ``config['robots'][].id``; ``port_factory`` is invoked once
-        per namespace. A duplicate namespace in config is rejected (single-writer).
+        One driver per ``config['robots'][].id``; ``port_factory(robot_id, namespace)``
+        is invoked once per namespace and MUST return a port bound to that namespace
+        (``RobotDriver`` rejects a mismatched port — 11c:63). A duplicate namespace in
+        config is rejected (single-writer). A missing/ non-list ``robots`` fails loud
+        rather than silently yielding an empty fleet.
+
+        NOTE(GATE): at the #187 gate ``port_factory`` creates a real rclpy ActionClient;
+        if ``RobotDriver`` rejects it, it is NOT torn down here — the factory must build
+        a port only for the namespace it is handed.
         """
-        robots = config.get("robots") or []
+        robots = config.get("robots")
         if not isinstance(robots, list):
-            raise TypeError(f"config['robots'] must be a list, got {type(robots)!r}")
+            raise TypeError(
+                f"config['robots'] must be a list (e.g. [{{id: bot1}}, {{id: bot2}}]), "
+                f"got {type(robots)!r}"
+            )
         drivers: dict[str, RobotDriver] = {}
         seen_namespaces: set[str] = set()
         for entry in robots:

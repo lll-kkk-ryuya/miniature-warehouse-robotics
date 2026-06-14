@@ -120,3 +120,29 @@ def test_every_frozen_location_has_coords_in_base_config() -> None:
     for name in KNOWN_LOCATIONS:
         goal = resolver.resolve("bot1", name)
         assert isinstance(goal.x, float) and isinstance(goal.y, float)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "bad_coord",
+    [
+        "x0.7 y0.3",  # a string containing 'x'/'y' chars: old key-only guard slipped to TypeError
+        {"x": 0.7},  # missing y
+        {"y": 0.3},  # missing x
+        {"x": None, "y": 0.3},  # None coord
+        {"x": "left", "y": 0.3},  # non-numeric x
+        {"x": 0.7, "y": "down"},  # non-numeric y
+    ],
+)
+def test_malformed_coord_raises_missing_coordinate_not_typeerror(bad_coord: object) -> None:
+    # A frozen location with a malformed coord must raise the documented
+    # MissingCoordinateError (fail-closed) — never a bare TypeError/ValueError.
+    resolver = LocationResolver({"shelf_2": bad_coord})
+    with pytest.raises(MissingCoordinateError):
+        resolver.resolve("bot1", "shelf_2")
+
+
+@pytest.mark.unit
+def test_from_config_rejects_non_mapping_locations() -> None:
+    with pytest.raises(TypeError):
+        LocationResolver.from_config({"locations": ["shelf_2"]})

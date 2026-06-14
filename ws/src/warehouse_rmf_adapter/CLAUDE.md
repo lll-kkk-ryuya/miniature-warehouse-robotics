@@ -59,9 +59,11 @@
 - **契約変更の有無（GATE-前）: なし**（凍結 `warehouse_interfaces` 無編集・新トピック/型/閾値を発明しない）。
 
 ## 依存
-- `warehouse_interfaces` のみ（凍結契約）。他トラック内部を import しない（parallel-workflow.md §2.1）。
-- GATE 後に追加（apt）: `rmf_fleet_adapter` / `rmf_fleet_adapter_python` / `rmf_task_ros2` ＋ `nav2_msgs` /
-  `action_msgs`（package.xml に TODO コメントで宣言済）。
+- offline コアの実 import は `warehouse_interfaces` のみ（凍結契約）。他トラック内部を import しない（parallel-workflow.md §2.1）。
+- package.xml の **active な exec_depend**: `rclpy` / `warehouse_interfaces` / `nav2_msgs` / `action_msgs` /
+  `geometry_msgs`（GATE-時 action client 用に宣言済。offline コアはこれらを import しない＝AST テストで担保）。
+- **GATE 後に有効化（apt・現在 package.xml の TODO コメント内でコメントアウト）**: `rmf_fleet_adapter` /
+  `rmf_fleet_adapter_python` / `rmf_task_ros2`。
 
 ## テスト
 - **offline コア: host unit 済（RMF/ROS 無し・doc16 §11）** — `tests/` 配下に収集（pytest testpaths=["tests"]、
