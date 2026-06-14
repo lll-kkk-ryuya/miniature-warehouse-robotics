@@ -26,9 +26,11 @@ MCP）を起動し、**OOM Killer 発火の有無**と**残RAM/ピーク**を計
 
 ## 計測の正しさ（段階1 固有の注意 — RESULT に明記する）
 - **`free -h` をコンテナ内で見ると HOST の RAM が出る**（`--memory` cap を無視する既知の Docker
-  挙動）。よって段階1 の**正準な残RAM 信号は cgroup**（`memory.current` / `memory.max` /
-  `memory.peak`）と **`docker stats`（6g 上限に対する MemUsage）**。`free -h` は doc06:96 の体裁
-  どおり**参考としてのみ**記録する（実機段階2 では `free -h` が正準）。
+  挙動）。よって段階1 は cgroup を読む。**ただし `memory.current`/`memory.peak` は再利用可能な
+  page cache を含む**ため、cache-warm な run では cap に張り付き raw headroom（`limit − peak`）が
+  偽の ≈0 になる。**正準な残RAM 信号は working set ＝ `memory.current − inactive_file`**（＝
+  `docker stats` MemUsage ＝ `free -h` の "available" 基準, doc06:96）。raw `memory.peak` は参考値の
+  み。`free -h` 自体は doc06:96 の体裁どおり**参考としてのみ**記録（実機段階2 では `free -h` が正準）。
 - **OOM 検出**: 子プロセス（nav2/gz 等）が cgroup OOM-kill されても `docker inspect
   .State.OOMKilled`（＝PID1=`sleep infinity` のみ追跡）は **true にならない**。よって**主信号は
   cgroup `memory.events` の `oom_kill` カウンタ**（cgroup 内の任意プロセスで増える）。
@@ -57,8 +59,9 @@ cd spike/memory-gate
 | 量 | 取得元 | 判定 |
 |---|---|---|
 | OOM 発火 | cgroup `memory.events` oom_kill（主）/ `.State.OOMKilled` / dmesg（副） | **>0 ＝段階1 FAIL**（doc06:94 — 実機でも落ちる） |
-| ピーク使用量 | cgroup `memory.peak`/`max_usage`（無ければサンプル最大）/ `docker stats` | — |
-| 残RAM @peak | `limit − peak`（**MB＝10^6**, doc06:98 の "500MB" と単位を揃える）| **< 500MB ＝Open-RMF(Mode C) No-Go 寄り**（doc06:98 / [07:212](../../docs/shared/07-research-notes.md)）＝**R-38 ゲート抵触**（07:243） |
+| ピーク使用量（raw・参考） | cgroup `memory.peak`/`max_usage`（**cache 込み**・cap に張り付く） | — （残RAM 信号ではない） |
+| working set @peak | `max(memory.current − inactive_file)`（＝`docker stats` MemUsage） | — |
+| **残RAM @peak（working set 基準）** | `limit − working_set`（**MB＝10^6**, doc06:98 の "500MB" と単位を揃える・`free -h` available 準拠）| **< 500MB ＝Open-RMF(Mode C) No-Go 寄り**（doc06:98 / [07:212](../../docs/shared/07-research-notes.md)）＝**R-38 ゲート抵触**（07:243）。raw `limit − peak` は cache 込みで偽 No-Go になるため**不採用** |
 | フルスタック存在 | `ros2 node list` に nav2×2 / state_cache / emergency_guardian / nav2_bridge / llm_bridge | DoD（起動確認） |
 
 > **R-38 Go/No-Go ロジック**（doc06:98 / 07:212,243）:

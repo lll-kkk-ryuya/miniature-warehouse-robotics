@@ -55,6 +55,8 @@ export MEMGATE_REQUIRE_HERMES=1            # FLOOR を hard-fail（exit 3）。G
    | `OOM UNKNOWN ...` | cgroup v1 等で oom counter 不可 | `logs/measure_oom.txt` 確認後に判断 |
    | `INVALID ...` | cgroup 計測不能 | `./run.sh measure` 再実行。続く（stack 死亡の疑い）なら `run` → だめなら `clean && setup` |
 
+   > 注（#187 retro）: `report` は `peak usage (raw)`（**cache 込み・参考のみ**）と **`残RAM @peak (ws)`（working set ＝ `current − inactive_file` ＝ `free -h` available 基準）** を別行で出す。**残RAM 判定は ws 行**を見る（raw `headroom` は page cache が cap に張り付くため**ほぼ常に ≈0＝偽 No-Go**）。verdict 行末の `[basis: working set ... | CACHE-INCLUSIVE FALLBACK ...]` で根拠確認（fallback＝旧 TSV で `inactive_file` 欠落＝working set 不能→**再測**）。
+
 3. **末尾 `⚠️ FLOOR: ...`**（`floor_notes`・**0〜2本**）→ **1本でも出たら FLOOR＝GO 不可**:
    - `⚠️ FLOOR: Hermes daemon NOT counted ...`（Hermes 未計上）
    - `⚠️ FLOOR: core stack was not fully live ...`（**Nav2/gz が `SETTLE=120s` 内に出揃わず＝過小計測**。
@@ -78,7 +80,7 @@ export MEMGATE_REQUIRE_HERMES=1            # FLOOR を hard-fail（exit 3）。G
 |---|---|
 | 実行日 / ホスト | 実走日＝`date` / ホスト＝Mac M4 16GB（RESULT.md prefill 済） |
 | 結論一行 (L6) | `report` の `VERDICT (R-38)` 行（FLOOR 行が出ていればそれも） |
-| ピーク使用量 / 残RAM @peak | `report` の `peak usage` / `headroom @peak` 行 |
+| ピーク使用量(raw) / working set / 残RAM @peak | `report` の `peak usage (raw)`（参考）/ `working set @peak` / **`残RAM @peak (ws)`**（＝判定に使う 残RAM）の各行 |
 | OOM 発火 | `report` の `cgroup oom_kill` 行 ＋ `logs/measure_oom.txt`（副信号） |
 | Hermes counted / core stack live | `report` 冒頭 `hermes daemon counted: ... / core stack live: ...` |
 | フルスタック node 表 | `report` の `full-stack node presence` 各行（`controller_server` 等 N/期待） |
@@ -86,7 +88,7 @@ export MEMGATE_REQUIRE_HERMES=1            # FLOOR を hard-fail（exit 3）。G
 | Image digest | `docker image inspect tiryoh/ros2-desktop-vnc:jazzy --format '{{index .RepoDigests 0}}'` |
 | Docker 版 | `docker version --format '{{.Server.Version}}'` |
 | 版数(gz/nav2/py/hermes) | `cat logs/setup_versions.txt` |
-| **R-38 所見一行**（末尾 `_所見（実測後）_`） | §2 の **GO 4条件**で確定（`VERDICT (R-38)` 行 ＋ 末尾 `⚠️ FLOOR` の有無 ＋ headroom）＝結論一行と同根拠で詳述 |
+| **R-38 所見一行**（末尾 `_所見（実測後）_`） | §2 の **GO 4条件**で確定（`VERDICT (R-38)` 行 ＋ 末尾 `⚠️ FLOOR` の有無 ＋ `残RAM @peak (ws)`）＝結論一行と同根拠で詳述 |
 
 ## 4. トラブル / 詰まったら
 - **`HERMES NOT INSTALLED` / `REFUSED ... FLOOR`**: `cat logs/setup_hermes.log` で原因確認 → `~/.hermes/.env`

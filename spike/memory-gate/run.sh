@@ -17,9 +17,13 @@
 #     Mac (doc06:99-101). Final numbers require 段階2 = real Jetson `free -h` 30s x 10min
 #     (doc06:96). 段階1 is an early-warning smoke, not the verdict.
 #   * `free -h` INSIDE a --memory-capped container reports the HOST's RAM, not the cgroup limit
-#     (well-known Docker gotcha). So for 段階1 the AUTHORITATIVE 残RAM signal is the cgroup
-#     accounting (memory.current / memory.max / memory.peak) and `docker stats` against the 6g
-#     limit. `free -h` is logged only for reference (it is the doc06:96 form used at 段階2).
+#     (well-known Docker gotcha). So 段階1 reads the cgroup. BUT memory.current/memory.peak INCLUDE
+#     reclaimable page cache, which the kernel lets grow to the cap on any cache-warm run -> a false
+#     ~0 raw headroom. The 残RAM signal is therefore the WORKING SET = memory.current - inactive_file
+#     (= `docker stats` MemUsage = the `free -h` "available" basis, doc06:96); raw memory.peak is
+#     informational only. compute_verdict_awk uses the working set; `free -h` is logged for reference
+#     (the doc06:96 form used at 段階2). [#187 retro: a real run pinned current~6.0GiB at the 6GiB cap
+#     with oom_kill=0 -> raw headroom -1MB falsely read No-Go, while working set was ~3.5GiB.]
 #   * OOM: a cgroup OOM-kill of a *child* process (nav2, gz, ...) does NOT flip
 #     `docker inspect .State.OOMKilled` (that only tracks PID 1 = `sleep infinity`). The robust
 #     段階1 signal is the cgroup `memory.events` `oom_kill` counter (cgroup v2; incremented for
@@ -94,7 +98,11 @@ ensure_up() {
     echo "ws not built in container — run: $0 setup" >&2; exit 1; }
 }
 
-# Clean, sentinel-tagged single line: "CGSNAP <current> <limit> <peak> <oom_kill>" (-1 if N/A).
+# Clean, sentinel-tagged single line: "CGSNAP <current> <limit> <peak> <oom_kill> <inactive_file>"
+# (-1 if N/A). inactive_file (reclaimable page cache) lets the verdict compute the WORKING SET
+# (current - inactive_file = docker stats MemUsage = the free -h "available" basis, doc06:96), so
+# headroom is NOT over-counted by reclaimable cache. cgroup memory.current/peak alone fill to the
+# cap with clean cache on any cache-warm run -> a false ~0 raw headroom; the working set does not.
 # Non-login exec + sentinel + tail -1 defends against login-shell/profile stdout contamination.
 cgroup_snapshot() {
   dexq '
@@ -103,14 +111,16 @@ cgroup_snapshot() {
       lim=$(cat /sys/fs/cgroup/memory.max 2>/dev/null || echo -1)
       pk=$(cat /sys/fs/cgroup/memory.peak 2>/dev/null || echo -1)
       ok=$(awk "/^oom_kill /{print \$2}" /sys/fs/cgroup/memory.events 2>/dev/null); ok=${ok:--1}
+      inf=$(awk "/^inactive_file /{print \$2}" /sys/fs/cgroup/memory.stat 2>/dev/null); inf=${inf:--1}
     else                                                     # cgroup v1 (oom_kill counter unreliable)
       cur=$(cat /sys/fs/cgroup/memory/memory.usage_in_bytes 2>/dev/null || echo -1)
       lim=$(cat /sys/fs/cgroup/memory/memory.limit_in_bytes 2>/dev/null || echo -1)
       pk=$(cat /sys/fs/cgroup/memory/memory.max_usage_in_bytes 2>/dev/null || echo -1)
       ok=-1
+      inf=$(awk "/^total_inactive_file /{print \$2}" /sys/fs/cgroup/memory/memory.stat 2>/dev/null); inf=${inf:--1}
     fi
-    echo "CGSNAP ${cur:--1} ${lim:--1} ${pk:--1} ${ok:--1}"
-  ' | awk '/^CGSNAP/{print $2, $3, $4, $5}' | tail -n1
+    echo "CGSNAP ${cur:--1} ${lim:--1} ${pk:--1} ${ok:--1} ${inf:--1}"
+  ' | awk '/^CGSNAP/{print $2, $3, $4, $5, $6}' | tail -n1
 }
 
 # --- pure, offline-testable helpers (no docker / no network) — exercised by `selftest` ---
@@ -121,31 +131,47 @@ cgroup_snapshot() {
 compute_verdict_awk() {
   awk -F'\t' -v floor="$2" '
     NR>1 {
-      c=$3; l=$4; p=$5; o=$6; n++;
+      c=$3; l=$4; p=$5; o=$6; inf=$8; n++;
       if (c ~ /^[0-9]+$/) { valid++; if (c+0>maxc) maxc=c+0 }
       if (p ~ /^[0-9]+$/ && p+0>maxp) maxp=p+0;
       if (l ~ /^[0-9]+$/ && l+0>maxl) maxl=l+0;   # max non-negative limit (static; -1 on a flaky read)
       if (o ~ /^[0-9]+$/) { if (o+0>maxo) maxo=o+0 } else oomunknown=1;
+      # WORKING SET = current - inactive_file (EXCLUDES reclaimable page cache) = docker stats MemUsage
+      # = free -h "available" basis (doc06:96). THIS is the 残RAM signal; cgroup current/peak is NOT
+      # (it includes reclaimable cache that fills to the cap -> a false ~0 raw headroom artifact).
+      if (c ~ /^[0-9]+$/ && inf ~ /^[0-9]+$/ && inf+0>=0) {
+        ws=(c+0)-(inf+0); if (ws<0) ws=0;
+        wsvalid++; if (ws>maxws) maxws=ws;
+      }
     }
     END {
       if (n==0) { print "no samples — run measure"; exit }
       peak=(maxp>maxc)?maxp:maxc; lim=maxl; MB=1000000;   # decimal MB to match doc06:98 "500MB"
-      printf "samples           : %d (valid cgroup rows: %d)\n", n, valid+0;
+      printf "samples           : %d (valid cgroup rows: %d, working-set rows: %d)\n", n, valid+0, wsvalid+0;
       if (lim>0 && peak>0) {
-        headroom = lim - peak;
         printf "cgroup limit      : %.0f MB\n", lim/MB;
-        printf "peak usage        : %.0f MB  (cgroup memory.peak/max_usage if present, else sampled current max)\n", peak/MB;
-        printf "headroom @peak    : %.0f MB  (limit - peak; floor = %d MB, doc06:98/07:212)\n", headroom/MB, floor;
+        printf "peak usage (raw)  : %.0f MB  (cgroup memory.peak/current max — INCLUDES reclaimable cache; NOT the 残RAM signal)\n", peak/MB;
+        printf "  raw headroom    : %.0f MB  (limit - raw peak; cache-inflated -> ~0 on any cache-warm run; informational only)\n", (lim-peak)/MB;
+      }
+      if (wsvalid+0>0 && lim>0) {
+        wshr = lim - maxws;
+        printf "working set @peak : %.0f MB  (max(current - inactive_file) = docker stats / free -h available)\n", maxws/MB;
+        printf "残RAM @peak (ws)  : %.0f MB  (limit - working-set peak; floor = %d MB, doc06:98/07:212) <- 残RAM signal\n", wshr/MB, floor;
       }
       if (oomunknown && maxo==0) print "cgroup oom_kill   : UNKNOWN (counter unreadable on some samples; confirm via measure_oom.txt)";
       else printf "cgroup oom_kill   : %d\n", maxo;
-      # OOM is the definitive FAIL — report it even if headroom accounting is partial.
+      # OOM is the definitive FAIL (primary doc06:94 criterion) — report it regardless of headroom.
       if (maxo>0) { print "VERDICT (R-38)    : OOM OBSERVED => 段階1 FAIL (design dies on Jetson too, doc06:94)"; exit }
       if (valid+0==0 || lim<=0 || peak<=0) {
         print "VERDICT (R-38)    : INVALID — cgroup accounting unavailable/garbage; re-run measure (check cgroup path/exec noise)."; exit }
+      # Headroom verdict uses the WORKING SET (free -h available basis). Fall back to the raw
+      # cache-inclusive headroom ONLY when inactive_file is unavailable (pre-fix TSV / cgroup quirk),
+      # LOUDLY flagged because it may UNDER-state 残RAM (the very artifact this gate guards against).
+      if (wsvalid+0>0) { hr=wshr/MB; basis="working set (current - inactive_file; free -h available)"; }
+      else             { hr=(lim-peak)/MB; basis="CACHE-INCLUSIVE FALLBACK (inactive_file unavailable -> may UNDER-state 残RAM; re-measure with updated harness)"; }
       verdict = (oomunknown) ? "OOM UNKNOWN (cgroup counter unavailable) — confirm measure_oom.txt before trusting a GO" \
-              : (headroom/MB < floor) ? "headroom < 500MB => Open-RMF (Mode C) No-Go-leaning (doc06:98 / 07:212); R-38 gate trips" \
-              : "no OOM and headroom >= 500MB => 段階1 GO-leaning; Open-RMF still UNMEASURED -> 段階2 required";
+              : (hr < floor)  ? sprintf("headroom < 500MB => Open-RMF (Mode C) No-Go-leaning (doc06:98 / 07:212); R-38 gate trips [basis: %s]", basis) \
+              :                 sprintf("no OOM and headroom >= 500MB => 段階1 GO-leaning; Open-RMF still UNMEASURED -> 段階2 required [basis: %s]", basis);
       printf "VERDICT (R-38)    : %s\n", verdict;
     }' "$1"
 }
@@ -311,7 +337,7 @@ case "${1:-}" in
     require_hermes_or_refuse "$(cat "$SPIKE_DIR/logs/hermes_present.txt" 2>/dev/null || echo unknown)"
     TS="$SPIKE_DIR/logs/measure_timeseries.tsv"
     : > "$SPIKE_DIR/logs/measure_free.log"
-    echo -e "sample\tt_s\tcgroup_current_b\tcgroup_limit_b\tcgroup_peak_b\toom_kill\tdocker_stats_memusage" > "$TS"
+    echo -e "sample\tt_s\tcgroup_current_b\tcgroup_limit_b\tcgroup_peak_b\toom_kill\tdocker_stats_memusage\tcgroup_inactive_file_b" > "$TS"
     echo "=== liveness poll: wait up to ${SETTLE}s for core nodes (${CORE_NODES[*]}) ==="
     STACK_LIVE=no; waited=0
     while [ "$waited" -lt "$SETTLE" ]; do
@@ -328,10 +354,10 @@ case "${1:-}" in
     echo "=== sample loop: ${SAMPLES} x ${INTERVAL}s ==="
     for i in $(seq 1 "$SAMPLES"); do
       t=$(( (i-1) * INTERVAL ))
-      read -r cur lim pk ok <<<"$(cgroup_snapshot)"
-      [[ "$cur" =~ ^-?[0-9]+$ ]] || { cur=-1; lim=-1; pk=-1; ok=-1; echo "  WARN sample $i: cgroup read garbage"; }
+      read -r cur lim pk ok inf <<<"$(cgroup_snapshot)"
+      [[ "$cur" =~ ^-?[0-9]+$ ]] || { cur=-1; lim=-1; pk=-1; ok=-1; inf=-1; echo "  WARN sample $i: cgroup read garbage"; }
       ds=$(docker stats --no-stream --format '{{.MemUsage}}' "$CONTAINER" 2>/dev/null | tr -d ' ')
-      echo -e "${i}\t${t}\t${cur}\t${lim}\t${pk}\t${ok}\t${ds:-NA}" | tee -a "$TS"
+      echo -e "${i}\t${t}\t${cur}\t${lim}\t${pk}\t${ok}\t${ds:-NA}\t${inf:--1}" | tee -a "$TS"
       { echo "---- sample $i (t=${t}s) ----"; dex 'free -h'; } >> "$SPIKE_DIR/logs/measure_free.log" 2>&1
       [ "$i" -lt "$SAMPLES" ] && sleep "$INTERVAL"
     done
@@ -389,7 +415,7 @@ case "${1:-}" in
     # does not kill selftest). Pair with `bash -n run.sh`. Exits non-zero on any failed assertion.
     tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
     pass=0; fail=0
-    HDR='sample\tt_s\tcgroup_current_b\tcgroup_limit_b\tcgroup_peak_b\toom_kill\tdocker_stats_memusage'
+    HDR='sample\tt_s\tcgroup_current_b\tcgroup_limit_b\tcgroup_peak_b\toom_kill\tdocker_stats_memusage\tcgroup_inactive_file_b'
     LIM=6442450944   # 6 GiB cgroup limit (decimal bytes); awk MB divisor = 1e6, floor = 500 MB
     _v() {  # $1=name $2=expected-substr ; reads the TSV at $tmp/ts.tsv
       local name="$1" want="$2" out
@@ -404,21 +430,28 @@ case "${1:-}" in
       elif printf '%s' "$actual" | grep -qF "$want"; then pass=$((pass+1)); echo "  PASS  $name"
       else fail=$((fail+1)); echo "  FAIL  $name (want substr: $want)"; fi
     }
-    # OOM observed (oom_kill>0) => 段階1 FAIL (takes precedence over headroom)
-    { printf "$HDR\n"; printf "1\t0\t6000000000\t$LIM\t6000000000\t2\tNA\n"; } > "$tmp/ts.tsv"
+    # OOM observed (oom_kill>0) => 段階1 FAIL (takes precedence over headroom). col8=inactive_file.
+    { printf "$HDR\n"; printf "1\t0\t6000000000\t$LIM\t6000000000\t2\tNA\t2600000000\n"; } > "$tmp/ts.tsv"
     _v "OOM => FAIL" "OOM OBSERVED"
-    # no OOM, headroom 442MB < 500MB floor => No-Go-leaning
-    { printf "$HDR\n"; printf "1\t0\t6000000000\t$LIM\t6000000000\t0\tNA\n"; } > "$tmp/ts.tsv"
-    _v "headroom<floor => No-Go" "No-Go-leaning"
-    # no OOM, headroom 1442MB >= 500MB floor => GO-leaning
-    { printf "$HDR\n"; printf "1\t0\t5000000000\t$LIM\t5000000000\t0\tNA\n"; } > "$tmp/ts.tsv"
-    _v "headroom>=floor => GO" "GO-leaning"
-    # garbage cgroup (all -1) => INVALID
-    { printf "$HDR\n"; printf "1\t0\t-1\t-1\t-1\t-1\tNA\n"; } > "$tmp/ts.tsv"
+    # KEY FIX CASE — cache fills the cap (raw peak 6443MB ~= limit -> raw headroom ~ -1MB) BUT working
+    # set = 6380-2640 = 3740MB so 残RAM(ws) = 6442-3740 = 2702MB >= 500MB => GO-leaning. The pre-fix
+    # peak-based logic returned No-Go here; the working-set logic correctly returns GO (the #187 run).
+    { printf "$HDR\n"; printf "1\t0\t6380000000\t$LIM\t6443000000\t0\t3.3GiB/6GiB\t2640000000\n"; } > "$tmp/ts.tsv"
+    _v "cache fills cap, ws-headroom large => GO" "GO-leaning"
+    _v "  GO verdict basis = working set" "basis: working set"
+    # no OOM, working set 6300MB (inf small) => 残RAM(ws) 142MB < 500MB floor => No-Go-leaning
+    { printf "$HDR\n"; printf "1\t0\t6400000000\t$LIM\t6400000000\t0\tNA\t100000000\n"; } > "$tmp/ts.tsv"
+    _v "ws-headroom<floor => No-Go" "No-Go-leaning"
+    # garbage cgroup (all -1, inf -1) => INVALID
+    { printf "$HDR\n"; printf "1\t0\t-1\t-1\t-1\t-1\tNA\t-1\n"; } > "$tmp/ts.tsv"
     _v "garbage cgroup => INVALID" "INVALID"
-    # cgroup v1 (oom_kill counter -1, numeric mem) => OOM UNKNOWN
-    { printf "$HDR\n"; printf "1\t0\t5000000000\t$LIM\t5000000000\t-1\tNA\n"; } > "$tmp/ts.tsv"
+    # cgroup v1 (oom_kill counter -1, numeric mem + inf) => OOM UNKNOWN (takes precedence over ws GO)
+    { printf "$HDR\n"; printf "1\t0\t5000000000\t$LIM\t5000000000\t-1\tNA\t2000000000\n"; } > "$tmp/ts.tsv"
     _v "v1 oom counter => UNKNOWN" "OOM UNKNOWN"
+    # BACKWARD-COMPAT — pre-fix 7-column TSV (no inactive_file): working set unavailable => fall back to
+    # cache-inclusive headroom, LOUDLY flagged (must not silently emit a clean GO from the old artifact).
+    { printf "$HDR\n"; printf "1\t0\t5000000000\t$LIM\t5000000000\t0\tNA\n"; } > "$tmp/ts.tsv"
+    _v "pre-fix 7-col => fallback flagged" "CACHE-INCLUSIVE FALLBACK"
     # FLOOR-annotation branches
     _chk "floor: hermes-absent note" "Hermes daemon NOT counted" "$(floor_notes no yes)"
     _chk "floor: stack-not-live note" "core stack was not fully live" "$(floor_notes yes no)"
