@@ -261,3 +261,21 @@ ros2 topic echo /bot1/cmd_vel/nav2               # breach 中は linear/angular 
 **GO** ＝ ①∧②∧③∧④ 全充足 → `doc12` / `doc03` / `doc07 R-39` に Go/No-Go と採用形（polygon 確定寸法・
 source_timeout 確定値）を反映する **follow-up PR で `Closes #126`**。いずれか **No** → polygon 再寸法（②）／
 source_timeout 再調整（③）／forward-bias 化を tune し再走（値が定まらなければ defer を記録）。
+
+### #233 node-isolated 中間結果（L4 operator, 2026-06-15）— full-sim 2台は PENDING のまま
+
+> 上の Go/No-Go 表（:252-263）は **full-sim 2台 PoC** の転記欄。**fabricate しない**ため空欄を維持。
+> 以下は **node-isolated**（実 `nav2_collision_monitor` 1.3.11 + 実 `collision_monitor.yaml` を controlled
+> scan/cmd で駆動）で **config + node logic** を先行検証した中間結果＝full-sim 幾何（virtual_scan 自動生成・
+> AMCL・接近動力学）は含まない。表の ①〜④ は引き続き human gate。詳細: #233 コメント。
+
+- **① reflex（config 層）= GO**: breach（stop polygon 内 ≥`min_points` 4）→ `cmd_vel/nav2` 0.000 + `CollisionMonitorState{PolygonStop, action=1}`。
+- **④ source_timeout（config 層）= GO（両方向）**: 実 `/scan` 途絶 → `invalid source` STOP at dropout + ~1.0s（= node `source_timeout 1.0`）∧ `virtual_scan` 無送信（per-source `0.0`）→ 非 STOP（passthrough 0.200）。
+- **②③ = PENDING（full-sim + RViz human gate）**: ③ は `radius 0.09` 円で幾何 No-Go（:234-236）。
+  **Open ② 採用候補 = forward-biased polygon**（`type:"polygon"` / y 半幅 0.06 / x_far live-tune knob）を #233 で起案し、node-isolated で「前方=止／側方=通」を実証。`collision_monitor.yaml` は nav-traffic 所有（doc16:187）→ 予告＋合意の上で反映。
+
+#### 残作業（#233 を閉じるまでのチェックリスト）
+- [ ] nav-traffic owner 合意 → forward-biased polygon を `collision_monitor.yaml` に反映（形のみ・凍結契約不変）。
+- [ ] full-sim 2台で ②③ を live tune（x_far 確定）＋ ①④ を full-sim で再確認 → 上の Go/No-Go 表（:256-259）を **実走後に転記**。
+- [ ] GO 確定後: doc12（Open ②③ 確定）/ doc03（cmd_vel topology）/ doc07 R-39 に採用形を反映。
+- [ ] 注: **#126 は既に CLOSED**（2026-06-11 COMPLETED）＝「Closes #126」は不要。live PoC は #233 で追跡。
