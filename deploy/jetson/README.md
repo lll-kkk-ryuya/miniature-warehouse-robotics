@@ -56,6 +56,8 @@ deploy/jetson/bin/healthcheck.sh
 [docs/jetson/01-fidelity-and-validation.md](../../docs/jetson/01-fidelity-and-validation.md)。
 要点は [doc19 §7](../../docs/architecture/19-environments-and-config.md) にも固定。
 
+> **Jetson が単体（ESP32 ロボット未着）で先着しても robot-free で通せるゲート**（setup + G1 メモリ / G3 jitter / G4 sim / G7 Hermes E2E）と **実ロボット必須**（G0 安全 / G2 / G5 / G6）の切り分け・到着後の実行順は同 doc **§4.1**（[01-fidelity-and-validation.md](../../docs/jetson/01-fidelity-and-validation.md) §4.1）。
+
 **この scaffold の整合（doc19 / doc17 §4 と突合・修正不要）**:
 
 | 項目 | 期待（正本） | 本 scaffold | 判定 |
