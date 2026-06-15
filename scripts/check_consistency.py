@@ -280,6 +280,52 @@ def check_location_keys(src: Sources, only) -> list[Finding]:
     return out
 
 
+def check_package_registry(src: Sources, only) -> list[Finding]:
+    # Cross-file invariant (like B1/C1): every ROS package that exists on disk
+    # (``ws/src/warehouse_*`` with a ``package.xml``) must be listed in BOTH canonical
+    # registries — doc16 §2 命名・責務一覧 and ws/src/README.md. This is the drift class
+    # #221 fixed (``warehouse_rmf_adapter`` landed via PR#256 but was absent from doc16
+    # §1/§2/§9 + ws/src/README); the deterministic checker did not assert the package list,
+    # so a package present on disk yet undocumented was invisible — the same silent-rot
+    # the firmware-safety CI job was added to close. ERROR (not WARN): an unregistered
+    # package is an unambiguous, mechanical drift. Only meaningful on a FULL scan.
+    if only:
+        return []
+    ws_src = ROOT / "ws/src"
+    if not ws_src.is_dir():
+        return []
+    pkgs = sorted(
+        p.name
+        for p in ws_src.iterdir()
+        if p.is_dir() and p.name.startswith("warehouse_") and (p / "package.xml").is_file()
+    )
+    registries = {
+        "docs/architecture/16-repository-and-conventions.md": DOCS
+        / "architecture/16-repository-and-conventions.md",
+        "ws/src/README.md": ws_src / "README.md",
+    }
+    texts = {
+        rel: (path.read_text(encoding="utf-8", errors="replace") if path.exists() else "")
+        for rel, path in registries.items()
+    }
+    out: list[Finding] = []
+    for pkg in pkgs:
+        token = f"`{pkg}`"  # registries list packages in backticked table cells
+        for rel, text in texts.items():
+            if token not in text:
+                out.append(
+                    Finding(
+                        ERROR,
+                        "B5-package-registry",
+                        rel,
+                        0,
+                        f"package {pkg} exists on disk (ws/src/{pkg}/package.xml) but is "
+                        f"not listed in {rel}; register it (doc16 §2 一覧 / ws/src/README.md).",
+                    )
+                )
+    return out
+
+
 def check_status_sha(src: Sources, only) -> list[Finding]:
     if only:
         return []
@@ -512,6 +558,7 @@ CHECKS = [
     check_topic_custom,
     check_laser_frame,
     check_location_keys,
+    check_package_registry,
     check_status_sha,
     check_cross_doc_line_refs,
 ]

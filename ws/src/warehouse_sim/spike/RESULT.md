@@ -30,7 +30,7 @@
 - SDF の `<gz_frame_id>` は当 sdformat で未定義警告 → 実 URDF では正規の frame 指定方式で
   `frame_id=bot{n}/lidar_link` を確定する。
 - scan は 360 samples / 1°（実機 MS200 0.4°/900pts のダウンサンプル想定、R-43）。
-- 本結果は Mac Docker 上の**ロジック成立性**の確認。周期実測は Jetson 段階2（doc16 §11:212）。
+- 本結果は Mac Docker 上の**ロジック成立性**の確認。周期実測は Jetson 段階2（doc16 §11:214）。
 
 ## 結論
 **#8 nav-traffic を解錠**（critical-path ゲート通過）。本実装ブランチ `feat/sim-gazebo` の

@@ -4,7 +4,7 @@
 - **Phase**: 0.5→3
 - **ビルド**: ament_python
 - **ノード**: llm_bridge
-- **編集境界**: このパッケージ配下のみ。共有契約 `warehouse_interfaces` は変更不可（`.claude/rules/parallel-workflow.md` §4）。**`warehouse_mcp_server` は同一トラック（doc16 §9 = `16-...:181-190`: `feat/llm-bridge` が両 pkg を所有）なので import 可**。CI cross-import check は track-aware（#81）＝他トラック内部のみ禁止。`main()` が実 `WarehouseTools().dispatch` を executor seam に注入する（S2-PR2 HALF B）。`warehouse_nav2_bridge`（同トラック）は REST 越し（httpx）に呼ぶのみ＝Python import しない。
+- **編集境界**: このパッケージ配下のみ。共有契約 `warehouse_interfaces` は変更不可（`.claude/rules/parallel-workflow.md` §4）。**`warehouse_mcp_server` は同一トラック（doc16 §9 = `16-...:183-192`: `feat/llm-bridge` が両 pkg を所有）なので import 可**。CI cross-import check は track-aware（#81）＝他トラック内部のみ禁止。`main()` が実 `WarehouseTools().dispatch` を executor seam に注入する（S2-PR2 HALF B）。`warehouse_nav2_bridge`（同トラック）は REST 越し（httpx）に呼ぶのみ＝Python import しない。
 
 ## モジュール構成（S1 = #4 司令官サイクル / S2-PR1 = Langfuse trace 所有 + Mode C）
 - `llm_client.py` — `LLMClient`（ABC, `async decide(situation)->dict`）+ `LLMUnavailableError`（接続/HTTP 障害→Nav2-only; doc08:288-292）。

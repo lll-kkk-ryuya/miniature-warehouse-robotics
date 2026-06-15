@@ -35,4 +35,4 @@
 - `.claude/rules/safety.md`（ミニチュア最大 0.3 m/s 強制）
 
 > #1 契約凍結の雛形 stub を #158 で実装に置換（リポジトリ最後の skeleton stub 解消）。
-> 申し送り: doc16 §9 branch 表（16-...:71）は warehouse_teleop を `ros2/hw` 表記＝`feat/teleop`（#158）追記は governance/docs PR（doc16 は skeleton 所有・本レーン read-only）。
+> 申し送り: doc16 §9 branch 表（16-...:72）は warehouse_teleop を `ros2/hw` 表記＝`feat/teleop`（#158）追記は governance/docs PR（doc16 は skeleton 所有・本レーン read-only）。

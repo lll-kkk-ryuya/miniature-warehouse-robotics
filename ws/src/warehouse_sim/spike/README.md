@@ -37,7 +37,7 @@ cd ws/src/warehouse_sim/spike
 6. 6g で sim+bridge+検証を同時実行して OOM-kill なし。
 
 **GO-degraded（#8 は解錠するが要注記）**: Path B（ogre1）のみ成立、または scan レートが目標を大きく下回る
-（sim ロジックには許容。実時間精度は Jetson 段階2 へ送る = doc16 §11:212）。
+（sim ロジックには許容。実時間精度は Jetson 段階2 へ送る = doc16 §11:214）。
 
 **NO-GO**: gpu_lidar（A）も ogre1（B）も headless で非空 `/scan` を出せない／6g で回避不能な OOM／
 TCC が回避不能。→ 退避先（Linux/x86 or クラウド GPU Gazebo、可視化 RViz2、Isaac でない）を文書化し #8 に通知。

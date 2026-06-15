@@ -14,7 +14,7 @@
 
 ## 1. 編集境界・所有権（自分の庭だけ耕す）
 
-- **自トラックの担当ディレクトリのみ編集**する。他トラックのフォルダ・共有契約は触らない (正本: `.claude/rules/parallel-workflow.md` §1, :13 / 担当ディレクトリ表 `docs/architecture/16-repository-and-conventions.md` :182)。
+- **自トラックの担当ディレクトリのみ編集**する。他トラックのフォルダ・共有契約は触らない (正本: `.claude/rules/parallel-workflow.md` §1, :13 / 担当ディレクトリ表 `docs/architecture/16-repository-and-conventions.md` :184)。
 - **他トラックの内部モジュールを import しない**。依存は凍結契約ハブ経由のみ（疎結合・循環禁止） (正本: `.claude/rules/parallel-workflow.md` §2.1, :74-75 / `.claude/rules/implementation-and-dependencies.md` §1)。
 - **共有ファイルは単一所有者 or contract-PR**。所有者以外が変えたい時は所有トラックの Issue に先頭 worktree タグ付きで予告→合意→編集 (正本: `.claude/rules/parallel-workflow.md` §7.1, :179-187)。
   - `ws/src/warehouse_interfaces/**`=skeleton（contract-PR）／`config/warehouse.base.yaml`=bringup/skeleton／`warehouse_bringup/config/<file>.yaml`=1ファイル1責務で各担当（別ファイルなら自由）／`docs/STATUS.md`=orchestrator（自節のみ追記）／`.claude/**`・`.github/**`=governance(`track:docs`)・メタ作業は直列化 (正本: `.claude/rules/parallel-workflow.md` §7.1 表, :183-187)。

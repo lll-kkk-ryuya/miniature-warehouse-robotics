@@ -29,7 +29,7 @@
 
 - [ ] **`/<ns>/cmd_vel` subscriber を `onCmdVel` にバインド** — `doc03:88`（`/bot{n}/cmd_vel` = `geometry_msgs/Twist`）+ `doc06:128`（「`/cmd_vel` でロボットを遠隔操作（teleop）」）。`main.cpp:setup()` の `sub(cmd_vel → onCmdVel)` TODO を実装。
 - [ ] **`setMotorVelocity(v,w)` を実 PWM へ**（4輪スキッドステア・左右2ch）— `doc02:14`（「310エンコーダモーター × 4（4輪スキッドステアリング、左右2チャンネル制御）」）。`TRACK_WIDTH` と速度→duty 曲線を**実機実測で `config.h` に確定**（差動ミックス `mixSkidSteer` は `include/kinematics.h` で **host-unit-tested 済**＝残りは `TRACK_WIDTH` 実測値と duty 曲線のみ）。**クランプ済み (v,w) 前提を崩さない**（`main.cpp:onCmdVel` → `clampLinear/clampAngular` → `setMotorVelocity`）。
-- [ ] **Layer-0 速度クランプの回帰確認**（実 build でも保持）— `safety_clamp.h`（凍結・触らない）+ `doc12:77,112`（MCU 内 0.3 m/s 上限＝最終防衛線）。実 PWM 配線後も `test/run_host_test.sh` が **9/9 緑**＝R-26（`doc16:213` §11 / `doc20:75`）を維持。
+- [ ] **Layer-0 速度クランプの回帰確認**（実 build でも保持）— `safety_clamp.h`（凍結・触らない）+ `doc12:77,112`（MCU 内 0.3 m/s 上限＝最終防衛線）。実 PWM 配線後も `test/run_host_test.sh` が **9/9 緑**＝R-26（`doc16:215` §11 / `doc20:75`）を維持。
 - [ ] **近接センサ → motor enable OFF reflex** — ⚠️**doc06 外**＝`doc12:76`（「ToF/LiDAR近接物体検出 → モータPWM停止 / motor enable OFF（MCU内、通信不要）」）+ `doc12:78`（「bumper / 近接センサ → モータ停止（MCU内、OS・ROS 非依存）」）+ `doc12:112`（最終防衛線）。速度クランプの**下**にある MCU 内 reflex（通信非依存）。`main.cpp` の近接停止 TODO を実装。
 
 ## C. センサ publisher（Pub）— doc03 凍結契約

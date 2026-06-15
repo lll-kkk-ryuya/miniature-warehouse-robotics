@@ -76,7 +76,7 @@
   - `tests/unit/test_rmf_adapter_offline_imports.py` — offline 3 module + shell が rclpy/rmf_*/nav2_msgs を
     import しない AST ガード（host-runnable 不変条件）。
 - **GATE 後（R-26）**: EasyFullControl 登録・action client 実体化を含む安全機構（停止・速度・stale）はユニット必須。
-  2 台 Open-RMF E2E / Jetson メモリ実測（cgroup 計測）は tiryoh/実機（docs/architecture/16-repository-and-conventions.md:211-215 のテスト戦略 §11）。
+  2 台 Open-RMF E2E / Jetson メモリ実測（cgroup 計測）は tiryoh/実機（docs/architecture/16-repository-and-conventions.md:213-217 のテスト戦略 §11）。
 
 ## 前提・未確定 (TODO / 残未決) — 11c:278-286 が出所
 - **offline 先行実装（#180・ユーザー指示）**: RMF 非依存の routing / namespacing / single-writer ロジックを
@@ -97,11 +97,11 @@
 - **governance（本レーン編集境界外＝orchestrator 調整・tracked: #221）**:
   - **④ CI 越境 import チェックの `tracks` map（`.github/workflows/ci.yml`）= 完了済**（#222 / `a0ce17a` で
     `warehouse_rmf_adapter` を nav-traffic に登録。本 PR 着地まで inert）。
-  - 残 doc16 **3 箇所**（#221・行挿入が inbound file:line 参照をシフトするためクロストラック扱い・別 PR）:
-    ① §1 ディレクトリツリー（docs/architecture/16-repository-and-conventions.md:24-51・`warehouse_traffic/` の隣）
-    ② §2 パッケージ命名・責務一覧（`:60-77`・`warehouse_traffic`/`warehouse_nav2_bridge` 行の隣）
-    ③ §9 ブランチ表（`:182-191`・§9 見出し `:178`・`feat/nav-traffic` 行に担当ディレクトリ追記）
-    現状 `warehouse_interfaces` のみ依存（実 import は `from __future__` のみ）で CI は通る（④登録済でも import 検査は inert）。①〜③は #221 で nav-traffic として揃える。
+  - **doc16 3 箇所 = 登録済**（#221 PR で §1/§2/§9 追加 + 行挿入に伴う inbound file:line 参照を同 PR で re-pin）:
+    ① §1 ディレクトリツリー（docs/architecture/16-repository-and-conventions.md:24-52・`warehouse_orchestrator/` の隣）
+    ② §2 パッケージ命名・責務一覧（`:61-79`・`warehouse_orchestrator` 行の隣）
+    ③ §9 ブランチ表（`:184-193`・§9 見出し `:180`・`feat/nav-traffic` 行に担当ディレクトリ追記済）
+    ⑤ `ws/src/README.md` パッケージ一覧表にも登録済。現状 `warehouse_interfaces` のみ依存（実 import は `from __future__` のみ）で CI は通る。①〜③＋⑤ を #221（本 PR）で登録完了。
   - #180 の `Blocked by` が「R-38（issue 無し）」表記 → #187 へ張替推奨。
   - issue #180 本文の worktree タグは `mwr-modec-fleet` / `feat/modec-fleet-adapter`（本レーンの実名
     `mwr-rmf-adapter` / `feat/rmf-adapter` と不一致）→ orchestrator で統一要。

@@ -9,7 +9,7 @@ through Open-RMF instead, doc15:211-219).
 Three pieces, all pure except the live HTTP one:
 
 * :func:`plan_nav2_request` — pure mapper from an accepted tool RESULT to the REST
-  request (doc08a:154-161 / doc15:198-205). It bridges the param-name drift
+  request (doc08a:164-173 / doc15:198-205). It bridges the param-name drift
   ``dropoff`` (the frozen ``action_map`` / MCP field, action_map.py:49 + tools.py
   ``dispatch_task`` payload) → ``destination`` (the frozen Nav2 Bridge body,
   doc12a:240-245 / ``app.py`` ``NavigateRequest``) WITHOUT renaming either frozen
@@ -58,7 +58,7 @@ def plan_nav2_request(tool_name: str, result: dict[str, Any]) -> Nav2Request | N
     then forwards nothing. ``result`` is the tool's success payload (tools.py), so
     every value here has already passed the gen guard + Policy Gate.
 
-    The mapping (doc08a:154-161 / doc15:198-205):
+    The mapping (doc08a:164-173 / doc15:198-205):
 
     * ``dispatch_task`` ``action="wait"`` → ``POST /api/v1/wait`` ``{robot, duration}``
     * ``dispatch_task`` ``deliver`` / ``yield`` → ``POST /api/v1/navigate``

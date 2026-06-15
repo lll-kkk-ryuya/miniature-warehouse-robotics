@@ -7,7 +7,7 @@
 > を明文化し、実機到着後にしか潰せない手戻り（性能・メモリ・実時間性が prod で初めて露見）を
 > **計画段階で先回りして de-risk** する。実測系は Jetson 到着後の「実機投入前ゲート」で確定するが、
 > その**合否基準を本 doc で先に固める**（到着後に即検証できる状態にする）。**本レーンは計画/docs のみ・
-> 実機を動かさない**（[`.claude/rules/safety.md`] / 安全ゲートは下記 §4・doc16:211-214）。
+> 実機を動かさない**（[`.claude/rules/safety.md`] / 安全ゲートは下記 §4・doc16:213-216）。
 >
 > **設計正本（着手前 Read 済・file:line）**:
 > - 環境分離: [`docs/architecture/19-environments-and-config.md:16-21`](../architecture/19-environments-and-config.md)（dev/stg/prod 行）`:52-54`（base+overlay）`:94`（prod=git タグ clone）。本 doc の要点は doc19 §7（実機投入前ゲート）にも固定。
@@ -49,7 +49,7 @@
 
 | # | 領域 | dev(Mac) | 近似不可の理由（実機固有） | 確定する場所 | 合否基準 / 根拠 doc |
 |---|---|:---:|---|---|---|
-| F1 | ROS ノードロジック・凍結契約・launch 合成 | ◯ | arm64 一致＋偽トピック/偽 `state.json` で完全独立検証可（doc16:211-214） | dev（pytest/CI） | unit/CI 緑。`scripts/check_consistency.py` 0 ERROR |
+| F1 | ROS ノードロジック・凍結契約・launch 合成 | ◯ | arm64 一致＋偽トピック/偽 `state.json` で完全独立検証可（doc16:213-216） | dev（pytest/CI） | unit/CI 緑。`scripts/check_consistency.py` 0 ERROR |
 | F2 | config overlay（`WAREHOUSE_ENV`・base+prod） | ◯ | パス解決は純 Python（`paths.py`）。prod=`/run/warehouse` は env 解決で再現可 | dev（unit） | `WAREHOUSE_ENV=prod` で `/run/warehouse` 解決（doc19:18 / jetson-deploy.md:157-158） |
 | F3 | 2台 Gazebo 自律走行 E2E | ◯ | headless `gz sim`＋`ros_gz_bridge` 環境成立（spike GO, doc06:112）。tiryoh は ARM64-native（doc03:262）。実 bot1/bot2 E2E は sim track #8/#156 で進行（doc06:112） | dev（tiryoh Docker） | 2台が衝突せず巡回（sim。実機性能は別） |
 | F4 | **GPU / CUDA**（Isaac ROS・GPU 加速 Nav2/SLAM・GPU costmap） | ✕ | **Mac に CUDA 無し**。Isaac ROS は Jetson 専用、release-3.x は未検証（doc07:23 / doc02:90） | **実機ゲート G4**（Jetson） | CPU 版 Nav2×2 で巡回が実時間成立。GPU 利用は載れば加点（doc06:100 ユニファイド食合せ計測） |
@@ -74,7 +74,7 @@
 ### 3.1 Mac/Docker(dev) で検証可能（実機不要・到着前に完結）
 
 ROS ノードロジック・**凍結契約**（`warehouse_interfaces` schema/IF）・**launch 合成**（`bringup.launch.py` の
-構文/引数解決）・**systemd unit 定義**（`deploy/jetson/` の静的検査）・**pytest**（安全機構 unit＝doc16:213）・
+構文/引数解決）・**systemd unit 定義**（`deploy/jetson/` の静的検査）・**pytest**（安全機構 unit＝doc16:215）・
 **config overlay**（`WAREHOUSE_ENV` の base+prod 解決）・**2台 Gazebo 自律走行 E2E**（環境成立・spike GO
 doc06:112、sim 範囲。実 bot E2E は sim track #8/#156）。→ F1-F3。**ARM64 三者一致が効く領域**（doc06:91）。
 
@@ -96,7 +96,7 @@ doc06:112、sim 範囲。実 bot E2E は sim track #8/#156）。→ F1-F3。**AR
 
 | ゲート | 何を測る | いつ / どこで | 合否基準（PASS） | 不合格時の分岐 | 根拠 doc |
 |---|---|---|---|---|---|
-| **G0 安全**（必須・最優先） | Layer 0 速度クランプ ≤0.3 m/s・近接 e-stop / Layer 1 Emergency Guardian unit | Jetson+実機 1台接続後すぐ。motion 有効化の**前** | ROS 側で 0.3 超指令を出しても MCU が ≤0.3 にクランプ・近接停止。Guardian unit テスト緑 | **昇格不可**。原因解消まで motion 系 unit を enable しない | Layer0=doc12:75-78 / Guardian unit=doc16:213 / 昇格ゲート=doc19:21・safety.md / jetson-deploy.md:15-26 |
+| **G0 安全**（必須・最優先） | Layer 0 速度クランプ ≤0.3 m/s・近接 e-stop / Layer 1 Emergency Guardian unit | Jetson+実機 1台接続後すぐ。motion 有効化の**前** | ROS 側で 0.3 超指令を出しても MCU が ≤0.3 にクランプ・近接停止。Guardian unit テスト緑 | **昇格不可**。原因解消まで motion 系 unit を enable しない | Layer0=doc12:75-78 / Guardian unit=doc16:215 / 昇格ゲート=doc19:21・safety.md / jetson-deploy.md:15-26 |
 | **G1 メモリ** | 全スタック起動時の `free -h` 残RAM（ユニファイド食合せ込み） | Jetson 実機・段階2（doc06:95-102） | Nav2×2 + State Cache + Guardian + Bridge 起動で**残RAM ≥500MB**。Mode C は + Open-RMF で再測 | 残<500MB → **Open-RMF 断念＝Mode B 格下げ** or 別マシン offload（Go/No-Go） | doc06:89-102,:98,:100 / doc07:243(R-38),:153(R-02) |
 | **G2 micro-ROS 2台** | 単一 Agent(:8888) で ESP32×2 を WiFi UDP 双方向 | Jetson+実機 2台（Phase 2 後半・host spike 前倒し済） | 両 ESP32 に **distinct `client_key`** 設定で 2 session 独立・pub/sub 双方向 OK | key 差で不可 → **USB 有線**（#21 Case5）。2 Agent/別ポートは降格 | doc07:79(T5),:242(R-37) / firmware/spike/RESULT.md |
 | **G3 実時間性 jitter** | Guardian 50ms / State Cache 100ms 周期の実測ヒストグラム | Jetson 実機（R-40＝Phase 0.5(Jetson)） | 周期の **p99 / max** がデッドライン内に収まる。`gc.disable()` 適用後に外れ値が許容内。pose stale 検出が機能 | hot path を Python から外し **C++ `nav2_collision_monitor` + ESP32(Layer0)** へ委譲（#126） | doc07:250(R-40),:249(R-39) / doc12:47,:483,:502-553 |
@@ -111,6 +111,35 @@ doc06:112、sim 範囲。実 bot E2E は sim track #8/#156）。→ F1-F3。**AR
 > `deploy/jetson/bin/preflight.sh --arrival --gates G0,G1,G7` は本表のうち自動判定できる部分を補助する。
 > Layer 0 速度クランプ/e-stop、実機 2台通信、測距誤差などの実測は MANUAL として記録し、script の PASS だけで
 > prod 昇格とはしない。
+
+### 4.1 到着後すぐ：ロボット要否で見たゲート分類（robot-free / robot-gated）
+
+§4 の各ゲートを **「Jetson 実機のみで通せる（ロボット非駆動＝robot-free）」** か **「実ロボット接続が必須（robot-gated）」** かで分類する（§4 冒頭「ロボット非駆動から段階的に」の具体化）。**分類は §4 表「いつ／どこで」列の再整理＝additive・ゲート/合否基準は不変**（新しいしきい値を発明しない）。狙い＝**Jetson が単体で先着しても「司令塔側」を実 prod ハードで先に de-risk できる**ことを明示する。
+
+**robot-free（Jetson 単体・ロボット 0 台で到着後すぐ通せる）**:
+
+| 区分 | 何が測れる/できる | ロボット不要の理由 | 根拠 |
+|---|---|---|---|
+| セットアップ | JetPack 焼き・タグ clone・`colcon build`・`install.sh`（導入のみ・enable しない）・`preflight.sh --arrival` 読取検査 | OS/ビルド/unit 静的検査は実機センサに依らない | doc02:140-149 / doc17:88 / §5.2 |
+| **G1 メモリ** ★ | 全スタック（Nav2×2 + State Cache + Guardian + Bridge、+ Open-RMF）起動時の `free -h` 残RAM | プロセスを載せて測るだけ（入力は sim/rosbag/fake で可）。ユニファイド食合せは載せた時点で出る | §4 G1 / doc06:98 / doc07:243(R-38) |
+| G3 実時間性 jitter | Guardian 50ms / State Cache 100ms の周期ヒストグラム | 周期は OS スケジューラ依存でロボット非依存（`gc.disable()` 効果も） | §4 G3 / doc07:250(R-40) |
+| G4 nav2/SLAM 性能＋熱 | CPU 版 Nav2×2 + AMCL + SLAM を **実機センサ非依存の sim 入力（rosbag 再生・推奨／Mac sim から `/scan`・`/odom` をブリッジ）** で走らせ `tegrastats` 持続負荷 | 走行ロジック・CPU/GPU・発熱は sim 入力で測れる（実走精度は G5/G6 で別途）。**重い sim を Jetson 上で同時起動する場合は G1 残RAM と食合う**ため rosbag 再生が無難 | §4 G4 / doc07:177(R-09) |
+| G7 Hermes 到達/サイクル（撮影リハは実機後） | `healthcheck.sh` 到達確認・Bridge→Hermes 認証・LLM 司令官サイクルを **sim ロボット** に対し実走 | ネットワーク/API/サイクル成立はロボット非依存（**ただし §4 G7 は prod 撮影前リハとして G0-G2 後に置く**＝撮影リハ本体は実機後） | §4 G7 / doc19:18,:86 |
+| 併走 de-risk | 残 Phase 0.5 の **LLM Bridge live E2E / Provider 切替**・**#88 Langfuse Phase-3 live**・**#202 latency 実測**・micro-ROS Agent 単体起動（loopback で `client_key` 挙動） | いずれも API キー/ネットワークのみ要・実ロボット不要 | doc06:109-110 / doc07:242(R-37 の Agent 側) |
+
+> **キーストーン**: robot-free のうち **G1（メモリ確定）が最重要**。段階1（Mac Docker 6GB）は GO-leaning 済（doc07:243）→ 段階2（Jetson 実機 `free -h`）が **Mode C(Open-RMF) 採否の最終 Go/No-Go** ＝ #180 RMF adapter 本実装を解錠する。**Jetson が単体で来たら最初に G1 を回す**。Mac の sim では原理的に出ない値（8GB ユニファイド食合せ・JetPack 常駐 2-2.5GB）だから実機が要る（doc06:100）。
+
+**robot-gated（実ロボット接続が必須＝Jetson 単体では値が出ない）**:
+
+| ゲート | なぜロボット必須 | 根拠 |
+|---|---|---|
+| **G0 安全**（最優先） | 実車 MCU の Layer 0 速度クランプ ≤0.3 m/s・近接 e-stop は実機にしか無い | §4 G0 / doc12:75-78 |
+| G2 micro-ROS 2台 | ESP32×2 の WiFi UDP 双方向（host spike は loopback 止まり） | §4 G2 / doc07:242(R-37) |
+| G5 実センサ精度 | MS200 測距／encoder／battery 実スケールは物理センサ固有 | §4 G5 / doc07:251(R-41) |
+| G6 WiFi 同時通信 | 実 2台 + LLM + scan の同時安定・DDS discovery | §4 G6 / doc07:155(R-08) |
+| （Phase 1 実走） | teleop/odom/RViz 位置表示・動画本番（実機走行） | doc06:120-140 |
+
+> **到着後の実行順**: ① Jetson 単体到着 → **G1（メモリ＝Mode C 確定）→ G3 → G4(sim) → G7（Hermes E2E）** を消化（司令塔を prod 実機で検証）→ ② 車到着 → **G0（安全・最優先）→ G2/G5/G6 → Phase 1-2（実走）**。robot-free を先に閉じておくと、車到着後は実機固有値の確定に集中できる。
 
 ---
 
@@ -127,7 +156,7 @@ doc06:112、sim 範囲。実 bot E2E は sim track #8/#156）。→ F1-F3。**AR
 | prod runtime dir | doc19:18（`/run/warehouse` systemd `RuntimeDirectory`） | 各 data unit が `RuntimeDirectory=warehouse`+`Preserve=yes`（state-cache/safety/bridge） | ◯ |
 | 起動順 | doc02:138 ノード一覧・doc12 層構造 | microros → state-cache → safety → nav2 → bridge（`After=` 連鎖。nav2→safety は `BindsTo=`） | ◯ |
 | **安全トポロジ** | doc12:80-84（Guardian が motion を止める）/ safety.md | nav2 が safety を **`BindsTo=`(+`After=`)**＝guardian クラッシュで nav2 停止（`Requires=` 不採用の理由を unit コメントに明記） | ◯ |
-| 安全ゲート | doc19:21（estop テスト通過後のみ）＋ doc16:213（安全機構 unit 必須） | `install.sh` は導入のみ＝**enable/start しない**。motion はゲート後手動 | ◯ |
+| 安全ゲート | doc19:21（estop テスト通過後のみ）＋ doc16:215（安全機構 unit 必須） | `install.sh` は導入のみ＝**enable/start しない**。motion はゲート後手動 | ◯ |
 | Hermes は GCP（Jetson でない） | doc19:18,:86（`34.4.104.112`） | bridge unit/README/healthcheck が GCP を read-only 言及（Jetson に Hermes を置かない） | ◯ |
 | micro-ROS transport | doc02:81（WiFi UDP）/ G2（distinct `client_key`） | microros unit が `udp4 --port ${MICROROS_PORT}`（既定 8888） | ◯（key 差は **ファーム側**で設定＝G2 で確認） |
 | traffic_mode 単一ソース | doc19:54（config 単一ソース）/ 11a:317（Mode C） | env.example が prod=`open-rmf` を `config/prod/warehouse.yaml:13` と同期せよと明記。`bringup.launch.py` は config を既定値に直読み（#75/PR#93・#156/PR#162 着地済） | ◯ |
