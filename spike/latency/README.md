@@ -66,3 +66,13 @@ python3.12 spike/latency/measure.py -p xai        --condition fairness-off -n 12
 - `-n N`（既定120, doc06:103）/ `--warmup K`（既定3・破棄）/ `--timeout S`（既定60・tail 取得）。
 - `--base-url`（既定 `http://127.0.0.1:8642` or `$HERMES_BASE_URL`）/ `--no-floor`（`/v1/models`
   floor probe をスキップ）/ `--allow-remote`（非 loopback を許可・dev のみ・既定 off）。
+
+## 結果の機械導出（collect.py・転記ミス防止）
+
+4社の run 後、`out/*.json` から RESULT.md §1/§2/§3 を**機械導出**して手転記の誤りを防ぐ（read-only・課金/network なし）:
+
+```bash
+python3.12 spike/latency/collect.py --condition fairness-off
+```
+
+出力 = §1 表（秒→**ms** 変換済）＋ §2 verdict（**viability gate**: 各社 `missed_cycle_rate ≤ 5%` → cross-provider **worst-case p95 vs 2.5s**。survivor p95 単独で判定しない・doc08:140）＋ §3 `max(10,3×cycle)` 表。閾値は `measure.py` から import（single source）。**EXTEND 時の `cycle_total` は自動採用しない**（§2 step4 の「待機＋p95」は operator 判断＝発明しない）。**Grok は xAI 鍵不在で DEFERRED**（silent drop しない）。collect.py は **RESULT.md を書かない**（print のみ）＝表は operator がセル上書きで転記する（中段挿入で file:line をズラさない）。pure unit: `python3.12 -m pytest spike/latency/test_collect.py -q`。

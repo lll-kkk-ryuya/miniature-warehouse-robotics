@@ -11,6 +11,7 @@
 - `spike/latency/stats.py` — nearest-rank percentile + summarize（pure・stdlib のみ）。
 - `out/<provider>_<condition>_<n>_<utc>.json` — 1 run の report（n_ok/n_err/`n_over_in_cycle_timeout`/**`missed_cycle_rate`**・`summary_s`={p50,p95,p99,mean,min,max,stdev}・gateway_floor・条件・**秘密値は含まない**）。**`out/` は gitignore**（生 dump は非コミット）。`missed_cycle_rate=(n_err+応答>2.5s)/n_requested`＝**viability 判定入力**（survivor p95 単独で「成立」と読まない・doc08:140）。
 - `spike/latency/RESULT.md` — 4社 p50/p95/p99 表 + **サイクル長判定**（p95 vs 2.5s, doc06:104/doc08:140）+ **`BLOCKED_TIMEOUT` 関数化推奨**（`max(10,3×cycle)`=docs 例示, R-46/doc07:256）+ **R-45 含意** + **測定条件の透明性**（fairness-off/default, R-36）。**判定の正本ドキュメントであり、live 数値は PENDING**。
+- `spike/latency/collect.py` — `out/*.json` を読み RESULT.md §1 表（秒→ms）+ §2 verdict（**viability gate**: 各社 `missed≤MAX_MISS_RATE` → cross-provider **worst-case p95 vs 2.5s**）+ §3 `max(10,3×cycle)` を**機械導出**（read-only・network/課金なし・RESULT.md/config は**書かない**＝print のみ）。閾値は `measure.py` から import（**single source of truth**・再定義しない）。EXTEND 時の `cycle_total` は§2 step4（待機+p95）＝operator 判断ゆえ**自動採用しない**。Grok は xAI 鍵不在で **DEFERRED**（silent drop しない）。test=`test_collect.py`（pure・fake report dict）。
 
 ## 消費 (consume)
 - env / secret: `API_SERVER_KEY`（Bridge↔Gateway 認証。env→`config/dev/.env` の順で解決。**値は print/書込しない**）。`HERMES_BASE_URL`（任意・既定 `http://127.0.0.1:8642`）/ `WAREHOUSE_ENV`（既定 dev・prod は拒否）。
