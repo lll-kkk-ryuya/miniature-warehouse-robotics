@@ -14,7 +14,7 @@ Verifies the #156 slice1 composition of bringup.launch.py:
     two as a pass-through so a top-level ``scenario:=head_on rviz_config:=record`` actually
     reaches the sim (without it the capstone records the default side-by-side berth spawn).
   * the four launch-less nodes are composed as Node()s: state_cache, emergency_guardian,
-    nav2_bridge, llm_bridge (doc16:117-120 — bringup owns launch, node pkgs own none).
+    nav2_bridge, llm_bridge (doc16:119-122 — bringup owns launch, node pkgs own none).
   * State Cache + Emergency Guardian are core infra (always-on, no condition).
   * the commander layer is gated: llm_bridge by ``llm``; nav2_bridge by ``llm`` AND the
     positive allowlist traffic_mode in {none,simple} (#166; Open-RMF replaces it under Mode C,
@@ -123,7 +123,7 @@ def _declared_default(ld, name: str) -> str:
 @pytest.mark.unit
 def test_includes_are_exactly_sim_and_nav2() -> None:
     # The full stack composes the two launch files with their own launch files (sim, nav2);
-    # the remaining subsystems are Node()s, not includes (doc16:117-120).
+    # the remaining subsystems are Node()s, not includes (doc16:119-122).
     names = {Path(_include_source_path(i)).name for i in _includes(_load_ld())}
     assert names == {"sim.launch.py", "nav2_bringup.launch.py"}
 
