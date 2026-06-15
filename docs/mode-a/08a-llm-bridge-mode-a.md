@@ -367,9 +367,9 @@ Claude が3秒サイクルでデッドロックを見逃した場合の安全ネ
 | 1 | Emergency Guardian | `blocked > 10秒` | Nav2 recovery behavior 発動（spin → backup → replan） |
 | 2 | Emergency Guardian | recovery 失敗 | `/emergency/event` 発行（`"type": "blocked_timeout"`） |
 | 3 | Claude（次サイクル） | emergency 情報受信 | 強制的にデッドロック解消判断（yield + wait） |
-| 4 | Emergency Guardian | `blocked > 30秒` | Nav2 cancel + cmd_vel 停止（安全停止） |
+| 4 | （estop へ格上げしない） | — | Guardian の blocked は recovery 止まり＝**物理停止しない**（doc12:518）。緊急物理停止は独立の近接/衝突リフレックス（50ms reflex）の責務 |
 
-Emergency Guardian の `BLOCKED_TIMEOUT = 10秒` は Claude の3サイクル（9秒）分の余裕がある。Claude が3サイクル連続で見逃した場合のみ Emergency Guardian が介入する。なお、この `blocked`（Emergency Guardian）は **pose 変位ベースの独立タイマー**（`warehouse_safety` の `BlockTracker`: pose が ε 以上動かない継続時間）であり、上のデッドロック検出が用いる `status=="idle"`／`current_task` とは**別系統**である（同じ「blocked」でも別物。`RobotState.status` に `"blocked"` は現れない）。
+Emergency Guardian の `BLOCKED_TIMEOUT = 10秒` は Claude の3サイクル（9秒）分の余裕がある。Claude が3サイクル連続で見逃した場合のみ Emergency Guardian が介入する。なお、この `blocked`（Emergency Guardian）は **pose 変位ベースの独立タイマー**（`warehouse_safety` の `BlockTracker`: pose が ε 以上動かない継続時間）であり、上のデッドロック検出が用いる `status=="idle"`／`current_task` とは**別系統**である（同じ「blocked」でも別物。`RobotState.status` に `"blocked"` は現れない）。Guardian の blocked は **low-harm `recovery` 止まりで estop に格上げしない**（物理停止は blocked タイマーではなく独立の近接/衝突リフレックスの責務。doc12:518）。
 
 ## 経由ルート（WAYPOINTS）
 

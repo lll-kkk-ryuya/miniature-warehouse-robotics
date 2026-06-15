@@ -65,6 +65,18 @@ docs/
 | [11c-traffic-mode-c](mode-c/11c-traffic-mode-c.md) | 交通管理 Mode C（RMFTrafficManager, Open-RMF） |
 | [12c-integration-mode-c](mode-c/12c-integration-mode-c.md) | システム統合 Mode C（Fleet Adapter, Open-RMF連携） |
 
+## setup/ — デプロイ手順
+
+| ファイル | 内容 |
+|---------|------|
+| [jetson-deploy](setup/jetson-deploy.md) | Jetson prod 常駐化（systemd / 監視・デプロイ手順） |
+
+## jetson/ — 実機投入前ゲート
+
+| ファイル | 内容 |
+|---------|------|
+| [01-fidelity-and-validation](jetson/01-fidelity-and-validation.md) | Jetson 忠実度ギャップ・dev/stg→prod de-risk（#127） |
+
 ## モード切替
 
 > 下記は**要点の抜粋（例示）**。ロード可能な正本スキーマは `config/warehouse.base.yaml` + `config/<env>/warehouse.yaml`（doc13 §3.3）。

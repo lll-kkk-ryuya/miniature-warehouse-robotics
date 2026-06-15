@@ -44,7 +44,7 @@ bash test/run_host_test.sh
 ```
 - 固定する契約: 境界（>上限→上限 / <−上限→−上限 / 素通し / 上限ちょうど / 0）＋ **非有限（NaN/±Inf）→ stop**（fail-safe・`warehouse_interfaces/safety.py:31-32` と一致）＋ `MAX_LINEAR_VELOCITY == 0.3 m/s`（safety.md / `docs/architecture/12-infrastructure-common.md:77`）＋ `MAX_*_VELOCITY > 0`（負上限=runaway ガード）。
 - `MAX_ANGULAR_VELOCITY=2.0`（`include/config.h:10`）は **Phase 1 実測 placeholder**＝テストは境界動作のみ固定。
-- CI 組込み（`.github/**`）は governance 所有（人間配線）。R-26 クランプ unit（`run_host_test.sh`）は CI job **`firmware-safety` でゲート化済**（#244・origin/main）。本 PR 追加の `run_kinematics_test.sh` / `run_host_compile.sh` は未配線＝同 job への追加は governance follow-up（`.github/**` は本レーン境界外）。
+- CI 組込み（`.github/**`）は governance 所有（人間配線）。R-26 クランプ unit（`run_host_test.sh`）に加え `run_kinematics_test.sh` / `run_host_compile.sh` も CI job **`firmware-safety` の3 step として配線済**（#244 / #251・`.github/workflows/ci.yml`）。
 
 ### キネマティクス host unit（ESP32 不要）
 skid-steer mix（`mixSkidSteer`）と dead-reckon odom（`integrateOdom`）の純ロジック（`include/kinematics.h`・Arduino 非依存・差動駆動の標準モデル）を host で検証する。hardware 値（`TRACK_WIDTH`・PWM duty 曲線・encoder scale・`dt`）は**引数**で渡し、ヘッダに定数を発明しない:
