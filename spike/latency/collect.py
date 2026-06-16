@@ -96,6 +96,44 @@ def load_reports(out_dir: Path, condition: str | None = None) -> dict[str, dict]
     return newest
 
 
+def conditions_present(out_dir: Path) -> dict[str, int]:
+    """Tally ``condition`` → report count across all ``out/*.json`` (no filter).
+
+    Feeds the "reports exist but none match --condition" guard: measure.py's
+    ``--condition`` default is ``unknown``, so a forgotten flag yields reports that a
+    ``collect.py --condition fairness-off`` would silently drop — a "NO reports" after
+    hundreds of paid calls (the worst operator outcome). Read-only.
+    """
+    tally: dict[str, int] = {}
+    if not out_dir.is_dir():
+        return tally
+    for path in sorted(out_dir.glob("*.json")):
+        try:
+            report = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        cond = report.get("condition")
+        if isinstance(cond, str):
+            tally[cond] = tally.get(cond, 0) + 1
+    return tally
+
+
+def condition_mismatch_warning(out_dir: Path, condition: str | None) -> str | None:
+    """Warn iff reports exist but NONE match the requested ``condition`` (see above)."""
+    if condition is None:
+        return None
+    present = conditions_present(out_dir)
+    if not present or condition in present:
+        return None
+    total = sum(present.values())
+    avail = ", ".join(f"{c}={n}" for c, n in sorted(present.items()))
+    return (
+        f"⚠ {total} report(s) in {out_dir} but NONE match --condition={condition!r} "
+        f"(present: {avail}). measure.py's --condition default is 'unknown' — re-run "
+        f"collect.py without --condition, or re-measure with the intended --condition."
+    )
+
+
 def provider_status(report: dict) -> dict:
     """Per-provider gate inputs (RESULT.md §2): viability + p95-vs-2.5s.
 
@@ -210,6 +248,13 @@ def render(reports: dict[str, dict]) -> str:
         out.append("- NO commander reports found in out/ — run the sweep first (README §4).")
     else:
         out.append(f"- measured: {', '.join(v['measured'])}")
+        conds = {reports[p].get("condition") for p in v["measured"]}
+        if len(conds) > 1:
+            shown = ", ".join(sorted(str(c) for c in conds))
+            out.append(
+                f"- ⚠ MIXED conditions across providers: {shown} — pass --condition to isolate "
+                "(R-36 / doc08:307-313; cross-condition comparison is not apples-to-apples)"
+            )
         if v["missing"]:
             out.append(
                 f"- ⚠ INCOMPLETE sweep — missing: {', '.join(v['missing'])} "
@@ -221,8 +266,9 @@ def render(reports: dict[str, dict]) -> str:
         for p, s in v["statuses"].items():
             tag = "viable" if s["viable"] else "NOT-viable"
             p95 = f"{_ms(s['p95_s'])}ms" if s["p95_s"] is not None else "no samples"
+            cond = reports[p].get("condition", "?")
             out.append(
-                f"  - {p}: missed={s['missed_cycle_rate'] * 100:.1f}% "
+                f"  - {p} [{cond}]: missed={s['missed_cycle_rate'] * 100:.1f}% "
                 f"(≤{MAX_MISS_RATE * 100:.0f}%? {tag}), p95={p95} "
                 f"({'≤' if s['p95_ok'] else '>'}2.5s)"
             )
@@ -234,10 +280,27 @@ def render(reports: dict[str, dict]) -> str:
                 "  - all viable AND worst-case p95 ≤ 2.5s → 3s Mode-A cycle holds (doc06:104)"
             )
         else:
-            out.append(
-                "  - viability gate or worst-case p95 failed → cycle 4-5s / suspect provider; "
-                "operator sets cycle_total per §2 step4 (wait + p95 response)"
-            )
+            # Distinguish the cause: a flaky provider (viability gate) is NOT a
+            # cycle-length problem; only a slow p95 calls for a 4-5s cycle (RESULT.md
+            # §2 step0 vs step4). Both can co-occur; an incomplete sweep alone is
+            # provisional.
+            p95_over = v["worst_p95_s"] is not None and v["worst_p95_s"] > IN_CYCLE_TIMEOUT_S
+            if not v["all_viable"]:
+                bad = ", ".join(p for p, s in v["statuses"].items() if not s["viable"])
+                out.append(
+                    f"  - viability gate FAILED ({bad}: missed > {MAX_MISS_RATE * 100:.0f}% "
+                    "or no samples) → SUSPECT/REPLACE that provider; NOT fixed by a longer "
+                    "cycle (doc08:140 / §2 step0)"
+                )
+            if p95_over:
+                out.append(
+                    f"  - worst-case p95 {_ms(v['worst_p95_s'])}ms > 2.5s → EXTEND cycle to 4-5s; "
+                    "operator sets cycle_total = wait + p95 (§2 step4)"
+                )
+            if v["all_viable"] and not p95_over:
+                out.append(
+                    "  - verdict provisional (incomplete sweep — complete it before deciding)"
+                )
 
     out += [
         "",
@@ -253,9 +316,15 @@ def render(reports: dict[str, dict]) -> str:
         out.append(
             f"\n→ HOLD: cycle_total=3.0s → blocked_timeout = **{v['blocked_timeout_s']:.1f}s** (unchanged)."
         )
+    elif v["worst_p95_s"] is not None and v["worst_p95_s"] > IN_CYCLE_TIMEOUT_S:
+        out.append(
+            "\n→ EXTEND: pick cycle_total from §2 (worst-case p95 > 2.5s), then read "
+            "blocked_timeout off the table above."
+        )
     else:
         out.append(
-            "\n→ EXTEND: pick cycle_total from §2, then read blocked_timeout off the table above."
+            "\n→ NOT a cycle-length issue (worst-case p95 ≤ 2.5s): fix the flaky/missing "
+            "provider and re-measure; cycle may stay 3s → blocked_timeout 10.0s."
         )
     out.append(
         "\n(apply = follow-up, owned by llm-bridge [cycle] / safety-state·bringup [blocked_timeout] — RESULT.md §7)"
@@ -279,7 +348,11 @@ def main(argv: list[str] | None = None) -> int:
         help="filter to one measurement condition (default: any)",
     )
     args = parser.parse_args(argv)
-    reports = load_reports(Path(args.out), args.condition)
+    out_dir = Path(args.out)
+    warning = condition_mismatch_warning(out_dir, args.condition)
+    if warning:
+        print(warning)
+    reports = load_reports(out_dir, args.condition)
     print(render(reports))
     return 0
 

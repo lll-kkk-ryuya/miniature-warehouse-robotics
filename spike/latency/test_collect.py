@@ -13,7 +13,10 @@ from collect import (
     DEFERRED_PROVIDERS,
     _ms,
     blocked_timeout_for,
+    condition_mismatch_warning,
+    conditions_present,
     format_section1,
+    format_section3_table,
     load_reports,
     provider_status,
     render,
@@ -285,3 +288,82 @@ def test_commander_set_matches_result_md():
     # guard: the judged group is exactly the 3 with keys present (Grok excluded)
     assert COMMANDER_PROVIDERS == ("anthropic", "openai", "google")
     assert "xai" not in COMMANDER_PROVIDERS
+
+
+# ---------- #3: §3 table has a direct regression test ----------
+
+
+def test_format_section3_table_rows():
+    table = format_section3_table()
+    assert "| 3.0 | 9.0 | **10.0** |" in table
+    assert "| 4.0 | 12.0 | **12.0** |" in table
+    assert "| 5.0 | 15.0 | **15.0** |" in table
+
+
+# ---------- #2: 'reports exist but none match --condition' guard ----------
+
+
+def test_conditions_present_tally(tmp_path):
+    _write(tmp_path, fake_report("anthropic", condition="unknown"))
+    _write(tmp_path, fake_report("openai", condition="unknown"))
+    _write(tmp_path, fake_report("google", condition="fairness-off"))
+    assert conditions_present(tmp_path) == {"unknown": 2, "fairness-off": 1}
+
+
+def test_condition_mismatch_warning_fires_on_unknown(tmp_path):
+    # The footgun: operator forgot measure.py --condition → all reports are 'unknown';
+    # collect.py --condition fairness-off would silently drop them all.
+    _write(tmp_path, fake_report("anthropic", condition="unknown"))
+    _write(tmp_path, fake_report("openai", condition="unknown"))
+    w = condition_mismatch_warning(tmp_path, "fairness-off")
+    assert w is not None
+    assert "NONE match" in w and "fairness-off" in w and "unknown=2" in w
+
+
+def test_condition_mismatch_warning_silent_when_match_exists(tmp_path):
+    _write(tmp_path, fake_report("anthropic", condition="fairness-off"))
+    assert condition_mismatch_warning(tmp_path, "fairness-off") is None
+
+
+def test_condition_mismatch_warning_silent_when_no_filter_or_empty(tmp_path):
+    _write(tmp_path, fake_report("anthropic", condition="unknown"))
+    assert condition_mismatch_warning(tmp_path, None) is None  # no --condition → no guard
+    assert condition_mismatch_warning(tmp_path / "empty", "fairness-off") is None  # no reports
+
+
+# ---------- #1: cross-condition visibility ----------
+
+
+def test_render_warns_on_mixed_conditions():
+    reports = {
+        "anthropic": fake_report("anthropic", p95_s=2.0, condition="fairness-off"),
+        "openai": fake_report("openai", p95_s=2.0, condition="default"),
+        "google": fake_report("google", p95_s=1.0, condition="fairness-off"),
+    }
+    text = render(reports)
+    assert "MIXED conditions" in text
+
+
+def test_render_shows_per_provider_condition():
+    text = render(_three((1.8, 2.0, 1.2)))  # all fairness-off
+    assert "[fairness-off]" in text
+    assert "MIXED conditions" not in text  # single condition → no warning
+
+
+# ---------- #4: EXTEND wording distinguishes cause ----------
+
+
+def test_render_extend_viability_says_replace_not_extend_cycle():
+    # survivorship: good p95 but flaky (20% missed) → should say SUSPECT/REPLACE, and
+    # must NOT tell the operator to extend the cycle (p95 is fine).
+    text = render(_three((1.8, 2.0, 1.5), miss=(0.0, 0.20, 0.0)))
+    assert "viability gate FAILED" in text
+    assert "SUSPECT/REPLACE" in text
+    assert "EXTEND cycle to 4-5s" not in text  # p95 fine → must NOT advise extending
+    assert "NOT a cycle-length issue" in text  # §3 tail reflects the same
+
+
+def test_render_extend_slow_p95_says_extend_cycle():
+    text = render(_three((1.8, 2.0, 3.1)))  # google slow, all viable
+    assert "worst-case p95 3100ms > 2.5s → EXTEND cycle" in text
+    assert "viability gate FAILED" not in text  # all viable → not a viability failure
