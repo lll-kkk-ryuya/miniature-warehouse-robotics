@@ -1,0 +1,231 @@
+"""Offline negotiation engine — Mode A character-LLM conversation (doc14 §交渉モード).
+
+Drives the baton-pass turn protocol between the two character personas (bot1/bot2)
+and assembles a frozen :class:`~warehouse_interfaces.schemas.Proposal` on agreement.
+Pure async, ROS-agnostic and network-free — the same testability discipline as
+:mod:`warehouse_llm_bridge.scheduler` (doc16 §11): the rclpy ``character_llm`` node
+(Slice 2) wires real topics / Hermes around this core, while host unit tests drive it
+with a fake persona + fake clocks.
+
+doc14 mapping:
+- baton-pass, starter first, strict alternation, each bot <=4 turns / <=8 total
+  (doc14:60,65-93). Under strict alternation the per-bot cap (4) and the total cap (8)
+  coincide; both are enforced defensively.
+- stop conditions (doc14:88-90): (a) a *valid* ``agreed_action`` -> agreed; (b) the total
+  turn budget is exhausted -> no_agreement; (c) wall-clock past the deadline -> timeout;
+  (d) an abort signal -> aborted (proposal discarded, doc14:141).
+- the engine NEVER actuates: it only returns an advisory ``Proposal`` the commander must
+  approve (稟議制 案B, doc14:14,38,136). It imports no executor / action_map / Nav2 client
+  — that absence is the structural no-actuation guarantee (the #4 no-actuation spirit;
+  locked by ``test_negotiation_engine.py``).
+- :func:`accept_proposal` is the commander-side gen_id +/-2 acceptance gate (doc14:142);
+  a pure function here, consumed by the commander in Slice 2.
+
+Threshold defaults (8 turns / 4 per bot / 8s / +/-2) are doc14 *illustrative* values
+(doc14:60,89,142) — NOT a frozen contract. They are injectable so Slice 2 can source them
+from config (``character.*``) without a hardcode (cf. ``.claude/rules/safety.md`` / docs-first).
+"""
+
+import logging
+import time
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from enum import StrEnum
+
+from pydantic import ValidationError
+from warehouse_interfaces.schemas import AgreedAction, Proposal, TranscriptLine
+
+from warehouse_llm_bridge.persona import Persona, build_character_prompt, parse_turn
+
+log = logging.getLogger(__name__)
+
+# doc14:60 — each persona speaks at most 4 turns, 8 total (無限会話防止 / 発話回数制限).
+MAX_TURNS_PER_BOT = 4
+MAX_TURNS_TOTAL = 8
+# doc14:89,137 — wall-clock negotiation deadline (8 秒以内に合意できなければ司令官独裁).
+DEADLINE_SECONDS = 8.0
+# doc14:142 — commander accepts a proposal whose gen_id is within +/-2 of current_gen.
+GEN_ACCEPT_WINDOW = 2
+
+
+class NegotiationStatus(StrEnum):
+    """Why a negotiation episode ended (doc14:86-90)."""
+
+    AGREED = "agreed"
+    NO_AGREEMENT = "no_agreement"
+    TIMEOUT = "timeout"
+    ABORTED = "aborted"
+
+
+@dataclass(frozen=True)
+class NegotiationContext:
+    """Inputs for one negotiation episode.
+
+    Built by the ``character_llm`` node (Slice 2) from ``/negotiation/start`` plus the
+    subscribed state/decision topics (doc14:99-108). The engine treats ``bot_states`` as
+    opaque (passed verbatim to the prompt builder, not interpreted). ``commander_decision``
+    is the digest of ``/llm/reasoning`` + ``/llm/command`` (doc14:103,150) — it is NOT a new
+    frozen ``Situation`` field (the frozen ``Situation`` has no ``commander_latest_decision``,
+    schemas.py:125-132).
+    """
+
+    negotiation_id: str
+    gen_id: int
+    starter: str
+    bot_states: dict[str, dict]
+    commander_decision: str
+    personalities: dict[str, str]
+
+
+@dataclass
+class NegotiationOutcome:
+    """Result of one negotiation episode; ``proposal`` is set only on agreement."""
+
+    status: NegotiationStatus
+    transcript: list[TranscriptLine] = field(default_factory=list)
+    proposal: Proposal | None = None
+    turns: int = 0
+
+
+def _other_bot(starter: str, bot_states: dict[str, dict]) -> str:
+    """Return the single non-starter bot id (doc14 models exactly two personas, :26-29)."""
+    others = [bot for bot in bot_states if bot != starter]
+    if len(others) != 1:
+        raise ValueError(
+            f"expected exactly 2 bots including starter {starter!r}, got {sorted(bot_states)}"
+        )
+    return others[0]
+
+
+class NegotiationEngine:
+    """Drive the baton-pass turn protocol; pure async, no ROS / network (doc14:65-93)."""
+
+    def __init__(
+        self,
+        *,
+        max_turns_per_bot: int = MAX_TURNS_PER_BOT,
+        max_turns_total: int = MAX_TURNS_TOTAL,
+        deadline_seconds: float = DEADLINE_SECONDS,
+        monotonic: Callable[[], float] = time.monotonic,
+        now: Callable[[], float] = time.time,
+    ) -> None:
+        """Wire limits + clocks; all are injectable for deterministic, fast tests.
+
+        ``monotonic`` measures the wall-clock deadline (doc14:89); ``now`` stamps the
+        proposal's ``reached_at`` epoch (doc14:128). Two callables keep deadline timing and
+        the epoch stamp independent (a fake monotonic must not also fix ``reached_at``). The
+        gen_id +/-2 acceptance window lives on :func:`accept_proposal` (commander-side), not
+        here — the engine produces a proposal, it does not gate it.
+        """
+        self._max_turns_per_bot = max_turns_per_bot
+        self._max_turns_total = max_turns_total
+        self._deadline_seconds = deadline_seconds
+        self._monotonic = monotonic
+        self._now = now
+
+    async def run(
+        self,
+        ctx: NegotiationContext,
+        persona: Persona,
+        *,
+        abort: Callable[[], bool] | None = None,
+    ) -> NegotiationOutcome:
+        """Run one negotiation episode and return its :class:`NegotiationOutcome`.
+
+        ``abort`` is polled at the top of every turn (doc14:90,141): when it returns True the
+        episode stops immediately and any in-progress agreement is discarded. Defaults to a
+        never-abort poll so non-Emergency runs are unaffected.
+        """
+        abort = abort or (lambda: False)
+        other = _other_bot(ctx.starter, ctx.bot_states)
+        transcript: list[TranscriptLine] = []
+        per_bot: dict[str, int] = {ctx.starter: 0, other: 0}
+        start = self._monotonic()
+
+        for turn_index in range(self._max_turns_total):
+            if abort():
+                log.info(
+                    "negotiation %s aborted at turn %d (doc14:90,141)",
+                    ctx.negotiation_id,
+                    turn_index,
+                )
+                return NegotiationOutcome(NegotiationStatus.ABORTED, transcript, None, turn_index)
+            if self._monotonic() - start >= self._deadline_seconds:
+                log.info(
+                    "negotiation %s timed out after %d turns (doc14:89)",
+                    ctx.negotiation_id,
+                    turn_index,
+                )
+                return NegotiationOutcome(NegotiationStatus.TIMEOUT, transcript, None, turn_index)
+
+            speaker = ctx.starter if turn_index % 2 == 0 else other
+            if per_bot[speaker] >= self._max_turns_per_bot:
+                # doc14:60 per-bot cap (defensive; coincides with the total cap under strict
+                # alternation) -> stop without agreement.
+                break
+            per_bot[speaker] += 1
+            listener = other if speaker == ctx.starter else ctx.starter
+
+            prompt = build_character_prompt(
+                bot_id=speaker,
+                personality=ctx.personalities.get(speaker, ""),
+                snapshot_self=ctx.bot_states.get(speaker, {}),
+                snapshot_other=ctx.bot_states.get(listener, {}),
+                commander_decision=ctx.commander_decision,
+                transcript=transcript,
+            )
+            raw = await persona.speak(speaker, prompt)
+            turn = parse_turn(raw)
+            transcript.append(TranscriptLine(speaker=speaker, text=turn.speech))
+
+            if turn.agreed_action is not None:
+                proposal = self._try_build_proposal(ctx, turn.agreed_action, transcript)
+                if proposal is not None:
+                    return NegotiationOutcome(
+                        NegotiationStatus.AGREED, transcript, proposal, turn_index + 1
+                    )
+                # doc14:138 — a malformed agreed_action is NOT an agreement; keep talking.
+
+        return NegotiationOutcome(NegotiationStatus.NO_AGREEMENT, transcript, None, len(transcript))
+
+    def _try_build_proposal(
+        self, ctx: NegotiationContext, agreed_action_raw: dict, transcript: list[TranscriptLine]
+    ) -> Proposal | None:
+        """Validate the persona's agreed action and wrap it in a frozen ``Proposal``.
+
+        doc14:138 — the agreed action must satisfy the frozen ``AgreedAction`` shape (a valid
+        ``CommandAction`` and a ``by`` actor); a malformed payload is rejected (returns None) so
+        the conversation continues rather than emitting a bogus proposal. ``proposal.gen_id`` is
+        stamped from ``/negotiation/start`` (ctx.gen_id, doc14:70,142). NOTE ``AgreedAction.to`` is
+        free-form (schemas.py:178-182 has no location validator — doc14:119 uses "退避地点B", not a
+        KNOWN_LOCATIONS key): the commander resolves it at approval time.
+        """
+        try:
+            agreed = AgreedAction.model_validate(agreed_action_raw)
+        except (ValidationError, TypeError) as exc:
+            log.warning(
+                "negotiation %s rejected malformed agreed_action (doc14:138): %s",
+                ctx.negotiation_id,
+                exc,
+            )
+            return None
+        return Proposal(
+            negotiation_id=ctx.negotiation_id,
+            gen_id=ctx.gen_id,
+            agreed_action=agreed,
+            transcript=list(transcript),
+            reached_at=self._now(),
+        )
+
+
+def accept_proposal(
+    proposal: Proposal, current_gen: int, *, window: int = GEN_ACCEPT_WINDOW
+) -> bool:
+    """Commander-side gate: accept a proposal whose gen_id is within +/-``window`` of current_gen.
+
+    doc14:142 — the negotiation stamped ``proposal.gen_id`` at ``/negotiation/start`` (doc14:70);
+    by the time the commander ingests it (next cycle) ``current_gen`` may have advanced. A drift of
+    +/-2 generations is accepted (race tolerance vs a generation that moved on mid-negotiation) and a
+    larger gap is discarded. Pure — Slice 2's commander calls it before validating the agreed action.
+    """
+    return abs(current_gen - proposal.gen_id) <= window
