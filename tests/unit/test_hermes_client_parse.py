@@ -152,3 +152,40 @@ def test_base_prompt_is_mode_neutral() -> None:
     assert "3段階" in SYSTEM_PROMPT
     assert "10-20%" in SYSTEM_PROMPT and "20-30%" in SYSTEM_PROMPT
     assert "20%以下は新規割当を控える" not in SYSTEM_PROMPT  # old 2-stage phrasing is gone
+
+
+def test_parse_command_normalizes_empty_location_strings():
+    """gemini-style retreat_to:"" / via:"" -> None so the frozen validator does not
+    silently drop the cycle (#88 live finding)."""
+    from warehouse_interfaces.schemas import Command
+
+    content = json.dumps(
+        {
+            "reasoning": "navigate both",
+            "commands": [
+                {"bot": "bot1", "action": "navigate", "destination": "shelf_1", "retreat_to": ""},
+                {"bot": "bot2", "action": "navigate", "destination": "shelf_3", "via": ""},
+            ],
+        }
+    )
+    command = parse_command_content(content)
+    assert command["commands"][0]["retreat_to"] is None
+    assert command["commands"][1]["via"] is None
+    # the normalized dict now validates against the FROZEN Command schema
+    parsed = Command.model_validate(command)
+    assert parsed.commands[0].destination == "shelf_1"
+    assert parsed.commands[0].retreat_to is None
+
+
+def test_parse_command_preserves_real_unknown_location():
+    """Normalization only touches ""; a real unknown location still fails the frozen
+    validator (contract boundary intact)."""
+    from warehouse_interfaces.schemas import Command
+
+    content = json.dumps(
+        {"reasoning": "x", "commands": [{"bot": "bot1", "action": "navigate", "destination": "atlantis"}]}
+    )
+    command = parse_command_content(content)
+    assert command["commands"][0]["destination"] == "atlantis"  # untouched
+    with pytest.raises(Exception):  # _known_location rejects a real unknown location
+        Command.model_validate(command)

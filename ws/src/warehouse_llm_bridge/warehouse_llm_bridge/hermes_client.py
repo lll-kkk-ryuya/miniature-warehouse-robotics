@@ -184,12 +184,38 @@ def build_system_prompt(mode: str) -> str:
     return MODE_C_PROMPT
 
 
+# CommandItem location string fields. The frozen ``CommandItem._known_location``
+# validator (warehouse_interfaces.schemas) rejects any non-None value not in
+# KNOWN_LOCATIONS, so an empty string ("") fails and the scheduler silently drops the
+# WHOLE cycle (doc08:293). Some models (notably gemini-2.5-flash) emit e.g.
+# ``retreat_to: ""`` on a plain navigate. An empty string carries no location meaning,
+# so the bridge normalizes "" -> None (the schema's absent value) BEFORE validation.
+# This keeps the FROZEN contract strict for a real unknown location — only the bridge
+# normalizes its own LLM input (#88 live finding).
+_LOCATION_FIELDS = ("destination", "via", "retreat_to")
+
+
+def _coerce_empty_locations(command: dict) -> None:
+    """In-place: coerce blank ("") location fields on each command item to None (#88)."""
+    items = command.get("commands")
+    if not isinstance(items, list):
+        return
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        for field in _LOCATION_FIELDS:
+            if item.get(field) == "":
+                item[field] = None
+
+
 def parse_command_content(content: object) -> dict:
     """Parse the assistant message *content* (a JSON string) into a Command dict.
 
     Raises ``ValueError`` for non-text / non-JSON / non-object content so the
     scheduler treats it as an invalid response and ignores the cycle (doc08:293)
-    rather than dispatching garbage.
+    rather than dispatching garbage. Empty-string location fields are normalized to
+    ``None`` (:func:`_coerce_empty_locations`, #88) so a model's ``retreat_to:""`` does
+    not fail the frozen validator and silently drop the cycle.
     """
     if not isinstance(content, str):
         raise ValueError(f"message content is not text: {type(content).__name__}")
@@ -199,6 +225,7 @@ def parse_command_content(content: object) -> dict:
         raise ValueError(f"command content is not valid JSON: {exc}") from exc
     if not isinstance(command, dict):
         raise ValueError(f"command JSON is not an object: {type(command).__name__}")
+    _coerce_empty_locations(command)
     return command
 
 
