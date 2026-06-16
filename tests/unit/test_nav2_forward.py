@@ -2,7 +2,7 @@
 
 Two layers, all with fakes (no ROS, no httpx, no live Nav2 Bridge — doc16 §11):
 
-1. ``plan_nav2_request`` is a pure mapper (doc08a:154-161 / doc15:198-205). The
+1. ``plan_nav2_request`` is a pure mapper (doc08a:164-173 / doc15:198-205). The
    headline invariant it pins is the FROZEN param-name drift: ``action_map`` / the
    MCP tools carry ``dropoff`` (action_map.py:49), the Nav2 Bridge body wants
    ``destination`` (doc12a:240-245 / app.py ``NavigateRequest``) — the mapper bridges

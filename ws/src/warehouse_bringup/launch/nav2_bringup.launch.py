@@ -31,7 +31,7 @@ Composition (doc09:232, doc11a:166-321, doc16 §5):
     (Open-RMF) handles traffic, so the Multi-Robot Costmap Layer is not started.
 
 NOTE: E2E (2-bot Gazebo) is a deferred follow-up; numeric Nav2 tuning + the exact
-multi-robot frame/topic wiring need container validation (R-49, doc16:121).
+multi-robot frame/topic wiring need container validation (R-49, doc16:123).
 """
 
 from launch import LaunchDescription

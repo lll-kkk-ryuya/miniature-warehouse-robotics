@@ -37,7 +37,8 @@ miniature-warehouse-robotics/
 │       ├── warehouse_nav2_bridge/   # [ament_python] Mode A/B: REST → BasicNavigator
 │       ├── warehouse_llm_bridge/    # [ament_python] LLM Bridge Node（司令官 + キャラ）
 │       ├── warehouse_mcp_server/    # [ament_python] Warehouse MCP Server（Hermes stdio 子）
-│       └── warehouse_orchestrator/  # [ament_python] KPI Collector + 分析スクリプト
+│       ├── warehouse_orchestrator/  # [ament_python] KPI Collector + 分析スクリプト
+│       └── warehouse_rmf_adapter/   # [ament_python] Mode C 案A EasyFullControl Fleet Adapter（offline core: routing/namespacing/single-writer）
 ├── firmware/                        # ESP32 micro-ROS（PlatformIO、colcon 対象外）
 │   ├── platformio.ini
 │   └── src/
@@ -73,6 +74,7 @@ miniature-warehouse-robotics/
 | `warehouse_llm_bridge` | ament_python | 司令官LLM サイクル・排他制御・キャラLLM | bridge | 0.5→3 |
 | `warehouse_mcp_server` | ament_python | 7ツール + Policy Gate + gen_id 検証 | bridge | 0.5 |
 | `warehouse_orchestrator` | ament_python | KPI 計測・Langfuse score・分析 | wo | 0.5→4 |
+| `warehouse_rmf_adapter` | ament_python | Mode C 案A EasyFullControl Fleet Adapter（offline core: routing/namespacing/single-writer・rclpy/rmf_* 非依存） | ros2/nav-traffic | 3 |
 
 **命名規約**:
 - パッケージ名: `warehouse_<役割>`（snake_case）。
@@ -184,7 +186,7 @@ firmware/.pio/
 | `feat/repo-skeleton` | `ws/` 初期化・`warehouse_interfaces`・`warehouse_bringup` 骨格・`.gitignore` | **最初にマージ（全土台）** |
 | `feat/sim-gazebo` | `warehouse_sim`・`warehouse_description` | skeleton 後 + §環境スパイク成功 → **条件充足: スパイク GO（2026-05-30）。PR #43 マージ済（#7 closed）。実 bot1/bot2 Gazebo E2E は #8** |
 | `feat/safety-state` | `warehouse_safety`・`warehouse_state` | skeleton 後（独立・並行可） |
-| `feat/nav-traffic` | `warehouse_traffic`・`bringup/config/nav2*` | sim spawn 後 |
+| `feat/nav-traffic` | `warehouse_traffic`・`warehouse_rmf_adapter`・`bringup/config/nav2*` | sim spawn 後 |
 | `feat/llm-bridge` | `warehouse_llm_bridge`・`warehouse_mcp_server`・`warehouse_nav2_bridge` | **偽トピックで即着手可（Gazebo/実機不要）** |
 | `feat/wo-metrics` | `warehouse_orchestrator` | bridge と trace_id 受け渡し合意のみ |
 | `hw/jetson-setup` | `deploy/jetson`・`docs/setup` | **実機不要で即着手可** |

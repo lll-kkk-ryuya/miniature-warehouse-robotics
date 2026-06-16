@@ -56,6 +56,8 @@ deploy/jetson/bin/healthcheck.sh
 [docs/jetson/01-fidelity-and-validation.md](../../docs/jetson/01-fidelity-and-validation.md)。
 要点は [doc19 §7](../../docs/architecture/19-environments-and-config.md) にも固定。
 
+> **Jetson が単体（ESP32 ロボット未着）で先着しても robot-free で通せるゲート**（setup + G1 メモリ / G3 jitter / G4 sim / G7 Hermes E2E）と **実ロボット必須**（G0 安全 / G2 / G5 / G6）の切り分け・到着後の実行順は同 doc **§4.1**（[01-fidelity-and-validation.md](../../docs/jetson/01-fidelity-and-validation.md) §4.1）。
+
 **この scaffold の整合（doc19 / doc17 §4 と突合・修正不要）**:
 
 | 項目 | 期待（正本） | 本 scaffold | 判定 |
@@ -64,7 +66,7 @@ deploy/jetson/bin/healthcheck.sh
 | prod runtime dir | doc19:18（`/run/warehouse`） | data unit が `RuntimeDirectory=warehouse`+`Preserve=yes` | ◯ |
 | 起動順 | doc02:138 / doc12 層構造 | microros→state-cache→safety→nav2→bridge | ◯ |
 | 安全トポロジ | doc12:80-84 / safety.md | nav2 が safety を **`BindsTo=`**（guardian クラッシュで nav2 停止） | ◯ |
-| 安全ゲート | doc16:211-214 / doc19:21 | `install.sh` は導入のみ（enable/start しない） | ◯ |
+| 安全ゲート | doc16:213-216 / doc19:21 | `install.sh` は導入のみ（enable/start しない） | ◯ |
 | Hermes=GCP | doc19:18,86 | bridge/healthcheck が GCP を read-only 言及 | ◯ |
 | prod launch 引数 | #156: `bringup.launch.py` 既定 `sim:=true`/`llm:=true`（Mac capstone, :148-149,154-155） | `nav2.service` が `sim:=false llm:=false` 固定＝nav2-only・gz/bridge 二重起動防止 | ◯ |
 

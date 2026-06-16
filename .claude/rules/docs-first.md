@@ -44,7 +44,7 @@
 戦略/plan に限らず、**docs を根拠にする全タスク（plan・実装・レビュー・報告・memory・Issue/PR）**で以下を守る。出典は「言ったつもり」でなく**再検証できる形**にする。
 
 - **doc を実際に開いて確認してから引用する**。記憶・文脈・他者の要約にある doc 番号を**そのまま転記しない**（実誤りの温床。2026-05-30 に当初計画が mcp_server/VirtualScan/trace_id を取りこぼした実例 → [retrospectives](../../docs/dev/03-retrospectives.md)）。
-- **引用は略記で終えず、たどれる実ファイル:行を付ける**: `docs/architecture/16-repository-and-conventions.md:187` の形（repo-relative path + 行）。「doc16 §9」だけの略記は不可（将来 `grep`/`Read` で再検証できる形にする）。GitHub URL を併記する場合は行ズレに弱い点に注意し、file:line を一次ソースとする。
+- **引用は略記で終えず、たどれる実ファイル:行を付ける**: `docs/architecture/16-repository-and-conventions.md:189` の形（repo-relative path + 行）。「doc16 §9」だけの略記は不可（将来 `grep`/`Read` で再検証できる形にする）。GitHub URL を併記する場合は行ズレに弱い点に注意し、file:line を一次ソースとする。
 - **workflow / subagent / 検索結果の引用も鵜呑みにしない**。重要な doc:行・grep 結果・契約の有無は、**採用前に自分で `grep`/`Read` して裏取り**する（2026-05-30 に agent の「doc13§5.3 /v1/runs 非採用」が不正確だった実例）。
 - **「編集境界・着手条件・consume/produce・契約の有無・しきい値」は記憶で補完しない**。doc16 §9 ブランチ表と `warehouse_interfaces` 実体を必ず `grep`/`Read` で確認。
 - memory に残す主張も同様に **実ファイル:行を併記**して後から検証可能にする。

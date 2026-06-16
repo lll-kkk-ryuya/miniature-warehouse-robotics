@@ -148,7 +148,7 @@ class WarehouseTools:
         rejection returns ``status != "ok"`` and so NEVER reaches a robot. Read-only
         / escalation / negotiation tools map to ``None`` and actuate nothing. The
         forwarder is fail-open, so a Nav2 Bridge outage is logged, not raised
-        (doc12a:198-205 / doc15:198-205 / doc08a:154-161).
+        (doc12a:198-205 / doc15:198-205 / doc08a:164-173).
         """
         if self._nav2_forwarder is None or result.get("status") != "ok":
             return

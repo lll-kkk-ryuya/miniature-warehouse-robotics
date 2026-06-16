@@ -8,7 +8,7 @@ ESP32 ファームウェア（PlatformIO、colcon 対象外）はリポジトリ
 
 | パッケージ | ビルド | 責務 | Phase |
 |-----------|--------|------|-------|
-| `warehouse_interfaces` | ament_cmake | カスタム msg/srv 定義 | 0.5 |
+| `warehouse_interfaces` | ament_python | 契約コード化: pydantic schemas / Store IF / 共有パス（Phase4 で .msg 導入時に ament_cmake へ） | 0.5 |
 | `warehouse_bringup` | ament_python | launch・config 単一ソース | 0.5 |
 | `warehouse_description` | ament_python | minicar URDF/xacro・meshes | 0.5 |
 | `warehouse_sim` | ament_python | Gazebo world・ros_gz_bridge | 0.5 |
@@ -20,6 +20,7 @@ ESP32 ファームウェア（PlatformIO、colcon 対象外）はリポジトリ
 | `warehouse_llm_bridge` | ament_python | LLM Bridge Node（司令官+キャラ） | 0.5→3 |
 | `warehouse_mcp_server` | ament_python | Warehouse MCP Server（7ツール+Policy Gate+gen_id） | 0.5 |
 | `warehouse_orchestrator` | ament_python | KPI Collector・分析 | 0.5→4 |
+| `warehouse_rmf_adapter` | ament_python | Mode C 案A EasyFullControl Fleet Adapter（offline core: routing/namespacing/single-writer） | 3 |
 
-> 各パッケージは現状 README プレースホルダのみ。Phase 0.5 以降に `package.xml` / `setup.py`（または `CMakeLists.txt`）を追加して実体化する。
+> 各パッケージは `package.xml` / `setup.py` を備えて実体化済み（`colcon build` 対象）。Phase 4 で `warehouse_interfaces` に構造化 `.msg` を導入する際に同パッケージのみ ament_cmake へ移行（doc16 §2/§3）。
 > 生成物 `ws/build` `ws/install` `ws/log` は `.gitignore` 対象。
