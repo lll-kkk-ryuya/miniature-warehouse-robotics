@@ -31,6 +31,9 @@ setup(
             # Bot1/Bot2 character-LLM negotiation layer (doc14, Slice 2). Mode A/B node,
             # composed by bringup.launch.py when traffic_mode != open-rmf.
             "character_llm = warehouse_llm_bridge.character_node:main",
+            # Seed the commander prompts into Langfuse Prompt Management (idempotent upsert;
+            # default dry-run). doc08 §Langfuse Prompt Management 方針.
+            "seed_prompts = warehouse_llm_bridge.seed_prompts:main",
         ],
     },
 )
