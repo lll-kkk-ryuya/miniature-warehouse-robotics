@@ -34,7 +34,7 @@ from std_msgs.msg import String
 from warehouse_interfaces.config import load_config
 from warehouse_interfaces.schemas import Proposal
 
-from warehouse_llm_bridge.character_session import run_negotiation_session
+from warehouse_llm_bridge.character_session import pick_yielding_bot, run_negotiation_session
 from warehouse_llm_bridge.negotiation import NegotiationEngine
 from warehouse_llm_bridge.negotiation_messages import (
     TOPIC_ABORT,
@@ -76,7 +76,13 @@ class CharacterLlm(Node):
         # /negotiation/start arrives. Plain attributes — single rclpy executor thread.
         self._bot_states: dict[str, dict] = {}
         self._commander_decision = ""
-        self._abort_flag = False
+        # ONE negotiation at a time (doc14 models a single episode per trigger): _inflight is the
+        # running episode's Future (concurrent.futures.Future, thread-safe .done()); _current_abort
+        # is THAT episode's abort signal. Per-episode (not a shared bool) so an Emergency abort for
+        # the running episode is never un-set by a later /negotiation/start — and so the seam stays
+        # correct once Slice 3's awaiting Hermes persona can actually interleave (doc14:141,239-247).
+        self._inflight = None
+        self._current_abort: threading.Event | None = None
 
         self._speech_pub = self.create_publisher(String, TOPIC_SPEECH, 10)
         self._turn_pub = self.create_publisher(String, TOPIC_TURN, 10)
@@ -106,9 +112,11 @@ class CharacterLlm(Node):
         self._commander_decision = msg.data or ""
 
     def _on_abort(self, _msg: String) -> None:
-        # ANY message on /negotiation/abort aborts the in-flight episode (doc14:90,141).
+        # ANY message on /negotiation/abort aborts the in-flight episode (doc14:90,141). Sets THAT
+        # episode's own event, so a subsequent /negotiation/start cannot un-abort it.
         reason = decode_abort(_msg.data)
-        self._abort_flag = True
+        if self._current_abort is not None:
+            self._current_abort.set()
         self.get_logger().warning(f"/negotiation/abort received ({reason}) — aborting negotiation")
 
     def _on_start(self, msg: String) -> None:
@@ -117,21 +125,32 @@ class CharacterLlm(Node):
         if start is None:
             self.get_logger().warning("ignoring malformed /negotiation/start")
             return
-        self._abort_flag = False  # fresh episode (a prior abort must not poison this one)
+        if self._inflight is not None and not self._inflight.done():
+            # doc14 models one negotiation per trigger; drop an overlapping start (the commander
+            # re-fires next cycle if still deadlocked). Keeps the baton + abort unambiguous.
+            self.get_logger().warning(
+                f"negotiation already in flight — ignoring overlapping /negotiation/start "
+                f"{start.negotiation_id}"
+            )
+            return
+        # Fresh per-episode abort signal (no shared flag to be reset out from under a running run).
+        abort_event = threading.Event()
+        self._current_abort = abort_event
         # Snapshot the inputs now so a mid-episode update cannot mutate this run.
         bot_states = dict(self._bot_states)
         commander_decision = self._commander_decision
-        asyncio.run_coroutine_threadsafe(
-            self._run_negotiation(start, bot_states, commander_decision), self._loop
+        self._inflight = asyncio.run_coroutine_threadsafe(
+            self._run_negotiation(start, bot_states, commander_decision, abort_event), self._loop
         )
 
     # ── negotiation drive (asyncio thread) ──────────────────────────────────
 
-    async def _run_negotiation(self, start, bot_states: dict[str, dict], decision: str) -> None:
+    async def _run_negotiation(
+        self, start, bot_states: dict[str, dict], decision: str, abort_event: threading.Event
+    ) -> None:
         """Run one episode via the pure session, publishing live + final messages."""
         # Offline persona: the non-starter volunteers to yield (doc14:114-130 yield shape).
-        others = [bot for bot in bot_states if bot != start.starter]
-        yielding_bot = others[0] if others else start.starter
+        yielding_bot = pick_yielding_bot(start.starter, bot_states)
         persona = ScriptedPersona(
             default_offline_script(yielding_bot=yielding_bot, retreat_to=DEFAULT_RETREAT_TO)
         )
@@ -147,7 +166,7 @@ class CharacterLlm(Node):
             publish_turn=self._publish_turn,
             publish_proposal=self._publish_proposal,
             engine=self._engine,
-            abort=lambda: self._abort_flag,
+            abort=abort_event.is_set,
         )
 
     def _publish_speech(self, speaker: str, text: str, negotiation_id: str) -> None:

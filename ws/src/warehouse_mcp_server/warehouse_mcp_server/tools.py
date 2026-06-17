@@ -440,8 +440,11 @@ class WarehouseTools:
             "starter": starter,
             "context": context,
         }
-        self._publish_negotiation_start(gen_id, payload)
+        # Audit-then-act (the codebase convention, cf. dispatch->_maybe_forward): record the
+        # accepted negotiation BEFORE the publish side effect so the executed row exists even if
+        # the (fail-open) publish faults.
         self._audit.record("start_negotiation", "executed", payload)
+        self._publish_negotiation_start(gen_id, payload)
         return payload
 
     def _publish_negotiation_start(self, gen_id: int, payload: dict[str, Any]) -> None:

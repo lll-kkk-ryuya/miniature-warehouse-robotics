@@ -106,3 +106,16 @@ async def run_negotiation_session(
 def _has_both_personas(starter: str, bot_states: dict[str, dict]) -> bool:
     """True iff the snapshot holds the starter plus exactly one other bot (doc14:26-29)."""
     return starter in bot_states and len(bot_states) == 2
+
+
+def pick_yielding_bot(starter: str, bot_states: dict[str, dict]) -> str:
+    """Choose the bot that volunteers to yield in the offline canned negotiation.
+
+    The non-starter (the responder) offers to retreat — the starter raises the standoff and the
+    other bot yields (doc14:114-130 yield shape, a natural 演出). Falls back to the starter when no
+    other bot is present (degenerate snapshot; the caller's _has_both_personas guard normally
+    prevents this). Pure — host-tested; the only node-level decision, lifted here so character_node
+    stays a thin ROS adapter.
+    """
+    others = [bot for bot in bot_states if bot != starter]
+    return others[0] if others else starter

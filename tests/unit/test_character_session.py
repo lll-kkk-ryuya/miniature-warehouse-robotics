@@ -10,7 +10,7 @@ import asyncio
 import json
 
 from warehouse_interfaces.schemas import CommandAction, Proposal
-from warehouse_llm_bridge.character_session import run_negotiation_session
+from warehouse_llm_bridge.character_session import pick_yielding_bot, run_negotiation_session
 from warehouse_llm_bridge.negotiation import NegotiationStatus
 from warehouse_llm_bridge.negotiation_messages import NegotiationStart
 from warehouse_llm_bridge.persona import ScriptedPersona, default_offline_script
@@ -107,6 +107,13 @@ def test_snapshot_missing_persona_skips_cleanly() -> None:
 
     assert outcome.status is NegotiationStatus.NO_AGREEMENT
     assert rec.speech == [] and rec.turns == [] and rec.proposals == []
+
+
+def test_pick_yielding_bot_picks_the_non_starter() -> None:
+    # the responder (non-starter) volunteers to yield (doc14:114-130); degenerate snapshot -> starter
+    assert pick_yielding_bot("bot1", BOTS) == "bot2"
+    assert pick_yielding_bot("bot2", BOTS) == "bot1"
+    assert pick_yielding_bot("bot1", {"bot1": {}}) == "bot1"
 
 
 def test_default_publish_sinks_do_not_crash() -> None:

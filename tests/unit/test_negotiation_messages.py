@@ -1,6 +1,6 @@
 """Negotiation/character topic envelope tests (doc14:200-211).
 
-The envelopes are illustrative wire shapes (doc14:271 — not frozen contract) except
+The envelopes are wire shapes for the doc14:200-211 topics — not frozen contracts — except
 :class:`Proposal`, which is the frozen contract (schemas.py:190-195). Decoders must be lenient
 (doc08:293 spirit): a malformed message returns None / a best-effort default, never raises.
 """
@@ -69,6 +69,9 @@ def test_proposal_round_trip_via_frozen_contract() -> None:
 
 def test_decode_proposal_rejects_malformed() -> None:
     assert decode_proposal("not json") is None
+    # a JSON array / scalar payload is not a proposal object -> dropped (no crash)
+    assert decode_proposal(json.dumps([1, 2])) is None
+    assert decode_proposal(json.dumps("x")) is None
     # an agreed_action with an enum-外 action fails the frozen contract -> dropped
     bad = json.dumps(
         {
@@ -92,6 +95,9 @@ def test_decode_snapshot_bots_extracts_robot_dicts() -> None:
 def test_decode_snapshot_bots_lenient_on_garbage() -> None:
     assert decode_snapshot_bots("not json") == {}
     assert decode_snapshot_bots(json.dumps({"robots": "nope"})) == {}
+    # a JSON array / scalar payload (not an object) must not crash a subscriber -> {}
+    assert decode_snapshot_bots(json.dumps([1, 2])) == {}
+    assert decode_snapshot_bots(json.dumps(5)) == {}
     # non-dict robot entries are dropped (only usable state dicts survive)
     assert decode_snapshot_bots(json.dumps({"robots": {"bot1": 5, "bot2": {"battery": 1}}})) == {
         "bot2": {"battery": 1}
@@ -100,7 +106,8 @@ def test_decode_snapshot_bots_lenient_on_garbage() -> None:
 
 def test_decode_abort_is_lenient() -> None:
     assert decode_abort(encode_abort("emergency")) == "emergency"
-    # any message on /negotiation/abort means abort, even a fieldless / non-JSON body
+    # any message on /negotiation/abort means abort, even a fieldless / non-JSON / array body
     assert decode_abort("") == "abort"
     assert decode_abort("boom") == "abort"
     assert decode_abort(json.dumps({})) == "abort"
+    assert decode_abort(json.dumps([1, 2])) == "abort"

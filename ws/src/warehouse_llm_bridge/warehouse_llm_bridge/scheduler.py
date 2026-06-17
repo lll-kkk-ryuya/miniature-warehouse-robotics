@@ -159,6 +159,12 @@ class BridgeScheduler:
         proposal is advisory (稟議制 案B, doc14:14,38): the commander validates + approves it via
         the prompt, this only routes it into the next situation. The gen_id +/-2 acceptance window
         (doc14:142) is applied at ingestion time in :meth:`run_cycle`.
+
+        Cross-thread set/clear is intentionally lock-free: the bridge node calls this on its rclpy
+        spin thread while the cycle reads+clears on the asyncio thread (a single attribute write,
+        atomic in CPython). The worst case of a tight interleave is dropping the newest concurrent
+        proposal for one cycle — acceptable since proposals are advisory and re-published, and a
+        stale-by-then proposal would be discarded by the gen window anyway.
         """
         self._pending_proposal = proposal
 

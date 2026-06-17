@@ -12,8 +12,9 @@ payload returns ``None`` (or a best-effort field) rather than raising, so one ba
 a topic never crashes a subscriber. Encoders are the canonical producers.
 
 The frozen :class:`~warehouse_interfaces.schemas.Proposal` is the ONLY contract here; the
-start/turn/speech/abort envelopes are illustrative wire shapes (doc14:271 — NOT frozen
-``warehouse_interfaces`` contract), centralized here so the producer and consumer cannot drift.
+start/turn/speech/abort envelopes are the wire shapes for the doc14:200-211 topics — NOT frozen
+``warehouse_interfaces`` contracts (only ``Proposal`` is, schemas.py:190-195) — centralized here
+so the producer and consumer cannot drift.
 """
 
 import json
