@@ -71,6 +71,26 @@ comparison demo.
 - Do not create or merge Issue/PR content without docs links and the required
   worktree tag. Simple one-line Issues/PRs are prohibited.
 
+## Testing
+
+Python tests run on the host **without ROS 2 or colcon** — `conftest.py` puts
+each `ws/src/<pkg>` on `sys.path`, and CI runs them on Python 3.12
+(`.github/workflows/ci.yml`, job `python-quality`). But the host default
+`python3` is **3.7**, so `python3 -m pytest` is not CI-compatible (modern
+type syntax can fail during collection), and bare `pytest` may be absent from
+`PATH`. Use the project venv (Python 3.12) instead:
+
+- Run tests: `.venv/bin/python -m pytest`
+- Lint/format like CI: `.venv/bin/ruff check .` / `.venv/bin/ruff format --check .`
+- Create the venv once if it is missing:
+  `python3.12 -m venv .venv && .venv/bin/python -m pip install -U ruff pytest pytest-cov "pydantic>=2" pyyaml`
+- `.venv/` is gitignored — never commit it.
+- Tests that import `launch_ros` (Nav2 launch-introspection) and
+  `user-docker-gated` e2e harnesses **SKIP** without ROS/Gazebo; skips are
+  expected, not failures.
+- C++ firmware Layer-0 safety runs via a host shim:
+  `bash firmware/test/run_host_test.sh` (no PlatformIO/ESP32 needed).
+
 ## Codex-Specific Mapping
 
 - Detailed migrated guidance lives under `.codex/guidance/`.
