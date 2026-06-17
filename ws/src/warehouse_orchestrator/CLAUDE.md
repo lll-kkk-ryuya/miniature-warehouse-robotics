@@ -19,6 +19,7 @@
 - env: **`WAREHOUSE_RUN_ID`**（per-run、#4 と同一値を読む。#73 / doc13:519）。
 - file: Command Audit Log（JSON Lines）。**レコード形は凍結契約ではない**。実プロデューサ `warehouse_mcp_server/audit.py:34-43` = `{timestamp, tool, result∈{executed,rejected,error}, detail, robot}`（doc15 例示の `traffic_mode` は実コード未記録＝コードが正）→ **防御的にパース**。
 - topic: `/bot{n}/odom`（`nav_msgs/Odometry`、efficiency=総移動距離。doc09:79）。
+- **pkg `eval_sdk`（doc21 Phase 1・一方向依存・`package.xml` exec_depend）**: domain 非依存コアを import。`trace_id`←`eval_sdk.seed.{seed_for,normalize_trace_id,derive_trace_id}`（`seed_for` は #4 `tracing.trace_seed` と統合した**唯一の join key**）／`langfuse_sink.LangfuseScoreSink`←`eval_sdk.sink.FailOpenScoreSink`＋`DATA_TYPE_*`（KPI score 名・robot-name fallback・HERMES env は wo 側に残置）／`kpi.{_percentile,distance_traveled,compute_efficiency,DistanceAccumulator}`←`eval_sdk.stats`（`compute_efficiency`=`path_lengths` の wo 別名）／`grok_cost.{grok_cost,resolve_grok_price,grok_cost_for_model,GrokPrice}`←`eval_sdk.cost`（価格表 `GROK_PRICE_TABLE_*` は provenance 付きで wo に残置＝注入）。**外部 import 面は不変**（再 export）。
 
 ## 実装済み（slice 2 / #73）
 - `langfuse_sink.py` — **v2 `.score()` → v4 `create_score(trace_id,name,value,data_type,metadata)` + `flush()`**（`get_client()` 経由、doc08:356-365）。`result`=CATEGORICAL / `task_completion_time`・`efficiency`=NUMERIC。robot/mode/run_id を metadata に、**未対応版は score 名に robot 埋め込み（`result_bot1`）でフォールバック**（doc08:367）。trace_id を 32hex-no-dash 正規化（doc13:516）。fail-open + 遅延 import 維持。

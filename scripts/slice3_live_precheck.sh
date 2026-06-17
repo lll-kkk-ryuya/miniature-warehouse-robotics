@@ -121,7 +121,11 @@ PY
 }
 
 py_path() {
-  printf '%s:%s:%s:%s\n' \
+  # eval_sdk is the domain-free core that warehouse_llm_bridge/tracing.py and the wo modules
+  # now import (doc21 Phase 1); keep it on the offline PYTHONPATH alongside the warehouse
+  # packages so this precheck's import smoke resolves the transitive dependency.
+  printf '%s:%s:%s:%s:%s\n' \
+    "${REPO_ROOT}/ws/src/eval_sdk" \
     "${REPO_ROOT}/ws/src/warehouse_interfaces" \
     "${REPO_ROOT}/ws/src/warehouse_llm_bridge" \
     "${REPO_ROOT}/ws/src/warehouse_mcp_server" \
