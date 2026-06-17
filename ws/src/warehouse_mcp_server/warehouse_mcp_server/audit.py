@@ -42,7 +42,7 @@ class CommandAuditLog:
         of ``detail`` as ``detail.gen_id`` (the caller's payload is left untouched).
         This is the join key the WO live-score sink reads — it keys each executed
         command row to the generation that issued it (#109; consumer =
-        ``warehouse_orchestrator.audit_reader.AuditEntry.gen_id``, doc13:484). Without
+        ``warehouse_orchestrator.audit_reader.AuditEntry.gen_id``, doc13:518). Without
         it ``gen_id`` stays ``None`` downstream and the live score-send is a no-op.
         """
         if gen_id is not None and isinstance(detail, dict) and "gen_id" not in detail:

@@ -5,7 +5,7 @@ A thin rclpy shell over the pure-Python core (:mod:`kpi`, :mod:`audit_reader`,
 (doc16 §11). On a timer it reads the audit log (frozen ``audit_log_path()``; overridable
 via the ``audit_log_path`` param), logs the ``result`` KPI family, and best-effort sends the
 documented Langfuse scores (``task_completion_time``, ``efficiency``) keyed by a deterministic
-``trace_id`` (#73, doc13:481).
+``trace_id`` (#73, doc13:519).
 
 Live-send is **gated** and inert in dev: it needs (a) Langfuse creds, (b) ``WAREHOUSE_RUN_ID``
 (the per-run env shared with #4), and (c) a ``gen_id`` — which the current audit producer does

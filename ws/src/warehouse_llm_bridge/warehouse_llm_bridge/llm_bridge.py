@@ -12,7 +12,7 @@ A thin rclpy adapter around the pure-async :class:`BridgeScheduler`. It:
 * OWNS the Langfuse trace (Pattern A, doc08:354-356): builds a per-run
   ``session_id`` and a :class:`~warehouse_llm_bridge.tracing.LangfuseTracer` so each
   turn is one trace with a deterministic seed-derived ``trace_id`` (#6 derives the
-  same id, doc13:481(b)). Mode (``traffic_mode``) is threaded into the
+  same id, doc13:519(b)). Mode (``traffic_mode``) is threaded into the
   ``SituationBuilder`` so Mode C emits the slim situation shape (08c).
 
 The cycle / Situation / dispatch / tracing logic lives in ``scheduler.py`` /
@@ -141,7 +141,7 @@ class LlmBridge(Node):
         cycle_wait = CYCLE_WAIT_SEC.get(mode, DEFAULT_CYCLE_WAIT_SEC)
         # Bridge-owned Langfuse trace (Pattern A, doc08:354-356); fail-open if
         # langfuse is absent. The trace-seed run_id is the SHARED WAREHOUSE_RUN_ID env
-        # (the same source #6/wo reads, doc13:481(b)) so both lanes derive an identical
+        # (the same source #6/wo reads, doc13:519(b)) so both lanes derive an identical
         # create_trace_id(seed=f"{run_id}:{gen_id}"); session_id (timestamped) is only a
         # display label / fallback when WAREHOUSE_RUN_ID is unset (#108).
         run_id = resolve_run_id(os.environ.get("WAREHOUSE_RUN_ID"), session_id)

@@ -148,7 +148,7 @@ def test_parse_lines_filters_none() -> None:
 def test_gen_id_reads_only_detail_gen_id() -> None:
     # detail.gen_id is the trace-seed source (added to executed rows by mcp_server, #73).
     assert parse_line(json.dumps({"tool": "dispatch_task", "detail": {"gen_id": 7}})).gen_id == 7
-    # received_gen is a stale-REJECTED gen → must NOT be used as gen_id (review fix; doc13:481).
+    # received_gen is a stale-REJECTED gen → must NOT be used as gen_id (review fix; doc13:518).
     assert (
         parse_line(json.dumps({"tool": "dispatch_task", "detail": {"received_gen": 3}})).gen_id
         is None

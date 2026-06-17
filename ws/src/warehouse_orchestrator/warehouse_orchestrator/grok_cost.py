@@ -1,12 +1,12 @@
 """Offline Grok (xAI) cost derivation for the 4-provider KPI comparison.
 
-doc08 §比較計測の追加設計 :498-506 / doc13 §7.5② :486.
+doc08 §比較計測の追加設計 :498-506 / doc13 §7.5② :520.
 
 Thin warehouse adapter over :mod:`eval_sdk.cost` (doc21 §1c/§4 — the generic token-cost math
 was extracted; the **price table is injected**, so the provider-specific, provenance-stamped
 xAI tables stay HERE). Langfuse's built-in model price table covers OpenAI / Anthropic / Google
 but **not xAI Grok**, so Grok generations get an empty ``cost`` and the 4-provider comparison
-breaks (doc13:486②). ``usage_details`` (input/output token counts) is captured independently of
+breaks (doc13:520②). ``usage_details`` (input/output token counts) is captured independently of
 ``cost``, so #6 (wo) can derive Grok cost *offline* as ``tokens × static xAI price table`` —
 unlocking the comparison without depending on whether a custom model price is registered in
 Langfuse (doc08:504).

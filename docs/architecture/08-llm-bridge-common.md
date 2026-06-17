@@ -497,9 +497,9 @@ rclpy
 
 - **Mode A 交渉スコア**（`negotiation_rounds` / `agreement_reached`）は **演出専用・Phase 4 比較対象外**（[doc14](14-character-llm-negotiation.md):255 / [doc06](06-implementation-phases.md):263）。定義は **[doc14 §交渉スコア](14-character-llm-negotiation.md#交渉スコア)** に置く（交渉エピソードの記述指標であり provider 能力比較には用いない）。
 
-### Grok コスト定義（PLAN・実検証は Phase 3, [doc13](13-hermes-setup.md) §7.5② :486）
+### Grok コスト定義（PLAN・実検証は Phase 3, [doc13](13-hermes-setup.md) §7.5② :520）
 
-`コスト`（:395 = `generation.cost`）は Langfuse が generation の `model` 文字列を価格表に正規表現マッチして算出する。**Langfuse 既定の価格表は OpenAI/Anthropic/Google のみで xAI Grok を含まない**ため、Grok は cost が空欄になり比較が破綻する（doc13:486② を確認）。対策（**本節は PLAN・実装は Phase 3**）:
+`コスト`（:395 = `generation.cost`）は Langfuse が generation の `model` 文字列を価格表に正規表現マッチして算出する。**Langfuse 既定の価格表は OpenAI/Anthropic/Google のみで xAI Grok を含まない**ため、Grok は cost が空欄になり比較が破綻する（doc13:520② を確認）。対策（**本節は PLAN・実装は Phase 3**）:
 
 1. **Langfuse にカスタムモデル価格を登録**（UI: Project Settings → Models → Add model definition ／ API: `POST /api/public/models`）。`match_pattern`（Grok の model 文字列への正規表現、例 `(?i)^(xai/)?grok-4.*$`）＋ 入出力トークン単価（USD/token、xAI 公開価格・取得日を併記）＋ `unit: TOKENS`。ユーザ定義は組込より優先。
 2. **オフライン フォールバック（wo, Phase 前でも可）**: `usage_details`（入出力トークン数）は cost と独立に取得されるため、wo 側で `tokens × 静的 xAI 価格表`（versioned 定数）から cost を派生計算できる → Langfuse 価格登録の有無に依存せず Grok 比較を解錠。

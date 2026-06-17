@@ -17,7 +17,7 @@ extra) and is **fail-open**. What stays HERE is the Bridge-specific ``session_id
 (``build_session_id``) and the ``trace_seed`` name (delegating to the de-duplicated
 :func:`eval_sdk.seed.seed_for` — formerly also implemented in
 ``warehouse_orchestrator/trace_id.py``). Hermes' built-in Langfuse plugin must be disabled to
-avoid double-counting (doc13:479) — that is a deploy handoff, not bridge code.
+avoid double-counting (doc13:517) — that is a deploy handoff, not bridge code.
 """
 
 from eval_sdk.seed import resolve_run_id, seed_for
