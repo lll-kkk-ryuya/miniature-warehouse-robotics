@@ -154,3 +154,65 @@ def test_langfuse_tracer_uses_v49_observation_api(monkeypatch: pytest.MonkeyPatc
     assert fake.spans[0].updates == []
     assert all(context.closed for context in fake.contexts)
     assert all(context.closed for context in fake.attribute_contexts)
+
+
+@pytest.mark.unit
+def test_langfuse_tracer_merges_extra_tags_and_metadata(monkeypatch: pytest.MonkeyPatch) -> None:
+    # extra_tags / extra_metadata are appended after [provider, mode] / the reserved metadata so
+    # a caller can make traces filterable by an extra OPAQUE discriminator without the
+    # domain-free tracer knowing the domain (doc21 §4 — generic strings here, no domain leak).
+    fake = _FakeLangfuseClient()
+    monkeypatch.setattr(LangfuseTracer, "_client", lambda self: fake)
+    tracer = LangfuseTracer(
+        run_id="run_x",
+        session_id="session_x",
+        provider="provider_x",
+        mode="mode_x",
+        extra_tags=["disc:variant-a"],
+        extra_metadata={"disc_name": "variant-a", "disc_version": 7},
+    )
+
+    async def _run() -> None:
+        async with tracer.turn(3):
+            pass
+
+    asyncio.run(_run())
+
+    assert fake.propagations == [
+        {
+            "session_id": "session_x",
+            "tags": ["provider_x", "mode_x", "disc:variant-a"],
+            "metadata": {
+                "disc_name": "variant-a",
+                "disc_version": 7,
+                "gen_id": 3,
+                "trace_id": TRACE,
+            },
+        }
+    ]
+    assert all(context.closed for context in fake.attribute_contexts)
+
+
+@pytest.mark.unit
+def test_langfuse_tracer_reserved_metadata_keys_win(monkeypatch: pytest.MonkeyPatch) -> None:
+    # extra_metadata must never override the reserved gen_id / trace_id keys (dropped at init).
+    fake = _FakeLangfuseClient()
+    monkeypatch.setattr(LangfuseTracer, "_client", lambda self: fake)
+    tracer = LangfuseTracer(
+        run_id="run_x",
+        session_id="s",
+        provider="p",
+        mode="mode_x",
+        extra_metadata={"gen_id": "HIJACK", "trace_id": "HIJACK"},
+    )
+
+    async def _run() -> None:
+        async with tracer.turn(9):
+            pass
+
+    asyncio.run(_run())
+    meta = fake.propagations[0]["metadata"]
+    assert meta["gen_id"] == 9  # reserved key wins over extra_metadata
+    assert meta["trace_id"] == TRACE
+    assert "HIJACK" not in meta.values()  # caller's reserved-key values are dropped, not merged
+    assert all(context.closed for context in fake.attribute_contexts)

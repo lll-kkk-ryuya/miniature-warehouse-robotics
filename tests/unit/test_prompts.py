@@ -21,11 +21,12 @@ from warehouse_llm_bridge.prompts import (
 
 
 class _FakePrompt:
-    """Stand-in for a langfuse TextPromptClient (.prompt / .is_fallback)."""
+    """Stand-in for a langfuse TextPromptClient (.prompt / .is_fallback / .version)."""
 
-    def __init__(self, text: str, *, is_fallback: bool = False) -> None:
+    def __init__(self, text: str, *, is_fallback: bool = False, version: int = 1) -> None:
         self.prompt = text
         self.is_fallback = is_fallback
+        self.version = version
 
 
 class _FakeClient:
@@ -62,6 +63,20 @@ def test_prompt_name_per_mode(mode: str, name: str) -> None:
     assert prompt_name(mode) == name
 
 
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "mode,label",
+    [
+        ("none", "Mode A (LLM単独交通管理)"),
+        ("simple", "Mode B (LLM単独・簡易交通管理)"),
+        ("open-rmf", "Mode C (LLM + Open-RMF)"),
+        ("weird", "weird"),  # unknown -> raw value (never raises)
+    ],
+)
+def test_mode_label(mode: str, label: str) -> None:
+    assert prompts.mode_label(mode) == label
+
+
 # ── source == "code": Langfuse untouched, verbatim fallback ──────────────────────────
 
 
@@ -76,6 +91,7 @@ def test_source_code_does_not_touch_langfuse(monkeypatch: pytest.MonkeyPatch, mo
     resolved = resolve_commander_prompt(mode, {"hermes": {"prompts": {"source": "code"}}})
     assert calls == []  # proof of the early return (not a swallowed error)
     assert resolved.text == build_system_prompt(mode)
+    assert resolved.name == prompt_name(mode)  # name set BEFORE the source check (all branches)
     assert resolved.langfuse_prompt is None
     assert resolved.is_fallback is True
 
@@ -85,7 +101,7 @@ def test_source_code_does_not_touch_langfuse(monkeypatch: pytest.MonkeyPatch, mo
 
 @pytest.mark.unit
 def test_langfuse_source_uses_and_links_fetched_prompt(monkeypatch: pytest.MonkeyPatch) -> None:
-    fake_prompt = _FakePrompt("MANAGED PROMPT TEXT", is_fallback=False)
+    fake_prompt = _FakePrompt("MANAGED PROMPT TEXT", is_fallback=False, version=7)
     fake_client = _FakeClient(fake_prompt)
     monkeypatch.setattr(prompts, "_get_client", lambda: fake_client)
     cfg = {
@@ -97,6 +113,9 @@ def test_langfuse_source_uses_and_links_fetched_prompt(monkeypatch: pytest.Monke
     assert resolved.text == "MANAGED PROMPT TEXT"
     assert resolved.langfuse_prompt is fake_prompt  # linked for prompt-level analytics
     assert resolved.is_fallback is False
+    # identity surfaced for trace tagging (doc08 §Langfuse Prompt Management 方針).
+    assert resolved.name == PROMPT_NAME_MODE_AB
+    assert resolved.version == 7
     # fetched by the configured name / label / ttl, with the code constant as fallback=.
     name, label, fallback, ttl = fake_client.calls[0]
     assert name == PROMPT_NAME_MODE_AB
@@ -118,6 +137,8 @@ def test_langfuse_fallback_object_text_used_but_not_linked(monkeypatch: pytest.M
     resolved = resolve_commander_prompt("open-rmf", {"hermes": {"prompts": {"source": "langfuse"}}})
     assert resolved.text == sentinel  # SDK-returned text is used
     assert resolved.langfuse_prompt is None  # but a fallback object is NOT linked
+    assert resolved.version is None  # no managed version recorded for a fallback
+    assert resolved.name == PROMPT_NAME_MODE_C  # name still surfaced for the trace tag
     assert resolved.is_fallback is True
 
 
@@ -132,6 +153,8 @@ def test_langfuse_failure_falls_open_to_code(monkeypatch: pytest.MonkeyPatch, mo
     monkeypatch.setattr(prompts, "_get_client", boom)
     resolved = resolve_commander_prompt(mode, {"hermes": {"prompts": {"source": "langfuse"}}})
     assert resolved.text == build_system_prompt(mode)
+    assert resolved.name == prompt_name(mode)  # name set BEFORE the try (exception path too)
+    assert resolved.version is None
     assert resolved.langfuse_prompt is None
     assert resolved.is_fallback is True
 
@@ -157,6 +180,15 @@ def test_seed_specs_text_matches_code_fallback() -> None:
     # every seeded prompt is labelled production (the fairness version pin, doc08 §比較検証ログ)
     for spec in seed_prompts.seed_specs():
         assert "production" in spec["labels"]
+    # self-describing config.traffic_modes records which traffic_mode(s) each prompt is for
+    # (mode-ab → none/simple = Mode A/B; mode-c → open-rmf = Mode C). config/warehouse.base.yaml:5.
+    assert by_name[PROMPT_NAME_MODE_AB]["config"]["traffic_modes"] == ["none", "simple"]
+    assert by_name[PROMPT_NAME_MODE_C]["config"]["traffic_modes"] == ["open-rmf"]
+    # the mode_ab traffic_modes must equal the actual mode-ab routing (MODE_A_TRAFFIC_MODES) so
+    # the self-description cannot drift from the runtime mode→prompt mapping.
+    from warehouse_llm_bridge.hermes_client import MODE_A_TRAFFIC_MODES
+
+    assert set(by_name[PROMPT_NAME_MODE_AB]["config"]["traffic_modes"]) == set(MODE_A_TRAFFIC_MODES)
 
 
 @pytest.mark.unit
@@ -177,8 +209,9 @@ def test_names_override_is_used_for_fetch(monkeypatch: pytest.MonkeyPatch) -> No
     fake_client = _FakeClient(_FakePrompt("X"))
     monkeypatch.setattr(prompts, "_get_client", lambda: fake_client)
     cfg = {"hermes": {"prompts": {"source": "langfuse", "names": {"mode_c": "custom-c-name"}}}}
-    resolve_commander_prompt("open-rmf", cfg)
+    resolved = resolve_commander_prompt("open-rmf", cfg)
     assert fake_client.calls[0][0] == "custom-c-name"  # the override name is fetched
+    assert resolved.name == "custom-c-name"  # and surfaced for the trace tag
 
 
 @pytest.mark.unit
