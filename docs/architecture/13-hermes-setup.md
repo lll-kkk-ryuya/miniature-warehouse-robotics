@@ -132,7 +132,7 @@ LANGFUSE_HOST=https://cloud.langfuse.com
 # ───────────────────────────────────────────────
 WAREHOUSE_STATE_CACHE_PATH=/tmp/warehouse/state.json
 WAREHOUSE_AUDIT_LOG_PATH=/tmp/warehouse/audit.jsonl
-WAREHOUSE_CONFIG_DIR=config   # base+overlay（warehouse.base.yaml + $WAREHOUSE_ENV/warehouse.yaml）を paths.config_paths が解決。旧 WAREHOUSE_CONFIG_PATH 単一ファイル方式は doc16:114 / doc19 で置換
+WAREHOUSE_CONFIG_DIR=config   # base+overlay（warehouse.base.yaml + $WAREHOUSE_ENV/warehouse.yaml）を paths.config_paths が解決。旧 WAREHOUSE_CONFIG_PATH 単一ファイル方式は doc16:116 / doc19 で置換
 # ※ 上記は dev 既定（16-repository-and-conventions.md §4）。本番(Jetson)は systemd RuntimeDirectory=warehouse で /run/warehouse/ に切替
 ```
 
@@ -160,7 +160,7 @@ LANGFUSE_HOST=https://cloud.langfuse.com
 
 WAREHOUSE_STATE_CACHE_PATH=/tmp/warehouse/state.json
 WAREHOUSE_AUDIT_LOG_PATH=/tmp/warehouse/audit.jsonl
-WAREHOUSE_CONFIG_DIR=config   # base+overlay（warehouse.base.yaml + $WAREHOUSE_ENV/warehouse.yaml）を paths.config_paths が解決。旧 WAREHOUSE_CONFIG_PATH 単一ファイル方式は doc16:114 / doc19 で置換
+WAREHOUSE_CONFIG_DIR=config   # base+overlay（warehouse.base.yaml + $WAREHOUSE_ENV/warehouse.yaml）を paths.config_paths が解決。旧 WAREHOUSE_CONFIG_PATH 単一ファイル方式は doc16:116 / doc19 で置換
 # ※ 上記は dev 既定（16-repository-and-conventions.md §4）。本番(Jetson)は systemd RuntimeDirectory=warehouse で /run/warehouse/ に切替
 ```
 

@@ -29,7 +29,7 @@ Composition (each layer cited; ordering = doc12a:398-412 systemd chain, sim swap
              Open-RMF instead (#166). Also gated by ``llm`` (only matters when commander runs).
   6. llm     Node(warehouse_llm_bridge/llm_bridge) — the 3 s commander cycle: reads state.json,
              POSTs Hermes, maps the Command JSON via action_map and dispatches the MCP 7-tools
-             IN-PROCESS (WarehouseTools().dispatch, doc15:50 / doc16:56), forwarding accepted
+             IN-PROCESS (WarehouseTools().dispatch, doc15:50 / doc16:57), forwarding accepted
              motion to the Nav2 Bridge REST (doc15:211). Last to start (doc12a:411). Gated
              by ``llm:=true``. Plain rclpy node; degrades to Nav2-only if Hermes is unreachable
              (doc08:291 — "LLM API 接続障害 → Nav2単体で自律走行を継続"), so it brings up
@@ -37,7 +37,7 @@ Composition (each layer cited; ordering = doc12a:398-412 systemd chain, sim swap
 
 DELIBERATELY NOT launched here (docs-first — not ros2 nodes):
   - **Warehouse MCP Server** (``warehouse_mcp_server``): in the ADOPTED S1 transport it runs
-    IN-PROCESS inside the LLM Bridge (doc15:50 📌, doc16:56); the standalone form is a Hermes
+    IN-PROCESS inside the LLM Bridge (doc15:50 📌, doc16:57); the standalone form is a Hermes
     Gateway stdio child (``python -m warehouse_mcp_server``, doc15:80-94), spawned by Hermes,
     not by ros2 launch. So it has no Node()/launch entry here (it has no .launch.py and is not
     an rclpy node). The doc06 完了条件 "(... + Warehouse MCP Server)" is satisfied via the
@@ -69,9 +69,9 @@ Phase-1 real-hardware scale measurement. (A low-battery estop demo tunes sim.lau
 battery_initial_percent/floor args, which this top-level launch does not forward — run
 sim.launch.py directly for that, or add a forward in a follow-up.)
 
-Edit boundary: this file is skeleton-owned (doc16:180). sim.launch.py (sim), nav2_bringup.launch.py
+Edit boundary: this file is skeleton-owned (doc16:182). sim.launch.py (sim), nav2_bringup.launch.py
 + config/ (nav-traffic), and the state/safety/bridge node executables (their tracks) are
-REFERENCED only — never edited here. doc16:119-122 makes warehouse_bringup the single launch
+REFERENCED only — never edited here. doc16:121-124 makes warehouse_bringup the single launch
 source and says node packages own no launch/config, so the launch-less nodes are composed via
 launch_ros Node() here (matching TODO(#1)), not per-package launch files.
 Design: docs/architecture/06 §Phase0.5, /12 §State Cache+Guardian, /15 §MCP+nav2_bridge,

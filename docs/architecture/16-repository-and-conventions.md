@@ -17,7 +17,7 @@
 
 ## 1. リポジトリ構成（モノレポ — `ws/src/` 集約）
 
-**全 ROS 2（colcon）パッケージは `ws/src/` 配下の `warehouse_*` に集約する。** シミュレーション資産（URDF/world）も独立トップレベルディレクトリには置かず、ROS 2 パッケージ内に収める。`colcon build` 1コマンドで全体がビルドできる状態を維持する。
+**ドメイン固有の colcon パッケージは `ws/src/` 配下の `warehouse_*` に集約する。** シミュレーション資産（URDF/world）も独立トップレベルディレクトリには置かず、ROS 2 パッケージ内に収める。`colcon build` 1コマンドで全体がビルドできる状態を維持する。**唯一の例外が `eval_sdk`**（doc21）＝倉庫に依存しない再利用可能な評価コアであることを名前で示すため**意図的に非 `warehouse_*` 命名**とする（`rclpy`/`warehouse_*` import ゼロ・pip 化可能・`langfuse` は optional pip extra）。`eval_sdk` も `package.xml`/`setup.py` を持つ colcon パッケージであり、§2 一覧・`ws/src/README.md` の正準レジストリに登録する（`scripts/check_consistency.py` の `B5-package-registry` が全 `ws/src/*` を対象に登録漏れを ERROR 検出）。
 
 ESP32 ファームウェア（PlatformIO、MCU向けで colcon 非対象）と、デプロイ/設定資産はリポジトリルートに置く。
 
@@ -38,7 +38,8 @@ miniature-warehouse-robotics/
 │       ├── warehouse_llm_bridge/    # [ament_python] LLM Bridge Node（司令官 + キャラ）
 │       ├── warehouse_mcp_server/    # [ament_python] Warehouse MCP Server（Hermes stdio 子）
 │       ├── warehouse_orchestrator/  # [ament_python] KPI Collector + 分析スクリプト
-│       └── warehouse_rmf_adapter/   # [ament_python] Mode C 案A EasyFullControl Fleet Adapter（offline core: routing/namespacing/single-writer）
+│       ├── warehouse_rmf_adapter/   # [ament_python] Mode C 案A EasyFullControl Fleet Adapter（offline core: routing/namespacing/single-writer）
+│       └── eval_sdk/                # [ament_python] ドメイン非依存 評価コア（seed/tracer/sink/stats/cost）。意図的に非 warehouse_＝ROS/warehouse 依存ゼロ・pip 化可能（doc21）
 ├── firmware/                        # ESP32 micro-ROS（PlatformIO、colcon 対象外）
 │   ├── platformio.ini
 │   └── src/
@@ -75,9 +76,10 @@ miniature-warehouse-robotics/
 | `warehouse_mcp_server` | ament_python | 7ツール + Policy Gate + gen_id 検証 | bridge | 0.5 |
 | `warehouse_orchestrator` | ament_python | KPI 計測・Langfuse score・分析 | wo | 0.5→4 |
 | `warehouse_rmf_adapter` | ament_python | Mode C 案A EasyFullControl Fleet Adapter（offline core: routing/namespacing/single-writer・rclpy/rmf_* 非依存） | ros2/nav-traffic | 3 |
+| `eval_sdk` | ament_python | ドメイン非依存 embodied-AI 評価コア（`seed`/`tracer`/`sink`/`stats`/`cost`）。**意図的に非 `warehouse_*`**＝`rclpy`/`warehouse_*` import ゼロ・`langfuse` は optional pip extra（doc21・抽出 PR#273） | wo/docs | 0.5→4 |
 
 **命名規約**:
-- パッケージ名: `warehouse_<役割>`（snake_case）。
+- パッケージ名: `warehouse_<役割>`（snake_case）。**例外**: `eval_sdk` のみ非 `warehouse_*`＝ドメイン非依存の再利用コアであることを名前で示すための意図的命名（doc21）。
 - ノード名・トピック名: snake_case。ロボット固有トピックは namespace `/bot1` `/bot2` を `PushRosNamespace` で注入し、ノード内にハードコードしない。
 - 共有/単一インスタンス（`/map`, micro-ROS Agent, Hermes, MCP, State Cache, Emergency Guardian）は namespace 外（グローバル）。
 
@@ -189,6 +191,7 @@ firmware/.pio/
 | `feat/nav-traffic` | `warehouse_traffic`・`warehouse_rmf_adapter`・`bringup/config/nav2*` | sim spawn 後 |
 | `feat/llm-bridge` | `warehouse_llm_bridge`・`warehouse_mcp_server`・`warehouse_nav2_bridge` | **偽トピックで即着手可（Gazebo/実機不要）** |
 | `feat/wo-metrics` | `warehouse_orchestrator` | bridge と trace_id 受け渡し合意のみ |
+| `feat/eval-sdk` | `ws/src/eval_sdk` | doc21（#269）land 後＝既存評価コア（trace/score/cost）の純関数サブセット抽出（Phase 1 抽出=#273）。ROS/warehouse 非依存ゆえ独立着手可 |
 | `hw/jetson-setup` | `deploy/jetson`・`docs/setup` | **実機不要で即着手可** |
 | `hw/firmware-esp32` | `firmware/` | 実機不要で雛形まで可 |
 

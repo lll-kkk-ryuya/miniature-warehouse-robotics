@@ -149,7 +149,7 @@ jobs:
     # gate source (run_host_test.sh) is left unchanged ("クランプ gate は不変に保つ").
     # 正本: docs/architecture/20-dev-quality-and-testing.md:75
     # (Phase 0.5: 安全系ユニット R-26 を CI に追加),
-    # docs/architecture/16-repository-and-conventions.md:215 (§11 安全機構は R-26 unit 必須),
+    # docs/architecture/16-repository-and-conventions.md:218 (§11 安全機構は R-26 unit 必須),
     # .claude/rules/safety.md:4, docs/architecture/12-infrastructure-common.md:77 (≤0.3 m/s).
     steps:
       - uses: actions/checkout@v4

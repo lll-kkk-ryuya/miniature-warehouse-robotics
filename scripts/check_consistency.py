@@ -281,24 +281,22 @@ def check_location_keys(src: Sources, only) -> list[Finding]:
 
 
 def check_package_registry(src: Sources, only) -> list[Finding]:
-    # Cross-file invariant (like B1/C1): every ROS package that exists on disk
-    # (``ws/src/warehouse_*`` with a ``package.xml``) must be listed in BOTH canonical
-    # registries — doc16 §2 命名・責務一覧 and ws/src/README.md. This is the drift class
-    # #221 fixed (``warehouse_rmf_adapter`` landed via PR#256 but was absent from doc16
-    # §1/§2/§9 + ws/src/README); the deterministic checker did not assert the package list,
-    # so a package present on disk yet undocumented was invisible — the same silent-rot
-    # the firmware-safety CI job was added to close. ERROR (not WARN): an unregistered
-    # package is an unambiguous, mechanical drift. Only meaningful on a FULL scan.
+    # Cross-file invariant (like B1/C1): every colcon package that exists on disk
+    # (any ``ws/src/*`` with a ``package.xml`` — not just ``warehouse_*``) must be listed in
+    # BOTH canonical registries — doc16 §2 命名・責務一覧 and ws/src/README.md. This is the
+    # drift class #221 fixed (``warehouse_rmf_adapter`` landed via PR#256 but was absent from
+    # doc16 §1/§2/§9 + ws/src/README). The scan was originally prefix-limited to ``warehouse_*``,
+    # which let ``eval_sdk`` (doc21 Phase 1, PR#273 — intentionally a non-``warehouse_``,
+    # domain-free eval core) land undocumented and invisible to this very guard; the scan now
+    # covers ALL ws/src packages so a non-``warehouse_`` package cannot silently drift again.
+    # ERROR (not WARN): an unregistered package is an unambiguous, mechanical drift. Only
+    # meaningful on a FULL scan.
     if only:
         return []
     ws_src = ROOT / "ws/src"
     if not ws_src.is_dir():
         return []
-    pkgs = sorted(
-        p.name
-        for p in ws_src.iterdir()
-        if p.is_dir() and p.name.startswith("warehouse_") and (p / "package.xml").is_file()
-    )
+    pkgs = sorted(p.name for p in ws_src.iterdir() if p.is_dir() and (p / "package.xml").is_file())
     registries = {
         "docs/architecture/16-repository-and-conventions.md": DOCS
         / "architecture/16-repository-and-conventions.md",
