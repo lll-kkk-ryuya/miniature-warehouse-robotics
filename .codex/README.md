@@ -25,6 +25,10 @@ edited during this migration.
 - The Claude deny policy for `.env` and `secrets/**` is mirrored by safety
   guidance and a Codex hook guardrail for supported Bash/filesystem-MCP paths.
   This is not a complete filesystem enforcement boundary.
+- LLM/Hermes/Langfuse work follows
+  `.codex/guidance/llm-observability-testing.md`: default CI stays fake/noop/unit,
+  Hermes checks are env-gated live smoke, and Langfuse/provider/cost checks are
+  explicit human gates with official-doc verification.
 - Codex does not have Claude Code's experimental agent teams. Use Codex
   subagents/custom agents for in-session parallel work, and GitHub Issue/PR
   comments for durable cross-session coordination.
