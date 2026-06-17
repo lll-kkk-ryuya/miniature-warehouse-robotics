@@ -30,6 +30,21 @@ jobs:
       - name: Pytest (safety + unit)
         run: pytest
 
+  langfuse-api-contract:
+    name: Langfuse SDK API contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Langfuse contract deps
+        run: pip install pytest "langfuse>=4.9,<5"
+      - name: Pytest (Langfuse SDK surface)
+        env:
+          WAREHOUSE_RUN_LANGFUSE_API_CONTRACT: "1"
+        run: pytest tests/unit/test_eval_sdk_langfuse_api_contract.py
+
   governance:
     name: Governance (contract label + track boundaries)
     runs-on: ubuntu-latest
