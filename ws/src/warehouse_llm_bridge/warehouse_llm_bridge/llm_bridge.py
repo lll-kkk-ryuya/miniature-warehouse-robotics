@@ -48,6 +48,7 @@ import rclpy
 from rclpy.node import Node
 from std_msgs.msg import String
 from warehouse_interfaces.config import load_config
+from warehouse_interfaces.paths import warehouse_env
 from warehouse_interfaces.stores import FileGenStore, FileIdempotencyStore, FileStateStore
 from warehouse_mcp_server.gen_check import GenChecker
 from warehouse_mcp_server.nav2_client import Nav2RestForwarder
@@ -55,7 +56,7 @@ from warehouse_mcp_server.tools import WarehouseTools
 
 from warehouse_llm_bridge.executor import DispatchToolExecutor
 from warehouse_llm_bridge.fairness import assert_fairness, fairness_log_line, resolve_memory_policy
-from warehouse_llm_bridge.hermes_client import HermesClient, build_system_prompt
+from warehouse_llm_bridge.hermes_client import HermesClient
 from warehouse_llm_bridge.negotiation_messages import (
     TOPIC_PROPOSAL,
     TOPIC_START,
@@ -63,6 +64,7 @@ from warehouse_llm_bridge.negotiation_messages import (
     decode_proposal,
     encode_start,
 )
+from warehouse_llm_bridge.prompts import mode_label, resolve_commander_prompt
 from warehouse_llm_bridge.scheduler import (
     CYCLE_WAIT_SEC,
     DEFAULT_CYCLE_WAIT_SEC,
@@ -159,14 +161,42 @@ class LlmBridge(Node):
         # create_trace_id(seed=f"{run_id}:{gen_id}"); session_id (timestamped) is only a
         # display label / fallback when WAREHOUSE_RUN_ID is unset (#108).
         run_id = resolve_run_id(os.environ.get("WAREHOUSE_RUN_ID"), session_id)
-        tracer = LangfuseTracer(run_id=run_id, session_id=session_id, provider=provider, mode=mode)
-        # Mode-aware commander prompt: Mode A/B (none/simple) get the base prompt + deadlock
-        # detection + yield rules (MODE_A_RULES, #181); Mode C (open-rmf) gets the standalone
-        # MODE_C_PROMPT (doc08c:138-180, #203), since Open-RMF owns traffic (doc14:164 /
-        # 08a:316-334) and robot selection (doc08c:154).
+        # Mode-aware commander prompt — MANAGED in Langfuse Prompt Management (doc08
+        # §Langfuse Prompt Management 方針): fetched by mode (warehouse-commander-mode-ab for
+        # none/simple, warehouse-commander-mode-c for open-rmf) with the code constant as a
+        # fail-open fallback. resolve_commander_prompt never raises (langfuse absent / not
+        # seeded / outage -> code fallback, doc08:333); the returned langfuse_prompt links the
+        # generation to the managed version (Pattern A) when a real prompt was fetched.
+        resolved_prompt = resolve_commander_prompt(mode, cfg)
+        # Tag the per-turn trace with which prompt was used (+ version/source) so a trace is
+        # filterable by prompt — and since the name encodes the mode, the trace also reveals the
+        # commander's mode (doc08 §Langfuse Prompt Management 方針). Mode is already a trace tag
+        # ([provider, mode]); this adds the prompt discriminator. eval_sdk's tracer treats these
+        # as opaque extra tags/metadata (domain-free).
+        prompt_source = "code" if resolved_prompt.is_fallback else "langfuse"
+        # Deployment environment is another opaque trace tag. Resolve WAREHOUSE_ENV in the
+        # Bridge so eval_sdk remains domain-free; keep env last in the emitted tag list.
+        env_tag = f"env={warehouse_env()}"
+        tracer = LangfuseTracer(
+            run_id=run_id,
+            session_id=session_id,
+            provider=provider,
+            mode=mode,
+            extra_tags=[f"prompt:{resolved_prompt.name}", env_tag],
+            extra_metadata={
+                "prompt_name": resolved_prompt.name,
+                "prompt_version": resolved_prompt.version,
+                "prompt_source": prompt_source,
+                # readable companion to the bare mode tag (none -> "Mode A (LLM単独交通管理)").
+                "mode_label": mode_label(mode),
+            },
+        )
         self._scheduler = BridgeScheduler(
             llm_client=HermesClient(
-                base_url, api_key=api_key, system_prompt=build_system_prompt(mode)
+                base_url,
+                api_key=api_key,
+                system_prompt=resolved_prompt.text,
+                langfuse_prompt=resolved_prompt.langfuse_prompt,
             ),
             situation_builder=SituationBuilder(
                 state_store, mode=mode, emergency_min_distance=emergency_min_distance
@@ -189,9 +219,11 @@ class LlmBridge(Node):
         self._loop = asyncio.new_event_loop()
         self._thread = threading.Thread(target=self._run_loop, daemon=True)
         nav2_desc = nav2_base_url if nav2_forwarder is not None else "off (Open-RMF)"
+        prompt_src = "code-fallback" if resolved_prompt.is_fallback else "langfuse"
         self.get_logger().info(
             f"llm_bridge ready (mode={mode}, hermes={base_url}, nav2_bridge={nav2_desc}, "
-            f"cycle_wait={cycle_wait}s, seed_tasks={len(seed_tasks)}, session={session_id})"
+            f"cycle_wait={cycle_wait}s, seed_tasks={len(seed_tasks)}, prompt={prompt_src}, "
+            f"session={session_id})"
         )
 
     def _publish_reasoning(self, text: str) -> None:
