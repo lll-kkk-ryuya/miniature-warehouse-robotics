@@ -602,7 +602,7 @@ Requires=warehouse-state-cache.service
 | Phase 0.5 (Gazebo シミュレーション) | `hermes gateway` 単独起動、`curl /v1/chat/completions` 成功、Anthropic 経路で応答取得。Hermes Gateway 単体のメモリ baseline 計測 |
 | Phase 1 (ロボット1台セットアップ) | Warehouse MCP Server を Hermes 経由で呼出し成功、Policy Gate 拒否ケース確認 |
 | Phase 2 (SLAM + Nav2) | Hermes 経由で `get_fleet_status` から 2 台の AMCL pose を取得確認 |
-| Phase 3 (2台協調 + LLM Bridge) | `traffic_mode` を `none` / `simple` / `open-rmf` の3パターンで LLM Bridge → Hermes → MCP → 各 TrafficManager の往復確認 |
+| Phase 3 (2台協調 + LLM Bridge) | `traffic_mode` を `none` / `simple` / `open-rmf` の3パターンで LLM Bridge → Hermes → MCP → 各 TrafficManager の往復確認。Gateway 単体の起動確認は `WAREHOUSE_LIVE_HERMES=1 python3.12 -m pytest tests/live/test_hermes_gateway_live.py` で opt-in smoke |
 | Phase 4 (LLM比較検証) | `active_provider` 4社（Anthropic/OpenAI/Google/xAI）× `traffic_mode` 3種 = 12構成の Langfuse トレース + Command Audit Log 取得 |
 | Phase 5 (Isaac Sim連携) | デジタルツイン側で Hermes Gateway を再現（同一 config.yaml）。Langfuse タグで `env=isaac_sim` / `env=real` を分離記録 |
 | Phase 6 (撮影・編集・公開) | 撮影時の LLM 思考ログ（Langfuse）と制御ログ（Command Audit Log）を時刻同期で取得し、編集素材として export 可能であること |
