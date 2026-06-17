@@ -296,11 +296,7 @@ def check_package_registry(src: Sources, only) -> list[Finding]:
     ws_src = ROOT / "ws/src"
     if not ws_src.is_dir():
         return []
-    pkgs = sorted(
-        p.name
-        for p in ws_src.iterdir()
-        if p.is_dir() and (p / "package.xml").is_file()
-    )
+    pkgs = sorted(p.name for p in ws_src.iterdir() if p.is_dir() and (p / "package.xml").is_file())
     registries = {
         "docs/architecture/16-repository-and-conventions.md": DOCS
         / "architecture/16-repository-and-conventions.md",
