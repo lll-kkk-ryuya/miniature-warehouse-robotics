@@ -66,10 +66,9 @@ from warehouse_llm_bridge.negotiation_messages import (
 )
 from warehouse_llm_bridge.prompts import mode_label, resolve_commander_prompt
 from warehouse_llm_bridge.scheduler import (
-    CYCLE_WAIT_SEC,
-    DEFAULT_CYCLE_WAIT_SEC,
     BridgeScheduler,
     parse_seed_tasks,
+    resolve_cycle_wait,
 )
 from warehouse_llm_bridge.situation import DEFAULT_EMERGENCY_MIN_DISTANCE, SituationBuilder
 from warehouse_llm_bridge.tracing import LangfuseTracer, build_session_id, resolve_run_id
@@ -154,7 +153,10 @@ class LlmBridge(Node):
             nav2_forwarder=nav2_forwarder,
             negotiation_starter=self._publish_negotiation_start,
         )
-        cycle_wait = CYCLE_WAIT_SEC.get(mode, DEFAULT_CYCLE_WAIT_SEC)
+        # Commander cadence is config-driven (cfg["cycle"], doc08:121-128 / README:88-91):
+        # the configured TOTAL span minus typical response = the post-response idle wait.
+        # Fail-open to the doc08 design default when the block is absent/malformed.
+        cycle_wait = resolve_cycle_wait(cfg, mode)
         # Bridge-owned Langfuse trace (Pattern A, doc08:354-356); fail-open if
         # langfuse is absent. The trace-seed run_id is the SHARED WAREHOUSE_RUN_ID env
         # (the same source #6/wo reads, doc13:519(b)) so both lanes derive an identical

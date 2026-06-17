@@ -87,9 +87,10 @@ traffic_mode: "open-rmf"   # Mode C: LLM + Open-RMF（主方針）/ "simple"=Mod
 
 # サイクル長（総サイクル。config 実キー = cycle.mode_a_seconds / mode_c_seconds）
 cycle:
-  mode_a_seconds: 3        # Mode A: 約3秒/サイクル（待機 1s + 応答 ~2s）
+  mode_a_seconds: 3        # Mode A: 約3秒/サイクル（待機 1s + 応答 ~2s）。dev は 120（~2分スパン, config/dev/warehouse.yaml）
   mode_c_seconds: 5        # Mode C: 約5秒/サイクル（待機 3s + 応答 ~2s）
-# ※ 待機値（Mode A:1 / Mode C:3）は doc08 BridgeScheduler 内部の cycle_wait_sec。config キーではない
+# ※ scheduler.resolve_cycle_wait が「待機 = 総サイクル − 応答(~2s)」に変換し cycle_wait_sec として使う
+#   （doc08:125-128）。欠落/不正/非正は code 既定 1.0/3.0s へ fail-open。env overlay / WAREHOUSE__* で上書き可（doc19）
 ```
 
 > **キャラLLM パラメータ**（`enabled` / `model: opus` / `max_tokens: 60` / `negotiation_timeout_sec` / `max_turns_per_bot`）は doc14 の設計パラメータで、現状どの config にも未定義（Mode A メイン回の実装時に config 化）。

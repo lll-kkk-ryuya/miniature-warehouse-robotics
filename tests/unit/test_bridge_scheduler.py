@@ -23,7 +23,14 @@ from warehouse_interfaces.stores import FileGenStore, FileIdempotencyStore, File
 from warehouse_llm_bridge.action_map import command_to_tool_calls
 from warehouse_llm_bridge.executor import DispatchToolExecutor, RecordingToolExecutor
 from warehouse_llm_bridge.llm_client import LLMUnavailableError
-from warehouse_llm_bridge.scheduler import HISTORY_MAXLEN, BridgeScheduler, parse_seed_tasks
+from warehouse_llm_bridge.scheduler import (
+    CYCLE_WAIT_SEC,
+    DEFAULT_CYCLE_WAIT_SEC,
+    HISTORY_MAXLEN,
+    BridgeScheduler,
+    parse_seed_tasks,
+    resolve_cycle_wait,
+)
 from warehouse_mcp_server.audit import CommandAuditLog
 from warehouse_mcp_server.gen_check import GenChecker
 from warehouse_mcp_server.nav2_client import RecordingNav2Forwarder
@@ -330,12 +337,13 @@ def test_timeout_keeps_previous_command(tmp_path: Path) -> None:
 @pytest.mark.unit
 def test_sustained_timeout_triggers_nav2_only(tmp_path: Path) -> None:
     llm = FakeLLM(sleep=0.05)
+    # no_response 0.015s / timeout 0.01s -> ceil(1.5) = 2 timeouts before outage.
     sched, _ = _scheduler(
         tmp_path,
         llm,
         RecordingToolExecutor(),
         cycle_timeout_sec=0.01,
-        outage_after_consecutive=2,
+        outage_no_response_sec=0.015,
     )
     asyncio.run(sched.run_cycle())
     assert sched.nav2_only is False
@@ -399,6 +407,174 @@ def test_recovers_to_command_after_outage(tmp_path: Path) -> None:
     asyncio.run(sched.run_cycle())
     assert sched.nav2_only is False
     assert [c.tool for c in executor.calls] == ["cancel_task"]
+
+
+# ── config-driven cadence (resolve_cycle_wait) + time-anchored outage ──────────
+
+
+@pytest.mark.unit
+def test_resolve_cycle_wait_defaults_reproduce_code_fallback() -> None:
+    # The documented spans (mode_a 3s / mode_c 5s, README:88-91) minus the ~2s response
+    # reproduce the 1.0/3.0s CYCLE_WAIT_SEC code defaults exactly (doc08:125-128).
+    cfg = {"cycle": {"mode_a_seconds": 3, "mode_c_seconds": 5}}
+    assert resolve_cycle_wait(cfg, "none") == CYCLE_WAIT_SEC["none"] == 1.0
+    assert resolve_cycle_wait(cfg, "simple") == CYCLE_WAIT_SEC["simple"] == 1.0
+    assert resolve_cycle_wait(cfg, "open-rmf") == CYCLE_WAIT_SEC["open-rmf"] == 3.0
+
+
+@pytest.mark.unit
+def test_resolve_cycle_wait_dev_120s_span() -> None:
+    # dev entertainment profile: a ~120s Mode A span -> 118s post-response idle wait.
+    cfg = {"cycle": {"mode_a_seconds": 120}}
+    assert resolve_cycle_wait(cfg, "none") == 118.0
+    # mode_c absent in this overlay -> Mode C falls back to its code default.
+    assert resolve_cycle_wait(cfg, "open-rmf") == CYCLE_WAIT_SEC["open-rmf"]
+
+
+@pytest.mark.unit
+def test_resolve_cycle_wait_mode_grouping() -> None:
+    # none + simple both read mode_a_seconds; open-rmf reads mode_c_seconds.
+    cfg = {"cycle": {"mode_a_seconds": 10, "mode_c_seconds": 20}}
+    assert resolve_cycle_wait(cfg, "none") == 8.0
+    assert resolve_cycle_wait(cfg, "simple") == 8.0
+    assert resolve_cycle_wait(cfg, "open-rmf") == 18.0
+
+
+@pytest.mark.unit
+def test_resolve_cycle_wait_missing_block_falls_back() -> None:
+    # No cycle block (offline/minimal config) -> code default per mode, never crashes.
+    assert resolve_cycle_wait({}, "none") == CYCLE_WAIT_SEC["none"]
+    assert resolve_cycle_wait({}, "open-rmf") == CYCLE_WAIT_SEC["open-rmf"]
+    assert resolve_cycle_wait({}, "weird-mode") == DEFAULT_CYCLE_WAIT_SEC
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("bad", ["3", None, True, float("nan"), float("inf"), 0, -5])
+def test_resolve_cycle_wait_malformed_span_falls_back(bad: object) -> None:
+    # Non-numeric / bool / non-finite / non-positive span -> fail-open to the code default
+    # (never a zero/negative asyncio.sleep). Mirrors the safety-cap guard in config.py (#175).
+    cfg = {"cycle": {"mode_a_seconds": bad}}
+    assert resolve_cycle_wait(cfg, "none") == CYCLE_WAIT_SEC["none"]
+
+
+@pytest.mark.unit
+def test_resolve_cycle_wait_floors_subresponse_span_at_zero() -> None:
+    # A span <= the response budget yields a non-negative (back-to-back) wait, not negative.
+    cfg = {"cycle": {"mode_a_seconds": 1}}
+    assert resolve_cycle_wait(cfg, "none") == 0.0
+
+
+@pytest.mark.safety
+@pytest.mark.unit
+def test_outage_threshold_independent_of_cycle_wait(tmp_path: Path) -> None:
+    # The whole point of the time-anchored outage: a long (config-driven) cycle_wait_sec must
+    # NOT change how many consecutive timeouts declare an outage. With a 120s wait, outage
+    # still triggers after exactly 2 timeouts (ceil(0.015/0.01)), not after a wall-clock window.
+    llm = FakeLLM(sleep=0.05)
+    sched, _ = _scheduler(
+        tmp_path,
+        llm,
+        RecordingToolExecutor(),
+        cycle_timeout_sec=0.01,
+        outage_no_response_sec=0.015,
+        cycle_wait_sec=120.0,
+    )
+    assert sched._outage_after == 2
+    asyncio.run(sched.run_cycle())
+    assert sched.nav2_only is False
+    asyncio.run(sched.run_cycle())
+    assert sched.nav2_only is True
+
+
+# ── two-tier wait: long cadence only after a productive turn (PR#297 review) ───
+
+
+@pytest.mark.unit
+def test_run_cycle_returns_true_only_on_productive_turn(tmp_path: Path) -> None:
+    # run_forever's wait selection hinges on this bool: True only when a command dispatched.
+    good = {"reasoning": "ok", "commands": [{"bot": "bot1", "action": "stop"}]}
+    assert (
+        asyncio.run(_scheduler(tmp_path, FakeLLM(good), RecordingToolExecutor())[0].run_cycle())
+        is True
+    )
+    # no snapshot (cold start)
+    assert (
+        asyncio.run(
+            _scheduler(tmp_path, FakeLLM(), RecordingToolExecutor(), ready=False)[0].run_cycle()
+        )
+        is False
+    )
+    # in-cycle timeout
+    assert (
+        asyncio.run(
+            _scheduler(
+                tmp_path, FakeLLM(sleep=0.05), RecordingToolExecutor(), cycle_timeout_sec=0.01
+            )[0].run_cycle()
+        )
+        is False
+    )
+    # transport outage
+    assert (
+        asyncio.run(
+            _scheduler(tmp_path, FakeLLM(raises=LLMUnavailableError("x")), RecordingToolExecutor())[
+                0
+            ].run_cycle()
+        )
+        is False
+    )
+    # invalid response
+    assert (
+        asyncio.run(
+            _scheduler(tmp_path, FakeLLM(raises=ValueError("bad")), RecordingToolExecutor())[
+                0
+            ].run_cycle()
+        )
+        is False
+    )
+
+
+@pytest.mark.safety
+@pytest.mark.unit
+def test_run_forever_full_cadence_after_productive_turn(tmp_path: Path, monkeypatch) -> None:
+    # A productive turn -> run_forever sleeps the long config cadence (not the short retry).
+    good = {"reasoning": "ok", "commands": [{"bot": "bot1", "action": "stop"}]}
+    sched, _ = _scheduler(
+        tmp_path, FakeLLM(good), RecordingToolExecutor(), cycle_wait_sec=118.0, retry_wait_sec=1.0
+    )
+    delays: list[float] = []
+
+    async def fake_sleep(d: float) -> None:
+        delays.append(d)
+        sched.stop()  # exit after the first post-cycle wait
+
+    monkeypatch.setattr(asyncio, "sleep", fake_sleep)
+    asyncio.run(sched.run_forever())
+    assert delays == [118.0]
+
+
+@pytest.mark.safety
+@pytest.mark.unit
+def test_run_forever_short_retry_on_nonproductive_cycle(tmp_path: Path, monkeypatch) -> None:
+    # MAJOR (PR#297 review): a non-productive cycle (cold-start no-snapshot here; same branch as
+    # timeout/outage/invalid) must sleep the SHORT reactive retry, NOT the ~120s cadence — else the
+    # bridge appears frozen for ~2min at startup and the 5s outage window stretches to ~123s.
+    sched, _ = _scheduler(
+        tmp_path,
+        FakeLLM(),
+        RecordingToolExecutor(),
+        ready=False,
+        cycle_wait_sec=118.0,
+        retry_wait_sec=1.0,
+    )
+    delays: list[float] = []
+
+    async def fake_sleep(d: float) -> None:
+        delays.append(d)
+        sched.stop()
+
+    monkeypatch.setattr(asyncio, "sleep", fake_sleep)
+    asyncio.run(sched.run_forever())
+    assert delays == [1.0]  # short retry, NOT 118.0
 
 
 # ── end-to-end exclusivity through the real WarehouseTools ────────────────────
