@@ -32,17 +32,24 @@ See #67 for the consolidated prerequisite chain and run/validate steps.
 A **persistent, browser-viewable** Gazebo+Nav2 environment so you can *watch* the 2 robots
 drive (RViz on the noVNC desktop) and record clips — without rebuilding anything each time.
 
-- **`Dockerfile`** bakes the Nav2 stack + window tools (`wmctrl`/`xdotool`) + `ffmpeg` +
-  the Python runtime deps (`pydantic`, `uvicorn`) on top of `tiryoh/ros2-desktop-vnc:jazzy`
-  (which already carries ROS 2 Jazzy, Gazebo Harmonic `gz`, ros_gz, and the noVNC desktop).
-  The ROS workspace is **not** baked — mount the repo at `/ws`; the colcon symlink-install
-  build is reused from `/ws/ws/install` (host build is pinned to `/ws`).
+- **`Dockerfile`** bakes the Nav2 stack + window tools (`wmctrl`/`xdotool`) + `ffmpeg`,
+  plus Python runtime deps (`pydantic`, `pyyaml`, FastAPI/Uvicorn, `httpx`, Langfuse/OpenAI
+  SDKs) on top of `tiryoh/ros2-desktop-vnc:jazzy` (which already carries ROS 2 Jazzy,
+  Gazebo Harmonic `gz`, ros_gz, and the noVNC desktop). The ROS workspace is **not**
+  baked — mount the repo at `/ws`; the colcon symlink-install build is reused from
+  `/ws/ws/install` (host build is pinned to `/ws`).
 - **`run-sim-cockpit.sh`** is idempotent: builds the image if missing, creates the `mwr-sim`
-  container if missing (repo → `/ws` rw, noVNC on `:6080`, `--memory=6g`), else `docker start`s it.
+  container if missing (repo → `/ws` rw, noVNC on `127.0.0.1:6080`, `--memory=6g`),
+  else `docker start`s it. LAN exposure is opt-in with `MWR_SIM_BIND=0.0.0.0`; existing
+  containers keep their original Docker publish and the helper warns if it differs.
 
 ```bash
 deploy/dev/run-sim-cockpit.sh                    # build/create/start; prints the noVNC URL
 # open http://localhost:6080  (login ubuntu / ubuntu)  ->  desktop with RViz
+# optional LAN exposure on a trusted network:
+MWR_SIM_BIND=0.0.0.0 deploy/dev/run-sim-cockpit.sh
+# recreate if an older mwr-sim has the old publish/deps:
+docker rm -f mwr-sim && deploy/dev/run-sim-cockpit.sh
 docker start mwr-sim                             # resume any later day
 docker stop  mwr-sim                             # free RAM when done
 ```
@@ -77,13 +84,14 @@ ros2 action send_goal /bot1/navigate_to_pose nav2_msgs/action/NavigateToPose \
   (x≈0.14–1.68). Two facts follow:
   - **Berth goals (y=0.8) and shelf goals (y=0.3) fail to plan** — too close to the top wall
     (`worldToMap failed … size 180,90`) or inside a shelf block. Aim goals into the free corridor.
-  - **`emergency_guardian` e-stops at 0.3 m** (`emergency_min_distance`, [safety.md]). Two robots
-    cannot pass within 0.3 m in this miniature map, so a **head-on cross is stopped by design** —
+  - **`emergency_guardian` e-stops at 0.3 m** (`emergency_min_distance`, [safety.md](../../.claude/rules/safety.md)).
+    Two robots cannot pass within 0.3 m in this miniature map, so a **head-on cross is stopped by design** —
     exactly why the project needs the **LLM commander to coordinate yielding** (a robot retreats,
     the other passes; doc08a). For a raw Nav2-only *viewing* clip you can relax it with
     `export WAREHOUSE__SAFETY__EMERGENCY_MIN_DISTANCE=0.10` (sim only; real demo keeps 0.3 m).
-- **Python deps** are baked in the image now; if you run an *older* `mwr-sim` container you may need
-  `pip3 install --break-system-packages pydantic uvicorn` (else `state_cache` dies: `No module named 'pydantic'`).
+- **Python deps** are baked in the image now; if you run an *older* `mwr-sim` image/container,
+  rebuild or recreate it so FastAPI/Uvicorn, `httpx`, Langfuse/OpenAI, `pydantic`, and `pyyaml`
+  are all present.
 
 > This cockpit is a dev/sim convenience. It does **not** replace the on-Jetson validation gates
 > (`docs/jetson/01-fidelity-and-validation.md`): GPU/CUDA, real-time jitter, micro-ROS-over-WiFi,

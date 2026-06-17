@@ -33,9 +33,18 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 # Python runtime deps for the warehouse ROS nodes that the bringup launches:
-#   pydantic -> warehouse_interfaces.schemas (state_cache / emergency_guardian / interfaces)
-#   uvicorn  -> warehouse_nav2_bridge / warehouse_llm_bridge FastAPI sink (llm:=true path)
+#   pydantic + pyyaml -> warehouse_interfaces schemas/config loader
+#   fastapi + uvicorn -> warehouse_nav2_bridge REST API (llm:=true path)
+#   httpx              -> MCP -> Nav2 Bridge REST forwarder
+#   langfuse + openai  -> warehouse_llm_bridge Hermes client / Bridge-owned trace
 # The base image's system Python is externally-managed (PEP 668), so --break-system-packages.
-RUN pip3 install --no-cache-dir --break-system-packages pydantic uvicorn
+RUN pip3 install --no-cache-dir --break-system-packages \
+      "pydantic>=2" \
+      pyyaml \
+      "fastapi>=0.110" \
+      "uvicorn>=0.27" \
+      "httpx>=0.27" \
+      "langfuse>=4.7,<5" \
+      "openai>=1.0"
 
 # ENTRYPOINT / CMD are inherited from the base image (noVNC desktop). Do not override.
