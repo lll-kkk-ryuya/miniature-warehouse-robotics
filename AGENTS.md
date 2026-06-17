@@ -76,8 +76,9 @@ comparison demo.
 Python tests run on the host **without ROS 2 or colcon** — `conftest.py` puts
 each `ws/src/<pkg>` on `sys.path`, and CI runs them on Python 3.12
 (`.github/workflows/ci.yml`, job `python-quality`). But the host default
-`python3` is **3.7 with no `pytest`**, so bare `pytest` / `python3 -m pytest`
-fail with exit 127. Use the project venv (Python 3.12) instead:
+`python3` is **3.7**, so `python3 -m pytest` is not CI-compatible (modern
+type syntax can fail during collection), and bare `pytest` may be absent from
+`PATH`. Use the project venv (Python 3.12) instead:
 
 - Run tests: `.venv/bin/python -m pytest`
 - Lint/format like CI: `.venv/bin/ruff check .` / `.venv/bin/ruff format --check .`
