@@ -486,6 +486,97 @@ def test_outage_threshold_independent_of_cycle_wait(tmp_path: Path) -> None:
     assert sched.nav2_only is True
 
 
+# ── two-tier wait: long cadence only after a productive turn (PR#297 review) ───
+
+
+@pytest.mark.unit
+def test_run_cycle_returns_true_only_on_productive_turn(tmp_path: Path) -> None:
+    # run_forever's wait selection hinges on this bool: True only when a command dispatched.
+    good = {"reasoning": "ok", "commands": [{"bot": "bot1", "action": "stop"}]}
+    assert (
+        asyncio.run(_scheduler(tmp_path, FakeLLM(good), RecordingToolExecutor())[0].run_cycle())
+        is True
+    )
+    # no snapshot (cold start)
+    assert (
+        asyncio.run(
+            _scheduler(tmp_path, FakeLLM(), RecordingToolExecutor(), ready=False)[0].run_cycle()
+        )
+        is False
+    )
+    # in-cycle timeout
+    assert (
+        asyncio.run(
+            _scheduler(
+                tmp_path, FakeLLM(sleep=0.05), RecordingToolExecutor(), cycle_timeout_sec=0.01
+            )[0].run_cycle()
+        )
+        is False
+    )
+    # transport outage
+    assert (
+        asyncio.run(
+            _scheduler(tmp_path, FakeLLM(raises=LLMUnavailableError("x")), RecordingToolExecutor())[
+                0
+            ].run_cycle()
+        )
+        is False
+    )
+    # invalid response
+    assert (
+        asyncio.run(
+            _scheduler(tmp_path, FakeLLM(raises=ValueError("bad")), RecordingToolExecutor())[
+                0
+            ].run_cycle()
+        )
+        is False
+    )
+
+
+@pytest.mark.safety
+@pytest.mark.unit
+def test_run_forever_full_cadence_after_productive_turn(tmp_path: Path, monkeypatch) -> None:
+    # A productive turn -> run_forever sleeps the long config cadence (not the short retry).
+    good = {"reasoning": "ok", "commands": [{"bot": "bot1", "action": "stop"}]}
+    sched, _ = _scheduler(
+        tmp_path, FakeLLM(good), RecordingToolExecutor(), cycle_wait_sec=118.0, retry_wait_sec=1.0
+    )
+    delays: list[float] = []
+
+    async def fake_sleep(d: float) -> None:
+        delays.append(d)
+        sched.stop()  # exit after the first post-cycle wait
+
+    monkeypatch.setattr(asyncio, "sleep", fake_sleep)
+    asyncio.run(sched.run_forever())
+    assert delays == [118.0]
+
+
+@pytest.mark.safety
+@pytest.mark.unit
+def test_run_forever_short_retry_on_nonproductive_cycle(tmp_path: Path, monkeypatch) -> None:
+    # MAJOR (PR#297 review): a non-productive cycle (cold-start no-snapshot here; same branch as
+    # timeout/outage/invalid) must sleep the SHORT reactive retry, NOT the ~120s cadence — else the
+    # bridge appears frozen for ~2min at startup and the 5s outage window stretches to ~123s.
+    sched, _ = _scheduler(
+        tmp_path,
+        FakeLLM(),
+        RecordingToolExecutor(),
+        ready=False,
+        cycle_wait_sec=118.0,
+        retry_wait_sec=1.0,
+    )
+    delays: list[float] = []
+
+    async def fake_sleep(d: float) -> None:
+        delays.append(d)
+        sched.stop()
+
+    monkeypatch.setattr(asyncio, "sleep", fake_sleep)
+    asyncio.run(sched.run_forever())
+    assert delays == [1.0]  # short retry, NOT 118.0
+
+
 # ── end-to-end exclusivity through the real WarehouseTools ────────────────────
 
 

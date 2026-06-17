@@ -55,6 +55,14 @@ log = logging.getLogger(__name__)
 CYCLE_WAIT_SEC: dict[str, float] = {"none": 1.0, "simple": 1.0, "open-rmf": 3.0}
 DEFAULT_CYCLE_WAIT_SEC = 1.0
 
+# Short reactive retry wait after a NON-productive cycle (no state snapshot yet / in-cycle
+# timeout / outage / invalid response). ``cycle_wait_sec`` (config-driven, up to ~120s in dev)
+# is the HAPPY-PATH re-evaluation cadence; applying it to a non-productive cycle would delay
+# cold-start startup by ~2min and stretch the 5s outage window (doc08:141). This is the original
+# reactive Mode A wait (doc08:127) and keeps recovery / cold-start fast regardless of the long
+# happy-path cadence — see ``run_forever`` (the wait it sleeps) and ``run_cycle`` (its bool return).
+RETRY_WAIT_SEC = 1.0
+
 # In-cycle response timeout (doc08:140): no response within this → keep the
 # previous command and advance to the next cycle.
 CYCLE_TIMEOUT_SEC = 2.5
@@ -167,6 +175,7 @@ class BridgeScheduler:
         tracer: Tracer | None = None,
         pending_tasks: list[dict] | None = None,
         cycle_wait_sec: float = DEFAULT_CYCLE_WAIT_SEC,
+        retry_wait_sec: float = RETRY_WAIT_SEC,
         cycle_timeout_sec: float = CYCLE_TIMEOUT_SEC,
         outage_no_response_sec: float = OUTAGE_NO_RESPONSE_SEC,
     ) -> None:
@@ -179,6 +188,7 @@ class BridgeScheduler:
         self._publish_command = publish_command
         self._tracer = tracer or NoopTracer()
         self._cycle_wait_sec = cycle_wait_sec
+        self._retry_wait_sec = retry_wait_sec
         self._cycle_timeout_sec = cycle_timeout_sec
         # Derive the outage threshold from TIME (doc08:141 "5秒以上応答なし"): each in-cycle
         # timeout is ~cycle_timeout_sec of real API silence, so it takes
@@ -229,18 +239,33 @@ class BridgeScheduler:
         self._pending_proposal = proposal
 
     async def run_forever(self) -> None:
-        """Loop ``run_cycle`` then sleep ``cycle_wait_sec`` until :meth:`stop`."""
+        """Loop ``run_cycle``; sleep the full cadence after a productive turn, the short
+        reactive retry otherwise, until :meth:`stop` (doc08:121,141).
+
+        ``cycle_wait_sec`` (config-driven, up to ~120s in dev) is the HAPPY-PATH re-evaluation
+        cadence; a non-productive cycle (``run_cycle`` returns ``False``: no snapshot / timeout /
+        outage / invalid) sleeps the short ``retry_wait_sec`` instead, so cold-start startup is
+        not delayed by ~2min and the 5s outage window (doc08:141) is not stretched by the long wait.
+        """
         self._running = True
         while self._running:
-            await self.run_cycle()
-            await asyncio.sleep(self._cycle_wait_sec)
+            productive = await self.run_cycle()
+            await asyncio.sleep(self._cycle_wait_sec if productive else self._retry_wait_sec)
 
     def stop(self) -> None:
         """Request the ``run_forever`` loop to exit after the current cycle."""
         self._running = False
 
-    async def run_cycle(self) -> None:
-        """Run one commander cycle (B-3 publish → situation → LLM → dispatch)."""
+    async def run_cycle(self) -> bool:
+        """Run one commander cycle (B-3 publish → situation → LLM → dispatch).
+
+        Returns ``True`` when a valid commander turn completed (a command was dispatched) and
+        ``False`` for a NON-productive cycle (no state snapshot yet / in-cycle timeout / outage /
+        invalid response). :meth:`run_forever` uses this to pick the post-cycle wait — the long
+        config-driven cadence after a productive turn, the short reactive retry otherwise — so a
+        ~120s entertainment cadence neither delays cold-start startup nor stretches the 5s outage
+        window (doc08:141).
+        """
         # B-3: bump and publish the generation BEFORE building/posting the
         # situation, so a superseded tool call is already stale at the MCP server.
         self.current_gen += 1
@@ -261,7 +286,7 @@ class BridgeScheduler:
         )
         if situation is None:
             log.warning("no state snapshot yet (gen=%s); skipping cycle", gen)
-            return
+            return False
 
         # Ingest a pending character-LLM negotiation proposal (doc14:62-63,142) into THIS
         # cycle's situation so the commander can approve it (稟議制). No frozen-contract
@@ -279,24 +304,25 @@ class BridgeScheduler:
                 )
             except TimeoutError:
                 self._on_timeout(gen)
-                return
+                return False
             except LLMUnavailableError as exc:
                 self._on_outage(gen, exc)
-                return
+                return False
             except (ValueError, TypeError) as exc:
                 self._on_invalid_response(gen, exc)
-                return
+                return False
 
             try:
                 command = Command.model_validate(response)
             except (ValueError, TypeError) as exc:  # malformed JSON / schema (doc08:293-294)
                 self._on_invalid_response(gen, exc)
-                return
+                return False
 
             await self._dispatch_command(command, gen)
             self.last_command = command
             self._consecutive_failures = 0
             self.nav2_only = False
+            return True
 
     def _maybe_attach_proposal(self, situation: dict, gen: int) -> None:
         """Attach (and consume) a pending negotiation proposal for THIS cycle (doc14:62,142).
