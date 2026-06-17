@@ -10,6 +10,7 @@ import json
 import re
 
 import pytest
+from pydantic import ValidationError
 from warehouse_interfaces.schemas import CommandAction
 from warehouse_llm_bridge.hermes_client import (
     MODE_A_RULES,
@@ -183,9 +184,12 @@ def test_parse_command_preserves_real_unknown_location():
     from warehouse_interfaces.schemas import Command
 
     content = json.dumps(
-        {"reasoning": "x", "commands": [{"bot": "bot1", "action": "navigate", "destination": "atlantis"}]}
+        {
+            "reasoning": "x",
+            "commands": [{"bot": "bot1", "action": "navigate", "destination": "atlantis"}],
+        }
     )
     command = parse_command_content(content)
     assert command["commands"][0]["destination"] == "atlantis"  # untouched
-    with pytest.raises(Exception):  # _known_location rejects a real unknown location
+    with pytest.raises(ValidationError):  # _known_location rejects a real unknown location
         Command.model_validate(command)
