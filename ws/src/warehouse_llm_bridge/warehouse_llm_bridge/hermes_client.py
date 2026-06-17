@@ -254,12 +254,19 @@ class HermesClient(LLMClient):
         system_prompt: str = SYSTEM_PROMPT,
         model: str = HERMES_MODEL,
         timeout: float = 5.0,
+        langfuse_prompt: object | None = None,
     ) -> None:
         """Wire the endpoint.
 
         ``timeout`` is the SDK transport ceiling (doc13 sample 5.0s); the active
         per-cycle bound is the scheduler's ``asyncio.wait_for(2.5s)`` (doc08:140),
         which cancels the request first under normal slowness (Layer A).
+
+        ``langfuse_prompt`` is the optional Langfuse Prompt-Management object (from
+        :func:`warehouse_llm_bridge.prompts.resolve_commander_prompt`); when present it is
+        passed as ``langfuse_prompt=`` to link each generation to the managed prompt version
+        for prompt-level analytics (Pattern A, doc08 §Langfuse Prompt Management 方針).
+        ``None`` (the default, and when the code fallback is used) leaves the call unchanged.
         """
         # OpenAI SDK appends ``/chat/completions`` to ``base_url`` itself.
         self._base_url = base_url.rstrip("/") + "/v1"
@@ -267,6 +274,7 @@ class HermesClient(LLMClient):
         self._system_prompt = system_prompt
         self._model = model
         self._timeout = timeout
+        self._langfuse_prompt = langfuse_prompt
 
     async def decide(self, situation: dict) -> dict:
         """Call Hermes (traced) and return the parsed Command JSON dict.
@@ -286,15 +294,22 @@ class HermesClient(LLMClient):
             raise LLMUnavailableError(f"langfuse/openai not installed: {exc}") from exc
 
         client = AsyncOpenAI(base_url=self._base_url, api_key=self._api_key or "no-key")
+        create_kwargs: dict[str, Any] = {
+            "model": self._model,
+            "messages": [
+                {"role": "system", "content": self._system_prompt},
+                {"role": "user", "content": json.dumps(situation)},
+            ],
+            "timeout": self._timeout,
+        }
+        # Link the generation to the managed prompt version (doc08 §Langfuse Prompt
+        # Management 方針). The langfuse.openai wrapper supports langfuse_prompt= on
+        # .create(); only added when a real prompt object is present so the default path
+        # (code fallback / no langfuse) is byte-for-byte unchanged.
+        if self._langfuse_prompt is not None:
+            create_kwargs["langfuse_prompt"] = self._langfuse_prompt
         try:
-            completion = await client.chat.completions.create(
-                model=self._model,
-                messages=[
-                    {"role": "system", "content": self._system_prompt},
-                    {"role": "user", "content": json.dumps(situation)},
-                ],
-                timeout=self._timeout,
-            )
+            completion = await client.chat.completions.create(**create_kwargs)
         except openai.OpenAIError as exc:
             raise LLMUnavailableError(f"hermes request failed: {exc}") from exc
         try:

@@ -26,6 +26,11 @@ setup(
     license="Apache-2.0",
     tests_require=["pytest"],
     entry_points={
-        "console_scripts": ["llm_bridge = warehouse_llm_bridge.llm_bridge:main"],
+        "console_scripts": [
+            "llm_bridge = warehouse_llm_bridge.llm_bridge:main",
+            # Seed the commander prompts into Langfuse Prompt Management (idempotent upsert;
+            # default dry-run). doc08 §Langfuse Prompt Management 方針.
+            "seed_prompts = warehouse_llm_bridge.seed_prompts:main",
+        ],
     },
 )
