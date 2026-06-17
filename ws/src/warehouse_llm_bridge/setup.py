@@ -22,6 +22,11 @@ setup(
     license="Apache-2.0",
     tests_require=["pytest"],
     entry_points={
-        "console_scripts": ["llm_bridge = warehouse_llm_bridge.llm_bridge:main"],
+        "console_scripts": [
+            "llm_bridge = warehouse_llm_bridge.llm_bridge:main",
+            # Bot1/Bot2 character-LLM negotiation layer (doc14, Slice 2). Mode A/B node,
+            # composed by bringup.launch.py when traffic_mode != open-rmf.
+            "character_llm = warehouse_llm_bridge.character_node:main",
+        ],
     },
 )

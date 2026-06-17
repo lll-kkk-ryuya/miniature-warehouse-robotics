@@ -129,12 +129,21 @@ class NegotiationEngine:
         persona: Persona,
         *,
         abort: Callable[[], bool] | None = None,
+        on_turn: Callable[[TranscriptLine, int, str], None] | None = None,
     ) -> NegotiationOutcome:
         """Run one negotiation episode and return its :class:`NegotiationOutcome`.
 
         ``abort`` is polled at the top of every turn (doc14:90,141): when it returns True the
         episode stops immediately and any in-progress agreement is discarded. Defaults to a
         never-abort poll so non-Emergency runs are unaffected.
+
+        ``on_turn`` (Slice 2) is invoked once per spoken turn with
+        ``(line, turn_number, next_speaker)`` so the ``character_llm`` node can publish the live
+        ``/character/speech`` line and the ``/negotiation/turn`` baton (doc14:76,79,81). ``turn_number``
+        is 1-based (doc14:76 ``turn=1``) and ``next_speaker`` is the bot due to speak next under strict
+        alternation. Pure-callback (no ROS here); defaults to a no-op so the offline engine + Slice 1
+        tests are unaffected. A turn that yields a valid agreement still fires ``on_turn`` first (the
+        agreeing speech IS published) and then returns AGREED.
         """
         abort = abort or (lambda: False)
         other = _other_bot(ctx.starter, ctx.bot_states)
@@ -176,7 +185,12 @@ class NegotiationEngine:
             )
             raw = await persona.speak(speaker, prompt)
             turn = parse_turn(raw)
-            transcript.append(TranscriptLine(speaker=speaker, text=turn.speech))
+            line = TranscriptLine(speaker=speaker, text=turn.speech)
+            transcript.append(line)
+            if on_turn is not None:
+                # doc14:76,79,81 — publish the live speech + baton. listener is the next
+                # speaker under strict alternation; turn_index+1 is the 1-based turn number.
+                on_turn(line, turn_index + 1, listener)
 
             if turn.agreed_action is not None:
                 proposal = self._try_build_proposal(ctx, turn.agreed_action, transcript)

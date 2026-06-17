@@ -32,12 +32,13 @@ import json
 import logging
 from collections import deque
 
-from warehouse_interfaces.schemas import Command, CommandAction, CommandItem, PendingTask
+from warehouse_interfaces.schemas import Command, CommandAction, CommandItem, PendingTask, Proposal
 from warehouse_interfaces.stores import GenStore
 
 from warehouse_llm_bridge.action_map import command_to_tool_calls
 from warehouse_llm_bridge.executor import ToolExecutor
 from warehouse_llm_bridge.llm_client import LLMClient, LLMUnavailableError
+from warehouse_llm_bridge.negotiation import accept_proposal
 from warehouse_llm_bridge.situation import SituationBuilder
 from warehouse_llm_bridge.tracing import NoopTracer, Tracer
 
@@ -145,7 +146,21 @@ class BridgeScheduler:
         # bots a current_task (set-on-accept), which the deadlock detection requires
         # (08a:277). An accepted navigate to a task's `to` consumes it; idle until then.
         self._pending_tasks: list[dict] = list(pending_tasks or [])
+        # Latest character-LLM negotiation proposal awaiting commander ingestion (doc14:62-63).
+        # Set by the bridge node from its /negotiation/proposal subscription (Slice 2) and
+        # consumed at most once on the NEXT cycle (set-then-clear). None on non-negotiation runs.
+        self._pending_proposal: Proposal | None = None
         self._running = False
+
+    def set_negotiation_proposal(self, proposal: Proposal | None) -> None:
+        """Hand the commander a character-LLM negotiation proposal to ingest next cycle (doc14:62).
+
+        Called by the ``character_llm`` -> bridge ``/negotiation/proposal`` path (Slice 2). The
+        proposal is advisory (稟議制 案B, doc14:14,38): the commander validates + approves it via
+        the prompt, this only routes it into the next situation. The gen_id +/-2 acceptance window
+        (doc14:142) is applied at ingestion time in :meth:`run_cycle`.
+        """
+        self._pending_proposal = proposal
 
     async def run_forever(self) -> None:
         """Loop ``run_cycle`` then sleep ``cycle_wait_sec`` until :meth:`stop`."""
@@ -182,6 +197,12 @@ class BridgeScheduler:
             log.warning("no state snapshot yet (gen=%s); skipping cycle", gen)
             return
 
+        # Ingest a pending character-LLM negotiation proposal (doc14:62-63,142) into THIS
+        # cycle's situation so the commander can approve it (稟議制). No frozen-contract
+        # change: the proposal is added to the serialized situation dict (extra="ignore",
+        # schemas.py:25 — the CLAUDE.md Slice 2 seam's first-choice touchpoint).
+        self._maybe_attach_proposal(situation, gen)
+
         # Bridge-owned Langfuse trace for this turn (doc08:354-356); the LLM
         # generation (langfuse.openai) and the tool spans nest under it. NoopTracer
         # default keeps this langfuse-free for tests.
@@ -210,6 +231,36 @@ class BridgeScheduler:
             self.last_command = command
             self._consecutive_failures = 0
             self.nav2_only = False
+
+    def _maybe_attach_proposal(self, situation: dict, gen: int) -> None:
+        """Attach (and consume) a pending negotiation proposal for THIS cycle (doc14:62,142).
+
+        A proposal is ingested at most once: it is cleared whether accepted or discarded so it
+        cannot leak into a later cycle. The gen_id +/-2 window (doc14:142) tolerates a generation
+        that advanced during the negotiation; a larger drift is discarded (the negotiation is too
+        stale to act on). On acceptance the proposal is serialized (mode="json" so the StrEnum
+        action + floats are wire-safe) under ``situation["negotiation_proposal"]`` — the commander
+        prompt (MODE_A_RULES / MODE_C_PROMPT) tells the LLM to validate + approve it (稟議制).
+        """
+        proposal = self._pending_proposal
+        if proposal is None:
+            return
+        self._pending_proposal = None  # one-shot consume (set-then-clear, doc14:62)
+        if not accept_proposal(proposal, gen):
+            log.warning(
+                "discarding negotiation proposal %s: gen drift > window "
+                "(current_gen=%s, proposal_gen=%s, doc14:142)",
+                proposal.negotiation_id,
+                gen,
+                proposal.gen_id,
+            )
+            return
+        situation["negotiation_proposal"] = proposal.model_dump(mode="json")
+        log.info(
+            "attached negotiation proposal %s to commander situation (gen=%s, doc14:62-63)",
+            proposal.negotiation_id,
+            gen,
+        )
 
     async def _dispatch_command(self, command: Command, gen: int) -> list[dict]:
         """Publish reasoning/command, map to ToolCalls, dispatch each (C key minted)."""

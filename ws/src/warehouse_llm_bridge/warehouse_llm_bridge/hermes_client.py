@@ -100,6 +100,15 @@ MODE_A_RULES = (
     "predicted_position_3s が同一地点に収束している場合は、デッドロック予兆として事前に回避"
     "（wait または via で迂回）。ただし双方が停止中だと予測位置は各自の現在地に縮退し収束"
     "しないため、静止デッドロックは上記条件1〜3で、接近中の衝突予兆は predicted_position_3s で検出する。"
+    "\n## キャラLLM交渉（任意・演出）\n"
+    "- デッドロックを検出したら、自分で解消する前に start_negotiation ツールで bot1/bot2 の"
+    "キャラLLM交渉を発動できます（任意の演出。deadlock_or_escalation_id に検出したデッドロックの"
+    "識別子、starter に先手のロボットを渡す。doc14 / 08a:254）。\n"
+    "- 状況JSON に negotiation_proposal があれば、その合意（agreed_action）を検証し、安全条件"
+    "（バッテリー / 距離 / Emergency中でないこと）を満たすなら採用してコマンドに反映してください"
+    "（稟議制＝最終判断はあなた。doc08a:255 / doc14:157）。agreed_action.to は表示名なので、"
+    "retreat_to / destination には対応する場所キー（retreat_A / retreat_B 等）に解決して載せてください"
+    "（doc08a:387）。安全条件に反するなら採用せず独自判断してください。"
 )
 
 
