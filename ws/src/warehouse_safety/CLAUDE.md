@@ -35,5 +35,5 @@
 - # ✅(#126) pose 途絶 freshness ガード実装済（`pose_freshness_timeout` 1.0s 暫定 → `pose_stale` precautionary estop。amcl_pose のみ・Guardian policy 層）。残: scan 鮮度（`source_timeout`）は collision_monitor 委譲＝Phase-2 defer（/scan 未購読）
 - # TODO(Phase 2) blocked 検出を Nav2 nav_status でゲート（現状は変位ベース low-harm recovery event のみ＝goal なし idle も誤検出しうる）。progress_checker 委譲は責務を明文化済（#126・下記 ✅）、Guardian 受信の完全委譲は nav_status feed 配線＝Phase-2
 - # ✅(#126) /emergency/event の edge-trigger 化（`gl.EdgeLatch`: 立ち上がり `(bot, reason)` のみ発行、解消→再発で再発火）。物理停止 cmd_vel/Nav2 cancel は毎 tick 維持＝level。State Cache 側 active/history 50件 ring は維持。残: 近接の collision_monitor 委譲（**cmd_vel 挿入トポロジは doc12 §「collision_monitor 委譲: cmd_vel 挿入トポロジ」で ✅ 確定 #126**＝twist_mux nav2(prio10) 上流に挟む・emergency prio100 不変。配線 impl は nav-traffic 所有 doc16:189 に触れるため調整で defer）／blocked の progress_checker 完全委譲（nav_status feed＝Phase-2）。**freshness（pose 途絶）・progress_checker 委譲の明文化・collision_monitor トポロジは ✅#126 実装/確定済（上記）**
-- # TODO(Mode-A) negotiation abort → /negotiation（契約未確定のため defer）
+- ✅(PR#287/#293) negotiation abort → `/negotiation/abort` 実装済（estop 時のみ・上記 produce §13 参照）＝旧 `TODO(Mode-A) defer` は解消。
 - ~~# TODO(nav-traffic) twist_mux.yaml を warehouse_bringup/config/ へ移設~~ → 完了（#40, nav-traffic）。本パッケージ `config/` は空。
