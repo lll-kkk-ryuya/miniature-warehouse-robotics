@@ -47,6 +47,20 @@ locations:
 hermes:
   base_url: ""   # 環境側で設定
   # token は secrets（config/<env>/.env）から注入
+  # 司令官 system prompt の取得元（doc08 §Langfuse Prompt Management 方針）。
+  # source: langfuse = Langfuse Prompt Management から取得（取得失敗時はコード定数へ
+  #   fail-open 縮退, doc08:333）/ code = コード定数のみ（Langfuse 不使用・CI/完全 offline 用）。
+  # label は比較 run で版を pin（公平性, doc08 §比較検証ログ）。実送信単位 2本（mode_ab=base+rules
+  # 合成 / mode_c=standalone）。本文の正本は doc08a/08c の例示、seed は seed_prompts が upsert。
+  # 取得は起動時1回→HermesClient 保持。版更新の反映はノード再起動（cache_ttl_seconds は
+  # 単発取得時の SDK キャッシュTTL＝起動1回取得のため runtime 再取得トリガにはならない）。
+  prompts:
+    source: langfuse
+    label: production
+    cache_ttl_seconds: 300
+    names:
+      mode_ab: warehouse-commander-mode-ab
+      mode_c: warehouse-commander-mode-c
 
 # Nav2 Bridge（Mode A/B 実行先。ポートは doc13/12a と一致）
 nav2_bridge:
