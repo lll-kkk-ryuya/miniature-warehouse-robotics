@@ -191,8 +191,8 @@ def test_negotiation_unknown_starter_rejected(tmp_path: Path) -> None:
 @pytest.mark.unit
 def test_negotiation_mints_deterministic_sequential_ids_and_audits(tmp_path: Path) -> None:
     # A valid starter mints nego_{seq:03d} deterministically (001, 002, ...) and writes
-    # an "executed" audit row each time (doc15:182-188). The /negotiation/start publish
-    # is still TODO(#negotiation) — only the id + audit are pinned here.
+    # an "executed" audit row each time (doc15:182-188). With no negotiation_starter wired
+    # (the default here), the /negotiation/start publish is a no-op — id + audit only.
     tools = _tools(tmp_path)
     first = asyncio.run(
         tools.start_negotiation(
@@ -210,3 +210,65 @@ def test_negotiation_mints_deterministic_sequential_ids_and_audits(tmp_path: Pat
     executed = [e for e in _audit(tmp_path) if e["result"] == "executed"]
     assert len(executed) == 2
     assert all(e["tool"] == "start_negotiation" for e in executed)
+
+
+# ── tool 7: /negotiation/start publish seam (Slice 2, doc14:59,205) ───────────
+
+
+def _tools_with_starter(tmp_path: Path, starter_cb, *, cur_gen: int = 5) -> WarehouseTools:
+    gen = FileGenStore(tmp_path / "gen_store")
+    gen.set(cur_gen)
+    return WarehouseTools(
+        gen_checker=GenChecker(gen),
+        audit=CommandAuditLog(tmp_path / "audit.jsonl"),
+        state_store=FileStateStore(tmp_path / "state.json"),
+        negotiation_starter=starter_cb,
+    )
+
+
+@pytest.mark.unit
+def test_negotiation_publishes_start_envelope_when_wired(tmp_path: Path) -> None:
+    # When a negotiation_starter is injected (Slice 2), an accepted start_negotiation emits the
+    # /negotiation/start envelope with the minted id + the commander gen_id (doc14:59,70).
+    published: list[dict] = []
+    tools = _tools_with_starter(tmp_path, published.append)
+    res = asyncio.run(
+        tools.start_negotiation(
+            5, deadlock_or_escalation_id="dl_9", starter="bot1", context="aisle"
+        )
+    )
+    assert res["status"] == "ok"
+    assert len(published) == 1
+    env = published[0]
+    assert env == {
+        "negotiation_id": "nego_001",
+        "gen_id": 5,
+        "starter": "bot1",
+        "deadlock_or_escalation_id": "dl_9",
+        "context": "aisle",
+    }
+
+
+@pytest.mark.unit
+def test_negotiation_rejected_does_not_publish(tmp_path: Path) -> None:
+    # A stale gen / unknown starter is refused BEFORE publishing — the character LLMs must not
+    # be summoned for a rejected trigger (the /negotiation/start publish is post-acceptance).
+    published: list[dict] = []
+    tools = _tools_with_starter(tmp_path, published.append)
+    stale = asyncio.run(tools.start_negotiation(2, deadlock_or_escalation_id="d", starter="bot1"))
+    bad = asyncio.run(tools.start_negotiation(5, deadlock_or_escalation_id="d", starter="bot9"))
+    assert stale["status"] == "rejected" and bad["status"] == "rejected"
+    assert published == []
+
+
+@pytest.mark.unit
+def test_negotiation_starter_failure_is_fail_open(tmp_path: Path) -> None:
+    # A publisher fault must NOT crash the tool (fail-open seam, doc14:38): the tool still
+    # returns ok + audits executed so the commander cycle survives a bad ROS publish.
+    def boom(_env: dict) -> None:
+        raise RuntimeError("ros publish failed")
+
+    tools = _tools_with_starter(tmp_path, boom)
+    res = asyncio.run(tools.start_negotiation(5, deadlock_or_escalation_id="d", starter="bot2"))
+    assert res["status"] == "ok"
+    assert [e for e in _audit(tmp_path) if e["result"] == "executed"]

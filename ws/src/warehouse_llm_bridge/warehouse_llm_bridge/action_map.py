@@ -20,7 +20,7 @@ Mapping (doc mode-a/08a "アクション → MCP ツール マッピング"):
 import uuid
 from dataclasses import dataclass
 
-from warehouse_interfaces.schemas import Command, CommandAction, CommandItem
+from warehouse_interfaces.schemas import Command, CommandAction, CommandItem, StartNegotiation
 
 
 @dataclass(frozen=True)
@@ -96,3 +96,26 @@ def command_to_tool_calls(command: Command, gen_id: int) -> list[ToolCall]:
     same-gen case yields distinct keys that all pass).
     """
     return [command_item_to_tool_call(item, gen_id) for item in command.commands]
+
+
+def start_negotiation_tool_call(
+    req: StartNegotiation, gen_id: int, idempotency_key: str | None = None
+) -> ToolCall:
+    """Map a commander ``Command.start_negotiation`` to the start_negotiation MCP ToolCall.
+
+    doc14:59 / doc15:182-186 — the commander's negotiation request becomes ``tool 7`` with the
+    Bridge-injected ``gen_id`` + ``idempotency_key`` (same model-b discipline as motion tools; the
+    LLM never supplies them). The MCP tool validates ``starter`` and, when a publisher is wired,
+    emits ``/negotiation/start`` (no actuation — advisory 稟議制, doc14:38).
+    """
+    key = idempotency_key if idempotency_key is not None else str(uuid.uuid4())
+    return ToolCall(
+        "start_negotiation",
+        {
+            "starter": req.starter,
+            "deadlock_or_escalation_id": req.deadlock_or_escalation_id,
+            "context": req.context,
+            "gen_id": gen_id,
+            "idempotency_key": key,
+        },
+    )

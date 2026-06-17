@@ -10,6 +10,7 @@
 - **設計**: docs/architecture/03・12（Layer1 95-151 / event 141-150）・15（twist_mux 383-399）・16・17。
 
 ## 提供 (produce)
+- topic: `/negotiation/abort`（std_msgs/String JSON `{reason, bot, event_id}`, doc03:108 / doc14:241-247 R2）。**estop 時のみ**（物理緊急停止＝`_emergency_stop` の rising edge）`/emergency/event` と同 `event_id` で発行＝走行中のキャラLLM交渉を即中断・proposal 破棄。**recovery（blocked-timeout 等 low-harm）では発行しない**（交渉はデッドロック解消手段で、recovery はそのフォールバック＝中断すると本末転倒, doc08a:363-372）。payload は `gl.build_abort`（pure・test 済）。PR#287 review fix。
 - topic: `/emergency/event`（std_msgs/String JSON, doc12:141-150 コア形: `event_id/robot/type/severity/action_taken/timestamp/requires_llm_review` [+任意 `detail`]）。State Cache が `state['emergency']` に取り込む。**edge-trigger（#126）**: `(bot, reason)` の立ち上がり時のみ発行（持続条件で 20Hz 連発しない／解消→再発で再発火）。コア形は不変。`type` 値: `near_collision`/`battery_critical`/`blocked_timeout`/**`pose_stale`（#126 freshness, additive な新値）**。新 `type` 値の追加はコアキー不変＝後方互換（State Cache は ring に積むだけ）。`pose_stale` は `/emergency/event` の `type` であって `RobotSnapshot.status` 値ではない（status は moving/idle のみ・doc12:254）。
 - topic: `/bot{n}/cmd_vel/emergency`（geometry_msgs/Twist 全ゼロ停止, twist_mux priority 100）+ bot 毎 Nav2 goal cancel（action_msgs/CancelGoal を `/{bot}/navigate_to_pose/_action/cancel_goal` へ）。
 - ~~file : `config/twist_mux.yaml`~~ → **`warehouse_bringup/config/twist_mux.yaml` へ移設済（#40 / nav-traffic, doc16 §5）**。値（emergency=100 / nav2=10, timeout 0.5, `/bot{n}/cmd_vel/{emergency,nav2}`）は不変で移設。本パッケージは twist_mux 設定を保持しない。
@@ -34,5 +35,5 @@
 - # ✅(#126) pose 途絶 freshness ガード実装済（`pose_freshness_timeout` 1.0s 暫定 → `pose_stale` precautionary estop。amcl_pose のみ・Guardian policy 層）。残: scan 鮮度（`source_timeout`）は collision_monitor 委譲＝Phase-2 defer（/scan 未購読）
 - # TODO(Phase 2) blocked 検出を Nav2 nav_status でゲート（現状は変位ベース low-harm recovery event のみ＝goal なし idle も誤検出しうる）。progress_checker 委譲は責務を明文化済（#126・下記 ✅）、Guardian 受信の完全委譲は nav_status feed 配線＝Phase-2
 - # ✅(#126) /emergency/event の edge-trigger 化（`gl.EdgeLatch`: 立ち上がり `(bot, reason)` のみ発行、解消→再発で再発火）。物理停止 cmd_vel/Nav2 cancel は毎 tick 維持＝level。State Cache 側 active/history 50件 ring は維持。残: 近接の collision_monitor 委譲（**cmd_vel 挿入トポロジは doc12 §「collision_monitor 委譲: cmd_vel 挿入トポロジ」で ✅ 確定 #126**＝twist_mux nav2(prio10) 上流に挟む・emergency prio100 不変。配線 impl は nav-traffic 所有 doc16:189 に触れるため調整で defer）／blocked の progress_checker 完全委譲（nav_status feed＝Phase-2）。**freshness（pose 途絶）・progress_checker 委譲の明文化・collision_monitor トポロジは ✅#126 実装/確定済（上記）**
-- # TODO(Mode-A) negotiation abort → /negotiation（契約未確定のため defer）
+- ✅(PR#287/#293) negotiation abort → `/negotiation/abort` 実装済（estop 時のみ・上記 produce §13 参照）＝旧 `TODO(Mode-A) defer` は解消。
 - ~~# TODO(nav-traffic) twist_mux.yaml を warehouse_bringup/config/ へ移設~~ → 完了（#40, nav-traffic）。本パッケージ `config/` は空。

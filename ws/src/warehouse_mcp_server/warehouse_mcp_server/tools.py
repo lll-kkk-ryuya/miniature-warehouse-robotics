@@ -24,6 +24,7 @@ Pure Python — imports only ``warehouse_interfaces`` + sibling modules. No rclp
 """
 
 import logging
+from collections.abc import Callable
 from typing import Any
 
 from warehouse_interfaces.stores import FileStateStore, StateStore
@@ -89,6 +90,7 @@ class WarehouseTools:
         *,
         config: dict | None = None,
         nav2_forwarder: Nav2Forwarder | None = None,
+        negotiation_starter: Callable[[dict[str, Any]], None] | None = None,
     ) -> None:
         """Wire collaborators; each defaults to its shared file-backed instance.
 
@@ -96,6 +98,14 @@ class WarehouseTools:
         Nav2 Bridge REST API (doc12a:198-363). Left ``None`` (the default, and Mode
         C / Open-RMF) the tools only validate + book-keep and actuate nothing —
         the pre-#86 behaviour every existing test relies on.
+
+        ``negotiation_starter`` (Slice 2) is the ``/negotiation/start`` publisher
+        (doc14:59,205): the bridge node injects a callback that builds the ROS message and
+        publishes it. Called with the start-envelope dict (``negotiation_id, gen_id, starter,
+        deadlock_or_escalation_id, context``) when ``start_negotiation`` accepts. Left ``None``
+        (the default, and every non-ROS test) the tool keeps its pre-Slice-2 behaviour: validate
+        + mint an id, publish nothing. It is advisory only (稟議制, doc14:38) — it never actuates,
+        so it is NOT a motion forward and is unaffected by the R-26 ``_maybe_forward`` gate.
         """
         self._gen_checker = gen_checker or GenChecker()
         self._policy_gate = policy_gate or PolicyGate(state_store)
@@ -103,6 +113,7 @@ class WarehouseTools:
         self._state_store = state_store or FileStateStore()
         self._config = config or {}
         self._nav2_forwarder = nav2_forwarder
+        self._negotiation_starter = negotiation_starter
         # In-memory escalation registry (TODO #escalation: replace with a shared
         # store once the escalation producer track lands; emergent dependency).
         self._escalations: dict[str, dict] = {}
@@ -399,11 +410,15 @@ class WarehouseTools:
         context: str = "",
         idempotency_key: str | None = None,
     ) -> dict[str, Any]:
-        """Kick off a character-LLM negotiation (doc14); returns a stub id.
+        """Kick off a character-LLM negotiation (doc14:59); mint an id and publish the start.
 
-        TODO(#negotiation): a follow slice publishes ``/negotiation/start`` and
-        feeds the resulting ``/negotiation/proposal`` back into the next cycle's
-        situation JSON. Today only the starter is validated and an id is minted.
+        Validates the generation (B-3) + starter, mints ``negotiation_id``, and — when a
+        ``negotiation_starter`` is wired (Slice 2, the bridge node's ``/negotiation/start``
+        publisher) — emits the start envelope so the ``character_llm`` node begins the bot1/bot2
+        baton-pass (doc14:59-93). The resulting ``/negotiation/proposal`` is fed back into the
+        next commander cycle's situation by the bridge (scheduler.set_negotiation_proposal,
+        doc14:62-63). With no starter wired (non-ROS tests / Mode-less runs) it still returns the
+        id but publishes nothing. Advisory only — no actuation (稟議制, doc14:38).
         """
         res = await self._gen_checker.check(gen_id, idempotency_key)
         if not res.ok:
@@ -425,5 +440,33 @@ class WarehouseTools:
             "starter": starter,
             "context": context,
         }
+        # Audit-then-act (the codebase convention, cf. dispatch->_maybe_forward): record the
+        # accepted negotiation BEFORE the publish side effect so the executed row exists even if
+        # the (fail-open) publish faults.
         self._audit.record("start_negotiation", "executed", payload)
+        self._publish_negotiation_start(gen_id, payload)
         return payload
+
+    def _publish_negotiation_start(self, gen_id: int, payload: dict[str, Any]) -> None:
+        """Emit the ``/negotiation/start`` envelope via the injected publisher (doc14:59,205).
+
+        Fail-open at the seam (mirrors ``_maybe_forward``): a publisher fault must NEVER unwind
+        out of the tool — that would turn an advisory演出 trigger into a commander-cycle crash.
+        Includes ``gen_id`` (stamped onto the eventual proposal, doc14:70,142). No-op when no
+        starter is wired.
+        """
+        if self._negotiation_starter is None:
+            return
+        envelope = {
+            "negotiation_id": payload["negotiation_id"],
+            "gen_id": gen_id,
+            "starter": payload["starter"],
+            "deadlock_or_escalation_id": payload["deadlock_or_escalation_id"],
+            "context": payload["context"],
+        }
+        try:
+            self._negotiation_starter(envelope)
+        except Exception:  # noqa: BLE001 - fail-open seam (doc14:38 advisory; never crash dispatch)
+            log.exception(
+                "negotiation_starter failed for %s (fail-open)", envelope["negotiation_id"]
+            )

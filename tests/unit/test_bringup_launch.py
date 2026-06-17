@@ -13,14 +13,16 @@ Verifies the #156 slice1 composition of bringup.launch.py:
     forwards use_sim_time + rviz + the #156 recording knobs scenario/rviz_config, the last
     two as a pass-through so a top-level ``scenario:=head_on rviz_config:=record`` actually
     reaches the sim (without it the capstone records the default side-by-side berth spawn).
-  * the four launch-less nodes are composed as Node()s: state_cache, emergency_guardian,
-    nav2_bridge, llm_bridge (doc16:119-122 — bringup owns launch, node pkgs own none).
+  * the five launch-less nodes are composed as Node()s: state_cache, emergency_guardian,
+    nav2_bridge, llm_bridge, character_llm (doc16:119-122 — bringup owns launch, node pkgs own
+    none). character_llm is the Slice 2 bot1/bot2 negotiation layer (doc14).
   * State Cache + Emergency Guardian are core infra (always-on, no condition).
-  * the commander layer is gated: llm_bridge by ``llm``; nav2_bridge by ``llm`` AND the
-    positive allowlist traffic_mode in {none,simple} (#166; Open-RMF replaces it under Mode C,
-    doc15:211, and an unknown/typo mode fails closed); sim by ``sim``.
+  * the commander layer is gated: llm_bridge by ``llm``; nav2_bridge AND character_llm by ``llm``
+    AND the positive allowlist traffic_mode in {none,simple} (#166; Open-RMF replaces nav2_bridge
+    under Mode C, doc15:211, and Mode C negotiation is Phase 4 doc14:255; an unknown/typo mode
+    fails closed); sim by ``sim``.
   * the Warehouse MCP Server is NOT a Node here (in-process / Hermes stdio child,
-    doc15:50,80-94) — guarded by asserting the node executable set is exactly the four above.
+    doc15:50,80-94) — guarded by asserting the node executable set is exactly the five above.
 """
 
 import importlib.util
@@ -40,7 +42,13 @@ _BRINGUP_LAUNCH = (
     Path(__file__).resolve().parents[2] / "ws/src/warehouse_bringup/launch/bringup.launch.py"
 )
 _FORWARDED_ARGS = {"use_sim_time", "autostart", "params_file", "map", "traffic_mode"}
-_NODE_EXECUTABLES = {"state_cache", "emergency_guardian", "nav2_bridge", "llm_bridge"}
+_NODE_EXECUTABLES = {
+    "state_cache",
+    "emergency_guardian",
+    "nav2_bridge",
+    "llm_bridge",
+    "character_llm",
+}
 
 
 def _load_ld():
@@ -166,10 +174,10 @@ def test_sim_include_forwards_recording_knobs_passthrough_and_defaults() -> None
 
 
 @pytest.mark.unit
-def test_full_stack_nodes_are_exactly_the_four_launchless_executables() -> None:
-    # state/safety/nav2_bridge/llm_bridge are composed as Node()s; the Warehouse MCP Server is
-    # NOT here (in-process / Hermes stdio child, doc15:50,80-94) — assert the exact set so a
-    # stray mcp_server Node (or a missing node) is caught.
+def test_full_stack_nodes_are_exactly_the_five_launchless_executables() -> None:
+    # state/safety/nav2_bridge/llm_bridge/character_llm are composed as Node()s; the Warehouse MCP
+    # Server is NOT here (in-process / Hermes stdio child, doc15:50,80-94) — assert the exact set
+    # so a stray mcp_server Node (or a missing node) is caught.
     execs = {_node_executable(n) for n in _nodes(_load_ld())}
     assert execs == _NODE_EXECUTABLES
 
@@ -184,22 +192,20 @@ def test_state_cache_and_guardian_are_core_infra_always_on() -> None:
 
 @pytest.mark.unit
 @pytest.mark.parametrize(
-    ("llm", "traffic_mode", "llm_bridge_on", "nav2_bridge_on"),
+    ("llm", "traffic_mode", "llm_bridge_on", "nav2_bridge_on", "character_on"),
     [
-        ("true", "none", True, True),  # Mode A: commander + REST sink both on
-        ("true", "simple", True, True),  # Mode B: same
-        ("true", "open-rmf", True, False),  # Mode C: Open-RMF replaces nav2_bridge (doc15:211)
-        (
-            "true",
-            "simpel",
-            True,
-            False,
-        ),  # unknown/typo mode: allowlist fails closed (no bridge, #166)
-        ("false", "none", False, False),  # llm:=false: nav2-only / safety-only bring-up
+        ("true", "none", True, True, True),  # Mode A: commander + REST sink + character all on
+        ("true", "simple", True, True, True),  # Mode B: same
+        # Mode C: Open-RMF replaces nav2_bridge (doc15:211); character negotiation is Phase 4
+        # (doc14:255) so it is off here too.
+        ("true", "open-rmf", True, False, False),
+        # unknown/typo mode: BOTH allowlists fail closed (no bridge, no character; #166 / doc14:255)
+        ("true", "simpel", True, False, False),
+        ("false", "none", False, False, False),  # llm:=false: nav2-only / safety-only bring-up
     ],
 )
 def test_commander_layer_gating(
-    llm: str, traffic_mode: str, llm_bridge_on: bool, nav2_bridge_on: bool
+    llm: str, traffic_mode: str, llm_bridge_on: bool, nav2_bridge_on: bool, character_on: bool
 ) -> None:
     ld = _load_ld()
     assert _evaluate(_node_by_exec(ld, "llm_bridge"), llm=llm, traffic_mode=traffic_mode) is (
@@ -207,4 +213,7 @@ def test_commander_layer_gating(
     )
     assert _evaluate(_node_by_exec(ld, "nav2_bridge"), llm=llm, traffic_mode=traffic_mode) is (
         nav2_bridge_on
+    )
+    assert _evaluate(_node_by_exec(ld, "character_llm"), llm=llm, traffic_mode=traffic_mode) is (
+        character_on
     )
