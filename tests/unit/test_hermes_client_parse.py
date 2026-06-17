@@ -152,3 +152,13 @@ def test_base_prompt_is_mode_neutral() -> None:
     assert "3段階" in SYSTEM_PROMPT
     assert "10-20%" in SYSTEM_PROMPT and "20-30%" in SYSTEM_PROMPT
     assert "20%以下は新規割当を控える" not in SYSTEM_PROMPT  # old 2-stage phrasing is gone
+
+
+@pytest.mark.unit
+def test_build_system_prompt_advertises_start_negotiation_field() -> None:
+    # The commander must be told to emit a top-level start_negotiation OBJECT (not a phantom
+    # CommandAction) — otherwise the negotiation is unreachable from the cycle (review fix).
+    a = build_system_prompt("none")
+    assert "start_negotiation" in a and "starter" in a and "deadlock_or_escalation_id" in a
+    c = build_system_prompt("open-rmf")
+    assert "start_negotiation" in c and "starter" in c

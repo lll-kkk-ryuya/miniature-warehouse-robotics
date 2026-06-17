@@ -58,10 +58,14 @@ SYSTEM_PROMPT = (
     "20-30%は次タスク割当禁止・充電候補として検討。\n"
     "状況JSON の gen_id は B-3 安全機構（15-mcp-platform.md §2）。指示には Bridge が自動付与する"
     "ので、常に最新の状況JSONにのみ基づいて判断してください。\n"
+    "キャラLLM交渉を発動する場合のみ、応答の最上位に start_negotiation オブジェクトを足してください"
+    "（発動条件と使い方は各モードの指示を参照。通常は省略）。\n"
     "必ず次のJSON形式のみで返答してください（前後に文章を付けない）:\n"
     '{"reasoning": "判断理由", "commands": [{"bot": "bot1", "action": '
     '"navigate|wait|stop|yield|charge", "destination": "場所名", "duration": 秒数, '
-    '"via": "経由ルート", "retreat_to": "退避先"}], "priority_explanation": "優先順位の説明"}'
+    '"via": "経由ルート", "retreat_to": "退避先"}], '
+    '"start_negotiation": {"starter": "bot1", "deadlock_or_escalation_id": "<id>"}, '
+    '"priority_explanation": "優先順位の説明"}'
 )
 
 # Traffic modes where the commander LLM manages traffic AND robot selection itself
@@ -101,9 +105,10 @@ MODE_A_RULES = (
     "（wait または via で迂回）。ただし双方が停止中だと予測位置は各自の現在地に縮退し収束"
     "しないため、静止デッドロックは上記条件1〜3で、接近中の衝突予兆は predicted_position_3s で検出する。"
     "\n## キャラLLM交渉（任意・演出）\n"
-    "- デッドロックを検出したら、自分で解消する前に start_negotiation ツールで bot1/bot2 の"
-    "キャラLLM交渉を発動できます（任意の演出。deadlock_or_escalation_id に検出したデッドロックの"
-    "識別子、starter に先手のロボットを渡す。doc14 / 08a:254）。\n"
+    "- デッドロックを検出したら、自分で解消する前に bot1/bot2 のキャラLLM交渉を発動できます"
+    "（任意の演出。doc14 / 08a:254）。発動するには応答の最上位に start_negotiation を入れます: "
+    '"start_negotiation": {"starter": "<先手 bot1|bot2>", "deadlock_or_escalation_id": '
+    '"<検出したデッドロックの識別子>"}。commands と同時に出してよい（同サイクルで発動）。\n'
     "- 状況JSON に negotiation_proposal があれば、その合意（agreed_action）を検証し、安全条件"
     "（バッテリー / 距離 / Emergency中でないこと）を満たすなら採用してコマンドに反映してください"
     "（稟議制＝最終判断はあなた。doc08a:255 / doc14:157）。agreed_action.to は表示名なので、"
@@ -159,18 +164,21 @@ MODE_C_PROMPT = (
     "\n## 安全機構（必ず守る）\n"
     "- 状況JSON の gen_id フィールドを、すべての MCP tool 呼出しの gen_id 引数にそのまま渡して"
     "ください（B-3 安全機構、15-mcp-platform.md §2）。\n"
-    "- traffic.escalation が立っている（非null）ときは start_negotiation ツール"
-    "（deadlock_or_escalation_id に traffic.escalation.id を渡す）でキャラLLM交渉を発動できます"
-    "（Mode C ではクライマックス演出用、任意）。\n"
+    "- traffic.escalation が立っている（非null）ときは、応答の最上位に start_negotiation を入れて"
+    "キャラLLM交渉を発動できます（Mode C ではクライマックス演出用、任意）: "
+    '"start_negotiation": {"starter": "bot1", "deadlock_or_escalation_id": '
+    '"<traffic.escalation.id>"}。\n'
     "- negotiation_proposal が状況JSONに含まれていれば、その提案を検証し、安全条件を満たすなら"
     "採用してください。\n"
     "\n## 使用可能なアクション\n"
     "- navigate: 目的地を指定（経路は Open-RMF が決定）\n"
     "- stop: 緊急停止\n"
     "- charge: 充電ステーションへ移動\n"
-    "\n必ず次のJSON形式のみで返答してください（前後に文章を付けない）:\n"
+    "\n必ず次のJSON形式のみで返答してください（前後に文章を付けない・start_negotiation は発動時のみ）:\n"
     '{"reasoning": "判断理由を日本語で説明", "commands": [{"bot": "bot1", "action": '
-    '"navigate|stop|charge", "destination": "場所名"}], "priority_explanation": "判断の優先順位の説明"}'
+    '"navigate|stop|charge", "destination": "場所名"}], '
+    '"start_negotiation": {"starter": "bot1", "deadlock_or_escalation_id": "<id>"}, '
+    '"priority_explanation": "判断の優先順位の説明"}'
 )
 
 

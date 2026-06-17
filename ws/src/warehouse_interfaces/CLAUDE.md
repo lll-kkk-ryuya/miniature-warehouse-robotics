@@ -6,7 +6,7 @@
 - **編集境界**: このパッケージのみ。**ここは全トラックが import する凍結契約**。変更は `.claude/rules/parallel-workflow.md` §4（`contract` ラベル＋依存トラック予告）必須。勝手にスキーマ拡張しない。
 
 ## 提供する契約
-- `schemas.py` — pydantic: `Situation` / `Command` / `Proposal`（+ `gen_id`）。`CommandItem.idempotency_key`（`str | None`、UUID 検証、省略可で後方互換）＝tool-call 単位の冪等キー（R-35, C 層）。Bridge が mint・LLM は echo しない。`extra="ignore"`（LLM出力/doc進化に寛容、必須項目・型・既知locationは検証）。出典: mode-a/08a・doc14・doc08/15。
+- `schemas.py` — pydantic: `Situation` / `Command` / `Proposal`（+ `gen_id`）。`CommandItem.idempotency_key`（`str | None`、UUID 検証、省略可で後方互換）＝tool-call 単位の冪等キー（R-35, C 層）。Bridge が mint・LLM は echo しない。**`Command.start_negotiation`（`StartNegotiation | None`、additive optional・既定 None・後方互換）= 司令官がキャラLLM交渉を発動する経路**（`{starter, deadlock_or_escalation_id, context}`・gen_id は Bridge 注入・doc14:59/doc15:182-186・PR#287 review fix で追加）。`extra="ignore"`（LLM出力/doc進化に寛容、必須項目・型・既知locationは検証）。出典: mode-a/08a・doc14・doc08/15。
 - `locations.py` — `KNOWN_LOCATIONS`（9キー）/ `is_known_location`。**Policy Gate の単一真実**。doc08＝doc13＝config/warehouse.base.yaml と一致。
 - `paths.py` — 共有パス（doc16 §4）+ `WAREHOUSE_ENV`（dev/stg/prod, doc19）。state=`/tmp/warehouse/state.json`、gen_store=`/tmp/warehouse/gen_store`、idempotency_store=`/tmp/warehouse/idempotency_store`、prod=`/run/warehouse/`。
 - `stores.py` — `StateStore` / `GenStore` / `IdempotencyStore` 抽象IF + file実装（atomic write）。`IdempotencyStore.check_and_add(key, gen) -> bool`（単一プリミティブ＝呼び出し側の check/add 分割を防ぐ：初見 True / replay False。**`FileIdempotencyStore` は単一プロセス/イベントループ内でのみ atomic**、複数プロセス時は Redis 等ロック付きバックエンドが必要 / doc15 §2）。`FileIdempotencyStore` は `{key: gen}` JSON map＋gen-window eviction（`IDEMPOTENCY_WINDOW_GENS=8`）。R-35 C 層、MCP が消費記録に使用。

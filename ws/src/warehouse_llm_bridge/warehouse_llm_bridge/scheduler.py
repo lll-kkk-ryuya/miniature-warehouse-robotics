@@ -35,7 +35,7 @@ from collections import deque
 from warehouse_interfaces.schemas import Command, CommandAction, CommandItem, PendingTask, Proposal
 from warehouse_interfaces.stores import GenStore
 
-from warehouse_llm_bridge.action_map import command_to_tool_calls
+from warehouse_llm_bridge.action_map import command_to_tool_calls, start_negotiation_tool_call
 from warehouse_llm_bridge.executor import ToolExecutor
 from warehouse_llm_bridge.llm_client import LLMClient, LLMUnavailableError
 from warehouse_llm_bridge.negotiation import accept_proposal
@@ -289,7 +289,32 @@ class BridgeScheduler:
                     "result": result.get("status", "unknown"),
                 }
             )
+        await self._maybe_start_negotiation(command, gen, results)
         return results
+
+    async def _maybe_start_negotiation(
+        self, command: Command, gen: int, results: list[dict]
+    ) -> None:
+        """Fire the commander's negotiation request, if any, via the start_negotiation tool.
+
+        doc14:59 — when the commander emits ``Command.start_negotiation`` (it detected a deadlock /
+        escalation and chose the 稟議制 path), dispatch tool 7 in THIS cycle so ``/negotiation/start``
+        carries the current ``gen_id`` (the eventual proposal is stamped with it and ingested within
+        the gen +/-2 window next cycle, doc14:70,142). Goes through the same executor as motion tools
+        (B-3 gen guard + idempotency apply); it actuates nothing (advisory, doc14:38).
+        """
+        if command.start_negotiation is None:
+            return
+        tool_call = start_negotiation_tool_call(command.start_negotiation, gen)
+        async with self._tracer.tool_span(tool_call.tool, gen):
+            result = await self._executor.execute(tool_call)
+        results.append(result)
+        log.info(
+            "commander start_negotiation (starter=%s, id=%s) -> %s",
+            command.start_negotiation.starter,
+            command.start_negotiation.deadlock_or_escalation_id,
+            result.get("status", "unknown"),
+        )
 
     def _track_current_task(self, item: CommandItem, result: dict) -> None:
         """Track a per-robot ``current_task`` = the in-flight DESTINATION (08a:62,73,466).
