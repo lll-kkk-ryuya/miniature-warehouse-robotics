@@ -352,7 +352,7 @@ class DecisionLog:
 上記のうち `result` と `task_completion_time` のみ自作コードで Langfuse に送信する:
 
 ```python
-# Nav2ゴール到達後にスコアを送信（Langfuse Python SDK v4 / 4.7.1）
+# Nav2ゴール到達後にスコアを送信（Langfuse Python SDK v4 / 4.9.0）
 from langfuse import get_client
 langfuse = get_client()
 langfuse.create_score(trace_id=current_trace_id, name="result", value="success",
@@ -372,7 +372,7 @@ langfuse.flush()  # 短命スコアラ（#6 wo）はプロセス終了前に flu
 
 ### trace 所有 — Bridge が所有（推奨・Pattern A）
 
-Hermes ビルトイン Langfuse に generation 所有を任せると、Bridge は自前 `trace_id` / `metadata` / managed-prompt をネイティブに乗せられない（pass-through 未確認）。よって **Bridge が `from langfuse.openai import AsyncOpenAI`（async＝scheduler が `await` で呼び `wait_for` でキャンセル可。Layer A）を `base_url`=Hermes（OpenAI 互換）で用い、自分で generation/trace を所有**する（4社を単一コードパスで叩く比較公平性を保ったまま trace 所有問題を解消）。二重計上回避のため **Hermes 側 Langfuse プラグインは無効化**する（[doc13 §7.5](13-hermes-setup.md)）。**採用実装（#78）**: 各 turn の `trace_id` は **`create_trace_id(seed=f"{run_id}:{gen_id}")`（決定的・32hex no-dash, doc13 §7.5(b)）** で採番し（#6 が同一 id を独立導出）、`session_id` と `metadata={"langfuse_tags": [provider, mode], "gen_id": ...}` を trace に付与する。tool 呼出は各々 span 化する（1 observation/tool, §比較検証ログ）。managed-prompt（Langfuse Prompt Management）連携が要る場合は `@observe(as_type="generation")` で generation を自作してラップする。**Provider access の決定（Vertex AI SDK 不採用・Hermes 単一経路）は [doc13 §7.6](13-hermes-setup.md)**。
+Hermes ビルトイン Langfuse に generation 所有を任せると、Bridge は自前 `trace_id` / `metadata` / managed-prompt をネイティブに乗せられない（pass-through 未確認）。よって **Bridge が `from langfuse.openai import AsyncOpenAI`（async＝scheduler が `await` で呼び `wait_for` でキャンセル可。Layer A）を `base_url`=Hermes（OpenAI 互換）で用い、自分で generation/trace を所有**する（4社を単一コードパスで叩く比較公平性を保ったまま trace 所有問題を解消）。二重計上回避のため **Hermes 側 Langfuse プラグインは無効化**する（[doc13 §7.5](13-hermes-setup.md)）。**採用実装（#78）**: 各 turn の `trace_id` は **`create_trace_id(seed=f"{run_id}:{gen_id}")`（決定的・32hex no-dash, doc13 §7.5(b)）** で採番し（#6 が同一 id を独立導出）、`session_id` / `tags=[provider, mode]` / `metadata={"gen_id": ..., "trace_id": ...}` を trace に付与する。tool 呼出は各々 span 化する（1 observation/tool, §比較検証ログ）。managed-prompt（Langfuse Prompt Management）連携が要る場合は `@observe(as_type="generation")` で generation を自作してラップする。**Provider access の決定（Vertex AI SDK 不採用・Hermes 単一経路）は [doc13 §7.6](13-hermes-setup.md)**。
 
 ### セッション命名規則
 
@@ -497,9 +497,9 @@ rclpy
 
 - **Mode A 交渉スコア**（`negotiation_rounds` / `agreement_reached`）は **演出専用・Phase 4 比較対象外**（[doc14](14-character-llm-negotiation.md):255 / [doc06](06-implementation-phases.md):263）。定義は **[doc14 §交渉スコア](14-character-llm-negotiation.md#交渉スコア)** に置く（交渉エピソードの記述指標であり provider 能力比較には用いない）。
 
-### Grok コスト定義（PLAN・実検証は Phase 3, [doc13](13-hermes-setup.md) §7.5② :486）
+### Grok コスト定義（PLAN・実検証は Phase 3, [doc13](13-hermes-setup.md) §7.5② :520）
 
-`コスト`（:395 = `generation.cost`）は Langfuse が generation の `model` 文字列を価格表に正規表現マッチして算出する。**Langfuse 既定の価格表は OpenAI/Anthropic/Google のみで xAI Grok を含まない**ため、Grok は cost が空欄になり比較が破綻する（doc13:486② を確認）。対策（**本節は PLAN・実装は Phase 3**）:
+`コスト`（:395 = `generation.cost`）は Langfuse が generation の `model` 文字列を価格表に正規表現マッチして算出する。**Langfuse 既定の価格表は OpenAI/Anthropic/Google のみで xAI Grok を含まない**ため、Grok は cost が空欄になり比較が破綻する（doc13:520② を確認）。対策（**本節は PLAN・実装は Phase 3**）:
 
 1. **Langfuse にカスタムモデル価格を登録**（UI: Project Settings → Models → Add model definition ／ API: `POST /api/public/models`）。`match_pattern`（Grok の model 文字列への正規表現、例 `(?i)^(xai/)?grok-4.*$`）＋ 入出力トークン単価（USD/token、xAI 公開価格・取得日を併記）＋ `unit: TOKENS`。ユーザ定義は組込より優先。
 2. **オフライン フォールバック（wo, Phase 前でも可）**: `usage_details`（入出力トークン数）は cost と独立に取得されるため、wo 側で `tokens × 静的 xAI 価格表`（versioned 定数）から cost を派生計算できる → Langfuse 価格登録の有無に依存せず Grok 比較を解錠。

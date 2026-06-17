@@ -82,13 +82,13 @@ class AuditEntry:
 
     @property
     def gen_id(self) -> int | None:
-        """The task's generation, used to derive the Langfuse ``trace_id`` (#73, doc13:481).
+        """The task's generation, used to derive the Langfuse ``trace_id`` (#73, doc13:519).
 
         Reads **only** ``detail.gen_id`` — the per-task generation the predeclared mcp_server
         change (#4 / #73) will add to executed rows. We deliberately do **not** fall back to
         ``received_gen`` (written only on stale-generation rejects, tools.py ``_stale``): a
         stale-reject's gen is an *older, rejected* generation and must NOT seed a trace
-        (doc13:481 keys the join to the specific executed gen). So ``gen_id`` stays ``None``
+        (doc13:518 keys the join to the specific executed gen). So ``gen_id`` stays ``None``
         until executed rows carry it — keeping live trace-linking inert/no-op as documented.
         """
         if not isinstance(self.detail, dict):

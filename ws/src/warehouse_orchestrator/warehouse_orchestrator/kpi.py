@@ -26,7 +26,7 @@ Scope of THIS Phase-0.5 groundwork slice:
   arithmetic pairing a dispatch start with an *externally supplied* completion
   timestamp. The audit log carries **no** completion event (audit.py records
   issuance only); the live source is Nav2 goal-reached keyed by ``trace_id``
-  (doc08:338, doc13:481) — deferred to Phase 3. Tests exercise it with synthetic
+  (doc08:338, doc13:519) — deferred to Phase 3. Tests exercise it with synthetic
   completion events.
 
 Deferred (NOT in this slice): ``efficiency`` (= 総移動距離, doc08:375; needs odometry
@@ -321,7 +321,7 @@ def pair_completion_times(
     SCAFFOLD: the start timestamp is the earliest executed ``dispatch_task`` /
     ``send_to_charging`` row for a ``task_id`` (audit.py timestamps issuance). The
     ``completions`` map MUST come from a live completion source — Nav2 goal-reached
-    keyed by ``trace_id`` (doc08:338, doc13:481) — which does not exist before
+    keyed by ``trace_id`` (doc08:338, doc13:519) — which does not exist before
     Phase 3, so this is exercised only with synthetic events today. Completions with
     no matching dispatch, or that precede the dispatch, are skipped defensively.
     """

@@ -7,7 +7,7 @@ from the same seed**, so #6's scores attach to #4's generation trace with zero d
 dependency — and **no frozen-contract change** (trace_id is a Langfuse/Audit join key, not a
 ROS message contract; ``warehouse_interfaces`` is untouched):
 
-    trace_id = langfuse.create_trace_id(seed=f"{WAREHOUSE_RUN_ID}:{gen_id}")   # doc13 §7.5
+    trace_id = langfuse.get_client().create_trace_id(seed=f"{WAREHOUSE_RUN_ID}:{gen_id}")
 
 The seed math (``seed_for`` / ``normalize_trace_id`` / ``derive_trace_id``) now lives ONCE in
 :mod:`eval_sdk.seed` (the de-duplicated join key — formerly also implemented in

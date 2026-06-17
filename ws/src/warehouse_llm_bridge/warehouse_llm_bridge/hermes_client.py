@@ -8,7 +8,7 @@ provider (Claude / ChatGPT / Gemini / Grok) is chosen server-side by Hermes'
 and never changes per request (doc13:171,402-421). This is the Phase-4 4-way
 comparison mechanism.
 
-Trace ownership (doc08:354-356 / doc13:479, Pattern A): the call goes through
+Trace ownership (doc08:354-356 / doc13:517, Pattern A): the call goes through
 ``from langfuse.openai import AsyncOpenAI`` so the generation is captured under the
 Bridge-owned trace established by the :class:`~warehouse_llm_bridge.tracing.Tracer`
 (``scheduler`` opens the per-turn trace around ``decide``). The langfuse + openai

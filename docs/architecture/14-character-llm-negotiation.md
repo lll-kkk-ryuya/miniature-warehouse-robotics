@@ -317,7 +317,7 @@ robot:{bot1|bot2|commander}   role:{commander|character}   phase4
 
 - Hermes が inbound `metadata.trace_id` を尊重し、自身の generation を同一 trace 配下に合成するか。しなければ司令官 generation が別 trace になり、`trace_id`＋timestamp による Audit Log 突合へ降格する。
 - キャラと司令官を同一 session に束ねる方針が UI replay / 比較で実用的か（§Langfuse 統合 の旧・別 session 方式からの変更点）。
-- prompt 連携（Langfuse Prompt Management）・xAI Grok の cost カスタムモデル定義・SDK 4.7.1 スモークは **本 doc14 の範囲外**（doc08/doc13 と #88 の wo/bridge コードレーンが担当）。
+- prompt 連携（Langfuse Prompt Management）・xAI Grok の cost カスタムモデル定義・SDK 4.9.0 スモークは **本 doc14 の範囲外**（doc08/doc13 と #88 の wo/bridge コードレーンが担当）。
 
 ## References
 

@@ -3,7 +3,7 @@
 - **担当トラック / ブランチ**: feat/eval-sdk（doc21 Phase 1）
 - **Phase**: Phase 1（抽出＋二重利用＝境界の証明。doc21 §10）
 - **編集境界**: このパッケージ配下のみ。**ROS / warehouse_\* を import しない**（domain 非依存が存在意義・doc21 §0/§3）。`warehouse_interfaces` 等の凍結契約も触らない。
-- **消費する契約**: **なし**。純 stdlib のみ。`langfuse>=4.7,<5` は **optional pip extra**（lazy import・fail-open・rosdep キーにしない・doc21 §12.3）。
+- **消費する契約**: **なし**。純 stdlib のみ。`langfuse>=4.9,<5` は **optional pip extra**（lazy import・fail-open・rosdep キーにしない・doc21 §12.3）。
 - **生産する契約 / API（凍結契約ではない＝doc21 はまだ提案。Phase 2 で `ScoreSpec` 名のみ contract 化）**:
   - `eval_sdk.seed`: `seed_for(run_id, work_id)`（**唯一の決定的 join key**＝旧 `trace_id.seed_for`↔`tracing.trace_seed` の重複を1本化）/ `normalize_trace_id` / `derive_trace_id(seed, *, create_fn=None)` / `resolve_run_id(env_run_id, fallback)`。
   - `eval_sdk.tracer`: `Tracer`(ABC) / `NoopTracer` / `LangfuseTracer(run_id, session_id, provider, mode)`。API は旧 `tracing.py` と同一（`turn(gen_id)` / `tool_span(name, gen_id)`）＝挙動不変。
@@ -24,7 +24,7 @@
 - なし（stdlib のみ。`langfuse` は optional・lazy・fail-open）。
 
 ## 前提・未確定 (TODO)
-- **Langfuse v4 surface 未検証**（doc21 §11）: 実 4.7.x の `create_trace_id`/`create_score`/`start_as_current_span`/`flush` 形は Phase 3 live（#88 human-gate）で確認。fail-open で劣化はするが #88 緑まで dashboard を過大宣伝しない。
+- **Langfuse v4 surface**（doc21 §11 / #88）: tracer は v4.9 API（`client.create_trace_id` / `start_as_current_observation` / `propagate_attributes`）に pin。score/cost/managed-prompt の live 確認は Phase 3 live（#88 human-gate）で継続。fail-open で劣化はするが #88 緑まで dashboard を過大宣伝しない。
 - **指標追加（SR/SPL/jerk）= Phase 1.5**（doc21 §10/§13.1。AllenAct コピー / Habitat 写経 / SPARC 照合・numpy/scipy lazy）＝本 Phase では未実装。
 - **registry（`ScoreSpec` 名）= Phase 2**（contract PR・全レーン予告・doc21 §10）。
 - doc21 §4 は `completion_stats` も抽出対象として挙げるが、`CompletionStats.records → CompletionRecord`（`task_id`/`robot`＝domain フィールド）に結合するため、依存する純算術（`percentile`）のみ抽出し `completion_stats` は `warehouse_orchestrator.kpi` に残置（domain 非依存を優先）。→ doc21 follow-up（本 PR 本文に列挙）。

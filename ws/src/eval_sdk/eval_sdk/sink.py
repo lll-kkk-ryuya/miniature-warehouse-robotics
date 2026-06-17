@@ -1,7 +1,7 @@
 """Fail-open Langfuse **v4** score sink — the domain-free emit seam (doc21 §3/§4).
 
 A caller self-sends scores (any name / value / data type) keyed by a 32-hex ``trace_id`` it
-derives from :mod:`eval_sdk.seed`. The Langfuse Python SDK is **v4 (>=4.7,<5)**: the v2
+derives from :mod:`eval_sdk.seed`. The Langfuse Python SDK is **v4 (>=4.9,<5)**: the v2
 ``score()`` was removed, so the call is ``create_score(trace_id, name, value, data_type,
 metadata)`` followed by ``flush()`` (doc21 §12.4).
 

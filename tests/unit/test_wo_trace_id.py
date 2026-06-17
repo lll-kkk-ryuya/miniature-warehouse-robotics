@@ -1,6 +1,6 @@
 """trace_id derivation/normalization tests (warehouse_orchestrator, Lane C #6 wo).
 
-Verifies the #73 cross-lane scheme (doc13:478-481): 32-hex-no-dash normalization, the
+Verifies the #73 cross-lane scheme (doc13:516-519): 32-hex-no-dash normalization, the
 deterministic ``create_trace_id(seed=…)`` derivation (same seed → same id, so #4 and #6
 link), the ``WAREHOUSE_RUN_ID:gen_id`` seed, and fail-open behaviour (SDK absent / errors →
 ``None``). The langfuse SDK is never imported — derivation uses an injected ``create_fn``.
@@ -13,11 +13,11 @@ from warehouse_orchestrator import trace_id as tid
 
 
 def _fake_create(*, seed: str) -> str:
-    """Deterministic stand-in for ``langfuse.create_trace_id`` (32 lowercase hex)."""
+    """Deterministic stand-in for Langfuse client ``create_trace_id`` (32 lowercase hex)."""
     return hashlib.sha256(seed.encode()).hexdigest()[:32]
 
 
-# ── normalize_trace_id (doc13:478) ───────────────────────────────────────────
+# ── normalize_trace_id (doc13:516) ───────────────────────────────────────────
 
 
 @pytest.mark.unit
@@ -40,7 +40,7 @@ def test_normalize_rejects_invalid(bad: str) -> None:
         tid.normalize_trace_id(bad)
 
 
-# ── seed_for / run_id (#73, doc13:481) ───────────────────────────────────────
+# ── seed_for / run_id (#73, doc13:519) ───────────────────────────────────────
 
 
 @pytest.mark.unit
@@ -60,7 +60,7 @@ def test_run_id_none_when_unset(monkeypatch: pytest.MonkeyPatch) -> None:
     assert tid.run_id() is None
 
 
-# ── derive_trace_id (doc13:481b) ─────────────────────────────────────────────
+# ── derive_trace_id (doc13:519(b)) ─────────────────────────────────────────────
 
 
 @pytest.mark.unit
@@ -122,6 +122,6 @@ def test_trace_id_for_none_when_run_id_blank(blank: str) -> None:
 @pytest.mark.unit
 def test_trace_id_for_uses_nonblank_run_id_verbatim() -> None:
     # a padded-but-nonblank run id is used VERBATIM in the seed (no strip), so #4 and #6
-    # stay byte-identical when sharing the same WAREHOUSE_RUN_ID (doc13:480-483).
+    # stay byte-identical when sharing the same WAREHOUSE_RUN_ID (doc13:516-519).
     out = tid.trace_id_for(5, run_id_value=" run-7 ", create_fn=_fake_create)
     assert out == _fake_create(seed=" run-7 :5")

@@ -1,8 +1,8 @@
 """Tests for the Langfuse tracing seam — pure helpers + NoopTracer (no langfuse).
 
 The deterministic seed is the cross-lane contract with #6 (wo): both lanes feed
-``trace_seed(run_id, gen_id)`` to ``langfuse.create_trace_id`` to derive the same
-32-hex trace id without sharing data (doc13:481(b)). NoopTracer keeps the cycle
+``trace_seed(run_id, gen_id)`` to Langfuse client ``create_trace_id`` to derive the same
+32-hex trace id without sharing data (doc13:519(b)). NoopTracer keeps the cycle
 langfuse-free for tests.
 """
 
@@ -54,7 +54,7 @@ def test_resolve_run_id_falls_back_to_session_id_when_blank(blank: str | None) -
 def test_cross_lane_seed_matches_orchestrator() -> None:
     # The point of #108: with one shared WAREHOUSE_RUN_ID, the Bridge (#4) and the
     # Orchestrator (#6) MUST produce the byte-identical create_trace_id seed
-    # (doc13:481(b)) so their Langfuse data joins. Import #6's helper directly
+    # (doc13:519(b)) so their Langfuse data joins. Import #6's helper directly
     # (tests may cross-import ws/src) and assert the two seeds agree — and that the
     # old buggy behaviour (seeding from the timestamped session_id) would NOT.
     from warehouse_orchestrator.trace_id import seed_for

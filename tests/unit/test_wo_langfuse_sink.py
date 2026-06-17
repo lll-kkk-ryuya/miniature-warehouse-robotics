@@ -1,7 +1,7 @@
 """LangfuseScoreSink v4 tests (warehouse_orchestrator, Lane C #6 wo).
 
 The adapter uses the Langfuse **v4** API (``create_score`` + ``flush``, doc08:341-350): it
-must pass ``data_type``/``metadata``, normalize the trace_id to 32-hex-no-dash (doc13:478),
+must pass ``data_type``/``metadata``, normalize the trace_id to 32-hex-no-dash (doc13:516),
 fall back to embedding the robot in the score NAME when the SDK rejects ``metadata=``
 (doc08:350), NO-OP without a usable trace_id, and FAIL-OPEN (never raise). No real langfuse
 SDK is imported — a fake v4 client stands in.
@@ -96,7 +96,7 @@ def test_trace_id_is_normalized_to_32hex_no_dash() -> None:
     fake = _FakeClient()
     sink = LangfuseScoreSink(client=fake)
     assert sink.send_result(TRACE_DASHED, "success") is True
-    assert fake.calls[0]["trace_id"] == TRACE  # dashes stripped, lowercased (doc13:478)
+    assert fake.calls[0]["trace_id"] == TRACE  # dashes stripped, lowercased (doc13:516)
 
 
 @pytest.mark.unit

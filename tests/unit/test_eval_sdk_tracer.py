@@ -10,6 +10,67 @@ import asyncio
 import pytest
 from eval_sdk.tracer import LangfuseTracer, NoopTracer, Tracer
 
+TRACE = "0123456789abcdef0123456789abcdef"
+
+
+class _FakeSpan:
+    def __init__(self) -> None:
+        self.updates: list[dict] = []
+
+    def update(self, **kwargs) -> None:
+        self.updates.append(kwargs)
+
+
+class _FakeObservation:
+    def __init__(self, span: _FakeSpan) -> None:
+        self.span = span
+        self.closed = False
+
+    def __enter__(self) -> _FakeSpan:
+        return self.span
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self.closed = True
+
+
+class _FakeAttributes:
+    def __init__(self) -> None:
+        self.closed = False
+
+    def __enter__(self) -> None:
+        return None
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self.closed = True
+
+
+class _FakeLangfuseClient:
+    def __init__(self) -> None:
+        self.create_trace_id_seeds: list[str] = []
+        self.observations: list[dict] = []
+        self.propagations: list[dict] = []
+        self.spans: list[_FakeSpan] = []
+        self.contexts: list[_FakeObservation] = []
+        self.attribute_contexts: list[_FakeAttributes] = []
+
+    def create_trace_id(self, *, seed: str) -> str:
+        self.create_trace_id_seeds.append(seed)
+        return TRACE
+
+    def start_as_current_observation(self, **kwargs) -> _FakeObservation:
+        span = _FakeSpan()
+        context = _FakeObservation(span)
+        self.observations.append(kwargs)
+        self.spans.append(span)
+        self.contexts.append(context)
+        return context
+
+    def propagate_attributes(self, **kwargs) -> _FakeAttributes:
+        context = _FakeAttributes()
+        self.propagations.append(kwargs)
+        self.attribute_contexts.append(context)
+        return context
+
 
 @pytest.mark.unit
 def test_tracer_is_abstract() -> None:
@@ -58,3 +119,38 @@ def test_langfuse_tracer_body_exceptions_propagate() -> None:
 
     with pytest.raises(ValueError, match="body error"):
         asyncio.run(_run())
+
+
+@pytest.mark.unit
+def test_langfuse_tracer_uses_v49_observation_api(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _FakeLangfuseClient()
+    monkeypatch.setattr(LangfuseTracer, "_client", lambda self: fake)
+    tracer = LangfuseTracer(
+        run_id="run_x", session_id="session_x", provider="provider_x", mode="none"
+    )
+
+    async def _run() -> None:
+        async with tracer.turn(3), tracer.tool_span("dispatch", 3):
+            pass
+
+    asyncio.run(_run())
+
+    assert fake.create_trace_id_seeds == ["run_x:3"]
+    assert fake.observations == [
+        {
+            "name": "turn",
+            "as_type": "span",
+            "trace_context": {"trace_id": TRACE},
+        },
+        {"name": "tool:dispatch", "as_type": "span"},
+    ]
+    assert fake.propagations == [
+        {
+            "session_id": "session_x",
+            "tags": ["provider_x", "none"],
+            "metadata": {"gen_id": 3, "trace_id": TRACE},
+        }
+    ]
+    assert fake.spans[0].updates == []
+    assert all(context.closed for context in fake.contexts)
+    assert all(context.closed for context in fake.attribute_contexts)

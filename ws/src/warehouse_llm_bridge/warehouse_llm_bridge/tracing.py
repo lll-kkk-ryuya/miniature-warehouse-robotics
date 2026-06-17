@@ -7,7 +7,7 @@ wrapper (in ``hermes_client``), and each MCP tool call recorded as a span. The p
 ``trace_id`` is DETERMINISTIC — derived from a per-run seed so #6 (wo) derives the identical id
 with zero cross-lane data coupling::
 
-    trace_id = langfuse.create_trace_id(seed=f"{run_id}:{gen_id}")
+    trace_id = langfuse.get_client().create_trace_id(seed=f"{run_id}:{gen_id}")
 
 The :class:`Tracer` seam (``Tracer`` / ``NoopTracer`` / ``LangfuseTracer``) and the deterministic
 seed now live in :mod:`eval_sdk`; :class:`~warehouse_llm_bridge.scheduler.BridgeScheduler`
@@ -17,7 +17,7 @@ extra) and is **fail-open**. What stays HERE is the Bridge-specific ``session_id
 (``build_session_id``) and the ``trace_seed`` name (delegating to the de-duplicated
 :func:`eval_sdk.seed.seed_for` — formerly also implemented in
 ``warehouse_orchestrator/trace_id.py``). Hermes' built-in Langfuse plugin must be disabled to
-avoid double-counting (doc13:479) — that is a deploy handoff, not bridge code.
+avoid double-counting (doc13:517) — that is a deploy handoff, not bridge code.
 """
 
 from eval_sdk.seed import resolve_run_id, seed_for
@@ -49,7 +49,7 @@ def trace_seed(run_id: str, gen_id: int) -> str:
 
     Delegates to the single de-duplicated join key :func:`eval_sdk.seed.seed_for` (doc21 §4):
     both the Bridge (#4) and the Orchestrator (#6) feed this exact string to
-    ``langfuse.create_trace_id`` to derive the same 32-hex trace id without sharing data —
+    Langfuse client ``create_trace_id`` to derive the same 32-hex trace id without sharing data —
     the cross-lane contract is the seed, not a frozen field.
     """
     return seed_for(run_id, gen_id)

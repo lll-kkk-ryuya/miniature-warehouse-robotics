@@ -13,7 +13,7 @@ Five thin, ROS- and warehouse-import-free modules — unit-testable with no SDK 
 | `eval_sdk.cost`   | token-cost math (`token_cost` / `resolve_price` / `cost_for_model`; price table injected) |
 
 Backbone (invariant): **fail-open + lazy-import + dependency injection** → "SDK 0 / ROS 0 で単体テスト可".
-`langfuse>=4.7,<5` is an optional pip extra (`pip install -e .[langfuse]`), lazy-imported and fail-open.
+`langfuse>=4.9,<5` is an optional pip extra (`pip install -e .[langfuse]`), lazy-imported and fail-open.
 
 The warehouse is the first user: `warehouse_orchestrator` / `warehouse_llm_bridge` import the
 extracted core (Phase 1, doc21 §10). See [CLAUDE.md](CLAUDE.md) for the produce/consume contract.
