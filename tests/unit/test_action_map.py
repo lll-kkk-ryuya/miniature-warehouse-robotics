@@ -3,11 +3,12 @@
 import uuid
 
 import pytest
-from warehouse_interfaces.schemas import Command, CommandItem
+from warehouse_interfaces.schemas import Command, CommandItem, StartNegotiation
 from warehouse_llm_bridge.action_map import (
     ToolCall,
     command_item_to_tool_call,
     command_to_tool_calls,
+    start_negotiation_tool_call,
 )
 
 
@@ -98,3 +99,28 @@ def test_every_tool_call_carries_gen_id() -> None:
     )
     calls = command_to_tool_calls(cmd, gen_id=314)
     assert all(c.args["gen_id"] == 314 for c in calls)
+
+
+@pytest.mark.unit
+def test_start_negotiation_tool_call_shape() -> None:
+    # Command.start_negotiation -> tool 7 with Bridge-injected gen_id + idempotency_key (doc14:59).
+    req = StartNegotiation(starter="bot1", deadlock_or_escalation_id="dl_7", context="aisle A")
+    call = start_negotiation_tool_call(
+        req, gen_id=99, idempotency_key="11111111-1111-1111-1111-111111111111"
+    )
+    assert call.tool == "start_negotiation"
+    assert call.args == {
+        "starter": "bot1",
+        "deadlock_or_escalation_id": "dl_7",
+        "context": "aisle A",
+        "gen_id": 99,
+        "idempotency_key": "11111111-1111-1111-1111-111111111111",
+    }
+
+
+@pytest.mark.unit
+def test_start_negotiation_tool_call_mints_key_when_absent() -> None:
+    req = StartNegotiation(starter="bot2", deadlock_or_escalation_id="dl_8")
+    call = start_negotiation_tool_call(req, gen_id=1)
+    uuid.UUID(call.args["idempotency_key"])  # raises if not a valid minted UUID
+    assert call.args["context"] == ""  # default

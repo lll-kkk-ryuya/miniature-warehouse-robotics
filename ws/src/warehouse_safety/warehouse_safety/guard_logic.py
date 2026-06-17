@@ -178,6 +178,19 @@ def build_event(
     return event
 
 
+def build_abort(reason: str, robot: str, event_id: str) -> dict:
+    """Build the ``/negotiation/abort`` JSON published alongside an estop event (doc03:108).
+
+    doc14:241-247 (R2) — when the Guardian emergency-STOPs, any in-flight character-LLM
+    negotiation must abort immediately and its proposal be discarded. Payload mirrors doc03:108
+    (``{reason, bot, event_id}``), correlating the abort with the ``/emergency/event`` of the same
+    ``event_id``. Published ONLY on estop (the physical emergency) — a low-harm blocked-timeout
+    *recovery* event must NOT abort, since the negotiation is the deadlock-resolution path that
+    recovery is itself a fallback for (doc08a:363-372). Pure — host-tested with build_event.
+    """
+    return {"reason": reason, "bot": robot, "event_id": event_id}
+
+
 @dataclass
 class BlockTracker:
     """Per-bot displacement tracker producing ``blocked_duration`` (pure).

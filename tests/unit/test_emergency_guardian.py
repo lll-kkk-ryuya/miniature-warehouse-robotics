@@ -396,3 +396,14 @@ def test_edge_latch_distinct_bots_rise_independently() -> None:
     assert latch.rising([_estop("bot1")]) == {("bot1", "near_collision")}
     # bot2 enters proximity a tick later; only bot2 is fresh (bot1 is held).
     assert latch.rising([_estop("bot1"), _estop("bot2")]) == {("bot2", "near_collision")}
+
+
+@pytest.mark.safety
+@pytest.mark.unit
+def test_build_abort_payload_matches_doc03_contract() -> None:
+    # /negotiation/abort payload = {reason, bot, event_id}, correlated with the estop event_id
+    # (doc03:108 / doc14:241-247). Pure helper; the node publishes it on estop only.
+    from warehouse_safety.guard_logic import build_abort
+
+    abort = build_abort("proximity", "bot2", "emg-20260617-0001")
+    assert abort == {"reason": "proximity", "bot": "bot2", "event_id": "emg-20260617-0001"}

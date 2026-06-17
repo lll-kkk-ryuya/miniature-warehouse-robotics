@@ -548,3 +548,41 @@ def test_current_task_set_then_cleared_through_real_tools(tmp_path: Path) -> Non
     llm.response = {"reasoning": "halt", "commands": [{"bot": "bot1", "action": "stop"}]}
     asyncio.run(sched.run_cycle())
     assert sched._current_tasks == {}  # accepted cancel of the active task -> cleared
+
+
+# ── commander -> start_negotiation reachability (Slice 2 review fix, doc14:59) ──
+
+
+@pytest.mark.unit
+def test_command_start_negotiation_dispatches_tool7(tmp_path: Path) -> None:
+    # The commander emits Command.start_negotiation -> the scheduler dispatches the
+    # start_negotiation MCP tool (tool 7) in THIS cycle with the current gen_id (doc14:59,70).
+    # This closes the gap where start_negotiation was unreachable from the commander cycle.
+    llm = FakeLLM(
+        {
+            "reasoning": "deadlock detected; delegating to character negotiation",
+            "commands": [{"bot": "bot1", "action": "wait", "duration": 5}],
+            "start_negotiation": {"starter": "bot1", "deadlock_or_escalation_id": "dl_1"},
+        }
+    )
+    executor = RecordingToolExecutor()
+    sched, _ = _scheduler(tmp_path, llm, executor)
+    asyncio.run(sched.run_cycle())
+    calls = {c.tool: c for c in executor.calls}
+    assert "start_negotiation" in calls  # reachable now (was schema-invalid before)
+    sn = calls["start_negotiation"]
+    assert sn.args["starter"] == "bot1"
+    assert sn.args["deadlock_or_escalation_id"] == "dl_1"
+    assert sn.args["gen_id"] == 1  # current cycle generation (gen starts at 1)
+
+
+@pytest.mark.unit
+def test_no_start_negotiation_field_dispatches_no_tool7(tmp_path: Path) -> None:
+    # Ordinary cycles (no start_negotiation field) never dispatch tool 7 (additive/opt-in).
+    llm = FakeLLM(
+        {"reasoning": "ok", "commands": [{"bot": "bot1", "action": "wait", "duration": 1}]}
+    )
+    executor = RecordingToolExecutor()
+    sched, _ = _scheduler(tmp_path, llm, executor)
+    asyncio.run(sched.run_cycle())
+    assert "start_negotiation" not in [c.tool for c in executor.calls]

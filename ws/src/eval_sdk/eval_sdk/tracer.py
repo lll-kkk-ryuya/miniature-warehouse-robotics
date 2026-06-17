@@ -64,8 +64,11 @@ class LangfuseTracer(Tracer):
     "this work is untraced" and NEVER raises into the caller's loop** (fail-open, doc21 §4). Kept
     isolated here so the rest of the system is langfuse-agnostic.
 
-    ``provider`` / ``mode`` are caller-supplied tag strings (the eval discriminators); the
-    SDK treats them as opaque labels.
+    ``provider`` / ``mode`` and every ``extra_tags`` entry are caller-supplied tag strings (the
+    eval discriminators). The SDK treats them as opaque labels: domain labels such as
+    ``"prompt:<name>"`` or ``"env=dev"`` are resolved by the caller, not parsed here. Langfuse
+    may normalize stored tag order, so consumers should filter by tag value rather than list
+    position.
     """
 
     def __init__(

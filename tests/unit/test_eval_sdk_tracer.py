@@ -194,6 +194,31 @@ def test_langfuse_tracer_merges_extra_tags_and_metadata(monkeypatch: pytest.Monk
 
 
 @pytest.mark.unit
+def test_langfuse_tracer_accepts_env_as_opaque_extra_tag(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Deployment env tags are resolved by the caller and passed as ordinary extra_tags so
+    # eval_sdk stays domain-free; it does not read WAREHOUSE_ENV or know dev/stg/prod.
+    fake = _FakeLangfuseClient()
+    monkeypatch.setattr(LangfuseTracer, "_client", lambda self: fake)
+    tracer = LangfuseTracer(
+        run_id="run_x",
+        session_id="session_x",
+        provider="provider_x",
+        mode="none",
+        extra_tags=["env=dev"],
+    )
+
+    async def _run() -> None:
+        async with tracer.turn(3):
+            pass
+
+    asyncio.run(_run())
+
+    assert fake.propagations[0]["tags"] == ["provider_x", "none", "env=dev"]
+
+
+@pytest.mark.unit
 def test_langfuse_tracer_reserved_metadata_keys_win(monkeypatch: pytest.MonkeyPatch) -> None:
     # extra_metadata must never override the reserved gen_id / trace_id keys (dropped at init).
     fake = _FakeLangfuseClient()

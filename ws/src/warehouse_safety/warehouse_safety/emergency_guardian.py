@@ -115,6 +115,11 @@ class EmergencyGuardian(Node):
             )
 
         self._event_pub = self.create_publisher(String, "/emergency/event", reliable_qos)
+        # Abort an in-flight character-LLM negotiation on estop (doc14:241-247 R2 / doc03:108).
+        # Published only on the physical emergency-STOP, NOT on low-harm recovery (see _publish_event).
+        self._negotiation_abort_pub = self.create_publisher(
+            String, "/negotiation/abort", reliable_qos
+        )
         self.create_timer(0.05, self._check_safety)  # 50ms reflex
         self.get_logger().info("emergency_guardian running (50ms reflex)")
 
@@ -177,10 +182,12 @@ class EmergencyGuardian(Node):
         # re-asserted) — independent of the event edge-trigger below.
         self._cancel_all_goals(dec.bot)  # async, never blocks the 50ms timer
         self._cmd_pub[dec.bot].publish(Twist())  # all-zero stop (twist_mux prio 100)
-        # TODO(Mode-A): also abort character-LLM negotiation -> /negotiation when
-        # that contract lands (doc14); the topic does not exist yet, so defer.
         if emit_event:  # #126: rising edge only (doc12 edge-trigger); shape unchanged
-            self._publish_event(dec, action_taken=["nav2_goal_cancel", "cmd_vel_stop"])
+            # is_estop=True -> also fire /negotiation/abort (doc14:241-247 R2): a physical
+            # emergency stop aborts any in-flight character-LLM negotiation + discards its proposal.
+            self._publish_event(
+                dec, action_taken=["nav2_goal_cancel", "cmd_vel_stop"], is_estop=True
+            )
 
     def _trigger_recovery(self, dec: gl.Decision, *, emit_event: bool) -> None:
         # Low-harm: a structured event only (the bot may be legitimately idle). Edge-
@@ -188,7 +195,9 @@ class EmergencyGuardian(Node):
         if emit_event:
             self._publish_event(dec, action_taken=["nav2_recovery"])
 
-    def _publish_event(self, dec: gl.Decision, action_taken: list[str]) -> None:
+    def _publish_event(
+        self, dec: gl.Decision, action_taken: list[str], *, is_estop: bool = False
+    ) -> None:
         self._seq += 1
         # One clock for both the id prefix and the timestamp field (UTC epoch) so
         # they always agree for log correlation.
@@ -200,6 +209,12 @@ class EmergencyGuardian(Node):
             event_id, dec.bot, dec.reason, now, action_taken=action_taken, detail=dec.detail
         )
         self._event_pub.publish(String(data=json.dumps(event)))
+        # doc14:241-247 R2 — on a physical emergency stop only, abort any in-flight character-LLM
+        # negotiation (same event_id correlates the two, doc03:108). Recovery events do NOT abort
+        # (a blocked-timeout is the deadlock fallback the negotiation resolves, doc08a:363-372).
+        if is_estop:
+            abort = gl.build_abort(dec.reason, dec.bot, event_id)
+            self._negotiation_abort_pub.publish(String(data=json.dumps(abort)))
 
     # --- Nav2 cross-process cancel: cancel ALL goals, crash-safe with no server ---
     def _cancel_all_goals(self, bot: str) -> None:

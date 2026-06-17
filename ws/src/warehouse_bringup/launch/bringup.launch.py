@@ -245,8 +245,35 @@ def generate_launch_description() -> LaunchDescription:
         condition=IfCondition(llm_enabled),
     )
 
+    # 7. Character LLM — the bot1/bot2 negotiation layer (doc14, Slice 2). Mode A/B ONLY via the
+    # SAME positive allowlist as nav2_bridge (traffic_mode in {none,simple}): Mode A's commander
+    # fires start_negotiation on deadlock and the character node runs the baton-pass ->
+    # /negotiation/proposal (doc14:54,59-93). Mode C's negotiation (Open-RMF escalation climax) is
+    # Phase 4 (doc14:255) and an unknown/typo mode fails closed (no character node), mirroring the
+    # nav2_bridge gate. Also gated by llm:=true (meaningless without the commander). Advisory only
+    # — publish-only, never actuates (稟議制, doc14:38), so it is safe alongside the motion stack.
+    character_llm = Node(
+        package="warehouse_llm_bridge",
+        executable="character_llm",
+        name="character_llm",
+        output="screen",
+        condition=IfCondition(
+            PythonExpression(
+                ["'", llm_enabled, "' == 'true' and '", traffic_mode, "' in ('none', 'simple')"]
+            )
+        ),
+    )
+
     ld = LaunchDescription(args)
     # Add in dependency order (documents intent; runtime is self-sequencing — see docstring).
-    for action in (sim, nav2, state_cache, emergency_guardian, nav2_bridge, llm_bridge):
+    for action in (
+        sim,
+        nav2,
+        state_cache,
+        emergency_guardian,
+        nav2_bridge,
+        llm_bridge,
+        character_llm,
+    ):
         ld.add_action(action)
     return ld

@@ -176,3 +176,22 @@ def test_proposal_parses_with_gen_id() -> None:
 def test_known_locations_has_nine_keys() -> None:
     assert len(KNOWN_LOCATIONS) == 9
     assert "retreat_A" in KNOWN_LOCATIONS
+
+
+@pytest.mark.unit
+def test_command_start_negotiation_is_additive_optional() -> None:
+    # backward-compat: a Command WITHOUT the field parses with start_negotiation=None
+    cmd = Command.model_validate({"reasoning": "r", "commands": []})
+    assert cmd.start_negotiation is None
+    # present: the commander's negotiation request parses into the typed sub-object (doc14:59)
+    cmd2 = Command.model_validate(
+        {
+            "reasoning": "deadlock",
+            "commands": [],
+            "start_negotiation": {"starter": "bot1", "deadlock_or_escalation_id": "dl_1"},
+        }
+    )
+    assert cmd2.start_negotiation is not None
+    assert cmd2.start_negotiation.starter == "bot1"
+    assert cmd2.start_negotiation.deadlock_or_escalation_id == "dl_1"
+    assert cmd2.start_negotiation.context == ""  # default

@@ -48,6 +48,7 @@ import rclpy
 from rclpy.node import Node
 from std_msgs.msg import String
 from warehouse_interfaces.config import load_config
+from warehouse_interfaces.paths import warehouse_env
 from warehouse_interfaces.stores import FileGenStore, FileIdempotencyStore, FileStateStore
 from warehouse_mcp_server.gen_check import GenChecker
 from warehouse_mcp_server.nav2_client import Nav2RestForwarder
@@ -56,6 +57,13 @@ from warehouse_mcp_server.tools import WarehouseTools
 from warehouse_llm_bridge.executor import DispatchToolExecutor
 from warehouse_llm_bridge.fairness import assert_fairness, fairness_log_line, resolve_memory_policy
 from warehouse_llm_bridge.hermes_client import HermesClient
+from warehouse_llm_bridge.negotiation_messages import (
+    TOPIC_PROPOSAL,
+    TOPIC_START,
+    NegotiationStart,
+    decode_proposal,
+    encode_start,
+)
 from warehouse_llm_bridge.prompts import mode_label, resolve_commander_prompt
 from warehouse_llm_bridge.scheduler import (
     CYCLE_WAIT_SEC,
@@ -124,6 +132,12 @@ class LlmBridge(Node):
 
         self._reasoning_pub = self.create_publisher(String, "/llm/reasoning", 10)
         self._command_pub = self.create_publisher(String, "/llm/command", 10)
+        # /negotiation/start publisher (doc14:59,205): the start_negotiation MCP tool's injected
+        # negotiation_starter publishes here so the character_llm node begins the bot1/bot2
+        # baton-pass (Slice 2). Mode-agnostic: if no character_llm node runs (it is launched only
+        # for the active mode), this just publishes to a topic with no subscriber. The resulting
+        # /negotiation/proposal is fed back to the commander below (doc14:62-63).
+        self._negotiation_start_pub = self.create_publisher(String, TOPIC_START, 10)
 
         gen_store = FileGenStore()
         state_store = FileStateStore()
@@ -138,6 +152,7 @@ class LlmBridge(Node):
             gen_checker=GenChecker(gen_store, FileIdempotencyStore()),
             state_store=state_store,
             nav2_forwarder=nav2_forwarder,
+            negotiation_starter=self._publish_negotiation_start,
         )
         cycle_wait = CYCLE_WAIT_SEC.get(mode, DEFAULT_CYCLE_WAIT_SEC)
         # Bridge-owned Langfuse trace (Pattern A, doc08:354-356); fail-open if
@@ -159,12 +174,15 @@ class LlmBridge(Node):
         # ([provider, mode]); this adds the prompt discriminator. eval_sdk's tracer treats these
         # as opaque extra tags/metadata (domain-free).
         prompt_source = "code" if resolved_prompt.is_fallback else "langfuse"
+        # Deployment environment is another opaque trace tag. Resolve WAREHOUSE_ENV in the
+        # Bridge so eval_sdk remains domain-free; keep env last in the emitted tag list.
+        env_tag = f"env={warehouse_env()}"
         tracer = LangfuseTracer(
             run_id=run_id,
             session_id=session_id,
             provider=provider,
             mode=mode,
-            extra_tags=[f"prompt:{resolved_prompt.name}"],
+            extra_tags=[f"prompt:{resolved_prompt.name}", env_tag],
             extra_metadata={
                 "prompt_name": resolved_prompt.name,
                 "prompt_version": resolved_prompt.version,
@@ -192,6 +210,12 @@ class LlmBridge(Node):
             cycle_wait_sec=cycle_wait,
         )
 
+        # Ingest character-LLM proposals back into the commander (doc14:62-63): the character_llm
+        # node publishes /negotiation/proposal; the scheduler attaches an accepted (gen +/-2,
+        # doc14:142) proposal to the NEXT cycle's situation (set-then-clear). Subscribed after the
+        # scheduler exists so the callback always has a target.
+        self.create_subscription(String, TOPIC_PROPOSAL, self._on_negotiation_proposal, 10)
+
         self._loop = asyncio.new_event_loop()
         self._thread = threading.Thread(target=self._run_loop, daemon=True)
         nav2_desc = nav2_base_url if nav2_forwarder is not None else "off (Open-RMF)"
@@ -207,6 +231,30 @@ class LlmBridge(Node):
 
     def _publish_command(self, text: str) -> None:
         self._command_pub.publish(String(data=text))
+
+    def _publish_negotiation_start(self, envelope: dict) -> None:
+        """Publish ``/negotiation/start`` from the start_negotiation tool envelope (doc14:59,205).
+
+        Injected into ``WarehouseTools`` as the ``negotiation_starter``; the tool builds the
+        envelope dict and this turns it into the canonical ROS message (encode_start). Advisory
+        only (稟議制, doc14:38) — no actuation.
+        """
+        start = NegotiationStart(
+            negotiation_id=envelope["negotiation_id"],
+            gen_id=int(envelope["gen_id"]),
+            starter=envelope["starter"],
+            deadlock_or_escalation_id=envelope["deadlock_or_escalation_id"],
+            context=envelope.get("context", ""),
+        )
+        self._negotiation_start_pub.publish(String(data=encode_start(start)))
+
+    def _on_negotiation_proposal(self, msg: String) -> None:
+        """Route a ``/negotiation/proposal`` to the commander for next-cycle ingestion (doc14:62)."""
+        proposal = decode_proposal(msg.data)
+        if proposal is None:
+            self.get_logger().warning("ignoring malformed /negotiation/proposal")
+            return
+        self._scheduler.set_negotiation_proposal(proposal)
 
     def _run_loop(self) -> None:
         asyncio.set_event_loop(self._loop)

@@ -169,10 +169,29 @@ class CommandItem(_Model):
         return value
 
 
+class StartNegotiation(_Model):
+    """Commander request to start a character-LLM negotiation (doc14:59 / doc15:182-186).
+
+    Optional sub-object of ``Command``: the Mode A/C commander emits this when it decides to
+    delegate a deadlock/escalation to the bot1/bot2 negotiation (稟議制, doc14:54,59). ``gen_id``
+    is NOT here — the Bridge injects it (model-b, like every tool call); the LLM supplies only the
+    first speaker and the trigger id. ``starter`` is validated downstream by the MCP tool
+    (NEGOTIATION_STARTERS), so it stays a free ``str`` here (LLM output tolerance, like ``bot``).
+    """
+
+    starter: str
+    deadlock_or_escalation_id: str
+    context: str = ""
+
+
 class Command(_Model):
     reasoning: str
     commands: list[CommandItem] = Field(default_factory=list)
     priority_explanation: str | None = None
+    # Optional (additive, backward-compat): present only when the commander chooses to fire a
+    # character-LLM negotiation this cycle (doc14:59). The Bridge dispatches it via the
+    # start_negotiation MCP tool -> /negotiation/start. Absent/None on ordinary cycles.
+    start_negotiation: StartNegotiation | None = None
 
 
 class AgreedAction(_Model):

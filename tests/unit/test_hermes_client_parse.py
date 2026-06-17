@@ -193,3 +193,13 @@ def test_parse_command_preserves_real_unknown_location():
     assert command["commands"][0]["destination"] == "atlantis"  # untouched
     with pytest.raises(ValidationError):  # _known_location rejects a real unknown location
         Command.model_validate(command)
+
+
+@pytest.mark.unit
+def test_build_system_prompt_advertises_start_negotiation_field() -> None:
+    # The commander must be told to emit a top-level start_negotiation OBJECT (not a phantom
+    # CommandAction) — otherwise the negotiation is unreachable from the cycle (PR #287 review fix).
+    a = build_system_prompt("none")
+    assert "start_negotiation" in a and "starter" in a and "deadlock_or_escalation_id" in a
+    c = build_system_prompt("open-rmf")
+    assert "start_negotiation" in c and "starter" in c

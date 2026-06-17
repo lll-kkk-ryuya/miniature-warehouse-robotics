@@ -224,7 +224,7 @@ class EmergencyGuardian(Node):
         # twist_mux 経由で優先度100の /cmd_vel/emergency に publish（詳細は「競合状態の防止」セクション）
         stop_msg = Twist()  # all zeros
         self.cmd_vel_emergency_pubs[bot].publish(stop_msg)
-        # 3. キャラLLM交渉中なら即中断（14-character-llm-negotiation.md 参照）
+        # 3. キャラLLM交渉中なら即中断（estop 時のみ＝本 emergency_stop 内・recovery では発行しない, 14 §R2 / 08a:363-372）
         self.negotiation_abort_pub.publish(
             String(data=json.dumps({"reason": "emergency", "bot": bot, "event_id": event_id}))
         )
