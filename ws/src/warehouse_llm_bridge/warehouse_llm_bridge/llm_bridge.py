@@ -56,7 +56,7 @@ from warehouse_mcp_server.tools import WarehouseTools
 from warehouse_llm_bridge.executor import DispatchToolExecutor
 from warehouse_llm_bridge.fairness import assert_fairness, fairness_log_line, resolve_memory_policy
 from warehouse_llm_bridge.hermes_client import HermesClient
-from warehouse_llm_bridge.prompts import resolve_commander_prompt
+from warehouse_llm_bridge.prompts import mode_label, resolve_commander_prompt
 from warehouse_llm_bridge.scheduler import (
     CYCLE_WAIT_SEC,
     DEFAULT_CYCLE_WAIT_SEC,
@@ -146,7 +146,6 @@ class LlmBridge(Node):
         # create_trace_id(seed=f"{run_id}:{gen_id}"); session_id (timestamped) is only a
         # display label / fallback when WAREHOUSE_RUN_ID is unset (#108).
         run_id = resolve_run_id(os.environ.get("WAREHOUSE_RUN_ID"), session_id)
-        tracer = LangfuseTracer(run_id=run_id, session_id=session_id, provider=provider, mode=mode)
         # Mode-aware commander prompt — MANAGED in Langfuse Prompt Management (doc08
         # §Langfuse Prompt Management 方針): fetched by mode (warehouse-commander-mode-ab for
         # none/simple, warehouse-commander-mode-c for open-rmf) with the code constant as a
@@ -154,6 +153,26 @@ class LlmBridge(Node):
         # seeded / outage -> code fallback, doc08:333); the returned langfuse_prompt links the
         # generation to the managed version (Pattern A) when a real prompt was fetched.
         resolved_prompt = resolve_commander_prompt(mode, cfg)
+        # Tag the per-turn trace with which prompt was used (+ version/source) so a trace is
+        # filterable by prompt — and since the name encodes the mode, the trace also reveals the
+        # commander's mode (doc08 §Langfuse Prompt Management 方針). Mode is already a trace tag
+        # ([provider, mode]); this adds the prompt discriminator. eval_sdk's tracer treats these
+        # as opaque extra tags/metadata (domain-free).
+        prompt_source = "code" if resolved_prompt.is_fallback else "langfuse"
+        tracer = LangfuseTracer(
+            run_id=run_id,
+            session_id=session_id,
+            provider=provider,
+            mode=mode,
+            extra_tags=[f"prompt:{resolved_prompt.name}"],
+            extra_metadata={
+                "prompt_name": resolved_prompt.name,
+                "prompt_version": resolved_prompt.version,
+                "prompt_source": prompt_source,
+                # readable companion to the bare mode tag (none -> "Mode A (LLM単独交通管理)").
+                "mode_label": mode_label(mode),
+            },
+        )
         self._scheduler = BridgeScheduler(
             llm_client=HermesClient(
                 base_url,

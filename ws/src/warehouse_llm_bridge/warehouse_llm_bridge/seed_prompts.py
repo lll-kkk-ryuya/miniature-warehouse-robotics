@@ -27,10 +27,10 @@ from warehouse_llm_bridge.prompts import (
     commander_fallback_text,
 )
 
-# Stored alongside each prompt version (Langfuse ``config`` dict). Hermes routes the provider
-# server-side (``model="hermes-agent"``, doc13:171), so these are advisory metadata travelling
-# WITH the prompt version — NOT an enforced runtime model/temperature selection.
-_PROMPT_CONFIG = {"model": "hermes-agent", "temperature": 0.3}
+# Base config stored alongside each prompt version (Langfuse ``config`` dict). Hermes routes the
+# provider server-side (``model="hermes-agent"``, doc13:171), so model/temperature are advisory
+# metadata travelling WITH the version — NOT an enforced runtime selection.
+_BASE_CONFIG = {"model": "hermes-agent", "temperature": 0.3}
 
 
 def seed_specs() -> list[dict]:
@@ -38,20 +38,23 @@ def seed_specs() -> list[dict]:
 
     Mode A/B (``none``) composes base+rules; Mode C (``open-rmf``) is the standalone prompt
     (doc08 §Langfuse Prompt Management 方針). Each is labelled ``production`` (the version pin
-    compared runs share, doc08 §比較検証ログ).
+    compared runs share, doc08 §比較検証ログ). The ``config.traffic_modes`` makes each prompt
+    SELF-DESCRIBING — it records which ``traffic_mode`` value(s) the prompt is for, so a reader
+    in the Langfuse UI sees the mapping (``warehouse-commander-mode-ab`` → none/simple = Mode A/B;
+    ``warehouse-commander-mode-c`` → open-rmf = Mode C; config/warehouse.base.yaml:5).
     """
     return [
         {
             "name": PROMPT_NAME_MODE_AB,
             "prompt": commander_fallback_text("none"),
             "labels": [DEFAULT_PROMPT_LABEL],
-            "config": _PROMPT_CONFIG,
+            "config": {**_BASE_CONFIG, "traffic_modes": ["none", "simple"]},
         },
         {
             "name": PROMPT_NAME_MODE_C,
             "prompt": commander_fallback_text("open-rmf"),
             "labels": [DEFAULT_PROMPT_LABEL],
-            "config": _PROMPT_CONFIG,
+            "config": {**_BASE_CONFIG, "traffic_modes": ["open-rmf"]},
         },
     ]
 

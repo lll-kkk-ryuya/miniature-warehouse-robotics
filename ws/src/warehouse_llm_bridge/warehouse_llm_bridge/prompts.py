@@ -46,6 +46,28 @@ def prompt_name(mode: str) -> str:
     return PROMPT_NAME_MODE_AB if mode in MODE_A_TRAFFIC_MODES else PROMPT_NAME_MODE_C
 
 
+# traffic_mode (config の凍結値・それ自体は分かりにくい) -> 人間可読の Mode ラベル。trace の
+# metadata に載せ、cryptic な none/simple/open-rmf の代わりに「Mode A (LLM単独交通管理)」等で
+# 読めるようにする（タグ側の bare traffic_mode 値は Phase-4 比較軸として温存）。
+# 正本: config/warehouse.base.yaml:5「none=Mode A / simple=Mode B / open-rmf=Mode C」/
+#       .claude/CLAUDE.md（mode-a=LLM単独交通管理 / mode-c=LLM + Open-RMF）/ doc08:360。
+MODE_LABELS = {
+    "none": "Mode A (LLM単独交通管理)",
+    "simple": "Mode B (LLM単独・簡易交通管理)",
+    "open-rmf": "Mode C (LLM + Open-RMF)",
+}
+
+
+def mode_label(mode: str) -> str:
+    """Human-readable Mode label for a ``traffic_mode`` (e.g. ``Mode A (LLM単独交通管理)``).
+
+    Unknown mode -> the raw value (never raises). The bare ``traffic_mode`` value (none / simple
+    / open-rmf) stays the Phase-4 comparison tag; this label is just a readable companion that
+    rides in the trace metadata so an operator does not have to decode none/simple/open-rmf.
+    """
+    return MODE_LABELS.get(mode, mode)
+
+
 def commander_fallback_text(mode: str) -> str:
     """The fail-open fallback prompt text — the code-constant composition (doc08a/08c).
 
@@ -58,15 +80,21 @@ def commander_fallback_text(mode: str) -> str:
 
 @dataclass
 class ResolvedPrompt:
-    """A resolved commander prompt: the system-prompt text + optional trace-link object.
+    """A resolved commander prompt: text + identity (for trace tagging) + trace-link object.
 
-    ``langfuse_prompt`` (the SDK prompt object) is passed as ``langfuse_prompt=`` to link the
-    generation for prompt-level analytics (Pattern A, doc08:375); it is ``None`` when the code
-    fallback was used (so a fallback is never mislabelled as a managed prompt version).
+    ``name`` is the Langfuse prompt name resolved for this mode (config override or per-mode
+    default) — used to TAG the trace so a trace is filterable by which prompt was used (and the
+    name encodes the mode, doc08 §Langfuse Prompt Management 方針). ``version`` is the managed
+    prompt version when a real prompt was fetched, else ``None``. ``langfuse_prompt`` (the SDK
+    prompt object) is passed as ``langfuse_prompt=`` to link the generation for prompt-level
+    analytics (Pattern A, doc08:375); it is ``None`` when the code fallback was used (so a
+    fallback is never mislabelled as a managed prompt version).
     """
 
     text: str
+    name: str
     langfuse_prompt: object | None = None
+    version: int | None = None
     is_fallback: bool = True
 
 
@@ -104,15 +132,21 @@ def resolve_commander_prompt(mode: str, cfg: dict) -> ResolvedPrompt:
     """
     fallback = commander_fallback_text(mode)
     pcfg = _prompts_config(cfg)
-    source = pcfg.get("source", DEFAULT_PROMPT_SOURCE)
-    if source == "code":
-        return ResolvedPrompt(text=fallback, langfuse_prompt=None, is_fallback=True)
-
+    # The prompt name (config override or per-mode default) is resolved UP FRONT because it
+    # TAGS the trace in EVERY branch (doc08 §Langfuse Prompt Management 方針 — the trace is
+    # filterable by which prompt was used, and the name encodes the mode). ``names`` may be
+    # absent / a non-dict (misconfigured YAML scalar): guard with isinstance so this never
+    # raises (the per-mode default name is used when names is malformed/absent).
     key = "mode_ab" if mode in MODE_A_TRAFFIC_MODES else "mode_c"
-    # ``names`` may be absent / a non-dict (misconfigured YAML scalar): guard with isinstance
-    # so this never raises (the per-mode default name is used when names is malformed/absent).
     names_cfg = pcfg.get("names")
     name = (names_cfg.get(key) if isinstance(names_cfg, dict) else None) or prompt_name(mode)
+
+    source = pcfg.get("source", DEFAULT_PROMPT_SOURCE)
+    if source == "code":
+        return ResolvedPrompt(
+            text=fallback, name=name, langfuse_prompt=None, version=None, is_fallback=True
+        )
+
     label = pcfg.get("label", DEFAULT_PROMPT_LABEL)
     cache_ttl = pcfg.get("cache_ttl_seconds", DEFAULT_CACHE_TTL_SECONDS)
 
@@ -131,16 +165,26 @@ def resolve_commander_prompt(mode: str, cfg: dict) -> ResolvedPrompt:
                 "(fail-open, doc08:333)",
                 name,
             )
-            return ResolvedPrompt(text=fallback, langfuse_prompt=None, is_fallback=True)
+            return ResolvedPrompt(
+                text=fallback, name=name, langfuse_prompt=None, version=None, is_fallback=True
+            )
         if is_fb:
             log.warning(
                 "langfuse prompt %r unavailable; using code fallback (fail-open, doc08:333)",
                 name,
             )
-        # Only link a genuinely-fetched prompt; never link the SDK's fallback object (it has
-        # no real version) so prompt-level analytics stay accurate.
+            # SDK fallback object: keep its text but never link it / record a version (it has
+            # no real managed version) so prompt-level analytics stay accurate.
+            return ResolvedPrompt(
+                text=text, name=name, langfuse_prompt=None, version=None, is_fallback=True
+            )
+        # genuine managed prompt fetched: link it + record its version for the trace tag.
         return ResolvedPrompt(
-            text=text, langfuse_prompt=None if is_fb else prompt, is_fallback=is_fb
+            text=text,
+            name=name,
+            langfuse_prompt=prompt,
+            version=getattr(prompt, "version", None),
+            is_fallback=False,
         )
     except Exception as exc:  # SDK absent / not-found / auth / network — fail-open to code
         log.warning(
@@ -148,4 +192,6 @@ def resolve_commander_prompt(mode: str, cfg: dict) -> ResolvedPrompt:
             name,
             exc,
         )
-        return ResolvedPrompt(text=fallback, langfuse_prompt=None, is_fallback=True)
+        return ResolvedPrompt(
+            text=fallback, name=name, langfuse_prompt=None, version=None, is_fallback=True
+        )
