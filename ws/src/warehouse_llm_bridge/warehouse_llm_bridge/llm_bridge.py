@@ -48,6 +48,7 @@ import rclpy
 from rclpy.node import Node
 from std_msgs.msg import String
 from warehouse_interfaces.config import load_config
+from warehouse_interfaces.paths import warehouse_env
 from warehouse_interfaces.stores import FileGenStore, FileIdempotencyStore, FileStateStore
 from warehouse_mcp_server.gen_check import GenChecker
 from warehouse_mcp_server.nav2_client import Nav2RestForwarder
@@ -145,7 +146,14 @@ class LlmBridge(Node):
         # create_trace_id(seed=f"{run_id}:{gen_id}"); session_id (timestamped) is only a
         # display label / fallback when WAREHOUSE_RUN_ID is unset (#108).
         run_id = resolve_run_id(os.environ.get("WAREHOUSE_RUN_ID"), session_id)
-        tracer = LangfuseTracer(run_id=run_id, session_id=session_id, provider=provider, mode=mode)
+        # Deployment-environment trace tag (env=dev/stg/prod) so Langfuse can filter dev/stg/prod
+        # runs apart (doc20 §8.1 / doc08 §trace所有 / doc13:526,607 の `env=` 慣用). Resolved here
+        # in the Bridge and passed to the domain-free tracer as an opaque label (eval_sdk does NOT
+        # read WAREHOUSE_ENV). warehouse_env() validates and defaults to dev (paths.py:14-19).
+        env_tag = f"env={warehouse_env()}"
+        tracer = LangfuseTracer(
+            run_id=run_id, session_id=session_id, provider=provider, mode=mode, env=env_tag
+        )
         # Mode-aware commander prompt: Mode A/B (none/simple) get the base prompt + deadlock
         # detection + yield rules (MODE_A_RULES, #181); Mode C (open-rmf) gets the standalone
         # MODE_C_PROMPT (doc08c:138-180, #203), since Open-RMF owns traffic (doc14:164 /

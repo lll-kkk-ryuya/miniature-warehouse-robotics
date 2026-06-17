@@ -154,3 +154,48 @@ def test_langfuse_tracer_uses_v49_observation_api(monkeypatch: pytest.MonkeyPatc
     assert fake.spans[0].updates == []
     assert all(context.closed for context in fake.contexts)
     assert all(context.closed for context in fake.attribute_contexts)
+
+
+@pytest.mark.unit
+def test_langfuse_tracer_appends_env_tag(monkeypatch: pytest.MonkeyPatch) -> None:
+    # env (e.g. "env=dev") is appended LAST to the trace tag list so Langfuse can filter
+    # dev/stg/prod runs apart (doc20 §8.1 / doc08 §trace所有). eval_sdk stays domain-free: the
+    # caller passes the finished opaque string and the SDK treats it as just another tag.
+    fake = _FakeLangfuseClient()
+    monkeypatch.setattr(LangfuseTracer, "_client", lambda self: fake)
+    tracer = LangfuseTracer(
+        run_id="run_x", session_id="session_x", provider="provider_x", mode="none", env="env=dev"
+    )
+
+    async def _run() -> None:
+        async with tracer.turn(3):
+            pass
+
+    asyncio.run(_run())
+
+    assert fake.propagations == [
+        {
+            "session_id": "session_x",
+            "tags": ["provider_x", "none", "env=dev"],
+            "metadata": {"gen_id": 3, "trace_id": TRACE},
+        }
+    ]
+
+
+@pytest.mark.unit
+def test_langfuse_tracer_omits_env_tag_when_none(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Back-compat: callers that pass only provider/mode (env defaults to None) emit the
+    # byte-identical [provider, mode] tag list — the env element is dropped, not a None entry.
+    fake = _FakeLangfuseClient()
+    monkeypatch.setattr(LangfuseTracer, "_client", lambda self: fake)
+    tracer = LangfuseTracer(
+        run_id="run_x", session_id="session_x", provider="provider_x", mode="none"
+    )
+
+    async def _run() -> None:
+        async with tracer.turn(3):
+            pass
+
+    asyncio.run(_run())
+
+    assert fake.propagations[0]["tags"] == ["provider_x", "none"]

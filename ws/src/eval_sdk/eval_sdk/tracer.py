@@ -56,7 +56,7 @@ class LangfuseTracer(Tracer):
     """Caller-owned Langfuse tracing; lazy and FULLY fail-open.
 
     Constructed with the run identity; computes a deterministic per-work ``trace_id`` and
-    attaches ``session_id`` + tags ``[provider, mode]`` + ``gen_id`` metadata to the trace.
+    attaches ``session_id`` + tags ``[provider, mode, env?]`` + ``gen_id`` metadata to the trace.
     langfuse is imported lazily (not a pytest/ruff dependency). The pinned v4.9 OTEL API
     surface is ``client.create_trace_id`` / ``start_as_current_observation`` /
     ``propagate_attributes``; **every langfuse interaction is wrapped so that ANY error (missing pip
@@ -64,16 +64,23 @@ class LangfuseTracer(Tracer):
     raises into the caller's loop** (fail-open, doc21 §4). Kept isolated here so the rest of
     the system is langfuse-agnostic.
 
-    ``provider`` / ``mode`` are caller-supplied tag strings (the eval discriminators); the
-    SDK treats them as opaque labels.
+    ``provider`` / ``mode`` / optional ``env`` are caller-supplied tag strings (the eval
+    discriminators; ``env`` e.g. ``"env=dev"`` for deployment-environment separation). The SDK
+    treats them as opaque labels. ``env`` is appended last and omitted when ``None`` (so callers
+    that pass only provider/mode emit the byte-identical ``[provider, mode]`` as before). This
+    package stays domain-free: the caller resolves the env string — it is NOT read from
+    ``WAREHOUSE_ENV`` here. NOTE Langfuse stores tags sorted (filter by value, not position).
     """
 
-    def __init__(self, *, run_id: str, session_id: str, provider: str, mode: str) -> None:
+    def __init__(
+        self, *, run_id: str, session_id: str, provider: str, mode: str, env: str | None = None
+    ) -> None:
         """Wire the run-level identity used to derive each work unit's trace."""
         self._run_id = run_id
         self._session_id = session_id
         self._provider = provider
         self._mode = mode
+        self._env = env
         self._unavailable = False
 
     def _client(self) -> object | None:
@@ -164,7 +171,7 @@ class LangfuseTracer(Tracer):
                 attrs_cm = self._propagate_attributes(
                     client,
                     session_id=self._session_id,
-                    tags=[self._provider, self._mode],
+                    tags=[t for t in (self._provider, self._mode, self._env) if t is not None],
                     metadata=metadata,
                 )
         try:

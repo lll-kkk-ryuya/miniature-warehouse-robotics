@@ -6,7 +6,7 @@
 - **消費する契約**: **なし**。純 stdlib のみ。`langfuse>=4.9,<5` は **optional pip extra**（lazy import・fail-open・rosdep キーにしない・doc21 §12.3）。
 - **生産する契約 / API（凍結契約ではない＝doc21 はまだ提案。Phase 2 で `ScoreSpec` 名のみ contract 化）**:
   - `eval_sdk.seed`: `seed_for(run_id, work_id)`（**唯一の決定的 join key**＝旧 `trace_id.seed_for`↔`tracing.trace_seed` の重複を1本化）/ `normalize_trace_id` / `derive_trace_id(seed, *, create_fn=None)` / `resolve_run_id(env_run_id, fallback)`。
-  - `eval_sdk.tracer`: `Tracer`(ABC) / `NoopTracer` / `LangfuseTracer(run_id, session_id, provider, mode)`。API は旧 `tracing.py` と同一（`turn(gen_id)` / `tool_span(name, gen_id)`）＝挙動不変。
+  - `eval_sdk.tracer`: `Tracer`(ABC) / `NoopTracer` / `LangfuseTracer(run_id, session_id, provider, mode, env=None)`。`turn(gen_id)` / `tool_span(name, gen_id)`。optional `env`（opaque tag 文字列・例 `"env=dev"`）は trace tags の**末尾**へ追加し `None` なら省略＝既存呼出と byte-identical（domain 非依存維持＝`WAREHOUSE_ENV` をここで読まない・caller が解決。#88）。
   - `eval_sdk.sink`: `FailOpenScoreSink`（generic `score(trace_id, name, value, data_type, metadata=None)` + `flush()` + `from_env(public_key_env, secret_key_env)`、`_fallback_name` フック）/ `DATA_TYPE_{CATEGORICAL,NUMERIC,BOOLEAN}` / `build_client_from_env`。
   - `eval_sdk.stats`: `percentile` / `distance_traveled` / `path_lengths` / `DistanceAccumulator`。
   - `eval_sdk.cost`: `TokenPrice` / `token_cost(usage, price)` / `resolve_price(model, table, *, default)` / `cost_for_model(...)`（**価格表は注入**＝provider 固有の表は domain 側）。
