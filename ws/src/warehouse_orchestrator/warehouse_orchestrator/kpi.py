@@ -37,12 +37,19 @@ distance), the live Langfuse score-send (needs ``trace_id`` — see
 
 import argparse
 import json
-import math
 import sys
 from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
+
+# Pure stats helpers were extracted to the domain-free eval_sdk.stats (doc21 §1c/§4); they are
+# re-exported here so the module's public surface (and the existing tests/consumers) are
+# unchanged. ``_percentile`` keeps its private alias (completion_stats uses it); ``efficiency``
+# stays a warehouse name over the generic ``path_lengths``.
+from eval_sdk.stats import DistanceAccumulator, distance_traveled
+from eval_sdk.stats import path_lengths as compute_efficiency
+from eval_sdk.stats import percentile as _percentile
 
 from warehouse_orchestrator.audit_reader import (
     RESULT_ERROR,
@@ -64,6 +71,25 @@ COMMAND_TOOLS = frozenset(
 READONLY_TOOLS = frozenset({"get_fleet_status", "get_task_queue"})
 CANCEL_TOOL = "cancel_task"
 
+# Public surface (also marks the eval_sdk.stats re-exports as intentional, not dead imports).
+__all__ = [
+    "latest_gen_id",
+    "_percentile",
+    "distance_traveled",
+    "compute_efficiency",
+    "DistanceAccumulator",
+    "ResultTally",
+    "CompletionRecord",
+    "CompletionStats",
+    "KpiReport",
+    "cancelled_task_ids",
+    "compute_kpis",
+    "pair_completion_times",
+    "completion_stats",
+    "format_report",
+    "main",
+]
+
 
 def latest_gen_id(entries: Sequence[AuditEntry]) -> int | None:
     """The highest ``gen_id`` in the audit log, or ``None`` — the node's trace seed (#73).
@@ -76,68 +102,10 @@ def latest_gen_id(entries: Sequence[AuditEntry]) -> int | None:
     return max(gens) if gens else None
 
 
-def _percentile(values: Sequence[float], pct: float) -> float | None:
-    """Linear-interpolation percentile (``pct`` in 0-100); ``None`` for empty input."""
-    if not values:
-        return None
-    ordered = sorted(values)
-    if len(ordered) == 1:
-        return ordered[0]
-    rank = (len(ordered) - 1) * (pct / 100.0)
-    low = int(rank)
-    high = min(low + 1, len(ordered) - 1)
-    if low == high:
-        return ordered[low]
-    return ordered[low] + (ordered[high] - ordered[low]) * (rank - low)
-
-
-# ── efficiency (= 総移動距離, doc08 §比較指標; source /bot{n}/odom, doc09:79) ──────────
-
-
-def distance_traveled(poses: Sequence[tuple[float, float]]) -> float:
-    """Total path length = sum of consecutive Euclidean deltas over ``(x, y)`` poses."""
-    total = 0.0
-    previous: tuple[float, float] | None = None
-    for pose in poses:
-        if previous is not None:
-            total += math.hypot(pose[0] - previous[0], pose[1] - previous[1])
-        previous = pose
-    return total
-
-
-def compute_efficiency(
-    per_robot_poses: dict[str, Sequence[tuple[float, float]]],
-) -> dict[str, float]:
-    """Per-robot total travel distance (the ``efficiency`` NUMERIC score, doc08 §比較指標)."""
-    return {robot: distance_traveled(poses) for robot, poses in per_robot_poses.items()}
-
-
-@dataclass
-class DistanceAccumulator:
-    """Incrementally sums travel distance per robot from a live ``/bot{n}/odom`` stream.
-
-    Fed one pose per Odometry message by the ``kpi_collector`` node; kept here as pure logic
-    so it is unit-testable without rclpy (doc16 §11). ``efficiency`` = 総移動距離 (doc08
-    §比較指標; odom source doc09:79).
-    """
-
-    _totals: dict[str, float] = field(default_factory=dict)
-    _last: dict[str, tuple[float, float]] = field(default_factory=dict)
-
-    def add(self, robot: str, x: float, y: float) -> None:
-        """Add one ``(x, y)`` pose for ``robot``, accumulating the step distance."""
-        last = self._last.get(robot)
-        if last is not None:
-            self._totals[robot] = self._totals.get(robot, 0.0) + math.hypot(
-                x - last[0], y - last[1]
-            )
-        else:
-            self._totals.setdefault(robot, 0.0)
-        self._last[robot] = (x, y)
-
-    def totals(self) -> dict[str, float]:
-        """A copy of the per-robot accumulated distances (metres)."""
-        return dict(self._totals)
+# NOTE: ``_percentile`` / ``distance_traveled`` / ``compute_efficiency`` (= eval_sdk
+# ``path_lengths``) / ``DistanceAccumulator`` were extracted to :mod:`eval_sdk.stats` (doc21 §4)
+# and are imported above (behaviour unchanged); efficiency = 総移動距離 (doc08 §比較指標; odom
+# source doc09:79).
 
 
 @dataclass

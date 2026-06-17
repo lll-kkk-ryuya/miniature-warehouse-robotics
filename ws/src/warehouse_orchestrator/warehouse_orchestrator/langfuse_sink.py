@@ -1,44 +1,58 @@
-"""Fail-open Langfuse **v4** score adapter (doc08 §Langfuse / doc13 §7.5).
+"""Fail-open Langfuse **v4** score adapter for the warehouse KPIs (doc08 §Langfuse / doc13 §7.5).
 
-The #6 orchestrator self-sends the documented KPI scores to Langfuse (doc08 §比較指標):
-``result`` (CATEGORICAL string), ``task_completion_time`` (NUMERIC seconds) and
-``efficiency`` (NUMERIC = 総移動距離). The Langfuse Python SDK is **v4 (>=4.7,<5)**: the v2
-``score()`` was removed, so the current call is
-``create_score(trace_id, name, value, data_type, metadata)`` followed by ``flush()``
-(doc08:338-350). A score is keyed by a **32-hex-no-dash** ``trace_id`` that #4 and #6 derive
-identically (see :mod:`trace_id`; doc13:516,519) — no frozen-contract change.
+Thin warehouse adapter over :class:`eval_sdk.sink.FailOpenScoreSink` (doc21 §1c — the
+orchestrator switched to import the extracted core). The generic send engine (normalize →
+``create_score`` → ``TypeError`` fallback → fail-open → ``flush``) and the data-type constants
+now live ONCE in :mod:`eval_sdk.sink`; what stays HERE is the **warehouse KPI vocabulary** and
+its score-name fallback policy:
 
-Design:
-* **fail-open** (doc08:333/350) — a missing SDK / missing keys / network errors are swallowed;
-  the caller's loop never breaks. ``flush()`` is best-effort.
-* **lazy/optional import** — ``langfuse`` is imported on demand (pip extra) so the package
-  builds and tests run with langfuse absent.
-* **trace_id-gated** — every send no-ops (returns ``False``) without a usable trace_id.
+* the documented KPI score names (``result`` / ``task_completion_time`` / ``efficiency``) and
+  the Phase 3-4 *reserved* names (doc08:489-496) — domain manifest, kept domain-side (doc21 §3 (c)).
+* the ``HERMES_LANGFUSE_*`` credential env var names (eval_sdk hard-codes no env name).
+* the metadata-less fallback that embeds the robot in the score NAME (``result_bot1``,
+  doc08:367) — supplied via the :meth:`FailOpenScoreSink._fallback_name` hook.
 
-``robot``/``mode``/``provider``/``gen_id`` ride in the score ``metadata`` (Langfuse scores
-carry no tags, doc08:367). If the pinned SDK rejects ``metadata=``/``data_type=`` the call
-retries with the minimal signature and embeds the robot in the score NAME (``result_bot1``)
-— the documented fallback (doc08:367).
-
-Pure stdlib at import time (no rclpy, no hard ``langfuse`` dep) → unit-testable per doc16 §11.
+``robot``/``mode``/``provider``/``gen_id`` ride in the score ``metadata`` (Langfuse scores carry
+no tags, doc08:367). Pure stdlib at import time (no rclpy, no hard ``langfuse`` dep) →
+unit-testable per doc16 §11.
 """
 
 import logging
-import os
+
+from eval_sdk.sink import (
+    DATA_TYPE_BOOLEAN,
+    DATA_TYPE_CATEGORICAL,
+    DATA_TYPE_NUMERIC,
+    FailOpenScoreSink,
+    build_client_from_env,
+)
 
 from warehouse_orchestrator.kpi import KpiReport
 from warehouse_orchestrator.tags import TAG_KEY_ROBOT
-from warehouse_orchestrator.trace_id import normalize_trace_id
 
 log = logging.getLogger(__name__)
 
-# Langfuse score names + data types (doc08:358-362 / §比較指標).
+__all__ = [
+    "SCORE_RESULT",
+    "SCORE_TASK_COMPLETION_TIME",
+    "SCORE_EFFICIENCY",
+    "DATA_TYPE_CATEGORICAL",
+    "DATA_TYPE_NUMERIC",
+    "DATA_TYPE_BOOLEAN",
+    "SCORE_COLLISION_FREE",
+    "SCORE_REPLANS",
+    "SCORE_MEAN_DECISION_LATENCY",
+    "SCORE_DEADLOCK",
+    "SCORE_NEGOTIATION_ROUNDS",
+    "SCORE_AGREEMENT_REACHED",
+    "LangfuseScoreSink",
+]
+
+# Langfuse score names (doc08:358-362 / §比較指標). Data-type constants are re-exported from
+# eval_sdk.sink (the generic surface); the names below are the warehouse KPI vocabulary.
 SCORE_RESULT = "result"
 SCORE_TASK_COMPLETION_TIME = "task_completion_time"
 SCORE_EFFICIENCY = "efficiency"
-DATA_TYPE_CATEGORICAL = "CATEGORICAL"
-DATA_TYPE_NUMERIC = "NUMERIC"
-DATA_TYPE_BOOLEAN = "BOOLEAN"  # Langfuse v4 score type for collision_free / agreement_reached.
 
 # Phase 3-4 reserved score names (doc08 §比較計測の追加設計 :489-496). The exact strings are
 # frozen in docs, so reserve them here once — #4/#6 and tests share the names and a later producer
@@ -53,30 +67,15 @@ SCORE_DEADLOCK = "deadlock"  # NUMERIC, doc08:494 (per-run detect count; #55/#12
 SCORE_NEGOTIATION_ROUNDS = "negotiation_rounds"  # NUMERIC
 SCORE_AGREEMENT_REACHED = "agreement_reached"  # BOOLEAN
 
-# Langfuse credential env vars (doc08 §Langfuse 設定). Presence gates client construction;
-# absence keeps the adapter disabled (fail-open).
+# Langfuse credential env vars (doc08 §Langfuse 設定). Their names are warehouse-side; eval_sdk
+# gates on whatever names we pass it (doc21 §8). Absence keeps the adapter disabled (fail-open).
 _ENV_PUBLIC_KEY = "HERMES_LANGFUSE_PUBLIC_KEY"
 _ENV_SECRET_KEY = "HERMES_LANGFUSE_SECRET_KEY"
 
 
-def _credentials_present() -> bool:
-    return bool(os.environ.get(_ENV_PUBLIC_KEY) and os.environ.get(_ENV_SECRET_KEY))
-
-
-def _build_default_client():  # pragma: no cover - exercised only with the SDK installed
-    """Best-effort construct a v4 Langfuse client via ``get_client()``; ``None`` if absent."""
-    if not _credentials_present():
-        return None
-    try:
-        from langfuse import get_client  # v4 entrypoint (doc08:339); lazy/optional (pip extra)
-    except ImportError:
-        log.info("langfuse SDK not installed; KPI score-send disabled (fail-open)")
-        return None
-    try:
-        return get_client()
-    except Exception as exc:
-        log.warning("langfuse client init failed; score-send disabled (fail-open): %s", exc)
-        return None
+def _build_default_client() -> object | None:
+    """Best-effort v4 client from the warehouse ``HERMES_LANGFUSE_*`` env (eval_sdk seam)."""
+    return build_client_from_env(_ENV_PUBLIC_KEY, _ENV_SECRET_KEY)
 
 
 def _name_with_robot(name: str, metadata: dict | None) -> str:
@@ -85,80 +84,38 @@ def _name_with_robot(name: str, metadata: dict | None) -> str:
     return f"{name}_{robot}" if robot else name
 
 
-class LangfuseScoreSink:
-    """Sends the documented KPI scores via Langfuse v4, or no-ops when it cannot (fail-open).
+class LangfuseScoreSink(FailOpenScoreSink):
+    """Sends the documented warehouse KPI scores via Langfuse v4, or no-ops (fail-open).
 
-    Construct with an explicit ``client`` (e.g. a fake in tests) or let it lazily build one
-    from env credentials. With no client and no credentials it is **disabled** — every send
-    returns ``False`` without raising.
+    Construct with an explicit ``client`` (e.g. a fake in tests) or let it lazily build one from
+    the ``HERMES_LANGFUSE_*`` env credentials. With no client and no credentials it is
+    **disabled** — every send returns ``False`` without raising. The generic send/flush/gate
+    logic is inherited from :class:`eval_sdk.sink.FailOpenScoreSink`; this subclass adds the KPI
+    send methods and the robot-name fallback (doc08:367).
     """
 
     def __init__(self, client: object | None = None, *, enabled: bool | None = None) -> None:
-        self._client = client if client is not None else _build_default_client()
-        self._enabled = self._client is not None if enabled is None else enabled
+        super().__init__(client if client is not None else _build_default_client(), enabled=enabled)
 
-    @property
-    def enabled(self) -> bool:
-        return self._enabled and self._client is not None
-
-    def _create_score(
-        self, trace_id: str | None, name: str, value: object, data_type: str, metadata: dict
-    ) -> bool:
-        """``create_score(...)`` if possible; return whether a score was sent (v4, doc08:341).
-
-        No-op (``False``) when disabled or ``trace_id`` is falsy/invalid. On ``TypeError``
-        (pinned SDK lacks ``metadata=``/``data_type=``) retries the minimal signature with the
-        robot embedded in the name (doc08:367). Any other SDK error is swallowed (fail-open).
-        """
-        if not self.enabled or not trace_id:
-            return False
-        try:
-            tid = normalize_trace_id(trace_id)
-        except ValueError:
-            log.warning("invalid trace_id %r; score %s skipped", trace_id, name)
-            return False
-        try:
-            self._client.create_score(
-                trace_id=tid, name=name, value=value, data_type=data_type, metadata=metadata
-            )
-        except TypeError:
-            try:
-                self._client.create_score(
-                    trace_id=tid, name=_name_with_robot(name, metadata), value=value
-                )
-            except Exception as exc:
-                log.warning("create_score(%s) fallback failed (fail-open): %s", name, exc)
-                return False
-            return True
-        except Exception as exc:
-            log.warning("create_score(%s) failed (fail-open): %s", name, exc)
-            return False
-        return True
+    def _fallback_name(self, name: str, metadata: dict | None) -> str:
+        """Embed the robot in the score name on the metadata-less retry (doc08:367)."""
+        return _name_with_robot(name, metadata)
 
     def send_result(self, trace_id: str | None, value: str, **metadata: object) -> bool:
         """Send the ``result`` CATEGORICAL score (doc08:341). ``value`` e.g. "success"."""
-        return self._create_score(trace_id, SCORE_RESULT, value, DATA_TYPE_CATEGORICAL, metadata)
+        return self.score(trace_id, SCORE_RESULT, value, DATA_TYPE_CATEGORICAL, metadata)
 
     def send_task_completion_time(
         self, trace_id: str | None, seconds: float, **metadata: object
     ) -> bool:
         """Send the ``task_completion_time`` NUMERIC score in seconds (doc08:344)."""
-        return self._create_score(
+        return self.score(
             trace_id, SCORE_TASK_COMPLETION_TIME, seconds, DATA_TYPE_NUMERIC, metadata
         )
 
     def send_efficiency(self, trace_id: str | None, meters: float, **metadata: object) -> bool:
         """Send the ``efficiency`` NUMERIC score = total travel distance in metres (doc08 §比較指標)."""
-        return self._create_score(trace_id, SCORE_EFFICIENCY, meters, DATA_TYPE_NUMERIC, metadata)
-
-    def flush(self) -> None:
-        """Flush buffered scores (doc08:347 — a short-lived scorer must flush before exit)."""
-        if not self.enabled:
-            return
-        try:
-            self._client.flush()
-        except Exception as exc:
-            log.warning("langfuse flush failed (fail-open): %s", exc)
+        return self.score(trace_id, SCORE_EFFICIENCY, meters, DATA_TYPE_NUMERIC, metadata)
 
     def send_report(self, report: KpiReport, trace_id: str | None, **metadata: object) -> int:
         """Best-effort send of the scores derivable from ``report``; returns #sent.
