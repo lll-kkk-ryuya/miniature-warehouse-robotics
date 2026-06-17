@@ -118,7 +118,7 @@ LOCATIONS = {
 
 ## サイクル設計
 
-サイクルは**レスポンス駆動**: 前回の応答受信（またはタイムアウト）後に一定時間待機して次サイクルを発火する。固定間隔ポーリングではない。
+サイクルは**レスポンス駆動**: 前回の応答受信（またはタイムアウト）後に一定時間待機して次サイクルを発火する。固定間隔ポーリングではない。待機時間は **config 駆動**: `cycle.mode_a_seconds`/`mode_c_seconds`（＝総サイクル長）を `warehouse_llm_bridge.scheduler.resolve_cycle_wait` が **待機=総−応答(~2s)** に変換して使う（環境別 overlay/`WAREHOUSE__*` 上書き可・doc19。欠落/不正/非正は code 既定 1.0/3.0s へ fail-open）。**dev（Gazebo・エンタメ回）は Mode A=`mode_a_seconds:120`（~2分スパン・`config/dev/warehouse.yaml`）に延長**し、目的（`WAREHOUSE_TASKS` シード）を与えて Nav2 が自走・約2分ごとに司令官が再評価する。延長時のトレードオフ＝司令官が交通管理も担う Mode A はデッドロック解消が最大~2分遅れる（衝突回避は Emergency Guardian 50ms+collision_monitor が独立に効き安全側不変・doc12 / 本節「Mode A / Mode C への適用」）。
 
 ### モード別サイクル長
 
@@ -138,7 +138,7 @@ LOCATIONS = {
 ### タイムアウトとフォールバック
 
 - **サイクル内タイムアウト**: 2.5秒（応答が2.5秒以内に返らなければ前回の指示を継続し、次サイクルへ進む）
-- **HTTP接続障害**: 5秒以上応答なしで API 障害判断、Nav2 単体での自律走行にフォールバック（下記フォールバック設計参照）
+- **HTTP接続障害**: 5秒以上応答なしで API 障害判断、Nav2 単体での自律走行にフォールバック（下記フォールバック設計参照）。**判定は時間基準（`cycle_wait` 非依存）**: タイムアウト(2.5s)の連続 `ceil(5/2.5)=2` 回で数える（`scheduler.OUTAGE_NO_RESPONSE_SEC`/`BridgeScheduler.__init__`）。応答後アイドル待機（`cycle_wait`＝config 駆動で最大~120s）は意図的アイドルで「無応答」に数えない。`nav2_only` は可観測フラグ（ループは毎サイクル再試行）。
 
 ### タイムライン例（Mode A の場合）
 

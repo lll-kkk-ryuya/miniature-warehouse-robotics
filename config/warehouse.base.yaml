@@ -25,10 +25,14 @@ safety:
   # で正規化。TODO: Phase 1 で実機 Yahboom ドライバの実スケールを計測し確定（safety.md / doc16 §11 estop テスト）。
   battery_percentage_scale: percent
 
-# LLM サイクル長（秒）。Mode A=3 / Mode C=5（doc03）
+# LLM サイクル長（総サイクル＝秒）。Mode A=3 / Mode C=5（doc03 / doc08:125-128 総サイクル長列 / README:88-91）。
+# scheduler が「応答後アイドル待機 = 総サイクル − 応答(~2s, doc08:125)」に変換して使う
+# （warehouse_llm_bridge.scheduler.resolve_cycle_wait。fail-open: 欠落/不正/非正は code 既定 1.0/3.0s へ縮退）。
+# レスポンス駆動: 実サイクル ≈ 待機 + 応答(≤2.5s) で固定間隔ポーリングではない（doc08:121）。
+# 環境で上書き可（dev は演出のため Mode A を延長＝config/dev/warehouse.yaml）。
 cycle:
-  mode_a_seconds: 3
-  mode_c_seconds: 5
+  mode_a_seconds: 3   # Mode A/B (none/simple): 反応優先 → 待機 ~1s（doc08:127）
+  mode_c_seconds: 5   # Mode C (open-rmf): コスト最小 → 待機 ~3s（doc08:128）
 
 # 倉庫レイアウト上の地点キー。キーは 08-llm-bridge-common.md の LOCATIONS と完全一致させる
 # （Policy Gate の known_locations 検証用）。座標は暫定値（Phase 2 地図確定後に実測で確定）。

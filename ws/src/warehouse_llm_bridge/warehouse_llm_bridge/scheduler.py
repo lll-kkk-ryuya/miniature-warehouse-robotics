@@ -30,6 +30,7 @@ rclpy — so the whole cycle is unit-testable with fakes (doc16 §11).
 import asyncio
 import json
 import logging
+import math
 from collections import deque
 
 from warehouse_interfaces.schemas import Command, CommandAction, CommandItem, PendingTask, Proposal
@@ -37,6 +38,7 @@ from warehouse_interfaces.stores import GenStore
 
 from warehouse_llm_bridge.action_map import command_to_tool_calls, start_negotiation_tool_call
 from warehouse_llm_bridge.executor import ToolExecutor
+from warehouse_llm_bridge.hermes_client import MODE_A_TRAFFIC_MODES
 from warehouse_llm_bridge.llm_client import LLMClient, LLMUnavailableError
 from warehouse_llm_bridge.negotiation import accept_proposal
 from warehouse_llm_bridge.situation import SituationBuilder
@@ -46,7 +48,10 @@ log = logging.getLogger(__name__)
 
 # Response-driven idle wait per traffic_mode (doc08:125-128,204). Mode A/B (LLM
 # manages traffic) wait 1.0s; Mode C (Open-RMF adjusts) waits 3.0s. NOT a polling
-# cadence — it is the gap AFTER a response before the next cycle (doc08:121).
+# cadence — it is the gap AFTER a response before the next cycle (doc08:121). These
+# are the CODE FALLBACK defaults only: the live value is config-driven through
+# ``resolve_cycle_wait`` (cfg["cycle"], config/warehouse.base.yaml:33 / README:88-91 /
+# doc14:179), degrading here when the block is absent/malformed (fail-open, doc19).
 CYCLE_WAIT_SEC: dict[str, float] = {"none": 1.0, "simple": 1.0, "open-rmf": 3.0}
 DEFAULT_CYCLE_WAIT_SEC = 1.0
 
@@ -54,9 +59,24 @@ DEFAULT_CYCLE_WAIT_SEC = 1.0
 # previous command and advance to the next cycle.
 CYCLE_TIMEOUT_SEC = 2.5
 
-# Consecutive failed cycles before declaring an API outage → Nav2-only fallback
-# (doc08:141 "5秒以上応答なし"). 2 cycles × (2.5s timeout + ~1.0s wait) ≈ >5s.
-OUTAGE_AFTER_CONSECUTIVE = 2
+# Typical LLM response time used to convert a configured TOTAL cycle span
+# (cfg["cycle"].mode_a_seconds = ~3s, doc08:125-127 "応答2sの場合" / README:90-91
+# "応答 ~2s") into the post-response idle WAIT the loop actually sleeps:
+# wait = span − response. With the default 3/5s spans this reproduces the 1.0/3.0s
+# CYCLE_WAIT_SEC defaults above.
+EXPECTED_RESPONSE_SEC = 2.0
+# Floor for the derived wait so a span ≤ response yields a non-negative (back-to-back)
+# wait instead of a negative asyncio.sleep.
+MIN_CYCLE_WAIT_SEC = 0.0
+
+# Sustained no-response window before flagging an API outage → Nav2-only (doc08:141
+# "5秒以上応答なし"). TIME-anchored, NOT a fixed cycle count: each in-cycle timeout is
+# ~CYCLE_TIMEOUT_SEC (2.5s) of REAL API silence, whereas the response-driven idle wait
+# (cycle_wait_sec — now config-driven up to ~120s) is intentional idle that is NOT
+# silence. So the threshold derives from the timeout alone (ceil(5.0/2.5)=2 timeouts),
+# independent of cycle_wait — see BridgeScheduler.__init__. ``nav2_only`` is an
+# observability flag; the loop keeps retrying every cycle regardless (doc08:286).
+OUTAGE_NO_RESPONSE_SEC = 5.0
 
 # Rolling commander history fed back into the next situation (doc mode-a/08a:82-85).
 HISTORY_MAXLEN = 5
@@ -64,6 +84,36 @@ HISTORY_MAXLEN = 5
 # Fixed charge destination — a known location and the ``send_to_charging`` dropoff
 # (locations.py / tools.py:324); used as current_task on an accepted charge.
 CHARGING_TASK = "charging_station"
+
+
+def resolve_cycle_wait(cfg: dict, mode: str) -> float:
+    """Resolve the post-response idle WAIT (sec) for ``mode`` from config (doc08:121-128).
+
+    The config exposes the TOTAL cycle SPAN — ``cfg["cycle"].mode_a_seconds`` for Mode A/B
+    (``MODE_A_TRAFFIC_MODES`` = none/simple) and ``mode_c_seconds`` for Mode C (open-rmf)
+    (config/warehouse.base.yaml:33, README:88-91, doc14:179). The loop sleeps the WAIT after
+    each response, so ``wait = span − EXPECTED_RESPONSE_SEC`` (doc08:125 "応答2sの場合"),
+    floored at ``MIN_CYCLE_WAIT_SEC``. With the documented 3/5s spans this reproduces the
+    1.0/3.0s :data:`CYCLE_WAIT_SEC` defaults exactly.
+
+    Fail-open: a missing/malformed/non-positive span degrades to the code default
+    ``CYCLE_WAIT_SEC[mode]`` (``DEFAULT_CYCLE_WAIT_SEC`` for an unknown mode) so an absent or
+    bad config never crashes the commander or yields a zero/negative sleep — it just falls
+    back to the doc08 design value. Pure — unit-testable without ROS or a config file.
+    """
+    default = CYCLE_WAIT_SEC.get(mode, DEFAULT_CYCLE_WAIT_SEC)
+    block = cfg.get("cycle") if isinstance(cfg, dict) else None
+    if not isinstance(block, dict):
+        return default
+    key = "mode_a_seconds" if mode in MODE_A_TRAFFIC_MODES else "mode_c_seconds"
+    span = block.get(key)
+    # Reject bool (an int subclass) and non-numeric spans before any arithmetic, mirroring
+    # the safety-cap validation in warehouse_interfaces.config (#175).
+    if isinstance(span, bool) or not isinstance(span, (int, float)):
+        return default
+    if not math.isfinite(span) or span <= 0:
+        return default
+    return max(MIN_CYCLE_WAIT_SEC, float(span) - EXPECTED_RESPONSE_SEC)
 
 
 def parse_seed_tasks(raw: str | None) -> list[dict]:
@@ -118,7 +168,7 @@ class BridgeScheduler:
         pending_tasks: list[dict] | None = None,
         cycle_wait_sec: float = DEFAULT_CYCLE_WAIT_SEC,
         cycle_timeout_sec: float = CYCLE_TIMEOUT_SEC,
-        outage_after_consecutive: int = OUTAGE_AFTER_CONSECUTIVE,
+        outage_no_response_sec: float = OUTAGE_NO_RESPONSE_SEC,
     ) -> None:
         """Wire collaborators; all timing is injectable for fast tests."""
         self._llm = llm_client
@@ -130,7 +180,17 @@ class BridgeScheduler:
         self._tracer = tracer or NoopTracer()
         self._cycle_wait_sec = cycle_wait_sec
         self._cycle_timeout_sec = cycle_timeout_sec
-        self._outage_after = outage_after_consecutive
+        # Derive the outage threshold from TIME (doc08:141 "5秒以上応答なし"): each in-cycle
+        # timeout is ~cycle_timeout_sec of real API silence, so it takes
+        # ceil(no_response / timeout) consecutive timeouts to accumulate the window. This is
+        # independent of cycle_wait_sec (the idle wait is not silence) and is ≥1 always — the
+        # fix for the old fixed count that silently assumed a ~1.0s wait (broken once the wait
+        # is config-driven to ~120s). Default 5.0/2.5 → 2 timeouts (behaviour-preserving).
+        # ``cycle_timeout_sec`` is an internal injectable (never 0 from config — only
+        # cycle_wait_sec is config-driven), but guard the divisor so a non-positive/NaN value
+        # falls back to the constant rather than ZeroDivisionError.
+        timeout = cycle_timeout_sec if cycle_timeout_sec > 0 else CYCLE_TIMEOUT_SEC
+        self._outage_after = max(1, math.ceil(outage_no_response_sec / timeout))
 
         self.current_gen = 0
         self.turn = 0

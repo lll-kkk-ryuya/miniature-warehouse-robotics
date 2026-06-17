@@ -19,3 +19,12 @@ hermes:
 
 # dev は Mode A（LLM単独）から始める
 traffic_mode: none
+
+# エンタメ回（Mode A）: 司令官を ~2分スパンで動かす。目的（WAREHOUSE_TASKS シード）を与えると Nav2 が
+# 自走し、約2分ごとに司令官 LLM が再評価・再指示する（API コスト削減・思考ログ可読性も向上）。
+# base の Mode C（mode_c_seconds: 5）は deep-merge で不変。
+# トレードオフ（doc08:121 / :197）: Mode A は司令官 LLM が交通管理（デッドロック解消）も担うため、解消が
+# 最大 ~2分遅れる。衝突回避は Emergency Guardian（50ms 反射）+ collision_monitor が独立に効くので
+# 安全側は不変（.claude/rules/safety.md / doc12）。
+cycle:
+  mode_a_seconds: 120
