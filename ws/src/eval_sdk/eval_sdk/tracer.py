@@ -56,24 +56,47 @@ class LangfuseTracer(Tracer):
     """Caller-owned Langfuse tracing; lazy and FULLY fail-open.
 
     Constructed with the run identity; computes a deterministic per-work ``trace_id`` and
-    attaches ``session_id`` + tags ``[provider, mode]`` + ``gen_id`` metadata to the trace.
-    langfuse is imported lazily (not a pytest/ruff dependency). The pinned v4.9 OTEL API
-    surface is ``client.create_trace_id`` / ``start_as_current_observation`` /
-    ``propagate_attributes``; **every langfuse interaction is wrapped so that ANY error (missing pip
-    extra, misconfig, or a v4 API mismatch) degrades to "this work is untraced" and NEVER
-    raises into the caller's loop** (fail-open, doc21 §4). Kept isolated here so the rest of
-    the system is langfuse-agnostic.
+    attaches ``session_id`` + tags ``[provider, mode, *extra_tags]`` + ``gen_id`` (and any
+    ``extra_metadata``) metadata to the trace. langfuse is imported lazily (not a pytest/ruff
+    dependency). The pinned v4.9 OTEL API surface is ``client.create_trace_id`` /
+    ``start_as_current_observation`` / ``propagate_attributes``; **every langfuse interaction is
+    wrapped so that ANY error (missing pip extra, misconfig, or a v4 API mismatch) degrades to
+    "this work is untraced" and NEVER raises into the caller's loop** (fail-open, doc21 §4). Kept
+    isolated here so the rest of the system is langfuse-agnostic.
 
     ``provider`` / ``mode`` are caller-supplied tag strings (the eval discriminators); the
     SDK treats them as opaque labels.
     """
 
-    def __init__(self, *, run_id: str, session_id: str, provider: str, mode: str) -> None:
-        """Wire the run-level identity used to derive each work unit's trace."""
+    def __init__(
+        self,
+        *,
+        run_id: str,
+        session_id: str,
+        provider: str,
+        mode: str,
+        extra_tags: list[str] | None = None,
+        extra_metadata: dict[str, object] | None = None,
+    ) -> None:
+        """Wire the run-level identity used to derive each work unit's trace.
+
+        ``extra_tags`` / ``extra_metadata`` are optional caller-supplied OPAQUE labels merged
+        into every turn's trace (after ``[provider, mode]`` / the ``gen_id`` metadata) so a
+        caller can make traces filterable by an extra discriminator — e.g. which prompt version
+        was used — WITHOUT this domain-free tracer knowing the domain. Both default to empty, so
+        existing callers are unchanged. Reserved keys (``gen_id`` / ``trace_id``) always win.
+        """
         self._run_id = run_id
         self._session_id = session_id
         self._provider = provider
         self._mode = mode
+        self._extra_tags = list(extra_tags) if extra_tags else []
+        # Reserved keys are owned by turn(); drop them from caller metadata so they can NEVER be
+        # shadowed — making the "reserved keys always win" guarantee hold even if create_trace_id
+        # fails (then trace_id is simply absent, not the caller's value).
+        self._extra_metadata = {
+            k: v for k, v in (extra_metadata or {}).items() if k not in ("gen_id", "trace_id")
+        }
         self._unavailable = False
 
     def _client(self) -> object | None:
@@ -158,13 +181,14 @@ class LangfuseTracer(Tracer):
                 log.warning("langfuse create_trace_id failed (%s); untraced turn", exc)
             opened = self._open(client, "turn", trace_id)
             if opened is not None:
-                metadata: dict[str, object] = {"gen_id": gen_id}
+                # extra_metadata first, then the reserved keys so they always win.
+                metadata: dict[str, object] = {**self._extra_metadata, "gen_id": gen_id}
                 if trace_id is not None:
                     metadata["trace_id"] = trace_id
                 attrs_cm = self._propagate_attributes(
                     client,
                     session_id=self._session_id,
-                    tags=[self._provider, self._mode],
+                    tags=[self._provider, self._mode, *self._extra_tags],
                     metadata=metadata,
                 )
         try:
