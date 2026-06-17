@@ -309,7 +309,7 @@ def test_distance_accumulator_incremental() -> None:
     assert acc.totals()["bot1"] == pytest.approx(7.0)
 
 
-# ── latest_gen_id (trace seed, #73 / doc13:481) ──────────────────────────────
+# ── latest_gen_id (trace seed, #73 / doc13:519) ──────────────────────────────
 
 
 @pytest.mark.unit

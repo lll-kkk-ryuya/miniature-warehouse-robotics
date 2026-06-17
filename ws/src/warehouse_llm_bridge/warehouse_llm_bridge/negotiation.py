@@ -26,9 +26,11 @@ Threshold defaults (8 turns / 4 per bot / 8s / +/-2) are doc14 *illustrative* va
 from config (``character.*``) without a hardcode (cf. ``.claude/rules/safety.md`` / docs-first).
 """
 
+import asyncio
 import logging
 import time
 from collections.abc import Callable
+from contextlib import suppress
 from dataclasses import dataclass, field
 from enum import StrEnum
 
@@ -46,6 +48,8 @@ MAX_TURNS_TOTAL = 8
 DEADLINE_SECONDS = 8.0
 # doc14:142 — commander accepts a proposal whose gen_id is within +/-2 of current_gen.
 GEN_ACCEPT_WINDOW = 2
+# Poll fallback for the legacy abort callable while a persona LLM call is in-flight.
+ABORT_POLL_SECONDS = 0.02
 
 
 class NegotiationStatus(StrEnum):
@@ -55,6 +59,14 @@ class NegotiationStatus(StrEnum):
     NO_AGREEMENT = "no_agreement"
     TIMEOUT = "timeout"
     ABORTED = "aborted"
+
+
+class _TurnAbortedError(Exception):
+    """Internal signal: abort won the race against persona.speak."""
+
+
+class _TurnTimedOutError(Exception):
+    """Internal signal: the negotiation deadline elapsed during persona.speak."""
 
 
 @dataclass(frozen=True)
@@ -129,27 +141,30 @@ class NegotiationEngine:
         persona: Persona,
         *,
         abort: Callable[[], bool] | None = None,
+        abort_event: asyncio.Event | None = None,
         on_turn: Callable[[TranscriptLine, int, str], None] | None = None,
     ) -> NegotiationOutcome:
         """Run one negotiation episode and return its :class:`NegotiationOutcome`.
 
-        ``abort`` is polled at the top of every turn (doc14:90,141): when it returns True the
-        episode stops immediately and any in-progress agreement is discarded. Defaults to a
-        never-abort poll so non-Emergency runs are unaffected.
+        ``abort`` is polled at turn boundaries and during in-flight persona calls; ``abort_event``
+        gives the Slice 2 ROS subscriber an immediate waitable abort path. When either abort path
+        wins, the episode stops immediately and any in-progress agreement is discarded
+        (doc14:90,141). Defaults to a never-abort poll and no event so non-Emergency runs are
+        unaffected.
 
-        ``on_turn`` (Slice 2) is invoked once per spoken turn with
-        ``(line, turn_number, next_speaker)`` so the ``character_llm`` node can publish the live
-        ``/character/speech`` line and the ``/negotiation/turn`` baton (doc14:76,79,81). ``turn_number``
-        is 1-based (doc14:76 ``turn=1``) and ``next_speaker`` is the bot due to speak next under strict
-        alternation. Pure-callback (no ROS here); defaults to a no-op so the offline engine + Slice 1
-        tests are unaffected. A turn that yields a valid agreement still fires ``on_turn`` first (the
-        agreeing speech IS published) and then returns AGREED.
+        ``on_turn`` (Slice 2) is invoked once per spoken turn with ``(line, turn_number, next_speaker)``
+        so the ``character_llm`` node can publish the live ``/character/speech`` line and the
+        ``/negotiation/turn`` baton (doc14:76,79,81). ``turn_number`` is 1-based; ``next_speaker`` is the
+        bot due next under strict alternation. Pure-callback (no ROS here); defaults to a no-op so the
+        offline engine + Slice 1 tests are unaffected. A turn aborted/timed out before producing output
+        does NOT fire ``on_turn`` (the after-output guard returns first), so no speech is published for it.
         """
         abort = abort or (lambda: False)
         other = _other_bot(ctx.starter, ctx.bot_states)
         transcript: list[TranscriptLine] = []
         per_bot: dict[str, int] = {ctx.starter: 0, other: 0}
         start = self._monotonic()
+        deadline_at = start + self._deadline_seconds
 
         for turn_index in range(self._max_turns_total):
             if abort():
@@ -159,13 +174,15 @@ class NegotiationEngine:
                     turn_index,
                 )
                 return NegotiationOutcome(NegotiationStatus.ABORTED, transcript, None, turn_index)
-            if self._monotonic() - start >= self._deadline_seconds:
+            now = self._monotonic()
+            if now >= deadline_at:
                 log.info(
                     "negotiation %s timed out after %d turns (doc14:89)",
                     ctx.negotiation_id,
                     turn_index,
                 )
                 return NegotiationOutcome(NegotiationStatus.TIMEOUT, transcript, None, turn_index)
+            remaining = deadline_at - now
 
             speaker = ctx.starter if turn_index % 2 == 0 else other
             if per_bot[speaker] >= self._max_turns_per_bot:
@@ -183,13 +200,42 @@ class NegotiationEngine:
                 commander_decision=ctx.commander_decision,
                 transcript=transcript,
             )
-            raw = await persona.speak(speaker, prompt)
+            try:
+                raw = await self._speak_with_guards(
+                    persona,
+                    speaker,
+                    prompt,
+                    abort=abort,
+                    abort_event=abort_event,
+                    remaining=remaining,
+                )
+            except _TurnAbortedError:
+                log.info(
+                    "negotiation %s aborted during turn %d (doc14:90,141)",
+                    ctx.negotiation_id,
+                    turn_index,
+                )
+                return NegotiationOutcome(NegotiationStatus.ABORTED, transcript, None, turn_index)
+            except _TurnTimedOutError:
+                log.info(
+                    "negotiation %s timed out during turn %d (doc14:89)",
+                    ctx.negotiation_id,
+                    turn_index,
+                )
+                return NegotiationOutcome(NegotiationStatus.TIMEOUT, transcript, None, turn_index)
+            if abort():
+                log.info(
+                    "negotiation %s aborted after turn %d output (doc14:90,141)",
+                    ctx.negotiation_id,
+                    turn_index,
+                )
+                return NegotiationOutcome(NegotiationStatus.ABORTED, transcript, None, turn_index)
             turn = parse_turn(raw)
             line = TranscriptLine(speaker=speaker, text=turn.speech)
             transcript.append(line)
             if on_turn is not None:
-                # doc14:76,79,81 — publish the live speech + baton. listener is the next
-                # speaker under strict alternation; turn_index+1 is the 1-based turn number.
+                # doc14:76,79,81 — publish the live speech + baton (listener is next under strict
+                # alternation; turn_index+1 is the 1-based turn number).
                 on_turn(line, turn_index + 1, listener)
 
             if turn.agreed_action is not None:
@@ -201,6 +247,42 @@ class NegotiationEngine:
                 # doc14:138 — a malformed agreed_action is NOT an agreement; keep talking.
 
         return NegotiationOutcome(NegotiationStatus.NO_AGREEMENT, transcript, None, len(transcript))
+
+    async def _speak_with_guards(
+        self,
+        persona: Persona,
+        speaker: str,
+        prompt: str,
+        *,
+        abort: Callable[[], bool],
+        abort_event: asyncio.Event | None,
+        remaining: float,
+    ) -> str:
+        """Await one persona turn while racing timeout and abort stop conditions.
+
+        doc14 treats 8s timeout and ``/negotiation/abort`` as episode-level stop conditions, not
+        merely turn-boundary checks. This helper keeps late persona output from becoming a proposal
+        after the commander should already have fallen back or Emergency should have discarded it.
+        """
+        speak_task = asyncio.create_task(persona.speak(speaker, prompt))
+        abort_task = asyncio.create_task(_wait_for_abort(abort, abort_event))
+        deadline_task = asyncio.create_task(_sleep_remaining(remaining))
+
+        try:
+            done, _pending = await asyncio.wait(
+                {speak_task, abort_task, deadline_task},
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            if abort_task in done:
+                await _cancel_task(speak_task)
+                raise _TurnAbortedError
+            if deadline_task in done:
+                await _cancel_task(speak_task)
+                raise _TurnTimedOutError
+            return await speak_task
+        finally:
+            await _cancel_task(abort_task)
+            await _cancel_task(deadline_task)
 
     def _try_build_proposal(
         self, ctx: NegotiationContext, agreed_action_raw: dict, transcript: list[TranscriptLine]
@@ -243,3 +325,32 @@ def accept_proposal(
     larger gap is discarded. Pure — Slice 2's commander calls it before validating the agreed action.
     """
     return abs(current_gen - proposal.gen_id) <= window
+
+
+async def _wait_for_abort(abort: Callable[[], bool], abort_event: asyncio.Event | None) -> None:
+    """Wait until either abort source fires; callable polling is a compatibility fallback."""
+    while True:
+        if abort_event is None:
+            await asyncio.sleep(ABORT_POLL_SECONDS)
+        else:
+            if abort_event.is_set():
+                return
+            with suppress(asyncio.TimeoutError):
+                await asyncio.wait_for(abort_event.wait(), timeout=ABORT_POLL_SECONDS)
+                return
+        if abort():
+            return
+
+
+async def _sleep_remaining(remaining: float) -> None:
+    """Sleep for the already-computed turn budget; return immediately if expired."""
+    if remaining > 0:
+        await asyncio.sleep(remaining)
+
+
+async def _cancel_task(task: asyncio.Task) -> None:
+    """Cancel and drain helper tasks so no late result or warning leaks out."""
+    if not task.done():
+        task.cancel()
+    with suppress(asyncio.CancelledError, Exception):
+        await task

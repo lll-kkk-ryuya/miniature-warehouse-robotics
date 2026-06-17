@@ -13,7 +13,8 @@ setup(
     # fastapi + uvicorn serve the Nav2 Bridge REST API (doc12a:198-343); imported
     # lazily (app.py / nav2_bridge.py) so the pure-core unit tests run without them,
     # the same pattern warehouse_llm_bridge uses for langfuse.
-    install_requires=["setuptools", "fastapi>=0.110", "uvicorn>=0.27"],
+    # Upper bounds guard a major bump that could break the REST app / ASGI lifecycle.
+    install_requires=["setuptools", "fastapi>=0.110,<1", "uvicorn>=0.27,<1"],
     zip_safe=True,
     maintainer="kawaguchiryuya",
     maintainer_email="ryu3124ruyu@gmail.com",

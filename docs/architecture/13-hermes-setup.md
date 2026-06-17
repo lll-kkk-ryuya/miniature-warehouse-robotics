@@ -511,13 +511,13 @@ LLM呼出し (4社)
 
 ### 7.5 trace_id / 突合キー契約（Langfuse v4・Phase 3 実トレース検証）
 
-> 前提: Langfuse Python SDK **v4（4.7.1, OTEL ベース）**。本節は trace 所有と突合キーの契約を固定する。
+> 前提: Langfuse Python SDK **v4（4.9.0, OTEL ベース）**。本節は trace 所有と突合キーの契約を固定する。
 
 - **trace_id 形式**: Langfuse の trace id は **32 桁小文字 hex・ダッシュ無し**（W3C trace-context）。**採用実装（#78）= 下記(b) `create_trace_id(seed=f"{run_id}:{gen_id}")`（決定的・#6 と同一導出）**。自前 32hex 採番（`uuid7().hex` 等）も形式上は可だが、(a)/(b) のうち **(b) seed 派生を採用**（ランダム `uuid7` は #6 が独立導出できず Audit 記録依存になる＋`uuid7` は py3.12 stdlib 非搭載）。ダッシュ付き UUID 文字列は v4 で拒否され orphan score になる。
 - **trace 所有 = Bridge（推奨・Pattern A）**: Bridge が `from langfuse.openai import OpenAI` を `base_url`=Hermes（OpenAI 互換）で使い、自分で generation/trace を所有する。二重計上回避のため **Hermes 側 Langfuse プラグインは無効化**（本 doc の Langfuse 自動有効化記述は、Bridge-owned トレースを採る比較セットアップでは off に上書きする）。これで `trace_id`/`metadata`/managed-prompt をネイティブに乗せられ、4社単一コードパス（比較公平性）を保てる（[doc08 「trace 所有」](08-llm-bridge-common.md)）。
 - **Langfuse ↔ Audit Log の突合キー = `gen_id` + timestamp（実装済の経路）**。現行 `CommandAuditLog`（doc15）は `{timestamp, tool, result, detail, robot}` を書き **`trace_id` を持たない**。MCP ツールは `gen_id`（B-3 の required 引数）を受けるため、audit から `gen_id` + timestamp で Langfuse trace（同 `gen_id` を metadata に持つ）と突合できる。「3脚同一 `trace_id` リテラル」は audit 脚が未対応のため**前提にしない**。
-- **#6（wo）が `trace_id` を得る方法**: (a) Audit Log から読む（trace_id を記録する設計にした場合）、または **(b) `langfuse.create_trace_id(seed=f"{run_id}:{gen_id}")` で #4 と #6 が決定的に同一 id を導出（クロスレーンのデータ依存ゼロ＝#6 が契約変更なしで着手可）。(b) 推奨**。`warehouse_interfaces` 凍結契約への trace_id 追加は不要（trace_id は ROS メッセージ契約でなく Langfuse/Audit 突合キー）。
-- **Phase 3 実トレース検証項目**: ① Hermes が inbound `metadata.trace_id` を尊重するか（Bridge-owned 方式なら非依存）／② `usage_details`/cost が4社で ≠0 か（**xAI Grok はカスタムモデル定義が必要な可能性**＝無いと cost 空欄で比較破綻）／③ 二重 generation の有無／④ managed-prompt `prompt=` 連携の可否／⑤ SDK 4.7.1 スモーク。
+- **#6（wo）が `trace_id` を得る方法**: (a) Audit Log から読む（trace_id を記録する設計にした場合）、または **(b) Langfuse client `create_trace_id(seed=f"{run_id}:{gen_id}")` で #4 と #6 が決定的に同一 id を導出（クロスレーンのデータ依存ゼロ＝#6 が契約変更なしで着手可）。(b) 推奨**。`warehouse_interfaces` 凍結契約への trace_id 追加は不要（trace_id は ROS メッセージ契約でなく Langfuse/Audit 突合キー）。
+- **Phase 3 実トレース検証項目**: ① Hermes が inbound `metadata.trace_id` を尊重するか（Bridge-owned 方式なら非依存）／② `usage_details`/cost が4社で ≠0 か（**xAI Grok はカスタムモデル定義が必要な可能性**＝無いと cost 空欄で比較破綻）／③ 二重 generation の有無／④ managed-prompt `prompt=` 連携の可否／⑤ SDK 4.9.0 スモーク。
 
 ### 7.6 LLM provider access 決定（Vertex AI SDK 不採用・Hermes 単一経路）
 
@@ -602,7 +602,7 @@ Requires=warehouse-state-cache.service
 | Phase 0.5 (Gazebo シミュレーション) | `hermes gateway` 単独起動、`curl /v1/chat/completions` 成功、Anthropic 経路で応答取得。Hermes Gateway 単体のメモリ baseline 計測 |
 | Phase 1 (ロボット1台セットアップ) | Warehouse MCP Server を Hermes 経由で呼出し成功、Policy Gate 拒否ケース確認 |
 | Phase 2 (SLAM + Nav2) | Hermes 経由で `get_fleet_status` から 2 台の AMCL pose を取得確認 |
-| Phase 3 (2台協調 + LLM Bridge) | `traffic_mode` を `none` / `simple` / `open-rmf` の3パターンで LLM Bridge → Hermes → MCP → 各 TrafficManager の往復確認 |
+| Phase 3 (2台協調 + LLM Bridge) | `traffic_mode` を `none` / `simple` / `open-rmf` の3パターンで LLM Bridge → Hermes → MCP → 各 TrafficManager の往復確認。Gateway 単体の起動確認は `WAREHOUSE_LIVE_HERMES=1 python3.12 -m pytest tests/live/test_hermes_gateway_live.py` で opt-in smoke |
 | Phase 4 (LLM比較検証) | `active_provider` 4社（Anthropic/OpenAI/Google/xAI）× `traffic_mode` 3種 = 12構成の Langfuse トレース + Command Audit Log 取得 |
 | Phase 5 (Isaac Sim連携) | デジタルツイン側で Hermes Gateway を再現（同一 config.yaml）。Langfuse タグで `env=isaac_sim` / `env=real` を分離記録 |
 | Phase 6 (撮影・編集・公開) | 撮影時の LLM 思考ログ（Langfuse）と制御ログ（Command Audit Log）を時刻同期で取得し、編集素材として export 可能であること |

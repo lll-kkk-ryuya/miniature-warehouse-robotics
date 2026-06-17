@@ -13,6 +13,9 @@
        import check is track-aware, #81). main() injects WarehouseTools().dispatch
        into the ToolExecutor seam (S2-PR2 HALF B). -->
   <exec_depend>warehouse_mcp_server</exec_depend>
+  <!-- Domain-free evaluation core: tracing.py imports the extracted Tracer/seed seam
+       (Tracer/NoopTracer/LangfuseTracer + seed_for) from here (doc21 §1c). -->
+  <exec_depend>eval_sdk</exec_depend>
   <!-- langfuse + openai (Bridge-owned trace via langfuse.openai, doc08/doc13 §7.5)
        are pip-only and lazy-imported; pinned in setup.py install_requires (not as
        rosdep keys). openai supplies the httpx transport. The Nav2 Bridge REST

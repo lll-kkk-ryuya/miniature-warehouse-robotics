@@ -7,7 +7,8 @@ Covers, with fakes (no ROS, no network, no LLM — doc16 §11):
 - abort: an abort signal stops immediately and discards any agreement (doc14:90,141).
 - format enforcement: a malformed agreed_action (enum-外 action / missing required `by`) is NOT an
   agreement — the conversation keeps going (doc14:138).
-- timeout: a wall-clock deadline (injected fake monotonic) ends the episode (doc14:89).
+- timeout: a wall-clock deadline ends the episode, including while a persona call is in-flight
+  (doc14:89).
 - accept_proposal: the commander-side gen_id +/-2 acceptance gate (doc14:142).
 - safety: the engine imports no actuation collaborator — its only output is an advisory Proposal
   the commander must approve (稟議制, doc14:14,136; the #4 no-actuation spirit).
@@ -56,6 +57,22 @@ class FakeClock:
         if self._values:
             self._last = self._values.pop(0)
         return self._last
+
+
+class SlowAgreePersona:
+    """Persona that would agree after a delay unless the engine cancels the in-flight turn."""
+
+    def __init__(self, *, delay: float = 1.0) -> None:
+        self.delay = delay
+        self.cancelled = False
+
+    async def speak(self, bot_id: str, prompt: str) -> str:
+        try:
+            await asyncio.sleep(self.delay)
+        except asyncio.CancelledError:
+            self.cancelled = True
+            raise
+        return _agree(by=bot_id)
 
 
 def _ctx(
@@ -155,7 +172,56 @@ def test_abort_midway_returns_aborted_and_discards_proposal() -> None:
 
     assert outcome.status is NegotiationStatus.ABORTED
     assert outcome.proposal is None
-    assert len(outcome.transcript) == 2  # only two turns spoke before the abort
+    assert len(outcome.transcript) < 3  # the agreeing 3rd turn is never accepted
+
+
+@pytest.mark.unit
+def test_abort_event_during_persona_speak_cancels_and_discards_proposal() -> None:
+    async def run() -> tuple[NegotiationStatus, bool, bool, int]:
+        abort_event = asyncio.Event()
+        persona = SlowAgreePersona()
+
+        async def trigger_abort() -> None:
+            await asyncio.sleep(0.01)
+            abort_event.set()
+
+        trigger = asyncio.create_task(trigger_abort())
+        outcome = await NegotiationEngine(deadline_seconds=1.0).run(
+            _ctx(), persona, abort_event=abort_event
+        )
+        await trigger
+        return outcome.status, outcome.proposal is None, persona.cancelled, len(outcome.transcript)
+
+    status, no_proposal, cancelled, transcript_len = asyncio.run(run())
+    assert status is NegotiationStatus.ABORTED
+    assert no_proposal
+    assert cancelled
+    assert transcript_len == 0
+
+
+@pytest.mark.unit
+def test_abort_callable_during_persona_speak_cancels_and_discards_proposal() -> None:
+    async def run() -> tuple[NegotiationStatus, bool, bool, int]:
+        aborted = False
+        persona = SlowAgreePersona()
+
+        async def trigger_abort() -> None:
+            nonlocal aborted
+            await asyncio.sleep(0.01)
+            aborted = True
+
+        trigger = asyncio.create_task(trigger_abort())
+        outcome = await NegotiationEngine(deadline_seconds=1.0).run(
+            _ctx(), persona, abort=lambda: aborted
+        )
+        await trigger
+        return outcome.status, outcome.proposal is None, persona.cancelled, len(outcome.transcript)
+
+    status, no_proposal, cancelled, transcript_len = asyncio.run(run())
+    assert status is NegotiationStatus.ABORTED
+    assert no_proposal
+    assert cancelled
+    assert transcript_len == 0
 
 
 # ── format enforcement (doc14:138) ──────────────────────────────────────────────
@@ -220,6 +286,20 @@ def test_wall_clock_timeout_returns_timeout() -> None:
     assert outcome.status is NegotiationStatus.TIMEOUT
     assert outcome.proposal is None
     assert len(outcome.transcript) == 1
+
+
+@pytest.mark.unit
+def test_timeout_during_persona_speak_cancels_and_discards_late_agreement() -> None:
+    async def run() -> tuple[NegotiationStatus, bool, bool, int]:
+        persona = SlowAgreePersona()
+        outcome = await NegotiationEngine(deadline_seconds=0.01).run(_ctx(), persona)
+        return outcome.status, outcome.proposal is None, persona.cancelled, len(outcome.transcript)
+
+    status, no_proposal, cancelled, transcript_len = asyncio.run(run())
+    assert status is NegotiationStatus.TIMEOUT
+    assert no_proposal
+    assert cancelled
+    assert transcript_len == 0
 
 
 # ── commander-side acceptance gate (doc14:142) ───────────────────────────────────

@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>eval_sdk</name>
+  <version>0.0.0</version>
+  <description>
+    Domain-independent embodied-AI evaluation core (doc21): deterministic trace-id
+    seed (the cross-lane join key), a Langfuse-tracing seam, a fail-open score sink,
+    pure stats helpers (percentile / path length), and token-cost math. ROS- and
+    warehouse-import-free so it is unit-testable with no SDK and no ROS build
+    (doc16 §11). langfuse is a lazy/optional pip extra, never a rosdep key.
+  </description>
+  <maintainer email="ryu3124ruyu@gmail.com">kawaguchiryuya</maintainer>
+  <license>Apache-2.0</license>
+
+  <!-- No <exec_depend> on rclpy / warehouse_* / langfuse: the package is intentionally
+       dependency-free (pure stdlib). langfuse is an optional pip extra (setup.py
+       extras_require), lazy-imported and fail-open, so it is not declared as a rosdep. -->
+
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>
