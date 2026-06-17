@@ -72,7 +72,7 @@ GROK_PRICE_TABLE_2026_06_04: dict[str, GrokPrice] = {
 # Unlike the 2026_06_04 placeholders these are the real published list prices, but they are STILL not
 # verified end-to-end: which literal ``model`` string Hermes forwards to Grok and the live v4
 # price-field form remain unconfirmed (doc08:508), and ``grok-* cost_details.total > 0`` must be
-# asserted on a real Langfuse 4.7.x trace in Phase 3 (doc08:506 / doc13:520②). Do NOT treat a cost
+# asserted on a real Langfuse 4.9.x trace in Phase 3 (doc08:506 / doc13:520②). Do NOT treat a cost
 # derived from this table as "verified". xAI publishes USD per 1M tokens; divide by 1e6 per-token.
 # Keys are model-family prefixes (``resolve_grok_price`` longest-prefix match):
 #   "grok-4.3"       -> $1.25 in / $2.50 out per 1M (cached-input $0.20, not modeled here).

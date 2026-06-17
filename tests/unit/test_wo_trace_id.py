@@ -13,7 +13,7 @@ from warehouse_orchestrator import trace_id as tid
 
 
 def _fake_create(*, seed: str) -> str:
-    """Deterministic stand-in for ``langfuse.create_trace_id`` (32 lowercase hex)."""
+    """Deterministic stand-in for Langfuse client ``create_trace_id`` (32 lowercase hex)."""
     return hashlib.sha256(seed.encode()).hexdigest()[:32]
 
 

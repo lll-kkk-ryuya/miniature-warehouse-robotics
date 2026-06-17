@@ -33,7 +33,7 @@
 - env: `HERMES_API_KEY`/`API_SERVER_KEY`（secret）、`WAREHOUSE_PROVIDER`（Hermes active_provider を反映, 既定 default）/`WAREHOUSE_SCENARIO`（既定 demo）= trace ラベル。**`WAREHOUSE_TASKS`（#181, デモ用 pending_tasks シード・JSON 配列 `[{id,from,to}]`・未設定=[]・malformed は fail-open で warn+[]）**。`LANGFUSE_*`（trace 送信先・deploy 申し送り）。
 - file: `state.json`（State Cache=#5 が書く `StateSnapshot`。Bridge は読むだけ・センサ topic は購読しない doc08a:20-22/doc12:169）
 - net: Hermes Gateway `/v1/chat/completions`（OpenAI 互換, langfuse.openai 経由）
-- pip: `langfuse>=4.7,<5` + `openai`（lazy・setup.py 宣言。rosdep でない＝CI pytest は fake で非依存）
+- pip: `langfuse>=4.9,<5` + `openai>=1.0,<2`（lazy・setup.py 宣言。rosdep でない＝CI pytest は fake で非依存）
 - **pkg `eval_sdk`（doc21 Phase 1・一方向依存・`package.xml` exec_depend）**: `tracing.py` が domain 非依存の Tracer seam を import — `Tracer`/`NoopTracer`/`LangfuseTracer`←`eval_sdk.tracer`、`resolve_run_id`/`seed_for`←`eval_sdk.seed`。`trace_seed(run_id,gen_id)` は `eval_sdk.seed.seed_for` へ委譲（#6 `trace_id.seed_for` と統合した**唯一の join key**＝重複 f-string を 1 本化）。`build_session_id`（session ラベル形）は Bridge 固有で本 module に残置。**外部 import 面は不変**（再 export）。
 
 ## 排他3層（A+B-3+C, doc08:161-179 / doc15§2）
@@ -50,7 +50,7 @@
 - **(済) tool dispatch transport**: S2-PR2 HALF B で **in-process `WarehouseTools().dispatch`** を採用（subprocess/stdio の `StdioMcpToolExecutor` 案は撤回 ＝ #81 が同一トラック import を解錠したため不要）。stdio server.py は Hermes 外部接続用に存続。end-to-end の安全は `test_bridge_scheduler.py` / `test_nav2_forward.py` で実 tools 検証済。
 - **(済) MCP→nav2_bridge REST 配線**: S2-PR2 HALF B（`warehouse_mcp_server.nav2_client`）。受理 motion tool→`POST /api/v1/{navigate,wait,stop}`。nav2_bridge 本体（REST→BasicNavigator, #86）は編集せず消費。
 - **REST forward は fail-open**: Nav2 Bridge outage は log のみ（cycle を落とさない）。実機での到達確認・retry/backoff は後続（Phase 2/3）。Open-RMF（Mode C）forward 経路は未実装（forwarder=None）＝**no-actuation contract を `tests/unit/test_modec_noactuation.py`(#4) で R-26 固定済**（受理 tool でも 0 actuation・goal_pose 非発行）。実 Open-RMF 転送 seam（doc08:169/doc15:211-219）は #180/PR#219 所有・tracking issue #228（blocked）。
-- **Langfuse v4 API 実機 verify（Phase 3, doc13:482）**: `LangfuseTracer` の `create_trace_id`/`start_as_current_span`/`update_trace` と `langfuse.openai.AsyncOpenAI` の正確な 4.7.1 形は実機で確認。lazy+fail-open なので CI/単体は非依存。
+- **Langfuse v4 API 実機 verify（Phase 3, doc13:482）**: trace seam は `eval_sdk.tracer` に移管済みで、v4.9 API（`client.create_trace_id` / `start_as_current_observation` / `propagate_attributes`）に pin。`langfuse.openai.AsyncOpenAI` / cost / managed-prompt の live 確認は #88 継続。lazy+fail-open なので CI/単体は非依存。
 - **deploy 申し送り**: ① Hermes 内蔵 Langfuse プラグイン **無効化**（二重計上回避, doc13:479）② bridge プロセスに `LANGFUSE_*` env 投入（`config/<env>/.env`、現 `.env.example` は `HERMES_LANGFUSE_*` のみ＝要追記）。
 - **docs 反映は #73 へ**: doc08:356/361・doc13:516（trace_id=`uuid7().hex`/session=`demo_...` の記述）を **seed 派生 + `run_*` session** に更新するのは Langfuse doc 所有の **#73**（branch `docs/langfuse-v4-provider-decision`）。本 PR は #73/#6 にコメントで seed 契約を予告（cross-lane 衝突回避）。
 - **(済) doc-drift #71 MERGED**: Bridge-mediated dispatch の doc08/doc15 reconcile は #71 で main 入り。

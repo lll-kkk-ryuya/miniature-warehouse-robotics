@@ -56,18 +56,21 @@ def normalize_trace_id(value: str) -> str:
 
 
 def _default_create_fn() -> Callable[..., str] | None:
-    """The Langfuse ``create_trace_id`` static helper, or ``None`` if the SDK is absent (fail-open)."""
+    """The Langfuse client ``create_trace_id`` helper, or ``None`` if unavailable."""
     try:
-        from langfuse import Langfuse  # lazy/optional import (pip extra)
+        from langfuse import get_client  # lazy/optional import (pip extra)
     except ImportError:
         return None
-    return Langfuse.create_trace_id
+    try:
+        return get_client().create_trace_id
+    except Exception:
+        return None
 
 
 def derive_trace_id(seed: str, *, create_fn: Callable[..., str] | None = None) -> str | None:
     """Deterministically derive a 32-hex trace id from ``seed`` (doc13 §7.5).
 
-    Uses ``langfuse.create_trace_id(seed=…)`` (injectable as ``create_fn`` for tests).
+    Uses Langfuse client ``create_trace_id(seed=…)`` (injectable as ``create_fn`` for tests).
     Returns ``None`` (fail-open) when the SDK is absent or the call/normalization fails, so
     the caller no-ops the score-send. The same ``seed`` always yields the same id (that is
     what links the two legs — see :func:`seed_for`).

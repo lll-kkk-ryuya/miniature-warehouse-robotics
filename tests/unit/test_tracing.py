@@ -1,7 +1,7 @@
 """Tests for the Langfuse tracing seam — pure helpers + NoopTracer (no langfuse).
 
 The deterministic seed is the cross-lane contract with #6 (wo): both lanes feed
-``trace_seed(run_id, gen_id)`` to ``langfuse.create_trace_id`` to derive the same
+``trace_seed(run_id, gen_id)`` to Langfuse client ``create_trace_id`` to derive the same
 32-hex trace id without sharing data (doc13:481(b)). NoopTracer keeps the cycle
 langfuse-free for tests.
 """

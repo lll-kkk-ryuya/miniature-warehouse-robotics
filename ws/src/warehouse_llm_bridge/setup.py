@@ -15,7 +15,7 @@ setup(
     # from CI's pytest env, so the cycle stays testable with fakes. openai brings
     # its own httpx (the Hermes OpenAI-compatible transport).
     # langfuse >=4.9: tracing.py uses the 4.9 OTEL API (client.create_trace_id /
-    # start_as_current_observation / span.update) — 4.7.x exposed a different shape
+    # start_as_current_observation / propagate_attributes) — 4.7.x exposed a different shape
     # that failed at runtime (verified at 4.9.0, #88). openai <2: guard a major bump
     # that could break the langfuse.openai wrapper / the chat.completions kwargs.
     install_requires=["setuptools", "langfuse>=4.9,<5", "openai>=1.0,<2"],

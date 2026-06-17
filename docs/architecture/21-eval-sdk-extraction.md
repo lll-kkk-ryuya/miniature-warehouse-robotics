@@ -243,7 +243,7 @@ sink.flush()
 
 ## 11. リスク / 未確定
 
-- **Langfuse v4 surface 未検証**: 実 v4 OTEL API（`create_trace_id`/`create_score`/`flush`）は `tracing.py`/`langfuse_sink.py` が「Phase 3 実行時検証」と明記＝**human-gate #88 未実施**。fail-open で劣化はするが**#88 緑まで dashboard を過大宣伝しない**。
+- **Langfuse v4 surface は seam に隔離**: tracer は v4.9 API（`client.create_trace_id`/`start_as_current_observation`/`propagate_attributes`）に pin。score/cost/managed-prompt の実トレース確認は **human-gate #88 継続**。fail-open で劣化はするが**#88 緑まで dashboard を過大宣伝しない**。
 - **OTLP 属性生存が embodied の全てを gate**: `*.nav.*` 名前空間を標準化する前に 30分スパイクで検証。可搬 export 路はそのヘッジ（Langfuse mapping 非依存）。
 - **安全は「ただの指標」ではない**: 0.3m/s は**コードで強制**（firmware Layer-0 `safety_clamp.h`・R-26・`collision_monitor` stop polygon）＝**fail-closed の能動制御パス**。eval 層の **fail-open とは正反対**。汎用 `Outcome.collision: bool` は Guardian を観測値に潰す。**安全はドメインプラグインに留め、コアはフィールド名を与えるだけ**。
 - **action は均一でない**: Mode C は no-actuation forwarder（`forwarder=None`・R-26 凍結）。汎用 `action: dict` は no-actuation 契約を失うか倉庫 mode logic を「プラグイン」に密輸する。**action payload を domain-free と偽らない**。
@@ -282,7 +282,7 @@ sink.flush()
 
 ### 12.4 注意
 
-- **Langfuse churn が長期最大リスク**（v2→v3→v4 で2年に3メジャー破壊改名: `score()`→`create_score()` 等）。バックエンドは堅牢だが **call surface は不安定**と扱う → seam で1ファイル隔離＋`>=4.7,<5` pin（実 v4.7 OTEL API 依存・既存 `warehouse_llm_bridge/setup.py:17` に整合）＋self-host。
+- **Langfuse churn が長期最大リスク**（v2→v3→v4 で2年に3メジャー破壊改名: `score()`→`create_score()` 等）。バックエンドは堅牢だが **call surface は不安定**と扱う → seam で1ファイル隔離＋`>=4.9,<5` pin（実 v4.9 OTEL API 依存・既存 `warehouse_llm_bridge/setup.py:17` に整合）＋self-host。
 - **OTel `gen_ai.*` はまだ "Development"**（core は Stable）→ キーを constants 1モジュールに集約・gate・optional。
 - **EOL/個人リポに依存しない**（Habitat EOL / SPARC 個人 / allenact 重量）= コピー/写経 ＋ `# adapted from <repo>@<commit>, <LICENSE>` 帰属 ＋ 自前 unit（SPARC は golden 照合）。
 
@@ -329,7 +329,7 @@ sink.flush()
 |---|---|---|
 | **0（今）** | doc21 を land（提案・コード前） | — |
 | **1a 抽出** | `ws/src/eval_sdk/`（ament_python・ROS/warehouse 依存ゼロ・langfuse 任意 extra）に `seed`(trace_id.py:40 + tracing.py:39 重複統合)/`tracer`(tracing.py:63-187)/`sink`(langfuse_sink.py:104-)/`stats`(kpi.py 純関数)/`cost`(grok_cost.py) を lift | 自前所有＋seam |
-| **1b seam** | `sink`/`tracer` に Langfuse v4 を閉じ込め・`langfuse>=4.7,<5` pin・自前安定動詞で覆う・fail-open | 借りる（seam） |
+| **1b seam** | `sink`/`tracer` に Langfuse v4 を閉じ込め・`langfuse>=4.9,<5` pin・自前安定動詞で覆う・fail-open | 借りる（seam） |
 | **1c 二重利用** | 倉庫を import 切替。**DoD = 既存テスト無改変通過 ∧ seed 重複削除** | — |
 | **1.5a 指標(offline)** | `stats` に `spl`(AllenAct verbatim コピー)・`success_rate`/`soft_spl`(Habitat 写経)・`sparc`/`jerk`(siva82kb 照合後 自前・numpy FFT・scipy lazy)。合成データ property test | コピー/写経 |
 | **1.5b Tier1** | 倉庫 `kpi.py` に介入率/throughput/fairness/jerk を additive（eval_sdk.stats 使用・新 producer 不要） | — |
