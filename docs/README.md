@@ -46,6 +46,8 @@ docs/
 | [18-gcp-serverless-cost-comparison](architecture/18-gcp-serverless-cost-comparison.md) | Slack Gateway のサーバーレス化検討（Always Free=$0 の現状 vs Cloud Run scale-to-zero・実測・PoC計画） |
 | [19-environments-and-config](architecture/19-environments-and-config.md) | 環境分離 dev/stg/prod（軸A: config/secrets切替・WAREHOUSE_ENV・base+overlay・prodはタグ） |
 | [20-dev-quality-and-testing](architecture/20-dev-quality-and-testing.md) | 開発品質・テスト戦略（Ruff/pytest/pre-commit/CI/Playwright・安全契約テスト・テストピラミッド） |
+| [21-eval-sdk-extraction](architecture/21-eval-sdk-extraction.md) | Eval SDK 抽出（`eval_sdk`：Langfuse trace/score・KPI をドメイン非依存に抽出する設計提案） |
+| [22-web-observability](architecture/22-web-observability.md) | Web Observability（Mode A 会話・稟議のリアルタイム観測基盤：`web_bridge` + Next.js `web/console`、Langfuse 整合） |
 
 ## mode-a/ — LLM単独交通管理
 
