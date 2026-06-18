@@ -1,8 +1,8 @@
 """Langfuse observation taxonomy tests (warehouse_orchestrator.tags, Lane C #6 wo / #88).
 
 Freezes the Phase-4 comparison vocabulary so the trace side (#4, ``langfuse_tags=[provider,
-mode]`` doc08:375), the score side (#6, score metadata ``{run_id, mode?, provider?, gen_id?}``
-doc08:487) and these tests cannot drift apart. Pure stdlib — no real langfuse SDK (R-26, doc16
+mode]`` doc08:377), the score side (#6, score metadata ``{run_id, mode?, provider?, gen_id?}``
+doc08:489) and these tests cannot drift apart. Pure stdlib — no real langfuse SDK (R-26, doc16
 §11). The score-send gate matrix + the documented metadata *values* are covered separately in
 ``test_wo_kpi_collector.py``; here we pin the *keys* and the trace-tag list shape.
 """
@@ -19,12 +19,12 @@ from warehouse_orchestrator.tags import (
     provider_tags,
 )
 
-# ── score-metadata key vocabulary (doc08:487 {run_id, mode?, provider?, gen_id?}) ─────────
+# ── score-metadata key vocabulary (doc08:489 {run_id, mode?, provider?, gen_id?}) ─────────
 
 
 @pytest.mark.unit
 def test_tag_keys_are_the_documented_score_metadata_set() -> None:
-    # doc08:487 freezes the score metadata as {run_id, mode?, provider?, gen_id?}.
+    # doc08:489 freezes the score metadata as {run_id, mode?, provider?, gen_id?}.
     assert TAG_KEYS == ("run_id", "mode", "provider", "gen_id")
     assert (TAG_KEY_RUN_ID, TAG_KEY_MODE, TAG_KEY_PROVIDER, TAG_KEY_GEN_ID) == TAG_KEYS
 
@@ -47,12 +47,12 @@ def test_build_score_metadata_uses_exactly_the_taxonomy_keys() -> None:
     assert set(minimal) <= set(TAG_KEYS)
 
 
-# ── provider_tags: the Langfuse TRACE tag list [provider, mode] (doc08:375) ───────────────
+# ── provider_tags: the Langfuse TRACE tag list [provider, mode] (doc08:377) ───────────────
 
 
 @pytest.mark.unit
 def test_provider_tags_order_is_provider_then_mode() -> None:
-    # Matches the Bridge's langfuse_tags=[provider, mode] (tracing.py / doc08:375).
+    # Matches the Bridge's langfuse_tags=[provider, mode] (tracing.py / doc08:377).
     assert provider_tags("claude", "A") == ["claude", "A"]
     assert provider_tags("grok", "open-rmf") == ["grok", "open-rmf"]
 

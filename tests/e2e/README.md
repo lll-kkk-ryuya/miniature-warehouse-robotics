@@ -197,7 +197,7 @@ python3.12 -m pytest tests/e2e/test_min_separation_harness.py::test_live_recorde
 #   → 最接近距離 ≥0.15m を assert（doc11a:446）。host では stream 未指定＝skip（gate ロジックは host 検証済）。
 ```
 
-**注**: 座標ゴールは `/bot{n}/goal_pose` を **LLM Bridge が直接 publish しない**（doc03:97 / doc08:462）方針と整合
+**注**: 座標ゴールは `/bot{n}/goal_pose` を **LLM Bridge が直接 publish しない**（doc03:97 / doc08:464）方針と整合
 ＝発行主体は nav2_bridge（Mode A/B の MCP 内部経路に相当）。raw goal_pose publisher は新設しない。
 
 ## collision_monitor 2-bot 近接停止 PoC runbook（live · 人間 Docker ゲート）

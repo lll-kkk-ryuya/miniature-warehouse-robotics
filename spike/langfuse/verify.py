@@ -23,7 +23,7 @@ Boundary (kickoff / parallel-workflow §2.1): this spike is **independent of the
 packages**. It does NOT import ``warehouse_orchestrator`` (``trace_id.py`` / ``grok_cost.py``);
 it re-implements the *documented SDK contract* (``langfuse.create_trace_id``, 32-hex-no-dash)
 so the harness verifies that an independent implementation satisfies the same contract.
-Per doc08:508 the harness fixes **no** Grok price or literal model string in code — prices
+Per doc08:510 the harness fixes **no** Grok price or literal model string in code — prices
 are *injected* (offline) or recorded as expected values in ``CHECKLIST.md`` (live).
 
 Safety (safety.md / environments.md): the live driver refuses ``WAREHOUSE_ENV=prod`` and a
@@ -47,7 +47,7 @@ _HEX32 = re.compile(r"^[0-9a-f]{32}$")
 SDK_MIN: tuple[int, int] = (4, 7)
 SDK_MAX_EXCL: tuple[int, int] = (5, 0)
 # Defensive token-key aliases for a Langfuse ``usage_details`` mapping. The live key shape is
-# UNVERIFIED (doc08:508), so parse across documented v4 / OpenAI-compatible aliases instead of
+# UNVERIFIED (doc08:510), so parse across documented v4 / OpenAI-compatible aliases instead of
 # fixing one unconfirmed key (same defensive stance as wo grok_cost.py, which this does NOT import).
 _INPUT_TOKEN_KEYS = ("input", "input_tokens", "prompt_tokens")
 _OUTPUT_TOKEN_KEYS = ("output", "output_tokens", "completion_tokens")
@@ -159,9 +159,9 @@ def grok_cost_usd(
     input_usd_per_token: float,
     output_usd_per_token: float,
 ) -> float:
-    """Offline Grok cost: ``in_tokens*in_price + out_tokens*out_price`` (doc08:505).
+    """Offline Grok cost: ``in_tokens*in_price + out_tokens*out_price`` (doc08:507).
 
-    Prices are **injected**, never baked in (doc08:508 — the live unit prices / field shape are
+    Prices are **injected**, never baked in (doc08:510 — the live unit prices / field shape are
     confirmed in CHECKLIST.md, not fixed in code). This is the arithmetic that unlocks the Grok
     comparison when Langfuse has no built-in xAI price; an independent re-impl of wo's contract.
     """
@@ -175,7 +175,7 @@ def generation_cost(
 ) -> float | None:
     """The effective cost of a generation: native ``cost`` if present, else the Grok offline fallback.
 
-    doc08:502-506 — a registered custom model price gives a native ``cost``; absent that, xAI Grok
+    doc08:504-508 — a registered custom model price gives a native ``cost``; absent that, xAI Grok
     falls back to ``usage_details × static price`` (``grok_prices=(in, out)``). Returns ``None`` when
     no cost can be determined (so the caller distinguishes "unpriceable" from a real zero).
     """
@@ -193,7 +193,7 @@ def cost_is_nonzero(
 ) -> bool:
     """② The generation has a strictly positive cost (natively or via the Grok offline fallback).
 
-    doc13:520② / doc08:506 — all four providers must report ``cost > 0`` or the comparison breaks.
+    doc13:520② / doc08:508 — all four providers must report ``cost > 0`` or the comparison breaks.
     """
     cost = generation_cost(generation, grok_prices=grok_prices)
     return cost is not None and cost > 0.0
@@ -341,7 +341,7 @@ def make_traced_call(
     generation) pointed at Hermes (``base_url/v1``), with the trace id seeded from ``f"{run_id}:{gen_id}"``
     so the read-back trace must carry the deterministic id (①). The langfuse SDK + ``openai`` are lazily
     imported so ``--dry-run`` and the unit tests need neither. Returns a best-effort normalized readback;
-    the exact fetch field shapes are UNVERIFIED (doc08:508), so ``fetch_trace`` parses defensively.
+    the exact fetch field shapes are UNVERIFIED (doc08:510), so ``fetch_trace`` parses defensively.
     """
     from langfuse import get_client  # lazy/optional
     from langfuse.openai import OpenAI  # lazy: Bridge-owned generation wrapper (doc13:517)
@@ -358,7 +358,7 @@ def make_traced_call(
         # Bind the cycle span to the seed-derived trace id (v4 trace_context) so the Bridge OWNS the
         # trace (Pattern A, doc13:517) — this is exactly what ① tests: the langfuse.openai generation
         # must land under THIS id (not a Hermes-created one). The exact binding API is UNVERIFIED
-        # (doc08:508 / doc14:318) → honestly flagged; the human confirms in the Langfuse UI.
+        # (doc08:510 / doc14:318) → honestly flagged; the human confirms in the Langfuse UI.
         with client.start_as_current_span(
             name="phase3_verify_cycle", trace_context={"trace_id": trace_id}
         ):
@@ -379,7 +379,7 @@ def make_traced_call(
 def fetch_trace(client: object, trace_id: str) -> dict:
     """Best-effort read-back of a trace into the normalized structure ``evaluate_trace`` consumes.
 
-    The v4 fetch API field paths are UNVERIFIED (doc08:508 / doc20 §8.4) — the human confirms in the
+    The v4 fetch API field paths are UNVERIFIED (doc08:510 / doc20 §8.4) — the human confirms in the
     Langfuse UI. We parse defensively across candidate shapes and record the raw payload so a wrong
     guess here never silently passes a check. Returns ``{"trace_id", "generations", "raw", "fetch_ok"}``.
     """
@@ -482,7 +482,7 @@ def _require_create_fn() -> Callable[..., str]:
 
 
 def _grok_prices_arg(value: str | None) -> tuple[float, float] | None:
-    """Parse ``--grok-prices in,out`` (USD per token) — injected, never baked (doc08:508)."""
+    """Parse ``--grok-prices in,out`` (USD per token) — injected, never baked (doc08:510)."""
     if not value:
         return None
     try:
@@ -599,7 +599,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"\nwrote {out_path}")
     print(
         "NOTE: confirm ①〜⑤ in the Langfuse UI and transcribe into RESULT.md "
-        "(read-back field shapes are UNVERIFIED — doc08:508 / doc20 §8.4)."
+        "(read-back field shapes are UNVERIFIED — doc08:510 / doc20 §8.4)."
     )
     return 0
 

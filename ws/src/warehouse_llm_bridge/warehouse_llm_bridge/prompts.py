@@ -87,7 +87,7 @@ class ResolvedPrompt:
     name encodes the mode, doc08 §Langfuse Prompt Management 方針). ``version`` is the managed
     prompt version when a real prompt was fetched, else ``None``. ``langfuse_prompt`` (the SDK
     prompt object) is passed as ``langfuse_prompt=`` to link the generation for prompt-level
-    analytics (Pattern A, doc08:375); it is ``None`` when the code fallback was used (so a
+    analytics (Pattern A, doc08:532); it is ``None`` when the code fallback was used (so a
     fallback is never mislabelled as a managed prompt version).
     """
 

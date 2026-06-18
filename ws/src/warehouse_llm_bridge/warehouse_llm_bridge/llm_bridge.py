@@ -3,7 +3,7 @@
 A thin rclpy adapter around the pure-async :class:`BridgeScheduler`. It:
 
 * publishes ``/llm/reasoning`` and ``/llm/command`` (``std_msgs/String`` JSON,
-  doc08:428-429, std_msgs/String until Phase 4 per doc16 §3),
+  doc08:430-431, std_msgs/String until Phase 4 per doc16 §3),
 * reads State Cache ``state.json`` via the frozen ``FileStateStore`` (doc12/08a —
   the bridge consumes the snapshot, it does NOT subscribe to per-bot sensors),
 * drives the response-driven commander cycle in an asyncio loop, publishing the
