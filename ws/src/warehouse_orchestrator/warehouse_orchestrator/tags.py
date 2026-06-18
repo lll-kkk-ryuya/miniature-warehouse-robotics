@@ -7,11 +7,11 @@ with two different owners — Langfuse v4 **scores carry no tags** (doc08:367):
 
 * **trace** (owned by #4 Bridge, ``warehouse_llm_bridge/tracing.py``): per-turn ``name`` =
   ``turn`` int (doc08:329,340), ``session_id`` = ``run_{mode}_{provider}_{scenario}_{ts}``
-  (doc08:381), ``langfuse_tags=[provider, mode]`` + ``gen_id`` metadata (doc08:375), id from
+  (doc08:383), ``langfuse_tags=[provider, mode]`` + ``gen_id`` metadata (doc08:377), id from
   ``create_trace_id(seed=f"{run_id}:{gen_id}")`` (doc13:516).
 * **score** (owned by #6 wo, :func:`~warehouse_orchestrator.score_send.build_score_metadata`):
   no tags, so every label rides in the metadata ``{run_id, mode?, provider?, gen_id?}``
-  (doc08:487) + ``robot`` per efficiency leg (doc08:369).
+  (doc08:489) + ``robot`` per efficiency leg (doc08:369).
 
 This module is the *vocabulary* both halves agree on — the metadata key names and the trace
 tag list shape — so the two sides (and the tests) cannot drift. The full taxonomy reference
@@ -20,13 +20,13 @@ tag list shape — so the two sides (and the tests) cannot drift. The full taxon
 doc20 is the cross-cutting map. Pure stdlib (no rclpy, no langfuse) → unit-testable, doc16 §11.
 
 **Ownership note**: the *live* trace-tag emission is #4's — ``tracing.py`` attaches
-``[provider, mode]`` (doc08:375). Cross-lane imports are forbidden (parallel-workflow §2.1), so
+``[provider, mode]`` (doc08:377). Cross-lane imports are forbidden (parallel-workflow §2.1), so
 #4 does not import this module; :func:`provider_tags` is the taxonomy single-source + test
 anchor — **inert**, mirroring the reserved ``SCORE_*`` names in :mod:`langfuse_sink`. wo itself
 sends scores only (no tags), so it consumes :data:`TAG_KEYS`, not :func:`provider_tags`.
 """
 
-# ── score metadata keys (doc08:487 {run_id, mode?, provider?, gen_id?}) ───────────────────
+# ── score metadata keys (doc08:489 {run_id, mode?, provider?, gen_id?}) ───────────────────
 # build_score_metadata loads exactly these; centralised here so the trace side, the score side
 # and the tests share one spelling (doc08:360,363 example / 採用実装 :369).
 TAG_KEY_RUN_ID = "run_id"  # always present — trace-seed half f"{run_id}:{gen_id}" (#73 / doc13:519)
@@ -55,10 +55,10 @@ def _clean(value: str | None) -> str | None:
 
 
 def provider_tags(provider: str | None, mode: str | None) -> list[str]:
-    """The Langfuse **trace** tag list ``[provider, mode]`` (doc08:375), blanks omitted.
+    """The Langfuse **trace** tag list ``[provider, mode]`` (doc08:377), blanks omitted.
 
     Order is fixed — provider first, mode second — to match the Bridge's
-    ``langfuse_tags=[provider, mode]`` (``warehouse_llm_bridge/tracing.py``; doc08:375). A
+    ``langfuse_tags=[provider, mode]`` (``warehouse_llm_bridge/tracing.py``; doc08:377). A
     ``None`` / blank entry is dropped so the list never carries an empty tag.
 
     **Taxonomy reference only.** wo emits *scores*, which carry no tags (doc08:367) — the live

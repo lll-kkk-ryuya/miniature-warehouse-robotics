@@ -135,7 +135,7 @@ def test_check_inbound_none_is_false() -> None:
     assert not check_inbound_trace_id("a" * 32, None)
 
 
-# ── ② Grok offline cost arithmetic (doc08:505, prices INJECTED — doc08:508) ─────────────────
+# ── ② Grok offline cost arithmetic (doc08:507, prices INJECTED — doc08:510) ─────────────────
 def test_grok_cost_arithmetic() -> None:
     # 1500 in * 1.25e-6 + 300 out * 2.50e-6 = 0.001875 + 0.00075 = 0.002625 USD (grok-4.3 example).
     usage = {"input": 1500, "output": 300}
@@ -156,7 +156,7 @@ def test_grok_cost_zero_tokens_is_zero() -> None:
     assert grok_cost_usd({}, 1.25e-6, 2.5e-6) == 0.0
 
 
-# ── generation_cost / ② cost_is_nonzero (doc13:520② / doc08:506) ────────────────────────────
+# ── generation_cost / ② cost_is_nonzero (doc13:520② / doc08:508) ────────────────────────────
 def test_generation_cost_native_present() -> None:
     assert generation_cost({"cost": 0.0042}) == 0.0042
 

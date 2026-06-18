@@ -188,7 +188,7 @@ sink.flush()
 |---|---|---|---|---|
 | 連続的衝突率＋クリアランス分布 | `eval_sdk.stats`（histogram/rate） | ★**観測専用 subscriber**: Guardian `near_collision` を count 化＋inter-robot 距離をログ（[doc12](12-infrastructure-common.md)）。**Emergency Guardian の enforcement とは別ノード**（観測≠制御） | nav `collision_rate` | sink |
 | deadlock 頻度 | count | ★**deadlock detector node**: State Cache 購読・[doc08a:271-281](../mode-a/08a-llm-bridge-mode-a.md)（2台 `status=="idle"`＋`current_task != null`＋dist<0.4m＋heading>2.5rad） | 倉庫 `deadlock`（予約済 `langfuse_sink.py:51`） | sink |
-| replans | count | ★**Nav2 露出**（現状どの契約も未産出・[doc08:494](08-llm-bridge-common.md)）→ **contract PR が前提**（nav-traffic #8） | 倉庫 `replans`（予約済） | sink |
+| replans | count | ★**Nav2 露出**（現状どの契約も未産出・[doc08:496](08-llm-bridge-common.md)）→ **contract PR が前提**（nav-traffic #8） | 倉庫 `replans`（予約済） | sink |
 
 → **実装場所 = ドメインに新ノードを追加**（数学・emit は eval_sdk）。**安全 producer は fail-closed の Emergency Guardian と混ぜず、観測専用レーンにする**（§11 の最重要注意）。
 
@@ -236,7 +236,7 @@ sink.flush()
 | **0（本 doc）** | 抽出方針・5モジュール・非目標・seed 不変・分割トリガーを land。**コード前**。 | docs-first 提案 land |
 | **1（抽出＋二重利用＝証明）** | `ws/src/eval_sdk/`（ament_python・ROS/warehouse 依存ゼロ・`langfuse` 任意 extra）に5モジュールを lift。`warehouse_orchestrator`/`warehouse_llm_bridge` を import 切替。 | **完了条件 = 倉庫の既存テスト無改変通過 ∧ `tracing.py`↔`trace_id.py` の seed 重複削除**（境界が実在する反証可能証拠） |
 | **2（名前予約 registry・additive）** | `SCORE_*`＋`DataType` を `eval_sdk.sink.ScoreSpec` へ。nav 標準名（`success_rate`/`spl`/`soft_spl`/`collision_rate`/`time_to_goal`/`intervention_rate`）を `plugin="nav"` manifest 登録。 | **`contract` ラベル＋全レーン予告**（名前＝dashboard 列見出し・改名は履歴孤児化・[parallel-workflow.md §4](../../.claude/rules/parallel-workflow.md)） |
-| **3a（倉庫 live・completion 源結線時）** | SR/SPL/SoftSPL の **live 結線**（Nav2 goal-reached completion 源 ＋ planner lᵢ）＋ Tier2 観測ノード（collision/deadlock）。**利用者#2 ゲート対象外**＝倉庫自身の Phase-4 4-provider 比較（[doc06:275](06-implementation-phases.md) / [doc08:489-496](08-llm-bridge-common.md)）に必要。 | completion 源（Nav2 goal-reached・sim/実機 live） |
+| **3a（倉庫 live・completion 源結線時）** | SR/SPL/SoftSPL の **live 結線**（Nav2 goal-reached completion 源 ＋ planner lᵢ）＋ Tier2 観測ノード（collision/deadlock）。**利用者#2 ゲート対象外**＝倉庫自身の Phase-4 4-provider 比較（[doc06:275](06-implementation-phases.md) / [doc08:491-498](08-llm-bridge-common.md)）に必要。 | completion 源（Nav2 goal-reached・sim/実機 live） |
 | **3b（利用者#2 が実在してから・gated）** | 30分スパイク（Langfuse OTLP が custom `*.nav.*` 属性を保持するか）→ 緑なら embodied-outcome OTel 名前空間＋decision↔outcome 相関器＋Run/Episode/Step＋Parquet を**2形に対して**設計。 | 利用者#2 ∧ OTLP spike green |
 
 ---
@@ -341,7 +341,7 @@ sink.flush()
 
 ## 15. References
 
-- 設計: [doc08 §比較指標/§比較計測の追加設計](08-llm-bridge-common.md)（:489-496 予約スコア・:493 replans 未産出・:510-516 12構成・:339 acceptance_rate）/ [doc20 §8](20-dev-quality-and-testing.md)（観測 taxonomy）/ [doc13 §7.5](13-hermes-setup.md)（trace_id 契約）/ [doc08a:271-281](../mode-a/08a-llm-bridge-mode-a.md)（deadlock 信号）/ [doc12](12-infrastructure-common.md)（Guardian/State Cache）/ [doc15](15-mcp-platform.md)（audit）。
+- 設計: [doc08 §比較指標/§比較計測の追加設計](08-llm-bridge-common.md)（:491-498 予約スコア・:496 replans 未産出・:512-518 12構成・:339 acceptance_rate）/ [doc20 §8](20-dev-quality-and-testing.md)（観測 taxonomy）/ [doc13 §7.5](13-hermes-setup.md)（trace_id 契約）/ [doc08a:271-281](../mode-a/08a-llm-bridge-mode-a.md)（deadlock 信号）/ [doc12](12-infrastructure-common.md)（Guardian/State Cache）/ [doc15](15-mcp-platform.md)（audit）。
 - 抽出元コード: `warehouse_orchestrator/.../{trace_id,langfuse_sink,kpi,grok_cost}.py`・`warehouse_llm_bridge/.../tracing.py`・`warehouse_mcp_server/.../audit.py:34-43`。
 - 規約: [docs-first.md](../../.claude/rules/docs-first.md) / [parallel-workflow.md §4](../../.claude/rules/parallel-workflow.md)（contract）/ [doc16 §11](16-repository-and-conventions.md)（純コア・偽実装での独立検証）。
 - 外部標準・OSS（§12/§13 で評価）: Langfuse（MIT・ClickHouse 傘下・trace/observation/score）/ OpenTelemetry GenAI semconv（CNCF・gen_ai.* は Development）/ Habitat-Lab（SR/SPL/SoftSPL 定義正本・Anderson 2018）/ AllenAct `spl_metric`（MIT・コピー元）/ nuPlan・iGibson（harness パターン）/ SPARC=Balasubramanian 2015（平滑性・siva82kb 照合元）/ SCT=Yokoyama 2021 / Inspect-AI（agent eval・物理 outcome 非対応）/ numpy・scipy（BSD）。

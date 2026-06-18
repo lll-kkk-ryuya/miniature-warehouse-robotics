@@ -7,7 +7,7 @@ now live ONCE in :mod:`eval_sdk.sink`; what stays HERE is the **warehouse KPI vo
 its score-name fallback policy:
 
 * the documented KPI score names (``result`` / ``task_completion_time`` / ``efficiency``) and
-  the Phase 3-4 *reserved* names (doc08:489-496) — domain manifest, kept domain-side (doc21 §3 (c)).
+  the Phase 3-4 *reserved* names (doc08:491-498) — domain manifest, kept domain-side (doc21 §3 (c)).
 * the ``HERMES_LANGFUSE_*`` credential env var names (eval_sdk hard-codes no env name).
 * the metadata-less fallback that embeds the robot in the score NAME (``result_bot1``,
   doc08:367) — supplied via the :meth:`FailOpenScoreSink._fallback_name` hook.
@@ -54,16 +54,16 @@ SCORE_RESULT = "result"
 SCORE_TASK_COMPLETION_TIME = "task_completion_time"
 SCORE_EFFICIENCY = "efficiency"
 
-# Phase 3-4 reserved score names (doc08 §比較計測の追加設計 :489-496). The exact strings are
+# Phase 3-4 reserved score names (doc08 §比較計測の追加設計 :491-498). The exact strings are
 # frozen in docs, so reserve them here once — #4/#6 and tests share the names and a later producer
 # can't drift them. **Inert: no live-send path is wired** (no ``send_*`` method below). Their
 # producers (Guardian near_collision, Nav2 replans, deadlock detector, negotiation system) are
 # unbuilt, so emitting these is Phase 3-4 (#88 / #133 scope = names only).
-SCORE_COLLISION_FREE = "collision_free"  # BOOLEAN, doc08:491 (Guardian near_collision absence)
-SCORE_REPLANS = "replans"  # NUMERIC, doc08:493 (Nav2 replan count)
-SCORE_MEAN_DECISION_LATENCY = "mean_decision_latency"  # NUMERIC, doc08:493 (generation.latency)
-SCORE_DEADLOCK = "deadlock"  # NUMERIC, doc08:494 (per-run detect count; #55/#128 doc08a:281)
-# Mode A negotiation scores — 演出専用・Phase 4 比較対象外 (doc08:496 / doc14 §交渉スコア).
+SCORE_COLLISION_FREE = "collision_free"  # BOOLEAN, doc08:495 (Guardian near_collision absence)
+SCORE_REPLANS = "replans"  # NUMERIC, doc08:496 (Nav2 replan count)
+SCORE_MEAN_DECISION_LATENCY = "mean_decision_latency"  # NUMERIC, doc08:497 (generation.latency)
+SCORE_DEADLOCK = "deadlock"  # NUMERIC, doc08:498 (per-run detect count; #55/#128 doc08a:281)
+# Mode A negotiation scores — 演出専用・Phase 4 比較対象外 (doc08:500 / doc14 §交渉スコア).
 SCORE_NEGOTIATION_ROUNDS = "negotiation_rounds"  # NUMERIC
 SCORE_AGREEMENT_REACHED = "agreement_reached"  # BOOLEAN
 

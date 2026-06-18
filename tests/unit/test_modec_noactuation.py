@@ -5,7 +5,7 @@ Frozen topology (docs-first source of truth):
 * ``/bot{n}/goal_pose`` is published by the Fleet Adapter (Mode C) / the Warehouse
   MCP Server (Mode A/B) — NEVER by the LLM Bridge Node
   (docs/architecture/03-software-architecture.md:97 /
-  docs/architecture/08-llm-bridge-common.md:462).
+  docs/architecture/08-llm-bridge-common.md:464).
 * In Mode C the commander's decisions reach Nav2 over the Open-RMF Task API, so the
   Bridge wires NO Nav2 REST forwarder — ``forwarder=None``
   (docs/architecture/08-llm-bridge-common.md:169 /
@@ -25,7 +25,7 @@ ROS / network / Gazebo (doc16 §11, .github/workflows/ci.yml installs no rclpy):
    ONLY for {none, simple}; ``open-rmf`` is excluded, so llm_bridge.py:135's ternary
    takes the ``None`` branch for Mode C.
 3. The Bridge node creates publishers for ``/llm/reasoning`` + ``/llm/command`` ONLY —
-   it never publishes ``/bot{n}/goal_pose`` (doc03:97 / doc08:462).
+   it never publishes ``/bot{n}/goal_pose`` (doc03:97 / doc08:464).
 
 This is an R-26 safety contract: a Mode C commander that bypassed Open-RMF and drove a
 robot directly would defeat the entire traffic-management layer. Lane A's coordinate-
@@ -229,7 +229,7 @@ def test_mode_c_wiring_selects_no_forwarder() -> None:
 @pytest.mark.safety
 @pytest.mark.unit
 def test_mode_c_bridge_publishes_only_llm_topics() -> None:
-    # doc03:97 / doc08:462: /bot{n}/goal_pose is published by the Fleet Adapter (Mode C) /
+    # doc03:97 / doc08:464: /bot{n}/goal_pose is published by the Fleet Adapter (Mode C) /
     # Warehouse MCP Server (Mode A/B), NEVER by the LLM Bridge. Pinned structurally (AST
     # over the source — no ROS import): the set of string-literal topics passed to
     # create_publisher must be exactly the two /llm/* topics, so a regression adding a

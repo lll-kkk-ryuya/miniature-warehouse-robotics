@@ -26,7 +26,7 @@
 #
 # Env: PY (default python3.12 — host python3 is 3.7), HERMES_BASE_URL (default 127.0.0.1:8642),
 #      WAREHOUSE_RUN_ID (per-run id seeding the trace; required for live), LANGFUSE_GROK_PRICES
-#      ("IN,OUT" USD/token from CHECKLIST.md — injected, NOT baked into code per doc08:508).
+#      ("IN,OUT" USD/token from CHECKLIST.md — injected, NOT baked into code per doc08:510).
 set -uo pipefail
 
 SPIKE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -113,7 +113,7 @@ for f in files:
           f"{m(ev.get('check4_any_managed_prompt')):>7} {m(r.get('check5_sdk_version_ok')):>5} "
           f"{m(r.get('fetch_ok')):>6}   sdk={r.get('sdk_version')}")
 print("\nlegend: Y=pass N=fail ?=unverifiable from API (confirm in Langfuse UI).")
-print("Transcribe into RESULT.md. fetch=N → ①②③④ are UI-confirmed only (doc08:508 / doc20 §8.4).")
+print("Transcribe into RESULT.md. fetch=N → ①②③④ are UI-confirmed only (doc08:510 / doc20 §8.4).")
 PYREPORT
     ;;
 

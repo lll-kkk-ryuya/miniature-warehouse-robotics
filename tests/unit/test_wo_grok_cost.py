@@ -1,8 +1,8 @@
 """Offline Grok cost helper tests (warehouse_orchestrator, Lane C #6 wo / #133).
 
 Pure-function tests for ``grok_cost`` / ``resolve_grok_price`` / ``grok_cost_for_model``
-(doc08 §比較計測の追加設計 :503). **No live Langfuse / xAI SDK is imported (R-26)** — every test
-injects its own price table so it never depends on the placeholder constant values (doc08:506);
+(doc08 §比較計測の追加設計 :504). **No live Langfuse / xAI SDK is imported (R-26)** — every test
+injects its own price table so it never depends on the placeholder constant values (doc08:508);
 only the *structure* of the shipped table is asserted.
 """
 
@@ -38,7 +38,7 @@ def test_grok_cost_zero_tokens_is_zero() -> None:
 
 @pytest.mark.unit
 def test_grok_cost_reads_alias_token_keys() -> None:
-    # Live key shape unconfirmed (doc08:506) → defensive across documented aliases.
+    # Live key shape unconfirmed (doc08:508) → defensive across documented aliases.
     assert grok_cost({"input_tokens": 1000, "output_tokens": 500}, _PRICE) == pytest.approx(0.007)
     assert grok_cost({"prompt_tokens": 1000, "completion_tokens": 500}, _PRICE) == pytest.approx(
         0.007
@@ -55,7 +55,7 @@ def test_grok_cost_ignores_bool_token_counts() -> None:
 def test_resolve_price_prefix_and_xai_prefix_and_case() -> None:
     assert resolve_grok_price("grok-4", _TABLE) is _PRICE
     assert resolve_grok_price("grok-4-0709", _TABLE) is _PRICE  # longest-prefix match
-    assert resolve_grok_price("xai/grok-4", _TABLE) is _PRICE  # xai/ prefix stripped (doc08:502)
+    assert resolve_grok_price("xai/grok-4", _TABLE) is _PRICE  # xai/ prefix stripped (doc08:504)
     assert resolve_grok_price("GROK-4", _TABLE) is _PRICE  # case-insensitive
 
 
@@ -86,7 +86,7 @@ def test_grok_cost_for_model_unknown_returns_none() -> None:
 
 @pytest.mark.unit
 def test_static_price_table_is_versioned_and_structured() -> None:
-    # The shipped constant fixes *structure* only; values are placeholders (doc08:506).
+    # The shipped constant fixes *structure* only; values are placeholders (doc08:508).
     assert GROK_PRICE_TABLE_2026_06_04  # non-empty
     for price in GROK_PRICE_TABLE_2026_06_04.values():
         assert isinstance(price, GrokPrice)
@@ -99,7 +99,7 @@ def test_current_price_table_is_versioned_and_structured() -> None:
     # Additive: the 2026-06-12 table mirrors the structure contract of the 06-04 placeholder table.
     # Its values are the *current public* xAI list prices (USD-per-1M / 1e6) rather than placeholders,
     # but they are still not end-to-end verified (literal model string / v4 field form = live,
-    # doc08:508).
+    # doc08:510).
     assert GROK_PRICE_TABLE_2026_06_12  # non-empty
     for price in GROK_PRICE_TABLE_2026_06_12.values():
         assert isinstance(price, GrokPrice)
@@ -118,7 +118,7 @@ def test_current_price_table_is_versioned_and_structured() -> None:
 
 @pytest.mark.unit
 def test_current_price_table_has_sourced_dated_provenance() -> None:
-    # doc08:504 requires the price source URL + retrieval date be recorded alongside the table.
+    # doc08:506 requires the price source URL + retrieval date be recorded alongside the table.
     # Guard that provenance can't be dropped when the table is edited (the comment lives in source).
     src = inspect.getsource(grok_cost_module)
     assert "GROK_PRICE_TABLE_2026_06_12" in src
@@ -138,6 +138,6 @@ def test_current_price_table_resolves_families_and_omits_unpriced() -> None:
         is GROK_PRICE_TABLE_2026_06_12["grok-4.20"]
     )
     # Older models absent from the current public page get NO guessed row → default (None), an honest
-    # "unpriceable" signal rather than a stale/invented price (doc08:508 "don't fix by guessing").
+    # "unpriceable" signal rather than a stale/invented price (doc08:510 "don't fix by guessing").
     assert resolve_grok_price("grok-4-0709", GROK_PRICE_TABLE_2026_06_12) is None
     assert resolve_grok_price("grok-3", GROK_PRICE_TABLE_2026_06_12) is None
