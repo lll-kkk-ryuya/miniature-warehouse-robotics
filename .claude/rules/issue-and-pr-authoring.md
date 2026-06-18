@@ -34,6 +34,7 @@ docs-first の原則（真実は docs・着手前に正本を読む・例示 vs 
 | jetson | `architecture/17` §4（deploy）・`shared/02-hardware-design.md`・`architecture/19-environments-and-config.md` |
 | firmware | `shared/02-hardware-design.md`・`.claude/rules/safety.md`・`architecture/12`（Layer 0） |
 | docs / dev-tooling | `docs/README.md`・`architecture/20-dev-quality-and-testing.md`・本書 |
+| web（観測 UI / gateway） | `architecture/22-web-observability.md`・`architecture/08-llm-bridge-common.md`（Langfuse 整合）・`architecture/20-dev-quality-and-testing.md`（web-e2e / CI） |
 | 環境 / config | `architecture/19-environments-and-config.md` |
 
 > 該当が無ければ `architecture/06-implementation-phases.md`（フェーズ計画）＋関連 epic Issue を参照。**正本が無い変更は、先に docs を追記してから起票**する（契約変更は §4 / parallel-workflow.md §4）。

@@ -27,6 +27,7 @@ body:
         - wo
         - jetson
         - firmware
+        - web
         - docs
     validations:
       required: true
