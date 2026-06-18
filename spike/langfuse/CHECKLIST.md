@@ -16,7 +16,7 @@
 - [ ] live 取得値: _未計測_
 
 ### ② 4社とも `usage_details`/cost ≠0（xAI Grok はカスタムモデル定義 or offline fallback）
-- 根拠: `docs/architecture/13-hermes-setup.md:520②` / `docs/architecture/08-llm-bridge-common.md:504-510`（:502 既定価格表に xAI 無し / :504 カスタムモデル登録 / :505 offline fallback / :506 `cost_details.total>0` assert / :508 価格フィールド形・literal model 未確定）。
+- 根拠: `docs/architecture/13-hermes-setup.md:520②` / `docs/architecture/08-llm-bridge-common.md:504-510`（:504 既定価格表に xAI 無し / :506 カスタムモデル登録 / :507 offline fallback / :508 `cost_details.total>0` assert / :510 価格フィールド形・literal model 未確定）。
 - offline 検証済: `cost_is_nonzero` + `grok_cost_usd`（`tokens × 注入価格 → USD`・alias キー防御パース・bool 除外・0境界）。
 - 期待（live）: claude/openai/google は Langfuse 既定価格表で cost>0、**xai は (a) カスタムモデル登録 or (b) wo offline fallback** で cost>0。1社でも空欄なら比較破綻。
 - [ ] live 取得値（4社の cost_details.total）: _未計測_

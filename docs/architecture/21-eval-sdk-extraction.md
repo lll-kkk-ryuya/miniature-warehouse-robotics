@@ -341,7 +341,7 @@ sink.flush()
 
 ## 15. References
 
-- 設計: [doc08 §比較指標/§比較計測の追加設計](08-llm-bridge-common.md)（:489-496 予約スコア・:493 replans 未産出・:510-516 12構成・:339 acceptance_rate）/ [doc20 §8](20-dev-quality-and-testing.md)（観測 taxonomy）/ [doc13 §7.5](13-hermes-setup.md)（trace_id 契約）/ [doc08a:271-281](../mode-a/08a-llm-bridge-mode-a.md)（deadlock 信号）/ [doc12](12-infrastructure-common.md)（Guardian/State Cache）/ [doc15](15-mcp-platform.md)（audit）。
+- 設計: [doc08 §比較指標/§比較計測の追加設計](08-llm-bridge-common.md)（:491-498 予約スコア・:496 replans 未産出・:512-518 12構成・:339 acceptance_rate）/ [doc20 §8](20-dev-quality-and-testing.md)（観測 taxonomy）/ [doc13 §7.5](13-hermes-setup.md)（trace_id 契約）/ [doc08a:271-281](../mode-a/08a-llm-bridge-mode-a.md)（deadlock 信号）/ [doc12](12-infrastructure-common.md)（Guardian/State Cache）/ [doc15](15-mcp-platform.md)（audit）。
 - 抽出元コード: `warehouse_orchestrator/.../{trace_id,langfuse_sink,kpi,grok_cost}.py`・`warehouse_llm_bridge/.../tracing.py`・`warehouse_mcp_server/.../audit.py:34-43`。
 - 規約: [docs-first.md](../../.claude/rules/docs-first.md) / [parallel-workflow.md §4](../../.claude/rules/parallel-workflow.md)（contract）/ [doc16 §11](16-repository-and-conventions.md)（純コア・偽実装での独立検証）。
 - 外部標準・OSS（§12/§13 で評価）: Langfuse（MIT・ClickHouse 傘下・trace/observation/score）/ OpenTelemetry GenAI semconv（CNCF・gen_ai.* は Development）/ Habitat-Lab（SR/SPL/SoftSPL 定義正本・Anderson 2018）/ AllenAct `spl_metric`（MIT・コピー元）/ nuPlan・iGibson（harness パターン）/ SPARC=Balasubramanian 2015（平滑性・siva82kb 照合元）/ SCT=Yokoyama 2021 / Inspect-AI（agent eval・物理 outcome 非対応）/ numpy・scipy（BSD）。

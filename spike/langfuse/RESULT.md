@@ -116,7 +116,7 @@ WAREHOUSE_RUN_ID=run_A_claude_s1 ./run.sh verify anthropic   # LIVE（課金・h
 
 ## 設計正本 / 関連
 - [docs/architecture/13-hermes-setup.md:512-520](../../docs/architecture/13-hermes-setup.md)（§7.5 trace_id 契約・①〜⑤）
-- [docs/architecture/08-llm-bridge-common.md:502-510](../../docs/architecture/08-llm-bridge-common.md)（Grok cost）/ `:489-498`（比較スコア）
+- [docs/architecture/08-llm-bridge-common.md:502-510](../../docs/architecture/08-llm-bridge-common.md)（Grok cost）/ `:491-500`（比較スコア）
 - [docs/architecture/20-dev-quality-and-testing.md:79-123](../../docs/architecture/20-dev-quality-and-testing.md)（§8 観測 taxonomy・§8.4 未決）
 - [docs/architecture/14-character-llm-negotiation.md:268-320](../../docs/architecture/14-character-llm-negotiation.md)（trace/observation モデル・post-#226）
 - 先例: [spike/latency/RESULT.md](../latency/RESULT.md)・[spike/memory-gate/RESULT.md](../memory-gate/RESULT.md)

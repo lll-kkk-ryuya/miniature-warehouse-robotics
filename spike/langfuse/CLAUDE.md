@@ -38,7 +38,7 @@
 
 ## 設計ドキュメント（正本・実 Read で pin 済）
 - **trace_id / 突合キー契約**: `docs/architecture/13-hermes-setup.md:512-520`（§7.5。:516 32hex-no-dash / :517 Bridge-owned・Hermes プラグイン無効化 / :518 gen_id+timestamp / :519 `create_trace_id(seed)` 決定的同一・ROS 契約でない / **:520 ①〜⑤**）。
-- **Grok cost**: `docs/architecture/08-llm-bridge-common.md:502-510`（:502 既定価格表に xAI 無し / :504 カスタムモデル登録 / :505 offline fallback / :506 Phase3 cost>0 assert / :508 フィールド形・literal model は推測固定しない）。比較スコア: `:489-498`。
+- **Grok cost**: `docs/architecture/08-llm-bridge-common.md:502-510`（:504 既定価格表に xAI 無し / :506 カスタムモデル登録 / :507 offline fallback / :508 Phase3 cost>0 assert / :510 フィールド形・literal model は推測固定しない）。比較スコア: `:491-500`。
 - **観測 taxonomy**: `docs/architecture/20-dev-quality-and-testing.md:79-123`（§8。:83 正本=doc08/doc13 / :87-95 弁別子→格納先 / :117-123 §8.4 未決＝mode 値域 / group-by 可否 / 実 Langfuse でしか検証不可）。
 - **trace/observation モデル**: `docs/architecture/14-character-llm-negotiation.md:268-320`（post-#226。:296 robot=observation 属性 / :316-320 Phase3 暫定＝inbound trace_id 尊重 / prompt・Grok cost・SDK smoke は doc14 範囲外＝doc08/doc13/#88 が担当）。
 - **wo 実装（READ-ONLY・突合対象・import 禁止）**: `ws/src/warehouse_orchestrator/warehouse_orchestrator/{trace_id.py,grok_cost.py,langfuse_sink.py,tags.py,score_send.py}` ＋ `CLAUDE.md`（Phase 3 残課題の wo 側宣言）。

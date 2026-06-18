@@ -1,6 +1,6 @@
 """Offline Grok (xAI) cost derivation for the 4-provider KPI comparison.
 
-doc08 §比較計測の追加設計 :498-506 / doc13 §7.5② :520.
+doc08 §比較計測の追加設計 :502-510 / doc13 §7.5② :520.
 
 Thin warehouse adapter over :mod:`eval_sdk.cost` (doc21 §1c/§4 — the generic token-cost math
 was extracted; the **price table is injected**, so the provider-specific, provenance-stamped

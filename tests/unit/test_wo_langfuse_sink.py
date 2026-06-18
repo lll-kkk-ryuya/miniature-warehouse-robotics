@@ -166,8 +166,8 @@ def test_explicit_enabled_override_false_disables() -> None:
 
 @pytest.mark.unit
 def test_reserved_phase3_score_names_match_frozen_docs() -> None:
-    # doc08 §比較計測の追加設計 :489-496 — score names frozen in docs; reserved here (#133) so #4/#6
-    # and tests share the exact strings. data_type per the doc08 table (deadlock = NUMERIC :494).
+    # doc08 §比較計測の追加設計 :491-498 — score names frozen in docs; reserved here (#133) so #4/#6
+    # and tests share the exact strings. data_type per the doc08 table (deadlock = NUMERIC :498).
     from warehouse_orchestrator import langfuse_sink as ls
 
     assert ls.SCORE_COLLISION_FREE == "collision_free"

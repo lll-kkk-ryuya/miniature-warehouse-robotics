@@ -1,7 +1,7 @@
 """Offline Grok cost helper tests (warehouse_orchestrator, Lane C #6 wo / #133).
 
 Pure-function tests for ``grok_cost`` / ``resolve_grok_price`` / ``grok_cost_for_model``
-(doc08 §比較計測の追加設計 :503). **No live Langfuse / xAI SDK is imported (R-26)** — every test
+(doc08 §比較計測の追加設計 :504). **No live Langfuse / xAI SDK is imported (R-26)** — every test
 injects its own price table so it never depends on the placeholder constant values (doc08:508);
 only the *structure* of the shipped table is asserted.
 """

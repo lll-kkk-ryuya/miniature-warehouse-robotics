@@ -54,7 +54,7 @@ SCORE_RESULT = "result"
 SCORE_TASK_COMPLETION_TIME = "task_completion_time"
 SCORE_EFFICIENCY = "efficiency"
 
-# Phase 3-4 reserved score names (doc08 §比較計測の追加設計 :489-496). The exact strings are
+# Phase 3-4 reserved score names (doc08 §比較計測の追加設計 :491-498). The exact strings are
 # frozen in docs, so reserve them here once — #4/#6 and tests share the names and a later producer
 # can't drift them. **Inert: no live-send path is wired** (no ``send_*`` method below). Their
 # producers (Guardian near_collision, Nav2 replans, deadlock detector, negotiation system) are
