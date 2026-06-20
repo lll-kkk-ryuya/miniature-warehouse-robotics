@@ -10,8 +10,8 @@ import { ModeGate } from "@/components/ModeGate";
 // commander+emergency. In Mode C <ModeGate> drops the middle column and the others reflow.
 export default function LivePage() {
   return (
-    <main className="flex min-h-0 w-full gap-2 p-2">
-      <div className="flex w-[26%] min-w-[14rem] flex-col gap-2">
+    <main className="flex h-full min-h-0 w-full gap-2 p-2">
+      <div className="flex w-[26%] min-w-[14rem] min-h-0 flex-col gap-2">
         <div className="min-h-0 flex-1">
           <MapView2D />
         </div>
@@ -21,7 +21,7 @@ export default function LivePage() {
       </div>
 
       <ModeGate>
-        <div className="flex w-[40%] flex-col gap-2">
+        <div className="flex w-[40%] min-h-0 flex-col gap-2">
           <div className="min-h-0 flex-[3]">
             <ConversationTimeline />
           </div>
@@ -31,7 +31,7 @@ export default function LivePage() {
         </div>
       </ModeGate>
 
-      <div className="flex min-w-0 flex-1 flex-col gap-2">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
         <div className="min-h-0 flex-[3]">
           <CommanderDecision />
         </div>
