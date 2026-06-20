@@ -32,7 +32,12 @@ _FORBIDDEN_CALLS = {"create_publisher", "create_client", "ActionClient"}
 _FORBIDDEN_IMPORTS = {"warehouse_nav2_bridge", "warehouse_mcp_server"}
 
 # Substrings of actuation topics/routes that must not appear as string literals (doc22:25,:96).
-_FORBIDDEN_TOPIC_SUBSTRINGS = ("cmd_vel", "goal_pose", "navigate_to_pose", "/api/v1/navigate")
+# The whole Nav2 Bridge REST namespace ``/api/v1/`` is forbidden, not just navigate: stop=
+# cancel_task and wait=dispatch_task are real actuation over the same forward seam
+# (doc15:202-204), and a future bridge route stays covered. web_bridge's own endpoints
+# (/ws /events /runs /config /health /) live outside that namespace (doc22:228-246), so this
+# can never false-positive on the observe-only server.
+_FORBIDDEN_TOPIC_SUBSTRINGS = ("cmd_vel", "goal_pose", "navigate_to_pose", "/api/v1/")
 
 
 def _package_modules() -> list[Path]:

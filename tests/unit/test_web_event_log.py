@@ -7,6 +7,7 @@ recordings dir is an injected SSD path, never tmpfs — doc22:216,:220).
 """
 
 import json
+import os
 
 import pytest
 from warehouse_web_bridge.event_log import EventLog
@@ -64,11 +65,35 @@ def test_rotation_preserves_replay_order_across_segments(tmp_path):
 @pytest.mark.unit
 def test_retention_keeps_only_newest_runs(tmp_path):
     # max_runs=2: opening a 3rd run prunes the oldest run's files (doc22:221 retention).
-    EventLog(tmp_path, "run-1", max_runs=2).append(_event(1))
-    EventLog(tmp_path, "run-2", max_runs=2).append(_event(1))
+    # mtimes are pinned strictly increasing so the newest-first ordering is deterministic
+    # regardless of FS timestamp granularity (back-to-back creates can share a tick on a
+    # coarse-mtime filesystem, where the tie-break would otherwise be glob-arbitrary).
+    for i, run in enumerate(("run-1", "run-2")):
+        EventLog(tmp_path, run, max_runs=2).append(_event(1))
+        os.utime(tmp_path / f"events-{run}.jsonl", (1000 + i, 1000 + i))
     EventLog(tmp_path, "run-3", max_runs=2).append(_event(1))
     runs = {p.name for p in tmp_path.glob("events-*.jsonl")}
     assert runs == {"events-run-2.jsonl", "events-run-3.jsonl"}
+
+
+@pytest.mark.unit
+def test_retention_prunes_every_segment_of_a_rotated_run(tmp_path):
+    # A stale run that rotated into multiple segments must be pruned in FULL — no orphaned
+    # events-run-old.<k>.jsonl left to keep growing on tmpfs (doc22:216,:220,:221 / #187).
+    rotated = EventLog(tmp_path, "run-old", max_bytes=200, max_runs=2)
+    for seq in range(1, 21):
+        rotated.append(_event(seq, text="x" * 30))
+    assert len(list(tmp_path.glob("events-run-old*.jsonl"))) >= 2  # actually rotated
+    for path in tmp_path.glob("events-run-old*.jsonl"):
+        os.utime(path, (1000, 1000))  # oldest run
+    EventLog(tmp_path, "run-mid", max_runs=2).append(_event(1))
+    os.utime(tmp_path / "events-run-mid.jsonl", (2000, 2000))
+    EventLog(tmp_path, "run-new", max_runs=2).append(_event(1))  # opening 3rd run prunes oldest
+    assert list(tmp_path.glob("events-run-old*.jsonl")) == []  # every segment gone, not just one
+    assert {p.name for p in tmp_path.glob("events-*.jsonl")} == {
+        "events-run-mid.jsonl",
+        "events-run-new.jsonl",
+    }
 
 
 @pytest.mark.unit
@@ -177,6 +202,24 @@ def test_ingestor_trace_deriver_failopen_returns_none(tmp_path):
     )
     nego = ingestor.ingest("/negotiation/start", json.dumps({"starter": "bot1", "gen_id": 5}), 1.0)
     assert nego["trace_id"] is None
+
+
+@pytest.mark.unit
+def test_ingestor_trace_deriver_failopen_when_deriver_raises(tmp_path):
+    # A deriver that RAISES (the realistic S2 case: a Langfuse network/SDK blip) must be
+    # fail-open too — trace_id falls back to null and the never-drop event STILL persists and
+    # is returned for fan-out (doc22:152,:194,:232). Trace derivation must never gate or drop
+    # a gen_id-bearing event, nor burn a seq.
+    def boom(_run_id, _gen_id):
+        raise RuntimeError("langfuse unreachable")
+
+    log = EventLog(tmp_path, "run-A")
+    ingestor = Ingestor(log, run_id="run-A", trace_deriver=boom)
+    nego = ingestor.ingest("/negotiation/start", json.dumps({"starter": "bot1", "gen_id": 5}), 1.0)
+    assert nego["trace_id"] is None  # fail-open on raise, not an exception
+    assert nego["seq"] == 1
+    assert ingestor.last_seq == 1  # seq not burned
+    assert [e["seq"] for e in log.iter_since(0)] == [1]  # event persisted, not dropped
 
 
 @pytest.mark.unit
