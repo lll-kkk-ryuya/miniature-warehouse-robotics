@@ -45,6 +45,23 @@ def test_conversation_event_round_trip() -> None:
     assert decoded.candidate_action.action is LocalAction.WAIT_SELF
 
 
+def test_persona_payload_factory_stamps_trusted_safety_envelope() -> None:
+    payload = _event().to_dict()
+    payload["expires_at"] = 999999.0
+    payload["state_ref"] = {"gen_id": 999, "snapshot": "forged"}
+
+    event = ConversationEvent.from_persona_payload(
+        payload,
+        gen_id=5,
+        now=lambda: 10.0,
+        ttl_sec=2.0,
+        trusted_state_ref={"snapshot": "trusted"},
+    )
+
+    assert event.expires_at == 12.0
+    assert event.state_ref == {"snapshot": "trusted", "gen_id": 5}
+
+
 @pytest.mark.parametrize("field", ["destination", "dropoff", "x", "y", "yaw", "goal"])
 def test_candidate_action_rejects_coordinate_or_destination_authority(field: str) -> None:
     payload = {"action": "yield_to_retreat_A", "target": "bot1", field: "shelf_1"}

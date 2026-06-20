@@ -22,6 +22,14 @@ PORT="${MWR_SIM_PORT:-6082}"
 BIND="${MWR_SIM_BIND:-127.0.0.1}"
 HOST_HERMES_URL="${HERMES_BASE_URL:-http://127.0.0.1:8642}"
 CONTAINER_HERMES_URL="${WAREHOUSE__HERMES__BASE_URL:-}"
+HOST_HERMES_URL_EXPLICIT=0
+CONTAINER_HERMES_URL_EXPLICIT=0
+if [[ -n "${HERMES_BASE_URL:-}" ]]; then
+  HOST_HERMES_URL_EXPLICIT=1
+fi
+if [[ -n "${WAREHOUSE__HERMES__BASE_URL:-}" ]]; then
+  CONTAINER_HERMES_URL_EXPLICIT=1
+fi
 TRAFFIC_MODE="${TRAFFIC_MODE:-none}"
 SCENARIO="${SCENARIO:-head_on}"
 RVIZ_CONFIG="${RVIZ_CONFIG:-record}"
@@ -103,7 +111,7 @@ while [[ "$#" -gt 0 ]]; do
       ENV_FILE="$2"; shift 2 ;;
     --hermes-url)
       [[ "$#" -ge 2 ]] || fail "--hermes-url requires a URL"
-      HOST_HERMES_URL="$2"; shift 2 ;;
+      HOST_HERMES_URL="$2"; HOST_HERMES_URL_EXPLICIT=1; shift 2 ;;
     --tasks)
       [[ "$#" -ge 2 ]] || fail "--tasks requires JSON"
       WAREHOUSE_TASKS="$2"; shift 2 ;;
@@ -126,10 +134,6 @@ while [[ "$#" -gt 0 ]]; do
   esac
 done
 
-if [[ -z "${CONTAINER_HERMES_URL}" ]]; then
-  CONTAINER_HERMES_URL="$(container_hermes_url_for_host "${HOST_HERMES_URL}")"
-fi
-
 if [[ -f "${ENV_FILE}" ]]; then
   # shellcheck source=/dev/null
   source "${ENV_FILE}"
@@ -138,6 +142,16 @@ else
     fail "Bridge env file missing: ${ENV_FILE}. Copy config/${WAREHOUSE_ENV_VALUE}/.env.example and set API_SERVER_KEY, or export API_SERVER_KEY/HERMES_API_KEY."
   fi
   info "Bridge env file not found; using API_SERVER_KEY/HERMES_API_KEY from the current environment"
+fi
+
+if [[ "${HOST_HERMES_URL_EXPLICIT}" -ne 1 && -n "${HERMES_BASE_URL:-}" ]]; then
+  HOST_HERMES_URL="${HERMES_BASE_URL}"
+fi
+if [[ "${CONTAINER_HERMES_URL_EXPLICIT}" -ne 1 && -n "${WAREHOUSE__HERMES__BASE_URL:-}" ]]; then
+  CONTAINER_HERMES_URL="${WAREHOUSE__HERMES__BASE_URL}"
+fi
+if [[ -z "${CONTAINER_HERMES_URL}" ]]; then
+  CONTAINER_HERMES_URL="$(container_hermes_url_for_host "${HOST_HERMES_URL}")"
 fi
 
 if [[ -z "${API_SERVER_KEY:-}" && -n "${HERMES_API_KEY:-}" ]]; then

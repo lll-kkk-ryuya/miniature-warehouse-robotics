@@ -208,6 +208,30 @@ def test_rejected_self_action_is_not_counted_as_local_resolution() -> None:
     assert metrics.contract_violation_rate == 1.0
 
 
+def test_commander_override_count_dedupes_review_and_lifecycle_rows() -> None:
+    metrics = compute_conversation_metrics(
+        [
+            {
+                "timestamp": 1.0,
+                "record_type": "commander_review",
+                "episode_id": "ep",
+                "proposal_id": "proposal_1",
+                "verdict": "override",
+            },
+            {
+                "timestamp": 2.0,
+                "record_type": "task_lifecycle",
+                "event_type": "commander_override",
+                "episode_id": "ep",
+            },
+        ]
+    )
+
+    assert metrics.commander_reviewed_local_proposals == 1
+    assert metrics.commander_override_count == 1
+    assert metrics.commander_override_rate == 1.0
+
+
 def test_read_conversation_event_rows_defensive(tmp_path: Path) -> None:
     path = tmp_path / "events.jsonl"
     path.write_text(

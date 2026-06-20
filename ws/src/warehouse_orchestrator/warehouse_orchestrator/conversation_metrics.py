@@ -164,17 +164,22 @@ def _agreement_latencies(
 
 
 def _commander_override_counts(rows: list[dict[str, Any]]) -> tuple[int, int]:
-    reviews = [
-        row for row in rows if row.get("record_type") == "commander_review" and row.get("verdict")
-    ]
-    override_rows = [
-        row
-        for row in rows
-        if row.get("event_type") == "commander_override"
-        or row.get("verdict") in {"reject", "override"}
-    ]
-    override_count = len(override_rows)
-    reviewed_count = len(reviews) if reviews else override_count
+    review_keys: set[str] = set()
+    override_keys: set[str] = set()
+    review_aliases: dict[str, str] = {}
+    for index, row in enumerate(rows):
+        if row.get("record_type") == "commander_review" and row.get("verdict"):
+            key = _decision_key(row, index)
+            review_keys.add(key)
+            for alias in _decision_aliases(row, index):
+                review_aliases.setdefault(alias, key)
+            if _is_commander_override_verdict(row.get("verdict")):
+                override_keys.add(key)
+    for index, row in enumerate(rows):
+        if row.get("event_type") == "commander_override":
+            override_keys.add(_review_key_for_row(row, index, review_aliases))
+    override_count = len(override_keys)
+    reviewed_count = len(review_keys) if review_keys else override_count
     return override_count, reviewed_count
 
 
@@ -330,6 +335,36 @@ def _is_deadlock_start(row: dict[str, Any]) -> bool:
         or _truthy(detail.get("deadlock"))
         or detail.get("trigger") == "deadlock"
     )
+
+
+def _decision_key(row: dict[str, Any], fallback_index: int) -> str:
+    for key_field in ("proposal_id", "episode_id", "event_id"):
+        value = row.get(key_field)
+        if value is not None:
+            return f"{key_field}:{value}"
+    return f"row:{fallback_index}"
+
+
+def _decision_aliases(row: dict[str, Any], fallback_index: int) -> list[str]:
+    aliases = [
+        f"{key_field}:{row[key_field]}"
+        for key_field in ("proposal_id", "episode_id", "event_id")
+        if row.get(key_field) is not None
+    ]
+    return aliases or [f"row:{fallback_index}"]
+
+
+def _review_key_for_row(
+    row: dict[str, Any], fallback_index: int, review_aliases: dict[str, str]
+) -> str:
+    for alias in _decision_aliases(row, fallback_index):
+        if alias in review_aliases:
+            return review_aliases[alias]
+    return _decision_key(row, fallback_index)
+
+
+def _is_commander_override_verdict(verdict: Any) -> bool:
+    return verdict in {"reject", "rejected", "override"}
 
 
 def _remember_earliest(target: dict[str, dict[str, Any]], row: dict[str, Any]) -> None:

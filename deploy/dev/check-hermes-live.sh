@@ -11,6 +11,14 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 WAREHOUSE_ENV_VALUE="${WAREHOUSE_ENV:-dev}"
 ENV_FILE="${MWR_HERMES_ENV_FILE:-${REPO_ROOT}/config/${WAREHOUSE_ENV_VALUE}/.env}"
+HERMES_BASE_URL_EXPLICIT=0
+CONTAINER_HERMES_URL_EXPLICIT=0
+if [[ -n "${HERMES_BASE_URL:-}" ]]; then
+  HERMES_BASE_URL_EXPLICIT=1
+fi
+if [[ -n "${WAREHOUSE__HERMES__BASE_URL:-}" ]]; then
+  CONTAINER_HERMES_URL_EXPLICIT=1
+fi
 HERMES_BASE_URL="${HERMES_BASE_URL:-http://127.0.0.1:8642}"
 CONTAINER_HERMES_URL="${WAREHOUSE__HERMES__BASE_URL:-}"
 CONTAINER="${MWR_SIM_CONTAINER:-}"
@@ -77,6 +85,7 @@ while [[ "$#" -gt 0 ]]; do
     --base-url)
       [[ "$#" -ge 2 ]] || fail "--base-url requires a URL"
       HERMES_BASE_URL="$2"
+      HERMES_BASE_URL_EXPLICIT=1
       shift 2
       ;;
     --container)
@@ -103,9 +112,8 @@ while [[ "$#" -gt 0 ]]; do
   esac
 done
 
-if [[ -z "${CONTAINER_HERMES_URL}" ]]; then
-  CONTAINER_HERMES_URL="$(container_hermes_url_for_host "${HERMES_BASE_URL}")"
-fi
+REQUESTED_HERMES_BASE_URL="${HERMES_BASE_URL}"
+REQUESTED_CONTAINER_HERMES_URL="${CONTAINER_HERMES_URL}"
 
 if [[ -f "${ENV_FILE}" ]]; then
   pass "Bridge env file exists: ${ENV_FILE}"
@@ -116,6 +124,18 @@ else
     fail "Bridge env file missing: ${ENV_FILE}. Copy config/${WAREHOUSE_ENV_VALUE}/.env.example and set API_SERVER_KEY, or export API_SERVER_KEY/HERMES_API_KEY."
   fi
   info "Bridge env file not found; using API_SERVER_KEY/HERMES_API_KEY from the current environment"
+fi
+
+if [[ "${HERMES_BASE_URL_EXPLICIT}" -eq 1 ]]; then
+  HERMES_BASE_URL="${REQUESTED_HERMES_BASE_URL}"
+fi
+if [[ "${CONTAINER_HERMES_URL_EXPLICIT}" -eq 1 ]]; then
+  CONTAINER_HERMES_URL="${REQUESTED_CONTAINER_HERMES_URL}"
+elif [[ -n "${WAREHOUSE__HERMES__BASE_URL:-}" ]]; then
+  CONTAINER_HERMES_URL="${WAREHOUSE__HERMES__BASE_URL}"
+fi
+if [[ -z "${CONTAINER_HERMES_URL}" ]]; then
+  CONTAINER_HERMES_URL="$(container_hermes_url_for_host "${HERMES_BASE_URL}")"
 fi
 
 if [[ -z "${API_SERVER_KEY:-}" && -n "${HERMES_API_KEY:-}" ]]; then

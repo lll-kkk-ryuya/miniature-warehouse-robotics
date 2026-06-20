@@ -433,6 +433,8 @@ v1/v1.5 で必要な会話は、雑談ではなく task と局所交通 episode 
 | `state_ref` | どの state snapshot / gen_id を見て判断したか |
 | `verdict` | gate/critic の `accepted`、`rejected`、`unknown` |
 
+`expires_at` と `state_ref` は安全判定に使うため、persona/model 出力をそのまま信じない。persona/model は `speech`、`intent`、`candidate_action` を提案できるが、Bridge は受信時刻、現在 `gen_id`、読み取った state snapshot から `expires_at` / `state_ref` を stamp して Self-Action Gate に渡す。model が遠い期限や未来 `gen_id` を自己申告しても、Bridge-stamped envelope で上書きする。
+
 会話が発火する trigger は、`task_assigned`、`task_started`、route/corridor conflict、deadlock precursor、`task_paused`、`task_resumed`、`task_failed`、emergency recovery 後の再開確認とする。steady state の実況は UI 用に残せるが、評価 episode には入れない。
 
 ### v1/v1.5 実装メモ

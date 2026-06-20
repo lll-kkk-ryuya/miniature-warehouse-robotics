@@ -152,6 +152,32 @@ def test_rejects_expired_or_out_of_window_state_ref(tmp_path: Path) -> None:
     assert future.reason == "stale_state_ref"
 
 
+def test_persona_payload_forged_freshness_does_not_extend_gate_window(tmp_path: Path) -> None:
+    payload = _event(
+        LocalAction.WAIT_SELF,
+        duration=1.0,
+        gen_id=999,
+        expires_at=999999.0,
+    ).to_dict()
+    event = ConversationEvent.from_persona_payload(
+        payload,
+        gen_id=5,
+        now=lambda: NOW,
+        ttl_sec=1.0,
+    )
+    gate = SelfActionGate(
+        state_store=_state_store(tmp_path),
+        now=lambda: NOW + 2.0,
+        state_fresh_after_sec=10.0,
+    )
+
+    decision = gate.validate(event, gen_id=5)
+
+    assert event.state_ref["gen_id"] == 5
+    assert event.expires_at == NOW + 1.0
+    assert decision.reason == "expired_event"
+
+
 def test_rejects_wait_duration_above_cap(tmp_path: Path) -> None:
     gate = SelfActionGate(state_store=_state_store(tmp_path), now=lambda: NOW, max_wait_seconds=3.0)
 

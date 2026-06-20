@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 import time
 import uuid
@@ -24,6 +25,7 @@ from warehouse_interfaces.paths import runtime_dir
 
 CONVERSATION_EVENT_LOG_ENV = "WAREHOUSE_CONVERSATION_EVENT_LOG_PATH"
 CONVERSATION_EVENT_LOG_NAME = "conversation_events.jsonl"
+DEFAULT_PERSONA_EVENT_TTL_SEC = 5.0
 log = logging.getLogger(__name__)
 
 
@@ -154,7 +156,11 @@ class ConversationEvent:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ConversationEvent:
-        """Parse a structured conversation event from a JSON object."""
+        """Parse a trusted/internal structured conversation event from a JSON object.
+
+        Persona/model payloads must use :meth:`from_persona_payload` so the
+        safety-critical freshness envelope is stamped by the Bridge.
+        """
         if not isinstance(data, dict):
             raise ValueError("conversation_event must be an object")
         candidate_raw = data.get("candidate_action")
@@ -182,6 +188,41 @@ class ConversationEvent:
             verdict=verdict,
             metadata=dict(data.get("metadata") or {}),
         )
+
+    @classmethod
+    def from_persona_payload(
+        cls,
+        data: dict[str, Any],
+        *,
+        gen_id: int,
+        now: Callable[[], float] | None = None,
+        ttl_sec: float = DEFAULT_PERSONA_EVENT_TTL_SEC,
+        trusted_state_ref: dict[str, Any] | None = None,
+    ) -> ConversationEvent:
+        """Parse persona/model output with a bridge-owned safety envelope.
+
+        Persona output may provide speech, intent, and candidate_action, but not
+        the safety-critical freshness envelope used by SelfActionGate. The Bridge
+        stamps ``expires_at`` and ``state_ref.gen_id`` from its own clock/gen/state.
+        """
+        if not isinstance(data, dict):
+            raise ValueError("conversation_event must be an object")
+        if isinstance(gen_id, bool) or not isinstance(gen_id, int):
+            raise ValueError("trusted_gen_id_invalid")
+        if isinstance(ttl_sec, bool) or not isinstance(ttl_sec, (int, float)):
+            raise ValueError("ttl_sec_invalid")
+        ttl = float(ttl_sec)
+        if not math.isfinite(ttl) or ttl <= 0:
+            raise ValueError("ttl_sec_invalid")
+        clock = now or time.time
+        state_ref = dict(trusted_state_ref or {})
+        state_ref["gen_id"] = gen_id
+        stamped = {
+            **data,
+            "expires_at": float(clock()) + ttl,
+            "state_ref": state_ref,
+        }
+        return cls.from_dict(stamped)
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to a JSON-safe dict."""
