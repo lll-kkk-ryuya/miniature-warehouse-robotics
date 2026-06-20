@@ -73,6 +73,77 @@ ros2 action send_goal /bot1/navigate_to_pose nav2_msgs/action/NavigateToPose \
 # record:  scripts/slice3_record.sh start /tmp/out.mp4   (ffmpeg x11grab of :1)  ->  ... stop
 ```
 
+### One-command Mode A live stack (Hermes + LLM Bridge)
+
+Use this path when the goal is to watch the LLM Bridge in the browser-viewable
+Gazebo/RViz environment without re-debugging Hermes auth every time.
+
+One-time setup:
+
+```bash
+cp config/dev/.env.example config/dev/.env
+# Edit config/dev/.env:
+#   API_SERVER_KEY must be the same value as ~/.hermes/.env API_SERVER_KEY.
+```
+
+Start Hermes in a separate terminal:
+
+```bash
+API_SERVER_ENABLED=true hermes gateway
+```
+
+Then launch the sim, Bridge, RViz, and head-on seed from the repo:
+
+```bash
+deploy/dev/run-mode-a-live.sh
+# opens noVNC/RViz at http://localhost:6082  (login ubuntu / ubuntu)
+```
+
+For a fully one-command dev path, let the launcher start Hermes in the background
+when it is down:
+
+```bash
+deploy/dev/run-mode-a-live.sh --start-hermes
+# Hermes service-start log: /tmp/mwr_hermes_gateway.log
+```
+
+The launcher intentionally uses a separate default container
+(`mwr-mode-a-live`, port `6082`) so it does not accidentally reuse an older
+`mwr-sim` container mounted to a different worktree. Override when needed:
+
+```bash
+MWR_SIM_CONTAINER=mwr-sim-v1 MWR_SIM_PORT=6081 deploy/dev/run-mode-a-live.sh
+```
+
+Agents or shells that are not allowed to read `config/dev/.env` can pass the
+Bridge token through the process environment instead:
+
+```bash
+export API_SERVER_KEY='<same value as ~/.hermes/.env>'
+MWR_HERMES_ENV_FILE=/nonexistent deploy/dev/run-mode-a-live.sh --start-hermes
+```
+
+What the launcher does:
+
+- runs `deploy/dev/check-hermes-live.sh` before ROS starts;
+- verifies Hermes `/health` and authenticated `/v1/models`;
+- verifies the sim container can reach Hermes through `host.docker.internal`;
+- injects only Bridge-side auth (`API_SERVER_KEY` / `HERMES_API_KEY`) into
+  `docker exec`; provider keys remain owned by Hermes;
+- restarts the full-stack launch so changed env values are actually picked up;
+- exports `WAREHOUSE__HERMES__BASE_URL=http://host.docker.internal:8642`;
+- launches `warehouse_bringup` with `llm:=true`, `traffic_mode:=none`,
+  `scenario:=head_on`, `rviz_config:=record`;
+- runs `scripts/slice3_seed_initialpose.sh` with `SCENARIO=head_on`.
+
+For diagnosis without launching ROS:
+
+```bash
+deploy/dev/check-hermes-live.sh
+deploy/dev/check-hermes-live.sh --container mwr-mode-a-live
+deploy/dev/check-hermes-live.sh --chat        # optional provider call
+```
+
 ### Gotchas learned the hard way (read before debugging "it won't move")
 
 - **RViz X-auth**: the desktop runs as `ubuntu`; `docker exec` is `root`. Export

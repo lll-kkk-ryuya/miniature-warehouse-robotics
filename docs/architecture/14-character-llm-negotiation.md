@@ -297,17 +297,17 @@ SESSION  session_id = "run_{mode}_{provider}_{scenario}_{ts}"      # 1 ラン = 
 
 | レベル | tags（低カーディナリティ文字列） | metadata（ネスト JSON 可） |
 |---|---|---|
-| trace（1サイクル） | `["mode:A", "provider:claude", "phase4"]` | `{gen_id, traffic_mode, scenario, run_id}` |
+| trace（1サイクル） | `[provider, mode, "prompt:<name>", env=<v>]` | `{gen_id, traffic_mode, scenario, run_id}` |
 | observation（1 actor / 1 tool） | `["robot:bot1","role:character"]` / `["robot:commander","role:commander"]` / `["tool:dispatch_task"]` | `{robot, role, actor, negotiation_id?, turn_index?, gen_id, trace_id}` |
 
-固定名前空間（colon 接頭辞で UI group をクリーンに保つ。これ以外の弁別子を発明しない）:
+trace tag の正本は doc08 §trace 所有と doc20 §8 であり、本節は character negotiation で使う observation 側の補足である。trace tag は正本どおり `provider` / `mode` / `prompt:<name>` / `env=<v>` を使い、provider 値は `claude/openai/google/xai` に揃える。robot/role/tool は trace 全体の tag ではなく observation 側の属性または observation-local tag として扱う。
 
 ```
-mode:{A|B|C}   provider:{claude|gpt|gemini|grok}
-robot:{bot1|bot2|commander}   role:{commander|character}   phase4
+provider={claude|openai|google|xai}   mode={A|B|C}   prompt:<name>   env=<dev|stg|prod>
+robot={bot1|bot2|commander}   role={commander|character}   tool=<tool_name>
 ```
 
-- `traffic_mode` と `mode` は同義 → tag は `mode:` 一本に統一（冗長排除。文字列が必要なら metadata 側に置く。`mode`=`traffic_mode` は doc08 §セッション命名規則と整合）。
+- `traffic_mode` と `mode` は同義 → trace tag は正本の `mode` 値に統一し、詳細文字列が必要なら metadata 側に置く。`mode`=`traffic_mode` は doc08 §セッション命名規則と整合する。
 - `gen_id` は高カーディナリティ（数千の一意値）になるため **tag 化せず metadata のみ**に置く（設計 §4.3）。
 - 本節は §交渉スコア（:257-266）の score metadata `{negotiation_id, mode}` を**補完**する（上書きしない）。交渉スコアは provider 比較軸を持たない記述指標であり、robot/role/provider/trace_id は observation/score の metadata 側に置いて両立する。
 
@@ -318,6 +318,131 @@ robot:{bot1|bot2|commander}   role:{commander|character}   phase4
 - Hermes が inbound `metadata.trace_id` を尊重し、自身の generation を同一 trace 配下に合成するか。しなければ司令官 generation が別 trace になり、`trace_id`＋timestamp による Audit Log 突合へ降格する。
 - キャラと司令官を同一 session に束ねる方針が UI replay / 比較で実用的か（§Langfuse 統合 の旧・別 session 方式からの変更点）。
 - prompt 連携（Langfuse Prompt Management）・xAI Grok の cost カスタムモデル定義・SDK 4.9.0 スモークは **本 doc14 の範囲外**（doc08/doc13 と #88 の wo/bridge コードレーンが担当）。
+
+## Mode A 常時会話・限定自己実行（設計確定 v1/v1.5）
+
+本節は、既存の「司令官が最終承認する交渉モード」（§交渉型キャラクターLLM）を置き換える実装済み契約ではなく、次段階の Mode A を **自律会話評価ベンチ**として扱うための確定方針である。現行の安全前提（Policy Gate / Emergency Guardian / Nav2 safety）は維持し、任意座標の直接実行は解禁しない。
+
+### 目的
+
+- **Mode A**: bot 同士の常時会話で局所交通問題をできるだけ解決し、司令官は observer/critic に近づける。
+- **Mode C**: 司令官・交通管理が主役。Mode A と同じ常時会話を入れる場合も、比較対象の中心は司令官/交通管理に置く。
+- **評価観点**: 「会話が自然か」だけでなく、「司令官介入なしで安全に解けたか」を測れるようにする。
+
+### 常時会話の4層
+
+| 層 | 役割 | 実行権限 |
+|---|---|---|
+| 1. 自然文実況 | `bot1`/`bot2` の発話。UI、動画、Langfuse trace 用の人間向け表現 | なし。自然文から制御を推定しない |
+| 2. 構造化合意 | 発話と別に `proposal` / `agreement` / `intent` を構造化して残す | なし。機械判定・監査・評価の入力 |
+| 3. 限定自己実行 | bot 自身だけに効く安全行動を Self-Action Gate 経由で実行 | whitelist のみ |
+| 4. 司令官 observer/critic | 会話、合意、実行結果を監視し、必要時だけ批評・却下・上書き | 非 whitelist 行動、失敗、危険、task 境界で介入 |
+
+`observer/critic` は、司令官を最初から全行動の決定者にするのではなく、通常は観測者として transcript / proposal / telemetry を見て、逸脱時に critic として介入する役割である。critic の介入は「安全・task 契約・評価ログを壊す恐れがある時」に限定する。
+
+### 自然文と構造化データの分離
+
+常時会話では、LLM 出力を次の2系統に分ける。
+
+| 出力 | 用途 | 例 |
+|---|---|---|
+| `speech` | UI / 動画 / 人間向け transcript | 「先に少し下がるので通ってください」 |
+| structured event | 安全判定 / audit / eval / tool call | `{actor:"bot1", intent:"yield", action:"yield_to_retreat_A", target:"bot1", expires_at:...}` |
+
+制御は structured event だけを見る。自然文は説明・演出・監査補助であり、自然文だけを根拠に Nav2/MCP へ送らない。曖昧な発話は `proposal` にはできるが、Self-Action Gate または司令官 critic が明示承認するまで実行しない。
+
+LLM tool call を使う場合も、tool call は直接 Nav2/MCP を叩かず、structured event を生成する入口として扱う。実行可否は Self-Action Gate または司令官 critic が判定する。常時会話の persona model は高速・低コストな外部 LLM を許容するが、具体的な provider/model 名は config と live benchmark で選び、本 doc では固定しない。offline / CI では既存の scripted persona fallback を維持する。
+
+### 限定自己実行 whitelist
+
+Mode A の bot persona に渡せる実行権限は「自分だけに効く安全行動」に限定する。v1 で許可する候補は以下。
+
+| action | 意味 | 主な gate 条件 |
+|---|---|---|
+| `wait_self` | 自分の Nav2 task を短時間待機/停止する | duration 上限、fresh state、emergency なし |
+| `yield_to_retreat_A` | 自分が `retreat_A` へ退避する | named retreat のみ、current pose fresh、衝突余裕 |
+| `yield_to_retreat_B` | 自分が `retreat_B` へ退避する | named retreat のみ、current pose fresh、衝突余裕 |
+| `release_route_lock` | 自分が保持する route lock を解放する | lock owner が自分、解放後の task 再開条件を記録 |
+
+ここでいう「座標実行権限」は、bot persona が任意の `(x, y, yaw)` や任意の destination を直接 Nav2/MCP に渡せる権限を指す。これは誤座標、古い状態、LLM の幻覚、task 横取りを引き起こすため Mode A v1 では禁止する。座標を伴う移動が必要な場合は、司令官または既存 Bridge/MCP/Policy Gate が owned config の `known_locations` / retreat 名を検証して実行する。
+
+### 段階導入ロードマップ
+
+Mode A の bot 権限は、会話品質ではなく **安全性・再現性・評価可能性**で段階昇格する。現在の着手範囲は **v1 + v1.5** とし、任意座標、task 変更、他 bot への直接命令は含めない。
+
+| version | bot に許すこと | 明示的に禁止すること | 昇格条件 |
+|---|---|---|---|
+| v0 | 発話、提案、合意ログだけ。実行なし | Nav2/MCP への実行、task 変更 | transcript、structured event、Langfuse/audit が Gazebo なしの unit/replay で安定する |
+| v1 | 自分だけの安全行動: `wait_self`、`yield_to_retreat_A/B`、`release_route_lock` | 任意座標、task 変更、他 bot への命令 | Gazebo で反射系を壊さず、合意後最小距離と `contract_violation_rate` が許容範囲 |
+| v1.5 | task lifecycle event を正しく出す/読む。会話 episode と task/audit を結合する | 新 task 生成、目的地変更、route graph 変更 | `task_assigned/started/paused/resumed/completed/failed` が監査ログで追える |
+| v2 | 局所契約の実行: どちらが先に通るか、誰が待つか、いつ再開するか | route graph 変更、座標指定 | commander-only より deadlock 解消時間、override 率、throughput が改善 |
+| v3 | route lock / corridor lock の交渉と expiry 更新 | map 座標生成、未知地点移動 | lock owner、expiry、fairness が安定し、lock 詰まりが増えない |
+| v4 | 司令官へ再経路 request を出す | bot 自身による直接再経路 | request→commander/Policy Gate/Nav2 検証の一方向フローが安定 |
+| v5 | 検証済み route graph 上の候補選択 | raw `(x,y,yaw)` 直接指定 | route graph と map が実測済みで、全候補を検証器が reject/accept できる |
+
+v1/v1.5 では、bot は「自分が待つ」「自分が退避する」「自分の lock を解放する」「task 状態を説明・記録する」だけを扱う。座標と task source of truth は map/config、Warehouse Orchestrator、commander、Nav2/Policy Gate 側に残す。
+
+### 司令官の介入条件
+
+Mode A では司令官を常時の実行者にしない。ただし、以下のいずれかでは observer から critic / commander に昇格する。
+
+- bot 間合意が turn/time budget 内に成立しない。
+- structured event が whitelist 外の行動を要求する。
+- arbitrary coordinate、非許可 destination、他 bot への直接命令を含む。
+- emergency active、state stale、battery critical、または安全 gate が reject した。
+- 合意後に action timeout、route lock 不整合、near miss、contract violation が発生した。
+- deadlock が同じ場所/同じ2台で再発する。
+- task assigned / started / completed / failed など task lifecycle の境界に入った。
+- human/operator が介入を要求した。
+- periodic audit cycle で critic が不整合を検出した。
+
+司令官の loop は「局所自己実行の期限」ではなく「監査・再割当・非局所判断の cadence」として扱う。常時会話と Self-Action Gate は event-driven に動き、司令官は必要な時だけ追従または上書きする。
+
+### 会話対象のスケール方針
+
+2台構成では全会話でも成立する。3台以上では全員会話が破綻するため、次の順序で対象を絞る。
+
+1. 同じ corridor / route lock / conflict pair にいる近傍 bot。
+2. 同じ task group または同じ交差点を共有する bot。
+3. それ以外は shared blackboard に要約イベントだけ publish し、全 transcript を配らない。
+
+将来の「トランシーバー」表現はこの routing 方針の UI/演出であり、実体は targeted transcript と shared blackboard の組み合わせにする。
+
+### task 設計の境界
+
+Mode A ベンチでは、bot 会話だけで task を勝手に作らない。task の生成・割当・完了判定は Warehouse Orchestrator または commander 側が source of truth を持つ。bot 会話が扱ってよいのは、与えられた task を安全に進めるための局所順序、譲り合い、待機、退避、route lock 解放である。
+
+論理イベントとしては `task_assigned` / `task_started` / `task_paused` / `task_resumed` / `task_completed` / `task_failed` / `local_agreement_created` / `local_agreement_executed` / `commander_override` を記録できるようにする。ただし、これは本節時点では評価・監査 vocabulary であり、新しい ROS topic 名や `warehouse_interfaces` の凍結契約ではない。
+
+### v1/v1.5 会話イベント要件
+
+v1/v1.5 で必要な会話は、雑談ではなく task と局所交通 episode に紐づく。最低限、各 structured event は以下を持つ。
+
+| field | 意味 |
+|---|---|
+| `event_id` | 監査・Langfuse・eval の突合 id |
+| `episode_id` | deadlock、route conflict、task handoff など局所判断単位 |
+| `task_id` | 関連 task。未割当の idle chatter では `null` 可 |
+| `actor` | 発話/提案した bot |
+| `audience` | 相手 bot、commander、blackboard のいずれか |
+| `speech` | 人間向け自然文 |
+| `intent` | `yield`、`wait`、`resume`、`release_lock`、`inform_task_state` など |
+| `candidate_action` | 実行候補。v1 では whitelist action のみ |
+| `requires_ack` | 相手の同意が必要か |
+| `expires_at` | 古い合意を実行しないための期限 |
+| `state_ref` | どの state snapshot / gen_id を見て判断したか |
+| `verdict` | gate/critic の `accepted`、`rejected`、`unknown` |
+
+`expires_at` と `state_ref` は安全判定に使うため、persona/model 出力をそのまま信じない。persona/model は `speech`、`intent`、`candidate_action` を提案できるが、Bridge は受信時刻、現在 `gen_id`、読み取った state snapshot から `expires_at` / `state_ref` を stamp して Self-Action Gate に渡す。model が遠い期限や未来 `gen_id` を自己申告しても、Bridge-stamped envelope で上書きする。
+
+会話が発火する trigger は、`task_assigned`、`task_started`、route/corridor conflict、deadlock precursor、`task_paused`、`task_resumed`、`task_failed`、emergency recovery 後の再開確認とする。steady state の実況は UI 用に残せるが、評価 episode には入れない。
+
+### v1/v1.5 実装メモ
+
+- 会話 event は **内部 JSONL** `conversation_events.jsonl` に出す。既定 path は `WAREHOUSE_RUNTIME_DIR` 配下（dev では `/tmp/warehouse/conversation_events.jsonl`）、テスト/実験では `WAREHOUSE_CONVERSATION_EVENT_LOG_PATH` で上書きできる。
+- この event log は frozen `warehouse_interfaces` でも ROS topic でもない。MCP command audit (`audit.jsonl`) に混ぜると既存 KPI の `executed/rejected/error` 集計が歪むため、v1/v1.5 では別ファイルにする。
+- `wait_self` の初期上限は 5 秒とし、長すぎる待機は Self-Action Gate が reject する。将来 config 化する場合も、評価 run ごとに固定して比較する。
+- `release_route_lock` は route-lock owner store がある場合だけ owner を確認して解放する。owner 不明の lock 解放は reject し、任意の route graph 変更には昇格しない。
 
 ## References
 

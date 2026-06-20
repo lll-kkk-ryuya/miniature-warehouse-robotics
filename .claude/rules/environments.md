@@ -14,6 +14,16 @@
 - リポジトリに置くのは **`.env.example`（プレースホルダのみ）**。
 - **dev / stg / prod で別キーを使う**（本番事故・課金混在の防止）。
 
+## dev live Hermes / LLM Bridge 起動
+
+- Gazebo/RViz で Hermes + LLM Bridge を使う dev live run は、手作業で `ros2 launch` せず **`deploy/dev/run-mode-a-live.sh`** を使う。標準: `deploy/dev/run-mode-a-live.sh`。Hermes も含めて起動したい dev では `deploy/dev/run-mode-a-live.sh --start-hermes`。
+- 起動前診断だけ行う場合は **`deploy/dev/check-hermes-live.sh`** を使う。必ず Hermes `/health`、認証付き `/v1/models`、必要に応じて container→Hermes (`host.docker.internal`) を確認してから full stack に進む。
+- Docker-on-Mac の ROS/sim container から host 側 Hermes Gateway へは `localhost` ではなく **`http://host.docker.internal:8642`** を使う。launcher は `WAREHOUSE__HERMES__BASE_URL` にこの値を注入する。
+- `API_SERVER_KEY` / `HERMES_API_KEY` は Bridge→Hermes 認証だけに使う。各社 provider key は Hermes 側 `~/.hermes/.env` が消費し、ROS/sim container へ渡さない。
+- `.env` 変更後、起動済み `llm_bridge` は新しい値を拾わない。launcher は既存 `warehouse_bringup` を再起動するため、401 のまま残る古い Bridge を避けられる。
+- Claude/Codex が `config/<env>/.env` や `~/.hermes/.env` を読む必要がある live 検証では、ユーザーから **対象 path と目的を含む明示スコープ承認**を得る。値は表示しない。承認がない場合は `.env.example` と docs のみ参照する。
+- worktree ごとに `config/dev/.env` が無い場合は `--env-file /path/to/config/dev/.env` または `MWR_HERMES_ENV_FILE=/path/to/config/dev/.env` を使う。Agent の secret guard が `.env` 読み取りを止める場合は、ユーザーの shell 側で `API_SERVER_KEY` / `HERMES_API_KEY` を export し、`MWR_HERMES_ENV_FILE=/nonexistent` で起動する。
+
 ## prod の扱い（実機・本番）
 
 - prod 接続・実機動作は **Emergency Guardian / 速度上限 0.3 m/s のテスト通過後のみ**（safety.md / doc16 §11）。
