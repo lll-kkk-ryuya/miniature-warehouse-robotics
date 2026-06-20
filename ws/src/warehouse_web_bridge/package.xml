@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>warehouse_web_bridge</name>
+  <version>0.0.0</version>
+  <description>Web Observability gateway (observe-only, doc22): subscribes existing display topics and fans them out to a browser over WebSocket/REST. S1 = rclpy/FastAPI-free offline core (ObsEvent + events.jsonl); S2 = rclpy node + FastAPI.</description>
+  <maintainer email="ryu3124ruyu@gmail.com">kawaguchiryuya</maintainer>
+  <license>Apache-2.0</license>
+
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>warehouse_interfaces</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>
