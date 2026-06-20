@@ -73,6 +73,17 @@ def test_event_log_writes_conversation_and_lifecycle_rows(tmp_path: Path) -> Non
     assert rows[1]["timestamp"] == 10.0
 
 
+def test_event_log_write_failure_is_fail_open(tmp_path: Path) -> None:
+    not_a_dir = tmp_path / "not-a-dir"
+    not_a_dir.write_text("occupied", encoding="utf-8")
+    log = ConversationEventLog(not_a_dir / "conversation_events.jsonl", now=lambda: 10.0)
+
+    payload = log.record_conversation(_event())
+
+    assert payload["record_type"] == "conversation_event"
+    assert payload["timestamp"] == 10.0
+
+
 def test_event_log_reader_skips_malformed_lines(tmp_path: Path) -> None:
     path = tmp_path / "conversation_events.jsonl"
     path.write_text('not json\n{"record_type": "x"}\n[]\n', encoding="utf-8")

@@ -166,7 +166,7 @@ class SelfActionGate:
         ref_gen = event.state_ref.get("gen_id")
         if isinstance(ref_gen, bool) or not isinstance(ref_gen, int):
             return "missing_state_ref_gen"
-        if ref_gen < gen_id - self._gen_window:
+        if abs(ref_gen - gen_id) > self._gen_window:
             return "stale_state_ref"
         return self._validate_live_state(event.actor)
 

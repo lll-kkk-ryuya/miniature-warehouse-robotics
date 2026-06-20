@@ -10,6 +10,7 @@ one append-only JSON shape without mixing them into the MCP command audit log.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import time
 import uuid
@@ -23,6 +24,7 @@ from warehouse_interfaces.paths import runtime_dir
 
 CONVERSATION_EVENT_LOG_ENV = "WAREHOUSE_CONVERSATION_EVENT_LOG_PATH"
 CONVERSATION_EVENT_LOG_NAME = "conversation_events.jsonl"
+log = logging.getLogger(__name__)
 
 
 class LocalAction(StrEnum):
@@ -224,11 +226,20 @@ class ConversationEventLog:
         return self._path
 
     def append(self, record: dict[str, Any]) -> dict[str, Any]:
-        """Append one JSON object and return the written payload."""
+        """Append one JSON object and return the written payload.
+
+        The conversation log is telemetry for Mode A v1/v1.5 evaluation, not a
+        control-plane contract. A local filesystem problem must not abort an
+        already accepted commander/self-action dispatch.
+        """
         payload = {"timestamp": self._now(), **_jsonify(record)}
-        self._path.parent.mkdir(parents=True, exist_ok=True)
-        with self._path.open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n")
+        try:
+            line = json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n"
+            self._path.parent.mkdir(parents=True, exist_ok=True)
+            with self._path.open("a", encoding="utf-8") as handle:
+                handle.write(line)
+        except (OSError, TypeError, ValueError) as exc:
+            log.warning("conversation event log write failed path=%s: %s", self._path, exc)
         return payload
 
     def record_conversation(self, event: ConversationEvent) -> dict[str, Any]:

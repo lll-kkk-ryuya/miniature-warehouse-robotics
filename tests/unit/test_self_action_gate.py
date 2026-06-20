@@ -131,7 +131,7 @@ def test_rejects_non_self_target(tmp_path: Path) -> None:
     assert decision.reason == "target_not_self"
 
 
-def test_rejects_expired_or_stale_state_ref(tmp_path: Path) -> None:
+def test_rejects_expired_or_out_of_window_state_ref(tmp_path: Path) -> None:
     gate = SelfActionGate(state_store=_state_store(tmp_path), now=lambda: NOW)
 
     expired = gate.validate(
@@ -142,9 +142,14 @@ def test_rejects_expired_or_stale_state_ref(tmp_path: Path) -> None:
         _event(LocalAction.WAIT_SELF, duration=1.0, gen_id=1),
         gen_id=5,
     )
+    future = gate.validate(
+        _event(LocalAction.WAIT_SELF, duration=1.0, gen_id=8),
+        gen_id=5,
+    )
 
     assert expired.reason == "expired_event"
     assert stale.reason == "stale_state_ref"
+    assert future.reason == "stale_state_ref"
 
 
 def test_rejects_wait_duration_above_cap(tmp_path: Path) -> None:

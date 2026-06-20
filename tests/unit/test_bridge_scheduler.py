@@ -266,6 +266,29 @@ def test_accepted_navigate_records_task_lifecycle_events(tmp_path: Path) -> None
 
 
 @pytest.mark.unit
+def test_event_log_write_failure_does_not_abort_accepted_dispatch(tmp_path: Path) -> None:
+    not_a_dir = tmp_path / "not-a-dir"
+    not_a_dir.write_text("occupied", encoding="utf-8")
+    event_log = ConversationEventLog(not_a_dir / "conversation_events.jsonl", now=lambda: 100.0)
+    executor = RecordingToolExecutor()
+    llm = FakeLLM(_nav_response("bot1", "shelf_1"))
+    sched, _ = _scheduler(
+        tmp_path,
+        llm,
+        executor,
+        pending_tasks=list(_SEED),
+        event_log=event_log,
+    )
+
+    asyncio.run(sched.run_cycle())
+
+    assert [call.tool for call in executor.calls] == ["dispatch_task"]
+    assert executor.calls[0].args["dropoff"] == "shelf_1"
+    assert sched._current_tasks == {"bot1": "shelf_1"}
+    assert sched._pending_tasks == [{"id": "task_2", "from": "berth_B", "to": "shelf_3"}]
+
+
+@pytest.mark.unit
 def test_accepted_wait_records_task_paused(tmp_path: Path) -> None:
     event_log = ConversationEventLog(tmp_path / "conversation_events.jsonl", now=lambda: 100.0)
     llm = FakeLLM(
