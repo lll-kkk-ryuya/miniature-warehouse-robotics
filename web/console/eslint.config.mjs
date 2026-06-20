@@ -11,9 +11,5 @@ export default tseslint.config(
   ...tseslint.configs.recommended,
   {
     languageOptions: { globals: { ...globals.browser } },
-    rules: {
-      // payloads are decoded JSON (Record<string, unknown>); narrowing stays defensive, not typed.
-      "@typescript-eslint/no-explicit-any": "off",
-    },
   },
 );

@@ -10,7 +10,8 @@ export function num(p: Record<string, unknown>, key: string): number | undefined
   return typeof v === "number" ? v : undefined;
 }
 
-/** receive_ts (epoch seconds) → HH:MM:SS (24h, JST locale). Display only. */
+/** receive_ts (epoch seconds) → HH:MM:SS (24h, ja-JP locale, the viewer's own timezone). Display
+ * only — seq is the order (doc22:160). */
 export function fmtClock(ts: number): string {
   if (!Number.isFinite(ts)) return "--:--:--";
   return new Date(ts * 1000).toLocaleTimeString("ja-JP", { hour12: false });

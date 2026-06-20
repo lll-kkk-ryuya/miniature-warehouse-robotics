@@ -111,11 +111,14 @@ const RUN_RESET = {
 function applyKind(s: StoreState, e: ObsEvent): Partial<StoreState> {
   const p = e.payload ?? {};
   switch (e.kind) {
-    case "snapshot":
+    case "snapshot": {
+      const robots = p.robots;
+      const isObj = !!robots && typeof robots === "object" && !Array.isArray(robots);
       return {
-        snapshots: (p.robots as Record<string, RobotSnapshot>) ?? s.snapshots,
-        snapshotTs: (p.timestamp as string) ?? s.snapshotTs,
+        snapshots: isObj ? (robots as Record<string, RobotSnapshot>) : s.snapshots,
+        snapshotTs: typeof p.timestamp === "string" ? p.timestamp : s.snapshotTs,
       };
+    }
     case "speech":
       return { conversation: capPush(s.conversation, e, MAX_CONVERSATION) };
     case "reasoning":

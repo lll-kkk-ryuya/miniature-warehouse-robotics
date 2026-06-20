@@ -11,10 +11,15 @@ const W = 100;
 const H = 100;
 const PAD = 8;
 
+function clamp(v: number, lo: number, hi: number): number {
+  return Math.max(lo, Math.min(hi, v));
+}
+
 function project(x: number, y: number): { cx: number; cy: number } {
   const { minX, maxX, minY, maxY } = WAREHOUSE_BOUNDS;
-  const cx = PAD + ((x - minX) / (maxX - minX)) * (W - 2 * PAD);
-  const cy = H - PAD - ((y - minY) / (maxY - minY)) * (H - 2 * PAD); // SVG y is inverted
+  // clamp so an out-of-bounds robot pins to the map edge instead of clipping off-screen.
+  const cx = clamp(PAD + ((x - minX) / (maxX - minX)) * (W - 2 * PAD), PAD, W - PAD);
+  const cy = clamp(H - PAD - ((y - minY) / (maxY - minY)) * (H - 2 * PAD), PAD, H - PAD); // y inverted
   return { cx, cy };
 }
 

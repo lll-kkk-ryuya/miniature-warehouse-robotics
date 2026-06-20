@@ -21,5 +21,7 @@ export const KNOWN_LOCATIONS: WarehouseLocation[] = [
   { key: "retreat_B", x: 0.95, y: 0.85, kind: "retreat" },
 ];
 
-// Warehouse extent (1.8m × 0.9m diorama, shared/02). Used to scale map coords into the SVG.
-export const WAREHOUSE_BOUNDS = { minX: 0, maxX: 1.4, minY: 0, maxY: 0.95 };
+// Warehouse extent (1.8m × 0.9m diorama, shared/02). Used to scale map coords into the SVG; sized
+// to the full diorama so a far-X robot (x up to ~1.8) is not clipped off the map (the projection
+// also clamps defensively). Coords are 暫定 (base.yaml) until the Phase-2 map is measured.
+export const WAREHOUSE_BOUNDS = { minX: 0, maxX: 1.85, minY: 0, maxY: 0.95 };

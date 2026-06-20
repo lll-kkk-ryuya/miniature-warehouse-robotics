@@ -29,19 +29,23 @@ export function RunHeader() {
       )}
       {run.provider && <span className="text-xs text-slate-400">provider: {run.provider}</span>}
       <PersonaBadge source={personaSource} />
-      <div className="ml-auto flex items-center gap-3 chrome">
-        {malformed > 0 && (
-          <span className="font-mono text-xs text-warn" title="malformed events">
-            ⚠ {malformed}
-          </span>
-        )}
-        {config?.lan && (
-          <span className="rounded bg-warn/20 px-1.5 py-0.5 text-xs text-warn">LAN公開</span>
-        )}
-        <ConnectionStatus />
-        <Link href="/runs" className="text-xs text-accent hover:underline">
-          runs
-        </Link>
+      <div className="ml-auto flex items-center gap-3">
+        {/* chrome hides in presentation mode; the toggle stays OUTSIDE it so there is always an
+            in-app way back (doc22 §12.4). */}
+        <div className="flex items-center gap-3 chrome">
+          {malformed > 0 && (
+            <span className="font-mono text-xs text-warn" title="malformed events">
+              ⚠ {malformed}
+            </span>
+          )}
+          {config?.lan && (
+            <span className="rounded bg-warn/20 px-1.5 py-0.5 text-xs text-warn">LAN公開</span>
+          )}
+          <ConnectionStatus />
+          <Link href="/runs" className="text-xs text-accent hover:underline">
+            runs
+          </Link>
+        </div>
         <PresentationToggle />
       </div>
     </header>

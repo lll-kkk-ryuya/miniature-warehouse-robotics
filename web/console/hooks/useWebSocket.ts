@@ -39,12 +39,17 @@ export function useWebSocket(): void {
 
     async function connect() {
       if (!alive || wsRef.current) return; // one socket per mount; reconnect nulls wsRef first
+      // Reflect "trying" up front so a cold-start where GET /config fails does not leave the UI
+      // stuck on the initial "待機"/idle while it is actually retrying in the background.
+      const sinceSeq = useStore.getState().lastSeq;
+      setStatus(sinceSeq > 0 ? "backfilling" : "connecting");
+
       let config = useStore.getState().config;
       if (!config) {
         try {
           config = await fetchConfig();
         } catch {
-          scheduleReconnect();
+          scheduleReconnect(); // status stays "connecting" — accurate, a retry is scheduled
           return;
         }
         if (!alive) return;
@@ -52,8 +57,6 @@ export function useWebSocket(): void {
       }
       if (!alive || wsRef.current) return;
 
-      const sinceSeq = useStore.getState().lastSeq;
-      setStatus(sinceSeq > 0 ? "backfilling" : "connecting");
       let ws: WebSocket;
       try {
         ws = new WebSocket(wsUrl(config, sinceSeq));
