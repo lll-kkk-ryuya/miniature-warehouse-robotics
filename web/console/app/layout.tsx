@@ -17,7 +17,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <Providers>
           <div className="flex h-screen flex-col">
             <RunHeader />
-            <div className="min-h-0 flex-1">{children}</div>
+            <div className="min-h-0 flex-1 overflow-hidden">{children}</div>
           </div>
         </Providers>
       </body>
