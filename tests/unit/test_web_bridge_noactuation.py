@@ -34,6 +34,9 @@ _FORBIDDEN_IMPORTS = {"warehouse_nav2_bridge", "warehouse_mcp_server"}
 # Substrings of actuation topics/routes that must not appear as string literals (doc22:25,:96).
 _FORBIDDEN_TOPIC_SUBSTRINGS = ("cmd_vel", "goal_pose", "navigate_to_pose", "/api/v1/navigate")
 
+# Mutating HTTP verbs the observe-only serving face must never register (doc22:246,:283).
+_MUTATING_HTTP = {"post", "put", "delete", "patch"}
+
 
 def _package_modules() -> list[Path]:
     mods = sorted(_PKG_DIR.glob("*.py"))
@@ -92,4 +95,24 @@ def test_no_actuation_topic_string_literals():
     assert not offending, (
         "web_bridge must reference no actuation topic/route (doc22:25,:96 — raw ROS graph "
         f"and Nav2 drive routes are out of scope): {offending}"
+    )
+
+
+@pytest.mark.safety
+@pytest.mark.unit
+def test_app_serving_face_exposes_no_mutating_http_routes():
+    # doc22:246,:283 — the serving face is observe-only: GET + a receive-only WebSocket, and a
+    # read-only static mount. No @app.post/put/delete/patch (or upload) may ever appear, so a
+    # browser → robot write path cannot be introduced through the gateway's HTTP surface.
+    app_py = _PKG_DIR / "app.py"
+    tree = ast.parse(app_py.read_text(encoding="utf-8"))
+    offending = [
+        node.func.attr
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr in _MUTATING_HTTP
+    ]
+    assert not offending, (
+        f"web_bridge app must be observe-only (GET + receive-only WS only, doc22:283): {offending}"
     )
