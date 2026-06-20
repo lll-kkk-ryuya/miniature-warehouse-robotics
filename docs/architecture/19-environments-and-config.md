@@ -100,7 +100,7 @@ deploy/dev/run-mode-a-live.sh --start-hermes
 - Docker-on-Mac の sim コンテナから host 側 Hermes へは `localhost` ではなく `http://host.docker.internal:8642` を使う。launcher は `WAREHOUSE__HERMES__BASE_URL=http://host.docker.internal:8642` を `docker exec` に注入する。
 - コンテナへ渡す secret は Bridge 認証に必要な `API_SERVER_KEY` / `HERMES_API_KEY` と観測用 `LANGFUSE_*` のみに限定する。各社 provider key は Hermes が消費するため、ROS コンテナへ渡さない。
 - `.env` 変更後、既に起動済みの `llm_bridge` は新しい値を拾わない。launcher は既存 `warehouse_bringup` を止めてから再起動し、401 のまま残る古い Bridge プロセスを避ける。
-- `--start-hermes` は dev 便利機能であり、Hermes Gateway を `hermes gateway start` で service 起動する。macOS/launchd では `launchctl setenv API_SERVER_ENABLED true` を先に入れ、API server が `8642` を開くまで待つ。Hermes service-start log は `/tmp/mwr_hermes_gateway.log` に出す。stg/prod はこの script ではなく systemd / デプロイ runbook 側で Gateway の常駐性を担保する。
+- `--start-hermes` は dev 便利機能であり、Hermes Gateway を `hermes gateway start` で service 起動する。macOS/launchd では `launchctl setenv API_SERVER_ENABLED true` に加えて `API_SERVER_KEY` / `HERMES_API_KEY` も user launchd env に入れてから起動し、API server が `8642` を開くまで待つ。これは同一ユーザー内の dev 起動補助であり、後続 launchd 子プロセスにも見えるため、共有端末では使わない。不要になった場合は `launchctl unsetenv API_SERVER_KEY` と `launchctl unsetenv HERMES_API_KEY` で消す。Hermes service-start log は `/tmp/mwr_hermes_gateway.log` に出す。stg/prod はこの script ではなく systemd / デプロイ runbook 側で Gateway の常駐性を担保する。
 - 既存の `mwr-sim` が別 worktree を mount している事故を避けるため、launcher の既定コンテナ名は `mwr-mode-a-live`、noVNC port は `6082` とする。既存 container を使う場合は `MWR_SIM_CONTAINER` / `MWR_SIM_PORT` で明示する。
 
 ---

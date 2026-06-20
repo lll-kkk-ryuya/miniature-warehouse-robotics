@@ -232,6 +232,34 @@ def test_commander_override_count_dedupes_review_and_lifecycle_rows() -> None:
     assert metrics.commander_override_rate == 1.0
 
 
+def test_commander_override_count_does_not_map_episode_close_to_first_proposal() -> None:
+    metrics = compute_conversation_metrics(
+        [
+            {
+                "record_type": "commander_review",
+                "episode_id": "ep",
+                "proposal_id": "p1",
+                "verdict": "approve",
+            },
+            {
+                "record_type": "commander_review",
+                "episode_id": "ep",
+                "proposal_id": "p2",
+                "verdict": "override",
+            },
+            {
+                "record_type": "task_lifecycle",
+                "event_type": "commander_override",
+                "episode_id": "ep",
+            },
+        ]
+    )
+
+    assert metrics.commander_reviewed_local_proposals == 2
+    assert metrics.commander_override_count == 1
+    assert metrics.commander_override_rate == 0.5
+
+
 def test_read_conversation_event_rows_defensive(tmp_path: Path) -> None:
     path = tmp_path / "events.jsonl"
     path.write_text(
