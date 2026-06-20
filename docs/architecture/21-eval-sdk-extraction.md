@@ -305,7 +305,72 @@ sink.flush()
 - **Tier 2（新観測ノード/Nav2 露出）**: collision rate・最小クリアランス・robot 間最小距離・near-miss・TTC・deadlock 頻度/解消時間・replans(contract)・recovery 数・速度上限違反(R-26→0)。
 - **Tier 3（純関数=今/live=Phase3）**: SR・SPL・SoftSPL・SCT(完了時間重み成功率)。
 
-### 13.3 確立 OSS 地形と build-vs-reuse（reputable のみ）
+### 13.3 Mode A 自律会話ベンチ指標
+
+Mode A の常時会話評価は、LLM を primary judge にしない。LLM は説明文やレビュー補助を作れるが、主要スコアは structured event、内部 `conversation_events.jsonl`、command audit、State Cache、Nav2 outcome、deadlock detector から決定的に集計する。`eval_sdk` は計算・集約・Langfuse score 送信の共通部だけを持ち、episode 境界や success/violation の意味は倉庫ドメイン producer が定義する。
+
+| metric | 分子 | 分母 | primary data source | 判定者 |
+|---|---|---|---|---|
+| `autonomy_ratio` | 司令官の実行上書きなしで、bot 会話 + Self-Action Gate だけで closed した decision episode 数 | 局所交通解決が必要だった decision episode 数 | `conversation_events.jsonl` の decision episode / local agreement、commander audit、deadlock/conflict detector | deterministic producer |
+| `commander_override_rate` | critic/commander が local proposal/action を reject または上書きした数 | commander が review した local proposal/action 数 | commander review event `{proposal_id, verdict}` | structured verdict |
+| `agreement_latency` | conflict/episode 開始から `local_agreement_created` までの経過秒 | agreement episode ごとに1値 | episode start event、local agreement event | stats function |
+| `local_resolution_rate` | bot 同士だけで解消した deadlock 数 | detector が検出した全 deadlock 数 | deadlock detector、local agreement、self-action outcome | deterministic producer |
+| `communication_efficiency` | 改善量（resolved、clearance 改善、待機短縮など） | turn 数または token 数 | transcript metadata、episode outcome、token usage | domain metric |
+| `contract_violation_rate` | 合意 contract が violated になった数 | evaluable な local agreement 数 | agreement contract、`conversation_events.jsonl`、state stream、route lock log | deterministic predicate |
+| `safety_margin_after_agreement` | 合意後 window 内の robot 間最小距離 | agreement episode ごとに1値 | `/state_cache/snapshot` 相当の pose stream、min-separation harness、`conversation_events.jsonl` の window summary | stats function |
+
+`decision episode` は utterance 数ではなく、交通上の局所判断単位である。例: head-on deadlock 1件、route lock conflict 1件、通路譲り合い 1件、task handoff 境界 1件。producer は `episode_id`、`started_at`、`closed_at`、`close_reason`、`commander_involved` を出す。
+
+#### autonomy_ratio
+
+`autonomy_ratio = locally_closed_episodes / traffic_decision_episodes`。
+
+- `locally_closed_episodes`: `local_agreement` 後に whitelist action が成功し、司令官が実行上書きをしていない episode。
+- `traffic_decision_episodes`: deadlock/conflict detector または task lifecycle が「局所判断が必要」と開始した episode。
+- 司令官が observer として transcript を見ただけなら介入扱いにしない。`wait` / `yield` / `navigate` などを commander 経路で実行した場合は介入扱いにする。
+
+#### commander_override_rate
+
+`commander_override_rate = commander_override_count / commander_reviewed_local_proposals`。
+
+ここでの data は、自然文の感想ではなく structured verdict である。verdict は少なくとも `approve`、`reject`、`override`、`no_action` を区別する。`override` は commander が別 action を実行した場合、`reject` は危険/契約違反/whitelist 外として却下した場合に使う。
+
+#### agreement_latency
+
+`agreement_latency = local_agreement_created_at - episode_started_at`。
+
+episode start は deadlock/conflict detector、route lock conflict、または task lifecycle event が開始する。自然文の最初の発話時刻ではなく、producer が「局所判断が必要」と見なした時刻を起点にする。合意なしで timeout した episode は latency ではなく timeout count / unresolved episode として扱う。
+
+#### local_resolution_rate
+
+`local_resolution_rate = locally_resolved_deadlocks / detected_deadlocks`。
+
+ユーザーの理解通り、分母は全 deadlock、分子は bot 同士だけで解けた deadlock である。detector は doc08a の head-on / blocked timeout 条件を初期値とし、close 判定は「deadlock 条件が消え、両 bot が安全余裕を保って task を再開または clear した」ことを producer が確認する。
+
+#### communication_efficiency
+
+初期値は `communication_efficiency = resolved_episode / turns` または `resolved_episode / tokens` とする。より精緻化する場合は、`clearance_delta`、`deadlock_duration_reduction`、`idle_time_reduction`、`task_resume_success` を改善量に含める。v1/v1.5 ではまず turn/token あたりの resolved rate を採用し、LLM の主観評価は使わない。
+
+#### contract_violation_rate
+
+`contract_violation_rate = violated_agreements / evaluable_agreements`。
+
+合意 contract は LLM の自然文ではなく structured agreement から作る。v1 の deterministic predicate は以下。
+
+- agreed actor が実際に action を実行した。
+- action が whitelist 内で、named retreat / wait duration / lock owner 条件を満たした。
+- `expires_at` または timeout 内に実行/完了した。
+- route lock を合意通り保持または解放した。
+- emergency active 中に通常 action を続けなかった。
+- 合意後 window の最小距離が safety threshold を下回らなかった。
+
+曖昧な結果は LLM に二択判定させず、`unknown` として `contract_unknown_rate` に分離する。primary score から unknown を除外するか失敗扱いにするかは、ベンチ定義時に固定する。
+
+#### safety_margin_after_agreement
+
+`safety_margin_after_agreement` は、`local_agreement` の timestamp から合意 action 完了まで、または固定 window（例: T 秒、値は実装時 config）までの robot 間最小距離である。計算は pose stream から同時刻近傍の bot1/bot2 距離を取り、episode ごとに `min(distance(bot1, bot2))` を出す。既存の min separation live harness と同じ考え方だが、run 全体ではなく合意後 window に切り出す。
+
+### 13.4 確立 OSS 地形と build-vs-reuse（reputable のみ）
 
 | Library | 維持者 | 指標 | 再利用性・URL |
 |---|---|---|---|

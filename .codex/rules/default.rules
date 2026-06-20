@@ -38,6 +38,20 @@ prefix_rule(
 )
 
 prefix_rule(
+    pattern = ["deploy/dev/check-hermes-live.sh"],
+    decision = "prompt",
+    justification = "Hermes live preflight may read Bridge-side secrets and inspect a local Gateway.",
+    match = ["deploy/dev/check-hermes-live.sh"],
+)
+
+prefix_rule(
+    pattern = ["deploy/dev/run-mode-a-live.sh"],
+    decision = "prompt",
+    justification = "Mode A live launch starts/restarts Hermes, Docker, ROS, RViz, and LLM Bridge.",
+    match = ["deploy/dev/run-mode-a-live.sh"],
+)
+
+prefix_rule(
     pattern = ["python3", "-m", "pytest"],
     decision = "prompt",
     justification = "Python tests are expected project operations.",

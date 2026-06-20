@@ -21,6 +21,10 @@ import pytest
 from warehouse_interfaces.schemas import Command
 from warehouse_interfaces.stores import FileGenStore, FileIdempotencyStore, FileStateStore
 from warehouse_llm_bridge.action_map import command_to_tool_calls
+from warehouse_llm_bridge.conversation_events import (
+    ConversationEventLog,
+    read_conversation_event_log,
+)
 from warehouse_llm_bridge.executor import DispatchToolExecutor, RecordingToolExecutor
 from warehouse_llm_bridge.llm_client import LLMUnavailableError
 from warehouse_llm_bridge.scheduler import (
@@ -238,6 +242,43 @@ def test_accepted_navigate_consumes_matching_pending_task(tmp_path: Path) -> Non
     sched, _ = _scheduler(tmp_path, llm, RecordingToolExecutor(), pending_tasks=list(_SEED))
     asyncio.run(sched.run_cycle())
     assert sched._pending_tasks == [{"id": "task_2", "from": "berth_B", "to": "shelf_3"}]
+
+
+@pytest.mark.unit
+def test_accepted_navigate_records_task_lifecycle_events(tmp_path: Path) -> None:
+    event_log = ConversationEventLog(tmp_path / "conversation_events.jsonl", now=lambda: 100.0)
+    llm = FakeLLM(_nav_response("bot1", "shelf_1"))
+    sched, _ = _scheduler(
+        tmp_path,
+        llm,
+        RecordingToolExecutor(),
+        pending_tasks=list(_SEED),
+        event_log=event_log,
+    )
+
+    asyncio.run(sched.run_cycle())
+
+    rows = read_conversation_event_log(event_log.path)
+    assert [row["event_type"] for row in rows] == ["task_assigned", "task_started"]
+    assert rows[0]["task_id"] == "task_1"
+    assert rows[1]["task_id"] == "task_1"
+    assert rows[1]["detail"]["destination"] == "shelf_1"
+
+
+@pytest.mark.unit
+def test_accepted_wait_records_task_paused(tmp_path: Path) -> None:
+    event_log = ConversationEventLog(tmp_path / "conversation_events.jsonl", now=lambda: 100.0)
+    llm = FakeLLM(
+        {"reasoning": "hold", "commands": [{"bot": "bot1", "action": "wait", "duration": 2}]}
+    )
+    sched, _ = _scheduler(tmp_path, llm, RecordingToolExecutor(), event_log=event_log)
+
+    asyncio.run(sched.run_cycle())
+
+    [row] = read_conversation_event_log(event_log.path)
+    assert row["event_type"] == "task_paused"
+    assert row["actor"] == "bot1"
+    assert row["detail"]["action"] == "wait"
 
 
 @pytest.mark.unit

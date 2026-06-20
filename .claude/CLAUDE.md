@@ -37,6 +37,7 @@
 ## Documentation
 - **docs 中心主義（docs-first）**: 実装・plan は docs を正本とする。着手前に該当 doc を読み、コードは docs を検証する側＝docs に無い契約/トピック/スキーマ/しきい値を発明しない。詳細 → [.claude/rules/docs-first.md](rules/docs-first.md)
 - **LLM/Hermes/Langfuse 検証境界**: SDK/API 変更は公式一次情報を確認し、通常 CI は fake/noop/unit、Hermes は env-gated live smoke、Langfuse 実トレース・provider call・Grok cost は human gate として分ける。詳細 → [.claude/rules/llm-observability-testing.md](rules/llm-observability-testing.md)
+- **dev live Hermes + LLM Bridge 起動**: Gazebo/RViz live run は `deploy/dev/run-mode-a-live.sh` / `deploy/dev/check-hermes-live.sh` を使い、手作業で Hermes/Bridge env をつながない。Docker 内から host Hermes は `http://host.docker.internal:8642`。詳細 → [.claude/rules/environments.md](rules/environments.md)
 - docs/ 配下にMarkdownで管理
 - 新規ドキュメントは既存の番号体系に従う（00-xx, 01-xx, ...）
 - 短期 handoff / local memory は [local-memory.md](local-memory.md) を参照する（設計正本ではなく、再開用の実行状態メモ）。

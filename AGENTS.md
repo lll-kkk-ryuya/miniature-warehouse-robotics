@@ -66,6 +66,11 @@ comparison demo.
   must not be committed. Use `.env.example` only for placeholders.
 - Do not read `.env`, `config/**/.env`, or `secrets/**` unless the user gives an
   explicit, scoped request that requires those exact files.
+- For dev live Gazebo/RViz runs with Hermes + LLM Bridge, use
+  `deploy/dev/run-mode-a-live.sh` (or `--start-hermes`) and
+  `deploy/dev/check-hermes-live.sh`; do not hand-wire Hermes/Bridge env by
+  ad hoc launch commands. From Docker-on-Mac containers, Hermes is
+  `http://host.docker.internal:8642`, not localhost.
 - Main worktree is integration-only. Development should happen in a feature,
   docs, fix, chore, or hw branch/worktree and land through PR.
 - Do not create or merge Issue/PR content without docs links and the required

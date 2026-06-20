@@ -54,6 +54,7 @@ from warehouse_mcp_server.gen_check import GenChecker
 from warehouse_mcp_server.nav2_client import Nav2RestForwarder
 from warehouse_mcp_server.tools import WarehouseTools
 
+from warehouse_llm_bridge.conversation_events import ConversationEventLog
 from warehouse_llm_bridge.executor import DispatchToolExecutor
 from warehouse_llm_bridge.fairness import assert_fairness, fairness_log_line, resolve_memory_policy
 from warehouse_llm_bridge.hermes_client import HermesClient
@@ -208,6 +209,7 @@ class LlmBridge(Node):
             publish_reasoning=self._publish_reasoning,
             publish_command=self._publish_command,
             tracer=tracer,
+            event_log=ConversationEventLog(),
             pending_tasks=seed_tasks,
             cycle_wait_sec=cycle_wait,
         )

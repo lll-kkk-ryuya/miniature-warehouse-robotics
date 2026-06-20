@@ -37,6 +37,11 @@ from warehouse_interfaces.schemas import Command, CommandAction, CommandItem, Pe
 from warehouse_interfaces.stores import GenStore
 
 from warehouse_llm_bridge.action_map import command_to_tool_calls, start_negotiation_tool_call
+from warehouse_llm_bridge.conversation_events import (
+    ConversationEventLog,
+    TaskLifecycleEvent,
+    TaskLifecycleEventType,
+)
 from warehouse_llm_bridge.executor import ToolExecutor
 from warehouse_llm_bridge.hermes_client import MODE_A_TRAFFIC_MODES
 from warehouse_llm_bridge.llm_client import LLMClient, LLMUnavailableError
@@ -173,6 +178,7 @@ class BridgeScheduler:
         publish_reasoning=_noop,
         publish_command=_noop,
         tracer: Tracer | None = None,
+        event_log: ConversationEventLog | None = None,
         pending_tasks: list[dict] | None = None,
         cycle_wait_sec: float = DEFAULT_CYCLE_WAIT_SEC,
         retry_wait_sec: float = RETRY_WAIT_SEC,
@@ -187,6 +193,7 @@ class BridgeScheduler:
         self._publish_reasoning = publish_reasoning
         self._publish_command = publish_command
         self._tracer = tracer or NoopTracer()
+        self._event_log = event_log
         self._cycle_wait_sec = cycle_wait_sec
         self._retry_wait_sec = retry_wait_sec
         self._cycle_timeout_sec = cycle_timeout_sec
@@ -367,7 +374,8 @@ class BridgeScheduler:
                 result = await self._executor.execute(tool_call)
             results.append(result)
             self._track_current_task(item, result)
-            self._consume_pending_task(item, result)
+            consumed_task = self._consume_pending_task(item, result)
+            self._record_task_lifecycle(item, result, consumed_task, gen)
             self._history.append(
                 {
                     "turn": self.turn,
@@ -433,7 +441,7 @@ class BridgeScheduler:
             # WAIT (and a NAVIGATE/YIELD missing its dropoff): a hold on the
             # existing task -> current_task unchanged.
 
-    def _consume_pending_task(self, item: CommandItem, result: dict) -> None:
+    def _consume_pending_task(self, item: CommandItem, result: dict) -> dict | None:
         """Drop a seeded pending task once an accepted navigate claims it (#181).
 
         The commander allocates a queued task by navigating a bot to its ``to``
@@ -444,13 +452,60 @@ class BridgeScheduler:
         ({id,from,to}, doc08a:79-81), so the match is destination == ``to``.
         """
         if result.get("status") != "ok" or item.action is not CommandAction.NAVIGATE:
-            return
+            return None
         if item.destination is None:
-            return
+            return None
         for index, task in enumerate(self._pending_tasks):
             if task.get("to") == item.destination:
-                del self._pending_tasks[index]
-                return
+                consumed = self._pending_tasks.pop(index)
+                return consumed
+        return None
+
+    def _record_task_lifecycle(
+        self, item: CommandItem, result: dict, consumed_task: dict | None, gen: int
+    ) -> None:
+        """Append v1.5 logical lifecycle rows after accepted commander actions."""
+        if self._event_log is None or result.get("status") != "ok":
+            return
+        detail = {"action": item.action.value, "result_task_id": result.get("task_id")}
+        if item.destination is not None:
+            detail["destination"] = item.destination
+        if item.retreat_to is not None:
+            detail["retreat_to"] = item.retreat_to
+        if consumed_task is not None:
+            detail["pending_task"] = dict(consumed_task)
+            self._event_log.record_lifecycle(
+                TaskLifecycleEvent(
+                    event_type=TaskLifecycleEventType.TASK_ASSIGNED,
+                    task_id=str(consumed_task.get("id")),
+                    actor=item.bot,
+                    source="bridge_scheduler",
+                    gen_id=gen,
+                    detail=detail,
+                )
+            )
+
+        event_type: TaskLifecycleEventType | None = None
+        task_id = (
+            str(consumed_task.get("id")) if consumed_task is not None else result.get("task_id")
+        )
+        match item.action:
+            case CommandAction.NAVIGATE | CommandAction.CHARGE:
+                event_type = TaskLifecycleEventType.TASK_STARTED
+            case CommandAction.WAIT | CommandAction.YIELD | CommandAction.STOP:
+                event_type = TaskLifecycleEventType.TASK_PAUSED
+        if event_type is None:
+            return
+        self._event_log.record_lifecycle(
+            TaskLifecycleEvent(
+                event_type=event_type,
+                task_id=task_id,
+                actor=item.bot,
+                source="bridge_scheduler",
+                gen_id=gen,
+                detail=detail,
+            )
+        )
 
     def _on_timeout(self, gen: int) -> None:
         """2.5s in-cycle timeout: keep the previous command, advance (doc08:286).

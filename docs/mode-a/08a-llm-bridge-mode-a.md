@@ -467,6 +467,82 @@ class CommandParser:
 - **`history`**: Bridge が保持する**有界リング（直近5サイクル）**。`{turn, action:"<bot> <action> <target>", result:<dispatch status>}`。`result` は実際には dispatch の戻り値（`ok`/`rejected`/`error`）。§入力例・パターン2例も実値 `ok` を用いる（`"blocked"` を産出する dispatch 経路は無い＝#55。デッドロックの非進捗は `result` ではなく `status=="idle"` で判断する）。
 - **`pending_tasks`**: タスクキュー（各要素は `{id, from, to}` ＝凍結 `PendingTask`、§入力例:79-81）。**恒久 producer は未確定**（将来 Warehouse Orchestrator #6 / `get_task_queue`（doc15）想定）。当面の供給元は **デモ用シード `WAREHOUSE_TASKS` env**（JSON 配列。`llm_bridge` が起動時に読み `scheduler.parse_seed_tasks` で検証して `pending_tasks` キューへ投入。未設定なら `[]`＝非デモ run は不変。#181）。司令官は idle で `current_task` の無い bot にこのキューのタスクを `navigate`（行先＝task の `to`）で割り当て、受理 navigate（`to` 一致）でキューから消費する（これにより両 bot が `current_task` を持ち head-on デッドロックが成立・検出可能になる＝§デッドロック検出の前提）。`pending_tasks` は既に凍結 `Situation` フィールドのため**契約変更なし（additive）**。シリアライズは `model_dump(by_alias=True)` で `from`（pydantic 名 `from_` でなく）を出力する。
 
+## Mode A 司令官介入方針（常時会話ベンチ）
+
+Mode A の次段階は、doc14 の「常時会話・限定自己実行」を前提に、司令官を常時の交通支配者ではなく observer/critic として扱う。ただし、現行実装の LLM Bridge / Policy Gate / MCP / Nav2 経路は残し、安全停止と emergency は従来通り commander より強い。
+
+### 現行実装と目標状態
+
+| 項目 | 現行 Mode A | 次段階 Mode A ベンチ |
+|---|---|---|
+| 主な意思決定 | 司令官 LLM cycle が `navigate` / `wait` / `yield` 等を決める | bot 会話が局所順序を提案し、Self-Action Gate が whitelist のみ実行 |
+| キャラLLM | 実況・交渉・proposal。直接 actuation なし | 自然文 + 構造化 event。限定自己実行だけ可 |
+| 司令官 | 交通判断の中心 | observer/critic。失敗・危険・非局所判断で介入 |
+| 評価 | 司令官の command / KPI を比較 | 自律会話で解けた率、override 率、合意後安全余裕を測る |
+
+### loop と event-driven の分担
+
+- **bot 会話**: conflict / route lock / task boundary / idle chatter をきっかけに event-driven で発火する。発話は自然文、実行候補は structured event に分離する。
+- **Self-Action Gate**: `wait_self`、`yield_to_retreat_A/B`、`release_route_lock` だけを検証し、fresh state / expiry / ownership / emergency を見て実行可否を決める。
+- **司令官 cycle**: doc08 の `cycle.mode_a_seconds` は監査・再割当・非局所判断の cadence とする。局所の待機/退避の即時性はこの周期に依存させない。
+- **Emergency Guardian**: emergency active 時は会話や司令官判断より優先する。回復後の task 再開判断は司令官または operator が扱う。
+
+### 司令官が発火・介入するタイミング
+
+Mode A ベンチで司令官を呼ぶ条件は以下に限定する。
+
+| trigger | 司令官の役割 |
+|---|---|
+| bot 同士が timeout / turn budget 内に合意できない | 局所交渉を abort し、既存 `wait` / `yield` / `navigate` で解消 |
+| whitelist 外の行動が必要 | 任意 destination、charge、task 再割当、他 bot への命令を司令官経路へ昇格 |
+| 合意した action が失敗または期限切れ | contract violation として記録し、critic が上書き |
+| emergency / stale state / low battery / near miss | safety 優先。司令官は再開・再割当を判断 |
+| 同一 deadlock が再発 | 局所解決の失敗として commander override |
+| task lifecycle 境界 | `task_assigned` / `started` / `completed` / `failed` 相当の通知を受け、必要なら新 task を spawn/割当 |
+| operator trigger | 人間が reviewer / commander として強制介入 |
+
+### task lifecycle の扱い
+
+現状の `pending_tasks` はデモ用 `WAREHOUSE_TASKS` env または将来の Warehouse Orchestrator / `get_task_queue` が供給する。常時会話ベンチの v1.5 では、task producer / bridge / audit が少なくとも以下の論理イベントを出す設計にする。
+
+| event | 意味 | bot 会話への影響 |
+|---|---|---|
+| `task_assigned` | bot に task が割り当てられた | bot が相手に進路予定を共有できる |
+| `task_started` | 移動/作業が開始された | route lock / corridor 交渉の対象になる |
+| `task_paused` | 待機、譲り合い、emergency などで task が一時停止した | 合意 contract の開始点になり、再開条件を会話できる |
+| `task_resumed` | 一時停止後に task が再開した | 合意が守られたか、局所問題が閉じたかを判定できる |
+| `task_completed` | goal 到達または作業完了 | route lock 解放、次 task 取得へ進む |
+| `task_failed` | timeout、reject、到達不能 | 司令官 critic または operator に昇格 |
+| `local_agreement_created` | bot 同士が待機/退避/lock 解放に合意した | `agreement_latency` と contract 評価の開始点になる |
+| `local_agreement_executed` | 合意 action が実行された | `autonomy_ratio` と `contract_violation_rate` の材料になる |
+| `commander_override` | 司令官が local proposal/action を却下または上書きした | `commander_override_rate` の材料になる |
+
+これらは本節時点では論理イベント名であり、新しい ROS topic / interface の凍結ではない。v1.5 の最初は既存 `Situation` / audit / Langfuse metadata に載せ、専用 schema が必要になった時だけ contract PR で追加する。
+
+実装初期の lifecycle / local agreement / Self-Action Gate verdict は、command audit とは別の内部 JSONL `conversation_events.jsonl` に書く。既定は runtime dir 配下で、`WAREHOUSE_CONVERSATION_EVENT_LOG_PATH` により実験ごとに差し替える。これは v1/v1.5 の評価用ログであり、`warehouse_interfaces` の凍結 contract ではない。
+
+### v1/v1.5 の実装開始条件
+
+v1/v1.5 は、Gazebo 上で以下の3条件を同じ scenario / task seed で比較できるようにしてから評価する。
+
+| condition | 内容 | 目的 |
+|---|---|---|
+| reflex-only | Nav2 + costmap + collision_monitor。会話なし、司令官なし | 反射系だけで解ける問題を切り分ける |
+| commander-only | 司令官が `wait` / `yield` / `navigate` を決める | 中央判断の baseline を作る |
+| bot-conversation-v1 | bot 会話 + Self-Action Gate。実行は `wait_self` / `yield_to_retreat_A/B` / `release_route_lock` のみ | 自律会話の追加価値を測る |
+
+この比較で、bot 会話は「衝突直前の回避」ではなく、「どちらが先に通るか」「どちらが待つか」「どちらが退避するか」「いつ task を再開するか」を扱う。反射停止や障害物回避は collision_monitor / Nav2 / Emergency Guardian の責務から移さない。
+
+### 許可行動ごとの懸念
+
+| 行動 | 使える理由 | 主な懸念 |
+|---|---|---|
+| `wait_self` | 最も安全で局所的。相手の通過待ちに向く | 初期上限は 5 秒。長すぎる待機で throughput/fairness が悪化するため duration 上限が必要 |
+| `yield_to_retreat_A/B` | 名前付き退避地点だけなら検証可能 | retreat が実測環境で本当に安全か、退避中に別 bot と競合しないかを観測する必要がある |
+| `release_route_lock` | 合意後の詰まりを解消しやすい | lock owner 以外が解放すると task 契約を壊すため ownership check が必須 |
+| 再経路 | commander/Bridge 経由なら有効 | bot persona に任意 destination を渡すと危険。v1 では局所自己実行に含めない |
+| 座標移動 | 実験・デバッグでは便利 | Mode A v1 の bot persona には渡さない。必要時は司令官/Policy Gate が named location へ変換する |
+
 ## References
 
 - [Nav2 Simple Commander API](https://docs.nav2.org/commander_api/index.html) -- 参照日: 2026-05-21（※実装ではWarehouse MCP Serverに置き換え）
