@@ -35,3 +35,8 @@ cycle:
 web_bridge:
   host: "127.0.0.1"
   recordings_dir: /tmp/warehouse/recordings
+  # dev のみ: `next dev`(:3000) → gateway(:8646) cross-origin を許可（doc22:255）。prod は SPA を
+  # gateway が同一オリジン配信するので allowlist 不要（空）。static_dir は未設定＝API-only で起動し、
+  # dev は next dev(:3000) で配信する（prod は CI build の out/ を static_dir に指す）。
+  allowed_origins:
+    - "http://localhost:3000"
