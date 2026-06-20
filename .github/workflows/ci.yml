@@ -166,7 +166,7 @@ jobs:
     # Gates web/console — the observability SPA (doc22 §15). NO other job checks it: the Python
     # jobs never touch TypeScript, so without this a broken eslint / type error / failed static
     # export would not turn CI red. Node is build-time only (doc22:340); the static export `out/`
-    # is what warehouse_web_bridge serves. 正本: docs/architecture/20-dev-quality-and-testing.md:49.
+    # is what warehouse_web_bridge serves. 正本: docs/architecture/20-dev-quality-and-testing.md:48.
     defaults:
       run:
         working-directory: web/console
