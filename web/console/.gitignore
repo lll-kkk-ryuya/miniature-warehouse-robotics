@@ -1,0 +1,11 @@
+# dependencies / build output (web_bridge serves out/ from a CI-built or git-tag artifact)
+/node_modules
+/.next
+/out
+next-env.d.ts
+*.tsbuildinfo
+
+# misc
+.DS_Store
+*.log
+.env*.local

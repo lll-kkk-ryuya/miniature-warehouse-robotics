@@ -1,0 +1,21 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  @apply bg-surface text-slate-100 font-sans antialiased;
+}
+
+/* capture skin (doc22 §12.4): presentation mode hides chrome + enlarges transcript at the
+   layout level (toggled by adding `.presenting` to <html>). */
+:root.presenting .chrome {
+  display: none;
+}
+:root.presenting {
+  font-size: 1.15rem;
+}
