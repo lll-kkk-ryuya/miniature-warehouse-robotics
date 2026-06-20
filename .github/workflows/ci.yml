@@ -160,20 +160,51 @@ jobs:
       - name: Skeleton host compile (main.cpp)
         run: bash firmware/test/run_host_compile.sh
 
-  web-e2e:
-    name: Playwright (web E2E)
+  web-quality:
+    name: Web console (eslint + tsc + next build)
     runs-on: ubuntu-latest
-    # WO画面 / rmf-web は Phase 4 で実装。UIが存在するまで無効。
-    # TODO(Phase 4): `if: false` を外し、web/** 変更時に実行する。
-    if: false
+    # Gates web/console — the observability SPA (doc22 §15). NO other job checks it: the Python
+    # jobs never touch TypeScript, so without this a broken eslint / type error / failed static
+    # export would not turn CI red. Node is build-time only (doc22:340); the static export `out/`
+    # is what warehouse_web_bridge serves. 正本: docs/architecture/20-dev-quality-and-testing.md:49.
     defaults:
       run:
-        working-directory: web/e2e
+        working-directory: web/console
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
+          cache: npm
+          cache-dependency-path: web/console/package-lock.json
       - run: npm ci
-      - run: npx playwright install --with-deps chromium
-      - run: npx playwright test
+      - name: ESLint
+        run: npm run lint
+      - name: Type-check (tsc --noEmit)
+        run: npm run typecheck
+      - name: Build (static export → out/)
+        run: npm run build
+
+  web-e2e:
+    name: Playwright (web console E2E)
+    runs-on: ubuntu-latest
+    # Smoke E2E for web/console: builds the static export, serves it (playwright webServer), and
+    # asserts /live and /runs render (the panels mount + the SPA boots) with NO gateway — the
+    # idle/empty states. The runtime data path (WS) is exercised by live runs. doc22:304,:348.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Build web/console (static export)
+        working-directory: web/console
+        run: npm ci && npm run build
+      - name: Install e2e deps
+        working-directory: web/e2e
+        run: npm ci
+      - name: Install Playwright chromium
+        working-directory: web/e2e
+        run: npx playwright install --with-deps chromium
+      - name: Run Playwright (serves web/console/out via webServer)
+        working-directory: web/e2e
+        run: npx playwright test

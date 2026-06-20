@@ -15,8 +15,8 @@
 | 型チェック | Mypy（将来） | 型ヒント検証（CLAUDE.md「型ヒント必須」）。本ブランチでは未導入、後続で追加 | — |
 | ユニットテスト | **pytest** | ROS/実機なしで回る純ロジック検証 | `pyproject.toml [tool.pytest.ini_options]` |
 | Pre-commit | **pre-commit** | commit前に Ruff + 衛生フック（秘密鍵検出等）を自動実行 | `.pre-commit-config.yaml` |
-| CI | **GitHub Actions** | push/PR で lint/test・docs整合・firmware 安全 unit 等を自動実行（5 job・§4） | `.github/workflows/ci.yml` |
-| Web E2E | **Playwright** | WO画面 / rmf-web の E2E（Phase 4） | `web/e2e/` |
+| CI | **GitHub Actions** | push/PR で lint/test・docs整合・firmware/web 安全 unit 等を自動実行（7 job・§4） | `.github/workflows/ci.yml` |
+| Web E2E | **Playwright** | `web/console`（観測コンソール）の E2E スモーク（`out/` を serve して /live・/runs の panel mount を検証・doc22 §15）。WO画面/rmf-web は将来別途 | `web/e2e/` |
 | ROS品質 | ament_lint / colcon test | ROSパッケージのlint/テスト。**現状は雛形**、Step 0 でパッケージ実体化後に本運用 | `ws/src/*/`（後続） |
 
 > ⚠️ ROS 2 固有ツール（ament_lint_auto / colcon test）は、`ws/src/` の各パッケージが `package.xml`/`setup.py` を持って実体化（doc17 Step 0）してから本格運用する。
@@ -45,8 +45,8 @@
 ## 4. CI フロー（GitHub Actions）
 
 - **トリガー**: 全ブランチへの push と、main への PR。
-- **常時 job（全 push/PR）**: `python-quality`（`ruff check`→`ruff format --check`→`pytest`）／ `langfuse-api-contract`（`langfuse>=4.9,<5` を入れ、`eval_sdk.tracer` が依存する実 SDK call surface を鍵なし・ネットワークなしで検査）／ `consistency`（`scripts/check_consistency.py`・docs↔code 整合・0 ERROR 必須）／ `firmware-safety`（host R-26 速度クランプ unit ＋ キネマティクス unit ＋ skeleton compile・ESP32/PlatformIO 不要）。1つでも失敗で赤。
-- **条件付き job**: `governance`（PR 時のみ・`warehouse_interfaces` 変更に contract ラベル必須＋他トラック内部 import 禁止）／ `web-e2e`（Playwright・Web UI 未実装で現状 `if: false`・Phase 4 で有効化）。通常の `python-quality` は Langfuse 非依存を維持し、optional SDK drift は `langfuse-api-contract` に隔離する。
+- **常時 job（全 push/PR）**: `python-quality`（`ruff check`→`ruff format --check`→`pytest`）／ `langfuse-api-contract`（`langfuse>=4.9,<5` を入れ、`eval_sdk.tracer` が依存する実 SDK call surface を鍵なし・ネットワークなしで検査）／ `consistency`（`scripts/check_consistency.py`・docs↔code 整合・0 ERROR 必須）／ `firmware-safety`（host R-26 速度クランプ unit ＋ キネマティクス unit ＋ skeleton compile・ESP32/PlatformIO 不要）／ `web-quality`（setup-node 20 + eslint + `tsc --noEmit` + `next build`〔static export → `out/`〕で `web/console` を gate・doc22 §15/§16/§348）／ `web-e2e`（Playwright スモーク・`web/console/out` を serve して `/live`・`/runs` の panel mount を検証・doc22 §13 S3）。1つでも失敗で赤。
+- **条件付き job**: `governance`（PR 時のみ・`warehouse_interfaces` 変更に contract ラベル必須＋他トラック内部 import 禁止）。`web-e2e` は `web/console` land に伴い常時 job へ移行（旧 `if: false` を解除）。通常の `python-quality` は Langfuse 非依存を維持し、optional SDK drift は `langfuse-api-contract` に隔離する。
 - **ブランチ保護との関係**（doc16 §9 / doc17）: **main 直 push 禁止・ブランチ先行・PR必須**の運用と組み合わせ、`python-quality` を必須チェックにすることで「緑のPRだけが main に入る」状態を作る。
 
 ## 5. Pre-commit 運用
@@ -74,7 +74,7 @@ ruff check . && ruff format --check .
 | Step 0（doc17） | 本ブランチを main へマージし、全 worktree がこの CI/pre-commit を継承 |
 | Phase 0.5 | 安全系ユニット（R-26）＋ LLM Bridge/MCP の偽入力テストを追加。Hermes Gateway 起動確認は env-gated live smoke に分離し、Gazebo統合テストをCIに追加検討 |
 | Phase 3 | ROS パッケージの colcon test / ament_lint を CI に追加 |
-| Phase 4 | WO画面/rmf-web 実装に合わせ Playwright E2E を有効化（`web-e2e` の `if:` 解除） |
+| Phase 4 | WO画面/rmf-web の Playwright E2E を追加（`web-e2e` は `web/console` 観測コンソール向けに先行有効化済み・doc22 §13 S3） |
 
 ## 8. Langfuse 観測 taxonomy（Phase 4 LLM 比較の弁別軸）
 
