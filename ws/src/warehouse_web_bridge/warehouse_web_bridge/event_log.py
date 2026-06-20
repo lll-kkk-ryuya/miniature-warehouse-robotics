@@ -80,6 +80,20 @@ class EventLog:
         # Starting a run is the natural point to prune older runs (doc22:221 retention).
         self._enforce_retention()
 
+    @classmethod
+    def reader(cls, recordings_dir: str | Path, run_id: str) -> EventLog:
+        """A read-only handle for replay endpoints (``/events``, WS backfill) — doc22:242,:234.
+
+        Skips ``mkdir`` and retention so a read never mutates the recordings dir (a GET must
+        not prune runs). Only :meth:`iter_since` / :meth:`last_seq` are valid on it.
+        """
+        self = cls.__new__(cls)
+        self._dir = Path(recordings_dir)
+        self._run_id = _safe_run_id(run_id)
+        self._max_bytes = DEFAULT_MAX_BYTES
+        self._max_runs = DEFAULT_MAX_RUNS
+        return self
+
     @property
     def current_path(self) -> Path:
         return self._dir / f"{_FILE_PREFIX}{self._run_id}{_FILE_SUFFIX}"
@@ -188,3 +202,22 @@ class EventLog:
         for stale_run in others[max(self._max_runs - 1, 0) :]:
             for path in by_run[stale_run]:
                 path.unlink(missing_ok=True)
+
+
+def list_runs(recordings_dir: str | Path) -> list[str]:
+    """Run ids observed in ``recordings_dir``, newest-first (for ``GET /runs``, doc22:243).
+
+    A run id is the sanitized token in ``events-<run_id>[.<k>].jsonl``; ordering is by the
+    run's most-recent file mtime. Read-only — never creates or prunes anything.
+    """
+    base = Path(recordings_dir)
+    if not base.is_dir():
+        return []
+    by_run: dict[str, float] = {}
+    for path in base.glob(f"{_FILE_PREFIX}*{_FILE_SUFFIX}"):
+        parsed = _parse_segment(path.name)
+        if parsed is None:
+            continue
+        run = parsed[0]
+        by_run[run] = max(by_run.get(run, 0.0), path.stat().st_mtime)
+    return sorted(by_run, key=lambda run: by_run[run], reverse=True)

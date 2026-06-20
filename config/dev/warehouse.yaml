@@ -28,3 +28,10 @@ traffic_mode: none
 # 安全側は不変（.claude/rules/safety.md / doc12）。
 cycle:
   mode_a_seconds: 120
+
+# Web 観測 gateway（dev・doc22）: loopback bind のみ。LAN 公開は S5（token 必須・doc22:254）。
+# recordings_dir は tmpfs でない明示ディレクトリ（runtime_dir=/tmp/warehouse を流用せず明示・
+# doc22:216,:220）。prod overlay は Jetson SSD path（例 /opt/warehouse/recordings・#187 段階2 後）。
+web_bridge:
+  host: "127.0.0.1"
+  recordings_dir: /tmp/warehouse/recordings

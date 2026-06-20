@@ -23,7 +23,19 @@ Web Observability gateway（**observe-only**）。Mode A/B のキャラLLM会話
 | `event_log` | per-run JSON Lines（append / size rotation / N-runs retention / `since_seq` replay） |
 | `ingest` | 単一 ingest 点（`seq` 単調採番＝順序の唯一権威・`trace_deriver` seam） |
 
-S2 で `web_bridge_node`（rclpy）/ `coalescer` / `app`（FastAPI）を追加し、entry_point `web_bridge` を公開する。
+## モジュール（S2 = rclpy node + FastAPI/WebSocket）
+
+| モジュール | 役割 |
+|---|---|
+| `settings` | config 解決（fail-open default）・`browser_config`（GET /config・secret 除外） |
+| `coalescer` | snapshot 10Hz → `snapshot_hz` last-write-wins（rclpy↔asyncio 境界） |
+| `hub` | WS fan-out（per-client bounded queue・snapshot=drop-oldest / event=never-drop→切断・max-clients） |
+| `views` | `/events`・`/runs`・`/health` の純 read 投影（retention 副作用なし） |
+| `state` | live run context（mode/run_id/last_seq） |
+| `app` | FastAPI 面（GET + receive-only WS のみ・StaticFiles 後置 mount・**lazy import**） |
+| `web_bridge_node` | rclpy subscribe（matching QoS）+ snapshot drain + `main()`（rclpy thread + uvicorn） |
+
+entry_point `web_bridge = warehouse_web_bridge.web_bridge_node:main`。config は `web_bridge`（base: port 8646 / snapshot_hz、overlay: host / recordings_dir / allowed_origins / static_dir）。
 
 ## テスト（ROS 不要・host）
 

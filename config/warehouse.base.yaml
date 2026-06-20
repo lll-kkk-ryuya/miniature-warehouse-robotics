@@ -73,3 +73,10 @@ nav2_bridge:
 # Open-RMF（Mode C。dev では無効が既定）
 rmf:
   enabled: false
+
+# Web Observability gateway（observe-only・doc22 §16:345）。SPA も同一オリジン :8646 配信。
+# host / allowed_origins / recordings_dir / static_dir は環境差分ゆえ config/<env>/ overlay で
+# 指定（base は共通の port / snapshot_hz のみ）。secret(WEB_BRIDGE_TOKEN) は config/<env>/.env。
+web_bridge:
+  port: 8646          # §17 port registry（Hermes 8642 / Nav2 8645 / rmf-web 8000 と非衝突）
+  snapshot_hz: 2      # /state_cache/snapshot 10Hz → coalesce 配信（doc22 §8:206）

@@ -13,3 +13,10 @@ hermes:
 traffic_mode: open-rmf
 rmf:
   enabled: true
+
+# Web 観測 gateway（prod）: recordings_dir は #187 段階2 実測後に Jetson SSD path を確定する
+# （doc22:379 / S6）。未設定の間は fail-open default /tmp/warehouse/recordings に落ちる。tmpfs の
+# runtime_dir（/run/warehouse）は流用禁止（無制限 append が RAM を食い #187 を悪化・doc22:216,:220）。
+# web_bridge:
+#   recordings_dir: /opt/warehouse/recordings   # TODO(#187/S6): 実測後に確定（SSD・非 tmpfs）
+#   host: "127.0.0.1"                            # LAN 公開は S5（token 必須・doc22:254）
