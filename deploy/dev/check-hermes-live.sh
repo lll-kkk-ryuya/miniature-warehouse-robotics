@@ -12,6 +12,7 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 WAREHOUSE_ENV_VALUE="${WAREHOUSE_ENV:-dev}"
 ENV_FILE="${MWR_HERMES_ENV_FILE:-${REPO_ROOT}/config/${WAREHOUSE_ENV_VALUE}/.env}"
 HERMES_BASE_URL="${HERMES_BASE_URL:-http://127.0.0.1:8642}"
+CONTAINER_HERMES_URL="${WAREHOUSE__HERMES__BASE_URL:-}"
 CONTAINER="${MWR_SIM_CONTAINER:-}"
 CHECK_CONTAINER=1
 CHAT_CHECK=0
@@ -33,6 +34,7 @@ Environment:
   WAREHOUSE_ENV        dev/stg/prod selector for the default env file. Default: dev
   MWR_HERMES_ENV_FILE  Same as --env-file.
   HERMES_BASE_URL      Same as --base-url.
+  WAREHOUSE__HERMES__BASE_URL  Container-side Hermes URL override.
   MWR_SIM_CONTAINER    Same as --container.
 
 Exit codes:
@@ -43,6 +45,27 @@ EOF
 pass() { printf 'PASS   %s\n' "$*"; }
 fail() { printf 'FAIL   %s\n' "$*" >&2; exit 1; }
 info() { printf 'INFO   %s\n' "$*"; }
+
+container_hermes_url_for_host() {
+  local url="${1%/}"
+  local scheme authority suffix
+  if [[ "${url}" =~ ^([A-Za-z][A-Za-z0-9+.-]*://)([^/?#]*)(.*)$ ]]; then
+    scheme="${BASH_REMATCH[1]}"
+    authority="${BASH_REMATCH[2]}"
+    suffix="${BASH_REMATCH[3]}"
+    case "${authority}" in
+      localhost|127.0.0.1|0.0.0.0)
+        authority="host.docker.internal"
+        ;;
+      localhost:*|127.0.0.1:*|0.0.0.0:*)
+        authority="host.docker.internal:${authority##*:}"
+        ;;
+    esac
+    printf '%s%s%s\n' "${scheme}" "${authority}" "${suffix}"
+    return 0
+  fi
+  printf '%s\n' "${url}"
+}
 
 while [[ "$#" -gt 0 ]]; do
   case "$1" in
@@ -79,6 +102,10 @@ while [[ "$#" -gt 0 ]]; do
       ;;
   esac
 done
+
+if [[ -z "${CONTAINER_HERMES_URL}" ]]; then
+  CONTAINER_HERMES_URL="$(container_hermes_url_for_host "${HERMES_BASE_URL}")"
+fi
 
 if [[ -f "${ENV_FILE}" ]]; then
   pass "Bridge env file exists: ${ENV_FILE}"
@@ -150,7 +177,7 @@ else
   info "chat smoke skipped (use --chat when you intentionally want a provider call)"
 fi
 
-container_base="${WAREHOUSE__HERMES__BASE_URL:-http://host.docker.internal:8642}"
+container_base="${CONTAINER_HERMES_URL}"
 if [[ "${CHECK_CONTAINER}" -eq 1 && -n "${CONTAINER}" ]]; then
   if ! command -v docker >/dev/null 2>&1; then
     fail "docker is required for --container"

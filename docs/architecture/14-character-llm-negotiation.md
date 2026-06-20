@@ -297,17 +297,17 @@ SESSION  session_id = "run_{mode}_{provider}_{scenario}_{ts}"      # 1 ラン = 
 
 | レベル | tags（低カーディナリティ文字列） | metadata（ネスト JSON 可） |
 |---|---|---|
-| trace（1サイクル） | `["mode:A", "provider:claude", "phase4"]` | `{gen_id, traffic_mode, scenario, run_id}` |
+| trace（1サイクル） | `[provider, mode, "prompt:<name>", env=<v>]` | `{gen_id, traffic_mode, scenario, run_id}` |
 | observation（1 actor / 1 tool） | `["robot:bot1","role:character"]` / `["robot:commander","role:commander"]` / `["tool:dispatch_task"]` | `{robot, role, actor, negotiation_id?, turn_index?, gen_id, trace_id}` |
 
-固定名前空間（colon 接頭辞で UI group をクリーンに保つ。これ以外の弁別子を発明しない）:
+trace tag の正本は doc08 §trace 所有と doc20 §8 であり、本節は character negotiation で使う observation 側の補足である。trace tag は正本どおり `provider` / `mode` / `prompt:<name>` / `env=<v>` を使い、provider 値は `claude/openai/google/xai` に揃える。robot/role/tool は trace 全体の tag ではなく observation 側の属性または observation-local tag として扱う。
 
 ```
-mode:{A|B|C}   provider:{claude|gpt|gemini|grok}
-robot:{bot1|bot2|commander}   role:{commander|character}   phase4
+provider={claude|openai|google|xai}   mode={A|B|C}   prompt:<name>   env=<dev|stg|prod>
+robot={bot1|bot2|commander}   role={commander|character}   tool=<tool_name>
 ```
 
-- `traffic_mode` と `mode` は同義 → tag は `mode:` 一本に統一（冗長排除。文字列が必要なら metadata 側に置く。`mode`=`traffic_mode` は doc08 §セッション命名規則と整合）。
+- `traffic_mode` と `mode` は同義 → trace tag は正本の `mode` 値に統一し、詳細文字列が必要なら metadata 側に置く。`mode`=`traffic_mode` は doc08 §セッション命名規則と整合する。
 - `gen_id` は高カーディナリティ（数千の一意値）になるため **tag 化せず metadata のみ**に置く（設計 §4.3）。
 - 本節は §交渉スコア（:257-266）の score metadata `{negotiation_id, mode}` を**補完**する（上書きしない）。交渉スコアは provider 比較軸を持たない記述指標であり、robot/role/provider/trace_id は observation/score の metadata 側に置いて両立する。
 

@@ -257,18 +257,18 @@ def _safety_margins(rows: list[dict[str, Any]]) -> list[float]:
 
 
 def _locally_closed(row: dict[str, Any]) -> bool:
-    return (
-        (
-            row.get("close_reason") in {"local", "self_action", "local_agreement"}
-            and not _truthy(row.get("commander_involved"))
-        )
-        or row.get("closed_by") in {"self_action_gate", "bot_conversation"}
-        or (row.get("record_type") == "self_action_result" and row.get("verdict") == "accepted")
-        or (
-            row.get("record_type") == "task_lifecycle"
-            and row.get("event_type") == "local_agreement_executed"
-        )
-    )
+    verdict = row.get("verdict")
+    if verdict in {"rejected", "violated"} or _truthy(row.get("commander_involved")):
+        return False
+    if row.get("close_reason") in {"rejected", "violated", "commander"}:
+        return False
+    if row.get("record_type") == "self_action_result":
+        return verdict == "accepted"
+    if row.get("record_type") == "task_lifecycle":
+        return row.get("event_type") == "local_agreement_executed"
+    return row.get("close_reason") in {"local", "self_action", "local_agreement"} or row.get(
+        "closed_by"
+    ) in {"self_action_gate", "bot_conversation"}
 
 
 def _is_inferred_episode_start(row: dict[str, Any]) -> bool:

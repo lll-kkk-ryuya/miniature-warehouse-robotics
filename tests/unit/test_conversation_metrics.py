@@ -177,6 +177,37 @@ def test_compute_conversation_metrics_from_actual_event_log_shape() -> None:
     assert metrics.safety_margin_min == 0.21
 
 
+def test_rejected_self_action_is_not_counted_as_local_resolution() -> None:
+    metrics = compute_conversation_metrics(
+        [
+            {
+                "timestamp": 1.0,
+                "record_type": "conversation_event",
+                "episode_id": "ep",
+                "candidate_action": {"action": "wait_self"},
+            },
+            {
+                "timestamp": 2.0,
+                "record_type": "task_lifecycle",
+                "event_type": "local_agreement_created",
+                "episode_id": "ep",
+            },
+            {
+                "timestamp": 3.0,
+                "record_type": "self_action_result",
+                "episode_id": "ep",
+                "verdict": "rejected",
+            },
+        ]
+    )
+
+    assert metrics.traffic_decision_episodes == 1
+    assert metrics.locally_closed_episodes == 0
+    assert metrics.autonomy_ratio == 0.0
+    assert metrics.resolved_episodes == 0
+    assert metrics.contract_violation_rate == 1.0
+
+
 def test_read_conversation_event_rows_defensive(tmp_path: Path) -> None:
     path = tmp_path / "events.jsonl"
     path.write_text(
