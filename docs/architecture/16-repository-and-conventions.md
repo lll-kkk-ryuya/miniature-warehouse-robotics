@@ -39,6 +39,7 @@ miniature-warehouse-robotics/
 │       ├── warehouse_mcp_server/    # [ament_python] Warehouse MCP Server（Hermes stdio 子）
 │       ├── warehouse_orchestrator/  # [ament_python] KPI Collector + 分析スクリプト
 │       ├── warehouse_rmf_adapter/   # [ament_python] Mode C 案A EasyFullControl Fleet Adapter（offline core: routing/namespacing/single-writer）
+│       ├── warehouse_web_bridge/    # [ament_python] Web 観測 gateway（observe-only consumer: ObsEvent + events.jsonl／S2 で rclpy+FastAPI・doc22）
 │       └── eval_sdk/                # [ament_python] ドメイン非依存 評価コア（seed/tracer/sink/stats/cost）。意図的に非 warehouse_＝ROS/warehouse 依存ゼロ・pip 化可能（doc21）
 ├── firmware/                        # ESP32 micro-ROS（PlatformIO、colcon 対象外）
 │   ├── platformio.ini
@@ -76,6 +77,7 @@ miniature-warehouse-robotics/
 | `warehouse_mcp_server` | ament_python | 7ツール + Policy Gate + gen_id 検証 | bridge | 0.5 |
 | `warehouse_orchestrator` | ament_python | KPI 計測・Langfuse score・分析 | wo | 0.5→4 |
 | `warehouse_rmf_adapter` | ament_python | Mode C 案A EasyFullControl Fleet Adapter（offline core: routing/namespacing/single-writer・rclpy/rmf_* 非依存） | ros2/nav-traffic | 3 |
+| `warehouse_web_bridge` | ament_python | Web 観測 gateway（observe-only consumer: ObsEvent 正規化＋events.jsonl／S2 で rclpy subscriber + FastAPI・doc22） | web | 3 |
 | `eval_sdk` | ament_python | ドメイン非依存 embodied-AI 評価コア（`seed`/`tracer`/`sink`/`stats`/`cost`）。**意図的に非 `warehouse_*`**＝`rclpy`/`warehouse_*` import ゼロ・`langfuse` は optional pip extra（doc21・抽出 PR#273） | wo/docs | 0.5→4 |
 
 **命名規約**:
@@ -192,6 +194,7 @@ firmware/.pio/
 | `feat/llm-bridge` | `warehouse_llm_bridge`・`warehouse_mcp_server`・`warehouse_nav2_bridge` | **偽トピックで即着手可（Gazebo/実機不要）** |
 | `feat/wo-metrics` | `warehouse_orchestrator` | bridge と trace_id 受け渡し合意のみ |
 | `feat/eval-sdk` | `ws/src/eval_sdk` | doc21（#269）land 後＝既存評価コア（trace/score/cost）の純関数サブセット抽出（Phase 1 抽出=#273）。ROS/warehouse 非依存ゆえ独立着手可 |
+| `feat/web` | `ws/src/warehouse_web_bridge`・`web/console` | **偽トピックで即着手可（既存契約の consumer・doc22 §13 S1/S2）**。`web/e2e` の所有は §2.2/§18#2 未決＝当面据置（track:web 暫定） |
 | `hw/jetson-setup` | `deploy/jetson`・`docs/setup` | **実機不要で即着手可** |
 | `hw/firmware-esp32` | `firmware/` | 実機不要で雛形まで可 |
 

@@ -21,6 +21,7 @@ ESP32 ファームウェア（PlatformIO、colcon 対象外）はリポジトリ
 | `warehouse_mcp_server` | ament_python | Warehouse MCP Server（7ツール+Policy Gate+gen_id） | 0.5 |
 | `warehouse_orchestrator` | ament_python | KPI Collector・分析 | 0.5→4 |
 | `warehouse_rmf_adapter` | ament_python | Mode C 案A EasyFullControl Fleet Adapter（offline core: routing/namespacing/single-writer） | 3 |
+| `warehouse_web_bridge` | ament_python | Web 観測 gateway（observe-only consumer: ObsEvent 正規化＋events.jsonl／S2 で rclpy subscriber + FastAPI・doc22） | 3 |
 | `eval_sdk` | ament_python | ドメイン非依存 embodied-AI 評価コア（`seed`/`tracer`/`sink`/`stats`/`cost`）。**意図的に非 `warehouse_*`**＝ROS/warehouse 依存ゼロ・langfuse は optional pip extra（doc21） | 0.5→4 |
 
 > 各パッケージは `package.xml` / `setup.py` を備えて実体化済み（`colcon build` 対象）。Phase 4 で `warehouse_interfaces` に構造化 `.msg` を導入する際に同パッケージのみ ament_cmake へ移行（doc16 §2/§3）。

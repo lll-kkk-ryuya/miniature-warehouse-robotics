@@ -69,9 +69,9 @@ Phase-1 real-hardware scale measurement. (A low-battery estop demo tunes sim.lau
 battery_initial_percent/floor args, which this top-level launch does not forward — run
 sim.launch.py directly for that, or add a forward in a follow-up.)
 
-Edit boundary: this file is skeleton-owned (doc16:182). sim.launch.py (sim), nav2_bringup.launch.py
+Edit boundary: this file is skeleton-owned (doc16:184). sim.launch.py (sim), nav2_bringup.launch.py
 + config/ (nav-traffic), and the state/safety/bridge node executables (their tracks) are
-REFERENCED only — never edited here. doc16:121-124 makes warehouse_bringup the single launch
+REFERENCED only — never edited here. doc16:123-126 makes warehouse_bringup the single launch
 source and says node packages own no launch/config, so the launch-less nodes are composed via
 launch_ros Node() here (matching TODO(#1)), not per-package launch files.
 Design: docs/architecture/06 §Phase0.5, /12 §State Cache+Guardian, /15 §MCP+nav2_bridge,
