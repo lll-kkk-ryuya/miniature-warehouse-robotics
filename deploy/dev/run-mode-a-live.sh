@@ -21,7 +21,7 @@ CONTAINER="${MWR_SIM_CONTAINER:-mwr-mode-a-live}"
 PORT="${MWR_SIM_PORT:-6082}"
 BIND="${MWR_SIM_BIND:-127.0.0.1}"
 HOST_HERMES_URL="${HERMES_BASE_URL:-http://127.0.0.1:8642}"
-CONTAINER_HERMES_URL="${WAREHOUSE__HERMES__BASE_URL:-http://host.docker.internal:8642}"
+CONTAINER_HERMES_URL="${WAREHOUSE__HERMES__BASE_URL:-}"
 TRAFFIC_MODE="${TRAFFIC_MODE:-none}"
 SCENARIO="${SCENARIO:-head_on}"
 RVIZ_CONFIG="${RVIZ_CONFIG:-record}"
@@ -69,6 +69,27 @@ EOF
 fail() { printf 'FAIL   %s\n' "$*" >&2; exit 1; }
 info() { printf 'INFO   %s\n' "$*"; }
 
+container_hermes_url_for_host() {
+  local url="${1%/}"
+  local scheme authority suffix
+  if [[ "${url}" =~ ^([A-Za-z][A-Za-z0-9+.-]*://)([^/?#]*)(.*)$ ]]; then
+    scheme="${BASH_REMATCH[1]}"
+    authority="${BASH_REMATCH[2]}"
+    suffix="${BASH_REMATCH[3]}"
+    case "${authority}" in
+      localhost|127.0.0.1|0.0.0.0)
+        authority="host.docker.internal"
+        ;;
+      localhost:*|127.0.0.1:*|0.0.0.0:*)
+        authority="host.docker.internal:${authority##*:}"
+        ;;
+    esac
+    printf '%s%s%s\n' "${scheme}" "${authority}" "${suffix}"
+    return 0
+  fi
+  printf '%s\n' "${url}"
+}
+
 while [[ "$#" -gt 0 ]]; do
   case "$1" in
     --container)
@@ -104,6 +125,10 @@ while [[ "$#" -gt 0 ]]; do
       fail "unknown argument: $1" ;;
   esac
 done
+
+if [[ -z "${CONTAINER_HERMES_URL}" ]]; then
+  CONTAINER_HERMES_URL="$(container_hermes_url_for_host "${HOST_HERMES_URL}")"
+fi
 
 if [[ -f "${ENV_FILE}" ]]; then
   # shellcheck source=/dev/null

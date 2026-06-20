@@ -79,6 +79,69 @@ def _rows() -> list[dict]:
     ]
 
 
+def _producer_rows() -> list[dict]:
+    return [
+        {
+            "timestamp": 10.0,
+            "record_type": "conversation_event",
+            "episode_id": "ep_deadlock",
+            "event_id": "evt_1",
+            "actor": "bot1",
+            "candidate_action": {"action": "wait_self", "target": "bot1", "duration": 2.0},
+            "metadata": {"trigger": "deadlock"},
+        },
+        {
+            "timestamp": 12.0,
+            "record_type": "task_lifecycle",
+            "event_type": "local_agreement_created",
+            "episode_id": "ep_deadlock",
+        },
+        {
+            "timestamp": 14.0,
+            "record_type": "task_lifecycle",
+            "event_type": "local_agreement_executed",
+            "episode_id": "ep_deadlock",
+            "detail": {"safety_margin_after_agreement": 0.21},
+        },
+        {
+            "timestamp": 15.0,
+            "record_type": "self_action_result",
+            "episode_id": "ep_deadlock",
+            "verdict": "accepted",
+        },
+        {
+            "timestamp": 20.0,
+            "record_type": "conversation_event",
+            "episode_id": "ep_failed",
+            "event_id": "evt_2",
+            "actor": "bot2",
+            "candidate_action": {
+                "action": "yield_to_retreat_A",
+                "target": "bot2",
+            },
+            "metadata": {"trigger": "route_conflict"},
+        },
+        {
+            "timestamp": 21.0,
+            "record_type": "task_lifecycle",
+            "event_type": "local_agreement_created",
+            "episode_id": "ep_failed",
+        },
+        {
+            "timestamp": 22.0,
+            "record_type": "self_action_result",
+            "episode_id": "ep_failed",
+            "verdict": "rejected",
+        },
+        {
+            "timestamp": 30.0,
+            "record_type": "task_lifecycle",
+            "event_type": "commander_override",
+            "episode_id": "ep_failed",
+        },
+    ]
+
+
 def test_compute_conversation_metrics_from_structured_rows() -> None:
     metrics = compute_conversation_metrics(_rows())
 
@@ -95,6 +158,23 @@ def test_compute_conversation_metrics_from_structured_rows() -> None:
     assert metrics.contract_violation_rate == 1.0
     assert metrics.contract_unknown_rate == 0.5
     assert metrics.safety_margin_min == 0.22
+
+
+def test_compute_conversation_metrics_from_actual_event_log_shape() -> None:
+    metrics = compute_conversation_metrics(_producer_rows())
+
+    assert metrics.traffic_decision_episodes == 2
+    assert metrics.locally_closed_episodes == 1
+    assert metrics.autonomy_ratio == 0.5
+    assert metrics.agreement_latencies == [2.0, 1.0]
+    assert metrics.detected_deadlocks == 1
+    assert metrics.locally_resolved_deadlocks == 1
+    assert metrics.local_resolution_rate == 1.0
+    assert metrics.commander_override_count == 1
+    assert metrics.commander_override_rate == 1.0
+    assert metrics.contract_violation_rate == 0.5
+    assert metrics.contract_unknown_rate == 0.0
+    assert metrics.safety_margin_min == 0.21
 
 
 def test_read_conversation_event_rows_defensive(tmp_path: Path) -> None:

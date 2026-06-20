@@ -76,11 +76,7 @@ def compute_conversation_metrics(rows: Iterable[dict[str, Any]]) -> Conversation
     locally_closed_episodes = sum(1 for row in closes.values() if _locally_closed(row))
 
     agreement_latencies = _agreement_latencies(materialized, starts)
-    deadlock_ids = {
-        episode_id
-        for episode_id, row in starts.items()
-        if _truthy(row.get("deadlock")) or row.get("trigger") == "deadlock"
-    }
+    deadlock_ids = {episode_id for episode_id, row in starts.items() if _is_deadlock_start(row)}
     locally_resolved_deadlocks = sum(
         1 for episode_id in deadlock_ids if _locally_closed(closes.get(episode_id, {}))
     )
@@ -119,14 +115,19 @@ def compute_conversation_metrics(rows: Iterable[dict[str, Any]]) -> Conversation
 
 
 def _episode_starts(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
-    return {
-        str(row["episode_id"]): row
-        for row in rows
-        if row.get("record_type") == "decision_episode"
-        and row.get("event_type") == "episode_started"
-        and row.get("episode_id") is not None
-        and row.get("requires_local_decision", True)
-    }
+    starts: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        if (
+            row.get("record_type") == "decision_episode"
+            and row.get("event_type") == "episode_started"
+            and row.get("episode_id") is not None
+            and row.get("requires_local_decision", True)
+        ):
+            _remember_earliest(starts, row)
+    for row in rows:
+        if _is_inferred_episode_start(row):
+            _remember_earliest(starts, row)
+    return starts
 
 
 def _episode_closes(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
@@ -137,7 +138,11 @@ def _episode_closes(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
             and row.get("event_type") == "episode_closed"
             and row.get("episode_id") is not None
         ):
-            closes[str(row["episode_id"])] = row
+            _remember_latest(closes, row)
+    for row in rows:
+        inferred = _inferred_episode_close(row)
+        if inferred is not None:
+            _remember_latest(closes, inferred)
     return closes
 
 
@@ -189,9 +194,12 @@ def _contract_counts(rows: list[dict[str, Any]]) -> tuple[int, int, int]:
     violated = 0
     evaluable = 0
     unknown = 0
+    explicit_episode_ids: set[str] = set()
     for row in rows:
         if row.get("record_type") != "contract_evaluation":
             continue
+        if row.get("episode_id") is not None:
+            explicit_episode_ids.add(str(row["episode_id"]))
         verdict = row.get("verdict")
         if verdict == "violated":
             violated += 1
@@ -199,6 +207,38 @@ def _contract_counts(rows: list[dict[str, Any]]) -> tuple[int, int, int]:
         elif verdict in {"kept", "satisfied", "accepted"}:
             evaluable += 1
         elif verdict == "unknown":
+            unknown += 1
+    created_ids = {
+        str(row["episode_id"])
+        for row in rows
+        if row.get("record_type") == "task_lifecycle"
+        and row.get("event_type") == "local_agreement_created"
+        and row.get("episode_id") is not None
+    }
+    final_verdicts: dict[str, str] = {}
+    for row in rows:
+        episode_id = row.get("episode_id")
+        if episode_id is None:
+            continue
+        if (
+            row.get("record_type") == "task_lifecycle"
+            and row.get("event_type") == "local_agreement_executed"
+        ):
+            final_verdicts[str(episode_id)] = "accepted"
+        elif row.get("record_type") == "self_action_result" and row.get("verdict") in {
+            "accepted",
+            "rejected",
+            "violated",
+        }:
+            final_verdicts[str(episode_id)] = str(row["verdict"])
+    for episode_id in created_ids - explicit_episode_ids:
+        verdict = final_verdicts.get(episode_id)
+        if verdict == "accepted":
+            evaluable += 1
+        elif verdict in {"rejected", "violated"}:
+            violated += 1
+            evaluable += 1
+        else:
             unknown += 1
     return violated, evaluable, unknown
 
@@ -218,9 +258,92 @@ def _safety_margins(rows: list[dict[str, Any]]) -> list[float]:
 
 def _locally_closed(row: dict[str, Any]) -> bool:
     return (
-        row.get("close_reason") in {"local", "self_action", "local_agreement"}
-        and not _truthy(row.get("commander_involved"))
-    ) or row.get("closed_by") in {"self_action_gate", "bot_conversation"}
+        (
+            row.get("close_reason") in {"local", "self_action", "local_agreement"}
+            and not _truthy(row.get("commander_involved"))
+        )
+        or row.get("closed_by") in {"self_action_gate", "bot_conversation"}
+        or (row.get("record_type") == "self_action_result" and row.get("verdict") == "accepted")
+        or (
+            row.get("record_type") == "task_lifecycle"
+            and row.get("event_type") == "local_agreement_executed"
+        )
+    )
+
+
+def _is_inferred_episode_start(row: dict[str, Any]) -> bool:
+    if row.get("episode_id") is None or not row.get("requires_local_decision", True):
+        return False
+    record_type = row.get("record_type")
+    if record_type == "conversation_event":
+        return isinstance(row.get("candidate_action"), dict)
+    if record_type == "task_lifecycle":
+        return row.get("event_type") == "local_agreement_created"
+    return record_type == "self_action_result"
+
+
+def _inferred_episode_close(row: dict[str, Any]) -> dict[str, Any] | None:
+    if row.get("episode_id") is None:
+        return None
+    if row.get("record_type") == "self_action_result":
+        verdict = row.get("verdict")
+        if verdict == "accepted":
+            return {
+                **row,
+                "close_reason": "local",
+                "closed_by": "self_action_gate",
+                "commander_involved": False,
+            }
+        if verdict in {"rejected", "violated"}:
+            return {
+                **row,
+                "close_reason": "rejected",
+                "closed_by": "self_action_gate",
+                "commander_involved": False,
+            }
+    if row.get("record_type") == "task_lifecycle":
+        if row.get("event_type") == "local_agreement_executed":
+            return {
+                **row,
+                "close_reason": "local",
+                "closed_by": "self_action_gate",
+                "commander_involved": False,
+            }
+        if row.get("event_type") == "commander_override":
+            return {
+                **row,
+                "close_reason": "commander",
+                "closed_by": "commander",
+                "commander_involved": True,
+            }
+    return None
+
+
+def _is_deadlock_start(row: dict[str, Any]) -> bool:
+    metadata = row.get("metadata") if isinstance(row.get("metadata"), dict) else {}
+    detail = row.get("detail") if isinstance(row.get("detail"), dict) else {}
+    return (
+        _truthy(row.get("deadlock"))
+        or row.get("trigger") == "deadlock"
+        or _truthy(metadata.get("deadlock"))
+        or metadata.get("trigger") == "deadlock"
+        or _truthy(detail.get("deadlock"))
+        or detail.get("trigger") == "deadlock"
+    )
+
+
+def _remember_earliest(target: dict[str, dict[str, Any]], row: dict[str, Any]) -> None:
+    episode_id = str(row["episode_id"])
+    current = target.get(episode_id)
+    if current is None or _timestamp_or_inf(row) < _timestamp_or_inf(current):
+        target[episode_id] = row
+
+
+def _remember_latest(target: dict[str, dict[str, Any]], row: dict[str, Any]) -> None:
+    episode_id = str(row["episode_id"])
+    current = target.get(episode_id)
+    if current is None or _timestamp_or_neg_inf(row) >= _timestamp_or_neg_inf(current):
+        target[episode_id] = row
 
 
 def _ratio(numerator: int, denominator: int) -> float | None:
@@ -231,6 +354,16 @@ def _number(value: Any) -> float | None:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
     return float(value)
+
+
+def _timestamp_or_inf(row: dict[str, Any]) -> float:
+    value = _number(row.get("timestamp"))
+    return value if value is not None else float("inf")
+
+
+def _timestamp_or_neg_inf(row: dict[str, Any]) -> float:
+    value = _number(row.get("timestamp"))
+    return value if value is not None else float("-inf")
 
 
 def _non_negative_int(value: Any) -> int:
