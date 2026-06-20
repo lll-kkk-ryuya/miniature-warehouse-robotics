@@ -98,6 +98,21 @@ container_hermes_url_for_host() {
   printf '%s\n' "${url}"
 }
 
+resolve_bridge_api_token() {
+  if [[ -n "${API_SERVER_KEY:-}" && -n "${HERMES_API_KEY:-}" && "${API_SERVER_KEY}" != "${HERMES_API_KEY}" ]]; then
+    fail "API_SERVER_KEY and HERMES_API_KEY are both set but differ. Keep them equal, or define only one token."
+  fi
+  if [[ -z "${API_SERVER_KEY:-}" && -n "${HERMES_API_KEY:-}" ]]; then
+    API_SERVER_KEY="${HERMES_API_KEY}"
+  fi
+  if [[ -z "${HERMES_API_KEY:-}" && -n "${API_SERVER_KEY:-}" ]]; then
+    HERMES_API_KEY="${API_SERVER_KEY}"
+  fi
+  if [[ -z "${API_SERVER_KEY:-}" ]]; then
+    fail "API_SERVER_KEY/HERMES_API_KEY is empty in ${ENV_FILE}"
+  fi
+}
+
 while [[ "$#" -gt 0 ]]; do
   case "$1" in
     --container)
@@ -154,15 +169,7 @@ if [[ -z "${CONTAINER_HERMES_URL}" ]]; then
   CONTAINER_HERMES_URL="$(container_hermes_url_for_host "${HOST_HERMES_URL}")"
 fi
 
-if [[ -z "${API_SERVER_KEY:-}" && -n "${HERMES_API_KEY:-}" ]]; then
-  API_SERVER_KEY="${HERMES_API_KEY}"
-fi
-if [[ -z "${HERMES_API_KEY:-}" && -n "${API_SERVER_KEY:-}" ]]; then
-  HERMES_API_KEY="${API_SERVER_KEY}"
-fi
-if [[ -z "${API_SERVER_KEY:-}" ]]; then
-  fail "API_SERVER_KEY/HERMES_API_KEY is empty in ${ENV_FILE}"
-fi
+resolve_bridge_api_token
 
 export API_SERVER_KEY HERMES_API_KEY WAREHOUSE_TASKS
 export LANGFUSE_PUBLIC_KEY="${LANGFUSE_PUBLIC_KEY:-}"
@@ -197,6 +204,8 @@ ensure_hermes() {
     # launchd services do not inherit this one-shot shell assignment; publish it
     # into the user launchd environment before starting the Hermes service.
     launchctl setenv API_SERVER_ENABLED true
+    launchctl setenv API_SERVER_KEY "${API_SERVER_KEY}"
+    launchctl setenv HERMES_API_KEY "${HERMES_API_KEY}"
   fi
   API_SERVER_ENABLED=true hermes gateway start > "${HERMES_LOG_FILE}" 2>&1 || {
     cat "${HERMES_LOG_FILE}" >&2 || true

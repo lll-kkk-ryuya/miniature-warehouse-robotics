@@ -75,6 +75,22 @@ container_hermes_url_for_host() {
   printf '%s\n' "${url}"
 }
 
+resolve_bridge_api_token() {
+  if [[ -n "${API_SERVER_KEY:-}" && -n "${HERMES_API_KEY:-}" && "${API_SERVER_KEY}" != "${HERMES_API_KEY}" ]]; then
+    fail "API_SERVER_KEY and HERMES_API_KEY are both set but differ. Keep them equal, or define only one token."
+  fi
+  if [[ -z "${API_SERVER_KEY:-}" && -n "${HERMES_API_KEY:-}" ]]; then
+    API_SERVER_KEY="${HERMES_API_KEY}"
+  fi
+  if [[ -z "${HERMES_API_KEY:-}" && -n "${API_SERVER_KEY:-}" ]]; then
+    HERMES_API_KEY="${API_SERVER_KEY}"
+  fi
+  if [[ -z "${API_SERVER_KEY:-}" ]]; then
+    fail "API_SERVER_KEY/HERMES_API_KEY is empty in ${ENV_FILE}. It must match Hermes Gateway's API_SERVER_KEY."
+  fi
+  export API_SERVER_KEY HERMES_API_KEY
+}
+
 while [[ "$#" -gt 0 ]]; do
   case "$1" in
     --env-file)
@@ -138,17 +154,7 @@ if [[ -z "${CONTAINER_HERMES_URL}" ]]; then
   CONTAINER_HERMES_URL="$(container_hermes_url_for_host "${HERMES_BASE_URL}")"
 fi
 
-if [[ -z "${API_SERVER_KEY:-}" && -n "${HERMES_API_KEY:-}" ]]; then
-  API_SERVER_KEY="${HERMES_API_KEY}"
-fi
-if [[ -z "${HERMES_API_KEY:-}" && -n "${API_SERVER_KEY:-}" ]]; then
-  HERMES_API_KEY="${API_SERVER_KEY}"
-fi
-export API_SERVER_KEY HERMES_API_KEY
-
-if [[ -z "${API_SERVER_KEY:-}" ]]; then
-  fail "API_SERVER_KEY/HERMES_API_KEY is empty in ${ENV_FILE}. It must match Hermes Gateway's API_SERVER_KEY."
-fi
+resolve_bridge_api_token
 pass "Bridge API token is present (value hidden)"
 
 if ! command -v curl >/dev/null 2>&1; then
