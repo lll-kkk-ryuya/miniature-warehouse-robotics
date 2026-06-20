@@ -11,7 +11,10 @@ does not re-emit 1,2,3… (doc22:160,:309).
 
 ``trace_id`` derivation is an injected seam (``trace_deriver``): S1 passes ``None`` so every
 envelope carries ``trace_id=None`` (fail-open, doc22:152,:194); S2 injects a Langfuse-backed
-deriver that is consulted only for gen_id-bearing events (doc22:190,:194).
+deriver that is consulted only for gen_id-bearing events (doc22:190,:194). The derive call is
+fail-open in BOTH directions — a deriver that returns ``None`` OR raises (e.g. an S2 Langfuse
+network blip) leaves ``trace_id`` null and the never-drop event (doc22:232) still persists and
+fans out; trace derivation never gates the event.
 
 ``run_id`` may be ``None`` (doc22:148): until ``/run/header`` lands (S2.5) the node supplies
 a synthetic run id from the first observed event (doc22:303). This module just stamps
@@ -63,8 +66,15 @@ class Ingestor:
                     run_id=self._run_id,
                 )
                 if self._trace_deriver is not None and event["gen_id"] is not None:
-                    # fail-open: a deriver returning None leaves trace_id null (doc22:152).
-                    event["trace_id"] = self._trace_deriver(self._run_id, event["gen_id"])
+                    # fail-open BOTH ways (doc22:152,:194): a deriver returning None — or
+                    # raising (e.g. an S2 Langfuse network blip) — leaves trace_id null; the
+                    # never-drop event (doc22:232) still persists below. The derive call is
+                    # guarded on its own, OUTSIDE the seq rollback, so trace derivation can
+                    # never drop a gen_id-bearing event or burn a seq.
+                    try:
+                        event["trace_id"] = self._trace_deriver(self._run_id, event["gen_id"])
+                    except Exception:
+                        event["trace_id"] = None
                 self._log.append(event)
             except Exception:
                 # Keep the counter contiguous with the persisted log: a failed append must
