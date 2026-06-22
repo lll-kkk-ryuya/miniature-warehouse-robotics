@@ -34,9 +34,7 @@ def _mime_type(path: Path) -> str:
     mime, _ = mimetypes.guess_type(path.name)
     if mime in {"image/png", "image/jpeg", "image/webp"}:
         return mime
-    raise SystemExit(
-        f"Unsupported image type for {path}. Use PNG, JPEG, or WebP for this probe."
-    )
+    raise SystemExit(f"Unsupported image type for {path}. Use PNG, JPEG, or WebP for this probe.")
 
 
 def _contents(args: argparse.Namespace) -> list[dict[str, object]]:
@@ -72,10 +70,7 @@ def _payload(args: argparse.Namespace) -> bytes:
 
 
 def _request(args: argparse.Namespace, key: str) -> tuple[int, str]:
-    url = (
-        "https://generativelanguage.googleapis.com/v1beta/models/"
-        f"{args.model}:generateContent"
-    )
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{args.model}:generateContent"
     request = urllib.request.Request(
         url,
         data=_payload(args),
