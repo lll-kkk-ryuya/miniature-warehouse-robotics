@@ -8,11 +8,15 @@
 docs/
 ├── shared/          モード非依存（プロジェクト概要・ハードウェア・予算等）
 ├── architecture/    共通基盤設計（LLM Bridge共通・インフラ・フェーズ計画）
+├── productization/  商用再利用 Box 設計（L4/L3/下位ROS/安全/evalの独立部品化）
 ├── dev/             開発プロセス（並列開発 playbook・オペレーター手順・教訓ログ）
 ├── setup/           デプロイ手順（Jetson prod 常駐化・systemd / 監視）
 ├── jetson/          Jetson 忠実度ギャップ・実機投入前ゲート（dev/stg→prod de-risk・#127）
 ├── mode-a/          Mode A/B: LLM単独交通管理（Open-RMFなし）
-└── mode-c/          Mode C: LLM + Open-RMF（主方針）
+├── mode-c/          Mode C: LLM + Open-RMF（主方針）
+├── mode-x-er/       Mode X-ER: Gemini Robotics-ER 視覚タスク司令（設計提案）
+├── mode-x-er-vla/   Mode X-ER-VLA: Gemini Robotics-ER + VLA 統合モード
+└── mode-x/          旧 Mode X 互換参照（新規設計は mode-x-er / mode-x-er-vla）
 ```
 
 > 「何を作るか」（設計）= `architecture/` `shared/` `mode-*/`。「どう開発するか」（プロセス・運用・教訓）= [`dev/`](dev/README.md)。強制力のある規約は [`.claude/rules/`](../.claude/rules/)、現況は [STATUS.md](STATUS.md)。
@@ -49,6 +53,16 @@ docs/
 | [21-eval-sdk-extraction](architecture/21-eval-sdk-extraction.md) | Eval SDK 抽出（`eval_sdk`：Langfuse trace/score・KPI をドメイン非依存に抽出する設計提案） |
 | [22-web-observability](architecture/22-web-observability.md) | Web Observability（Mode A 会話・稟議のリアルタイム観測基盤：`web_bridge` + Next.js `web/console`、Langfuse 整合） |
 
+## productization/ — 商用再利用 Box 設計
+
+| ファイル | 内容 |
+|---------|------|
+| [README](productization/README.md) | 商用再利用 Box 設計の位置づけ・基本方針 |
+| [01-commercial-box-map](productization/01-commercial-box-map.md) | L4/L3/Contract/Governance/Traffic/Nav/Safety/Hardware/Eval の box map |
+| [02-l4-robotics-bridge-box](productization/02-l4-robotics-bridge-box.md) | LLM Bridge / Robotics Bridge / ER / VLA / Langfuse の L4 box 設計 |
+| [03-l3-planning-core-box](productization/03-l3-planning-core-box.md) | L3 Planning Core の商用再利用 box 設計 |
+| [04-box-storage-and-reuse-guidelines](productization/04-box-storage-and-reuse-guidelines.md) | box の保管方法、成熟度、site profile、fixture、分離基準 |
+
 ## mode-a/ — LLM単独交通管理
 
 | ファイル | 内容 |
@@ -66,6 +80,32 @@ docs/
 | [08c-llm-bridge-mode-c](mode-c/08c-llm-bridge-mode-c.md) | LLM Bridge Mode C固有（situation JSON, system prompt, 3アクション） |
 | [11c-traffic-mode-c](mode-c/11c-traffic-mode-c.md) | 交通管理 Mode C（RMFTrafficManager, Open-RMF） |
 | [12c-integration-mode-c](mode-c/12c-integration-mode-c.md) | システム統合 Mode C（Fleet Adapter, Open-RMF連携） |
+
+## mode-x-er/ — Gemini Robotics-ER 視覚タスク司令（設計提案）
+
+| ファイル | 内容 |
+|---------|------|
+| [README](mode-x-er/README.md) | Mode X-ER の位置づけ・正本ファイル・未凍結事項 |
+| [01-architecture-and-flow](mode-x-er/01-architecture-and-flow.md) | L4→L3→L2→L1/L0 の data flow、X-lite / X-rmf |
+| [02-l3-planning-core](mode-x-er/02-l3-planning-core.md) | Validator / Visual Resolver / Task Graph Executor / Command Compiler 詳細 |
+| [03-er-adapter-skeleton](mode-x-er/03-er-adapter-skeleton.md) | Gemini Robotics-ER 単体 adapter skeleton と integration gates |
+
+## mode-x-er-vla/ — Gemini Robotics-ER + VLA 統合モード（設計提案）
+
+| ファイル | 内容 |
+|---------|------|
+| [README](mode-x-er-vla/README.md) | Mode X-ER-VLA の位置づけ・Mode X-ER との差分・未凍結事項 |
+| [01-integration-architecture](mode-x-er-vla/01-integration-architecture.md) | ER + VLA 統合 architecture と data flow |
+| [02-openvla-research-plan](mode-x-er-vla/02-openvla-research-plan.md) | OpenVLA を ER と統合して使う価値・制約を調べる観点 |
+| [03-simulation-and-safety-gates](mode-x-er-vla/03-simulation-and-safety-gates.md) | ER+VLA の Isaac Sim / offline fixture / 実機接続前 safety gates |
+| [04-openvla-use-cases-and-control-flow](mode-x-er-vla/04-openvla-use-cases-and-control-flow.md) | OpenVLA の用途、L3 による起動タイミング、把持/配置 subtask の制御フロー |
+
+## mode-x/ — 旧 Mode X 互換参照
+
+| ファイル | 内容 |
+|---------|------|
+| [README](mode-x/README.md) | 旧 Mode X 設計。新規判断は `mode-x-er/` または `mode-x-er-vla/` を正本にする |
+| [08x-robotics-bridge-mode-x](mode-x/08x-robotics-bridge-mode-x.md) | 旧 Robotics Bridge Mode X 詳細。新規判断は `mode-x-er/` または `mode-x-er-vla/` を正本にする |
 
 ## setup/ — デプロイ手順
 

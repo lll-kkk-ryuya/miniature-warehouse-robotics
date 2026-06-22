@@ -16,6 +16,11 @@ comparison demo.
 - micro-ROS on ESP32 Yahboom MicroROS Car x 2
 - Jetson Orin Nano Super for Nav2 and LLM Bridge
 - Python LLM Bridge for Claude, ChatGPT, Gemini, and Grok APIs
+- Mode X-ER proposal: Gemini Robotics-ER as a Google-only visual task commander,
+  routed through Robotics Bridge, MCP/Policy Gate, and Nav2/Open-RMF rather than
+  direct robot actuation
+- Mode X-ER-VLA proposal: separate ER + VLA/OpenVLA integration mode; VLA may
+  assist or substitute parts of L3, but still no direct robot actuation
 - RPLiDAR A1 for fixed external tracking correction
 - Gazebo Harmonic in Docker on Mac M4
 - Isaac Sim 5.1 on RunPod A10G
@@ -120,3 +125,23 @@ type syntax can fail during collection), and bare `pytest` may be absent from
 - `deploy/` - deployment assets and runbooks
 - `docs/mode-a/` - Mode A/B design
 - `docs/mode-c/` - Mode C design
+- `docs/mode-x-er/` - Mode X-ER design proposal for Gemini Robotics-ER visual
+  task command; not yet a frozen config/topic/interface contract
+  - `README.md` - positioning, canonical file map, phases, and unfrozen items
+  - `01-architecture-and-flow.md` - L4 -> L3 -> L2 -> L1/L0 data flow and
+    X-lite/X-rmf split
+  - `02-l3-planning-core.md` - Validator, Visual Resolver, Task Graph Executor,
+    and Command Compiler design
+  - `03-er-adapter-skeleton.md` - Gemini Robotics-ER adapter seam and integration
+    gates
+- `docs/mode-x-er-vla/` - separate ER + VLA/OpenVLA integration mode; not yet a
+  frozen config/topic/interface contract
+  - `README.md` - positioning, Mode X-ER differences, and unfrozen items
+  - `01-integration-architecture.md` - ER primary, VLA cross-check, L3 candidate,
+    and sim-first architecture options
+  - `02-openvla-research-plan.md` - OpenVLA feasibility, runtime, license,
+    ER-integration, and input/output research plan
+  - `03-simulation-and-safety-gates.md` - ER+VLA offline fixture, Isaac Sim,
+    fusion, compiler, and robot-gated safety gates
+- `docs/mode-x/` - legacy Mode X compatibility docs; new design decisions belong
+  in `docs/mode-x-er/` or `docs/mode-x-er-vla/`

@@ -5,6 +5,9 @@
 - **ビルド**: ament_python
 - **ノード**: llm_bridge, character_llm（Slice 2 キャラLLM交渉レイヤ, doc14）
 - **編集境界**: このパッケージ配下のみ。共有契約 `warehouse_interfaces` は変更不可（`.claude/rules/parallel-workflow.md` §4）。**`warehouse_mcp_server` は同一トラック（doc16 §9 = `16-...:183-192`: `feat/llm-bridge` が両 pkg を所有）なので import 可**。CI cross-import check は track-aware（#81）＝他トラック内部のみ禁止。`main()` が実 `WarehouseTools().dispatch` を executor seam に注入する（S2-PR2 HALF B）。`warehouse_nav2_bridge`（同トラック）は REST 越し（httpx）に呼ぶのみ＝Python import しない。
+- **Mode X-ER 設計提案**: docs/mode-x-er では本パッケージの責務を **Robotics Bridge** として拡張する方針。Gemini Robotics-ER の音声/画像/state 入力を `RoboticsPlan draft` に正規化し、Validator / Visual Resolver / Task Graph Executor / Command Compiler を経て既存 `Command`→`action_map`→MCP 経路へ落とす。現時点では **未実装・未凍結**であり、config / ROS topic / `warehouse_interfaces` schema を発明しない。ER は Jetson/Nav2/ROS endpoint を直接呼ばない。X-lite は Nav2 Bridge REST、X-rmf は Open-RMF Task API/Fleet Adapter へ分岐する設計候補（正本: `docs/mode-x-er/README.md`, `docs/mode-x-er/01-architecture-and-flow.md`, `docs/mode-x-er/02-l3-planning-core.md`, `docs/mode-x-er/03-er-adapter-skeleton.md`）。
+- **Mode X-ER docs 構成**: `docs/mode-x-er/README.md`=位置づけ・正本 file map・未凍結事項 / `01-architecture-and-flow.md`=L4→L3→L2→L1/L0 data flow と X-lite/X-rmf / `02-l3-planning-core.md`=Validator・Visual Resolver・Task Graph Executor・Command Compiler / `03-er-adapter-skeleton.md`=Gemini Robotics-ER 単体 adapter seam・integration gates。旧 `docs/mode-x/` は互換参照で、ER-only の新規判断は `docs/mode-x-er/` を正本にする。
+- **Mode X-ER-VLA 設計提案**: Gemini Robotics-ER と OpenVLA などを統合し、VLA が L3 の一部を補助・代行する設計は `docs/mode-x-er-vla/` を正本にする。VLA でも direct actuation は不可で、MCP / Policy Gate / Nav2 / Open-RMF / Layer0 safety を bypass しない。現時点では調査・spike 用 docs であり、config / topic / schema を発明しない。
 
 ## モジュール構成（S1 = #4 司令官サイクル / S2-PR1 = Langfuse trace 所有 + Mode C）
 - `llm_client.py` — `LLMClient`（ABC, `async decide(situation)->dict`）+ `LLMUnavailableError`（接続/HTTP 障害→Nav2-only; doc08:288-292）。
@@ -79,4 +82,4 @@
 - **キャラLLM交渉 Slice 3（ライブ・人間ゲート・未実装 = #288）**=実 Hermes キャラ persona（`hermes_client.py` にキャラ system_prompt 経路・max_tokens≈60 doc14:173・現状 `ScriptedPersona` を差替）＋ Langfuse `agent` span/`turn_index`（doc14:283-292）。テンポ実測待ち。キャラLLM は Phase 4 比較対象外＝演出専用（doc14:255）。Phase 3 実機（doc14:254）。
 
 ## 設計ドキュメント
-- docs/architecture/08（共通サイクル/フォールバック/同時発火制御）・mode-a/08a（Situation/action map/prompt）・15（MCP/競合状態）・13（Hermes）・12（State Cache/Emergency）・03（topics）・16§3,§11・17§6。
+- docs/architecture/08（共通サイクル/フォールバック/同時発火制御）・mode-a/08a（Situation/action map/prompt）・mode-x-er/README・mode-x-er/01/02/03（Mode X-ER Robotics Bridge / L3 Planning Core / ER-only adapter 設計提案）・mode-x-er-vla/README・mode-x-er-vla/01/02/03（ER+VLA 統合 / OpenVLA 調査 / safety gates 設計提案）・15（MCP/競合状態）・13（Hermes）・12（State Cache/Emergency）・03（topics）・16§3,§11・17§6。
