@@ -12,8 +12,7 @@ import sys
 import urllib.error
 import urllib.request
 from pathlib import Path
-from typing import Any, Optional, Tuple
-
+from typing import Any
 
 DEFAULT_MODEL = "gemini-robotics-er-1.6-preview"
 DEFAULT_PROMPT = (
@@ -27,7 +26,7 @@ DEFAULT_IMAGE_PROMPT = (
 )
 
 
-def _api_key() -> Optional[str]:
+def _api_key() -> str | None:
     return os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY")
 
 
@@ -72,7 +71,7 @@ def _payload(args: argparse.Namespace) -> bytes:
     ).encode("utf-8")
 
 
-def _request(args: argparse.Namespace, key: str) -> Tuple[int, str]:
+def _request(args: argparse.Namespace, key: str) -> tuple[int, str]:
     url = (
         "https://generativelanguage.googleapis.com/v1beta/models/"
         f"{args.model}:generateContent"

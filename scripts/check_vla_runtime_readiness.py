@@ -14,8 +14,6 @@ import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
-from typing import Optional
-
 
 OPENVLA_MIN_VRAM_GB = 16
 GROOT_INFERENCE_MIN_VRAM_GB = 16
@@ -29,7 +27,7 @@ class Check:
     detail: str
 
 
-def _which(name: str) -> Optional[str]:
+def _which(name: str) -> str | None:
     return shutil.which(name)
 
 
@@ -47,7 +45,7 @@ def _run(cmd: list[str]) -> tuple[int, str]:
     return proc.returncode, (proc.stdout + proc.stderr).strip()
 
 
-def _nvidia_vram_gb() -> Optional[float]:
+def _nvidia_vram_gb() -> float | None:
     if not _which("nvidia-smi"):
         return None
     code, output = _run(
