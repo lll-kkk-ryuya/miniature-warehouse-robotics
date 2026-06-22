@@ -62,6 +62,7 @@ docs/
 | [02-l4-robotics-bridge-box](productization/02-l4-robotics-bridge-box.md) | LLM Bridge / Robotics Bridge / ER / VLA / Langfuse の L4 box 設計 |
 | [03-l3-planning-core-box](productization/03-l3-planning-core-box.md) | L3 Planning Core の商用再利用 box 設計 |
 | [04-box-storage-and-reuse-guidelines](productization/04-box-storage-and-reuse-guidelines.md) | box の保管方法、成熟度、site profile、fixture、分離基準 |
+| [05-decision-observability-and-tooling](productization/05-decision-observability-and-tooling.md) | L3 / Contract / Governance / Safety の decision log、reject 集計、既存 tool と自作範囲 |
 
 ## mode-a/ — LLM単独交通管理
 

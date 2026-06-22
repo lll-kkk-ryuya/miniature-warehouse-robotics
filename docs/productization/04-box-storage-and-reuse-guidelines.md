@@ -15,11 +15,12 @@ box/
   interfaces.md
   fixtures/
   acceptance-gates.md
+  decision-events.md
   site-profile-example/
   audit-and-eval.md
 ```
 
-コード package だけを box と呼ばない。商用再利用に必要なのは、設計、入力/出力、fixture、site profile、acceptance gate、audit/eval を揃えた単位である。
+コード package だけを box と呼ばない。商用再利用に必要なのは、設計、入力/出力、fixture、site profile、acceptance gate、decision event、audit/eval を揃えた単位である。
 
 ## Box Manifest Template
 

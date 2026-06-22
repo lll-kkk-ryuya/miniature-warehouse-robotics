@@ -23,6 +23,7 @@
 - command governance / Policy Gate
 - Nav2 / Open-RMF / safety / micro-ROS の実行経路
 - eval_sdk / observability
+- box ごとの decision log / reject reason / emergency event の集計
 
 ## なぜ mode 配下に置かないか
 
@@ -36,6 +37,7 @@
 | [02-l4-robotics-bridge-box.md](02-l4-robotics-bridge-box.md) | LLM Bridge / Robotics Bridge Super-Box / ER / VLA / Langfuse の L4 box 設計 |
 | [03-l3-planning-core-box.md](03-l3-planning-core-box.md) | Validator / Visual Resolver / Task Graph Executor / Command Compiler の商用 box 設計 |
 | [04-box-storage-and-reuse-guidelines.md](04-box-storage-and-reuse-guidelines.md) | box の保管方法、成熟度、site profile、fixture、分割基準 |
+| [05-decision-observability-and-tooling.md](05-decision-observability-and-tooling.md) | L3 / Contract / Governance / Safety の decision log、reject 集計、既存 tool と自作範囲 |
 
 ## 基本方針
 

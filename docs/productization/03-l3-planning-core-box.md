@@ -36,6 +36,8 @@ L3 は実行許可を持たない。Command candidate は L2 の MCP / Policy Ga
 
 Validator は JSON 変換ではなく、実行候補として扱えるかを判定する box である。
 
+L3 Validator は商用案件で最も site-specific な rule 設計になりやすい。既存 tool で JSON / schema / DAG / fixture replay は支えられるが、`red_box` をどの known location に snap するか、confidence が低いときに reject するか operator clarification に回すか、ER / VLA disagreement をどう扱うかは顧客現場と業務 rule に依存する。
+
 再利用する core:
 
 - JSON object parse
@@ -60,6 +62,8 @@ site ごとに差し替える plugin:
 - provider が ER / VLA / LLM / WMS に変わっても危険な output を同じ形で止められる。
 - 顧客に reject 理由を説明できる。
 - regression fixture を作りやすい。
+
+Decision / reject 集計と既存 tool の使い分けは [05-decision-observability-and-tooling.md](05-decision-observability-and-tooling.md) を参照する。
 
 ## Visual Resolver Box
 
