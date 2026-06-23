@@ -77,6 +77,20 @@ have() {
   command -v "$1" >/dev/null 2>&1
 }
 
+ros2_probe() {
+  if have ros2; then
+    printf '%s\n' "PATH"
+    return 0
+  fi
+  local setup="${ROS_SETUP:-/opt/ros/jazzy/setup.bash}"
+  if [[ -f "${setup}" ]] &&
+    bash -lc "source '${setup}' >/dev/null 2>&1 && command -v ros2 >/dev/null 2>&1"; then
+    printf '%s\n' "${setup}"
+    return 0
+  fi
+  return 1
+}
+
 in_container() {
   # tiryoh ROS image runs in Docker; the host Hermes is NOT reachable via loopback from here.
   [[ -f /.dockerenv ]] || grep -qaE '(docker|containerd|kubepods)' /proc/1/cgroup 2>/dev/null
@@ -375,8 +389,13 @@ run_static_checks() {
     skip "host e2e harness skipped by --skip-tests"
   fi
 
-  if have ros2; then
-    pass "ros2 command available"
+  local ros2_source
+  if ros2_source="$(ros2_probe)"; then
+    if [[ "${ros2_source}" == "PATH" ]]; then
+      pass "ros2 command available"
+    else
+      pass "ros2 command available after sourcing ${ros2_source}"
+    fi
   else
     skip "ros2 command not available on this host; run launch commands inside tiryoh ROS container"
   fi
@@ -434,6 +453,10 @@ export WAREHOUSE_CONFIG_DIR=/ws/config
 export WAREHOUSE_ENV=dev
 # sim idle only: AMCL may publish initial pose once, so avoid false pose_stale while recording.
 export WAREHOUSE__SAFETY__POSE_FRESHNESS_TIMEOUT=999
+# Source ROS before every launch shell. The cockpit image has ROS installed but non-login shells
+# do not put ros2 on PATH until this is sourced.
+source /opt/ros/jazzy/setup.bash
+if [ -f /ws/ws/install/setup.bash ]; then source /ws/ws/install/setup.bash; fi
 
 # slice1 health (Hermes not required)
 ros2 launch warehouse_bringup bringup.launch.py llm:=false sim:=true

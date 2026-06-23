@@ -42,6 +42,23 @@
 | [07-layer-tool-decision-matrix.md](07-layer-tool-decision-matrix.md) | layer / box ごとの OSS / tool 採用・候補・不採用・要 spike・採用条件 |
 | [08-navigation-hardware-eval-gates.md](08-navigation-hardware-eval-gates.md) | Navigation / Hardware / Eval の acceptance gate と reason_code catalog |
 
+## 読み方
+
+まず [01-commercial-box-map.md](01-commercial-box-map.md) で全体の box 境界を読む。
+L4 / L3 の設計粒度は [02](02-l4-robotics-bridge-box.md) と
+[03](03-l3-planning-core-box.md) を正本にする。商用保管の型は
+[04](04-box-storage-and-reuse-guidelines.md) に寄せる。
+
+decision event と reject / emergency の集計方針は [05](05-decision-observability-and-tooling.md)、
+OSS 再利用と小設計の広がりは [06](06-oss-reuse-and-box-small-designs.md)、
+layer ごとの採用判断は [07](07-layer-tool-decision-matrix.md)、
+Navigation / Hardware / Eval の下位 gate は
+[08](08-navigation-hardware-eval-gates.md) を見る。
+
+`reason_code` や acceptance gate は現時点では proposal catalog であり、
+product contract ではない。実装や顧客案件へ昇格する場合は、owner doc、
+package guidance、contract PR に分ける。
+
 ## 基本方針
 
 商用 box は、model や robot を直接信頼しない。

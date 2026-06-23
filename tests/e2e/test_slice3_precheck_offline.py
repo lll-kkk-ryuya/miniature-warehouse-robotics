@@ -50,6 +50,14 @@ def test_documented_default_seed_passes() -> None:
 
 
 @pytest.mark.e2e
+def test_launch_commands_source_ros_setup() -> None:
+    proc = _precheck(_VALID_SEED)
+    assert proc.returncode == 0, f"stdout={proc.stdout}\nstderr={proc.stderr}"
+    assert "source /opt/ros/jazzy/setup.bash" in proc.stdout
+    assert "source /ws/ws/install/setup.bash" in proc.stdout
+
+
+@pytest.mark.e2e
 @pytest.mark.parametrize(
     ("tasks", "needle"),
     [

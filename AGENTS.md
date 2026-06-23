@@ -122,7 +122,9 @@ type syntax can fail during collection), and bare `pytest` may be absent from
 - `docs/architecture/16-repository-and-conventions.md`
 - `docs/architecture/17-development-workflow.md`
 - `docs/architecture/19-environments-and-config.md`
+- `docs/architecture/21-eval-sdk-extraction.md`
 - `deploy/` - deployment assets and runbooks
+- `ws/src/eval_sdk/` - eval-sdk / `eval_sdk` domain-independent evaluation core
 - `docs/mode-a/` - Mode A/B design
 - `docs/mode-c/` - Mode C design
 - `docs/mode-x-er/` - Mode X-ER design proposal for Gemini Robotics-ER visual
