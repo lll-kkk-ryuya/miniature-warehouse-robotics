@@ -31,6 +31,7 @@ trace、L3 handoff、`action_map`、`gen_id` / `idempotency_key` 注入、0 disp
 | [01-architecture-and-flow](01-architecture-and-flow.md) | L4 -> L3 -> L2 -> L1/L0 の data flow、X-lite / X-rmf の切り分け |
 | [02-l3-planning-core](02-l3-planning-core.md) | Validator / Visual Resolver / Task Graph Executor / Command Compiler の詳細設計 |
 | [03-er-adapter-skeleton](03-er-adapter-skeleton.md) | Gemini Robotics-ER 単体 adapter skeleton と integration gates |
+| [04-er-input-modalities-and-stt](04-er-input-modalities-and-stt.md) | ER の入力モダリティ（audio 直受け）と STT の要否、ER 単体時の Fusion 必要性 |
 
 旧 `docs/mode-x/` は互換参照として残す。Gemini Robotics-ER 単体の新規設計・実装判断は本 `docs/mode-x-er/` を正本にする。Gemini Robotics-ER と OpenVLA などの VLA を統合する設計は、同階層の `docs/mode-x-er-vla/` を正本にする。
 
