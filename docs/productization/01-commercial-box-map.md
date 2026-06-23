@@ -7,7 +7,8 @@
 ## 全体 map
 
 ```
-Operator / WMS / API / Voice
+[入力] Operator / WMS / API / Voice
+══ L4 入力・知覚/オーケストレーション ══ Non-RT / external API ══════════
   -> L4 Robotics Bridge Super-Box
      -> Input Context Box
      -> Run Orchestration Box
@@ -19,33 +20,46 @@ Operator / WMS / API / Voice
      -> Fusion Box
      -> L3 Handoff Box
      -> Trace / Audit
+══ L3 司令・検証 ══ Non-RT / Python ════════════════════════════════════
   -> L3 Robotics Planning Core Box
+══ L2 実行許可・交通管理 ══ Soft-RT / Python + optional RMF ═════════════
   -> Contract Box
   -> Governance Box
   -> Traffic Box
+══ L1 自律走行・安全 ══ Hard-RT ════════════════════════════════════════
   -> Navigation Box
   -> Safety Box
+══ L0 物理安全 ══ MCU / 即時 ═══════════════════════════════════════════
   -> Hardware Box
 
-Eval / Observability Box は全 box を横断して raw event / trace / KPI を集約する。
+[横断] Eval / Observability Box は全 box（L4–L0）を横断して raw event / trace / KPI を集約する。
 ```
 
 ## Box 一覧
 
-| Box | repo 内の主な実体 | 案件で差し替えるもの | 保管したい artifact |
-|---|---|---|---|
-| L4 Input Context Box（Super-Box 内 sub-box） | `warehouse_llm_bridge/situation.py`、Mode X-ER request skeleton | audio、STT、camera、state source、calibration id、site profile | context schema、fixture input、site adapter |
-| L4 Robotics Bridge Super-Box | `warehouse_llm_bridge`、`hermes_client`、`llm_bridge`、`action_map`、tracing seam | provider、model routing、timeout、trace tag、run id、Hermes/direct adapter | bridge interface、adapter registry、audit policy |
-| L4 Model Adapter Box | Mode X-ER `GeminiErAdapter` skeleton、Mode X-ER-VLA `VlaAdapter` candidate | Gemini ER、OpenVLA、STT、runtime、GPU/API、auth | provider adapter、offline fixture、raw output recorder |
-| L4 Fusion Box | Mode X-ER-VLA Fusion Validator / Safety Compiler candidate | ER/VLA disagreement policy、confidence fusion、operator clarification | fusion policy、golden disagreement fixture |
-| L3 Robotics Planning Core Box | Validator、Visual Resolver、Task Graph Executor、Command Compiler | site policy、calibration、task graph rule、compiler backend | rules, calibration replay, task fixture, compiler plugin |
-| Contract Box | `warehouse_interfaces` | location、robot、schema、安全上限、store backend | frozen schema、migration note、contract tests |
-| Governance Box | `warehouse_mcp_server`、Policy Gate、gen / idempotency stores | policy、権限、業務ルール、rate limit、audit sink | policy profile、reject reason catalog、accepted-motion gate |
-| Traffic Box | `warehouse_traffic`、`warehouse_rmf_adapter` | X-lite / X-rmf、fleet adapter、route graph、traffic rule | traffic profile、RMF graph、fallback plan |
-| Navigation Box | `warehouse_nav2_bridge`、Nav2 params、URDF/map | map、URDF、sensor、controller、localization | robot nav profile、map bundle、Nav2 params |
-| Safety Box | `warehouse_safety`、collision_monitor、twist_mux | distance threshold、sensor source、stop topology | safety profile、R-26 tests、event catalog |
-| Hardware Box | `firmware/`、micro-ROS Agent | motor driver、encoder、battery、MCU、client_key | board profile、driver shim、host safety tests |
-| Eval / Observability Box | `eval_sdk`、`warehouse_orchestrator`、Langfuse score sink | KPI vocabulary、report、trace sink、customer report、decision event aggregation | metric manifest、decision event manifest、run export、dashboard preset |
+| Layer | Box | repo 内の主な実体 | 案件で差し替えるもの | 保管したい artifact |
+|---|---|---|---|---|
+| **L4** | L4 Input Context Box（Super-Box 内 sub-box） | `warehouse_llm_bridge/situation.py`、Mode X-ER request skeleton | audio、STT、camera、state source、calibration id、site profile | context schema、fixture input、site adapter |
+| **L4** | L4 Robotics Bridge Super-Box | `warehouse_llm_bridge`、`hermes_client`、`llm_bridge`、`action_map`、tracing seam | provider、model routing、timeout、trace tag、run id、Hermes/direct adapter | bridge interface、adapter registry、audit policy |
+| **L4** | L4 Model Adapter Box | Mode X-ER `GeminiErAdapter` skeleton、Mode X-ER-VLA `VlaAdapter` candidate | Gemini ER、OpenVLA、STT、runtime、GPU/API、auth | provider adapter、offline fixture、raw output recorder |
+| **L4** | L4 Fusion Box | Mode X-ER-VLA Fusion Validator / Safety Compiler candidate | ER/VLA disagreement policy、confidence fusion、operator clarification | fusion policy、golden disagreement fixture |
+| **L3** | L3 Robotics Planning Core Box | Validator、Visual Resolver、Task Graph Executor、Command Compiler | site policy、calibration、task graph rule、compiler backend | rules, calibration replay, task fixture, compiler plugin |
+| **L2** † | Contract Box | `warehouse_interfaces` | location、robot、schema、安全上限、store backend | frozen schema、migration note、contract tests |
+| **L2** | Governance Box | `warehouse_mcp_server`、Policy Gate、gen / idempotency stores | policy、権限、業務ルール、rate limit、audit sink | policy profile、reject reason catalog、accepted-motion gate |
+| **L2** | Traffic Box | `warehouse_traffic`、`warehouse_rmf_adapter` | X-lite / X-rmf、fleet adapter、route graph、traffic rule | traffic profile、RMF graph、fallback plan |
+| **L1** | Navigation Box | `warehouse_nav2_bridge`、Nav2 params、URDF/map | map、URDF、sensor、controller、localization | robot nav profile、map bundle、Nav2 params |
+| **L1** | Safety Box | `warehouse_safety`、collision_monitor、twist_mux | distance threshold、sensor source、stop topology | safety profile、R-26 tests、event catalog |
+| **L0** | Hardware Box | `firmware/`、micro-ROS Agent | motor driver、encoder、battery、MCU、client_key | board profile、driver shim、host safety tests |
+| **横断** | Eval / Observability Box | `eval_sdk`、`warehouse_orchestrator`、Langfuse score sink | KPI vocabulary、report、trace sink、customer report、decision event aggregation | metric manifest、decision event manifest、run export、dashboard preset |
+
+> **Layer 凡例**（正本: [docs/mode-x-er/01-architecture-and-flow.md](../mode-x-er/01-architecture-and-flow.md) のレイヤ図）:
+> - **L4** 入力・知覚/オーケストレーション（Non-RT / external API）— 音声・画像・state を束ね、ER/VLA を呼び、提案と trace を作る（直接 actuation しない）。
+> - **L3** 司令・検証（Non-RT / Python）— 提案を検証・target 解決・依存管理し、既存 `Command` 候補へ変換する（実行許可は持たない）。
+> - **L2** 実行許可・交通管理（Soft-RT / Python + optional RMF）— accepted motion だけを下流へ通し、X-lite / X-rmf を選ぶ。
+> - **L1** 自律走行・安全（Hard-RT）— Nav2 の実走と collision_monitor / twist_mux / Emergency Guardian の物理停止。
+> - **L0** 物理安全（MCU / 即時）— ESP32 firmware の速度 clamp ≤0.3 m/s と即時停止。
+> - **横断** Eval / Observability は L4–L0 全 box を横断して trace / KPI を集約する。
+> - † **Contract Box** は L2 の凍結契約ハブだが、`warehouse_interfaces` は L2–L0 が一方向に横断依存する（schema・安全上限・location の単一ソース）。
 
 ## Box 境界の原則
 
