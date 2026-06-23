@@ -8,6 +8,13 @@
 
 商用 PoC では、単に「動いた / 動かなかった」だけでは足りない。各 box がどれだけ候補を通し、どれだけ拒否し、どの理由で止めたかを集計できる必要がある。
 
+本書は decision / reject / emergency event の基本形を L3 Validator、
+Contract、Governance、Safety で詳述する。L4 Input Context / Model Adapter /
+Fusion / L3 Handoff、Traffic、Navigation、Hardware、Eval / Observability の
+小設計と OSS 再利用方針は
+[06-oss-reuse-and-box-small-designs.md](06-oss-reuse-and-box-small-designs.md)
+を参照する。
+
 ```text
 model output
   -> L3 Validator decision
@@ -200,6 +207,58 @@ Governance Box は、L3 より機械化しやすい。
 
 したがって Governance は「自作が少ない」というより、**判定対象を構造化できるので既存 tool に寄せやすい**。ただし robot motion を通す最後の gate は project 固有であり、完全に汎用 policy engine へ丸投げしない。
 
+## Dispatch Gate と Governance の本質
+
+ここでいう dispatch gate は、L3 が作った `Command candidate` を実際の motion dispatch
+へ進めるかを決める最後の L2 判定境界である。motion dispatch は Nav2 / Open-RMF /
+Fleet Adapter / MCP motion tool など、下流の Traffic / Navigation へ「動いてよい」
+要求を出すことを指す。`/cmd_vel`、trajectory、motor command を直接出すことではない。
+
+```text
+Command candidate
+  -> Contract validation
+  -> Governance / Policy Gate
+     -> rejected: audit only, 0 dispatch
+     -> accepted: accepted-motion event + downstream dispatch
+  -> Traffic / Navigation / Safety / Hardware
+```
+
+Governance の本質は「賢く計画すること」ではなく、**構造化済みの候補を、業務 rule
+と安全前提に照らして通すか止めるかを説明可能に決めること**である。L3 は曖昧な
+model output を command 候補へ変換するが、実行許可は持たない。Traffic は複数台の
+route / resource conflict を調停し、Navigation は goal / route を実行し、Safety /
+Hardware は独立に stop / clamp する。Governance はその前段で「この motion request
+を下流に渡してよいか」を判定する。
+
+dispatch gate で見るべき代表的な条件:
+
+| 分類 | 判定例 | reject reason 例 |
+|---|---|---|
+| Contract | schema、required field、known robot、known location | `contract_invalid`、`unknown_robot`、`unknown_location` |
+| Generation / replay | `gen_id` が current か、`idempotency_key` が未使用か | `stale_generation`、`duplicate_command` |
+| Site policy | allowed action、role / source、時間帯、rate limit | `action_not_allowed`、`rate_limited` |
+| Dynamic state | battery、emergency active、pose / state freshness、robot availability | `battery_low`、`emergency_active`、`stale_state` |
+| Dispatch seam | downstream connector が使えるか、accepted event を保存できたか | `dispatch_unavailable`、`audit_failed` |
+
+既存 policy engine の Open Policy Agent / Rego や Cedar は、role、allowed action、
+時間帯、site policy の判定に寄せられる。ただし robot motion の最終 dispatch seam は
+project 側に残す。理由は、`gen_id` / `idempotency_key` の検査順序、battery /
+emergency / stale state と motion dispatch の接続、Nav2 / Open-RMF への実 dispatch、
+そして `accepted` / `rejected` の audit event が robotics 実行経路と密結合だからである。
+
+本 project の既存実装に照らすと、Bridge 側の `action_map` が `Command` から MCP tool
+call へ写像し、`gen_id` / `idempotency_key` を注入する。Governance Box 側の MCP /
+Policy Gate はそれを検査し、`status!="ok"` の stale / duplicate / policy reject は
+Nav2 Bridge や Open-RMF へ出さない。`status=="ok"` で accepted-motion event を残せた
+ものだけが downstream dispatch に進む。この境界を dispatch gate と呼ぶ。
+
+dispatch gate の非目標:
+
+- L3 の planning quality を改善しない。L3 reject が多い場合は L3 / L4 を直す。
+- Traffic の route conflict 解決を代替しない。複数台調停は Traffic Box の責務。
+- Safety / Hardware の stop / clamp を代替しない。危険時の最終停止は下位 layer が持つ。
+- Eval / Observability の集計失敗で motion を止めない。観測 sink は原則 fail-open。
+
 ## Safety Box: 既存 robotics tool と site tuning
 
 Safety Box は、既存 robotics tool を積極的に使う。ただし threshold / topology / event catalog は現場で調整する。
@@ -272,6 +331,9 @@ safety.event_type:
 - JSON Schema: https://json-schema.org/overview/what-is-jsonschema
 - Open Policy Agent: https://www.openpolicyagent.org/docs
 - Cedar Policy Language: https://docs.cedarpolicy.com/
+- Model Context Protocol: https://modelcontextprotocol.io/docs/getting-started/intro
+- Open-RMF Multi-Robot Book: https://osrf.github.io/ros2multirobotbook/
+- Nav2 Simple Commander API: https://docs.nav2.org/commander_api/index.html
 - Nav2 Collision Monitor: https://docs.nav2.org/tutorials/docs/using_collision_monitor.html
 - ros2_tracing: https://github.com/ros2/ros2_tracing
 - OpenTelemetry: https://opentelemetry.io/docs/what-is-opentelemetry/

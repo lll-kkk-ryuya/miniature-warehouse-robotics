@@ -63,6 +63,9 @@ docs/
 | [03-l3-planning-core-box](productization/03-l3-planning-core-box.md) | L3 Planning Core の商用再利用 box 設計 |
 | [04-box-storage-and-reuse-guidelines](productization/04-box-storage-and-reuse-guidelines.md) | box の保管方法、成熟度、site profile、fixture、分離基準 |
 | [05-decision-observability-and-tooling](productization/05-decision-observability-and-tooling.md) | L3 / Contract / Governance / Safety の decision log、reject 集計、既存 tool と自作範囲 |
+| [06-oss-reuse-and-box-small-designs](productization/06-oss-reuse-and-box-small-designs.md) | L4 sub-box / Traffic / Navigation / Hardware / Eval の小設計と OSS 再利用方針 |
+| [07-layer-tool-decision-matrix](productization/07-layer-tool-decision-matrix.md) | layer / box ごとの OSS / tool 採用・候補・不採用・要 spike・採用条件 |
+| [08-navigation-hardware-eval-gates](productization/08-navigation-hardware-eval-gates.md) | Navigation / Hardware / Eval の acceptance gate と reason_code catalog |
 
 ## mode-a/ — LLM単独交通管理
 
