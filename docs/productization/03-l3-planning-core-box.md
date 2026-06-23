@@ -119,6 +119,24 @@ site ごとに差し替えるもの:
 
 商用運用では、最初は process memory でよいが、案件化する場合は `TaskGraphStore` を file / Redis / DB に差し替える。
 
+### DAG 検証のセマンティクス（依存循環 = デッドロック、無限実行ではない）
+
+`task_graph` の `after` は「先行 task が `completed` になるまで後続を開始しない」**前提条件**である。この依存が輪を作ると（例: `t1 -after-> t2 -after-> t3 -after-> t1`）、最初に開始できる task が存在せず **1 件も dispatch されない（zero dispatch のデッドロック）**。これは「ぐるぐる動き続ける」挙動ではなく **「永久に未開始」** である点に注意する。
+
+- **依存の循環**（plan graph の cycle）は **不正として弾く**対象。実体はデッドロック（何も動かない）であり、無限実行ではない。
+- **巡回し続けたい**ような実行時の繰り返し（patrol 等）は DAG の循環で表現しない。recurring / periodic task か Behavior Tree のループ（[07-layer-tool-decision-matrix.md](07-layer-tool-decision-matrix.md) の Nav2 BT 参考）として別に組む。
+
+検出と処置の責務分担（**検出は OSS、reject 判断は自作 box**。[06-oss-reuse-and-box-small-designs.md](06-oss-reuse-and-box-small-designs.md) の "robotics safety boundary は自作" 方針に対応）:
+
+- **検出（決定論・自動）**: NetworkX が判定する。`is_directed_acyclic_graph(G)` は循環があれば `False` を返し、`topological_sort(G)` は循環時に `NetworkXUnfeasible`（"no topological sort exists"）を送出する。NetworkX 自体は reject も自動修正もしない。
+- **処置（box の方針）**: Task Graph Executor が結果を受けて reject / operator clarification に回し、`task_graph_cycle` の decision event を残す（[05-decision-observability-and-tooling.md](05-decision-observability-and-tooling.md):139・:333）。Acceptance Gate では L3-G0（不正 0 dispatch）・L3-G2（`after` 依存で ready task が 1 件だけ）で検証する。
+
+参考（公式一次情報・参照日 2026-06-23）:
+
+- NetworkX `is_directed_acyclic_graph` — Returns: `bool`（DAG なら `True` / そうでなければ `False`）: <https://networkx.org/documentation/stable/reference/algorithms/generated/networkx.algorithms.dag.is_directed_acyclic_graph.html>
+- NetworkX `topological_sort` — 循環時に `NetworkXUnfeasible`: "no topological sort exists" を送出: <https://networkx.org/documentation/stable/reference/algorithms/generated/networkx.algorithms.dag.topological_sort.html>
+- NetworkX DAG algorithms（topological order が存在する ⟺ DAG）: <https://networkx.org/documentation/stable/reference/algorithms/dag.html>
+
 ## Command Compiler Box
 
 Command Compiler は、ready task を既存安全経路に落とす box である。
