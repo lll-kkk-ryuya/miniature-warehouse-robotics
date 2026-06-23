@@ -57,6 +57,37 @@ def test_situation_top_level_fields(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
+def test_emergency_extra_reaches_next_commander_situation(tmp_path: Path) -> None:
+    # doc08:266-271 / doc12:397-405: /emergency/event is aggregated by State Cache
+    # as a top-level StateSnapshot extra and must reach the next Hermes POST. The frozen
+    # StateSnapshot/Situation schemas do not grow; SituationBuilder forwards the extra after
+    # validating the core snapshot.
+    emergency = {
+        "active": ["bot1"],
+        "history": [
+            {
+                "event_id": "emg-1",
+                "robot": "bot1",
+                "type": "blocked_timeout",
+                "severity": "warning",
+                "action_taken": ["nav2_recovery"],
+                "timestamp": 1710000000.05,
+                "requires_llm_review": True,
+            }
+        ],
+    }
+    store = FileStateStore(tmp_path / "state.json")
+    store.write(
+        {"timestamp": "2026-06-15T14:30:05", "robots": {"bot1": _robot()}, "emergency": emergency}
+    )
+
+    sit = SituationBuilder(store).build(turn=1, gen_id=1)
+
+    assert sit is not None
+    assert sit["emergency"] == emergency
+
+
+@pytest.mark.unit
 def test_predicted_position_3s_ctrv_straight(tmp_path: Path) -> None:
     # omega=0 degenerates to constant-velocity: heading=0, linear=0.1, horizon 3.0
     # -> x advances by 0.3, y unchanged (08a:103-105, CV branch).
@@ -197,6 +228,23 @@ def test_current_task_filled_in_mode_c(tmp_path: Path) -> None:
     robot = sit["robots"]["bot1"]
     assert robot["current_task"] == "shelf_2"
     assert set(robot) == {"position", "status", "battery", "current_task"}
+
+
+@pytest.mark.unit
+def test_emergency_extra_preserved_in_mode_c_slim_situation(tmp_path: Path) -> None:
+    # Mode C slims per-robot traffic fields, but emergency review context is top-level and
+    # mode-independent (doc08c:91 / doc12:397-405).
+    emergency = {"active": [], "history": [{"event_id": "emg-2", "robot": "bot2"}]}
+    store = FileStateStore(tmp_path / "state.json")
+    store.write(
+        {"timestamp": "2026-06-15T14:30:05", "robots": {"bot1": _robot()}, "emergency": emergency}
+    )
+
+    sit = SituationBuilder(store, mode="open-rmf").build(turn=1, gen_id=1)
+
+    assert sit is not None
+    assert sit["emergency"] == emergency
+    assert set(sit["robots"]["bot1"]) == {"position", "status", "battery", "current_task"}
 
 
 @pytest.mark.unit
