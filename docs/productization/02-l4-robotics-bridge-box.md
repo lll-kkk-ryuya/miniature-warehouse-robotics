@@ -2,7 +2,7 @@
 
 作成日: 2026-06-22
 
-> **状態**: 設計提案。L4 Robotics Bridge Super-Box は既存 `warehouse_llm_bridge` を商用再利用の上位 orchestration box として再定義する。新しい ROS topic、REST API、`warehouse_interfaces` contract は追加しない。
+> **状態**: 設計提案。L4 Robotics Bridge Super-Box は既存 `warehouse_llm_bridge` を商用再利用の上位 orchestration box として再定義する。新しい config key、ROS topic、REST API、`warehouse_interfaces` frozen contract は追加しない。
 
 ## 結論
 

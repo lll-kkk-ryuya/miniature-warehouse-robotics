@@ -2,7 +2,7 @@
 
 作成日: 2026-06-22
 
-> **状態**: 設計提案。Mode X-ER の L3 Planning Core を、商用案件で再利用できる deterministic planning box として整理する。ここでは新しい frozen contract を追加しない。
+> **状態**: 設計提案。Mode X-ER の L3 Planning Core を、商用案件で再利用できる deterministic planning box として整理する。ここでは新しい config key、ROS topic、REST API、`warehouse_interfaces` frozen contract は追加しない。
 
 ## 目的
 

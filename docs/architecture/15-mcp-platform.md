@@ -545,4 +545,21 @@ class PolicyGate:
 
 **Mode による差**: 重要度は Mode A > Mode B > Mode C（コマンド頻度が高いほど競合確率が高い）。ただし Mode C でもエスカレーション時の遅延応答が古いタスクを発行しうるため、全モードで実装する。
 
+## Robotics Bridge Super-Box での採用境界
+
+Hermes Agent は provider / tool transport の実装差分を吸収する候補であり、robotics の実行許可や安全判断を所有しない。Mode X-ER / Mode X-ER-VLA では以下の境界で扱う。
+
+| 領域 | Hermes Agent に寄せるもの | Warehouse / Robotics Bridge に残すもの |
+|---|---|---|
+| Provider transport | Anthropic / OpenAI / Gemini / xAI / custom endpoint / fallback | mode 別 cycle、timeout、request id、0 dispatch 判定 |
+| STT / voice input | voice message transcription、custom STT command、STT plugin provider | transcript を State Cache / image / calibration と束ねる Input Context |
+| Vision | vision-capable model への画像 input、汎用 vision analysis | camera calibration、map grounding、Visual Resolver |
+| MCP | stdio / HTTP MCP 接続、tool include/exclude、resources/prompts wrapper | motion tool の Bridge-mediated dispatch、Policy Gate、accepted-motion gate |
+| Plugins | custom tool、hook、model provider、STT/TTS provider、MCP 連携 | ER/VLA adapter contract、Fusion、L3 handoff、Audit/Eval join |
+| Memory / Skills | Mode A の演出・学習用途では利用可 | Phase 4 比較 run では OFF intent + Hermes config 側 OFF を要求 |
+
+Hermes の server-side tool execution は read-only tool では利用可能だが、motion tool の採用経路には使わない。Bridge が LLM / ER / VLA の final output を受け、`action_map` で `gen_id` / `idempotency_key` を注入してから Warehouse MCP Server に渡す。これにより Hermes transport を使っても、stale / duplicate / Policy Gate reject は **0 POST / 0 dispatch** のまま維持される。
+
+Gemini Robotics-ER や OpenVLA は、Hermes が対象 API / modality / structured output を扱える場合だけ Hermes 経由にできる。扱えない場合は Bridge-managed direct adapter とし、trace、timeout、audit、L3 handoff、secret 境界は Robotics Bridge Super-Box が所有する。
+
 ---

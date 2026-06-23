@@ -14,12 +14,14 @@ snapshot does not carry (doc mode-a/08a:89-95):
 
 The Bridge also supplies ``turn``, ``gen_id`` and ``warehouse.layout`` (none of
 which are in ``StateSnapshot``, schemas.py:81-90) plus the bridge-maintained
-``history`` / ``pending_tasks``. The frozen ``Situation``/``RobotState`` contract
-(warehouse_interfaces.schemas) wins over any illustrative doc JSON: this builder
-emits exactly those models. Pure Python (schemas + math) — no rclpy, no network.
+``history`` / ``pending_tasks``. It also forwards State Cache's top-level
+``emergency`` extra (doc12) into the serialized situation so the next commander
+cycle can review emergency/recovery events without changing the frozen
+``Situation`` contract. Pure Python (schemas + math) — no rclpy, no network.
 """
 
 import math
+from copy import deepcopy
 
 from warehouse_interfaces.schemas import (
     Position,
@@ -132,7 +134,24 @@ class SituationBuilder:
         # by_alias so PendingTask emits the canonical wire key ``from`` (doc08a:79-81),
         # not the pydantic field name ``from_`` (schemas.py:111); PendingTask.from_ is
         # the ONLY aliased field in the contract, so this is otherwise a no-op.
-        return situation.model_dump(by_alias=True, exclude_unset=True)
+        payload = situation.model_dump(by_alias=True, exclude_unset=True)
+        self._attach_emergency(payload, raw)
+        return payload
+
+    def _attach_emergency(self, situation: dict, raw: object) -> None:
+        """Forward State Cache's contract-extra emergency block into the LLM input.
+
+        ``StateSnapshot`` intentionally ignores this key (doc12:342), so attach it
+        after model serialization. The value is not schema-promoted here; State
+        Cache owns the bounded ``active``/``history`` rings and the commander only
+        needs the JSON context on the next cycle (doc08:266-271).
+        """
+        if not isinstance(raw, dict) or "emergency" not in raw:
+            return
+        emergency = raw["emergency"]
+        if emergency is None:
+            return
+        situation["emergency"] = deepcopy(emergency)
 
     def _enrich(self, snap: RobotSnapshot, *, current_task: str | None = None) -> RobotState:
         """Lift a raw ``RobotSnapshot`` into a ``RobotState`` (L2 -> L1, 08a:93-95).
