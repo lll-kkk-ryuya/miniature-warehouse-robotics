@@ -22,12 +22,12 @@
 - L3 planning core
 - command governance / Policy Gate
 - Nav2 / Open-RMF / safety / micro-ROS の実行経路
-- eval_sdk / observability
+- `eval_sdk` / observability
 - box ごとの decision log / reject reason / emergency event の集計
 
 ## なぜ mode 配下に置かないか
 
-商用再利用 box は Mode X-ER だけのものではない。Mode A/B の LLM Bridge、Mode C の Open-RMF、Mode X-ER の ER adapter、Mode X-ER-VLA の VLA fusion、下位の Nav2 / ESP32 / eval_sdk を横断する。そのため `docs/productization/` を mode-independent な設計章として置く。
+商用再利用 box は Mode X-ER だけのものではない。Mode A/B の LLM Bridge、Mode C の Open-RMF、Mode X-ER の ER adapter、Mode X-ER-VLA の VLA fusion、下位の Nav2 / ESP32 / `eval_sdk` を横断する。そのため `docs/productization/` を mode-independent な設計章として置く。
 
 ## ファイル構成
 
@@ -38,6 +38,9 @@
 | [03-l3-planning-core-box.md](03-l3-planning-core-box.md) | Validator / Visual Resolver / Task Graph Executor / Command Compiler の商用 box 設計 |
 | [04-box-storage-and-reuse-guidelines.md](04-box-storage-and-reuse-guidelines.md) | box の保管方法、成熟度、site profile、fixture、分割基準 |
 | [05-decision-observability-and-tooling.md](05-decision-observability-and-tooling.md) | L3 / Contract / Governance / Safety の decision log、reject 集計、既存 tool と自作範囲 |
+| [06-oss-reuse-and-box-small-designs.md](06-oss-reuse-and-box-small-designs.md) | L4 sub-box / Traffic / Navigation / Hardware / Eval の小設計と OSS 再利用方針 |
+| [07-layer-tool-decision-matrix.md](07-layer-tool-decision-matrix.md) | layer / box ごとの OSS / tool 採用・候補・不採用・要 spike・採用条件 |
+| [08-navigation-hardware-eval-gates.md](08-navigation-hardware-eval-gates.md) | Navigation / Hardware / Eval の acceptance gate と reason_code catalog |
 
 ## 基本方針
 
