@@ -13,12 +13,14 @@
 - **編集境界**: このパッケージ配下のみ ＋ docs/mode-c/11c-traffic-mode-c.md（§3.5 関連の **末尾 EOF 追記のみ**）。
   共有契約 `warehouse_interfaces` は変更不可（`.claude/rules/parallel-workflow.md` §4）。`warehouse_nav2_bridge`
   （案B・llm-bridge 所有）/ nav2 launch・params（別ファイル新規優先・GATE 後）は触らない。
+- **Mode X-ER / X-rmf 設計提案**: docs/mode-x-er では、Gemini Robotics-ER の visual target を Robotics Bridge が `known_location` または将来の `temporary_waypoint` へ解決し、MCP / Policy Gate 経由で Open-RMF Task API / custom Fleet Adapter に渡す profile を `X-rmf` と呼ぶ。これは Mode X-ER MVP ではなく、X-lite E2E と Mode C Fleet Adapter live/sim 検証の後に再評価する。GATE 前に RMF waypoint / temporary waypoint / task schema を発明しない。
 - **設計正本**:
   - docs/mode-c/11c-traffic-mode-c.md:203-296（§3.5 R-44 評価・案A/案B・Go/No-Go・残未決 D、§4 は :299）／ `:63`（不変条件）／ `:197-199`（RMF 機能の使用/無効化）／ `:252`（3 コールバック + NavigateToPose action client）
   - docs/shared/07-research-notes.md:254（R-44 結論）／ `:243`（R-38 ゲート＝blocker）
   - docs/architecture/03-software-architecture.md:97（`/bot{n}/goal_pose` PoseStamped, Fleet Adapter 発行）／ `:77`（odom）／ `:94`（amcl_pose）
   - docs/mode-c/12c-integration-mode-c.md:142（`NAV2_BRIDGE_MODES`）／ `:202`（既存フォールバック「直接 ROS 2 Action Client」＝案A の実体）
-  - ws/src/warehouse_nav2_bridge/CLAUDE.md:18-20（案B REST 経路の実在）
+  - docs/mode-x-er/README.md / docs/mode-x-er/01-architecture-and-flow.md / docs/mode-x-er/02-l3-planning-core.md / docs/mode-x-er/03-er-adapter-skeleton.md（X-rmf は optional profile。visual target -> RMF waypoint/task 変換は未凍結）
+  - ws/src/warehouse_nav2_bridge/CLAUDE.md:19-21（案B REST 経路の実在）
 
 ## モジュール構成
 **offline コア（実装済・host unit 済・RMF/rclpy 非 import）**:

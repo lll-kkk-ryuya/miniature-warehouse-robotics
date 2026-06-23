@@ -8,6 +8,7 @@
 - **依存**: warehouse_interfaces, pydantic のみ（他トラック内部を import しない）。
 - **テスト**: 純Python（rclpy なし / MCP SDK なし / ネットワークなし）。`tmp_path` + `FileGenStore`/`FileStateStore` + `WAREHOUSE_RUNTIME_DIR`/`WAREHOUSE_AUDIT_LOG_PATH`。安全機構（gen/policy/battery）は `@pytest.mark.safety`。Ruff(py312/line100/double-quote) + pytest 緑を維持。
 - **設計**: docs/architecture/15-mcp-platform.md、docs/mode-a/08a-llm-bridge-mode-a.md。
+- **Mode X-ER 設計提案**: Gemini Robotics-ER の `RoboticsPlan draft` は MCP に直接入れない。Robotics Bridge が既存 `Command` / `ToolCall` へ compile した後だけ本パッケージへ届く。X-lite は受理 motion tool の Nav2 Bridge REST forward を再利用する。X-rmf は Open-RMF Task API / Fleet Adapter 側の seam が必要で、現時点では未実装・未凍結。visual target / coordinate goal を MCP tool schema に足す場合は docs/mode-x-er と contract PR が先。
 
 ## モジュール構成
 

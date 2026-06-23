@@ -257,7 +257,7 @@ EasyFullControl は `rmf_fleet_adapter` の一級 API であり（free_fleet が
 
 #### 案B（縮退フォールバック）: Open-RMF 不使用・Nav2 Bridge REST 経由
 
-Open-RMF を立てず、既存 `warehouse_nav2_bridge`（REST `:8645`、`POST /api/v1/navigate|wait|stop` — `ws/src/warehouse_nav2_bridge/CLAUDE.md:18-20`）でタスク→Nav2 ゴールを割り当てる。
+Open-RMF を立てず、既存 `warehouse_nav2_bridge`（REST `:8645`、`POST /api/v1/navigate|wait|stop` — `ws/src/warehouse_nav2_bridge/CLAUDE.md:19-21`）でタスク→Nav2 ゴールを割り当てる。
 
 - **失うもの（核心）**: RMF の **Traffic Schedule（事前の経路デコンフリクト）＋ Conflict Negotiation（衝突時の自動交渉）** を全て放棄する。2台は **Nav2 ローカル回避のみ**に縮退し、共有スケジュールも交差点・隘路でのデッドロック保証解消も無い（200mm 真隘路の渋滞デモ＝#124 の前提が崩れる）。RMF の **Read-Only 相当**（位置は見えるが経路制御・調整はできない — [OSRF, Read-Only Fleets](https://osrf.github.io/ros2multirobotbook/integration_read-only.html)）であり、Mode C の主役機能そのものを失う。
 - **不変条件（`docs/mode-c/11c-traffic-mode-c.md:63`）**: RMF Fleet Adapter は存在しなくなるが、REST ブリッジが唯一の Nav2 writer になる → 「単一制御パス」という **intent は保持**。ただし RMF トポロジを出る＝厳密には Mode C ではなく Mode A/B 寄りのフォールバック。

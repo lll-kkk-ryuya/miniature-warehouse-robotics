@@ -6,6 +6,7 @@
 - **ノード**: nav2_bridge（FastAPI :8645 + rclpy）
 - **編集境界**: このパッケージ配下のみ。共有契約 `warehouse_interfaces` は変更不可（`.claude/rules/parallel-workflow.md` §4）。
 - **設計正本**: docs/mode-a/12a-integration-mode-a.md:149-449（REST 仕様/エラーコード/200ms monitor）・docs/mode-a/08a-llm-bridge-mode-a.md:398-405・docs/architecture/16:72,187。
+- **Mode X-ER / X-lite 設計提案**: docs/mode-x-er では、Gemini Robotics-ER の visual task を Robotics Bridge が既存 Command / MCP / Policy Gate 経路に compile し、X-lite では受理 motion の最終実行先として本 REST API を使う。ER から本 API を直接呼ばない。座標 `goal` variant は本パッケージ API では実在するが、visual target を MCP / Policy Gate 経由で座標 goal として通す契約は未凍結なので、Mode X-ER 実装前に docs / contract を先に更新する。
 
 ## モジュール構成（part 1 = nav2_bridge パッケージ）
 - `core.py` — `Nav2BridgeCore`（**純 / no rclpy / no FastAPI**）：validate → backend.go_to、task_id 採番、`active_tasks`（threading.Lock）、`poll_results`（200ms 完了監視, 注入 clock で wait 期限も判定）。location→coord は**凍結 `locations`**（config==`warehouse_interfaces.locations.KNOWN_LOCATIONS`）。`via` は **WAYPOINTS 契約が未凍結のため同じ凍結 `locations` で検証**（doc12a:351 の WAYPOINTS 辞書は発明しない＝docs-first）。
