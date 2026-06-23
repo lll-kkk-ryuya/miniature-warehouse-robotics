@@ -95,16 +95,18 @@ model_call observation
 
 Hermes Agent は、Robotics Bridge Super-Box の transport / provider / generic tool integration を支える。2026-06-23 時点で Nous Research 公式 docs から確認できる範囲では、以下を Hermes-managed area に置ける。
 
-| Sub-Box | Hermes-managed にできる内容 | Bridge-owned に残す内容 |
+> **読み方**: 下表は **box の境界ではない**。各行は「Hermes-managed＝`transport: hermes` の実装」と「Bridge-owned＝所有する box / seam」へ分解した実装ノートである（taxonomy 正本は `01` §Box 種別と分類規則）。左列の `（種別）` が確定分類で、`Sub-Box` 列名は誤解を招くため改めた。Hermes-vs-direct は box interface 裏の `transport` 選択であって、箱を Hermes 列で割らない。
+
+| 機能（確定種別） | Hermes-managed（`transport: hermes` 実装） | Bridge-owned（所有 box / seam） |
 |---|---|---|
-| API Server / Gateway | OpenAI 互換 `/v1/chat/completions` / `/v1/responses`、inline image input、health / capabilities、runs API | robotics cycle、request id、timeout 後の 0 dispatch、run stop を安全担保にしない判断、final output の採用判定 |
-| Model Transport | provider 切替、custom endpoint、OpenAI 互換 endpoint、provider fallback | robotics request id、Bridge-owned Langfuse trace、L3 handoff、transport 失敗時の fail-open / 0 dispatch policy |
-| Provider Routing | OpenRouter / Nous Portal 経由の routing、fallback chain | 比較 run の provider 固定、mode tag、trace metadata、比較公平性 guard |
-| STT Adapter | Local Whisper、Groq/OpenAI Whisper、custom command provider、Python plugin provider | transcript を state snapshot / image / calibration / known locations と束ねる context builder |
-| Basic Vision Transport | vision-capable model への image input、汎用 vision analysis | camera calibration、map frame、object-to-location resolution、L3 Visual Resolver への入力 |
-| MCP Connection | stdio / HTTP MCP、OAuth、tool include/exclude、resources/prompts wrapper 制御 | motion tool の accepted path、Policy Gate の reject 理由、Bridge mint の `idempotency_key` |
-| Plugin Extension | custom tool、hook、model provider、STT/TTS、MCP 連携の plugin 化 | robotics safety policy、ER/VLA contract、L3 handoff、Audit/Eval join |
-| Memory / Skills / Session Search | Mode A 演出や operator-facing workflow の記憶・手順化 | Phase 4 比較 run の強制 OFF、交通制御 skill 禁止、Hermes config 側 OFF と Bridge intent guard |
+| API Server / Gateway（demoted → Super-Box cycle） | OpenAI 互換 `/v1/chat/completions` / `/v1/responses`、inline image input、health / capabilities、runs API | robotics cycle、request id、timeout 後の 0 dispatch、run stop を安全担保にしない判断、final output の採用判定 |
+| Model Transport（demoted → Model Adapter transport） | provider 切替、custom endpoint、OpenAI 互換 endpoint、provider fallback | robotics request id、Bridge-owned Langfuse trace、L3 handoff、transport 失敗時の fail-open / 0 dispatch policy |
+| Provider Routing（plugin → Model Adapter） | OpenRouter 経由の routing（OpenRouter 内の sub-provider 選択）、別機能の fallback chain（provider 跨ぎ） | 比較 run の provider 固定、mode tag、trace metadata、比較公平性 guard |
+| STT（sub-box → Model Adapter `provider_type:stt`） | Local Whisper、Groq/OpenAI Whisper、custom command provider、Python plugin provider | transcript を state snapshot / image / calibration / known locations と束ねる context builder（Input Context） |
+| Basic Vision（demoted → Model Adapter transport + Input Context） | vision-capable model への image input、汎用 vision analysis | camera calibration、map frame、object-to-location resolution、L3 Visual Resolver への入力 |
+| MCP Connection（seam → MCP dispatch / Governance） | stdio / HTTP MCP、OAuth、tool include/exclude、resources/prompts wrapper 制御 | motion tool の accepted path、Policy Gate の reject 理由、Bridge mint の `idempotency_key` |
+| Plugin Extension（plugin・Hermes 拡張機構） | custom tool、hook、model provider、STT/TTS、MCP 連携の plugin 化 | robotics safety policy、ER/VLA contract、L3 handoff、Audit/Eval join |
+| Memory / Skills / Session Search（demoted・operator path） | Mode A 演出や operator-facing workflow の記憶・手順化 | Phase 4 比較 run の強制 OFF、交通制御 skill 禁止、Hermes config 側 OFF と Bridge intent guard |
 
 Hermes Agent に寄せないもの:
 
@@ -210,6 +212,8 @@ robotics_bridge/
     robotics_bridge.py
     timeout_policy.py
 ```
+
+**実体対応（成熟度）**: `context/`＝Input Context sub-box（実装あり: `situation.py` の `SituationBuilder`）/ `tracing/`＝Bridge-owned trace root（実装あり: `tracing.py`）/ `orchestration/`＝Super-Box cycle・0 dispatch（実装あり: `scheduler.py`）+ MCP dispatch seam（実装あり: `executor.py` の `DispatchToolExecutor`→`tools.dispatch`）+ action_map seam（実装あり: `action_map.py`、`gen_id`/`idempotency_key` mint）。`adapters/`（gemini_er / vla / stt）と `audit/` は **未実装案＝proposal**（ws/src に実体なし）。`transport: hermes|direct|worker`（§Box の保管場所の `model_call observation`）は docs 例示で、コード enum は未実装＝未凍結。
 
 既存 `warehouse_llm_bridge` からいきなり分離しない。まず同 repo 内で adapter seam と fixture を固め、利用者 2 件目が出たら product package へ分離する。
 
