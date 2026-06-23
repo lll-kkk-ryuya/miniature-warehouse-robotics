@@ -133,7 +133,7 @@ Bot2 (キャラLLM, turn=2):
 
 | ガードレール | 内容 |
 |---|---|
-| 書き込み権限 | キャラLLMは `/character/speech` と `/negotiation/proposal` のみ publish。Nav2/MCP/cmd_vel には触れない |
+| 書き込み権限 | キャラLLMは `/character/speech` と `/negotiation/proposal` のみ publish。Nav2/MCP/cmd_vel には触れない。これは現行の稟議制 / Slice 2 no-actuation 前提であり、後段 v1 Self-Action Gate は self-only whitelist を Policy Gate / Emergency Guardian / Nav2 safety 配下で検証する次段階緩和 |
 | 交渉タイムアウト | 発話生成中も含め、8秒以内に合意できなければ司令官が独裁的に決定 |
 | 提案フォーマット強制 | 自由文NG。JSON Schema で構造化を強制（キャラLLM のシステムプロンプトで指示 + Bridge側でvalidate） |
 | 司令官の最終判断権 | 合意が安全条件（バッテリー/距離/Emergency中/Policy Gate）に反するなら拒否 → 司令官独自判断 |
@@ -321,7 +321,7 @@ robot={bot1|bot2|commander}   role={commander|character}   tool=<tool_name>
 
 ## Mode A 常時会話・限定自己実行（設計確定 v1/v1.5）
 
-本節は、既存の「司令官が最終承認する交渉モード」（§交渉型キャラクターLLM）を置き換える実装済み契約ではなく、次段階の Mode A を **自律会話評価ベンチ**として扱うための確定方針である。現行の安全前提（Policy Gate / Emergency Guardian / Nav2 safety）は維持し、任意座標の直接実行は解禁しない。
+本節は、既存の「司令官が最終承認する交渉モード」（§B. 交渉モード（重要シーンのみ））を置き換える実装済み契約ではなく、次段階の Mode A を **自律会話評価ベンチ**として扱うための確定方針である。現行の安全前提（Policy Gate / Emergency Guardian / Nav2 safety）は維持し、任意座標の直接実行は解禁しない。
 
 ### 目的
 

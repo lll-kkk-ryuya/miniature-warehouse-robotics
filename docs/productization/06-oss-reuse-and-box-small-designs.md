@@ -253,9 +253,12 @@ raw_model_outputs_total
   -> traffic_rejected_total
   -> navigation_failed_total
   -> safety_emergency_total
-  -> hardware_rejected_or_clamped_total
+  -> hardware_rejected_total
   -> success_total
 ```
+
+Hardware clamp は安全介入として別途 `hardware_clamped_total` に集計する。ただし
+clamp 後に task が成功する場合があるため、terminal failure の funnel とは分ける。
 
 この funnel により、model が悪いのか、site policy が厳しいのか、Traffic が通せない
 のか、Nav2 が失敗したのか、Hardware が止めたのかを分けて説明できる。
@@ -271,9 +274,10 @@ OSS / 標準 tool を採用する前に、次を満たす。
 5. tool 固有の event / error を project の stable `reason_code` に写像する。
 6. 新しい topic / config / frozen contract が必要なら、この doc だけで決めず owner docs と contract PR に分ける。
 
-## 追加すべき docs
+## 拡張状況と次候補
 
-次に productization docs を広げるなら、以下の順がよい。
+`07` と `08` は本書から分割済みである。次に productization docs を広げるなら、
+以下の順がよい。
 
 | 優先 | ファイル案 | 理由 |
 |---|---|---|

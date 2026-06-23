@@ -113,7 +113,7 @@ site profile に置かないもの:
 | Navigation | known location goal、coordinate goal rejection / acceptance profile |
 | Safety | near collision、battery critical、pose stale |
 | Hardware | clamp、NaN/Inf cmd_vel、encoder mock |
-| Eval | trace join、KPI score export、cost table |
+| Eval / Observability | trace join、KPI score export、cost table |
 
 fixture は商用化時の regression suite であり、営業 PoC の demo seed とは分ける。
 

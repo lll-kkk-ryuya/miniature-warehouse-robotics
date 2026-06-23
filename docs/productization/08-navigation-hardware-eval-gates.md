@@ -121,10 +121,10 @@ OSS / 標準 tool の使い分け:
 ## Eval / Observability Box
 
 Eval / Observability は、実行経路の各 box を `run_id`、`gen_id`、`robot`、
-timestamp、artifact ref で join する。`eval_sdk` proposal は domain 非依存
-core として trace id、fail-open sink、
-stats、cost を提供し、warehouse-specific producer / KPI / report は上位 package
-側に残す。
+timestamp、artifact ref で join する。現行 `eval_sdk` は domain 非依存 core として
+trace id、fail-open sink、stats、cost を提供する。ただし doc21 時点では API /
+schema はまだ frozen contract ではない。warehouse-specific producer / KPI / report
+は上位 package 側に残す。
 
 OSS / 標準 tool の使い分け:
 

@@ -525,6 +525,23 @@ LLM呼出し (4社)
 - **理由**: ① Vertex は **専有 OpenAI GPT に到達不可**（`gpt-oss` オープンウェイトのみ。Claude/Grok/Gemini は到達可）／② いわゆる "Vertex AI SDK"（`vertexai.generative_models`）は **2026-06-24 削除**（新規は `google-genai`、`genai.Client(vertexai=True)`）／③ Vertex 経由でも Claude=Messages 形・Gemini/Grok=OpenAI 形・GPT=外 と **スキーマ分裂**し、単一コードパス＝比較公平性（同一の prompt 組立・tool 解析・retry/timeout・token 会計）を壊す。
 - **Vertex の位置づけ（OPTIONAL・二次）**: 本番デモ機の Gemini/Claude を GCP IAM（ADC / service account）で回す production leg などに限り、**同一 `LLMClient` IF の裏の二次バックエンド**として config（`WAREHOUSE_ENV` overlay）で差し込む。**比較ラン（Phase 4 の 12構成）には混ぜない**（network/region/課金が非対称になりバイアス）。使う場合は Langfuse の `environment` タグ（例 `env=prod_vertex`）で分離記録する。Vertex AI Agent Engine / ADK は不採用（既存オーケストレーション層と競合・Gemini ロックイン）。
 
+### 7.7 Robotics Bridge Super-Box での Hermes 利用境界
+
+Mode X-ER / Mode X-ER-VLA の商用化検討では、`warehouse_llm_bridge` を **Robotics Bridge Super-Box** として扱う。Hermes Agent はこの Super-Box のうち、provider transport と汎用 tool integration を担う候補であり、robotics 固有の安全境界は Bridge / L3 / Governance 側に残す。
+
+| Sub-Box | Hermes Agent で扱える範囲 | 本PJで Bridge 側に残す範囲 |
+|---|---|---|
+| Model Transport | provider 切替、OpenAI 互換 custom endpoint、fallback provider | robotics cycle、request id、timeout 後の 0 dispatch |
+| Provider Routing | OpenRouter / Nous Portal 経由の routing、fallback chain | 4社比較の provider 固定、mode tag、trace metadata |
+| STT | Local Whisper / API STT / custom command / Python plugin provider | transcript と State Cache / image / calibration の bundle 化 |
+| Vision Transport | vision-capable model への image input、汎用 vision analysis | camera calibration、map frame、known location への grounding |
+| MCP 接続 | stdio / HTTP MCP、OAuth、tool include/exclude、resources/prompts wrapper | robot motion tool の採用経路、Policy Gate、accepted-motion gate |
+| Plugin | custom tool、hook、model provider、STT/TTS provider、MCP 連携 | ER/VLA contract、Fusion、L3 handoff、Audit/Eval join |
+
+Hermes の server-side tool execution は、read-only status tool や operator-facing workflow には使える。ただし robot motion の採用経路では使わない。Bridge が final model output を受け取り、`action_map` で `gen_id` / `idempotency_key` を注入した上で、L3 Planning Core と MCP / Policy Gate へ渡す。
+
+Gemini Robotics-ER や OpenVLA は、Hermes が対象 API / modality / runtime を安全に扱える場合だけ Hermes transport に寄せる。Hermes が扱えない audio/image API、GPU worker、robotics-specific request/response shape は Bridge-managed direct adapter とする。どちらの場合も、trace、timeout、audit、L3 接続、secret 境界は Robotics Bridge Super-Box が所有する。
+
 ---
 
 ## 8. モード別・起動順序
@@ -611,11 +628,18 @@ Requires=warehouse-state-cache.service
 
 ## 12. References
 
-### Hermes Agent 一次情報（2026-05-26 参照）
+### Hermes Agent 一次情報（2026-06-22 参照）
 
 - [Hermes Agent — GitHub](https://github.com/NousResearch/hermes-agent)
 - [Release v0.13.0 / v2026.5.7 — The Tenacity Release](https://github.com/NousResearch/hermes-agent/releases/tag/v2026.5.7)
 - [Hermes Agent Documentation](https://hermes-agent.nousresearch.com/docs/)
+- [AI Providers](https://hermes-agent.nousresearch.com/docs/integrations/providers)
+- [MCP (Model Context Protocol)](https://hermes-agent.nousresearch.com/docs/user-guide/features/mcp)
+- [Provider Routing](https://hermes-agent.nousresearch.com/docs/user-guide/features/provider-routing)
+- [Fallback Providers](https://hermes-agent.nousresearch.com/docs/user-guide/features/fallback-providers)
+- [Vision & Image Paste](https://hermes-agent.nousresearch.com/docs/user-guide/features/vision)
+- [Voice & TTS / STT](https://hermes-agent.nousresearch.com/docs/user-guide/features/tts)
+- [Plugins](https://hermes-agent.nousresearch.com/docs/user-guide/features/plugins)
 - [Configuration Guide](https://hermes-agent.nousresearch.com/docs/user-guide/configuration)
 - [API Server (Gateway) Reference](https://hermes-agent.nousresearch.com/docs/user-guide/features/api-server)
 - [MCP Integration](https://hermes-agent.nousresearch.com/docs/user-guide/features/mcp)
