@@ -50,7 +50,7 @@ Google Gemini API の公式 model ページを 2026-06-23 に確認した。
 
 ## 4. ER 単体での Fusion の要否
 
-Fusion box は「ER / VLA / STT / WMS input が**食い違ったとき**の arbitration」を行う箱である（`docs/productization/06-oss-reuse-and-box-small-designs.md:125`）。その reason_code は **複数 model 出力の差**を分類する（`target_mismatch` / `action_mismatch` / `confidence_gap` / `unsafe_vla_action` / `needs_operator`、`docs/productization/06-oss-reuse-and-box-small-designs.md:134`）。
+Fusion box は「ER / VLA / STT / WMS input が**食い違ったとき**の arbitration」を行う箱である（`docs/productization/06-oss-reuse-and-box-small-designs.md:132`）。その reason_code は **複数 model 出力の差**を分類する（`target_mismatch` / `action_mismatch` / `confidence_gap` / `unsafe_vla_action` / `needs_operator`、`docs/productization/06-oss-reuse-and-box-small-designs.md:141`）。
 
 したがって **ER 単体（VLA なし）では cross-model disagreement が原理的に発生しない → Fusion はほぼ pass-through** になる。
 
@@ -58,7 +58,7 @@ Fusion box は「ER / VLA / STT / WMS input が**食い違ったとき**の arbi
 
 | 検査 | ER 単体での要否 | 置き場所（box） | 根拠 |
 |---|---|---|---|
-| task graph の矛盾 / cycle / 依存検出（NetworkX） | 必要 | **L3 Validator / L3 Handoff** | `docs/productization/05-decision-observability-and-tooling.md:158`・`docs/productization/06-oss-reuse-and-box-small-designs.md:148` |
+| task graph の矛盾 / cycle / 依存検出（NetworkX） | 必要 | **L3 Validator / L3 Handoff** | `docs/productization/05-decision-observability-and-tooling.md:160`・`docs/productization/06-oss-reuse-and-box-small-designs.md:148` |
 | 低 confidence -> operator clarification / reject | 必要 | **L3 Validator** | ER output の `operator_clarification_required` / `detections[].confidence`（`docs/mode-x-er/01-architecture-and-flow.md:140-147`）、Validator の confidence 検査（`docs/mode-x-er/01-architecture-and-flow.md:41`） |
 | 危険 / 低レベル出力の遮断 | 必要 | **L3 Handoff / Governance** | `forbidden_endpoint` / `low_level_action_present`（`docs/productization/06-oss-reuse-and-box-small-designs.md:152`） |
 
@@ -69,7 +69,7 @@ Fusion box は「ER / VLA / STT / WMS input が**食い違ったとき**の arbi
 Fusion が本領を発揮するのは ER + VLA、特に Nav2 だけでは表現できない局所操作（把持 / 配置 / ドッキング / 近接位置合わせ）が入るときである（`docs/mode-x-er-vla/04-openvla-use-cases-and-control-flow.md:15-22`）。
 
 - ER は「過去に俯瞰画像から立てた計画」、VLA は「掴む瞬間に手元カメラで見ている現実」。両者は食い違いうる。Fusion はその差を、物理動作の前に reason_code へ畳む（`docs/mode-x-er-vla/01-integration-architecture.md:17-48` Option A）。
-- ここで full arbitration（target / action / confidence / unsafe / operator）が立ち上がる。合格条件は L4F-G0〜G2（`docs/productization/06-oss-reuse-and-box-small-designs.md:136`）。
+- ここで full arbitration（target / action / confidence / unsafe / operator）が立ち上がる。合格条件は L4F-G0〜G2（`docs/productization/06-oss-reuse-and-box-small-designs.md:143`）。
 
 ## 6. box として残す商用価値と将来の位置づけ
 

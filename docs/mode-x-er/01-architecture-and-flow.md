@@ -7,7 +7,9 @@
 ## 全体像
 
 Mode X-ER は、L4 の Robotics Bridge Super-Box で audio / camera / state を束ね、
-Gemini Robotics-ER を Hermes transport または Bridge-managed direct adapter から呼ぶ。
+Gemini Robotics-ER を原則 **Hermes transport** から呼ぶ。Bridge-managed direct adapter
+または worker は、Hermes が対象 modality / runtime / response shape を扱えない場合の
+明示 fallback とする。
 L4 は model 判断を自作しないが、input context、transport 選択、timeout、trace、raw output audit、
 L3 handoff は所有する。L3 は ER の提案を既存実行基盤が理解できる command 候補へ変換し、
 L2 以降は既存の MCP / Policy Gate / Nav2 / Open-RMF 経路を使う。
@@ -99,7 +101,7 @@ Robotics Bridge Super-Box である。L4 は以下を所有する。
 
 - audio / transcript / image / state / calibration の input bundle
 - request id、cycle、timeout、cancellation
-- Hermes Agent Gateway 経由か direct adapter 経由かの選択
+- Hermes Agent Gateway 経由か direct adapter / worker 経由かの選択
 - provider call の trace / raw output audit
 - ER raw output から L3 Planning Core へ渡す内部 handoff
 
@@ -149,6 +151,20 @@ ER output の内部案:
 ```
 
 この output はまだ実行可能ではない。画像座標、曖昧な target、依存関係、古い state、緊急状態を含む可能性があるため、L3 で必ず正規化・検証する。
+
+## L4 transport selection
+
+Mode X-ER の L4 transport は Hermes-first とする。
+
+| transport | 位置づけ | 採用条件 |
+|---|---|---|
+| `hermes` | 既定の第一候補 | Hermes が対象 model / audio / image input / STT / provider fallback / OpenAI 互換 response を扱える。server-side motion tool execution は使わず、Bridge が final output を受けて L3 に渡す |
+| `direct` | 明示 fallback | Gemini Robotics-ER の API、audio / image modality、response envelope、latency 要件が Hermes 経由に合わない |
+| `worker` | GPU / VLA runtime 用 fallback | OpenVLA など別 process / GPU worker を使う必要がある。Mode X-ER 単体では原則使わず、Mode X-ER-VLA 側で扱う |
+
+比較 run では provider routing / fallback が公平性に影響するため、固定 provider leg と
+fallback-enabled leg を混ぜない。fallback を評価する場合は別条件として trace metadata に残す。
+どの transport でも、L3 Handoff に渡る input shape は同じにする。
 
 ## L3 の data
 

@@ -66,6 +66,7 @@ docs/
 | [06-oss-reuse-and-box-small-designs](productization/06-oss-reuse-and-box-small-designs.md) | L4 sub-box / Traffic / Navigation / Hardware / Eval の小設計と OSS 再利用方針 |
 | [07-layer-tool-decision-matrix](productization/07-layer-tool-decision-matrix.md) | layer / box ごとの OSS / tool 採用・候補・不採用・要 spike・採用条件 |
 | [08-navigation-hardware-eval-gates](productization/08-navigation-hardware-eval-gates.md) | Navigation / Hardware / Eval の acceptance gate と reason_code catalog |
+| [productization/l4](productization/l4/README.md) | L4 内部 sub-box の layer skeleton。Model Transport / Adapter の詳細設計 |
 
 ## mode-a/ — LLM単独交通管理
 
