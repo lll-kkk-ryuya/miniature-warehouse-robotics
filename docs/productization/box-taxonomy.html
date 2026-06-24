@@ -350,7 +350,7 @@
   <li><b>② Basic Vision が3分割</b>: <code>transport:hermes</code>（画像入力）＋ Input Context（camera/calibration）＋ L3 Visual Resolver（map 解決）。<code>provider_type</code> enum に vision が無く分配した結果。</li>
   <li><b>③ Provider Routing=plugin vs Model Transport=demoted</b>: どちらも Hermes transport で境界が柔らかい。</li>
   <li><b>④ Fusion の置き場</b>: Super-Box 配下 sub-box か L3 内 Validator 内包か（02:188 で境界が重なる）。</li>
-  <li><b>⑤ #319 とのレイヤ軸衝突</b>: 別 PR #319 が同じ 01 に L4–L0 レイヤ列を追加中。レイヤ⊥種別で直交＝最終形は両方併記が理想。</li>
+  <li><b>⑤ レイヤ軸（#319 統合済み）</b>: L4–L0 レイヤ列・map separator・Layer 凡例を本 PR に統合（#319 → #329 に取込）。レイヤ（RT クラス）⊥ 種別（box/sub-box/seam）の直交2軸を 01 に併記。</li>
 </ul>
 
 <footer>
