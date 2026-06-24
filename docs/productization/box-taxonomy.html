@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Productization Box 切り分け図解 — L4 Robotics Bridge Super-Box</title>
+<style>
+  :root{
+    --box:#2563eb; --box-bg:#eff6ff;
+    --sub:#16a34a; --sub-bg:#f0fdf4;
+    --seam:#ea580c; --seam-bg:#fff7ed;
+    --plugin:#9333ea; --plugin-bg:#faf5ff;
+    --demoted:#94a3b8; --demoted-bg:#f1f5f9;
+    --ink:#1e293b; --muted:#64748b; --line:#e2e8f0; --bg:#f8fafc; --card:#ffffff;
+    --l4:#eef2ff; --l3:#ecfeff; --l2:#fefce8; --l1:#fef2f2; --l0:#f5f3ff; --cross:#f0fdfa;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Noto Sans JP",Meiryo,sans-serif;
+    line-height:1.7;font-size:15px}
+  .wrap{max-width:1080px;margin:0 auto;padding:32px 20px 80px}
+  header.top{border-bottom:3px solid var(--box);padding-bottom:18px;margin-bottom:8px}
+  h1{font-size:26px;margin:0 0 6px}
+  h2{font-size:21px;margin:46px 0 14px;padding-left:10px;border-left:5px solid var(--box)}
+  h3{font-size:16px;margin:26px 0 10px;color:#334155}
+  p{margin:10px 0}
+  .lead{color:var(--muted);font-size:14px}
+  code{background:#f1f5f9;padding:1px 6px;border-radius:4px;font-size:.9em;
+    font-family:"SF Mono",Menlo,Consolas,monospace}
+  .note{background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:12px 16px;margin:16px 0;font-size:14px}
+  .meta{background:#f1f5f9;border-radius:8px;padding:10px 16px;font-size:13px;color:var(--muted);margin:14px 0}
+
+  /* badges */
+  .badge{display:inline-block;font-size:11px;font-weight:700;padding:2px 9px;border-radius:999px;
+    color:#fff;letter-spacing:.3px;vertical-align:middle}
+  .b-box{background:var(--box)} .b-sub{background:var(--sub)} .b-seam{background:var(--seam)}
+  .b-plugin{background:var(--plugin)} .b-demoted{background:var(--demoted)}
+
+  /* legend */
+  .legend{display:flex;flex-wrap:wrap;gap:10px;margin:16px 0}
+  .legend .item{background:var(--card);border:1px solid var(--line);border-radius:10px;
+    padding:10px 14px;flex:1 1 180px;min-width:180px}
+  .legend .item b{display:block;margin-bottom:3px}
+  .legend .item small{color:var(--muted);font-size:12.5px}
+
+  /* generic node card */
+  .node{border-radius:10px;padding:10px 12px;border:2px solid;background:var(--card);
+    font-size:13.5px;position:relative}
+  .node .t{font-weight:700;font-size:14px}
+  .node .s{color:var(--muted);font-size:12px;margin-top:2px}
+  .n-box{border-color:var(--box);background:var(--box-bg)}
+  .n-sub{border-color:var(--sub);background:var(--sub-bg)}
+  .n-seam{border-color:var(--seam);background:var(--seam-bg);border-style:dashed}
+  .n-plugin{border-color:var(--plugin);background:var(--plugin-bg)}
+  .n-demoted{border-color:var(--demoted);background:var(--demoted-bg);color:var(--muted)}
+  .n-demoted .t{text-decoration:line-through;text-decoration-color:#cbd5e1}
+
+  /* layered map */
+  .layer{border-radius:12px;padding:12px 14px;margin:10px 0;border:1px solid var(--line)}
+  .layer .lh{font-size:12px;font-weight:700;color:#475569;letter-spacing:.5px;margin-bottom:8px;
+    display:flex;justify-content:space-between;align-items:center}
+  .layer .lh .rt{font-weight:500;color:var(--muted);font-size:11px}
+  .row{display:flex;flex-wrap:wrap;gap:10px}
+  .row .node{flex:1 1 150px}
+  .L4{background:var(--l4)} .L3{background:var(--l3)} .L2{background:var(--l2)}
+  .L1{background:var(--l1)} .L0{background:var(--l0)} .LX{background:var(--cross)}
+  .arrow-down{text-align:center;color:#94a3b8;font-size:18px;line-height:1;margin:-2px 0}
+
+  /* super-box zoom */
+  .superbox{border:2px solid var(--box);background:var(--box-bg);border-radius:14px;padding:14px;margin:14px 0}
+  .superbox > .sbh{font-weight:700;color:var(--box);margin-bottom:4px}
+  .superbox > .sbs{font-size:12px;color:var(--muted);margin-bottom:12px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+  .transport-band{margin-top:8px;border:1.5px dashed var(--plugin);background:var(--plugin-bg);
+    border-radius:8px;padding:7px 10px;font-size:12px;color:#6b21a8}
+  .transport-band b{color:var(--plugin)}
+  .seam-out{display:flex;align-items:center;gap:8px;margin:12px 0 2px}
+  .seam-out .arrow{color:var(--seam);font-weight:700;font-size:16px}
+
+  /* horizontal flow */
+  .flow{display:flex;flex-wrap:wrap;align-items:stretch;gap:6px;margin:14px 0}
+  .flow .node{flex:1 1 110px;min-width:108px;display:flex;flex-direction:column;justify-content:center}
+  .flow .arr{display:flex;align-items:center;color:#94a3b8;font-weight:700;font-size:18px;padding:0 1px}
+  .flow .seamtag{font-size:10px;color:var(--seam);font-weight:700;text-align:center;align-self:center}
+  .hermes-lane{border:1.5px dashed var(--plugin);background:var(--plugin-bg);border-radius:10px;
+    padding:8px 12px;margin:6px 0 0;font-size:12.5px;color:#6b21a8}
+
+  /* compare panels */
+  .compare{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:14px 0}
+  .panel{border-radius:12px;padding:14px;border:1px solid var(--line);background:var(--card)}
+  .panel.bad{border-color:#fca5a5;background:#fef2f2}
+  .panel.good{border-color:#86efac;background:#f0fdf4}
+  .panel h4{margin:0 0 10px;font-size:14px}
+  .split-box{border:2px solid var(--box);border-radius:10px;overflow:hidden;background:#fff}
+  .split-box .half{padding:8px 10px;font-size:12.5px}
+  .split-box .h-hermes{background:#faf5ff;border-bottom:2px dashed #c084fc}
+  .split-box .h-bridge{background:#eff6ff}
+  .cut{position:relative}
+  .cut::after{content:"";position:absolute;left:0;right:0;top:50%;height:3px;background:repeating-linear-gradient(90deg,#ef4444 0 8px,transparent 8px 14px)}
+
+  /* tables */
+  table{border-collapse:collapse;width:100%;margin:14px 0;font-size:13px;background:var(--card)}
+  th,td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
+  th{background:#f1f5f9;font-size:12.5px}
+  td code{font-size:.85em}
+  tr:nth-child(even) td{background:#fbfdff}
+  .doc-cell{font-size:12px;color:#475569}
+  .impl-yes{color:var(--sub);font-weight:700}
+  .impl-no{color:#b45309;font-weight:700}
+
+  ul.tight{margin:8px 0;padding-left:22px} ul.tight li{margin:5px 0}
+  footer{margin-top:50px;padding-top:18px;border-top:1px solid var(--line);color:var(--muted);font-size:12.5px}
+  .kbd{font-family:monospace;background:#1e293b;color:#e2e8f0;padding:1px 7px;border-radius:4px;font-size:.85em}
+  @media(max-width:720px){.grid2,.grid3,.compare{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <h1>Productization Box 切り分け図解</h1>
+  <p class="lead">L4 Robotics Bridge Super-Box を中心とした「再利用 box / sub-box / seam / plugin / demoted」の分類と、各要素が紐づく設計 docs。</p>
+</header>
+
+<div class="meta">
+  正本: <code>docs/productization/01-commercial-box-map.md</code> §Box 種別と分類規則 ／
+  本ページはその図解（補足資料）。ブランチ <code>docs/productization-box-taxonomy</code>。
+  種別の定義・file:line は必ず <code>01</code>〜<code>08</code> の .md を一次ソースとする。
+</div>
+
+<p>あなたの「box とは個々を組み合わせて再利用できる単位」という原則に対し、元の docs は3つの食い違う分類（map=Hermes を1箱に隔離 / 表=各箱を Hermes列・Bridge列に<b>縦割り</b> / 小設計=4箱）が混在し、seam（境界の写像）まで「box」として並んでいました。これを <b>1つの種別体系</b>に統一したのが今回の切り分けです。</p>
+
+<!-- ===================== 凡例 ===================== -->
+<h2>0. 切り分けの 5 種別（凡例）</h2>
+<div class="legend">
+  <div class="item"><b><span class="badge b-box">box</span></b><small>安定した produces/consumes 契約を持ち、契約を変えず<b>丸ごと差し替え/省略</b>できる再利用単位。実体は ROS package と1:1とは限らない。</small></div>
+  <div class="item"><b><span class="badge b-sub">sub-box</span></b><small>親 box の入出力の一部を担う<b>内部ステージ</b>。親 interface を越えて単独 consume されない。親ごと差し替え。</small></div>
+  <div class="item"><b><span class="badge b-seam">seam</span></b><small>2 box 境界の<b>写像/変換</b>。新 schema を産まず出力が隣接 box の入力契約そのもの。常時随伴で省略不可。所有 box 配下。</small></div>
+  <div class="item"><b><span class="badge b-plugin">plugin</span></b><small>box の interface を変えず<b>中身の実装差を吸収</b>する差替軸。box でなく box 内部の注入点。</small></div>
+  <div class="item"><b><span class="badge b-demoted">demoted</span></b><small>box でないもの（Hermes transport 実装 / 設計実体ゼロ / seam の box 誤列挙）。所有 box の責務へ吸収。</small></div>
+</div>
+
+<div class="note">
+  <b>核心原則 — transport は box を割らない:</b> 「Hermes 経由か direct か」は box の interface 裏の実装選択
+  （<code>transport: hermes | direct | worker</code>）であって、箱の真ん中を Hermes/Bridge 線で割る話ではない。
+  だから旧 docs の「縦割り表」は box 境界ではなく <b>transport 実装ノート</b>として読み替えた。
+</div>
+
+<!-- ===================== 全体マップ ===================== -->
+<h2>1. 全体マップ（レイヤ × 種別）</h2>
+<p class="lead">縦＝リアルタイム性のレイヤ（L4 非RT … L0 即時）、色＝種別。L2 以下の7箱は安定アンカー。</p>
+
+<div class="layer L4">
+  <div class="lh"><span>L4 — 入力・知覚 / オーケストレーション</span><span class="rt">Non-RT / external API</span></div>
+  <div class="superbox" style="margin:0">
+    <div class="sbh">L4 Robotics Bridge Super-Box <span class="badge b-box">box</span></div>
+    <div class="sbs">= <code>warehouse_llm_bridge</code>（1:1・実装あり）。下に sub-box / seam を持つ親。</div>
+    <div class="row">
+      <div class="node n-sub"><div class="t">Input Context <span class="badge b-sub">sub</span></div><div class="s"><code>situation.py</code>・Situation を produce</div></div>
+      <div class="node n-sub"><div class="t">Model Adapter <span class="badge b-sub">sub</span></div><div class="s">ER/VLA/STT registry・<b>未実装</b></div></div>
+      <div class="node n-sub" style="border-style:dashed"><div class="t">Fusion <span class="badge b-sub">sub</span></div><div class="s">optional・未実装</div></div>
+      <div class="node n-seam"><div class="t">action_map <span class="badge b-seam">seam</span></div><div class="s">→ Governance</div></div>
+      <div class="node n-seam"><div class="t">MCP dispatch <span class="badge b-seam">seam</span></div><div class="s">→ Governance</div></div>
+      <div class="node n-demoted"><div class="t">Run Orchestration</div><div class="s">→ cycle に吸収</div></div>
+      <div class="node n-demoted"><div class="t">Trace / Audit</div><div class="s">→ trace root + Eval</div></div>
+      <div class="node n-demoted"><div class="t">Hermes-managed Transport</div><div class="s">→ transport:hermes</div></div>
+    </div>
+  </div>
+</div>
+<div class="arrow-down">▼</div>
+
+<div class="layer L3">
+  <div class="lh"><span>L3 — 司令・検証</span><span class="rt">Non-RT / Python</span></div>
+  <div class="row">
+    <div class="node n-box"><div class="t">L3 Robotics Planning Core <span class="badge b-box">box</span></div><div class="s">optional※（Mode X-ER で実体化・未実装）。先頭に <span class="badge b-seam" style="font-size:10px">seam</span> <b>L3 Handoff</b> を内包</div></div>
+  </div>
+</div>
+<div class="arrow-down">▼</div>
+
+<div class="layer L2">
+  <div class="lh"><span>L2 — 実行許可・交通管理</span><span class="rt">Soft-RT / Python + optional RMF</span></div>
+  <div class="row">
+    <div class="node n-box"><div class="t">Contract <span class="badge b-box">box</span></div><div class="s"><code>warehouse_interfaces</code>・凍結契約ハブ</div></div>
+    <div class="node n-box"><div class="t">Governance <span class="badge b-box">box</span></div><div class="s"><code>warehouse_mcp_server</code>+Policy Gate・motion gate</div></div>
+    <div class="node n-box"><div class="t">Traffic <span class="badge b-box">box</span></div><div class="s">X-lite⇄X-rmf は variant swap（optional=false）</div></div>
+  </div>
+</div>
+<div class="arrow-down">▼</div>
+
+<div class="layer L1">
+  <div class="lh"><span>L1 — 自律走行・安全</span><span class="rt">Hard-RT</span></div>
+  <div class="row">
+    <div class="node n-box"><div class="t">Navigation <span class="badge b-box">box</span></div><div class="s"><code>warehouse_nav2_bridge</code></div></div>
+    <div class="node n-box"><div class="t">Safety <span class="badge b-box">box</span></div><div class="s"><code>warehouse_safety</code>・上位 model 非依存</div></div>
+  </div>
+</div>
+<div class="arrow-down">▼</div>
+
+<div class="layer L0">
+  <div class="lh"><span>L0 — 物理安全</span><span class="rt">MCU / 即時</span></div>
+  <div class="row">
+    <div class="node n-box"><div class="t">Hardware <span class="badge b-box">box</span></div><div class="s"><code>firmware/</code>・Layer-0 clamp ≤0.3 m/s</div></div>
+  </div>
+</div>
+
+<div class="layer LX" style="margin-top:14px">
+  <div class="lh"><span>横断 — Eval / Observability</span><span class="rt">L4–L0 を横断</span></div>
+  <div class="row">
+    <div class="node n-box"><div class="t">Eval / Observability <span class="badge b-box">box</span></div><div class="s"><code>eval_sdk</code>+<code>warehouse_orchestrator</code>・trace/KPI を join。<code>box=</code> funnel は観測の集計軸（種別と別レイヤ）</div></div>
+  </div>
+</div>
+
+<!-- ===================== L4 ズーム ===================== -->
+<h2>2. L4 Super-Box の内部構造（ズーム）</h2>
+<p class="lead">Super-Box（=warehouse_llm_bridge）の中で、何が sub-box で、Hermes はどこに「transport として」入り、どこが seam で Governance へ抜けるか。</p>
+
+<div class="superbox">
+  <div class="sbh">L4 Robotics Bridge Super-Box <span class="badge b-box">box</span></div>
+  <div class="sbs">consumes: <code>StateSnapshot</code>(schemas.py) ／ produces: <code>Command</code>(schemas.py) ＋ trace root(<code>tracing.py</code>) ／ cycle・0 dispatch(<code>scheduler.py</code>)</div>
+
+  <div class="grid2">
+    <div class="node n-sub">
+      <div class="t">Input Context <span class="badge b-sub">sub-box</span></div>
+      <div class="s">音声/transcript/俯瞰画像/state/calibration を1つの bundle に。<code>situation.py</code> → 凍結 <code>Situation</code> を produce。</div>
+    </div>
+    <div class="node n-sub">
+      <div class="t">Model Adapter <span class="badge b-sub">sub-box</span> <span style="font-size:11px;color:#b45309">未実装</span></div>
+      <div class="s">LLM/ER/VLA/STT の transport 差を吸収する registry。</div>
+      <div class="grid3" style="margin-top:8px">
+        <div class="node n-sub" style="padding:6px 8px"><div class="t" style="font-size:12px">ER</div><div class="s">provider_type:er・opt</div></div>
+        <div class="node n-sub" style="padding:6px 8px"><div class="t" style="font-size:12px">VLA</div><div class="s">provider_type:vla・opt</div></div>
+        <div class="node n-sub" style="padding:6px 8px"><div class="t" style="font-size:12px">STT</div><div class="s">provider_type:stt・opt</div></div>
+      </div>
+      <div class="transport-band"><b>transport: hermes | direct | worker</b> ← Hermes はここ（interface 裏の実装選択）。<span class="badge b-plugin" style="font-size:10px">plugin</span> Provider Routing もここ。</div>
+    </div>
+  </div>
+
+  <div class="grid2" style="margin-top:10px">
+    <div class="node n-sub" style="border-style:dashed">
+      <div class="t">Fusion <span class="badge b-sub">sub-box</span> <span style="font-size:11px;color:var(--muted)">optional</span></div>
+      <div class="s">ER/VLA disagreement と confidence の調停。<b>単一 model では不使用</b>＝抜ける。未実装。</div>
+    </div>
+    <div class="node n-demoted">
+      <div class="t">Run Orchestration / Trace-Audit / API Server / Memory-Skills</div>
+      <div class="s"><b>demoted</b>: 設計実体ゼロ or Hermes 機能。cycle・trace root・transport:hermes へ吸収。</div>
+    </div>
+  </div>
+
+  <div class="seam-out">
+    <span class="arrow">└▶</span>
+    <div class="node n-seam" style="flex:1">
+      <div class="t">action_map <span class="badge b-seam">seam</span> ＋ MCP dispatch <span class="badge b-seam">seam</span></div>
+      <div class="s"><code>Command</code> → ToolCall（<code>gen_id</code>/<code>idempotency_key</code> を <b>Bridge が mint</b>・LLM 由来不可）→ <code>DispatchToolExecutor</code> → <b>Governance Box</b>。新 schema を産まないので box でなく seam。</div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== motion 採用経路 ===================== -->
+<h2>3. motion 採用経路（seam の流れ）</h2>
+<p class="lead">Hermes でモデルを呼んでも、<b>ロボットを動かす経路は Bridge が所有</b>。Hermes は横の transport レーンで、motion 経路に触れない。</p>
+
+<div class="flow">
+  <div class="node n-box"><div class="t" style="font-size:12.5px">L4 Super-Box</div></div>
+  <div class="arr">▶</div>
+  <div class="seamtag">action_map<br>seam</div>
+  <div class="arr">▶</div>
+  <div class="seamtag">MCP dispatch<br>seam</div>
+  <div class="arr">▶</div>
+  <div class="node n-box"><div class="t" style="font-size:12.5px">Governance</div></div>
+  <div class="arr">▶</div>
+  <div class="node n-box"><div class="t" style="font-size:12.5px">Traffic</div></div>
+  <div class="arr">▶</div>
+  <div class="node n-box"><div class="t" style="font-size:12.5px">Navigation</div></div>
+  <div class="arr">▶</div>
+  <div class="node n-box"><div class="t" style="font-size:12.5px">Safety</div></div>
+  <div class="arr">▶</div>
+  <div class="node n-box"><div class="t" style="font-size:12.5px">Hardware</div></div>
+</div>
+<div class="hermes-lane">
+  <b>Hermes-managed レーン（transport:hermes）</b>: provider 切替 / fallback / OpenAI 互換 API / MCP transport / vision / STT / memory・skills。
+  server-side tool 実行は read-only status・operator workflow のみ。<b>motion 採用には使わない</b>（Bridge が final output を受けて上の経路へ）。
+</div>
+
+<!-- ===================== Hermes vs Bridge ===================== -->
+<h2>4. なぜ「縦割り」をやめたか（box を割らない）</h2>
+<div class="compare">
+  <div class="panel bad">
+    <h4>❌ 旧 docs: 箱を Hermes/Bridge で縦割り</h4>
+    <div class="split-box cut">
+      <div class="half h-hermes">Hermes 列：provider 切替・fallback …</div>
+      <div class="half h-bridge">Bridge 列：request id・0 dispatch …</div>
+    </div>
+    <p class="s" style="font-size:12.5px;color:var(--muted);margin-top:10px">1つの「Model Transport Box」の真ん中を境界線が貫く。これでは <b>箱として入れ替えられない</b>（半分 Hermes・半分 Bridge）。</p>
+  </div>
+  <div class="panel good">
+    <h4>✅ 新: 1 box ＋ transport は内部の実装選択</h4>
+    <div class="node n-sub">
+      <div class="t">Model Adapter <span class="badge b-sub">sub-box</span></div>
+      <div class="s">contract（produces/consumes）は1つ。差し替え単位。</div>
+      <div class="transport-band"><b>transport: hermes | direct | worker</b>（interface 裏）</div>
+    </div>
+    <p class="s" style="font-size:12.5px;color:var(--muted);margin-top:10px">box は1ユニットのまま。Hermes 採用は内部の実装選択なので、<b>Hermes を direct/worker に丸ごと差し替え可能</b>。これが再利用の土台。</p>
+  </div>
+</div>
+<div class="note">
+  <b>安全核は box の真ん中を貫けない:</b> <code>MAX_LINEAR_VELOCITY=0.3</code>（<code>warehouse_interfaces/safety.py:18</code>）/
+  <code>gen_id</code>・<code>idempotency_key</code> mint（<code>action_map.py</code>＝Bridge mint・LLM 由来不可）/
+  <code>KNOWN_LOCATIONS</code> 9キー（<code>locations.py</code>）/ 0 dispatch は上位 model 非依存。
+  だから Governance / Safety / Hardware の <code>transport</code> は <b>n/a</b>（hermes と書くと motion gate が Hermes 線で貫かれる）。
+</div>
+
+<!-- ===================== docs 紐付け ===================== -->
+<h2>5. 各要素 → 紐づく docs と実体（詳細）</h2>
+<p class="lead">「どの docs に紐づくか」の一覧。productization は<b>再利用 box の保管設計</b>、architecture/mode-* は<b>その元になった設計正本</b>、repo は<b>実体/凍結契約</b>。</p>
+
+<table>
+  <thead><tr><th>要素</th><th>種別</th><th>productization docs</th><th>設計正本 (architecture / mode-*)</th><th>repo 実体 / 凍結契約</th></tr></thead>
+  <tbody>
+    <tr><td><b>L4 Robotics Bridge Super-Box</b></td><td><span class="badge b-box">box</span></td><td class="doc-cell">01:38 / 02 全体 / README:21</td><td class="doc-cell">architecture/08-llm-bridge-common</td><td class="impl-yes"><code>warehouse_llm_bridge</code></td></tr>
+    <tr><td>Input Context</td><td><span class="badge b-sub">sub</span></td><td class="doc-cell">01:37 / 06 §L4 Input Context / 02:36</td><td class="doc-cell">mode-a/08a（Situation 組立）</td><td class="impl-yes"><code>situation.py</code>・<code>Situation</code>(schemas.py)</td></tr>
+    <tr><td>Model Adapter</td><td><span class="badge b-sub">sub</span></td><td class="doc-cell">01:39 / 02 §保管場所・§ER-VLA / 06 §L4 Model Adapter</td><td class="doc-cell">mode-x-er/03-er-adapter-skeleton / mode-x-er-vla</td><td class="impl-no">未実装（proposal）</td></tr>
+    <tr><td>ER / VLA / STT</td><td><span class="badge b-sub">sub</span></td><td class="doc-cell">01:16-18 / 02:151-188</td><td class="doc-cell">mode-x-er/03 / mode-x-er-vla/02 (OpenVLA)</td><td class="impl-no">未実装</td></tr>
+    <tr><td>Fusion <small>(optional)</small></td><td><span class="badge b-sub">sub</span></td><td class="doc-cell">01:40 / 02:180-188 / 06 §L4 Fusion</td><td class="doc-cell">mode-x-er-vla/03-simulation-and-safety-gates</td><td class="impl-no">未実装</td></tr>
+    <tr><td><b>L3 Robotics Planning Core</b> <small>(optional※)</small></td><td><span class="badge b-box">box</span></td><td class="doc-cell">03 全体 / 06</td><td class="doc-cell">mode-x-er/02-l3-planning-core</td><td class="impl-no">未実装</td></tr>
+    <tr><td>L3 Handoff</td><td><span class="badge b-seam">seam</span></td><td class="doc-cell">06 §L3 Handoff / 03:11-19</td><td class="doc-cell">mode-x-er/01:104（「内部 handoff」）</td><td>正規化のみ（新 schema 無し）</td></tr>
+    <tr><td>action_map</td><td><span class="badge b-seam">seam</span></td><td class="doc-cell">01:60 / 02 §Bridge-owned</td><td class="doc-cell">mode-a/08a §アクション→MCP / architecture/15-mcp-platform</td><td class="impl-yes"><code>action_map.py</code></td></tr>
+    <tr><td>MCP dispatch</td><td><span class="badge b-seam">seam</span></td><td class="doc-cell">01 §分担 / 02</td><td class="doc-cell">architecture/15-mcp-platform</td><td class="impl-yes"><code>executor.py</code> <code>DispatchToolExecutor</code> → <code>warehouse_mcp_server/tools.py</code></td></tr>
+    <tr><td>Provider Routing</td><td><span class="badge b-plugin">plugin</span></td><td class="doc-cell">02:102</td><td class="doc-cell">Nous Hermes 公式 (provider-routing)</td><td>Hermes 側（transport:hermes 内）</td></tr>
+    <tr><td><b>Contract</b></td><td><span class="badge b-box">box</span></td><td class="doc-cell">01:42 / 05 §Contract</td><td class="doc-cell">architecture/16-repository-and-conventions</td><td class="impl-yes"><code>warehouse_interfaces</code>（schemas/safety/locations/stores）</td></tr>
+    <tr><td><b>Governance</b></td><td><span class="badge b-box">box</span></td><td class="doc-cell">01:43 / 05 §Governance</td><td class="doc-cell">architecture/12（Policy Gate）/ 15-mcp-platform</td><td class="impl-yes"><code>warehouse_mcp_server</code>・<code>gen_check.py</code></td></tr>
+    <tr><td><b>Traffic</b> <small>(variant swap)</small></td><td><span class="badge b-box">box</span></td><td class="doc-cell">01:44 / 06 §Traffic</td><td class="doc-cell">mode-a/11a / mode-c/11c / shared/09-navigation-internals</td><td class="impl-yes"><code>warehouse_traffic</code>・<code>warehouse_rmf_adapter</code></td></tr>
+    <tr><td><b>Navigation</b></td><td><span class="badge b-box">box</span></td><td class="doc-cell">01:45 / 06 §Navigation / 08 §Navigation</td><td class="doc-cell">shared/09-navigation-internals</td><td class="impl-yes"><code>warehouse_nav2_bridge</code></td></tr>
+    <tr><td><b>Safety</b></td><td><span class="badge b-box">box</span></td><td class="doc-cell">01:46 / 06 §Safety / 08</td><td class="doc-cell">architecture/12（Emergency Guardian 50ms）</td><td class="impl-yes"><code>warehouse_safety</code>・<code>MAX_LINEAR_VELOCITY</code>(interfaces/safety.py:18)</td></tr>
+    <tr><td><b>Hardware</b></td><td><span class="badge b-box">box</span></td><td class="doc-cell">01:47 / 06 §Hardware / 08 §Hardware</td><td class="doc-cell">shared/02-hardware-design / architecture/12 (Layer0)</td><td class="impl-yes"><code>firmware/</code>・<code>safety_clamp.h</code></td></tr>
+    <tr><td><b>Eval / Observability</b></td><td><span class="badge b-box">box</span></td><td class="doc-cell">01:48 / 06 §Eval / 08 §Eval</td><td class="doc-cell">architecture/20-dev-quality / doc21 eval_sdk</td><td class="impl-yes"><code>eval_sdk</code>・<code>warehouse_orchestrator</code></td></tr>
+    <tr><td>Run Orchestration / Trace-Audit / Hermes Transport / API Server / Model Transport / Memory-Skills / MCP Conn / Plugin Ext / Basic Vision</td><td><span class="badge b-demoted">demoted</span></td><td class="doc-cell">01 map・01 §分担 / 02 §Hermes 表</td><td class="doc-cell">Nous Hermes 公式（各機能）</td><td>transport:hermes 実装裏 / cycle / trace root へ吸収</td></tr>
+  </tbody>
+</table>
+
+<h3>編集した docs（このタクソノミがどの .md に書かれたか）</h3>
+<table>
+  <thead><tr><th>doc</th><th>このタクソノミでの役割</th></tr></thead>
+  <tbody>
+    <tr><td><code>01-commercial-box-map.md</code></td><td><b>種別の正本</b>（§Box 種別と分類規則を新設）＋ map 注記 ＋ 分担表を transport ノートへ読み替え</td></tr>
+    <tr><td><code>02-l4-robotics-bridge-box.md</code></td><td>Hermes 表を「transport:hermes 実装」へ読み替え ＋ module 案に実体対応（situation/tracing/scheduler/executor）と未実装注記</td></tr>
+    <tr><td><code>04-box-storage-and-reuse-guidelines.md</code></td><td>Box Manifest に <code>kind</code>/<code>optional</code>/<code>transport</code> ＋「凍結 file:line に解決する値のみ・未凍結は <code>(wire/未凍結)</code>」ルール ＋ gate family 帰属</td></tr>
+    <tr><td><code>06-oss-reuse-and-box-small-designs.md</code></td><td>L3 Handoff を「独立 box」→「L3 Core 配下の seam」へ降格 ＋ L4 sub-box の orienting 注記</td></tr>
+    <tr><td><code>05 / 07 / 08 / README</code></td><td>05=「<code>box=</code> は観測の集計軸で別レイヤ」注記 ／ 07=matrix に種別注記 ／ 08=gate family 帰属と multi-owner seam ／ README=flow を「Super-Box（内部 sub-box）」へ</td></tr>
+    <tr><td><code>mode-x-er/* ・ mode-x-er-vla/*</code></td><td><b>編集なし（cross-check のみ）</b>。既に「内部 handoff」表記で seam と整合。drift なし。</td></tr>
+  </tbody>
+</table>
+
+<!-- ===================== 要判断 ===================== -->
+<h2>6. まだ綺麗に割り切れていない点（要判断）</h2>
+<p class="lead">機械チェック（<code>check_consistency</code> 0 ERROR）＋意味監査（<code>/consistency-audit</code>）は通し、実エラー2件（safety.py のパス・manifest status 自己矛盾）は修正済み。その上で残る判断点:</p>
+<ul class="tight">
+  <li><b>① L3 Core の <code>optional</code> が経路依存</b>: 現状 Mode A/B/C は LLM の Command JSON → action_map 直行で L3 Core を経由しない。L3 Core は Mode X-ER で初めて実体化＝「Mode によって box 境界が動く」。<span style="color:var(--muted)">図中 ※</span></li>
+  <li><b>② Basic Vision が3分割</b>: <code>transport:hermes</code>（画像入力）＋ Input Context（camera/calibration）＋ L3 Visual Resolver（map 解決）。<code>provider_type</code> enum に vision が無いため発明せず分配した結果＝唯一「1 box 1 interface」がフレる箇所。</li>
+  <li><b>③ Provider Routing=plugin vs Model Transport=demoted</b>: どちらも Hermes transport。routing を差替軸=plugin、transport 本体を demoted と分けたが境界は柔らかい。</li>
+  <li><b>④ Fusion の置き場</b>: Super-Box 配下 sub-box としたが <code>02:188</code>「VLA は必ず Fusion→L3 を通す」で L3 と境界が重なる。L3 内 Validator 内包案も残る。</li>
+  <li><b>⑤ #319 とのレイヤ軸衝突</b>: 別 PR #319 が同じ <code>01</code> に L4–L0 レイヤ列を追加中。レイヤ⊥種別で直交＝最終形は両方併記が理想（merge 順は要調整）。</li>
+</ul>
+<p>①〜④は <code>01</code>〜<code>03</code> の <b>Deferred open-decisions</b> に列挙済み（contract 昇格・Mode 依存の表現は別 contract PR 案件）。</p>
+
+<footer>
+  <p>このページは <code>docs/productization/box-taxonomy.html</code>（補足図解）。種別・file:line の一次ソースは <code>01</code>〜<code>08</code> の .md。
+  検証: <code>scripts/check_consistency.py</code> 0 ERROR（4 WARN は STATUS sha 鮮度・無関係）／ <code>/consistency-audit</code> clean（実エラー2件修正後）。
+  コード引用は <code>action_map.py</code>・<code>executor.py</code> <code>DispatchToolExecutor</code>・<code>warehouse_interfaces/safety.py:18</code>・<code>locations.py</code>・<code>gen_check.py</code> を実 Read で裏取り済み。</p>
+  <p>ブラウザで開く: <span class="kbd">open docs/productization/box-taxonomy.html</span></p>
+</footer>
+
+</div>
+</body>
+</html>
