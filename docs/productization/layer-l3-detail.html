@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L3 詳細図 — Robotics Planning Core Box</title>
+<style>
+  :root{
+    color-scheme: dark;
+    /* 落ち着いた Cursor 風ニュートラル・ダーク（背景=黒に近い無彩色 / 文字=はっきりした白） */
+    --bg:#1a1a1a; --bg2:#141414; --card:#222222; --card2:#262626; --surface:#2d2d2d;
+    --ink:#ededed; --muted:#c4c4c4; --faint:#8f8f8f; --line:#3a3a3a; --code:#141414;
+    --badge-ink:#1a1a1a; --head:#dcdcdc;
+    --box:#7aa2f7;     --box-bg:rgba(122,162,247,.13);
+    --sub:#9ece6a;     --sub-bg:rgba(158,206,106,.12);
+    --seam:#e0af68;    --seam-bg:rgba(224,175,104,.12);
+    --plugin:#bb9af7;  --plugin-bg:rgba(187,154,247,.12);
+    --demoted:#9a9a9a; --demoted-bg:rgba(154,154,154,.10);
+    --red:#f7768e; --yellow:#e0c07a; --teal:#7dcfff;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Noto Sans JP",Meiryo,sans-serif;
+    line-height:1.7;font-size:15px;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1080px;margin:0 auto;padding:32px 20px 80px}
+  header.top{border-bottom:3px solid var(--box);padding-bottom:18px;margin-bottom:8px}
+  h1{font-size:25px;margin:0 0 6px} h2{font-size:20px;margin:44px 0 12px;padding-left:10px;border-left:5px solid var(--box)}
+  h3{font-size:15.5px;margin:24px 0 9px;color:var(--head)}
+  p{margin:10px 0} .lead{color:var(--muted);font-size:14px}
+  a{color:var(--box);text-decoration:none} a:hover{text-decoration:underline}
+  code{background:var(--code);padding:1px 6px;border-radius:4px;font-size:.88em;font-family:"SF Mono",Menlo,Consolas,monospace;color:var(--ink)}
+  .dref{color:var(--teal);font-size:.82em;font-family:"SF Mono",Menlo,monospace;white-space:nowrap}
+  .note{background:var(--seam-bg);border:1px solid rgba(224,175,104,.4);border-radius:8px;padding:12px 16px;margin:16px 0;font-size:14px}
+  .meta{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 16px;font-size:13px;color:var(--muted);margin:14px 0}
+  .nav{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0}
+  .nav a{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:7px 13px;font-size:13px;font-weight:600}
+  .nav a:hover{border-color:var(--box);text-decoration:none}
+
+  .badge{display:inline-block;font-size:11px;font-weight:700;padding:2px 9px;border-radius:999px;color:var(--badge-ink);letter-spacing:.3px;vertical-align:middle}
+  .b-box{background:var(--box)} .b-sub{background:var(--sub)} .b-seam{background:var(--seam)} .b-plugin{background:var(--plugin)} .b-demoted{background:var(--demoted);color:var(--ink)}
+
+  .node{border-radius:10px;padding:11px 13px;border:2px solid;background:var(--card);font-size:13.5px;margin:8px 0}
+  .node .t{font-weight:700;font-size:14px} .node .s{color:var(--muted);font-size:12.5px;margin-top:3px}
+  .n-box{border-color:var(--box);background:var(--box-bg)} .n-sub{border-color:var(--sub);background:var(--sub-bg)}
+  .n-seam{border-color:var(--seam);background:var(--seam-bg);border-style:dashed} .n-plugin{border-color:var(--plugin);background:var(--plugin-bg)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+
+  .superbox{border:2px solid var(--box);background:var(--box-bg);border-radius:14px;padding:16px;margin:14px 0}
+  .sbh{font-weight:700;color:var(--box);font-size:16px;margin-bottom:2px} .sbs{font-size:12px;color:var(--muted);margin-bottom:12px}
+
+  .steps{counter-reset:st;margin:14px 0}
+  .step{position:relative;border:1px solid var(--line);background:var(--card);border-radius:10px;padding:11px 14px 11px 46px;margin:8px 0;font-size:13.5px}
+  .step::before{counter-increment:st;content:counter(st);position:absolute;left:12px;top:11px;width:24px;height:24px;border-radius:50%;
+    background:var(--box);color:var(--badge-ink);font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:center}
+  .step b{color:var(--ink)} .step .s{color:var(--muted);font-size:12.5px;margin-top:2px}
+  .step.seam{border-color:var(--seam);border-left:4px solid var(--seam)} .step.seam::before{background:var(--seam)}
+  .step-down{text-align:left;padding-left:22px;color:var(--faint);font-size:15px;line-height:1;margin:-3px 0}
+
+  table{border-collapse:collapse;width:100%;margin:12px 0;font-size:13px;background:var(--card)}
+  th,td{border:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top}
+  th{background:var(--surface);font-size:12.5px;color:var(--head)} td code{font-size:.85em}
+  tr:nth-child(even) td{background:rgba(255,255,255,.02)}
+  .impl-yes{color:var(--sub);font-weight:700} .impl-no{color:var(--yellow);font-weight:700}
+  ul.tight{margin:8px 0;padding-left:22px} ul.tight li{margin:5px 0}
+  footer{margin-top:50px;padding-top:18px;border-top:1px solid var(--line);color:var(--muted);font-size:12.5px}
+  @media(max-width:720px){.grid2{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <h1>L3 詳細図 — Robotics Planning Core Box</h1>
+  <p class="lead">L4 の model output を「安全経路に通せる command 候補」へ変換する deterministic planning box。<b>未実装＝proposal（docs only）</b>・optional（経路依存）。Core+Plugin 構造で site 差替。</p>
+</header>
+
+<div class="nav">
+  <a href="layer-l4-detail.html">◂ L4 詳細図</a>
+  <a href="box-taxonomy.html">全体（box-taxonomy）</a>
+  <a href="03-l3-planning-core-box.md">正本: 03 l3-planning-core-box.md</a>
+  <a href="../mode-x-er/02-l3-planning-core.md">mode-x-er/02</a>
+</div>
+
+<div class="meta">
+  正本: <a href="03-l3-planning-core-box.md"><code>03-l3-planning-core-box.md</code></a> ／ <code>docs/mode-x-er/02-l3-planning-core.md</code>。
+  <b>実コードは未実装</b>（ws/src に L3 package なし）＝引用は docs の exact line。現行 Mode A/B/C は LLM の <code>Command</code> JSON → <code>action_map</code> 直行で L3 を経由しない（§6 optional 注記）。
+</div>
+
+<!-- pipeline -->
+<h2>1. パイプライン（RawModelOutput → Command candidate）</h2>
+<p class="lead">L3 は実行許可を持たない。Command candidate は L2 の MCP / Policy Gate で reject されうる。<span class="dref">03:11-21</span></p>
+
+<div class="steps">
+  <div class="step seam"><b>L3 Handoff（先頭 seam）</b> <span class="badge b-seam" style="font-size:10px">seam</span>
+    <div class="s"><code>RawModelOutput</code> → <code>RoboticsPlan draft</code> に正規化。新 schema を産まず、出力は次の Validator の入力契約そのもの＝独立 box でなく L3 Core 配下の seam。<span class="dref">03:11-13 / 06 §L3 Handoff / mode-x-er/01:104</span></div></div>
+  <div class="step-down">▼</div>
+  <div class="step"><b>Validator</b>
+    <div class="s">実行候補として扱えるか判定（JSON 変換ではない）。最も site-specific な rule 設計。<span class="dref">03:35-66</span></div></div>
+  <div class="step-down">▼</div>
+  <div class="step"><b>Visual Resolver</b>
+    <div class="s">画像上の object target → map target へ変換（calibration→homography→snap）。<span class="dref">03:68-99</span></div></div>
+  <div class="step-down">▼</div>
+  <div class="step"><b>Task Graph Executor</b>
+    <div class="s"><code>task_graph</code> を一度に全 dispatch しない（DAG・topological order・lifecycle）。<span class="dref">03:100-120</span></div></div>
+  <div class="step-down">▼</div>
+  <div class="step"><b>Command Compiler</b>
+    <div class="s">ready task を既存安全経路（<code>Command</code>）へ落とす。<span class="dref">03:122-139</span></div></div>
+  <div class="step-down">▼</div>
+  <div class="step"><b>Command candidate</b> → L2 へ
+    <div class="s">既存 <code>action_map</code> / MCP / Policy Gate 経路へ（L3 は許可しない）。<span class="dref">03:18-21</span></div></div>
+</div>
+
+<!-- core + plugin -->
+<h2>2. Core + Plugin 構造（商用再利用の肝）</h2>
+<p class="lead">L3 を「変えない core」と「現場ごとに差し替える plugin」に分ける。<span class="dref">03:23-33</span></p>
+<div class="grid2">
+  <div class="node n-box"><div class="t">Core（変更頻度: 低）<span class="badge b-box">box</span></div><div class="s">parse・schema validation・DAG 検証・task lifecycle・audit・compiler interface。<span class="dref">03:27-29</span></div></div>
+  <div class="node n-plugin"><div class="t">Plugin（差替軸）<span class="badge b-plugin">plugin</span></div><div class="s">
+    <b>Site Policy</b>（known robot / allowed action / confidence / state freshness / emergency）／ <b>Visual</b>（calibration / homography / valid polygon / snap）／ <b>Compiler</b>（WarehouseNav / RmfTask / ArmManipulation）／ <b>Store</b>（in-memory / file / Redis / DB）。<span class="dref">03:30-33</span></div></div>
+</div>
+
+<!-- sub box detail -->
+<h2>3. 各 box（stage）の細部</h2>
+
+<h3>Validator Box <span class="dref">03:35-66</span></h3>
+<div class="grid2">
+  <div class="node n-box"><div class="t">再利用 core</div><div class="s">JSON parse・<code>schema_version</code> check・required field・stable error code・validation report shape・audit record。<span class="dref">03:41-49</span></div></div>
+  <div class="node n-plugin"><div class="t">site 差替 plugin</div><div class="s">known robot registry・allowed action・target reference rule・confidence policy・stale state policy・emergency policy・operator clarification policy。<span class="dref">03:50-58</span></div></div>
+</div>
+<div class="note">商用価値: provider が ER/VLA/LLM/WMS に変わっても<b>危険な output を同じ形で止められる</b>・顧客に reject 理由を説明できる・regression fixture を作りやすい。<span class="dref">03:60-64</span></div>
+
+<h3>Visual Resolver Box <span class="dref">03:68-99</span></h3>
+<div class="steps">
+  <div class="step"><b>pixel / bbox</b></div>
+  <div class="step-down">▼</div>
+  <div class="step"><b>camera calibration → homography</b><div class="s">site ごと: camera id・map frame・homography matrix。<span class="dref">03:89-96</span></div></div>
+  <div class="step-down">▼</div>
+  <div class="step"><b>map(x, y) → valid polygon → known location snap</b><div class="s">MVP は known location に snap できた場合だけ Command Compiler へ。<b>coordinate goal は未凍結＝別 gate</b>。<span class="dref">03:77-79,98</span></div></div>
+</div>
+
+<h3>Task Graph Executor Box <span class="dref">03:100-120</span></h3>
+<div class="node n-box"><div class="s">
+  <b>core</b>: DAG check・topological order・lifecycle（<code>pending / ready / running / succeeded / failed / cancelled</code>）・duplicate dispatch guard・timeout/failed handling IF。<b>plugin</b>: completion source・task timeout・retry・durable store・operator intervention。最初は process memory、案件化で <code>TaskGraphStore</code> を file/Redis/DB へ差替。<span class="dref">03:104-120</span>
+</div></div>
+
+<h3>Command Compiler Box <span class="dref">03:122-139</span></h3>
+<table>
+  <thead><tr><th>Compiler（plugin）</th><th>出力先</th><th>用途</th></tr></thead>
+  <tbody>
+    <tr><td><code>WarehouseNavCompiler</code></td><td>existing <code>Command</code></td><td>X-lite / Nav2 Bridge</td></tr>
+    <tr><td><code>RmfTaskCompiler</code></td><td>existing <code>Command</code> + RMF profile</td><td>X-rmf / Open-RMF</td></tr>
+    <tr><td><code>ArmManipulationCompiler</code></td><td>future action candidate</td><td>把持・配置・ドッキング</td></tr>
+  </tbody>
+</table>
+<div class="note"><b>Compiler の禁止事項</b>（<span class="dref">03:134-139</span>）: <code>gen_id</code>/<code>idempotency_key</code> を作らない（＝L4 の action_map 責務）・velocity を compile しない・ER/VLA の low-level action をそのまま採用しない・known location 以外の coordinate goal を未凍結のまま既存 Command に混ぜない。</div>
+
+<!-- gates -->
+<h2>4. Acceptance Gates（L3-G0〜G6）<span class="dref">03:174-184</span></h2>
+<table>
+  <thead><tr><th>Gate</th><th>内容</th></tr></thead>
+  <tbody>
+    <tr><td>L3-G0</td><td>malformed JSON / unknown robot / unknown action が <b>0 dispatch</b></td></tr>
+    <tr><td>L3-G1</td><td>red/blue fixture が known location に snap できる</td></tr>
+    <tr><td>L3-G2</td><td><code>after</code> 依存で ready task が 1 件だけ出る</td></tr>
+    <tr><td>L3-G3</td><td>ready task が既存 <code>Command</code> validation を通る</td></tr>
+    <tr><td>L3-G4</td><td>coordinate target は未凍結時に compile されない</td></tr>
+    <tr><td>L3-G5</td><td>ER/VLA route / velocity / low-level action が無視される</td></tr>
+    <tr><td>L3-G6</td><td>raw output・normalized plan・command candidate を audit で追跡できる</td></tr>
+  </tbody>
+</table>
+
+<!-- VLA -->
+<h2>5. L4 / VLA との関係 <span class="dref">03:186-194</span></h2>
+<p class="lead">VLA は L3 を直接置換せず、以下のいずれかで接続する（どの場合も最後は既存安全経路に渡せる command candidate）。</p>
+<ul class="tight">
+  <li>VLA grounding report を Visual Resolver / Validator の<b>補助情報</b>にする。<span class="dref">03:190</span></li>
+  <li>VLA action candidate を <b>Safety Compiler</b> の入力にする。<span class="dref">03:191</span></li>
+  <li>Sim-first evaluator で fixture 化し、L3 の rule を増やす材料にする。<span class="dref">03:192</span></li>
+</ul>
+
+<!-- docs mapping -->
+<h2>6. L3 各要素 → docs / 実体</h2>
+<table>
+  <thead><tr><th>要素</th><th>種別</th><th>docs（正本）</th><th>実体</th></tr></thead>
+  <tbody>
+    <tr><td>L3 Planning Core</td><td><span class="badge b-box">box</span></td><td><a href="03-l3-planning-core-box.md">03</a> 全体 / mode-x-er/02</td><td class="impl-no">未実装（docs only）</td></tr>
+    <tr><td>L3 Handoff（先頭）</td><td><span class="badge b-seam">seam</span></td><td>03:11-19 / 06 §L3 Handoff</td><td class="impl-no">未実装</td></tr>
+    <tr><td>Validator / Visual Resolver / Task Graph Executor / Command Compiler</td><td>core+plugin</td><td>03:35-139</td><td class="impl-no">未実装</td></tr>
+    <tr><td>site / visual / compiler / store plugin</td><td><span class="badge b-plugin">plugin</span></td><td>03:30-33</td><td class="impl-no">未実装</td></tr>
+    <tr><td>funnel <code>box=l3_validator</code></td><td>観測軸</td><td><a href="05-decision-observability-and-tooling.md">05</a> §L3 Validator</td><td>—</td></tr>
+  </tbody>
+</table>
+
+<div class="note">
+  <b>※ optional の意味（要判断）</b>: 既存 Mode A/B/C は LLM の <code>Command</code> JSON → <code>action_map</code> が L3 相当を担い、独立 L3 package は未在。L3 Core が事実上必須になるのは <b>Mode X-ER 経路</b>（ER/VLA の曖昧 output を deterministic plan に正規化する必要がある）。つまり「Mode によって box 境界が動く」＝<a href="box-taxonomy.html">box-taxonomy §6</a> の open-decision ①。
+</div>
+
+<footer>
+  <p>このページは <code>docs/productization/layer-l3-detail.html</code>（補足図解・ダーク）。一次ソース: <a href="03-l3-planning-core-box.md">03</a> / <code>docs/mode-x-er/02-l3-planning-core.md</code>。L3 は未実装＝引用は docs の exact line。</p>
+  <p>← <a href="layer-l4-detail.html">L4 詳細図</a> ／ <a href="box-taxonomy.html">box-taxonomy</a></p>
+</footer>
+
+</div>
+</body>
+</html>
