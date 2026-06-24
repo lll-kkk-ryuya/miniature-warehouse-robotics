@@ -218,3 +218,26 @@ L4 transport の再利用判断では、Nous Research の Hermes Agent 公式 do
 - [Vision & Image Paste](https://hermes-agent.nousresearch.com/docs/user-guide/features/vision)
 - [Voice & TTS](https://hermes-agent.nousresearch.com/docs/user-guide/features/tts)
 - [Plugins](https://hermes-agent.nousresearch.com/docs/user-guide/features/plugins)
+
+## 知覚の2系統（物体＝カメラ / 幾何＝LiDAR）
+
+「どこに何があるか」は性質の異なる2系統で別々に取得する。混同しない。
+
+1. **物体の「何がどこ」（赤箱 / 青箱 など意味的 target）** = 俯瞰カメラ（Logicool C922n・床上
+   120〜150cm にアーム固定）+ Gemini Robotics-ER の vision。ER が画像から detections（pixel）を
+   出し、L3 Visual Resolver が pixel→homography→map→known location に変換する。**ER へ渡すのは
+   音声と同時刻の俯瞰フレーム1枚**（指示時点の静止）。LiDAR は色・物体クラスを判別できないため
+   **物体認識には使わない**。音声を STT で text 化せず ER へ直接入力する点は
+   [`04-er-input-modalities-and-stt.md`](04-er-input-modalities-and-stt.md) を正本にする。
+2. **ロボット位置・障害物の「どこ」（幾何）** = minicar 搭載 **ORBBEC MS200**（360° LiDAR）→
+   `/bot{n}/scan` → **AMCL 自己位置推定（常時）/ costmap 障害物検知（常時）**。これは L1 で
+   リアルタイムに回り、ER/L3 の指示サイクルとは独立。加えて固定 **RPLiDAR A1**（俯瞰）が外部
+   トラッキング補正（オプション）。
+3. **地図そのもの** = 事前に **SLAM（minicar の MS200 を teleop で1回走らせて生成）**。固定
+   RPLiDAR A1 は1地点で遮蔽が出るため SLAM には使わない。
+
+採用する役割分担: **ER＝画像で物体認識 → L3＝known location（棚位置）へ snap → L1＝MS200/costmap
+で走行中の衝突回避を常時**。ER への入力（カメラ画像＋音声）は意味的 target の認識用、走行の安全・
+自己位置は L1 の LiDAR / AMCL が常時担う。両者は **別レイヤ・別センサ**である。
+
+正本: [`shared/09-navigation-internals.md`](../shared/09-navigation-internals.md)（センサ役割・AMCL・SLAM・§111-119）/ [`shared/02-hardware-design.md`](../shared/02-hardware-design.md)（俯瞰カメラ :243-249・RPLiDAR :191）。

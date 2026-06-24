@@ -11,7 +11,8 @@ before/after panels, and an element→docs mapping table. The HTML is a companio
 figure; the `.md` design docs stay the source of truth. Cite traceable `file:line`
 for every claim (docs-first).
 
-Worked example: `docs/productization/box-taxonomy.html`.
+Worked examples: `docs/productization/box-taxonomy.html`, `docs/productization/layer-l4-detail.html`
+(rich component vocabulary — see §4), `docs/mode-x-er/mode-x-er-explainer.html` (per-mode explainer).
 Template (copy this): `.claude/skills/html-explainer/template/dark-explainer.html`.
 
 ## Invariants
@@ -64,9 +65,42 @@ badges uses `--badge-ink`; accents limited to the set above for cohesion; to rec
 - Diagram without `file:line`, or cite from memory.
 - Replace the primary `.md` with the HTML (the HTML is a companion figure).
 
+## 4. Rich component vocabulary & diagram patterns (reuse)
+
+Beyond the base template, layered-architecture / data-flow / mode-branch diagrams reuse a richer
+component set, proven in `docs/productization/layer-l4-detail.html` and
+`docs/mode-x-er/mode-x-er-explainer.html`. Same `:root`; copy the classes from their `<style>` to
+stay self-contained (no CDN — keep the §Invariants).
+
+Components: `.superbox`+`.sbh`/`.sbs` (parent box wrapping nested sub-boxes); `.sub-nest`+`.nh`
+(nested frame / layer band — vary `border-color` per layer); `.nest-arrow` (▼); `.node` +
+`.n-box`/`.n-sub`/`.n-seam`/`.n-plugin`/`.n-demoted` (kind color-coding); `.legend`+`.item`/`.sw`;
+`.role` (small tag: 実装あり / 未実装 / optional / 一部使用); `.transport-band` (impl choice behind the
+interface, e.g. `transport: hermes|direct|worker`); `.seam-out`+`.arrow`+`.gov-chip` (box exit seam →
+other box); `.steps`+`.step`(+`.seam`) (numbered cycle/flow); `.flow`+`.arr`+`.lyr` (horizontal layer
+chain); `.optline` (mono one-line data/schema chain); `.ex`(+`.b3`/`.c`) (A/B/C compare);
+`.grid2`/`.grid3`; `.note`/`.safe`.
+
+Patterns: layered arch (stack `.sub-nest` bands L4→L0); state-return loop (dashed `.node` back-edge);
+typed chain (`.optline` RawModelOutput→…→Command candidate); nested box (`.superbox` ⊃ `.sub-nest` +
+`.seam-out`); A/B/C compare (`.ex`, symmetric pros/cons); per-stage "if-absent" rationale (yellow `.s`);
+**implementation scope** (used / unused = dimmed + center strike via
+`.unused{opacity+grayscale; ::after center line}` / partial = text label / optional = label);
+per-mode explainer (one self-contained HTML per mode).
+
+Citation convention (this repo): productization docs = exact line (`02:67-91`); `architecture/` ・
+`mode-*` = file §heading; code = symbol-anchored; frozen values (e.g. `0.3 m/s`) = symbol + source
+doc:line. State it in the footer.
+
+Checks (besides tag balance): no body hex (`grep '#[0-9a-fA-F]{6}'` after `</style>` = 0); every used
+class defined in `<style>`; internal `href` resolve; for big revisions, adversarially verify citations
+against the source doc:line before declaring done.
+
 ## References
 
 - Template: `.claude/skills/html-explainer/template/dark-explainer.html`
-- Example: `docs/productization/box-taxonomy.html`
+- Examples: `docs/productization/box-taxonomy.html`, `layer-l4-detail.html` (rich vocabulary),
+  `layer-l3-detail.html`, `docs/mode-x-er/mode-x-er-explainer.html` (per-mode explainer)
+- Rich vocabulary & patterns: this doc §4
 - Guidance: `.codex/guidance/docs-first.md`, `.codex/guidance/consistency-check.md`
-- Claude version: `.claude/skills/html-explainer/SKILL.md`
+- Claude version: `.claude/skills/html-explainer/SKILL.md` (§4 matches this)

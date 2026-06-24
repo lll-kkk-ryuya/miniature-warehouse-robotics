@@ -88,6 +88,16 @@
   .impl-yes{color:var(--sub);font-weight:700} .impl-no{color:var(--yellow);font-weight:700}
   ul.tight{margin:8px 0;padding-left:22px} ul.tight li{margin:5px 0}
   footer{margin-top:50px;padding-top:18px;border-top:1px solid var(--line);color:var(--muted);font-size:12.5px}
+  /* mode x-er / x-er-vla diagram helpers */
+  .flow{display:flex;flex-wrap:wrap;align-items:stretch;gap:6px;margin:10px 0}
+  .flow .node{flex:1 1 130px;min-width:112px;margin:0;display:flex;flex-direction:column;justify-content:center}
+  .flow .arr{display:flex;align-items:center;color:var(--faint);font-weight:700;font-size:16px}
+  .lyr{display:inline-block;font-size:10px;font-weight:800;padding:1px 7px;border-radius:5px;color:var(--badge-ink);margin-right:7px;vertical-align:middle}
+  .optline{font-family:"SF Mono",Menlo,Consolas,monospace;font-size:12px;color:var(--muted);background:var(--code);border-radius:6px;padding:8px 11px;margin:8px 0;line-height:1.7;overflow-x:auto}
+  .optline b{color:var(--ink)}
+  /* implementation-scope: unused = dimmed + center strike line */
+  .unused{position:relative;opacity:.5;filter:grayscale(.65)}
+  .unused::after{content:"";position:absolute;left:8px;right:8px;top:50%;height:2px;background:var(--faint);transform:translateY(-1px);border-radius:2px}
   @media(max-width:720px){.grid2,.grid3{grid-template-columns:1fr}}
 </style>
 </head>
@@ -286,8 +296,324 @@
   Mode A 演出。<code>character_llm</code> node が <code>/negotiation/{start,turn,proposal,abort}</code>・<code>/character/speech</code> を publish。司令官発火 = <code>Command.start_negotiation</code>（additive optional 契約・<code>contract</code> ラベル）→ scheduler dispatch → <code>start_negotiation_tool_call</code> → <code>/negotiation/start</code>。proposal 取込は gen±2 受理ゲート（<code>accept_proposal</code>）通過時のみ situation に注入（凍結 <code>Situation</code> 不変・<code>extra="ignore"</code>）。<b>publish-only=no-actuation</b>。<span class="dref">doc14 §交渉モード / persona.py / negotiation.py / character_node.py</span>
 </div></div>
 
+<!-- mode x-er -->
+<h2>5. Mode X-ER 詳細図（ER sub-box + L3 Planning Core が実体化）</h2>
+<p class="lead">§0/§3 で「未実装＝proposal」とした <b>Model Adapter（ER）sub-box</b> と <b>L3 Planning Core box</b> が実体化するモード。Gemini Robotics-ER 単独（VLA は §6）で「見る・理解する・計画する」を担い、L4 は model 判断を作らず <b>input context / transport / timeout / trace / L3 handoff</b> を所有する。L2 以降は既存の安全経路をそのまま使う。<span class="dref">mode-x-er/README §位置づけ / mode-x-er/01 §L4 の data・§L4 transport selection</span></p>
+
+<div class="note">
+  <b>なぜここで L3 が要るか</b>: Mode A/B/C は LLM の <code>Command</code> JSON → action_map 直行で L3 を経由しない（§4）。Mode X-ER は ER の曖昧 output（画像座標・曖昧 target・依存・古い state・緊急）を deterministic に正規化する必要があるため、<b>ここで初めて L3 Planning Core が必須</b>になる。L3 内部の細部は <a href="layer-l3-detail.html">L3 詳細図</a>。<span class="dref">mode-x-er/01 §全体像</span>
+</div>
+
+<h3>5.0 Mode X-ER の実装スコープ（L4 box：使う / 使わない）</h3>
+<p class="lead">§0 の L4 Super-Box 図を <b>Mode X-ER MVP の実装スコープ</b>で色分けしたもの。<b>使わない box は暗く＋真ん中に取消線</b>、<b>一部使用</b>は文章で範囲を明記、将来/条件付きは <b>optional</b>。分類根拠は各 dref。</p>
+<div class="legend">
+  <div class="item"><span class="sw" style="background:var(--sub)"></span>使用する（MVP で実装）</div>
+  <div class="item"><span class="sw" style="background:var(--faint)"></span>使用しない（暗く＋取消線）</div>
+  <div class="item"><span class="sw" style="background:var(--seam)"></span>一部使用（文章で範囲明記）</div>
+  <div class="item"><span class="role">optional</span> 将来 / 条件付き</div>
+</div>
+
+<div class="superbox">
+  <div class="sbh">L4 Robotics Bridge Super-Box <span class="badge b-box">box</span> — Mode X-ER MVP スコープ</div>
+  <div class="sbs">明色＝使う、暗く＋取消線＝使わない、<span class="role">一部使用</span>／<span class="role">optional</span>＝文章で範囲を明記。</div>
+
+  <div class="sub-nest">
+    <div class="nh">▼ 内部 sub-box（入力 → モデル → 調停）</div>
+    <div class="node n-sub"><div class="t">① Input Context <span class="badge b-sub">sub-box</span> <span class="role" style="color:var(--sub);border-color:var(--sub)">使用</span></div><div class="s">
+      <code>situation.py</code>。音声＋<b>指示時点の俯瞰1枚</b>＋（最小 state）を <code>ErTaskRequest</code> に。<b>実装する</b>。<span class="dref">situation.py / mode-x-er/04 §STT の要否</span>
+    </div></div>
+    <div class="nest-arrow">▼</div>
+    <div class="node n-sub"><div class="t">② Model Adapter（registry）<span class="role" style="color:var(--seam);border-color:var(--seam)">一部使用</span></div><div class="s">
+      registry の <b>ER leg のみ使用</b>（<code>provider_type:er</code>）。VLA/STT leg は Mode X-ER では使わない。
+      <div class="grid3" style="margin-top:8px">
+        <div class="node n-sub" style="padding:6px 8px;margin:0"><div class="t" style="font-size:12px">ER <span class="role" style="color:var(--sub);border-color:var(--sub)">使用</span></div><div class="s"><code>provider_type:er</code></div></div>
+        <div class="node n-sub unused" style="padding:6px 8px;margin:0"><div class="t" style="font-size:12px">VLA</div><div class="s">使用しない（→ Mode X-ER-VLA）</div></div>
+        <div class="node n-sub" style="padding:6px 8px;margin:0"><div class="t" style="font-size:12px">STT <span class="role">optional</span></div><div class="s">一部使用：既定 OFF・audit/fallback のみ</div></div>
+      </div>
+      <div class="transport-band"><b>transport: hermes（第一候補）</b>｜ direct（fallback）＝<b>使用</b>（Hermes-first）。<span class="dref">mode-x-er/01 §L4 transport selection / 04 §STT の要否</span></div>
+    </div></div>
+    <div class="nest-arrow">▼</div>
+    <div class="node n-sub unused" style="border-style:dashed"><div class="t">③ Fusion <span class="badge b-sub">sub-box</span> <span class="role">optional</span></div><div class="s">
+      <b>使用しない</b>：ER 単体は cross-model arbitration が無く pass-through。2 model 目（VLA 等）投入時に活性化＝<b>将来 seam として残す optional</b>。<span class="dref">mode-x-er/04 §4 ER 単体での Fusion・§6</span>
+    </div></div>
+  </div>
+
+  <div class="sub-nest" style="border-color:var(--demoted);background:var(--demoted-bg)">
+    <div class="nh" style="color:var(--faint)">▼ Super-Box が直接所有する核（demoted）</div>
+    <div class="grid2">
+      <div class="node n-box"><div class="t">司令官サイクル / 0 dispatch <span class="role" style="color:var(--sub);border-color:var(--sub)">使用</span></div><div class="s"><code>scheduler.py</code>。実装する。</div></div>
+      <div class="node n-box"><div class="t">trace root / Langfuse <span class="role" style="color:var(--sub);border-color:var(--sub)">使用</span></div><div class="s"><code>tracing.py</code>。実装する。</div></div>
+    </div>
+    <div class="node n-demoted unused" style="margin-top:8px"><div class="t">Memory / Skills</div><div class="s">使用しない（Phase 4 比較 run では強制 OFF）。<span class="dref">productization/02 §Hermes 表（Memory/Skills）</span></div></div>
+  </div>
+
+  <div class="seam-out">
+    <span class="arrow">└▶</span>
+    <div class="node n-seam" style="flex:1 1 320px;margin:0"><div class="t">action_map ＋ MCP dispatch seam <span class="badge b-seam">seam</span> <span class="role" style="color:var(--sub);border-color:var(--sub)">使用</span></div><div class="s">
+      Command → ToolCall（<code>gen_id</code>/<code>idempotency_key</code> mint）→ Governance。<b>実装する</b>。<span class="dref">action_map.py / executor.py</span>
+    </div></div>
+    <span class="arrow">▶</span>
+    <div class="gov-chip">Governance Box</div>
+  </div>
+</div>
+
+<div class="note">
+  <b>L2 以降の実行 profile</b>: <b>X-lite（Nav2 Bridge REST）＝使用する</b>（MVP）。<b>X-rmf（Open-RMF）＝一部使用 / optional</b>（再評価候補・複数台予約や狭路交渉が要るときのみ）。VLA 経路・Mode X-ER-VLA は §6。<span class="dref">mode-x-er/01 §X-lite と X-rmf / mode-x-er-vla/01</span>
+</div>
+
+<h3>5.1 データフロー（L4 → L3 → L2 → L1/L0）</h3>
+
+<div class="sub-nest">
+  <div class="nh"><span class="lyr" style="background:var(--plugin)">L4</span>入力・知覚 / オーケストレーション — Non-RT / external API</div>
+  <div class="node n-sub"><div class="t">Input Context bundle <span class="badge b-sub">sub-box</span></div><div class="s">
+音声（<b>ER へ直接</b>・STT 既定 OFF）＋ 単一固定俯瞰カメラの<b>指示時点の1枚（音声と同時刻）</b> ＋ 固定 <code>calibration_id</code> ＋（最小/任意 state）を <code>ErTaskRequest</code> へ<b>軽量にまとめる（変換しない）</b>。物体認識はカメラ+ER、自己位置/障害物は L1 の LiDAR/AMCL（別系統）。<span class="dref">mode-x-er/04 §STT の要否 / 01 §知覚の2系統</span>
+  </div></div>
+  <div class="nest-arrow">▼</div>
+  <div class="node n-sub"><div class="t">Gemini Robotics-ER Adapter <span class="badge b-sub">Model Adapter</span></div><div class="s">
+    input: audio / transcript / overhead image / state JSON。output: transcript / interpreted_intent / detections / task_graph。<b>ER は Nav2 / ROS / Jetson / <code>/cmd_vel</code> を叩かない</b>。
+    <div class="transport-band"><b>transport: hermes（第一候補）| direct（fallback）</b> ← <b>Hermes Gateway を第一候補 transport</b>に（main の Hermes-first 方針）。音声/画像 API の robotics 実証は未凍結＝未対応時のみ direct adapter（interface 裏の選択・box を割らない）。<span class="dref">mode-x-er/01 §L4 transport selection / 04 §STT の要否</span></div>
+  </div></div>
+  <div class="nest-arrow">▼</div>
+  <div class="node n-box" style="border-style:dashed"><div class="t">RoboticsPlan draft <span class="role">未凍結 robotics_plan_draft.v0</span></div><div class="s">
+    model output を<b>直接 actuation しない内部表現</b>。画像座標・曖昧 target・依存・古い state を含みうるため、必ず L3 で正規化・検証する。<span class="dref">mode-x-er/01 §L4 の data / 03 §RoboticsPlan Draft 最小形</span>
+  </div></div>
+</div>
+
+<div class="nest-arrow">▼</div>
+
+<div class="sub-nest" style="border-color:var(--teal);background:rgba(125,207,255,.05)">
+  <div class="nh" style="color:var(--teal)"><span class="lyr" style="background:var(--teal)">L3</span>Robotics Planning Core — Non-RT / Python（<a href="layer-l3-detail.html">詳細図</a>）</div>
+  <div class="flow">
+    <div class="node n-box"><div class="t" style="font-size:12.5px">Validator</div><div class="s">schema / known robot / allowed action / confidence / state freshness</div></div>
+    <div class="arr">▶</div>
+    <div class="node n-box"><div class="t" style="font-size:12.5px">Visual Resolver</div><div class="s">pixel → homography → map → known_location / unresolved</div></div>
+    <div class="arr">▶</div>
+    <div class="node n-box"><div class="t" style="font-size:12.5px">Task Graph Executor</div><div class="s"><code>after</code> 依存を保持・ready task のみ</div></div>
+    <div class="arr">▶</div>
+    <div class="node n-box"><div class="t" style="font-size:12.5px">Command Compiler</div><div class="s">ready task → 既存 <code>Command</code></div></div>
+  </div>
+  <div class="optline">RawModelOutput → RoboticsPlan draft → <b>ValidationReport</b>（未凍結）+ NormalizedPlan → ResolvedTarget → ReadyTask → Command candidate</div>
+  <div class="s" style="margin-top:6px;color:var(--muted)">出力＝<b>Command candidate</b>（実行許可ではない。MCP / Policy Gate が reject しうる）。4 stage は型付き中間生成物を産む typed normalizer。<b>completion 判定 / 二重 dispatch 防止 = L3 Executor</b>（ER は依存提案のみ）、<b>calibration / map frame の最終責任 = L3 Resolver</b>（ER の pixel/bbox は入力）。<span class="dref">mode-x-er/01 §L3 の data / 03 §責務分離</span></div>
+</div>
+
+<div class="seam-out">
+  <span class="arrow">└▶</span>
+  <div class="node n-seam" style="flex:1 1 320px;margin:0"><div class="t">action_map seam（§3 と同じ Bridge-owned 出口）<span class="badge b-seam">seam</span></div><div class="s">
+    Command candidate → ToolCall。<code>gen_id</code> / <code>idempotency_key</code> は <b>model output でなく Bridge / action_map が注入</b>（ER に冪等キーを作らせない）。<span class="dref">mode-x-er/01 §L2 以降の data / action_map.py</span>
+  </div></div>
+</div>
+
+<div class="sub-nest" style="border-color:var(--seam);background:var(--seam-bg)">
+  <div class="nh" style="color:var(--seam)"><span class="lyr" style="background:var(--seam)">L2</span>実行許可・交通管理 — Soft-RT / Python + optional RMF</div>
+  <div class="node n-box"><div class="t">Warehouse MCP Server + Policy Gate</div><div class="s">stale / duplicate / battery / emergency / location を拒否 → <b>accepted motion only</b>。</div></div>
+  <div class="grid2" style="margin-top:8px">
+    <div class="node n-box"><div class="t">X-lite（MVP 採用）</div><div class="s">Nav2 Bridge REST <code>POST /api/v1/navigate|wait|stop</code> → Nav2。</div></div>
+    <div class="node n-box" style="border-style:dashed"><div class="t">X-rmf（optional・再評価候補）</div><div class="s">Open-RMF Task API → custom Fleet Adapter → Nav2。複数台予約・狭路交渉向け。</div></div>
+  </div>
+</div>
+
+<div class="nest-arrow">▼</div>
+
+<div class="flow">
+  <div class="node n-box"><div class="t" style="font-size:12px"><span class="lyr" style="background:var(--red)">L1</span>Hard-RT</div><div class="s">Jetson namespaced Nav2（/bot1,/bot2）・collision_monitor / twist_mux / Emergency Guardian</div></div>
+  <div class="arr">▶</div>
+  <div class="node n-box"><div class="s">Wi-Fi / UDP / XRCE-DDS → micro-ROS Agent</div></div>
+  <div class="arr">▶</div>
+  <div class="node n-box"><div class="t" style="font-size:12px"><span class="lyr" style="background:var(--box)">L0</span>MCU / 即時</div><div class="s">ESP32 firmware ×2・clamp ≤0.3 m/s / proximity stop / bumper stop</div></div>
+</div>
+<div class="node n-sub" style="border-style:dashed;border-color:var(--faint)"><div class="t">↩ 状態の戻り（次 turn の入力）</div><div class="s">
+  bot odom / scan / battery → micro-ROS Agent → ROS 2 → <b>State Cache</b> → Robotics Bridge の次 turn 入力 → ER の state JSON。この閉ループがあるため Mode X-ER は1発 pipeline でなく<b>知覚・再計画サイクル</b>になり、§5.1 冒頭の State Cache snapshot 入力と Validator の state freshness 検証が要る。<span class="dref">mode-x-er/01 §状態の戻り</span>
+</div></div>
+<p class="lead"><span class="dref">フロー全体の正本: mode-x-er/01 §全体像（L4→L3→L2→L1/L0 の ASCII 図・§状態の戻り）/ mode-x-er/README §標準フロー</span></p>
+
+<h3>5.2 ER の入出力契約と安全の非対称性</h3>
+<div class="grid2">
+  <div class="node n-sub"><div class="t">ErTaskRequest（ER へ送る上限）<span class="role">案・未凍結</span></div><div class="s">
+    <code>instruction_audio_ref</code> / <code>transcript</code> / <code>overhead_image_ref</code> / <code>state_snapshot_ref</code> / <code>calibration_id</code> / <code>known_robots</code> / <code>known_locations</code> / <code>allowed_actions</code>=navigate|wait|stop|yield|charge / <code>output_contract</code>。<span class="dref">mode-x-er/03 §ErTaskRequest 案</span>
+  </div></div>
+  <div class="node n-box"><div class="t">RoboticsPlan draft（ER から受ける）</div><div class="s">
+    <code>schema_version</code> / <code>plan_id</code> / <code>source_model</code> / <code>transcript</code> / <code>interpreted_intent</code> / <code>detections[]</code>{pixel,confidence} / <code>task_graph[]</code>{id,robot,action,target,after} / <code>operator_clarification_required</code>。<span class="dref">mode-x-er/01 §L4 の data / 03 §RoboticsPlan Draft 最小形</span>
+  </div></div>
+</div>
+<div class="safe">
+  <b>ER へ渡さないもの</b>: Nav2 Bridge URL / ROS topic 名 / Jetson service endpoint / MCP internal tool name / <code>/cmd_vel</code> / ESP32・motor command。<br>
+  <b>ER に作らせないもの</b>: <code>gen_id</code> / <code>idempotency_key</code>（Bridge / action_map が注入）。<code>source_model</code> は audit 用で<b>実行分岐に使わない</b>（L3 は内容・state・calibration・profile で判断）。<span class="dref">mode-x-er/03 §責務分離・§RoboticsPlan Draft 最小形 / 01 §L2 以降の data</span>
+</div>
+
+<h3>5.3 X-lite と X-rmf（実行 profile）</h3>
+<table>
+  <thead><tr><th>profile</th><th>実行経路</th><th>使う場面</th><th>採用状態</th></tr></thead>
+  <tbody>
+    <tr><td><code>x_lite</code></td><td>Bridge → MCP / Policy Gate → Nav2 Bridge REST → Nav2</td><td>赤箱/青箱の視覚認識・順序付き移動・単純な2台制御</td><td class="impl-yes">MVP 採用</td></tr>
+    <tr><td><code>x_rmf</code></td><td>Bridge → MCP / Policy Gate → Open-RMF Task API → Fleet Adapter → Nav2</td><td>複数台の予約制御・狭路/交差点の交通交渉・RMF waypoint 化できる visual target</td><td class="impl-no">再評価候補</td></tr>
+  </tbody>
+</table>
+<p class="lead">X-rmf は Mode X-ER の本質ではなく optional。まず X-lite で ER 認識・L3 変換・既存 MCP/Nav2 接続を検証する。<span class="dref">mode-x-er/01 §X-lite と X-rmf / README §Mode 名の扱い</span></p>
+
+<h3>5.4 Integration Gates（G0–G6）</h3>
+<table>
+  <thead><tr><th>Gate</th><th>内容</th><th>失敗時</th></tr></thead>
+  <tbody>
+    <tr><td>G0 offline parse</td><td>fixture raw output が <code>RoboticsPlan draft</code> に正規化できる</td><td>adapter 修正</td></tr>
+    <tr><td>G1 validator</td><td>invalid robot/action/target/confidence/stale/emergency を <b>0 dispatch</b></td><td>L3 policy 修正</td></tr>
+    <tr><td>G2 visual resolver</td><td>fixture image の red/blue target が known location へ snap</td><td>calibration / resolver 修正</td></tr>
+    <tr><td>G3 task graph</td><td><code>after</code> 依存が守られる</td><td>executor 修正</td></tr>
+    <tr><td>G4 command compile</td><td>ready task が既存 <code>Command</code> validation を通る</td><td>compiler 修正</td></tr>
+    <tr><td>G5 X-lite sim</td><td>MCP / Policy Gate / Nav2 Bridge まで sim で通る</td><td>L2 接続修正</td></tr>
+    <tr><td>G6 X-rmf eval</td><td>X-rmf が X-lite より有利なタスクで価値を示す</td><td>X-rmf defer</td></tr>
+  </tbody>
+</table>
+<p class="lead"><span class="dref">mode-x-er/03 §Integration Gates / README §実装フェーズ案（XER0–XER7）</span></p>
+
+<!-- mode x-er-vla -->
+<h2>6. Mode X-ER-VLA 詳細図（VLA + Fusion sub-box が実体化）</h2>
+<p class="lead">Mode X-ER の派生ではなく <b>別モード</b>。§0/§3 の <b>Fusion sub-box</b> と VLA（OpenVLA 等）が実体化する。VLA の主目的は<b>移動ではなく、移動後の局所操作</b>（把持 / 配置 / ドッキング / 近接位置合わせ）。移動だけの task は Mode X-ER で完結させる。<b>専用の全体図解は <a href="../mode-x-er-vla/mode-x-er-vla-overview.html">mode-x-er-vla-overview.html</a></b>（本節はその L4 視点の要約）。<span class="dref">mode-x-er-vla/README §位置づけ / 04 §結論 / mode-x-er-vla-overview.html</span></p>
+
+<div class="note">
+  <b>未凍結の内部案</b>: <code>VlaSubtaskRequest</code> / <code>VlaActionCandidate</code> / <code>ManipulationSkillResult</code> / <code>SafetyCompiler</code> は Mode X-ER-VLA <b>内部案</b>で、ROS topic / REST API / config key / <code>warehouse_interfaces</code> frozen contract を追加しない。実装前に <b>contract PR で凍結</b>する（docs に無い契約/型/topic を発明しない）。<span class="dref">mode-x-er-vla/04 §状態バナー(冒頭) / README §未凍結事項</span>
+</div>
+
+<div class="safe">
+  <b>共通の安全境界</b>（どの統合方式でも不変）: ER / VLA output を <code>/cmd_vel</code> / Nav2 action / Jetson service / ESP32 firmware へ直接流さない。velocity / motor / low-level action はそのまま物理実行しない。<code>gen_id</code> / <code>idempotency_key</code> は model に作らせない。最終 actuation は MCP / Policy Gate / Nav2 / Open-RMF / Layer0 safety を通す。<span class="dref">mode-x-er-vla/README §位置づけ（安全境界）</span>
+</div>
+
+<h3>層別の責務分担（担う / 担わない）</h3>
+<p class="lead">VLA を足しても各層の境界は不変。特に <b>L3 は motor controller ではなく、工程制御・状態遷移・実行候補の安全変換</b>を担う。<span class="dref">mode-x-er-vla/04 §役割分担</span></p>
+<table>
+  <thead><tr><th>層</th><th>担うこと</th><th>担わないこと</th></tr></thead>
+  <tbody>
+    <tr><td>Gemini Robotics-ER</td><td>intent 理解・高レベル task graph・再計画・operator clarification</td><td><code>/cmd_vel</code>・Nav2 action・gripper command の直接生成</td></tr>
+    <tr><td>L3 Planning Core</td><td>task graph 状態管理・ready 判定・ER/VLA output 検証・compile 境界</td><td>wheel / arm / gripper のリアルタイム制御</td></tr>
+    <tr><td>OpenVLA / VLA</td><td>局所画像と言語 subtask から grounding / action candidate を提案</td><td>高レベル fleet planning・emergency 判定・冪等 key 生成</td></tr>
+    <tr><td>L2 MCP / Policy Gate</td><td>stale / duplicate / battery / emergency / location の最終実行許可</td><td>model の推論・物体認識</td></tr>
+    <tr><td>L1 Nav2 / controller</td><td>移動・局所経路追従・controller 実行</td><td>task graph の意味理解</td></tr>
+    <tr><td>L0 firmware</td><td>速度 clamp・proximity stop・bumper stop など即時安全</td><td>高レベル判断</td></tr>
+  </tbody>
+</table>
+
+<h3>6.1 ER+VLA 統合の3案（Option A / B / C）</h3>
+<div class="ex"><div class="tag">A</div><div class="body">
+  <b>ER Primary + VLA Cross-Check</b>。ER が <code>RoboticsPlan draft</code>、VLA は visual grounding / target confidence の cross-check（<code>VlaGroundingReport</code>）。
+  <div class="optline"><b>ER</b>: audio/image/state → RoboticsPlan draft　＋　<b>VLA</b>: image/state/candidate target → VlaGroundingReport<br>→ <b>Fusion Validator</b> → Visual Resolver → Task Graph Executor → Command Compiler → MCP / Policy Gate</div>
+  利点: X-ER 設計を壊しにくい・安全な cross-check・低 confidence / disagreement を operator clarification へ戻しやすい。　弱点: VLA の action 能力をあまり使わない・ER と VLA の disagreement policy が必要。<span class="dref">mode-x-er-vla/01 §Option A</span>
+</div></div>
+<div class="ex b3"><div class="tag">B</div><div class="body">
+  <b>ER Planner + VLA L3 Candidate Generator</b>。ER が high-level task graph、VLA が Visual Resolver / action candidate を補助。
+  <div class="optline"><b>ER</b>: voice+image+state → task_graph/intent　＋　<b>VLA</b>: image+state+task_graph → grounded target / action candidate<br>→ Validator → <b>Safety Compiler</b> → Command candidate → MCP / Policy Gate</div>
+  利点: ER=自然言語/高レベル task・VLA=視覚 grounding/action の役割分担・L3 の一部代行というユーザー意図に近い・action 寄り output も扱いやすい。　弱点: Safety Compiler の設計が要る・VLA output を既存 <code>Command</code> へ落とす境界を慎重に。<span class="dref">mode-x-er-vla/01 §Option B</span>
+</div></div>
+<div class="ex c"><div class="tag">C</div><div class="body">
+  <b>Sim-First ER+VLA Policy Evaluation</b>。実機 command path 接続前に Isaac Sim / offline fixture で policy candidate として評価。
+  <div class="optline">recorded/sim image + text + fake state → ER+VLA → integrated candidate → <b>simulator-only evaluator</b> → score / failure analysis → later: Fusion Validator / Safety Compiler</div>
+  利点: 実機前に相互作用を観察・OpenVLA runtime/GPU/latency 検証・失敗を golden fixture 化。　弱点: 実機 E2E まで遠い・Isaac Sim の scene/camera/object labels/robot model 整備が前提。<span class="dref">mode-x-er-vla/01 §Option C</span>
+</div></div>
+<div class="note">
+  <b>初期判断</b>: <b>Option C → A → B</b> の順。まず sim/offline で input-output を観察 → grounding 補助に使えれば A → action candidate 生成に使えれば B。どの option でも ER/VLA から直接 Nav2 / ROS / Jetson / ESP32 を叩かせない。<span class="dref">mode-x-er-vla/01 §初期判断 / README §初期採用判断</span>
+</div>
+
+<h3>6.2 把持/配置 subtask の制御フロー（到着判定は ER でなく L3）</h3>
+<p class="lead">例:「赤い箱へ行って、赤い箱の中の赤いボールを掴んで、トレーに置いて」。ER が高レベル task_graph（navigation + manipulation の <code>kind</code>）を提案し、<b>VLA subtask は L3 が到着・前提を確認した後にだけ起動</b>する。<span class="dref">mode-x-er-vla/04 §典型フロー</span></p>
+<div class="optline">ER task_graph: t1 navigation/navigate red_box_area → t2 <b>manipulation/grasp</b> red_ball after t1 → t3 navigation/navigate tray_area after t2 → t4 <b>manipulation/place</b> tray after t3<br><span style="color:var(--faint)">※ <code>command_action</code>=既存 Command へ compile する移動系のみ。<code>skill</code>(grasp/place)=Mode X-ER-VLA 内部 subtask で既存 Command 契約へ入れない。</span></div>
+<div class="steps">
+  <div class="step"><b>Validator</b><div class="s">robot / kind / command_action / skill / target / graph / state freshness / emergency を検証</div></div>
+  <div class="step-down">▼</div>
+  <div class="step"><b>Visual Resolver</b><div class="s">red_box_area / tray_area を known location へ解決。未凍結の coordinate goal は compile しない</div></div>
+  <div class="step-down">▼</div>
+  <div class="step"><b>Task Graph Executor</b><div class="s">初回 cycle は <b>t1 だけ ready</b>。t2 / t3 / t4 は pending</div></div>
+  <div class="step-down">▼</div>
+  <div class="step"><b>Command Compiler → L2 / L1</b><div class="s">t1 を既存 <code>Command(navigate)</code> へ → MCP / Policy Gate / Nav2 が実行</div></div>
+  <div class="step-down">▼</div>
+  <div class="step"><b>Completion 判定</b><div class="s"><b>L3 が</b> Nav2 result / State Cache pose / task timeout / emergency を見て t1.completed | t1.failed（ER の主観で判断しない）</div></div>
+  <div class="step-down">▼</div>
+  <div class="step seam"><b>VLA subtask 起動</b> <span class="badge b-sub" style="font-size:10px">manipulation</span><div class="s">t1.completed 後、L3 が t2 を ready にし、限定 <code>VlaSubtaskRequest</code> を OpenVLA へ（§6.3）</div></div>
+  <div class="step-down">▼</div>
+  <div class="step"><b>Manipulation result</b><div class="s">grasp 成功→t2.completed。失敗→L3 が retry / abort / ER replan を選ぶ（§6.7）</div></div>
+</div>
+
+<h3>6.3 VlaSubtaskRequest（OpenVLA へ渡す最小情報）</h3>
+<div class="grid2">
+  <div class="node n-sub"><div class="t">渡す（局所作業に必要な最小）</div><div class="s">
+    <code>parent_plan_id</code> / <code>task_id</code> / <code>robot</code> / <code>skill</code>(grasp) / <code>instruction</code> / <code>target</code>{object_id,class_hint,color_hint,container_hint} / <code>observation_refs</code>{camera_frame,state_snapshot}。<span class="dref">mode-x-er-vla/04 §VLA Subtask Request</span>
+  </div></div>
+  <div class="node n-box"><div class="t">constraints（固定）</div><div class="s">
+    <code>base_motion: not_allowed</code> / <code>allowed_output: action_candidate_only</code> / <code>direct_actuation: forbidden</code>。
+  </div></div>
+</div>
+<div class="safe">
+  <b>渡さない</b>: Nav2 Bridge URL / ROS topic 名 / <code>/cmd_vel</code> / Jetson service endpoint / ESP32・micro-ROS 詳細 / <code>gen_id</code>・<code>idempotency_key</code> / battery・emergency を bypass できる権限。<span class="dref">mode-x-er-vla/04 §VLA Subtask Request（渡さない情報）</span>
+</div>
+
+<h3>6.4 VLA output class と扱い（未分類は実機へ流さない）</h3>
+<table>
+  <thead><tr><th>output class</th><th>内容</th><th>扱い</th></tr></thead>
+  <tbody>
+    <tr><td><code>grounding_report</code></td><td>対象物 / bbox / confidence / 可視性</td><td class="impl-yes">Option A の cross-check に使える</td></tr>
+    <tr><td><code>action_candidate</code></td><td>grasp / place などの候補動作</td><td>SafetyCompiler が必要</td></tr>
+    <tr><td><code>trajectory_candidate</code></td><td>end-effector trajectory など</td><td>sim-only で検証・<b>直接実行禁止</b></td></tr>
+    <tr><td><code>low_level_velocity</code></td><td>wheel / motor velocity</td><td class="impl-no">reject</td></tr>
+    <tr><td><code>unknown</code></td><td>型が説明できない output</td><td class="impl-no">reject</td></tr>
+  </tbody>
+</table>
+<p class="lead">confidence 閾値・座標系・trajectory 表現・controller 接続方式は<b>未凍結</b>（実装前に docs/config/contract で決める）。<span class="dref">mode-x-er-vla/04 §VLA Output</span></p>
+
+<h3>6.5 SafetyCompiler（manipulation の compile 境界）</h3>
+<div class="node n-sub"><div class="s">
+  既存 <code>Command</code> は navigate / wait / stop / yield / charge の移動命令中心。grasp / place などの manipulation は<b>別の compile 境界</b>が要る。SafetyCompiler は: VLA output class を分類し未対応型を reject / 対象物が ER task graph と一致するか確認 / container・workspace・robot pose の前提を確認 / base motion 禁止 subtask で base motion 相当出力が無いか確認 / trajectory・velocity を直接実行しない / 抽象 skill call へ変換 / result を <code>ManipulationSkillResult</code> として返す。
+  <div class="optline">VlaActionCandidate → <b>SafetyCompiler</b> → ManipulationSkillCall → skill executor / arm controller → ManipulationSkillResult → Task Graph Executor</div>
+  <b>OpenVLA → controller 直結は禁止</b>。<code>ManipulationSkillCall</code> の package / topic / REST 表現は未凍結。<span class="dref">mode-x-er-vla/04 §SafetyCompiler</span>
+</div></div>
+
+<h3>6.6 task 状態遷移と VLA 起動条件</h3>
+<div class="optline">pending → ready → dispatching → running → <b>succeeded</b> / failed / blocked / cancelled</div>
+<div class="grid2">
+  <div class="node n-box"><div class="t">移動 task</div><div class="s">ready → Command Compiler → MCP / Policy Gate → Nav2 → Nav2 result + State Cache → succeeded / failed</div></div>
+  <div class="node n-sub"><div class="t">VLA task</div><div class="s">ready → VlaSubtaskRequest → VLA Adapter → VlaActionCandidate → SafetyCompiler → skill executor → ManipulationSkillResult → succeeded / failed / blocked</div></div>
+</div>
+<div class="note">
+  <b>VLA subtask 起動条件（すべて満たす）</b>: <code>after</code> 依存が満たされる・State Cache / Nav2 result / task result で前段完了を確認・robot が expected location にいる・emergency active でない・output class が fixture / sim で分類済み・reject できる deterministic validator または SafetyCompiler がある。<b>移動のみの task では VLA を起動しない</b>。<span class="dref">mode-x-er-vla/04 §状態遷移 / 03 §VLA 起動前の L3 条件</span>
+</div>
+
+<h3>6.7 失敗時に ER へ戻す条件</h3>
+<table>
+  <thead><tr><th>condition</th><th>L3 の初期対応</th><th>ER に戻す理由</th></tr></thead>
+  <tbody>
+    <tr><td><code>target_not_visible</code></td><td>camera 再取得 / 視点変更 request</td><td>対象が存在しない可能性</td></tr>
+    <tr><td><code>multiple_matching_targets</code></td><td>operator clarification か ER replan</td><td>赤い物体が複数で intent 曖昧</td></tr>
+    <tr><td><code>grasp_failed_repeatedly</code></td><td>retry 上限後に blocked</td><td>別戦略が必要</td></tr>
+    <tr><td><code>object_moved</code></td><td>latest observation を保存</td><td>task graph の前提が崩れた</td></tr>
+    <tr><td><code>unsafe_candidate</code></td><td>candidate reject</td><td>別 subtask または中止判断</td></tr>
+    <tr><td><code>emergency_active</code></td><td>immediate 0 dispatch</td><td>safety 優先・回復後に再開判断</td></tr>
+  </tbody>
+</table>
+<p class="lead">通常 retry は L3 が扱う。再提案も必ず L3 Validator / SafetyCompiler / MCP / Policy Gate を通す。<span class="dref">mode-x-er-vla/04 §ER に戻す条件</span></p>
+
+<h3>6.8 Simulation / Safety Gates（G0–G7）と実機前の禁止</h3>
+<table>
+  <thead><tr><th>Gate</th><th>内容</th></tr></thead>
+  <tbody>
+    <tr><td>G0 fixture</td><td>recorded image + text + fake state を ER/VLA に入力し response を保存</td></tr>
+    <tr><td>G1 output classification</td><td>VLA response を grounding / action / trajectory / unknown に分類</td></tr>
+    <tr><td>G2 fusion decision</td><td>ER と VLA の統合方式（Cross-check / L3 candidate / Safety Compiler）を選ぶ</td></tr>
+    <tr><td>G3 offline validator</td><td>invalid robot/action/target/stale/emergency を 0 dispatch（reject reason を残す）</td></tr>
+    <tr><td>G4 sim-only replay</td><td>Isaac Sim / offline evaluator で candidate を replay（実機なしで failure 再現）</td></tr>
+    <tr><td>G5 compiler decision</td><td><code>Command Compiler</code> で足りるか <code>SafetyCompiler</code> が要るか判断</td></tr>
+    <tr><td>G6 MCP path</td><td>command candidate が MCP / Policy Gate を通る（bypass なし）</td></tr>
+    <tr><td>G7 robot-gated</td><td>実機接続を<b>人間 gate</b>（Jetson / ESP32 / safety 確認後のみ）</td></tr>
+  </tbody>
+</table>
+<p class="lead"><b>Isaac Sim で見る観点</b>: overhead camera と robot-mounted(wrist) camera のどちらを VLA 入力にするか / ER の object detection・task graph と VLA grounding の一致 / sim の object label と real camera の見え方の差分 / latency が task cycle に収まるか / ER-VLA disagreement の頻度 / failure case を golden fixture 化。<span class="dref">mode-x-er-vla/03 §Isaac Sim で見る観点</span></p>
+<div class="safe">
+  <b>実機接続前に禁止</b>: VLA output velocity を <code>/cmd_vel</code> へ直接 publish / trajectory を Nav2 action へ直接送る / Jetson の service・REST を ER/VLA へ教える / ESP32 clamp 前提で上位安全を省略 / fixture・sim 未検証の output shape を実機に流す。<span class="dref">mode-x-er-vla/03 §Gate・§実機接続前に禁止すること</span>
+</div>
+
+<h3>6.9 OpenVLA 採用判断（未検証・defer されうる）</h3>
+<p class="lead"><b>採用可否そのものが未検証</b>（README §未凍結事項 第1項）。調査項目: model availability / license（商用利用）/ input・output shape / ER integration / robot embodiment（minicar との適合）/ runtime（GPU memory・latency・quantization → Jetson / RunPod 可否）/ simulation / safety / observability。spike 完了条件（offline で response を得る・output 型を説明・ER と VLA を突合・代行できる L3 component を判断・runtime/GPU を記録・license 確認・MCP/Policy Gate を bypass しない接続案）を満たすまで採用しない。<span class="dref">mode-x-er-vla/02 §調査項目・§初期 spike の完了条件 / README §未凍結事項</span></p>
+<div class="note">
+  <b>OpenVLA を使う / 使わない</b>: 移動が named location で完結・Nav2/Open-RMF で解ける・把持/配置不要なら <b>使わない</b>（Mode X-ER）。移動後の grasp / place / align / dock が必要・対象の位置姿勢が毎回変わる・output を grounding_report / action_candidate に分類でき reject path が sim で確認済みなら <b>候補</b>。<span class="dref">mode-x-er-vla/04 §OpenVLA を使わない判断・§OpenVLA を使う判断 / 02 §調査後の分岐</span>
+</div>
+
 <!-- docs mapping -->
-<h2>5. L4 各要素 → docs / 実体</h2>
+<h2>7. L4 各要素 → docs / 実体</h2>
 <table>
   <thead><tr><th>要素</th><th>種別</th><th>docs（正本）</th><th>実体 / 契約</th></tr></thead>
   <tbody>
@@ -296,8 +622,10 @@
     <tr><td>排他 A/B-3/C</td><td>—</td><td>doc08:161-179 / doc15 §2</td><td class="impl-yes"><code>wait_for</code> / <code>gen_check.py</code> / <code>action_map.py</code></td></tr>
     <tr><td>Input Context</td><td><span class="badge b-sub">sub</span></td><td>06 §L4 Input Context / mode-a/08a</td><td class="impl-yes"><code>situation.py</code> → <code>Situation</code></td></tr>
     <tr><td>LLM commander transport</td><td><span class="badge b-demoted">transport</span></td><td>02 §Hermes-first / architecture/08</td><td class="impl-yes"><code>hermes_client.py</code> → Hermes Gateway</td></tr>
-    <tr><td>Model Adapter / ER / VLA / STT</td><td><span class="badge b-sub">sub</span></td><td>02 §保管場所・151-188 / mode-x-er/03</td><td class="impl-no">ER/VLA/STT registry は未実装</td></tr>
-    <tr><td>Fusion</td><td><span class="badge b-sub">sub</span></td><td>02 §VLA adapter / 06 §L4 Fusion / mode-x-er-vla/03</td><td class="impl-no">未実装</td></tr>
+    <tr><td>Model Adapter / ER / VLA / STT</td><td><span class="badge b-sub">sub</span></td><td>02 §保管場所・151-188 / mode-x-er/03（実体化 → §5）</td><td class="impl-no">ER/VLA/STT registry は未実装</td></tr>
+    <tr><td>Fusion</td><td><span class="badge b-sub">sub</span></td><td>02 §VLA adapter / 06 §L4 Fusion / mode-x-er-vla/03（実体化 → §6）</td><td class="impl-no">未実装（ER 単体は pass-through・2 model 目で活性化）</td></tr>
+    <tr><td>Mode X-ER（ER + L3 + X-lite/X-rmf）</td><td>—</td><td>mode-x-er/01・03・04 / README（→ §5・<a href="../mode-x-er/mode-x-er-explainer.html">explainer</a>）</td><td class="impl-no">未実装（設計提案）</td></tr>
+    <tr><td>Mode X-ER-VLA（ER + VLA + Fusion / SafetyCompiler）</td><td>—</td><td>mode-x-er-vla/01・03・04 / README（→ §6・<a href="../mode-x-er-vla/mode-x-er-vla-overview.html">overview</a>）</td><td class="impl-no">未実装（設計候補）</td></tr>
     <tr><td>action_map</td><td><span class="badge b-seam">seam</span></td><td>01 §境界の原則 / mode-a/08a</td><td class="impl-yes"><code>action_map.py:43</code></td></tr>
     <tr><td>MCP dispatch</td><td><span class="badge b-seam">seam</span></td><td>architecture/15-mcp-platform</td><td class="impl-yes"><code>DispatchToolExecutor</code>(executor.py:35)</td></tr>
     <tr><td>trace root / Langfuse</td><td><span class="badge b-demoted">demoted→Super-Box</span></td><td>02 §Langfuse / architecture/08</td><td class="impl-yes"><code>tracing.py</code></td></tr>
