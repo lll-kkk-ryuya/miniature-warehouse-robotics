@@ -145,6 +145,7 @@ PY
 | `.ex`(+`.b3`/`.c`) + `.tag`/`.body` | A/B/C の対比（Option 比較・排他層） |
 | `.grid2`/`.grid3` | 2/3 カラム並置 |
 | `.note`/`.safe` | 補足注記 / 安全境界（赤系・「渡さない/作らせない」） |
+| `.unused` | 実装スコープ「使わない」box＝暗く＋中央取消線（`opacity`+`grayscale` ＋ `::after` 横線）。個別 `.node` に付与 |
 
 ### 4.2 図パターン（recipe）
 
@@ -161,6 +162,10 @@ PY
   WHAT だけでなく WHY/安全根拠が伝わる（出典 doc の "…が無い場合" を `file:line` で）。
 - **per-mode explainer**: 1 モードを 1 自己完結 HTML に（位置づけ→data flow→各層詳細→profile→
   gate/phase→未凍結→docs マッピング表）。例: `mode-x-er-explainer.html`。
+- **実装スコープ色分け**: 使う/使わない/一部使用/optional を 1 枚で示す。「使わない」box に `.unused`
+  （暗く＋中央取消線）、**一部使用**は `.role` テキストラベル＋文章で範囲明記、**optional** はラベル。
+  box ごとに個別付与（図全体へグローバル適用しない）。例: `layer-l4-detail.html` §5.0 /
+  `mode-x-er-explainer.html` §2。
 
 ### 4.3 引用規約（この repo 固有・footer に明記する）
 
