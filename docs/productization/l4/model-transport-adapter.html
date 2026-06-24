@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L4 Model Transport / Adapter — Hermes-first 詳細図</title>
+<style>
+  :root{color-scheme:dark;--bg:#1a1a1a;--card:#222;--surface:#2b2b2b;--ink:#ededed;--muted:#c4c4c4;--faint:#8f8f8f;--line:#3a3a3a;--code:#141414;--box:#7aa2f7;--box-bg:rgba(122,162,247,.13);--sub:#9ece6a;--sub-bg:rgba(158,206,106,.12);--seam:#e0af68;--seam-bg:rgba(224,175,104,.12);--plugin:#bb9af7;--plugin-bg:rgba(187,154,247,.12);--demoted:#9a9a9a;--demoted-bg:rgba(154,154,154,.10);--red:#f7768e;--teal:#7dcfff;--yellow:#e0c07a;--badge-ink:#171717}
+  *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Noto Sans JP",Meiryo,sans-serif;line-height:1.65;font-size:15px;-webkit-font-smoothing:antialiased}.wrap{max-width:1160px;margin:0 auto;padding:32px 20px 80px}header{border-bottom:3px solid var(--plugin);padding-bottom:16px;margin-bottom:12px}h1{font-size:25px;margin:0 0 6px}h2{font-size:19px;margin:36px 0 12px;padding-left:10px;border-left:5px solid var(--plugin)}h3{font-size:15px;margin:20px 0 8px;color:#dedede}p{margin:9px 0}.lead{color:var(--muted);font-size:14px}a{color:var(--box);text-decoration:none}a:hover{text-decoration:underline}code{background:var(--code);padding:1px 6px;border-radius:4px;font-size:.88em;font-family:"SF Mono",Menlo,Consolas,monospace}.nav{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0}.nav a{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:7px 13px;font-size:13px;font-weight:700}.badge{display:inline-block;font-size:11px;font-weight:800;padding:2px 9px;border-radius:999px;color:var(--badge-ink);vertical-align:middle}.b-box{background:var(--box)}.b-sub{background:var(--sub)}.b-seam{background:var(--seam)}.b-plugin{background:var(--plugin)}.b-demoted{background:var(--demoted);color:var(--ink)}.node{border:2px solid var(--line);background:var(--card);border-radius:10px;padding:11px 13px;margin:8px 0;font-size:13px}.node .t{font-weight:800;font-size:14px}.node .s{color:var(--muted);font-size:12.5px;margin-top:3px}.n-box{border-color:var(--box);background:var(--box-bg)}.n-sub{border-color:var(--sub);background:var(--sub-bg)}.n-plugin{border-color:var(--plugin);background:var(--plugin-bg)}.n-seam{border-color:var(--seam);background:var(--seam-bg);border-style:dashed}.n-demoted{border-color:var(--demoted);background:var(--demoted-bg)}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.super{border:2px solid var(--box);background:var(--box-bg);border-radius:14px;padding:16px;margin:16px 0}.adapter{border:2px solid var(--sub);background:rgba(158,206,106,.07);border-radius:14px;padding:14px;margin:12px 0}.band{border:1.5px dashed var(--plugin);background:var(--plugin-bg);border-radius:10px;padding:10px 12px;margin:10px 0;color:#d8c8f2}.arrow{text-align:center;color:var(--faint);font-size:18px;line-height:1;margin:2px 0}.note{background:var(--seam-bg);border:1px solid rgba(224,175,104,.45);border-radius:8px;padding:12px 14px;margin:14px 0;font-size:13px}.safe{background:rgba(247,118,142,.08);border:1px solid rgba(247,118,142,.45);border-radius:8px;padding:12px 14px;margin:14px 0;font-size:13px}table{border-collapse:collapse;width:100%;margin:12px 0;background:var(--card);font-size:13px}th,td{border:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top}th{background:var(--surface);color:#dedede}.yes{color:var(--sub);font-weight:800}.no{color:var(--yellow);font-weight:800}.dref{color:var(--teal);font-size:.82em;font-family:"SF Mono",Menlo,monospace}footer{margin-top:46px;padding-top:18px;border-top:1px solid var(--line);color:var(--muted);font-size:12.5px}@media(max-width:780px){.grid2,.grid3,.grid4{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>L4 Model Transport / Adapter — Hermes-first 詳細図</h1>
+  <p class="lead">L4 Robotics Bridge Super-Box 内の model 呼び出し部分を拡大した図。現行 commander LLM は Hermes 実装済み、ER / VLA / STT は Hermes-first proposal。</p>
+</header>
+
+<div class="nav">
+  <a href="../layer-l4-detail.html">◂ L4 詳細図</a>
+  <a href="../box-taxonomy.html">box-taxonomy</a>
+  <a href="model-transport-adapter.md">正本: model-transport-adapter.md</a>
+  <a href="../02-l4-robotics-bridge-box.md">02 L4 Robotics Bridge</a>
+</div>
+
+<h2>0. どこに Hermes が入るか</h2>
+<div class="super">
+  <div class="node n-box"><div class="t">L4 Robotics Bridge Super-Box <span class="badge b-box">box</span></div><div class="s">input context、trace、timeout、raw output audit、L3 handoff、action_map を所有する親 box。</div></div>
+  <div class="arrow">▼</div>
+  <div class="node n-sub"><div class="t">Input Context <span class="badge b-sub">sub-box</span></div><div class="s">audio / transcript / overhead image / state / calibration を bundle 化。ここでは model を呼ばない。</div></div>
+  <div class="arrow">▼</div>
+  <div class="adapter">
+    <div class="node n-sub"><div class="t">Model Transport / Adapter <span class="badge b-sub">sub-box</span></div><div class="s">provider_type と transport を直交させ、raw output を artifact 化し、L3 Handoff へ正規化する。</div></div>
+    <div class="grid4">
+      <div class="node n-sub"><div class="t">LLM</div><div class="s"><span class="yes">実装済み</span><br><code>HermesClient</code></div></div>
+      <div class="node n-sub"><div class="t">ER</div><div class="s"><span class="no">proposal</span><br><code>provider_type:er</code></div></div>
+      <div class="node n-sub"><div class="t">VLA</div><div class="s"><span class="no">proposal</span><br><code>provider_type:vla</code></div></div>
+      <div class="node n-sub"><div class="t">STT</div><div class="s"><span class="no">proposal</span><br><code>provider_type:stt</code></div></div>
+    </div>
+    <div class="band"><b>transport: hermes | direct | worker</b><br>Hermes は第一候補 transport。現行 LLM は <code>model: hermes-agent</code> で実装済み。ER / VLA / STT / Vision は Hermes-first で追加する。</div>
+    <div class="grid3">
+      <div class="node n-plugin"><div class="t">hermes</div><div class="s">OpenAI互換 API、provider routing / fallback、vision / STT / MCP entry。server-side motion 実行は使わない。</div></div>
+      <div class="node n-demoted"><div class="t">direct</div><div class="s">Hermes 非対応 API / response shape / latency 要件の fallback。</div></div>
+      <div class="node n-demoted"><div class="t">worker</div><div class="s">GPU / separate process runtime。VLA や重い local model の fallback。</div></div>
+    </div>
+  </div>
+  <div class="arrow">▼</div>
+  <div class="node n-seam"><div class="t">L3 Handoff <span class="badge b-seam">seam</span></div><div class="s">どの transport でも同じ内部 shape へ正規化して L3 Planning Core へ渡す。</div></div>
+  <div class="arrow">▼</div>
+  <div class="node n-seam"><div class="t">action_map / MCP / Policy Gate <span class="badge b-seam">seam</span></div><div class="s">Bridge が <code>gen_id</code> / <code>idempotency_key</code> を mint。motion 採用判定は Hermes に渡さない。</div></div>
+</div>
+
+<h2>1. Hermes-managed と Bridge-owned の分担</h2>
+<table>
+  <thead><tr><th>領域</th><th>Hermes-managed</th><th>Bridge-owned</th></tr></thead>
+  <tbody>
+    <tr><td>Model transport</td><td>OpenAI互換 API、provider routing / fallback、custom endpoint</td><td>request_id、timeout、0 dispatch、L3 Handoff 正規化</td></tr>
+    <tr><td>STT / Vision</td><td>Hermes が扱える provider / plugin / image input entry</td><td>audio / image / state / calibration の final bundle、artifact retention</td></tr>
+    <tr><td>MCP</td><td>tool filter、read-only / operator-facing tool の接続候補</td><td>motion tool の accepted path、Policy Gate、idempotency_key</td></tr>
+    <tr><td>Trace</td><td>Hermes plugin は HLF-G0〜G5 後に再評価</td><td>現採用は Bridge-owned root trace。二重 generation を避ける</td></tr>
+  </tbody>
+</table>
+
+<h2>2. 商用再利用で保管するもの</h2>
+<div class="grid2">
+  <div class="node n-box"><div class="t">汎用化するもの</div><div class="s">adapter interface、transport selection、request / response envelope、raw output recorder、golden fixture、trace metadata、provider latency / cost hint。</div></div>
+  <div class="node n-box"><div class="t">site ごとに変えるもの</div><div class="s">provider、model、region、quota、auth、calibration、known locations、operator policy、artifact retention、redaction rule。</div></div>
+</div>
+
+<div class="safe"><b>安全核:</b> model output は提案であり、Nav2 / Open-RMF / micro-ROS / <code>/cmd_vel</code> を直接呼ばない。timeout / provider error / malformed response は 0 dispatch。</div>
+
+<h2>3. acceptance gate</h2>
+<table>
+  <thead><tr><th>Gate</th><th>内容</th></tr></thead>
+  <tbody>
+    <tr><td>L4M-G0</td><td>既存 commander LLM の Hermes regression を壊さない。</td></tr>
+    <tr><td>L4M-G1</td><td><code>provider_type</code> と <code>transport</code> を直交 field として fixture 化する。</td></tr>
+    <tr><td>L4M-G2</td><td>Hermes / direct / worker が同じ L3 Handoff input に正規化される。</td></tr>
+    <tr><td>L4M-G3</td><td>timeout / provider_error / malformed_response / empty_output / unsupported_modality は 0 dispatch。</td></tr>
+    <tr><td>L4M-G4</td><td>raw output、adapter report、latency、transport、provider metadata が artifact 化される。</td></tr>
+    <tr><td>L4M-G5</td><td>provider fallback は fixed-provider comparison run と混在しない。</td></tr>
+    <tr><td>L4M-G6</td><td>Hermes Langfuse plugin 採用時は HLF-G0〜G5 を全て満たし、二重 generation がない。</td></tr>
+  </tbody>
+</table>
+
+<footer>
+  <p>このページは <code>docs/productization/l4/model-transport-adapter.html</code>。正本は <a href="model-transport-adapter.md"><code>model-transport-adapter.md</code></a>、L4 全体正本は <a href="../02-l4-robotics-bridge-box.md"><code>02-l4-robotics-bridge-box.md</code></a>。</p>
+</footer>
+</div>
+</body>
+</html>

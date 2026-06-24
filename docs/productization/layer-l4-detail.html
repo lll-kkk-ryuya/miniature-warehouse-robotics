@@ -103,6 +103,7 @@
   <a href="box-taxonomy.html">◂ 全体（box-taxonomy）</a>
   <a href="layer-l3-detail.html">L3 詳細図 ▸</a>
   <a href="02-l4-robotics-bridge-box.md">正本: 02 l4-robotics-bridge-box.md</a>
+  <a href="l4/model-transport-adapter.html">Model Transport 詳細図</a>
   <a href="../architecture/08-llm-bridge-common.md">architecture/08</a>
 </div>
 
@@ -147,14 +148,15 @@
 
     <div class="nest-arrow">▼</div>
 
-    <div class="node n-sub"><div class="t">② Model Adapter <span class="badge b-sub">sub-box</span> <span class="role" style="color:var(--yellow);border-color:var(--yellow)">未実装＝proposal</span></div><div class="s">
-      LLM/ER/VLA/STT の transport 差を吸収する registry。<code>provider_type: er | vla | stt</code>（vision は enum 外）。raw output recorder・timeout・0 dispatch は Bridge-owned。<span class="dref">02 §Box の保管場所 / mode-x-er/03</span>
+    <div class="node n-sub"><div class="t">② Model Transport / Adapter <span class="badge b-sub">sub-box</span> <span class="role" style="color:var(--yellow);border-color:var(--yellow)">ER/VLA/STT は未実装＝proposal</span></div><div class="s">
+      現行 commander LLM は <code>hermes_client.py HermesClient</code> が <code>transport:hermes</code> として実装済み。ER/VLA/STT の registry は proposal。<code>provider_type: er | vla | stt</code>（vision は enum 外）。raw output recorder・timeout・0 dispatch は Bridge-owned。<span class="dref">hermes_client.py / <a href="l4/model-transport-adapter.html">L4 Model Transport 詳細</a> / mode-x-er/03</span>
       <div class="grid3" style="margin-top:8px">
         <div class="node n-sub" style="padding:6px 8px;margin:0"><div class="t" style="font-size:12px">ER</div><div class="s" style="margin-top:1px"><code>provider_type:er</code>・opt</div></div>
         <div class="node n-sub" style="padding:6px 8px;margin:0"><div class="t" style="font-size:12px">VLA</div><div class="s" style="margin-top:1px"><code>provider_type:vla</code>・opt</div></div>
         <div class="node n-sub" style="padding:6px 8px;margin:0"><div class="t" style="font-size:12px">STT</div><div class="s" style="margin-top:1px"><code>provider_type:stt</code>・opt</div></div>
       </div>
-      <div class="transport-band"><b>transport: hermes | direct | worker</b> ← Hermes はここ（interface 裏の実装選択・<b>box を割らない</b>）。<span class="badge b-plugin" style="font-size:10px">plugin</span> Provider Routing も同じ層。<span class="dref">02 §Hermes に寄せる範囲</span></div>
+      <div class="transport-band"><b>transport: hermes | direct | worker</b> ← 現行 LLM は Hermes 実装済み（<code>model: hermes-agent</code>）。ER/VLA/STT は Hermes-first で追加する proposal。<span class="badge b-plugin" style="font-size:10px">plugin</span> Provider Routing も同じ層。<span class="dref">02 §Hermes-first / hermes_client.py</span></div>
+      <div class="node n-plugin" style="margin-top:8px"><div class="t">Hermes Agent Gateway <span class="badge b-plugin">transport/plugin</span> <span class="role">一部実装済み</span></div><div class="s">担う: OpenAI 互換 model transport、provider routing / fallback、vision / STT / MCP 接続の入口。<b>実装済み</b>: commander LLM は <code>hermes_client.py</code> から <code>/v1/chat/completions</code> へ送る。<b>proposal</b>: ER / VLA / STT / Vision の Hermes-first adapter。担わない: input bundle 確定、timeout 後 0 dispatch、L3 handoff、<code>action_map</code>、motion 採用判定、Langfuse root trace。<span class="dref">02 §Hermes-first / 13 §7.7 / hermes_client.py</span></div></div>
     </div></div>
 
     <div class="nest-arrow">▼</div>
@@ -206,7 +208,7 @@
     <div class="s">1 trace / turn。<code>trace_id = create_trace_id(seed=f"{run_id}:{gen_id}")</code>（決定的・#6 と突合）。<span class="dref">tracing.py / 02 §Langfuse</span></div></div>
   <div class="step-down">▼</div>
   <div class="step"><b><code>await asyncio.wait_for(decide(situation), 2.5s)</code></b> <span class="badge b-demoted" style="font-size:10px">Layer A</span>
-    <div class="s">LLM 呼び出し（Hermes 経由）。in-cycle timeout=2.5s。<b>この wait_for の cancel が排他 Layer A</b>（pure client-side・§2）。<span class="dref">scheduler.py:309 / doc08:140</span></div></div>
+    <div class="s"><code>HermesClient.decide</code> が Hermes Gateway の <code>/v1/chat/completions</code> に <code>model: hermes-agent</code> で送る。in-cycle timeout=2.5s。<b>この wait_for の cancel が排他 Layer A</b>。<span class="dref">hermes_client.py / scheduler.py:309 / doc08:140</span></div></div>
   <div class="step-down">▼</div>
   <div class="step seam"><b><code>command_to_tool_calls(Command, gen_id)</code></b> <span class="badge b-seam" style="font-size:10px">action_map seam</span>
     <div class="s">各 CommandItem を MCP ToolCall へ。<code>gen_id</code> 注入（B-3）＋ per-call <code>idempotency_key=uuid4()</code> mint（C）。<span class="dref">action_map.py command_item_to_tool_call:43</span></div></div>
@@ -250,9 +252,9 @@
   <code>situation.py SituationBuilder</code>。<b>mode-aware</b>: Mode A/B は <code>predicted_position_3s</code>（CTRV 等速・等旋回）＋ <code>obstacle_ahead</code>（<code>&lt;emergency_min_distance</code>=0.3）含む全フィールド。Mode C(open-rmf) は velocity/heading/predicted/obstacle を<b>構築せず省略</b>（~200tok 節約）。<code>current_task</code>(bot→destination) と <code>pending_tasks</code>（<code>WAREHOUSE_TASKS</code> seed・<code>PendingTask</code> with alias <code>from</code>）を両モードで供給。consumes <code>StateSnapshot</code> → produces 凍結 <code>Situation</code>。<span class="dref">situation.py / 06 §L4 Input Context / mode-a/08a</span>
 </div></div>
 
-<h3>Model Adapter <span class="badge b-sub">sub-box</span> <span style="color:var(--yellow);font-size:12px">未実装＝proposal</span></h3>
+<h3>Model Transport / Adapter <span class="badge b-sub">sub-box</span> <span style="color:var(--yellow);font-size:12px">ER/VLA/STT は未実装＝proposal</span></h3>
 <div class="node n-sub"><div class="s">
-  LLM/ER/VLA/STT の transport 差を吸収する registry。<code>provider_type: er | vla | stt</code>（vision は enum 外）。<code>transport: hermes | direct | worker</code> は interface 裏の実装選択（box を割らない）。raw output recorder・timeout・0 dispatch は Bridge-owned。<span class="dref">02 §Box の保管場所,87-91 / mode-x-er/03-er-adapter-skeleton</span>
+  現行 commander LLM の Hermes transport は <code>hermes_client.py</code> で実装済み。ER/VLA/STT の transport registry は proposal。<code>transport: hermes | direct | worker</code> は interface 裏の実装選択（box を割らない）。raw output recorder・timeout・0 dispatch は Bridge-owned。<span class="dref">hermes_client.py / 02 §Box の保管場所 / mode-x-er/03-er-adapter-skeleton</span>
 </div></div>
 
 <h3>Fusion <span class="badge b-sub">sub-box</span> <span style="color:var(--muted);font-size:12px">optional・未実装</span></h3>
@@ -293,7 +295,8 @@
     <tr><td>司令官サイクル</td><td>—</td><td>doc08 §共通サイクル</td><td class="impl-yes"><code>scheduler.py BridgeScheduler.run_cycle</code></td></tr>
     <tr><td>排他 A/B-3/C</td><td>—</td><td>doc08:161-179 / doc15 §2</td><td class="impl-yes"><code>wait_for</code> / <code>gen_check.py</code> / <code>action_map.py</code></td></tr>
     <tr><td>Input Context</td><td><span class="badge b-sub">sub</span></td><td>06 §L4 Input Context / mode-a/08a</td><td class="impl-yes"><code>situation.py</code> → <code>Situation</code></td></tr>
-    <tr><td>Model Adapter / ER / VLA / STT</td><td><span class="badge b-sub">sub</span></td><td>02 §保管場所・151-188 / mode-x-er/03</td><td class="impl-no">未実装</td></tr>
+    <tr><td>LLM commander transport</td><td><span class="badge b-demoted">transport</span></td><td>02 §Hermes-first / architecture/08</td><td class="impl-yes"><code>hermes_client.py</code> → Hermes Gateway</td></tr>
+    <tr><td>Model Adapter / ER / VLA / STT</td><td><span class="badge b-sub">sub</span></td><td>02 §保管場所・151-188 / mode-x-er/03</td><td class="impl-no">ER/VLA/STT registry は未実装</td></tr>
     <tr><td>Fusion</td><td><span class="badge b-sub">sub</span></td><td>02 §VLA adapter / 06 §L4 Fusion / mode-x-er-vla/03</td><td class="impl-no">未実装</td></tr>
     <tr><td>action_map</td><td><span class="badge b-seam">seam</span></td><td>01 §境界の原則 / mode-a/08a</td><td class="impl-yes"><code>action_map.py:43</code></td></tr>
     <tr><td>MCP dispatch</td><td><span class="badge b-seam">seam</span></td><td>architecture/15-mcp-platform</td><td class="impl-yes"><code>DispatchToolExecutor</code>(executor.py:35)</td></tr>

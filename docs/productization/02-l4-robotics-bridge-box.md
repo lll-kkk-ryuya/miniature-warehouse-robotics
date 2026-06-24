@@ -29,6 +29,30 @@ Mode X-ER の L4 は、単なる Gemini Robotics-ER adapter ではなく、
 
 実装候補は、既存 `warehouse_llm_bridge` 内に L4 sub-box を増やし、Hermes は transport / control-plane / generic integration として使う形である。Hermes plugin に寄せる場合も、motion tool の採用経路は Bridge-mediated dispatch のままにする。
 
+### Hermes-first transport 方針（2026-06-24）
+
+Mode X-ER / Mode X-ER-VLA の L4 実装では、model / modality / MCP 接続が
+Hermes Agent の公式機能で扱える限り **`transport: hermes` を第一候補**にする。
+direct adapter / worker は、Hermes が対象 API、audio / image modality、GPU runtime、
+response shape、または latency 要件を満たせない場合の fallback として扱う。
+
+Hermes-first に寄せる対象:
+
+- LLM / ER / STT / Vision の model transport。
+- provider routing / fallback。ただし Phase 4 の比較 run では provider 固定を優先し、
+  fallback を使う場合は比較条件として別 leg に分ける。
+- MCP 接続と tool include / exclude。robot motion tool の採用判定は引き続き
+  Bridge / Governance 側で行う。
+
+Hermes-first でも Bridge-owned に残す対象:
+
+- input bundle の最終 manifest と stale / missing / secret 混入判定。
+- request id、cycle、timeout 後の 0 dispatch。
+- L3 handoff、`action_map`、`gen_id` / `idempotency_key` 注入。
+- motion tool の accepted path、Policy Gate、Eval join。
+- Langfuse root trace ownership。これは下記の Langfuse plugin spike gate を満たすまで
+  Bridge-owned を採用する。
+
 ## L4 の責務
 
 ```
@@ -125,8 +149,8 @@ Hermes Agent に寄せないもの:
 
 | 経路 | 使う条件 | 守るべきこと |
 |---|---|---|
-| Hermes 経由 | Hermes が対象 model、OpenAI 互換 request、image input、voice/STT/TTS provider、provider fallback を扱える | server-side motion tool execution を使わず、Bridge が final output を受けて L3 へ渡す |
-| Direct adapter | ER/VLA runtime、GPU、audio/image API、latency 要件が Hermes 経由に合わない | trace、timeout、audit、L3 接続、secret 管理を Bridge 側に残す |
+| Hermes 経由 | **既定の第一候補**。Hermes が対象 model、OpenAI 互換 request、image input、voice/STT/TTS provider、provider fallback を扱える | server-side motion tool execution を使わず、Bridge が final output を受けて L3 へ渡す。比較 run では provider 固定 / fallback 条件を trace metadata に残す |
+| Direct adapter / worker | ER/VLA runtime、GPU、audio/image API、latency 要件、response shape が Hermes 経由に合わない | trace、timeout、audit、L3 接続、secret 管理を Bridge 側に残す。Hermes と同じ L3 Handoff input を返す fixture を必須にする |
 
 重要なのは、Hermes か direct かではなく、**Bridge が orchestration owner であり続けること**である。
 
@@ -149,6 +173,30 @@ Robotics Bridge trace
 ```
 
 この形にすると、商用案件ごとに provider を変えても trace の見方が変わらない。
+
+### Hermes Langfuse plugin の再評価 gate
+
+現採用は Bridge-owned trace（`langfuse.openai` + `base_url=Hermes`）である。これは
+`run_id:gen_id` から決定的な `trace_id` を作り、Bridge の model generation、MCP span、
+Warehouse Orchestrator の score を 1 本に結合するためである。Hermes 側 Langfuse plugin
+を同時に有効化すると、同じ model call が Bridge wrapper と Hermes plugin の両方で
+generation として記録され、token / cost / latency / error count が二重計上される可能性がある。
+
+ただし、Hermes plugin を使う方針を恒久的に否定しない。以下の live spike gate をすべて
+満たせる場合のみ、`trace_owner: hermes` への切替を再検討する。
+
+| Gate | 確認内容 | 採用条件 |
+|---|---|---|
+| HLF-G0 trace id passthrough | Hermes plugin が外部指定 `trace_id` または同等の correlation id を尊重できるか | `run_id:gen_id` から #4 / #6 が同じ trace に到達できる |
+| HLF-G1 metadata | `gen_id` / `run_id` / `provider` / `mode` / `env` / prompt 情報を確実に trace metadata / tags に載せられるか | Phase 4 比較と Eval join に必要な軸が欠落しない |
+| HLF-G2 score join | Bridge 外の Warehouse Orchestrator が同じ trace に `create_score` できるか | score が orphan にならず同一 trace に表示される |
+| HLF-G3 span shape | MCP tool span と model generation が同じ trace に入り、accepted / rejected / error を区別できるか | L4 -> L2 の decision funnel を Langfuse 上で追える |
+| HLF-G4 fail-open | Hermes plugin / Langfuse sink 障害時も robot 制御が 0 dispatch または既存 fail-open 方針で継続するか | observability failure が motion path を止めない |
+| HLF-G5 no double generation | Bridge wrapper と Hermes plugin を併用せず、generation が一度だけ記録される構成にできるか | token / cost / latency / error count が二重計上されない |
+
+HLF-G0〜G5 は Hermes と Langfuse の実サービスが必要な human-gated live 検証である。
+offline docs / unit だけでは採用判断しない。切替する場合は、Bridge の `langfuse.openai`
+wrapper を無効化するか、Hermes plugin を無効化するかのどちらか一方に統一する。
 
 ## ER / VLA adapter の扱い
 
