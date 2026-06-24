@@ -50,6 +50,22 @@
   .superbox{border:2px solid var(--box);background:var(--box-bg);border-radius:14px;padding:16px;margin:14px 0}
   .sbh{font-weight:700;color:var(--box);font-size:16px;margin-bottom:2px} .sbs{font-size:12px;color:var(--muted);margin-bottom:12px}
 
+  /* internal-structure diagram (sub-box / seam / demoted nesting) */
+  .legend{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
+  .legend .item{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:6px 11px;font-size:11.5px;color:var(--muted)}
+  .legend .sw{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:6px;vertical-align:middle}
+  .n-demoted{border-color:var(--demoted);background:var(--demoted-bg);color:var(--muted)}
+  .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+  .sub-nest{border:1.5px dashed var(--box);border-radius:12px;padding:13px;margin-top:12px;background:rgba(122,162,247,.05)}
+  .sub-nest > .nh{font-size:11px;font-weight:700;color:var(--box);letter-spacing:.5px;margin-bottom:9px}
+  .nest-arrow{text-align:center;color:var(--faint);font-size:16px;line-height:1;margin:5px 0}
+  .role{display:inline-block;font-size:10.5px;font-weight:700;color:var(--faint);border:1px solid var(--line);border-radius:5px;padding:1px 6px;margin-left:6px;vertical-align:middle}
+  .transport-band{margin-top:9px;border:1.5px dashed var(--plugin);background:var(--plugin-bg);border-radius:8px;padding:7px 10px;font-size:12px;color:#d8c8f2}
+  .transport-band b{color:var(--plugin)}
+  .seam-out{display:flex;flex-wrap:wrap;align-items:stretch;gap:8px;margin:12px 0 2px}
+  .seam-out .arrow{color:var(--seam);font-weight:700;font-size:18px;display:flex;align-items:center}
+  .gov-chip{border:2px solid var(--box);background:var(--box-bg);border-radius:10px;padding:8px 12px;font-size:12.5px;font-weight:700;white-space:nowrap;display:flex;flex-direction:column;justify-content:center;text-align:center}
+
   /* numbered steps (cycle) */
   .steps{counter-reset:st;margin:14px 0}
   .step{position:relative;border:1px solid var(--line);background:var(--card);border-radius:10px;padding:11px 14px 11px 46px;margin:8px 0;font-size:13.5px}
@@ -72,7 +88,7 @@
   .impl-yes{color:var(--sub);font-weight:700} .impl-no{color:var(--yellow);font-weight:700}
   ul.tight{margin:8px 0;padding-left:22px} ul.tight li{margin:5px 0}
   footer{margin-top:50px;padding-top:18px;border-top:1px solid var(--line);color:var(--muted);font-size:12.5px}
-  @media(max-width:720px){.grid2{grid-template-columns:1fr}}
+  @media(max-width:720px){.grid2,.grid3{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -96,10 +112,22 @@
 </div>
 
 <!-- overview -->
-<h2>0. Super-Box の I/O と所有物</h2>
+<h2>0. Super-Box の全体構造図（I/O・sub-box・seam・demoted の入れ子）</h2>
+<p class="lead">L4 Super-Box は<b>1つの差替単位（box）</b>でありながら、内部に <span class="badge b-sub">sub-box</span>・<span class="badge b-seam">seam</span>・<span class="badge b-demoted">demoted</span> を<b>入れ子で所有</b>する。下図は「箱の中に何がどう入っていて、どこから外（Governance）へ抜けるか」を一枚で示す（各要素の細部は §3、サイクルの時系列は §1、排他制御は §2）。<span class="dref">02 §L4 の責務 / box-taxonomy §2</span></p>
+
+<div class="legend">
+  <div class="item"><span class="sw" style="background:var(--box)"></span>box（契約を変えず差替/省略できる再利用単位）</div>
+  <div class="item"><span class="sw" style="background:var(--sub)"></span>sub-box（親内部ステージ・親ごと差替）</div>
+  <div class="item"><span class="sw" style="background:var(--seam)"></span>seam（境界の写像・常時随伴で省略不可）</div>
+  <div class="item"><span class="sw" style="background:var(--plugin)"></span>transport / plugin（interface 裏の実装選択）</div>
+  <div class="item"><span class="sw" style="background:var(--demoted)"></span>demoted（box でない＝Super-Box へ吸収）</div>
+</div>
+
 <div class="superbox">
   <div class="sbh">L4 Robotics Bridge Super-Box <span class="badge b-box">box</span> = <code>warehouse_llm_bridge</code></div>
-  <div class="sbs">単なる LLM wrapper ではなく orchestration box（<span class="dref">02:78-88</span> / README:78-88）</div>
+  <div class="sbs">単なる LLM wrapper ではなく orchestration box（<span class="dref">02 §結論</span>）。以下の枠内すべてを所有し、契約（consumes/produces）を変えず親ごと差し替える。</div>
+
+  <!-- I/O -->
   <div class="grid2">
     <div class="node n-box"><div class="t">consumes（入力）</div><div class="s">
       <code>StateSnapshot</code>（<code>state.json</code> 経由・<span class="dref">schemas.py StateSnapshot</span>）／ media_refs（audio/image/calibration・<span class="dref">wire/未凍結</span>）／ <code>config</code>（traffic_mode / hermes.base_url / cycle.*）／ <code>WAREHOUSE_TASKS</code>(seed)
@@ -108,9 +136,59 @@
       <code>Command</code>（<span class="dref">schemas.py Command</span>）→ seam → ToolCall ／ topic <code>/llm/command</code>・<code>/llm/reasoning</code>（<span class="dref">doc03:101-102</span>）／ Langfuse root trace（<span class="dref">tracing.py</span>）／ <code>gen_id</code>(GenStore)・per-call <code>idempotency_key</code>
     </div></div>
   </div>
-  <div class="node n-seam"><div class="t">所有する seam（→ Governance）<span class="badge b-seam">seam</span></div><div class="s">
-    <code>action_map</code>（Command→ToolCall・gen_id/idempotency mint）＋ <code>MCP dispatch</code>（<code>DispatchToolExecutor</code>→<code>tools.dispatch</code>）。詳細は §3。
-  </div></div>
+
+  <!-- nested sub-boxes -->
+  <div class="sub-nest">
+    <div class="nh">▼ 内部 sub-box（入力組立 → モデル呼び出し → 調停）— 親ごと差替・単独 consume されない</div>
+
+    <div class="node n-sub"><div class="t">① Input Context <span class="badge b-sub">sub-box</span> <span class="role">実装あり</span></div><div class="s">
+      音声/transcript/俯瞰画像/state/calibration を1 bundle 化。<code>situation.py SituationBuilder</code> が <code>StateSnapshot</code> を mode-aware に → 凍結 <code>Situation</code> を produce。<span class="dref">situation.py / 06 §L4 Input Context</span>
+    </div></div>
+
+    <div class="nest-arrow">▼</div>
+
+    <div class="node n-sub"><div class="t">② Model Adapter <span class="badge b-sub">sub-box</span> <span class="role" style="color:var(--yellow);border-color:var(--yellow)">未実装＝proposal</span></div><div class="s">
+      LLM/ER/VLA/STT の transport 差を吸収する registry。<code>provider_type: er | vla | stt</code>（vision は enum 外）。raw output recorder・timeout・0 dispatch は Bridge-owned。<span class="dref">02 §Box の保管場所 / mode-x-er/03</span>
+      <div class="grid3" style="margin-top:8px">
+        <div class="node n-sub" style="padding:6px 8px;margin:0"><div class="t" style="font-size:12px">ER</div><div class="s" style="margin-top:1px"><code>provider_type:er</code>・opt</div></div>
+        <div class="node n-sub" style="padding:6px 8px;margin:0"><div class="t" style="font-size:12px">VLA</div><div class="s" style="margin-top:1px"><code>provider_type:vla</code>・opt</div></div>
+        <div class="node n-sub" style="padding:6px 8px;margin:0"><div class="t" style="font-size:12px">STT</div><div class="s" style="margin-top:1px"><code>provider_type:stt</code>・opt</div></div>
+      </div>
+      <div class="transport-band"><b>transport: hermes | direct | worker</b> ← Hermes はここ（interface 裏の実装選択・<b>box を割らない</b>）。<span class="badge b-plugin" style="font-size:10px">plugin</span> Provider Routing も同じ層。<span class="dref">02 §Hermes に寄せる範囲</span></div>
+    </div></div>
+
+    <div class="nest-arrow">▼</div>
+
+    <div class="node n-sub" style="border-style:dashed"><div class="t">③ Fusion <span class="badge b-sub">sub-box</span> <span class="role">optional・未実装</span></div><div class="s">
+      ER/VLA/STT/WMS が食い違ったときの arbitration（disagreement policy・confidence fusion・operator clarification）。<b>単一 model では使わない＝抜ける</b>。VLA output は直接実行せず必ず Fusion/L3 を通す。<span class="dref">02 §VLA adapter / 06 §L4 Fusion</span>
+    </div></div>
+  </div>
+
+  <!-- Bridge-owned core (demoted into super-box) -->
+  <div class="sub-nest" style="border-color:var(--demoted);background:var(--demoted-bg)">
+    <div class="nh" style="color:var(--faint)">▼ Super-Box が直接所有する核 — 独立 box でない＝ここへ吸収（demoted）</div>
+    <div class="grid2">
+      <div class="node n-box"><div class="t">司令官サイクル / 0 dispatch <span class="role">実装あり</span></div><div class="s">single global loop・request id・timeout 後 0 dispatch・final output 採用判定。<span class="dref">scheduler.py BridgeScheduler.run_cycle（§1）</span></div></div>
+      <div class="node n-box"><div class="t">trace root / Langfuse <span class="role">実装あり</span></div><div class="s">1 trace/turn・決定的 trace_id・mode/provider tag・Eval join は Bridge 側所有。<span class="dref">tracing.py / 02 §Langfuse の置き場所</span></div></div>
+    </div>
+    <div class="node n-demoted" style="margin-top:8px"><div class="t">Run Orchestration / API Server / Memory・Skills <span class="badge b-demoted">demoted</span></div><div class="s">
+      設計実体ゼロ or Hermes 機能。cycle・<code>transport:hermes</code> へ吸収（box の真ん中を Hermes 線で割らない）。<span class="dref">02 §Hermes に寄せる範囲 Hermes 表</span>
+    </div></div>
+  </div>
+
+  <!-- exit seams → Governance -->
+  <div class="seam-out">
+    <span class="arrow">└▶</span>
+    <div class="node n-seam" style="flex:1 1 320px;margin:0"><div class="t">所有する seam（box の<b>出口</b>・→ Governance）<span class="badge b-seam">seam</span></div><div class="s">
+      <code>action_map</code>（Command→ToolCall・<code>gen_id</code>/<code>idempotency_key</code> を <b>Bridge が mint</b>・LLM 由来不可）＋ <code>MCP dispatch</code>（<code>DispatchToolExecutor</code>→<code>tools.dispatch</code>）。新 schema を産まない＝box でなく seam。詳細は §3。
+    </div></div>
+    <span class="arrow">▶</span>
+    <div class="gov-chip">Governance Box<span style="font-weight:400;color:var(--muted);font-size:11px">（別プロセス）</span></div>
+  </div>
+</div>
+
+<div class="note">
+  <b>図の読み方</b>: 外枠＝Super-Box（1つの差替単位）。内側の<b>緑枠</b>＝sub-box（親ごと差替）、<b>点線の緑枠</b>＝optional sub-box、<b>グレー枠</b>＝demoted（box でなく Super-Box へ吸収）、<b>橙の破線</b>＝seam（出口の写像・省略不可）、<b>紫の破線帯</b>＝transport（interface 裏の実装選択で box を割らない）。<b>seam だけが箱の外（Governance）へ抜ける</b>のが安全核の肝（§2）。<span class="dref">分類正本: box-taxonomy §0 / 01 §Box 種別と分類規則</span>
 </div>
 
 <!-- commander cycle -->
@@ -174,17 +252,17 @@
 
 <h3>Model Adapter <span class="badge b-sub">sub-box</span> <span style="color:var(--yellow);font-size:12px">未実装＝proposal</span></h3>
 <div class="node n-sub"><div class="s">
-  LLM/ER/VLA/STT の transport 差を吸収する registry。<code>provider_type: er | vla | stt</code>（vision は enum 外）。<code>transport: hermes | direct | worker</code> は interface 裏の実装選択（box を割らない）。raw output recorder・timeout・0 dispatch は Bridge-owned。<span class="dref">02:67-79,87-91 / mode-x-er/03-er-adapter-skeleton</span>
+  LLM/ER/VLA/STT の transport 差を吸収する registry。<code>provider_type: er | vla | stt</code>（vision は enum 外）。<code>transport: hermes | direct | worker</code> は interface 裏の実装選択（box を割らない）。raw output recorder・timeout・0 dispatch は Bridge-owned。<span class="dref">02 §Box の保管場所,87-91 / mode-x-er/03-er-adapter-skeleton</span>
 </div></div>
 
 <h3>Fusion <span class="badge b-sub">sub-box</span> <span style="color:var(--muted);font-size:12px">optional・未実装</span></h3>
 <div class="node n-sub" style="border-style:dashed"><div class="s">
-  ER/VLA/STT/WMS が食い違ったときの arbitration（disagreement policy・confidence fusion・operator clarification）。<b>単一 model では使わない＝抜ける</b>。VLA output は直接実行せず必ず Fusion/L3 を通す。<span class="dref">02:180-188 / 06 §L4 Fusion / mode-x-er-vla/03</span>
+  ER/VLA/STT/WMS が食い違ったときの arbitration（disagreement policy・confidence fusion・operator clarification）。<b>単一 model では使わない＝抜ける</b>。VLA output は直接実行せず必ず Fusion/L3 を通す。<span class="dref">02 §VLA adapter / 06 §L4 Fusion / mode-x-er-vla/03</span>
 </div></div>
 
 <h3>action_map / MCP dispatch <span class="badge b-seam">seam</span>（実装あり）</h3>
 <div class="node n-seam"><div class="s">
-  <b>action_map</b>: <code>command_item_to_tool_call(item, gen_id, idempotency_key?)</code> が <code>Command</code>(list[CommandItem]) を MCP ToolCall へ。<code>CommandAction</code>=navigate/wait/stop/yield/charge（<span class="dref">schemas.py CommandAction</span>）→ dispatch_task / cancel_task / send_to_charging。<b>MCP dispatch</b>: <code>DispatchToolExecutor(tools.dispatch)</code>（<span class="dref">executor.py:35 / llm_bridge.py:24-26,207</span>）。Hermes の MCP tool transport(stdio/HTTP) はこの seam 裏の実装。server-side motion 即時実行は不可。<span class="dref">01:60 / architecture/15-mcp-platform</span>
+  <b>action_map</b>: <code>command_item_to_tool_call(item, gen_id, idempotency_key?)</code> が <code>Command</code>(list[CommandItem]) を MCP ToolCall へ。<code>CommandAction</code>=navigate/wait/stop/yield/charge（<span class="dref">schemas.py CommandAction</span>）→ dispatch_task / cancel_task / send_to_charging。<b>MCP dispatch</b>: <code>DispatchToolExecutor(tools.dispatch)</code>（<span class="dref">executor.py:35 / llm_bridge.py:24-26,207</span>）。Hermes の MCP tool transport(stdio/HTTP) はこの seam 裏の実装。server-side motion 即時実行は不可。<span class="dref">01 §境界の原則 / architecture/15-mcp-platform</span>
 </div></div>
 
 <!-- modes -->
@@ -211,13 +289,13 @@
 <table>
   <thead><tr><th>要素</th><th>種別</th><th>docs（正本）</th><th>実体 / 契約</th></tr></thead>
   <tbody>
-    <tr><td>Super-Box</td><td><span class="badge b-box">box</span></td><td><a href="02-l4-robotics-bridge-box.md">02</a> 全体 / 01:38 / architecture/08</td><td class="impl-yes"><code>warehouse_llm_bridge</code></td></tr>
+    <tr><td>Super-Box</td><td><span class="badge b-box">box</span></td><td><a href="02-l4-robotics-bridge-box.md">02</a> 全体 / 01 §Box一覧 / architecture/08</td><td class="impl-yes"><code>warehouse_llm_bridge</code></td></tr>
     <tr><td>司令官サイクル</td><td>—</td><td>doc08 §共通サイクル</td><td class="impl-yes"><code>scheduler.py BridgeScheduler.run_cycle</code></td></tr>
     <tr><td>排他 A/B-3/C</td><td>—</td><td>doc08:161-179 / doc15 §2</td><td class="impl-yes"><code>wait_for</code> / <code>gen_check.py</code> / <code>action_map.py</code></td></tr>
     <tr><td>Input Context</td><td><span class="badge b-sub">sub</span></td><td>06 §L4 Input Context / mode-a/08a</td><td class="impl-yes"><code>situation.py</code> → <code>Situation</code></td></tr>
     <tr><td>Model Adapter / ER / VLA / STT</td><td><span class="badge b-sub">sub</span></td><td>02 §保管場所・151-188 / mode-x-er/03</td><td class="impl-no">未実装</td></tr>
-    <tr><td>Fusion</td><td><span class="badge b-sub">sub</span></td><td>02:180-188 / 06 §L4 Fusion / mode-x-er-vla/03</td><td class="impl-no">未実装</td></tr>
-    <tr><td>action_map</td><td><span class="badge b-seam">seam</span></td><td>01:60 / mode-a/08a</td><td class="impl-yes"><code>action_map.py:43</code></td></tr>
+    <tr><td>Fusion</td><td><span class="badge b-sub">sub</span></td><td>02 §VLA adapter / 06 §L4 Fusion / mode-x-er-vla/03</td><td class="impl-no">未実装</td></tr>
+    <tr><td>action_map</td><td><span class="badge b-seam">seam</span></td><td>01 §境界の原則 / mode-a/08a</td><td class="impl-yes"><code>action_map.py:43</code></td></tr>
     <tr><td>MCP dispatch</td><td><span class="badge b-seam">seam</span></td><td>architecture/15-mcp-platform</td><td class="impl-yes"><code>DispatchToolExecutor</code>(executor.py:35)</td></tr>
     <tr><td>trace root / Langfuse</td><td><span class="badge b-demoted">demoted→Super-Box</span></td><td>02 §Langfuse / architecture/08</td><td class="impl-yes"><code>tracing.py</code></td></tr>
     <tr><td>キャラLLM交渉</td><td>—</td><td>doc14 §交渉モード</td><td class="impl-yes"><code>character_node.py</code> / <code>negotiation.py</code></td></tr>
