@@ -33,7 +33,7 @@
 
 | ファイル | 内容 |
 |---|---|
-| [01-commercial-box-map.md](01-commercial-box-map.md) | 商用再利用 box の全体 map、repo 実体、差し替え点 |
+| [01-commercial-box-map.md](01-commercial-box-map.md) | 商用再利用 box の全体 map、**Box 種別と分類規則（box/sub-box/seam/plugin の taxonomy 正本）**、repo 実体、差し替え点 |
 | [02-l4-robotics-bridge-box.md](02-l4-robotics-bridge-box.md) | LLM Bridge / Robotics Bridge Super-Box / ER / VLA / Langfuse の L4 box 設計 |
 | [03-l3-planning-core-box.md](03-l3-planning-core-box.md) | Validator / Visual Resolver / Task Graph Executor / Command Compiler の商用 box 設計 |
 | [04-box-storage-and-reuse-guidelines.md](04-box-storage-and-reuse-guidelines.md) | box の保管方法、成熟度、site profile、fixture、分割基準 |
@@ -64,8 +64,8 @@ package guidance、contract PR に分ける。
 商用 box は、model や robot を直接信頼しない。
 
 ```
-L4 Input / Model Adapter / LLM Bridge
-  -> L3 Planning Core
+L4 Robotics Bridge Super-Box（内部 sub-box: Input Context / Model Adapter[ER/VLA/STT] / Fusion[optional]）
+  -> L3 Planning Core（先頭 seam: L3 Handoff）
   -> Contract / Governance
   -> Traffic
   -> Navigation

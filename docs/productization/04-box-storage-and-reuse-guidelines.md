@@ -28,28 +28,41 @@ box/
 
 ```yaml
 box_id: l4_robotics_bridge
-status: proposal
+status: incubating          # 必須: proposal | incubating | reusable | product-ready（§成熟度）。Super-Box は warehouse_llm_bridge 実体+host unit を持つため incubating（実装ゼロの sub-box は proposal）
+kind: box                   # box | sub-box | seam | plugin（種別の正本は 01 §Box 種別と分類規則）
+optional: false             # 省略可能な box か（Fusion 等は true）
+transport: n/a              # box が Hermes/direct を選ぶ場合 hermes|direct|worker。安全 gate を持つ box は n/a
 owner_track: llm-bridge
 runtime: python
 depends_on:
   - contract_box
+  - governance_box
   - eval_box
 produces:
-  - robotics_plan_draft
+  - command                 # 凍結: warehouse_interfaces/schemas.py（frozen に解決）
+  - robotics_plan_draft     # (wire/未凍結): warehouse_interfaces に無い → 昇格まで marker 必須
 consumes:
-  - state_snapshot
-  - media_refs
+  - state_snapshot          # 凍結: schemas.py
+  - media_refs              # (wire/未凍結)
 customer_overrides:
   - provider
   - timeout_policy
   - trace_tags
 fixtures:
   - fixtures/basic_voice_red_box
-acceptance_gates:
+acceptance_gates:           # gate family は所有 box に帰属（sub-box/seam へ降格しても消さない）
   - L4-G0
   - L4-G1
   - L4-G2
 ```
+
+manifest の必須・規約:
+
+- **`status` は必須**（成熟度詐称を防ぐ）。実装ゼロの box（Model Adapter / Fusion / L3 Planning Core）は `proposal`。`warehouse_llm_bridge` 実体を持つ Super-Box / Input Context は `incubating` 以上。
+- **`kind`**（box / sub-box / seam / plugin）を明記する。seam（`action_map` / MCP dispatch / L3 Handoff）は独立 manifest を持たず、**所有 box の manifest 内に seam として記す**。
+- **`produces` / `consumes` は凍結 file:line に解決する値のみを確定**とし、`warehouse_interfaces`（schemas / stores / paths / locations）か doc03 topic に解決できないものは **`(wire/未凍結)` marker** を付ける。未凍結契約（`RoboticsPlan draft` / `ValidationReport` / `VlaGroundingReport` / `transport` enum / site_profile schema）を frozen 扱いで出さない（docs に無い契約を発明しない）。
+- **`transport`** は box interface 裏の実装選択。安全 gate（motion dispatch・0 dispatch・clamp）を持つ box（Governance / Safety / Hardware）は `n/a`（`hermes` と書くと motion gate が Hermes 線で貫かれる category error）。
+- **`acceptance_gates`** に gate family（L4C/L4A/L4F/L3H/N-G/H-G/E-G）を box ごとに帰属させる。`box=` decision_event literal は集計軸であり、sub-box/seam へ降格しても据え置く。
 
 ## 成熟度
 

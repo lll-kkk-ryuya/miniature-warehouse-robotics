@@ -17,6 +17,8 @@ layer ごとの採用判断は [07-layer-tool-decision-matrix.md](07-layer-tool-
 Navigation / Hardware / Eval の詳細 gate は
 [08-navigation-hardware-eval-gates.md](08-navigation-hardware-eval-gates.md) を参照する。
 
+> **注記**: 本書の `box=...`（decision_event の集計軸）と funnel は **観測 taxonomy** であり、`04` の「再利用保管単位の box」や `01` の box 階層とは**別レイヤ**である。`01` で sub-box / seam に降格した要素（例: `box=l3_handoff`）も、funnel literal と gate ID は集計軸として据え置く。
+
 ```text
 model output
   -> L3 Validator decision
