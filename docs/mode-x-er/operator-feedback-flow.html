@@ -148,8 +148,8 @@
     <div class="grid2">
       <div class="node n-sub"><div class="t">Input Context <span class="badge b-sub">sub</span> <span class="role">実装あり</span></div><div class="s">人の声 / 画像 / state を 1 bundle に（<b>入口</b>）。<span class="dref">situation.py / 01:13</span></div></div>
       <div class="node n-new"><div class="t">★ Operator Feedback <span class="badge b-new">新 sub・optional</span></div><div class="s">拒否/要確認/緊急 → 現場語テンプレ → 音声で人へ（<b>出口</b>）。<b>motion を持たない（0 actuation）</b>。<span class="dref">05 §2</span></div></div>
-      <div class="node n-sub"><div class="t">Model Adapter <span class="badge b-sub">sub</span> <span class="role" style="color:var(--yellow);border-color:var(--yellow)">proposal</span></div><div class="s">ER/VLA/STT transport。<span class="dref">02:151-188</span></div></div>
-      <div class="node n-sub" style="border-style:dashed"><div class="t">Fusion <span class="badge b-sub">sub</span> <span class="role">optional</span></div><div class="s">複数 model の食い違い調停。単一 model では抜ける。<span class="dref">06:125-141</span></div></div>
+      <div class="node n-sub"><div class="t">Model Adapter <span class="badge b-sub">sub</span> <span class="role" style="color:var(--yellow);border-color:var(--yellow)">proposal</span></div><div class="s">ER/VLA/STT transport。<span class="dref">02:201-238</span></div></div>
+      <div class="node n-sub" style="border-style:dashed"><div class="t">Fusion <span class="badge b-sub">sub</span> <span class="role">optional</span></div><div class="s">複数 model の食い違い調停。単一 model では抜ける。<span class="dref">06:130-147</span></div></div>
     </div>
     <div class="nest-arrow">▼ ★ の consumes / produces</div>
     <div class="grid2">
@@ -170,7 +170,7 @@
 <div class="sub-nest" style="border-color:var(--plugin);background:var(--plugin-bg)">
   <div class="nh" style="color:var(--plugin)"><span class="lyr" style="background:var(--plugin)">L4</span>入力・知覚（Input Context / Model Adapter / Fusion）</div>
   <div><span class="rc">missing_image</span><span class="rc">stale_state</span><span class="rc">stt_failed</span><span class="rc">timeout</span><span class="rc">empty_output</span><span class="rc">needs_operator</span></div>
-  <div class="s" style="margin-top:5px"><span class="dref">06:98 / 06:117 / 06:136</span></div>
+  <div class="s" style="margin-top:5px"><span class="dref">06:98 / 06:117 / 06:141</span></div>
 </div>
 <div class="sub-nest" style="border-color:var(--teal);background:rgba(125,207,255,.05)">
   <div class="nh" style="color:var(--teal)"><span class="lyr" style="background:var(--teal)">L3</span>司令・検証（Validator / Visual Resolver）</div>
@@ -180,17 +180,17 @@
 <div class="sub-nest" style="border-color:var(--seam);background:var(--seam-bg)">
   <div class="nh" style="color:var(--seam)"><span class="lyr" style="background:var(--seam)">L2</span>実行許可・交通（Governance / Policy Gate・Traffic）</div>
   <div><span class="rc">battery_low</span><span class="rc">emergency_active</span><span class="rc">stale_generation</span><span class="rc">unknown_location</span><span class="rc">route_conflict</span><span class="rc">rmf_unavailable</span></div>
-  <div class="s" style="margin-top:5px"><span class="dref">05:254-259 / 06:172</span></div>
+  <div class="s" style="margin-top:5px"><span class="dref">05:254-259 / 06:177</span></div>
 </div>
 <div class="sub-nest" style="border-color:var(--red);background:var(--red-bg)">
   <div class="nh" style="color:var(--red)"><span class="lyr" style="background:var(--red)">L1</span>自律走行・安全（Navigation / Safety）</div>
   <div><span class="rc">no_path</span><span class="rc">recovery_exhausted</span><span class="rc">localization_unhealthy</span><span class="rc">near_collision</span><span class="rc">pose_stale</span></div>
-  <div class="s" style="margin-top:5px"><span class="dref">06:191 / 05:84</span></div>
+  <div class="s" style="margin-top:5px"><span class="dref">06:196 / 05:84</span></div>
 </div>
 <div class="sub-nest" style="border-color:var(--box);background:rgba(122,162,247,.05)">
   <div class="nh" style="color:var(--box)"><span class="lyr" style="background:var(--box)">L0</span>物理安全（Hardware・ESP32 最終防衛線）</div>
   <div><span class="rc">clamped_velocity</span><span class="rc">nonfinite_cmd</span><span class="rc">heartbeat_lost</span></div>
-  <div class="s" style="margin-top:5px"><span class="dref">06:223</span></div>
+  <div class="s" style="margin-top:5px"><span class="dref">06:228</span></div>
 </div>
 
 <div class="note">
@@ -213,7 +213,7 @@
     <div class="s"><code>(box, reason_code)</code> → <b>現場語テンプレート（deterministic lookup）</b>。L3 reject は <code>message_for_operator</code> をそのまま使える。<b>LLM に作文させない</b>。<span class="dref">05 §4 / 02-l3:95</span></div></div>
   <div class="step-down">▼</div>
   <div class="step sink"><b>Hermes Voice/TTS で音声化</b> <span class="badge b-plugin" style="font-size:10px">transport: hermes / direct</span>
-    <div class="s">Super-Box の Hermes-managed transport（Plugin STT/TTS）。満たさなければ direct TTS。<span class="dref">01:106 / 01-arch:203</span></div></div>
+    <div class="s">Super-Box の Hermes-managed transport（Plugin STT/TTS）。満たさなければ direct TTS。<span class="dref">01:106 / 01-arch:219</span></div></div>
   <div class="step-down">▼</div>
   <div class="step out"><b>speaker → 人</b> <span class="badge b-box" style="font-size:10px">operator</span>
     <div class="s">「<b>bot1 の『赤い箱』が地図に無いので動かせません</b>」＝どの箱(L3 Validator)・どの理由(UNKNOWN_TARGET)。併走で web/OBS にも（fail-open）。<span class="dref">22:36,112</span></div></div>
@@ -296,7 +296,7 @@
     <tr><td>L3 Visual Resolver</td><td><span class="lyr" style="background:var(--teal)">L3</span><span class="badge b-box">box</span></td><td><code>unresolved</code></td><td><code>02-l3:151</code></td><td>見えた箱を地図の位置に対応づけられないので、移動先を決められません</td></tr>
     <tr><td>L2 Governance</td><td><span class="lyr" style="background:var(--seam)">L2</span><span class="badge b-box">box</span></td><td><code>battery_low</code></td><td><code>05:259</code></td><td>bot2 のバッテリーが不足しているので、この指示は実行できません</td></tr>
     <tr><td>L1 Safety</td><td><span class="lyr" style="background:var(--red)">L1</span><span class="badge b-box">box</span></td><td><code>near_collision</code></td><td><code>05:84</code></td><td>衝突の危険を検知して止めました（割り込み・整形なし）</td></tr>
-    <tr><td>L0 Hardware</td><td><span class="lyr" style="background:var(--box)">L0</span><span class="badge b-box">box</span></td><td><code>nonfinite_cmd</code></td><td><code>06:223</code></td><td>不正な速度指令を検知したので安全のため停止しました（整形なし）</td></tr>
+    <tr><td>L0 Hardware</td><td><span class="lyr" style="background:var(--box)">L0</span><span class="badge b-box">box</span></td><td><code>nonfinite_cmd</code></td><td><code>06:228</code></td><td>不正な速度指令を検知したので安全のため停止しました（整形なし）</td></tr>
     <tr><td>★ Operator Feedback 自身</td><td><span class="lyr" style="background:var(--sub)">L4</span><span class="badge b-new">新 sub</span></td><td><code>tts_failed</code></td><td class="impl-no"><code>05 §3</code> proposal</td><td>（音声不可時は web/overlay に fallback・run は止めない＝fail-open）</td></tr>
   </tbody>
 </table>

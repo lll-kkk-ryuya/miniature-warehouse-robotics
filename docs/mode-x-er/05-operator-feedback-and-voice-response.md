@@ -10,14 +10,14 @@
 2. これは新しい判断ロジックではなく、**operator 向け出力チャネル**である。各 gate は既に人間可読の理由（`decision` / `reason_code` / `reason_detail` / L3 の `message_for_operator`）を**出している**（`docs/productization/05-decision-observability-and-tooling.md:48-69`・`docs/mode-x-er/02-l3-planning-core.md:95`）。欠けているのは**それを音声化して人へ戻す箱**だけ。
 3. 置き場所は **L4 Robotics Bridge Super-Box 内の新 sub-box「Operator Feedback Box」**。既存の **Input Context Box（operator→system の入力 sub-box・`docs/productization/01-commercial-box-map.md:13`）の鏡像**（system→operator の出力）として対称に置く。理由とほかの候補を却下した根拠は §2。
 4. **安全のため reject 理由の文面は deterministic（テンプレート lookup）で作り、LLM に作文させない**。fallible な model の周りに deterministic な安全 gate と説明可能な reason_code を置く本プロジェクトの思想（`docs/productization/01-commercial-box-map.md:53`・`docs/mode-x-er/04-er-input-modalities-and-stt.md:79`）に合わせる。LLM は**安全に無関係な言い回し整形**にのみ optional で使い、reason_code を ground truth として必ず添える（§4）。
-5. まず **Mode X-ER** に組み込む。Mode X-ER は既に **operator voice 入力**と **Hermes Voice/TTS transport** を持つ（`docs/mode-x-er/01-architecture-and-flow.md:21`・`:203`）ので、対称な**音声出力**を足すのが最小増分になる。組み込み方は §5。
+5. まず **Mode X-ER** に組み込む。Mode X-ER は既に **operator voice 入力**と **Hermes Voice/TTS transport** を持つ（`docs/mode-x-er/01-architecture-and-flow.md:23`・`:219`）ので、対称な**音声出力**を足すのが最小増分になる。組み込み方は §5。
 6. **喋るのは「operator が音声で出した命令に紐づく失敗・節目」だけ**（`gen_id` 相関 + lifecycle filter）。命令外の自律停止・50ms tick まで喋ると**鳴り続けて使えない**ので黙らせる（web/log のみ）。発話スコープは §5.3。
 
 ---
 
 ## 1. 位置づけ — なぜ必要か（ギャップ）
 
-Mode X-ER の標準フローは「人の音声 → ER → L3 → L2 → L1/L0」と**下り（指令）方向**で、戻りは `bot odom / scan / battery` の**状態**だけである（`docs/mode-x-er/01-architecture-and-flow.md:83-92`）。
+Mode X-ER の標準フローは「人の音声 → ER → L3 → L2 → L1/L0」と**下り（指令）方向**で、戻りは `bot odom / scan / battery` の**状態**だけである（`docs/mode-x-er/01-architecture-and-flow.md:85-94`）。
 
 一方、人の指示が実行されない理由は**至る所**で生まれる:
 
@@ -25,22 +25,22 @@ Mode X-ER の標準フローは「人の音声 → ER → L3 → L2 → L1/L0」
 |---|---|---|---|
 | L4 | Input Context | `missing_image, stale_state, calibration_missing, stt_failed` | `docs/productization/06-oss-reuse-and-box-small-designs.md:98` |
 | L4 | Model Adapter | `timeout, provider_error, malformed_response, empty_output` | `docs/productization/06-oss-reuse-and-box-small-designs.md:117` |
-| L4 | Fusion (optional) | `target_mismatch, action_mismatch, confidence_gap, needs_operator` | `docs/productization/06-oss-reuse-and-box-small-designs.md:136` |
-| L3 | Handoff (seam) | `forbidden_endpoint, low_level_action_present, coordinate_goal_unfrozen` | `docs/productization/06-oss-reuse-and-box-small-designs.md:153` |
+| L4 | Fusion (optional) | `target_mismatch, action_mismatch, confidence_gap, needs_operator` | `docs/productization/06-oss-reuse-and-box-small-designs.md:141` |
+| L3 | Handoff (seam) | `forbidden_endpoint, low_level_action_present, coordinate_goal_unfrozen` | `docs/productization/06-oss-reuse-and-box-small-designs.md:158` |
 | L3 | Validator | `UNKNOWN_ROBOT, UNKNOWN_TARGET, LOW_CONFIDENCE_TARGET, TASK_GRAPH_CYCLE, EMERGENCY_ACTIVE` | `docs/mode-x-er/02-l3-planning-core.md:96` |
 | L3 | Visual Resolver | `unresolved`（map 外 / polygon 外 / reprojection 過大） | `docs/mode-x-er/02-l3-planning-core.md:151` |
 | L2 | Governance / Policy Gate | `stale_generation, duplicate_command, battery_low, emergency_active, unknown_location` | `docs/productization/05-decision-observability-and-tooling.md:254-259` |
-| L2 | Traffic | `route_conflict, no_route, rmf_unavailable` | `docs/productization/06-oss-reuse-and-box-small-designs.md:172` |
-| L1 | Navigation | `no_path, recovery_exhausted, localization_unhealthy` | `docs/productization/06-oss-reuse-and-box-small-designs.md:191` |
+| L2 | Traffic | `route_conflict, no_route, rmf_unavailable` | `docs/productization/06-oss-reuse-and-box-small-designs.md:177` |
+| L1 | Navigation | `no_path, recovery_exhausted, localization_unhealthy` | `docs/productization/06-oss-reuse-and-box-small-designs.md:196` |
 | L1 | Safety | `emergency`（near_collision / pose_stale） | `docs/productization/05-decision-observability-and-tooling.md:84` |
-| L0 | Hardware | `clamped_velocity, nonfinite_cmd, heartbeat_lost` | `docs/productization/06-oss-reuse-and-box-small-designs.md:223` |
+| L0 | Hardware | `clamped_velocity, nonfinite_cmd, heartbeat_lost` | `docs/productization/06-oss-reuse-and-box-small-designs.md:228` |
 
 これらは**既に**人間可読フィールドを持って emit されている:
 
 - `decision` は固定語彙 `accepted / rejected / warning / needs_clarification / emergency_stop`（`docs/productization/05-decision-observability-and-tooling.md:69`）。
 - `reason_detail` は**人間向け補足**（集計軸にしない、と明記。`docs/productization/05-decision-observability-and-tooling.md:71`）。
 - L3 Validator の rule result は `code, severity, field_path, message_for_operator, debug_detail, dispatch_effect` を持つ（`docs/mode-x-er/02-l3-planning-core.md:95`）。**`message_for_operator` は人へ返すための文面そのもの**。
-- ER output は `operator_clarification_required` を持ち、true なら 0 dispatch（`docs/mode-x-er/01-architecture-and-flow.md:147`・`docs/mode-x-er/03-er-adapter-skeleton.md:71`）。
+- ER output は `operator_clarification_required` を持ち、true なら 0 dispatch（`docs/mode-x-er/01-architecture-and-flow.md:149`・`docs/mode-x-er/03-er-adapter-skeleton.md:71`）。
 
 **つまり「人へ返す中身」は設計上すでに存在し、それを音声で operator に届ける箱だけが無い。** 既存の grep でも operator 向け音声出力 / TTS リジェクト応答の box は不在（Hermes の TTS は transport 候補、キャラLLM の TTS は Mode A 演出用の出力先未決事項であって reject 応答ではない: `docs/architecture/06-implementation-phases.md:206`）。本書はこの 1 箱を定義する。
 
@@ -77,8 +77,8 @@ L4 Robotics Bridge Super-Box（親 box）
 
 | 候補 | 採否 | 理由（file:line） |
 |---|---|---|
-| **L4 Robotics Bridge Super-Box 内 sub-box** | ✅**採用** | L4 が operator I/O を所有する。map の入力境界が `[入力] Operator / WMS / API / Voice`（`docs/productization/01-commercial-box-map.md:10`）。TTS は Super-Box の Hermes-managed transport（Plugin Extension `STT/TTS`・`docs/productization/01-commercial-box-map.md:106`・`docs/productization/02-l4-robotics-bridge-box.md:108`）。voice **入力**（Input Context）の対称な voice **出力**は同じ箱に置くのが自然（`docs/productization/06-oss-reuse-and-box-small-designs.md:85-104`）。 |
-| Eval / Observability Box（横断） | ❌（同じバス・別責務） | **同じ横断 decision_event バスを consume する兄弟**だが、Eval/Obs は **observe-only の join / KPI / report 集計 sink**（`docs/productization/05-decision-observability-and-tooling.md:88-106`・`docs/productization/01-commercial-box-map.md:71` decision event aggregation）。**リアルタイムに人へ出す一次チャネルは別責務**なので別箱にし、home を L4（operator I/O ＋ TTS）に置く。E-G2「観測 producer と別 node」・観測 sink fail-open（`docs/productization/06-oss-reuse-and-box-small-designs.md:244`・`05:279`）は、**この箱を別 node・fail-open にする**根拠（§6 L4OF-G2）であって、Eval/Obs 却下そのものの根拠ではない。 |
+| **L4 Robotics Bridge Super-Box 内 sub-box** | ✅**採用** | L4 が operator I/O を所有する。map の入力境界が `[入力] Operator / WMS / API / Voice`（`docs/productization/01-commercial-box-map.md:10`）。TTS は Super-Box の Hermes-managed transport（Plugin Extension `STT/TTS`・`docs/productization/01-commercial-box-map.md:106`・`docs/productization/02-l4-robotics-bridge-box.md:132`）。voice **入力**（Input Context）の対称な voice **出力**は同じ箱に置くのが自然（`docs/productization/06-oss-reuse-and-box-small-designs.md:85-104`）。 |
+| Eval / Observability Box（横断） | ❌（同じバス・別責務） | **同じ横断 decision_event バスを consume する兄弟**だが、Eval/Obs は **observe-only の join / KPI / report 集計 sink**（`docs/productization/05-decision-observability-and-tooling.md:88-106`・`docs/productization/01-commercial-box-map.md:71` decision event aggregation）。**リアルタイムに人へ出す一次チャネルは別責務**なので別箱にし、home を L4（operator I/O ＋ TTS）に置く。E-G2「観測 producer と別 node」・観測 sink fail-open（`docs/productization/06-oss-reuse-and-box-small-designs.md:249`・`05:279`）は、**この箱を別 node・fail-open にする**根拠（§6 L4OF-G2）であって、Eval/Obs 却下そのものの根拠ではない。 |
 | L3 Planning Core | ❌ | L3 は **command 候補を作る**箱で、実行許可も operator I/O も持たない（`docs/productization/01-commercial-box-map.md:85`）。reject の音声化は planning ではない。 |
 | Governance / Policy Gate | ❌ | Governance は **enforcement**（accepted motion だけ通す・`01:86`）。reject 理由を**生む**側であり、人へ**喋る**側ではない。喋らせると enforcement と I/O が密結合する。 |
 | ER / LLM に作文させる | ❌（safety 文面） | fallible な model に**安全 reject の理由文を生成**させると hallucination リスク。deterministic gate の思想に反する（§4・`01:53`）。 |
@@ -96,7 +96,7 @@ box taxonomy / Box 一覧の正本は `docs/productization/01-commercial-box-map
 | 項目 | 設計案 |
 |---|---|
 | 目的 | gate が出した reject / clarification / emergency の decision を**人間可読・現場言語の通知**にし、音声（第一）＋ web/overlay（併走）で operator に返す。motion は一切持たない。 |
-| 再利用する OSS / 標準 tool | **TTS（専用エンジン・LLM ではない）**: Hermes Voice/TTS transport（`transport: hermes`・`docs/mode-x-er/01-architecture-and-flow.md:203`）が **Gemini TTS / OpenAI TTS / Edge / Piper 等をネイティブ proxy**、または direct adapter（Gemini API TTS / Google Cloud TTS）。provider 詳細・出典は §7。**STT 入力との対称**: Whisper（`06:39`）。**テンプレート/locale**: Pydantic で `OperatorNotice` shape 検証（`06:36`）。**web sink**: 既存 `/character/speech` 同型の event→Web 経路（`docs/architecture/22-web-observability.md:36,112`）が precedent。 |
+| 再利用する OSS / 標準 tool | **TTS（専用エンジン・LLM ではない）**: Hermes Voice/TTS transport（`transport: hermes`・`docs/mode-x-er/01-architecture-and-flow.md:219`）が **Gemini TTS / OpenAI TTS / Edge / Piper 等をネイティブ proxy**、または direct adapter（Gemini API TTS / Google Cloud TTS）。provider 詳細・出典は §7。**STT 入力との対称**: Whisper（`06:39`）。**テンプレート/locale**: Pydantic で `OperatorNotice` shape 検証（`06:36`）。**web sink**: 既存 `/character/speech` 同型の event→Web 経路（`docs/architecture/22-web-observability.md:36,112`）が precedent。 |
 | 自作で残す境界 | `(box, reason_code)` → **現場言語テンプレート**の写像（deterministic）、locale（JA/EN）、優先度（emergency は即時・割り込み）、抑制/まとめ（同一 reason の連投を間引く）、TTS 失敗時の fail-open、**0 dispatch 保証**（音声箱が motion を絶対に出さない）。 |
 | 入力 artifact | `decision_event`（`box, stage, decision, reason_code, reason_detail, robot, gen_id, run_id, message_for_operator?`）、`operator_locale`、`sink_profile` |
 | 出力 artifact | `operator_notice_ref`（喋った文面 + 音声 ref）、自身の `decision_event`（`box=l4_operator_feedback`） |
@@ -145,7 +145,7 @@ reject 理由の音声文面は **2 段**にする。
 
 ### 5.1 data flow（戻りに operator notice を足す）
 
-既存の戻りは状態のみ（`docs/mode-x-er/01-architecture-and-flow.md:83-92`）。ここに**拒否/要確認の戻り**を 1 本足す:
+既存の戻りは状態のみ（`docs/mode-x-er/01-architecture-and-flow.md:85-94`）。ここに**拒否/要確認の戻り**を 1 本足す:
 
 ```
 （下り・既存）
@@ -170,7 +170,7 @@ operator voice → Input Context → ER Adapter → RoboticsPlan draft
 
 > **"emit" とは**: ある node が**小さな event レコード（decision_event）を channel に publish して即座に戻る**こと。誰かが consume するのを待たない fire-and-forget（ROS なら `publisher.publish(msg)`、in-process なら callback への非同期 dispatch）。「関数を呼んで戻り値を待つ（＝同期 call）」の対義。**gate は emit するだけで TTS を待たない**のが安全の肝。
 
-**不変条件（最優先・安全）**: **gate は reject を decision_event として emit したら即座に処理を続け、TTS の完了を絶対に待たない（non-blocking）。** 理由 — Safety / Hardware は上位 model に依存せず、上位が止まっても下位が独立に止める（`docs/productization/01-commercial-box-map.md:89`・`docs/productization/05-decision-observability-and-tooling.md:304`）。enforcement と観測 producer を同一 node にせず観測は fail-open（`docs/productization/06-oss-reuse-and-box-small-designs.md:244`・`docs/productization/05-decision-observability-and-tooling.md:279`）。L1 は Hard-RT（50ms tick）、L0 は MCU 即時なので、外部 API の TTS（数百ms〜秒）を gate の critical path に乗せない。
+**不変条件（最優先・安全）**: **gate は reject を decision_event として emit したら即座に処理を続け、TTS の完了を絶対に待たない（non-blocking）。** 理由 — Safety / Hardware は上位 model に依存せず、上位が止まっても下位が独立に止める（`docs/productization/01-commercial-box-map.md:89`・`docs/productization/05-decision-observability-and-tooling.md:304`）。enforcement と観測 producer を同一 node にせず観測は fail-open（`docs/productization/06-oss-reuse-and-box-small-designs.md:249`・`docs/productization/05-decision-observability-and-tooling.md:279`）。L1 は Hard-RT（50ms tick）、L0 は MCU 即時なので、外部 API の TTS（数百ms〜秒）を gate の critical path に乗せない。
 
 **起点の層で "叩き方" を分ける**（どちらも「止まった瞬間に L4 render が走る」点は同じ。違いは transport だけ）:
 
@@ -199,7 +199,7 @@ operator voice → Input Context → ER Adapter → RoboticsPlan draft
 
 **原則**: 喋るのは「**operator が音声で出した命令（task）の lifecycle に紐づく notable event**」だけ。それ以外（命令外の自律停止・高頻度 tick・無関係 reject）は**黙る（web/log のみ）**。
 
-**どう紐づけるか（attribution）**: 命令は L3 で `Command`(gen_id=N) に compile され、action_map が `gen_id=N` を注入して dispatch する（既存・B-3）。その命令が下流 L2/L1/L0 で reject/fail/complete すると、対応する decision_event は**同じ `gen_id` / `run_id` / `robot` を持つ**（funnel は L4→L0 を `run_id`/`gen_id` で join・`docs/productization/05-decision-observability-and-tooling.md:88`・`docs/productization/06-oss-reuse-and-box-small-designs.md:244` E-G0）。Operator Feedback はこの**相関キーで filter**する:
+**どう紐づけるか（attribution）**: 命令は L3 で `Command`(gen_id=N) に compile され、action_map が `gen_id=N` を注入して dispatch する（既存・B-3）。その命令が下流 L2/L1/L0 で reject/fail/complete すると、対応する decision_event は**同じ `gen_id` / `run_id` / `robot` を持つ**（funnel は L4→L0 を `run_id`/`gen_id` で join・`docs/productization/05-decision-observability-and-tooling.md:88`・`docs/productization/06-oss-reuse-and-box-small-designs.md:249` E-G0）。Operator Feedback はこの**相関キーで filter**する:
 
 ```
 speak ⟺  event.gen_id ∈ {現在 live な operator 命令}
@@ -228,7 +228,7 @@ filter で落とした event は**喋らないが audit には残す**（`box=l4
 
 ### 5.4 コード上の保管場所（productization の module 案に追加）
 
-`docs/productization/02-l4-robotics-bridge-box.md:196-214` の `robotics_bridge/` module 案に、operator 出力を 1 ディレクトリ足す形が自然（**現時点ではコード追加しない・proposal**）:
+`docs/productization/02-l4-robotics-bridge-box.md:240-266` の `robotics_bridge/` module 案に、operator 出力を 1 ディレクトリ足す形が自然（**現時点ではコード追加しない・proposal**）:
 
 ```text
 robotics_bridge/
@@ -248,7 +248,7 @@ transport は box interface 裏の `transport: hermes|direct` 選択であって
 
 ### 5.5 実装フェーズ案（Mode X-ER の XER フェーズに追補）
 
-既存 XER0〜XER7（`docs/mode-x-er/README.md:84-91`）に、reject 観測が出揃う **XER2 (Validator)** 以降で並走させる:
+既存 XER0〜XER7（`docs/mode-x-er/README.md:85-92`）に、reject 観測が出揃う **XER2 (Validator)** 以降で並走させる:
 
 | Phase | 内容 | 完了条件 |
 |---|---|---|
@@ -289,7 +289,7 @@ transport は box interface 裏の `transport: hermes|direct` 選択であって
 
 ## 8. 参照
 
-- 正本（mode-x-er）: `docs/mode-x-er/01-architecture-and-flow.md`（data flow・戻り `:83-92`・Voice/TTS `:203`）/ `docs/mode-x-er/02-l3-planning-core.md`（`message_for_operator` `:95`・validation code `:96`・unresolved `:151`）/ `docs/mode-x-er/04-er-input-modalities-and-stt.md`（STT 任意・deterministic 思想 `:79`）/ `docs/mode-x-er/README.md`（標準フロー `:40-61`）
+- 正本（mode-x-er）: `docs/mode-x-er/01-architecture-and-flow.md`（data flow・戻り `:83-92`・Voice/TTS `:219`）/ `docs/mode-x-er/02-l3-planning-core.md`（`message_for_operator` `:95`・validation code `:96`・unresolved `:151`）/ `docs/mode-x-er/04-er-input-modalities-and-stt.md`（STT 任意・deterministic 思想 `:79`）/ `docs/mode-x-er/README.md`（標準フロー `:40-61`）
 - box taxonomy 正本: `docs/productization/01-commercial-box-map.md`（種別 `:42-48`・operator 入力境界 `:10`・Input Context sub-box `:13`・Plugin TTS `:106`・安全境界 `:53`）
 - L4 box / Hermes transport: `docs/productization/02-l4-robotics-bridge-box.md`（責務 `:32-63`・Plugin TTS `:108`・module 案 `:196-214`）
 - decision / reject 集計: `docs/productization/05-decision-observability-and-tooling.md`（decision_event `:48-69`・reason_detail `:71`・dispatch gate `:254-259`・fail-open `:279`）
