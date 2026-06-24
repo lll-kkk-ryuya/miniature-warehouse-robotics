@@ -7,7 +7,9 @@
 ## 全体像
 
 Mode X-ER は、L4 の Robotics Bridge Super-Box で audio / camera / state を束ね、
-Gemini Robotics-ER を Hermes transport または Bridge-managed direct adapter から呼ぶ。
+Gemini Robotics-ER を原則 **Hermes transport** から呼ぶ。Bridge-managed direct adapter
+または worker は、Hermes が対象 modality / runtime / response shape を扱えない場合の
+明示 fallback とする。
 L4 は model 判断を自作しないが、input context、transport 選択、timeout、trace、raw output audit、
 L3 handoff は所有する。L3 は ER の提案を既存実行基盤が理解できる command 候補へ変換し、
 L2 以降は既存の MCP / Policy Gate / Nav2 / Open-RMF 経路を使う。
@@ -99,7 +101,7 @@ Robotics Bridge Super-Box である。L4 は以下を所有する。
 
 - audio / transcript / image / state / calibration の input bundle
 - request id、cycle、timeout、cancellation
-- Hermes Agent Gateway 経由か direct adapter 経由かの選択
+- Hermes Agent Gateway 経由か direct adapter / worker 経由かの選択
 - provider call の trace / raw output audit
 - ER raw output から L3 Planning Core へ渡す内部 handoff
 
@@ -149,6 +151,20 @@ ER output の内部案:
 ```
 
 この output はまだ実行可能ではない。画像座標、曖昧な target、依存関係、古い state、緊急状態を含む可能性があるため、L3 で必ず正規化・検証する。
+
+## L4 transport selection
+
+Mode X-ER の L4 transport は Hermes-first とする。
+
+| transport | 位置づけ | 採用条件 |
+|---|---|---|
+| `hermes` | 既定の第一候補 | Hermes が対象 model / audio / image input / STT / provider fallback / OpenAI 互換 response を扱える。server-side motion tool execution は使わず、Bridge が final output を受けて L3 に渡す |
+| `direct` | 明示 fallback | Gemini Robotics-ER の API、audio / image modality、response envelope、latency 要件が Hermes 経由に合わない |
+| `worker` | GPU / VLA runtime 用 fallback | OpenVLA など別 process / GPU worker を使う必要がある。Mode X-ER 単体では原則使わず、Mode X-ER-VLA 側で扱う |
+
+比較 run では provider routing / fallback が公平性に影響するため、固定 provider leg と
+fallback-enabled leg を混ぜない。fallback を評価する場合は別条件として trace metadata に残す。
+どの transport でも、L3 Handoff に渡る input shape は同じにする。
 
 ## L3 の data
 
@@ -202,3 +218,26 @@ L4 transport の再利用判断では、Nous Research の Hermes Agent 公式 do
 - [Vision & Image Paste](https://hermes-agent.nousresearch.com/docs/user-guide/features/vision)
 - [Voice & TTS](https://hermes-agent.nousresearch.com/docs/user-guide/features/tts)
 - [Plugins](https://hermes-agent.nousresearch.com/docs/user-guide/features/plugins)
+
+## 知覚の2系統（物体＝カメラ / 幾何＝LiDAR）
+
+「どこに何があるか」は性質の異なる2系統で別々に取得する。混同しない。
+
+1. **物体の「何がどこ」（赤箱 / 青箱 など意味的 target）** = 俯瞰カメラ（Logicool C922n・床上
+   120〜150cm にアーム固定）+ Gemini Robotics-ER の vision。ER が画像から detections（pixel）を
+   出し、L3 Visual Resolver が pixel→homography→map→known location に変換する。**ER へ渡すのは
+   音声と同時刻の俯瞰フレーム1枚**（指示時点の静止）。LiDAR は色・物体クラスを判別できないため
+   **物体認識には使わない**。音声を STT で text 化せず ER へ直接入力する点は
+   [`04-er-input-modalities-and-stt.md`](04-er-input-modalities-and-stt.md) を正本にする。
+2. **ロボット位置・障害物の「どこ」（幾何）** = minicar 搭載 **ORBBEC MS200**（360° LiDAR）→
+   `/bot{n}/scan` → **AMCL 自己位置推定（常時）/ costmap 障害物検知（常時）**。これは L1 で
+   リアルタイムに回り、ER/L3 の指示サイクルとは独立。加えて固定 **RPLiDAR A1**（俯瞰）が外部
+   トラッキング補正（オプション）。
+3. **地図そのもの** = 事前に **SLAM（minicar の MS200 を teleop で1回走らせて生成）**。固定
+   RPLiDAR A1 は1地点で遮蔽が出るため SLAM には使わない。
+
+採用する役割分担: **ER＝画像で物体認識 → L3＝known location（棚位置）へ snap → L1＝MS200/costmap
+で走行中の衝突回避を常時**。ER への入力（カメラ画像＋音声）は意味的 target の認識用、走行の安全・
+自己位置は L1 の LiDAR / AMCL が常時担う。両者は **別レイヤ・別センサ**である。
+
+正本: [`shared/09-navigation-internals.md`](../shared/09-navigation-internals.md)（センサ役割・AMCL・SLAM・§111-119）/ [`shared/02-hardware-design.md`](../shared/02-hardware-design.md)（俯瞰カメラ :243-249・RPLiDAR :191）。

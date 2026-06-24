@@ -529,6 +529,12 @@ LLM呼出し (4社)
 
 Mode X-ER / Mode X-ER-VLA の商用化検討では、`warehouse_llm_bridge` を **Robotics Bridge Super-Box** として扱う。Hermes Agent はこの Super-Box のうち、provider transport と汎用 tool integration を担う候補であり、robotics 固有の安全境界は Bridge / L3 / Governance 側に残す。
 
+2026-06-24 時点の方針は **Hermes-first** である。LLM / ER / STT / Vision の model
+transport、provider routing / fallback、MCP 接続は、Hermes Agent が公式機能で扱える限り
+`transport: hermes` を既定候補にする。direct adapter / worker は、対象 modality、
+GPU runtime、provider API、response shape、latency 要件が Hermes 経由に合わない場合の
+明示 fallback である。
+
 | Sub-Box | Hermes Agent で扱える範囲 | 本PJで Bridge 側に残す範囲 |
 |---|---|---|
 | Model Transport | provider 切替、OpenAI 互換 custom endpoint、fallback provider | robotics cycle、request id、timeout 後の 0 dispatch |
@@ -541,6 +547,27 @@ Mode X-ER / Mode X-ER-VLA の商用化検討では、`warehouse_llm_bridge` を 
 Hermes の server-side tool execution は、read-only status tool や operator-facing workflow には使える。ただし robot motion の採用経路では使わない。Bridge が final model output を受け取り、`action_map` で `gen_id` / `idempotency_key` を注入した上で、L3 Planning Core と MCP / Policy Gate へ渡す。
 
 Gemini Robotics-ER や OpenVLA は、Hermes が対象 API / modality / runtime を安全に扱える場合だけ Hermes transport に寄せる。Hermes が扱えない audio/image API、GPU worker、robotics-specific request/response shape は Bridge-managed direct adapter とする。どちらの場合も、trace、timeout、audit、L3 接続、secret 境界は Robotics Bridge Super-Box が所有する。
+
+#### 7.7.1 Hermes Langfuse plugin の採用再評価
+
+現採用は §7.5 の Bridge-owned trace（`langfuse.openai` + `base_url`=Hermes）である。
+Hermes 側 Langfuse plugin は、Bridge wrapper と同時に有効化すると同じ model call が
+2つの generation として記録され、token / cost / latency / error count が二重計上される
+可能性があるため無効化している。
+
+ただし、Hermes plugin を trace owner として使う案は再評価対象にする。採用条件は
+`productization/02-l4-robotics-bridge-box.md` の HLF-G0〜G5 とし、特に以下を live で確認する。
+
+1. 外部指定 `trace_id` または同等の correlation id を尊重できる。
+2. `gen_id` / `run_id` / `provider` / `mode` / `env` / prompt 情報を metadata / tags に載せられる。
+3. Warehouse Orchestrator が同じ trace に `create_score` できる。
+4. MCP tool span と model generation が同じ trace に入る。
+5. Langfuse plugin 障害時も robot 制御が fail-open / 0 dispatch 方針を破らない。
+6. Bridge wrapper と Hermes plugin を併用せず、generation が一度だけ記録される。
+
+この検証は real Hermes Gateway、Langfuse keys、少なくとも1つの課金 provider または安全な
+テスト provider が必要な human-gated live spike である。通過するまでは Bridge-owned trace を
+正とし、Hermes plugin は比較 run では OFF にする。
 
 ---
 

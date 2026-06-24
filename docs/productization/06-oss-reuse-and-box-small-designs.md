@@ -91,7 +91,7 @@ calibration id、known location を 1 つの model input bundle にする。
 
 | 項目 | 設計案 |
 |---|---|
-| 再利用する OSS / 標準 tool | Pydantic / JSON Schema で input manifest を検証。OpenCV で camera calibration artifact を生成 / 検証。Whisper は offline STT adapter 候補。Langfuse / OpenTelemetry は input context observation の span / metadata 候補 |
+| 再利用する OSS / 標準 tool | Pydantic / JSON Schema で input manifest を検証。OpenCV で camera calibration artifact を生成 / 検証。STT は **Hermes voice / STT transport を第一候補**にし、Hermes が扱えない環境だけ offline Whisper / custom STT adapter を使う。Langfuse / OpenTelemetry は input context observation の span / metadata 候補 |
 | 自作で残す境界 | どの state snapshot を使うか、古い state を拒否するか、画像 / 音声の artifact retention、site profile との対応、secret を context に入れない rule |
 | 入力 artifact | `audio_ref`、`transcript`、`image_ref`、`state_snapshot_ref`、`calibration_id`、`known_locations_version` |
 | 出力 artifact | `input_context_ref`、`model_request_ref` |
@@ -110,13 +110,18 @@ Model Adapter Box は LLM / ER / VLA / STT の transport 差を吸収し、raw o
 
 | 項目 | 設計案 |
 |---|---|
-| 再利用する OSS / 標準 tool | Whisper は local STT 候補。OpenVLA / LeRobot は VLA offline fixture、fine-tuning / dataset / replay の参考。Pydantic / JSON Schema は response envelope。Langfuse は model call observation |
-| 自作で残す境界 | provider request template、timeout、retry、raw output recorder、Hermes 経由 / direct adapter の切替、auth / secret 境界、0 dispatch 保証 |
+| 再利用する OSS / 標準 tool | **Hermes Agent Gateway を model transport の第一候補**にする。OpenAI 互換 API、provider routing / fallback、vision input、voice / STT、MCP 接続、plugin 拡張を使う。OpenVLA / LeRobot は VLA offline fixture、fine-tuning / dataset / replay の参考。Pydantic / JSON Schema は response envelope。Langfuse は model call observation |
+| 自作で残す境界 | provider request template の robotics 固有部分、timeout、retry の採用判定、raw output recorder、Hermes 経由 / direct adapter / worker の切替、auth / secret 境界、0 dispatch 保証 |
 | 入力 artifact | `input_context_ref`、`adapter_config_ref`、`provider_type`、`transport` |
 | 出力 artifact | `raw_model_output_ref`、`adapter_report_ref`、`provider_latency_ms`、`token_or_cost_hint` |
 | decision event | `box=l4_model_adapter`、`stage=provider_call`、`reason_code=timeout, provider_error, malformed_response, empty_output, unsupported_modality` |
 | fixture | raw ER output、raw VLA output、STT transcript、timeout fixture、malformed fixture |
 | acceptance gate | L4A-G0: timeout / provider error は 0 dispatch。L4A-G1: raw output が artifact として保存される。L4A-G2: Hermes 経由 / direct adapter が同じ L3 Handoff input を返す |
+
+Hermes 経由は「任意の候補」ではなく default path として設計する。direct adapter / worker は、
+Hermes が対象 modality、GPU runtime、provider API、または response envelope を扱えない場合の
+明示 fallback である。比較 run では provider routing / fallback を無条件に有効化せず、
+固定 provider leg と fallback-enabled leg を分けて評価する。
 
 OpenVLA / LeRobot は、把持、配置、ドッキングなど Nav2 だけでは表現しにくい
 subtask の研究・fixture には有用。ただし VLA action を velocity、trajectory、
