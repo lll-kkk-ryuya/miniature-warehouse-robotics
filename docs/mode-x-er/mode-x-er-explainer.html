@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mode X-ER 図解 — Gemini Robotics-ER 視覚タスク司令</title>
+<style>
+  :root{
+    color-scheme: dark;
+    /* 落ち着いた Cursor 風ニュートラル・ダーク（背景=黒に近い無彩色 / 文字=はっきりした白） */
+    --bg:#1a1a1a; --bg2:#141414; --card:#222222; --card2:#262626; --surface:#2d2d2d;
+    --ink:#ededed; --muted:#c4c4c4; --faint:#8f8f8f; --line:#3a3a3a; --code:#141414;
+    --badge-ink:#1a1a1a; --head:#dcdcdc;
+    --box:#7aa2f7;     --box-bg:rgba(122,162,247,.13);
+    --sub:#9ece6a;     --sub-bg:rgba(158,206,106,.12);
+    --seam:#e0af68;    --seam-bg:rgba(224,175,104,.12);
+    --plugin:#bb9af7;  --plugin-bg:rgba(187,154,247,.12);
+    --demoted:#9a9a9a; --demoted-bg:rgba(154,154,154,.10);
+    --red:#f7768e; --yellow:#e0c07a; --teal:#7dcfff; --pink:#f7a8d8;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Noto Sans JP",Meiryo,sans-serif;
+    line-height:1.7;font-size:15px;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1080px;margin:0 auto;padding:32px 20px 80px}
+  header.top{border-bottom:3px solid var(--box);padding-bottom:18px;margin-bottom:8px}
+  h1{font-size:25px;margin:0 0 6px} h2{font-size:20px;margin:44px 0 12px;padding-left:10px;border-left:5px solid var(--box)}
+  h3{font-size:15.5px;margin:24px 0 9px;color:var(--head)}
+  p{margin:10px 0} .lead{color:var(--muted);font-size:14px}
+  a{color:var(--box);text-decoration:none} a:hover{text-decoration:underline}
+  code{background:var(--code);padding:1px 6px;border-radius:4px;font-size:.88em;font-family:"SF Mono",Menlo,Consolas,monospace;color:var(--ink)}
+  .dref{color:var(--teal);font-size:.82em;font-family:"SF Mono",Menlo,monospace;white-space:nowrap}
+  .note{background:var(--seam-bg);border:1px solid rgba(250,179,135,.4);border-radius:8px;padding:12px 16px;margin:16px 0;font-size:14px}
+  .safe{background:rgba(243,139,168,.08);border:1px solid rgba(243,139,168,.4);border-radius:8px;padding:12px 16px;margin:16px 0;font-size:14px}
+  .meta{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 16px;font-size:13px;color:var(--muted);margin:14px 0}
+  .nav{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0}
+  .nav a{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:7px 13px;font-size:13px;font-weight:600}
+  .nav a:hover{border-color:var(--box);text-decoration:none}
+
+  .badge{display:inline-block;font-size:11px;font-weight:700;padding:2px 9px;border-radius:999px;color:var(--badge-ink);letter-spacing:.3px;vertical-align:middle}
+  .b-box{background:var(--box)} .b-sub{background:var(--sub)} .b-seam{background:var(--seam)} .b-plugin{background:var(--plugin)} .b-demoted{background:var(--demoted);color:var(--ink)}
+
+  .node{border-radius:10px;padding:11px 13px;border:2px solid;background:var(--card);font-size:13.5px;margin:8px 0}
+  .node .t{font-weight:700;font-size:14px} .node .s{color:var(--muted);font-size:12.5px;margin-top:3px}
+  .n-box{border-color:var(--box);background:var(--box-bg)} .n-sub{border-color:var(--sub);background:var(--sub-bg)}
+  .n-seam{border-color:var(--seam);background:var(--seam-bg);border-style:dashed} .n-plugin{border-color:var(--plugin);background:var(--plugin-bg)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+
+  /* layered structure / nesting */
+  .legend{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
+  .legend .item{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:6px 11px;font-size:11.5px;color:var(--muted)}
+  .legend .sw{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:6px;vertical-align:middle}
+  .n-demoted{border-color:var(--demoted);background:var(--demoted-bg);color:var(--muted)}
+  .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+  .sub-nest{border:1.5px dashed var(--box);border-radius:12px;padding:13px;margin-top:12px;background:rgba(122,162,247,.05)}
+  .sub-nest > .nh{font-size:11px;font-weight:700;color:var(--box);letter-spacing:.5px;margin-bottom:9px}
+  .nest-arrow{text-align:center;color:var(--faint);font-size:16px;line-height:1;margin:5px 0}
+  .role{display:inline-block;font-size:10.5px;font-weight:700;color:var(--faint);border:1px solid var(--line);border-radius:5px;padding:1px 6px;margin-left:6px;vertical-align:middle}
+  .transport-band{margin-top:9px;border:1.5px dashed var(--plugin);background:var(--plugin-bg);border-radius:8px;padding:7px 10px;font-size:12px;color:#d8c8f2}
+  .transport-band b{color:var(--plugin)}
+  .seam-out{display:flex;flex-wrap:wrap;align-items:stretch;gap:8px;margin:12px 0 2px}
+  .seam-out .arrow{color:var(--seam);font-weight:700;font-size:18px;display:flex;align-items:center}
+  .gov-chip{border:2px solid var(--box);background:var(--box-bg);border-radius:10px;padding:8px 12px;font-size:12.5px;font-weight:700;white-space:nowrap;display:flex;flex-direction:column;justify-content:center;text-align:center}
+
+  /* superbox container */
+  .superbox{border:2px solid var(--box);background:var(--box-bg);border-radius:14px;padding:16px;margin:14px 0}
+  .sbh{font-weight:700;color:var(--box);font-size:16px;margin-bottom:2px} .sbs{font-size:12px;color:var(--muted);margin-bottom:12px}
+
+  /* numbered steps */
+  .steps{counter-reset:st;margin:14px 0}
+  .step{position:relative;border:1px solid var(--line);background:var(--card);border-radius:10px;padding:11px 14px 11px 46px;margin:8px 0;font-size:13.5px}
+  .step::before{counter-increment:st;content:counter(st);position:absolute;left:12px;top:11px;width:24px;height:24px;border-radius:50%;
+    background:var(--box);color:var(--badge-ink);font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:center}
+  .step b{color:var(--ink)} .step .s{color:var(--muted);font-size:12.5px;margin-top:2px}
+  .step.seam{border-color:var(--seam);border-left:4px solid var(--seam)} .step.seam::before{background:var(--seam)}
+  .step-down{text-align:left;padding-left:22px;color:var(--faint);font-size:15px;line-height:1;margin:-3px 0}
+
+  table{border-collapse:collapse;width:100%;margin:12px 0;font-size:13px;background:var(--card)}
+  th,td{border:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top}
+  th{background:var(--surface);font-size:12.5px;color:var(--head)} td code{font-size:.85em}
+  tr:nth-child(even) td{background:rgba(255,255,255,.02)}
+  .impl-yes{color:var(--sub);font-weight:700} .impl-no{color:var(--yellow);font-weight:700}
+  ul.tight{margin:8px 0;padding-left:22px} ul.tight li{margin:5px 0}
+  footer{margin-top:50px;padding-top:18px;border-top:1px solid var(--line);color:var(--muted);font-size:12.5px}
+
+  /* flow helpers */
+  .flow{display:flex;flex-wrap:wrap;align-items:stretch;gap:6px;margin:10px 0}
+  .flow .node{flex:1 1 130px;min-width:112px;margin:0;display:flex;flex-direction:column;justify-content:center}
+  .flow .arr{display:flex;align-items:center;color:var(--faint);font-weight:700;font-size:16px}
+  .lyr{display:inline-block;font-size:10px;font-weight:800;padding:1px 7px;border-radius:5px;color:var(--badge-ink);margin-right:7px;vertical-align:middle}
+  .optline{font-family:"SF Mono",Menlo,Consolas,monospace;font-size:12px;color:var(--muted);background:var(--code);border-radius:6px;padding:8px 11px;margin:8px 0;line-height:1.7;overflow-x:auto}
+  .optline b{color:var(--ink)}
+  @media(max-width:720px){.grid2,.grid3{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <h1>Mode X-ER 図解 — Gemini Robotics-ER 視覚タスク司令</h1>
+  <p class="lead">音声・俯瞰画像・state から倉庫 task を理解し、L3 で deterministic に正規化して既存の安全経路（MCP / Policy Gate / Nav2 / Open-RMF / Layer0）へ落とす Mode X 系の最初の具体案。<b>Gemini Robotics-ER 単独</b>（VLA 統合は Mode X-ER-VLA）。<b>音声は変換せず ER へ直接入力</b>（STT 既定 OFF・§1）。本ページは図解（補足資料）で、設計の正本は <code>01</code>〜<code>03</code> / README の .md。</p>
+</header>
+
+<div class="nav">
+  <a href="01-architecture-and-flow.md">正本: 01 architecture-and-flow</a>
+  <a href="02-l3-planning-core.md">02 l3-planning-core</a>
+  <a href="03-er-adapter-skeleton.md">03 er-adapter-skeleton</a>
+  <a href="README.md">README</a>
+  <a href="../productization/layer-l4-detail.html">L4 詳細図 §5（box 内の位置）▸</a>
+  <a href="../productization/layer-l3-detail.html">L3 詳細図 ▸</a>
+</div>
+
+<div class="meta">
+  正本: <a href="01-architecture-and-flow.md"><code>01</code></a>（flow・transport selection・知覚の2系統）／ <a href="02-l3-planning-core.md"><code>02</code></a>（L3 4 stage）／ <a href="03-er-adapter-skeleton.md"><code>03</code></a>（ER adapter）／ <a href="README.md">README</a>（位置づけ・phase・未凍結）。
+  <b>dref は本ディレクトリの番号 .md の file:line</b>（例 <span class="dref">01:85</span> = <code>01-architecture-and-flow.md:85</code>）。L4 box との関係（Super-Box の sub-box/seam）は <a href="../productization/02-l4-robotics-bridge-box.md">productization/02</a> ＋ <a href="../productization/layer-l4-detail.html">layer-l4-detail.html §5</a>。
+  <b>状態</b>: Mode X-ER は<b>設計提案・未実装</b>（config / topic / REST / 凍結契約をまだ追加しない）。
+</div>
+
+<div class="legend">
+  <div class="item"><span class="sw" style="background:var(--plugin)"></span>L4 入力・知覚 / オーケストレーション</div>
+  <div class="item"><span class="sw" style="background:var(--teal)"></span>L3 司令・検証（deterministic）</div>
+  <div class="item"><span class="sw" style="background:var(--seam)"></span>L2 実行許可・交通管理 / seam</div>
+  <div class="item"><span class="sw" style="background:var(--red)"></span>L1 自律走行・安全</div>
+  <div class="item"><span class="sw" style="background:var(--box)"></span>L0 物理安全</div>
+</div>
+
+<!-- positioning -->
+<h2>0. 位置づけ（Mode X-ER とは / Mode 名）</h2>
+<div class="grid2">
+  <div class="node n-box"><div class="t">何をするモードか</div><div class="s">
+    Gemini Robotics-ER を「音声・画像・状態から倉庫タスクを理解する司令塔」にする。既存 Mode A/B/C の LLM provider 比較とは分け、<b>Gemini Robotics-ER 固定</b>で音声指示の解釈・俯瞰画像の object target 認識・task graph 分解・既存安全経路への接続を検証する。<span class="dref">README:9-14</span>
+  </div></div>
+  <div class="node n-box"><div class="t">ER に閉じ込める範囲</div><div class="s">
+    ER は <b>「見る・理解する・計画する」層</b>に閉じ込め、Nav2 / ROS / Jetson / <code>/cmd_vel</code> を直接叩かせない。実行可能 command 候補への変換は <b>L3 Robotics Planning Core</b> が担う。<span class="dref">README:16 / 01:108-130</span>
+  </div></div>
+</div>
+<h3>Mode 名の整理</h3>
+<table>
+  <thead><tr><th>呼称</th><th>意味</th></tr></thead>
+  <tbody>
+    <tr><td>Mode X</td><td>視覚・音声・言語から robot task を作る将来拡張枠</td></tr>
+    <tr><td><b>Mode X-ER</b></td><td>Gemini Robotics-ER だけを使う具体案（本ページ）</td></tr>
+    <tr><td>Mode X-ER-VLA</td><td>Gemini Robotics-ER と VLA / OpenVLA を統合する別モード（<a href="../productization/layer-l4-detail.html">L4 §6</a>）</td></tr>
+    <tr><td><code>x_lite</code></td><td>MVP 実行 profile。MCP / Policy Gate → Nav2 Bridge REST</td></tr>
+    <tr><td><code>x_rmf</code></td><td>optional 実行 profile。MCP / Policy Gate → Open-RMF Task API / Fleet Adapter</td></tr>
+  </tbody>
+</table>
+<p class="lead"><span class="dref">README §Mode 名の扱い 66-72 / 01 §X-lite と X-rmf 199-207</span></p>
+
+<!-- data flow -->
+<h2>1. 全体データフロー（L4 → L3 → L2 → L1/L0）</h2>
+<p class="lead">人の指示（音声・自然言語）から motor まで。各層の境界で何が起き、どこで安全に止まるか。<span class="dref">01 §全体像 15-83</span></p>
+
+<div class="note">
+  <b>入力方針（最小変換・音声直接）</b>: 音声は <b>ER へ直接入力</b>（事前 STT は既定 OFF・<code>transcript</code> は任意/audit 用）。俯瞰カメラは<b>単一・固定</b>で、ER へ渡すのは <b>音声と同時刻の俯瞰フレーム1枚</b>（time-aligned・連続ストリームでなく指示時点の静止）。calibration は<b>固定定数参照</b>（<code>calibration_id</code>・毎 turn 再計算しない）。入力アセンブリは<b>軽量</b>＝同時刻の俯瞰1枚＋音声（＋最小/任意 state）の ref を 1 回の ER 呼び出しに揃えるだけで、別形式へ<b>変換しない</b>。音声/画像の robotics 実証は未凍結（<a href="04-er-input-modalities-and-stt.md">04</a> / <a href="../productization/02-l4-robotics-bridge-box.md">productization/02</a>）＝<b>Hermes Gateway を第一候補 transport</b>、未対応時のみ direct adapter を fallback に。<span class="dref">04 §STT の要否 30-44・§3 45-50 / 01 §L4 transport selection 155-168</span>
+</div>
+
+<div class="optline">指示例:「bot1 は赤い箱へ。到達したら bot2 は青い箱へ」<span style="color:var(--faint)"> → ER が intent + detections + task_graph を提案 → L3 が検証・解決・順序化 → 既存 Command</span></div>
+
+<div class="sub-nest">
+  <div class="nh"><span class="lyr" style="background:var(--plugin)">L4</span>入力・知覚 / オーケストレーション — Non-RT / external API</div>
+  <div class="flow">
+    <div class="node n-box"><div class="t" style="font-size:12px">俯瞰カメラ（単一・固定）</div><div class="s">音声と同時刻の<b>1枚</b>（指示時点の静止）。calibration は固定定数</div></div>
+    <div class="arr">＋</div>
+    <div class="node n-box"><div class="t" style="font-size:12px">音声（直接）</div><div class="s">STT 既定 OFF・ER へそのまま</div></div>
+    <div class="arr">＋</div>
+    <div class="node n-box"><div class="t" style="font-size:12px">state（最小・任意）</div><div class="s">bot 現在地など最小限・省略可</div></div>
+  </div>
+  <div class="nest-arrow">▼ 軽量アセンブリ（<code>ErTaskRequest</code>＝ref を揃えるだけ・変換しない）</div>
+
+  <!-- Super-Box CONTAINER: adapter is a sub-box INSIDE it -->
+  <div class="superbox" style="margin:6px 0 0">
+    <div class="sbh">Robotics Bridge Super-Box <span class="badge b-box">box</span> = <code>warehouse_llm_bridge</code></div>
+    <div class="sbs">context / request id / timeout / cancellation / trace / raw output audit を所有（model 判断は作らない）。下の adapter を<b>内部 sub-box として所有</b>。<span class="dref">01 §L4 の data 96-154 / productization/02 §Box の保管場所</span></div>
+    <div class="node n-sub"><div class="t">Gemini Robotics-ER Adapter <span class="badge b-sub">Model Adapter（sub-box）</span></div><div class="s">
+      input: <b>音声（直接）</b> / overhead image /（最小 state）。output: <code>transcript</code>（audit 用）/ <code>interpreted_intent</code> / <code>detections</code> / <code>task_graph</code>。<b>ER は Nav2 / ROS / Jetson / <code>/cmd_vel</code> を叩かない</b>。<span class="dref">01:132-153 / 03 §Adapter 境界 13-34</span>
+      <div class="transport-band"><b>transport: hermes（第一候補）| direct（fallback）</b> ← <b>Hermes Gateway を第一候補</b>（main の Hermes-first）。interface 裏の実装選択で box を割らない。音声/画像 API の robotics 実証は未凍結＝未対応時のみ direct。<span class="dref">04 §STT の要否 30-44・§3 45-50 / 01 §L4 transport selection 155-168</span></div>
+    </div></div>
+  </div>
+
+  <div class="nest-arrow">▼</div>
+  <div class="node n-box" style="border-style:dashed"><div class="t">RoboticsPlan draft <span class="role">未凍結 robotics_plan_draft.v0</span></div><div class="s">
+    model output を<b>直接 actuation しない内部表現</b>。画像座標・曖昧 target・依存・古い state・緊急を含みうるため、必ず L3 で正規化・検証する。<span class="dref">01:132-153 / 03 §RoboticsPlan Draft 最小形 55-76</span>
+  </div></div>
+</div>
+
+<div class="nest-arrow">▼</div>
+
+<div class="sub-nest" style="border-color:var(--teal);background:rgba(125,207,255,.05)">
+  <div class="nh" style="color:var(--teal)"><span class="lyr" style="background:var(--teal)">L3</span>Robotics Planning Core — Non-RT / Python（詳細は §3）</div>
+  <div class="flow">
+    <div class="node n-box"><div class="t" style="font-size:12.5px">Validator</div><div class="s">schema / known robot / allowed action / confidence / state freshness</div></div>
+    <div class="arr">▶</div>
+    <div class="node n-box"><div class="t" style="font-size:12.5px">Visual Resolver</div><div class="s">pixel → homography → map → known_location / unresolved</div></div>
+    <div class="arr">▶</div>
+    <div class="node n-box"><div class="t" style="font-size:12.5px">Task Graph Executor</div><div class="s"><code>after</code> 依存を保持・ready task のみ</div></div>
+    <div class="arr">▶</div>
+    <div class="node n-box"><div class="t" style="font-size:12.5px">Command Compiler</div><div class="s">ready task → 既存 <code>Command</code></div></div>
+  </div>
+  <div class="optline">RawModelOutput → RoboticsPlan draft → <b>ValidationReport</b>（未凍結）+ NormalizedPlan → ResolvedTarget → ReadyTask → Command candidate</div>
+  <div class="s" style="margin-top:4px;color:var(--muted)">出力＝<b>Command candidate</b>（実行許可ではない。MCP / Policy Gate が reject しうる）。<span class="dref">01 §L3 の data 169-183 / 02 §目的 9-19</span></div>
+</div>
+
+<div class="seam-out">
+  <span class="arrow">└▶</span>
+  <div class="node n-seam" style="flex:1 1 320px;margin:0"><div class="t">action_map seam（Bridge-owned 出口）<span class="badge b-seam">seam</span></div><div class="s">
+    Command candidate → ToolCall。<code>gen_id</code> / <code>idempotency_key</code> は <b>model output でなく Bridge / action_map が注入</b>（ER に冪等キーを作らせない）。<span class="dref">01 §L2 以降の data 184-198</span>
+  </div></div>
+  <span class="arrow">▶</span>
+  <div class="gov-chip">L2 実行許可<span style="font-weight:400;color:var(--muted);font-size:11px">（別プロセス）</span></div>
+</div>
+
+<div class="sub-nest" style="border-color:var(--seam);background:var(--seam-bg)">
+  <div class="nh" style="color:var(--seam)"><span class="lyr" style="background:var(--seam)">L2</span>実行許可・交通管理 — Soft-RT / Python + optional RMF</div>
+  <div class="node n-box"><div class="t">Warehouse MCP Server + Policy Gate</div><div class="s">stale / duplicate / battery / emergency / location を拒否 → <b>accepted motion only</b>。<span class="dref">01:61</span></div></div>
+  <div class="grid2" style="margin-top:8px">
+    <div class="node n-box"><div class="t">X-lite（MVP 採用）</div><div class="s">Nav2 Bridge REST <code>POST /api/v1/navigate|wait|stop</code> → Nav2</div></div>
+    <div class="node n-box" style="border-style:dashed"><div class="t">X-rmf（optional・再評価候補）</div><div class="s">Open-RMF Task API → custom Fleet Adapter → Nav2</div></div>
+  </div>
+</div>
+
+<div class="nest-arrow">▼</div>
+
+<div class="flow">
+  <div class="node n-box"><div class="t" style="font-size:12px"><span class="lyr" style="background:var(--red)">L1</span>Hard-RT</div><div class="s">Jetson namespaced Nav2（/bot1,/bot2）・Planner/Controller/BT/costmap/AMCL/SLAM・collision_monitor / twist_mux / Emergency Guardian</div></div>
+  <div class="arr">▶</div>
+  <div class="node n-box"><div class="s">Wi-Fi / UDP / XRCE-DDS → micro-ROS Agent</div></div>
+  <div class="arr">▶</div>
+  <div class="node n-box"><div class="t" style="font-size:12px"><span class="lyr" style="background:var(--box)">L0</span>MCU / 即時</div><div class="s">ESP32 firmware ×2・clampLinear ≤0.3 m/s / proximity stop / bumper stop / motor PWM</div></div>
+</div>
+
+<div class="node n-sub" style="border-style:dashed;border-color:var(--faint)"><div class="t">↩ 状態の戻り（次 turn の入力）</div><div class="s">
+  bot odom / scan / battery → micro-ROS Agent → ROS 2 → <b>State Cache</b> → Robotics Bridge の次 turn 入力 → Gemini Robotics-ER の state JSON。この閉ループがあるため Mode X-ER は1発 pipeline でなく<b>知覚・再計画サイクル</b>になり、Validator の state freshness 検証が要る。<span class="dref">01 §状態の戻り 85-94</span>
+</div></div>
+
+<h3>知覚の2系統（物体＝カメラ / 幾何＝LiDAR）</h3>
+<p class="lead">「どこに何があるか」は性質の違う2系統で<b>別センサ・別レイヤ</b>で取得する（混同しない）。LiDAR は色/物体クラスを判別しないので<b>物体認識には使わない</b>。<span class="dref">01 §知覚の2系統 / shared/09 §センサ・SLAM / shared/02:191,243-249</span></p>
+<div class="grid2">
+  <div class="node n-sub"><div class="t">① 物体の「何がどこ」<span class="badge b-sub">意味・one-shot</span></div><div class="s">
+    赤箱/青箱など target = <b>俯瞰カメラ（C922n・固定）＋ ER の vision</b>。ER が detections(pixel) → L3 Visual Resolver が pixel→homography→map→known location。<b>指示時点の1枚（音声と同時刻）で足りる</b>。<span class="dref">02 §Visual Resolver 109-159</span>
+  </div></div>
+  <div class="node n-box"><div class="t">② ロボット位置・障害物の「どこ」<span class="badge b-box">幾何・常時</span></div><div class="s">
+    minicar 搭載 <b>ORBBEC MS200</b>（360° LiDAR）→ <code>/bot{n}/scan</code> → <b>AMCL 自己位置 / costmap 障害物（L1・常時）</b>。ER/L3 サイクルと独立。＋固定 <b>RPLiDAR A1</b> 外部トラッキング補正（任意）。<span class="dref">shared/09 §センサ・AMCL</span>
+  </div></div>
+</div>
+<div class="note">
+  <b>地図そのもの</b>は事前に <b>SLAM（minicar の MS200 を teleop で1回）</b>で生成（固定 RPLiDAR A1 は遮蔽が出るため SLAM には使わない）。ER 入力（画像＋音声）＝意味的 target の認識用、走行の安全・自己位置＝L1 の LiDAR / AMCL が常時担う。<span class="dref">shared/09:111-119</span>
+</div>
+
+<!-- L4 super-box -->
+<h2>2. L4 — Robotics Bridge Super-Box の責務と契約</h2>
+<p class="lead">L4 は model 判断を作らないが、薄い adapter ではなく orchestration box。<b>ER Adapter は Super-Box が所有する sub-box</b>（§1 の入れ子図）。Super-Box 内の sub-box（Input Context / Model Adapter）・seam（action_map）の細部は <a href="../productization/layer-l4-detail.html">L4 詳細図</a>。<span class="dref">01 §L4 の data 96-154 / productization/02 §Box の保管場所</span></p>
+<div class="grid2">
+  <div class="node n-sub"><div class="t">L4 が持つもの</div><div class="s">
+    audio/（image）/（最小 state）/calibration の input bundle（軽量・変換しない）／ request id・cycle・timeout・cancellation ／ Hermes 経由か direct adapter かの選択 ／ provider call の trace / raw output audit ／ ER raw output → L3 への内部 handoff。<span class="dref">01:96-107</span>
+  </div></div>
+  <div class="node n-box"><div class="t">L4 が持たないもの</div><div class="s">
+    target 解決・DAG 検証・state freshness policy などの L3 validation ／ MCP / Policy Gate の実行許可 ／ Nav2 action・ROS topic・<code>/cmd_vel</code>・ESP32 motor command ／ <code>gen_id</code> / <code>idempotency_key</code> を model に作らせること。<span class="dref">01:108-130</span>
+  </div></div>
+</div>
+
+<h3>ER の入出力契約と入力方針</h3>
+<div class="grid2">
+  <div class="node n-sub"><div class="t">ErTaskRequest（ER へ送る上限）<span class="role">案・未凍結</span></div><div class="s">
+    <code>request_id</code> / <code>mode</code> / <code>instruction_audio_ref</code>（<b>音声を直接</b>）/ <code>transcript</code>（<b>既定で空</b>・STT 使う現場のみ）/ <code>overhead_image_ref</code> / <code>state_snapshot_ref</code>（<b>最小・任意</b>）/ <code>calibration_id</code>（<b>固定参照</b>）/ <code>known_robots</code> / <code>known_locations</code> / <code>allowed_actions</code>=navigate|wait|stop|yield|charge / <code>output_contract</code>。<span class="dref">03 §ErTaskRequest 案 35-54</span>
+  </div></div>
+  <div class="node n-box"><div class="t">RoboticsPlan draft（ER から受ける）</div><div class="s">
+    <code>schema_version</code> / <code>plan_id</code> / <code>source_model</code> / <code>input_refs</code> / <code>transcript</code> / <code>interpreted_intent</code> / <code>detections[]</code>{pixel,confidence} / <code>task_graph[]</code>{id,robot,action,target,after} / <code>operator_clarification_required</code>。<span class="dref">03 §RoboticsPlan Draft 最小形 55-76 / 01:132-153</span>
+  </div></div>
+</div>
+<div class="safe">
+  <b>ER へ渡さないもの</b>: Nav2 Bridge URL / ROS topic 名 / Jetson service endpoint / MCP internal tool name / <code>/cmd_vel</code> / ESP32・motor command。<br>
+  <b>ER に作らせないもの</b>: <code>gen_id</code> / <code>idempotency_key</code>（Bridge / action_map が注入）。<code>source_model</code> は audit 用で<b>下流の実行分岐に使わない</b>（L3 は内容・state・calibration・profile で判断）。<span class="dref">03:53,75 / 03 §責務分離 77-86 / 01:184-198</span>
+</div>
+
+<h3>責務分離（層ごとに ER が担う / 任せない）</h3>
+<table>
+  <thead><tr><th>層</th><th>Gemini Robotics-ER が担う</th><th>ER に任せない</th></tr></thead>
+  <tbody>
+    <tr><td>L4</td><td>音声・画像・state から intent / detections / task_graph を提案</td><td>ROS topic / Nav2 action / Jetson endpoint の直接呼び出し</td></tr>
+    <tr><td>L3 Validator</td><td>なし（model output は検証対象）</td><td>自己採点だけで dispatch 可否を決めること</td></tr>
+    <tr><td>L3 Resolver</td><td>なし（pixel / bbox は入力）</td><td>camera calibration / map frame の最終責任</td></tr>
+    <tr><td>L3 Task Graph</td><td>依存関係の提案</td><td>completion 判定・二重 dispatch 防止</td></tr>
+    <tr><td>L3 Compiler</td><td>なし</td><td>既存 <code>Command</code> / MCP tool call の生成</td></tr>
+    <tr><td>L2</td><td>なし</td><td>Policy Gate・冪等性・battery・emergency 判定</td></tr>
+  </tbody>
+</table>
+<p class="lead"><span class="dref">03 §責務分離 77-86</span></p>
+
+<!-- L3 detail -->
+<h2>3. L3 Planning Core 詳細（4 stage）</h2>
+<p class="lead">ER adapter の出力形式が変わっても L3 以降が大きく変わらないよう 4 段に分ける。各段は型付き中間生成物を産む typed normalizer。<span class="dref">02 §目的 9-19</span></p>
+
+<div class="note">
+  <b>Known Location snap（MVP の肝）</b>: <code>known location</code> は倉庫マップ上の名前付き位置（<code>shelf_1</code> / <code>charging_station</code> / <code>retreat_A</code> 等）で、赤箱/青箱そのものではない。location key は凍結契約 <code>warehouse_interfaces.locations.KNOWN_LOCATIONS</code> と <code>config/warehouse.base.yaml</code> で同期。<code>CommandItem.destination</code> は known location だけを許すため、MVP は visual target を known location へ <b>snap できた場合だけ</b> compile する。coordinate goal は未凍結＝compile しない。<span class="dref">02 §Known Location 21-37 / locations.py KNOWN_LOCATIONS</span>
+</div>
+
+<div class="steps">
+  <div class="step"><b>① Validator</b> — 実行候補として扱えるかを actuation 前に構造化判定（JSON 変換ではない）。結果は <b>accepted / reject / needs_clarification</b> の3値（confidence・clarification は operator clarification へ戻す）。<code>accepted</code> 以外は <b>0 dispatch</b>。<span class="dref">02 §1 Validator 39-84</span>
+    <div class="s"><b>検証カテゴリ</b>: parse / schema / robot registry / action allowlist / target reference(detections[].id または known location) / confidence(→ reject or needs_clarification) / graph reference(<code>after</code>) / graph structure(DAG) / state freshness / emergency state / clarification。<span class="dref">02:72-84</span></div>
+    <div class="s"><b>拡張設計（商用で最重要の拡張点）</b>: Pydantic=syntax/type/required 正規化・JSON Schema=fixture/外部 UI/contract 説明・custom rule は <code>PlanPolicy</code> として分離（model adapter に埋めない）。rule result=<code>code / severity / field_path / message_for_operator / debug_detail / dispatch_effect</code>。stable code（<code>UNKNOWN_ROBOT</code>/<code>UNKNOWN_ACTION</code>/<code>UNKNOWN_TARGET</code>/<code>LOW_CONFIDENCE_TARGET</code>/<code>INVALID_AFTER_REFERENCE</code>/<code>TASK_GRAPH_CYCLE</code>/<code>CYCLE_STATE_STALE</code>/<code>EMERGENCY_ACTIVE</code>）。policy は project default → site profile → runtime safety state。threshold は docs/config/contract まで hardcode しない。<span class="dref">02:86-99</span></div>
+    <div class="s" style="color:var(--yellow)"><b>無いと</b>: 存在しない bot3 / 未知 action が下流到達・低 confidence 誤検出が robot 移動になる・古い state の command 発行・emergency 中に新 motion・商用で reject 理由を説明できない。<span class="dref">02:101-107</span></div></div>
+  <div class="step-down">▼</div>
+  <div class="step"><b>② Visual Resolver</b> — 画像上の object target を robot が使える map target へ変換。<code>pixel(u,v) → camera calibration/homography → map(x,y) → valid polygon check → known location snap → ResolvedTarget</code>。map 外 / valid polygon 外 / reprojection error 過大は <code>unresolved</code>。ER の detection confidence と homography/snap confidence を合成して最終 confidence を作る。<span class="dref">02 §2 Visual Resolver 109-159</span>
+    <div class="s">calibration artifact = camera id / map frame / homography matrix / reprojection error / valid polygon。<b>単一・固定の俯瞰カメラ前提</b>で file として version 管理し現場ごとに差し替え（コード定数に埋めない）。<span class="dref">02:148-158</span></div></div>
+  <div class="step-down">▼</div>
+  <div class="step"><b>③ Task Graph Executor</b> — <code>task_graph</code> を一度に全 dispatch せず、依存を守って ready task だけ出す。状態 <code>pending → ready → running → succeeded / failed / cancelled</code>。初回 cycle は <code>t1</code> だけ ready、<code>t2</code> は <code>t1.completed</code>（<code>/nav2_bridge/goal_result</code> / State Cache / RMF task state で確認）まで pending。DAG 検証・topological order は NetworkX 候補だが、runtime state machine は自作（NetworkX を wire/audit 正本にしない）。最初は process memory、商用は durable <code>TaskGraphStore</code> へ差替。<span class="dref">02 §3 Task Graph Executor 161-198</span>
+    <div class="s" style="color:var(--yellow)"><b>無いと</b>: 順序条件（bot1 到達後に bot2）無視・t1/t2 同時 dispatch・同一 task の二重 dispatch・failed/timeout/cancelled の扱い曖昧・UI/audit で task lifecycle 説明不能。<span class="dref">02:186-192</span></div></div>
+  <div class="step-down">▼</div>
+  <div class="step"><b>④ Command Compiler</b> — ready task を既存の安全実行契約へ落とす最終段。output は凍結 <code>warehouse_interfaces.schemas.Command</code> に通す。<b>禁止</b>: <code>gen_id</code>/<code>idempotency_key</code> を作らない・known location 以外の coordinate goal を compile しない・ER の route/velocity/low-level action を採用しない・<b>速度を絶対 compile しない</b>。X-lite / X-rmf 差分は <code>ExecutionProfile</code> で分け、plugin 化（<code>WarehouseNavCompiler</code> / <code>RmfTaskCompiler</code> / <code>ArmManipulationCompiler</code>）。<span class="dref">02 §4 Command Compiler 200-242</span></div>
+</div>
+<div class="safe">
+  <b>L3 で避けること</b>: Gemini Robotics-ER の response shape を下流 MCP / Nav2 に直接漏らす / OpenCV の pixel coordinate をそのまま <code>Command</code> に入れる / NetworkX graph object を audit・wire schema に保存する / customer site 固有の camera calibration をコード定数に埋める / <code>RoboticsPlan</code> schema を最初から <code>warehouse_interfaces</code> に凍結する。<span class="dref">02 §L3 Interface Skeleton 272-278</span>
+</div>
+
+<!-- profiles -->
+<h2>4. X-lite と X-rmf（実行 profile）</h2>
+<table>
+  <thead><tr><th>profile</th><th>実行経路</th><th>使う場面</th><th>採用状態</th></tr></thead>
+  <tbody>
+    <tr><td><code>x_lite</code></td><td>Robotics Bridge → MCP / Policy Gate → Nav2 Bridge REST → Nav2</td><td>赤箱/青箱の視覚認識・順序付き移動・単純な2台制御</td><td class="impl-yes">MVP 採用</td></tr>
+    <tr><td><code>x_rmf</code></td><td>Robotics Bridge → MCP / Policy Gate → Open-RMF Task API → Fleet Adapter → Nav2</td><td>複数台の予約制御・狭路/交差点の交通交渉・RMF waypoint 化できる visual target</td><td class="impl-no">再評価候補</td></tr>
+  </tbody>
+</table>
+<p class="lead">X-rmf は Mode X-ER の本質ではなく optional profile。まず X-lite で ER 認識・L3 変換・既存 MCP/Nav2 接続を検証する。<span class="dref">01 §X-lite と X-rmf 199-207</span></p>
+
+<!-- gates / phases -->
+<h2>5. Integration Gates と実装フェーズ</h2>
+<div class="grid2">
+  <div>
+    <h3>Integration Gates（G0–G6）</h3>
+    <table>
+      <thead><tr><th>Gate</th><th>内容</th><th>失敗時</th></tr></thead>
+      <tbody>
+        <tr><td>G0 offline parse</td><td>fixture raw output が <code>RoboticsPlan draft</code> に正規化できる</td><td>adapter 修正</td></tr>
+        <tr><td>G1 validator</td><td>invalid robot/action/target/confidence/stale/emergency を 0 dispatch</td><td>L3 policy 修正</td></tr>
+        <tr><td>G2 visual resolver</td><td>fixture image の red/blue target が known location へ snap</td><td>calibration / resolver 修正</td></tr>
+        <tr><td>G3 task graph</td><td><code>after</code> 依存が守られる</td><td>executor 修正</td></tr>
+        <tr><td>G4 command compile</td><td>ready task が既存 <code>Command</code> validation を通る</td><td>compiler 修正</td></tr>
+        <tr><td>G5 X-lite sim</td><td>MCP / Policy Gate / Nav2 Bridge まで sim で通る</td><td>L2 接続修正</td></tr>
+        <tr><td>G6 X-rmf eval</td><td>X-rmf が X-lite より有利なタスクで価値を示す</td><td>X-rmf defer</td></tr>
+      </tbody>
+    </table>
+    <p class="lead"><span class="dref">03 §Integration Gates 88-98</span></p>
+  </div>
+  <div>
+    <h3>実装フェーズ（XER0–XER7）</h3>
+    <table>
+      <thead><tr><th>Phase</th><th>完了条件</th></tr></thead>
+      <tbody>
+        <tr><td>XER0 docs</td><td>data flow / L3 境界 / ER adapter skeleton を docs 化</td></tr>
+        <tr><td>XER1 fixture</td><td>静止画像 + text/audio ref + fake state → <code>RoboticsPlan draft</code></td></tr>
+        <tr><td>XER2 Validator</td><td>schema/rule/policy 分離・0 dispatch と <code>ValidationReport</code></td></tr>
+        <tr><td>XER3 Resolver</td><td>pixel → map → known location snap を fixture で検証</td></tr>
+        <tr><td>XER4 Task Graph</td><td><code>after</code> 依存・ready/running/succeeded/failed を offline 検証</td></tr>
+        <tr><td>XER5 Compiler</td><td>ready task → 既存 <code>Command</code>・<code>warehouse_interfaces</code> validation 通過</td></tr>
+        <tr><td>XER6 X-lite E2E</td><td>MCP / Policy Gate / Nav2 Bridge まで sim で通す</td></tr>
+        <tr><td>XER7 X-rmf eval</td><td>Open-RMF を使う価値が X-lite を上回るか評価</td></tr>
+      </tbody>
+    </table>
+    <p class="lead"><span class="dref">README §実装フェーズ案 78-90</span></p>
+  </div>
+</div>
+
+<!-- unfrozen -->
+<h2>6. 未凍結事項（実装前に docs / contract で確定）</h2>
+<ul class="tight">
+  <li><code>RoboticsPlan</code> schema / <code>ValidationReport</code> schema</li>
+  <li>Mode X-ER config key</li>
+  <li>calibration artifact の配置と形式（単一・固定俯瞰カメラ）</li>
+  <li>visual target を coordinate <code>goal</code> として MCP / Policy Gate へ通す正式契約</li>
+  <li>Gemini Robotics-ER direct adapter と Hermes 経路の扱い（音声/画像 API を Hermes が扱えるか・L4 境界は <a href="../productization/02-l4-robotics-bridge-box.md">productization/02</a> に従う）</li>
+  <li>X-rmf の temporary waypoint / task submission seam</li>
+</ul>
+<p class="lead"><span class="dref">README §未凍結事項 91-100 / 04 §未凍結事項 81-85</span></p>
+
+<!-- mapping -->
+<h2>7. 各要素 → docs / 実体</h2>
+<table>
+  <thead><tr><th>要素</th><th>レイヤ</th><th>docs（正本・file:line）</th><th>実体 / 凍結契約</th></tr></thead>
+  <tbody>
+    <tr><td>全体 data flow</td><td>L4–L0</td><td><a href="01-architecture-and-flow.md">01</a>:15-94</td><td class="impl-no">未実装（設計提案）</td></tr>
+    <tr><td>入力方針（音声直接・最小変換）</td><td><span class="lyr" style="background:var(--plugin)">L4</span></td><td>04 §STT の要否 / 01 §知覚の2系統</td><td class="impl-no">方針（未実装）</td></tr>
+    <tr><td>Robotics Bridge Super-Box（adapter を内包）</td><td><span class="lyr" style="background:var(--plugin)">L4</span></td><td>01:96-154 / <a href="../productization/02-l4-robotics-bridge-box.md">productization/02</a> §Box の保管場所</td><td class="impl-yes"><code>warehouse_llm_bridge</code>（拡張）</td></tr>
+    <tr><td>Gemini Robotics-ER Adapter（sub-box）</td><td><span class="lyr" style="background:var(--plugin)">L4</span></td><td><a href="03-er-adapter-skeleton.md">03</a> 全体</td><td class="impl-no">未実装（adapter skeleton）</td></tr>
+    <tr><td>Validator</td><td><span class="lyr" style="background:var(--teal)">L3</span></td><td><a href="02-l3-planning-core.md">02</a>:39-107</td><td class="impl-no">未実装</td></tr>
+    <tr><td>Visual Resolver</td><td><span class="lyr" style="background:var(--teal)">L3</span></td><td>02:109-159</td><td class="impl-no">未実装</td></tr>
+    <tr><td>Task Graph Executor</td><td><span class="lyr" style="background:var(--teal)">L3</span></td><td>02:161-198</td><td class="impl-no">未実装</td></tr>
+    <tr><td>Command Compiler</td><td><span class="lyr" style="background:var(--teal)">L3</span></td><td>02:200-242</td><td class="impl-no">未実装（出力は凍結 <code>Command</code>）</td></tr>
+    <tr><td>action_map（seam）</td><td><span class="lyr" style="background:var(--seam)">L2</span></td><td>01:184-198</td><td class="impl-yes"><code>action_map.py</code></td></tr>
+    <tr><td>MCP / Policy Gate</td><td><span class="lyr" style="background:var(--seam)">L2</span></td><td>01:61</td><td class="impl-yes"><code>warehouse_mcp_server</code> / Policy Gate</td></tr>
+    <tr><td>Nav2 Bridge REST（X-lite）</td><td><span class="lyr" style="background:var(--seam)">L2</span></td><td>01:66,199-207</td><td class="impl-yes"><code>warehouse_nav2_bridge</code></td></tr>
+    <tr><td>Open-RMF（X-rmf）</td><td><span class="lyr" style="background:var(--seam)">L2</span></td><td>01:199-207</td><td class="impl-no">optional（再評価候補）</td></tr>
+    <tr><td>Known Location</td><td><span class="lyr" style="background:var(--teal)">L3</span></td><td>02:21-37</td><td class="impl-yes"><code>locations.py KNOWN_LOCATIONS</code></td></tr>
+    <tr><td>Layer0 clamp ≤0.3 m/s</td><td><span class="lyr" style="background:var(--box)">L0</span></td><td>01:81</td><td class="impl-yes"><code>safety_clamp.h</code> / <code>safety.py</code></td></tr>
+  </tbody>
+</table>
+
+<footer>
+  <p>このページは <code>docs/mode-x-er/mode-x-er-explainer.html</code>（自己完結ダークモード図解・補足資料）。設計の正本は <a href="01-architecture-and-flow.md">01</a>（§L4 transport selection・§知覚の2系統 含む）＋ <a href="04-er-input-modalities-and-stt.md">04</a>（STT/音声直接）/ <a href="02-l3-planning-core.md">02</a> / <a href="03-er-adapter-skeleton.md">03</a> / <a href="README.md">README</a>。
+  dref は本ディレクトリの番号 .md の <b>file:line</b>（再検証可能）。L4 box 内の位置（sub-box/seam/demoted）は <a href="../productization/layer-l4-detail.html">productization/layer-l4-detail.html §5</a>、L3 stage の汎用設計は <a href="../productization/layer-l3-detail.html">layer-l3-detail.html</a>。</p>
+  <p>外部 CDN / JS / 画像に依存しない単一 HTML。プレビュー: <code>python3 -m http.server 8123 --directory docs/mode-x-er</code> → <code>http://localhost:8123/mode-x-er-explainer.html</code>。</p>
+</footer>
+
+</div>
+</body>
+</html>
