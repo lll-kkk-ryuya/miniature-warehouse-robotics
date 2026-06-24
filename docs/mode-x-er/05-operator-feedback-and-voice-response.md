@@ -329,7 +329,7 @@ doc03 §ROS 2 トピック設計「Jetson 内部」表（`docs/architecture/03-s
 }
 ```
 
-- `decision` は固定語彙のうち **`rejected` / `needs_clarification` / `emergency_stop`** のみ（`accepted` / `warning` は本 topic に流さない＝喋らない・`docs/productization/05-decision-observability-and-tooling.md:69`）。
+- `decision` は固定語彙のうち **`rejected` / `needs_clarification` / `emergency_stop`** のみ（`accepted` / `warning` は本 topic に流さない＝喋らない・`docs/productization/05-decision-observability-and-tooling.md:69`）。**v0 は reject 級 event のみ**＝`arrived`/`completed` 等の milestone は decision 固定語彙外で本 v0 契約の対象外（扱いは §5.3/§7 の発話スコープ確定値・§8.8 参照）。
 - `reason_code` は box ごとの catalog から（自由文にしない・同 `:70`）。`reason_detail` は人間向け補足（集計軸でない・同 `:71`）。`message_for_operator` は L3 が出す確定文面（optional・`docs/mode-x-er/02-l3-planning-core.md:95`）。
 - `gen_id` / `run_id` / `robot` は **attribution の鍵**（box が「自分の命令か・節目か」を filter・§5.3）。大きな raw data は埋めず参照（同 `:72`）。
 
@@ -352,13 +352,13 @@ doc03 §ROS 2 トピック設計「Jetson 内部」表（`docs/architecture/03-s
 |---|---|---|
 | L2 | `warehouse_mcp_server`（Governance / Policy Gate） | `battery_low` / `emergency_active` / `stale_generation` / `duplicate_command` / `unknown_location` |
 | L2 | `warehouse_traffic` / `warehouse_rmf_adapter` | `route_conflict` / `no_route` / `rmf_unavailable` |
-| L1 | `warehouse_nav2_bridge`（Navigation） | `no_path` / `recovery_exhausted` / `localization_unhealthy` / `goal_rejected` |
+| L1 | `warehouse_nav2_bridge`（Navigation） | `no_path` / `recovery_exhausted` / `localization_unhealthy` |
 | L1 | `warehouse_safety`（Emergency Guardian） | `emergency`（near_collision / pose_stale）※既存 `/emergency/event` と棲み分け＝§8.7 |
 | L0 | firmware / micro-ROS Agent | `nonfinite_cmd` / `clamped_velocity` / `heartbeat_lost`（Phase 1+・bridge 経由） |
 
 **subscriber**:
 
-- **L4 Operator Feedback Box**（`warehouse_llm_bridge` の feedback sub-box）— 主購読者（単一）。filter→template→TTS。
+- **L4 Operator Feedback Box**（`warehouse_llm_bridge` の feedback sub-box）— 主購読者（単一）。filter→template→TTS。**emergency は §8.7 のとおり既存 `/emergency/event` も直接購読**（本 topic の emergency 行は候補・MVP は /emergency/event 優先）。
 - （任意）**Eval / Observability**（audit・observe-only）、**web_bridge**（doc22・observe-only）。
 
 ### 8.7 既存トピックとの関係（重複回避）
@@ -373,6 +373,7 @@ doc03 §ROS 2 トピック設計「Jetson 内部」表（`docs/architecture/03-s
 - どの node が実際に publish するか（§8.6 候補のうち MVP 配線）・L0 Hardware の bridge 方法。
 - emergency の `/emergency/event` 相乗りか `/operator/notice` 二重化か（§8.7）。
 - `schema_version` 値の凍結・Phase 4 `.msg` 化の型定義。
+- **milestone 連動**: §7 の発話スコープ確定値で `arrived`/`completed`（到着・右折等）を喋ると決めた場合、それらは現 `decision` 固定語彙（`docs/productization/05-decision-observability-and-tooling.md:69`）に**無い**ため v0 payload（reject 級 decision のみ）では運べない＝**milestone 用 event 語彙の追加 or 別チャネル**を要する。v0 は reject 級に scope する。
 
 ### 8.9 contract PR チェックリスト
 
