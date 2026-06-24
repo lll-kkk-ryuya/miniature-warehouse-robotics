@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mode X-ER-VLA 全体図解 — Gemini Robotics-ER + VLA 統合アーキ（現状）</title>
+<style>
+  :root{
+    color-scheme: dark;
+    /* 落ち着いた Cursor 風ニュートラル・ダーク（背景=黒に近い無彩色 / 文字=はっきりした白） */
+    --bg:#1a1a1a; --bg2:#141414; --card:#222222; --card2:#262626; --surface:#2d2d2d;
+    --ink:#ededed; --muted:#c4c4c4; --faint:#8f8f8f; --line:#3a3a3a; --code:#141414;
+    --badge-ink:#1a1a1a; --head:#dcdcdc;
+    --box:#7aa2f7;     --box-bg:rgba(122,162,247,.13);   /* ER          */
+    --sub:#9ece6a;     --sub-bg:rgba(158,206,106,.12);   /* L3 core     */
+    --seam:#e0af68;    --seam-bg:rgba(224,175,104,.12);  /* safety path */
+    --plugin:#bb9af7;  --plugin-bg:rgba(187,154,247,.12);/* VLA         */
+    --demoted:#9a9a9a; --demoted-bg:rgba(154,154,154,.10);/* 未凍結     */
+    --red:#f7768e; --yellow:#e0c07a; --teal:#7dcfff;
+    --Ler:rgba(122,162,247,.06); --L3c:rgba(158,206,106,.05); --Lvla:rgba(187,154,247,.06);
+    --Lsafe:rgba(224,175,104,.05);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Noto Sans JP",Meiryo,sans-serif;
+    line-height:1.7;font-size:15px;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1080px;margin:0 auto;padding:32px 20px 80px}
+  header.top{border-bottom:3px solid var(--plugin);padding-bottom:18px;margin-bottom:8px}
+  h1{font-size:26px;margin:0 0 6px}
+  h2{font-size:21px;margin:46px 0 14px;padding-left:10px;border-left:5px solid var(--plugin)}
+  h3{font-size:16px;margin:26px 0 10px;color:var(--head)}
+  p{margin:10px 0}
+  .lead{color:var(--muted);font-size:14px}
+  a{color:var(--box);text-decoration:none} a:hover{text-decoration:underline}
+  code{background:var(--code);padding:1px 6px;border-radius:4px;font-size:.9em;
+    font-family:"SF Mono",Menlo,Consolas,monospace;color:var(--ink)}
+  .note{background:var(--seam-bg);border:1px solid rgba(224,175,104,.4);border-radius:8px;padding:12px 16px;margin:16px 0;font-size:14px}
+  .note.danger{background:rgba(247,118,142,.08);border-color:rgba(247,118,142,.45)}
+  .note.danger b{color:var(--red)}
+  .meta{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 16px;font-size:13px;color:var(--muted);margin:14px 0}
+  .nav{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0}
+  .nav a{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:7px 13px;font-size:13px;font-weight:600}
+  .nav a:hover{border-color:var(--plugin);text-decoration:none}
+  .src{font-size:11px;color:var(--faint);display:block;margin-top:4px}
+  .src code{font-size:.95em;color:var(--muted);background:transparent;padding:0}
+
+  .badge{display:inline-block;font-size:11px;font-weight:700;padding:2px 9px;border-radius:999px;color:var(--badge-ink);letter-spacing:.3px;vertical-align:middle}
+  .b-er{background:var(--box)} .b-l3{background:var(--sub)} .b-safe{background:var(--seam)}
+  .b-vla{background:var(--plugin)} .b-opt{background:var(--surface);color:var(--head);border:1px solid var(--line)} .b-unfrozen{background:var(--demoted);color:var(--ink)}
+  .boxkind{display:inline-block;font-size:10px;font-weight:700;color:var(--faint);border:1px solid var(--line);border-radius:6px;padding:1px 6px;vertical-align:middle}
+
+  .legend{display:flex;flex-wrap:wrap;gap:10px;margin:16px 0}
+  .legend .item{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 14px;flex:1 1 180px;min-width:180px}
+  .legend .item b{display:block;margin-bottom:3px} .legend .item small{color:var(--muted);font-size:12.5px}
+
+  .node{border-radius:10px;padding:10px 12px;border:2px solid;background:var(--card);font-size:13.5px}
+  .node .t{font-weight:700;font-size:14px} .node .s{color:var(--muted);font-size:12px;margin-top:2px}
+  .n-er{border-color:var(--box);background:var(--box-bg)}
+  .n-l3{border-color:var(--sub);background:var(--sub-bg)}
+  .n-safe{border-color:var(--seam);background:var(--seam-bg)}
+  .n-vla{border-color:var(--plugin);background:var(--plugin-bg)}
+  .n-unfrozen{border-color:var(--demoted);background:var(--demoted-bg);border-style:dashed}
+
+  .layer{border-radius:12px;padding:12px 14px;margin:10px 0;border:1px solid var(--line)}
+  .layer .lh{font-size:13px;font-weight:700;color:var(--head);letter-spacing:.3px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+  .layer .lh .rt{font-weight:500;color:var(--muted);font-size:11px}
+  .row{display:flex;flex-wrap:wrap;gap:10px} .row .node{flex:1 1 150px}
+  .Ler{background:var(--Ler)} .L3c{background:var(--L3c)} .Lvla{background:var(--Lvla)} .Lsafe{background:var(--Lsafe)}
+  .arrow-down{text-align:center;color:var(--faint);font-size:18px;line-height:1;margin:-2px 0}
+
+  .rolegrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px}
+  .cell{background:var(--card2);border:1px solid var(--line);border-radius:8px;padding:8px 11px;font-size:12.5px}
+  .cell .ch{font-size:11px;font-weight:700;letter-spacing:.4px;margin-bottom:3px}
+  .cell.do{border-color:rgba(158,206,106,.35)} .cell.do .ch{color:var(--sub)}
+  .cell.dont{border-color:rgba(247,118,142,.32)} .cell.dont .ch{color:var(--red)}
+
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+
+  .flow{display:flex;flex-wrap:wrap;align-items:stretch;gap:6px;margin:14px 0}
+  .flow .node{flex:1 1 120px;min-width:114px;display:flex;flex-direction:column;justify-content:center}
+  .flow .arr{display:flex;align-items:center;color:var(--faint);font-weight:700;font-size:18px;padding:0 1px}
+  .flow .seamtag{font-size:10px;color:var(--seam);font-weight:700;text-align:center;align-self:center}
+  .forbidden-lane{border:1.5px dashed var(--red);background:rgba(247,118,142,.07);border-radius:10px;padding:8px 12px;margin:8px 0 0;font-size:12.5px;color:#f0c2cc}
+  .forbidden-lane b{color:var(--red)}
+
+  .steps{counter-reset:step;margin:14px 0;padding:0;list-style:none}
+  .steps li{position:relative;background:var(--card);border:1px solid var(--line);border-radius:9px;padding:10px 12px 10px 44px;margin:7px 0;font-size:13px}
+  .steps li::before{counter-increment:step;content:counter(step);position:absolute;left:10px;top:10px;width:24px;height:24px;border-radius:50%;
+    background:var(--sub-bg);border:1.5px solid var(--sub);color:var(--sub);font-weight:700;font-size:12px;display:flex;align-items:center;justify-content:center}
+  .steps li.vla::before{background:var(--plugin-bg);border-color:var(--plugin);color:var(--plugin)}
+  .steps li b{color:var(--head)}
+
+  .compare{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:14px 0}
+  .compare3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin:14px 0}
+  .panel{border-radius:12px;padding:14px;border:1px solid var(--line);background:var(--card)}
+  .panel.bad{border-color:rgba(247,118,142,.45);background:rgba(247,118,142,.06)}
+  .panel.good{border-color:rgba(158,206,106,.45);background:rgba(158,206,106,.06)}
+  .panel h4{margin:0 0 10px;font-size:14px}
+  .panel .pro{color:var(--sub);font-size:12.5px;margin:3px 0} .panel .con{color:var(--yellow);font-size:12.5px;margin:3px 0}
+  .opt-order{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 0 0;font-size:13px}
+  .opt-order .pill{background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:4px 12px;font-weight:700}
+
+  .ladder{margin:14px 0}
+  .ladder .rung{display:flex;align-items:flex-start;gap:10px;background:var(--card);border:1px solid var(--line);border-radius:9px;padding:9px 12px;margin:6px 0;font-size:13px}
+  .ladder .gid{flex:0 0 auto;font-weight:700;color:var(--seam);background:var(--seam-bg);border:1px solid var(--seam);border-radius:7px;padding:2px 9px;font-size:12px}
+  .ladder .rung.human{border-color:rgba(247,118,142,.5);background:rgba(247,118,142,.06)}
+  .ladder .rung.human .gid{color:var(--red);border-color:var(--red);background:rgba(247,118,142,.1)}
+
+  .statebox{border:1.5px solid var(--line);border-radius:10px;background:var(--card2);padding:10px 12px;font-family:"SF Mono",Menlo,Consolas,monospace;font-size:12.5px;color:var(--muted);white-space:pre-wrap;overflow-x:auto}
+  .statebox .ok{color:var(--sub)} .statebox .bad{color:var(--red)} .statebox .vla{color:var(--plugin)} .statebox .er{color:var(--box)}
+
+  table{border-collapse:collapse;width:100%;margin:14px 0;font-size:13px;background:var(--card)}
+  th,td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
+  th{background:var(--surface);font-size:12.5px;color:var(--head)}
+  td code{font-size:.85em}
+  tr:nth-child(even) td{background:rgba(255,255,255,.02)}
+  .doc-cell{font-size:12px;color:var(--muted)}
+  .impl-yes{color:var(--sub);font-weight:700}
+  .impl-no{color:var(--yellow);font-weight:700}
+  .acc-yes{color:var(--sub);font-weight:700} .acc-no{color:var(--red);font-weight:700} .acc-sim{color:var(--teal);font-weight:700}
+
+  ul.tight{margin:8px 0;padding-left:22px} ul.tight li{margin:5px 0}
+  footer{margin-top:50px;padding-top:18px;border-top:1px solid var(--line);color:var(--muted);font-size:12.5px}
+  .kbd{font-family:monospace;background:var(--surface);color:var(--ink);padding:1px 7px;border-radius:4px;font-size:.85em;border:1px solid var(--line)}
+  @media(max-width:760px){.grid2,.grid3,.compare,.compare3,.rolegrid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <h1>Mode X-ER-VLA 全体図解 <span class="badge b-unfrozen">設計提案</span></h1>
+  <p class="lead">Gemini Robotics-ER（高レベル理解）と VLA / OpenVLA（局所 grounding / action）を統合する<b>別モード</b>の設計現状。
+  全要素が設計提案で、config / ROS topic / REST API / 凍結契約をまだ追加しない。本ページは <code>docs/mode-x-er-vla/*.md</code> の<b>図解（補足資料）</b>。</p>
+</header>
+
+<div class="nav">
+  <a href="README.md">正本: README</a>
+  <a href="01-integration-architecture.md">01 統合 architecture</a>
+  <a href="02-openvla-research-plan.md">02 OpenVLA 調査計画</a>
+  <a href="03-simulation-and-safety-gates.md">03 sim / safety gates</a>
+  <a href="04-openvla-use-cases-and-control-flow.md">04 用途と制御フロー</a>
+  <a href="../productization/box-taxonomy.html">▸ productization box 図解</a>
+</div>
+
+<div class="meta">
+  正本: <code>docs/mode-x-er-vla/README.md / 01〜04.md</code>。本ページはその図解で、定義・しきい値・schema の一次ソースは必ず .md と凍結契約コードを参照する。
+  productization の box 体系（<a href="../productization/box-taxonomy.html">box-taxonomy.html</a>）と対応づけ、ER/VLA/Fusion/L3 Core が「L4 Model Adapter / L3 box（いずれも未実装）」のどこに当たるかを §10 で示す。
+</div>
+
+<div class="note">
+  <b>状態（README.md:5 / 04:5-8）:</b> Mode X-ER-VLA はまだ <code>config</code> / ROS topic / REST API / <code>warehouse_interfaces</code> frozen contract を追加しない。
+  本文の <code>VlaSubtaskRequest</code> / <code>VlaActionCandidate</code> / <code>ManipulationSkillResult</code> / <code>SafetyCompiler</code> は<b>内部案</b>で、実装前に contract PR で凍結する。
+  数値・座標系・wire schema・config key はすべて<b>未凍結</b>（§9）。
+</div>
+
+<!-- ===================== 0. 凡例 ===================== -->
+<h2>0. 凡例 — 5 種別と凍結/未凍結</h2>
+<div class="legend">
+  <div class="item"><b><span class="badge b-er">ER</span> 高レベル</b><small>Gemini Robotics-ER。音声/intent/俯瞰画像理解・task graph 提案・再計画・operator clarification。<span class="src"><code>README.md:13</code> / <code>04:40</code></span></small></div>
+  <div class="item"><b><span class="badge b-vla">VLA</span> 局所</b><small>OpenVLA など。局所画像＋言語 subtask → 視覚 grounding / action candidate。<b>差替軸・採用未確定</b>。<span class="src"><code>README.md:14</code> / <code>04:42</code></span></small></div>
+  <div class="item"><b><span class="badge b-l3">L3 決定論コア</span></b><small>Validator / Visual Resolver / Task Graph Executor / Command Compiler / SafetyCompiler。到着判定・検証・compile 境界。<span class="src"><code>04:41,47-49</code></span></small></div>
+  <div class="item"><b><span class="badge b-safe">安全実行経路</span> 凍結</b><small>MCP / Policy Gate / Nav2 / Open-RMF / Layer0。model 非依存・bypass 不可・最終 actuation。<span class="src"><code>README.md:22</code> / <code>04:43-45</code></span></small></div>
+  <div class="item"><b><span class="badge b-unfrozen">未凍結 proposal</span></b><small>VlaSubtaskRequest / VlaActionCandidate / ManipulationSkillResult / SafetyCompiler / config key。contract PR 前。<span class="src"><code>04:5-8</code> / <code>README.md:70-80</code></span></small></div>
+</div>
+
+<!-- ===================== 1. 位置づけ ===================== -->
+<h2>1. 位置づけ — 3 アクターの役割分担</h2>
+<p class="lead">Mode X-ER-VLA は Mode X-ER の派生ではなく、ER と VLA を組み合わせる<b>別モード（同一階層）</b>。<span class="src"><code>README.md:9</code></span></p>
+<div class="grid3">
+  <div class="node n-er">
+    <div class="t">Gemini Robotics-ER <span class="badge b-er">ER</span></div>
+    <div class="s">音声指示・自然言語 intent・俯瞰画像の意味理解・task graph の高レベル提案。</div>
+    <div class="src"><code>README.md:13</code></div>
+  </div>
+  <div class="node n-vla">
+    <div class="t">VLA / OpenVLA <span class="badge b-vla">VLA</span></div>
+    <div class="s">視覚 grounding・action candidate・robot embodiment 寄りの判断・sim での policy 候補評価。</div>
+    <div class="src"><code>README.md:14</code></div>
+  </div>
+  <div class="node n-l3">
+    <div class="t">Robotics Bridge <span class="badge b-l3">統合</span></div>
+    <div class="s">ER / VLA の output を統合し、既存 MCP / Policy Gate / Nav2 / Open-RMF 経路へ<b>安全に落とす</b>。</div>
+    <div class="src"><code>README.md:15</code></div>
+  </div>
+</div>
+
+<h3>Mode X-ER との違い</h3>
+<table>
+  <thead><tr><th>観点</th><th>Mode X-ER</th><th>Mode X-ER-VLA</th></tr></thead>
+  <tbody>
+    <tr><td>主 model</td><td>Gemini Robotics-ER のみ</td><td>Gemini Robotics-ER ＋ VLA / OpenVLA</td></tr>
+    <tr><td>L3 の扱い</td><td>deterministic L3 が ER output を compile</td><td>VLA が L3 の一部を代行 / 補助する可能性を検証</td></tr>
+    <tr><td>初期 output</td><td><code>RoboticsPlan draft</code></td><td><code>RoboticsPlan draft</code> ＋ <code>VlaGroundingReport</code> ＋ 統合候補</td></tr>
+    <tr><td>実装の近さ</td><td>X-lite MVP に近い</td><td>research / simulation / integration spike 先行</td></tr>
+    <tr><td>実行経路</td><td>MCP / Policy Gate → Nav2 Bridge or Open-RMF</td><td>原則同じ安全経路。ER/VLA fusion と Safety Compiler を検討</td></tr>
+    <tr><td>目的</td><td>ER 単体で視覚タスク司令を成立</td><td>ER の高レベル理解と VLA の action grounding 統合の価値検証</td></tr>
+  </tbody>
+</table>
+<div class="src"><code>README.md:37-44</code></div>
+
+<!-- ===================== 2. レイヤ責務マップ ===================== -->
+<h2>2. レイヤ責務マップ — 各層が「担う / 担わない」</h2>
+<p class="lead">「制御」を分解し、どの層が何をして<b>何をしないか</b>を固定する。上ほど非リアルタイム・抽象、下ほど即時・物理。<span class="src"><code>04:36-49</code></span></p>
+
+<div class="layer Ler">
+  <div class="lh"><span>Gemini Robotics-ER <span class="badge b-er">ER</span></span><span class="rt">Non-RT / 高レベル</span></div>
+  <div class="rolegrid">
+    <div class="cell do"><div class="ch">担う</div>intent 理解・高レベル task graph・再計画・operator clarification</div>
+    <div class="cell dont"><div class="ch">担わない</div><code>/cmd_vel</code>・Nav2 action・gripper command の<b>直接生成</b></div>
+  </div>
+</div>
+<div class="arrow-down">▼</div>
+<div class="layer L3c">
+  <div class="lh"><span>L3 Planning Core <span class="badge b-l3">L3</span></span><span class="rt">Non-RT / 決定論</span></div>
+  <div class="rolegrid">
+    <div class="cell do"><div class="ch">担う</div>task graph の状態管理・ready 判定・ER/VLA output の検証・<b>compile 境界</b></div>
+    <div class="cell dont"><div class="ch">担わない</div>wheel / arm / gripper の<b>リアルタイム制御</b></div>
+  </div>
+</div>
+<div class="arrow-down">▼</div>
+<div class="layer Lvla">
+  <div class="lh"><span>OpenVLA / VLA <span class="badge b-vla">VLA</span></span><span class="rt">局所 grounding</span></div>
+  <div class="rolegrid">
+    <div class="cell do"><div class="ch">担う</div>局所画像と言語 subtask から grounding / action candidate を<b>提案</b></div>
+    <div class="cell dont"><div class="ch">担わない</div>高レベル fleet planning・emergency 判定・冪等 key 生成</div>
+  </div>
+</div>
+<div class="arrow-down">▼</div>
+<div class="layer Lsafe">
+  <div class="lh"><span>L2 MCP / Policy Gate <span class="badge b-safe">凍結</span></span><span class="rt">Soft-RT / 最終実行許可</span></div>
+  <div class="rolegrid">
+    <div class="cell do"><div class="ch">担う</div>stale / duplicate / battery / emergency / location などの<b>最終実行許可</b></div>
+    <div class="cell dont"><div class="ch">担わない</div>model の推論・物体認識</div>
+  </div>
+</div>
+<div class="arrow-down">▼</div>
+<div class="layer Lsafe">
+  <div class="lh"><span>L1 Nav2 / controller <span class="badge b-safe">凍結</span></span><span class="rt">Hard-RT</span></div>
+  <div class="rolegrid">
+    <div class="cell do"><div class="ch">担う</div>移動・局所経路追従・controller 実行</div>
+    <div class="cell dont"><div class="ch">担わない</div>task graph の意味理解</div>
+  </div>
+</div>
+<div class="arrow-down">▼</div>
+<div class="layer Lsafe">
+  <div class="lh"><span>L0 firmware <span class="badge b-safe">凍結</span></span><span class="rt">MCU / 即時</span></div>
+  <div class="rolegrid">
+    <div class="cell do"><div class="ch">担う</div>速度 clamp・proximity stop・bumper stop など即時安全</div>
+    <div class="cell dont"><div class="ch">担わない</div>高レベル判断</div>
+  </div>
+</div>
+<div class="note"><b>L3 は motor controller ではない（04:47-49）:</b> L3 は <b>工程制御・状態遷移・実行候補の安全な変換</b>を担当する。wheel/arm/gripper のリアルタイム制御は L1/L0 が持つ。</div>
+
+<!-- ===================== 3. 安全境界 ===================== -->
+<h2>3. 安全境界 — model output は直接 actuate しない</h2>
+<p class="lead">ER / VLA の raw output は <code>/cmd_vel</code>・Nav2 action・Jetson service・ESP32 firmware へ<b>直接流さない</b>。必ず L3 の検証 / compile 境界 → 凍結された安全経路を通る。<span class="src"><code>README.md:17-23</code> / <code>04:29-32</code> / <code>03:24-30</code></span></p>
+
+<div class="flow">
+  <div class="node n-er"><div class="t" style="font-size:12.5px">ER output</div><div class="s">task graph / intent</div></div>
+  <div class="arr">＋</div>
+  <div class="node n-vla"><div class="t" style="font-size:12.5px">VLA output</div><div class="s">grounding / candidate</div></div>
+  <div class="arr">▶</div>
+  <div class="seamtag">compile<br>境界</div>
+  <div class="node n-l3"><div class="t" style="font-size:12.5px">L3 Validator /<br>SafetyCompiler</div><div class="s">分類・reject・正規化</div></div>
+  <div class="arr">▶</div>
+  <div class="node n-safe"><div class="t" style="font-size:12.5px">MCP / Policy Gate</div><div class="s">最終実行許可</div></div>
+  <div class="arr">▶</div>
+  <div class="node n-safe"><div class="t" style="font-size:12.5px">Nav2 / skill executor</div></div>
+  <div class="arr">▶</div>
+  <div class="node n-safe"><div class="t" style="font-size:12.5px">L0 firmware</div><div class="s">clamp ≤0.3 m/s</div></div>
+</div>
+
+<div class="forbidden-lane">
+  <b>❌ model に直結させない（README.md:19-20 / 04:29 / 03:24-28）:</b>
+  <code>/cmd_vel</code> ・ Nav2 action 直送 ・ Jetson service / REST endpoint ・ ESP32 / micro-ROS firmware ・ 速度/motor command の物理実行。
+</div>
+<div class="note danger">
+  <b>不可侵の核:</b>
+  <code>gen_id</code> / <code>idempotency_key</code> は<b>model に作らせない</b>（<code>README.md:21</code>）。VLA へも渡さない（<code>04:142-150</code>）。
+  最終 actuation は MCP / Policy Gate / Nav2 / Open-RMF / Layer0 を通す（<code>README.md:22</code>）。
+  移動命令は既存 <code>Command</code> の <code>navigate / wait / stop / yield / charge</code> のみ（<code>ws/src/warehouse_interfaces/warehouse_interfaces/schemas.py:136-140</code> / <code>04:195</code>）。
+  速度ハードキャップ <code>MAX_LINEAR_VELOCITY=0.3</code> は上位 model 非依存（<code>ws/src/warehouse_interfaces/warehouse_interfaces/safety.py:18</code>）。
+</div>
+
+<!-- ===================== 4. 典型フロー ===================== -->
+<h2>4. 典型フロー — 「赤箱→赤ボール把持→トレー配置」</h2>
+<p class="lead">指示「赤い箱へ行って、赤い箱の中の赤いボールを掴んで、トレーに置いて」を、ER の task graph → L3 の順序実行 → VLA subtask で処理する。<span class="src"><code>04:50-106</code></span></p>
+
+<p>ER が作る高レベル task graph（移動系は <code>command_action</code>、操作系は内部 <code>skill</code>）:</p>
+<div class="statebox"><span class="er">t1</span> navigation  command_action=navigate  target=red_box_area
+<span class="vla">t2</span> manipulation skill=grasp  target=red_ball  container=red_box  after=t1.completed
+<span class="er">t3</span> navigation  command_action=navigate  target=tray_area  after=t2.completed
+<span class="vla">t4</span> manipulation skill=place  target=tray  object=red_ball  after=t3.completed</div>
+<div class="src"><code>04:60-68</code> ／ <code>command_action</code>=既存 Command 移動系のみ・<code>skill</code>=内部 manipulation subtask（既存 Command 契約へそのまま入れない）<code>04:71-74</code></div>
+
+<ol class="steps">
+  <li><b>Validator</b> — robot / kind / command_action / skill / target / graph / state freshness / emergency を検証。</li>
+  <li><b>Visual Resolver</b> — <code>red_box_area</code> / <code>tray_area</code> を known location へ解決。<b>未凍結の coordinate goal は compile しない</b>。</li>
+  <li><b>Task Graph Executor</b> — 初回 cycle は <code>t1</code> だけ ready、<code>t2/t3/t4</code> は pending。</li>
+  <li><b>Command Compiler</b> — <code>t1</code> を既存 <code>Command(navigate)</code> へ compile。</li>
+  <li><b>L2 / L1</b> — MCP / Policy Gate / Nav2 が <code>t1</code> を実行。</li>
+  <li><b>Completion 判定</b> — Nav2 result・State Cache pose・task timeout・emergency state を見て <code>t1.completed</code> / <code>t1.failed</code>。</li>
+  <li class="vla"><b>VLA subtask 起動</b> — <code>t1.completed</code> 後、L3 が <code>t2</code> を ready にし、OpenVLA へ<b>限定 subtask</b>を渡す。</li>
+  <li class="vla"><b>Manipulation result</b> — grasp 成功なら <code>t2.completed</code>。失敗なら L3 が retry / abort / ER replan を選ぶ。</li>
+</ol>
+<div class="note"><b>到着判定は ER ではなく L3（04:108-109）:</b> ER が「赤箱に到着した」と主観的に判断して OpenVLA を呼ぶのではない。到着判定は <b>L3 が State Cache / Nav2 result / safety state を使って</b>行い、その後で VLA subtask を起動する。</div>
+
+<!-- ===================== 5. 3 統合オプション ===================== -->
+<h2>5. 統合 architecture の 3 オプション</h2>
+<p class="lead">ER と VLA の output をどう組み合わせるかで 3 案。初期は <b>C → A → B</b> の順に進める。<span class="src"><code>01:17-109</code></span></p>
+<div class="compare3">
+  <div class="panel">
+    <h4><span class="badge b-er">A</span> ER Primary + VLA Cross-Check</h4>
+    <p class="s" style="font-size:12.5px">ER が <code>RoboticsPlan draft</code> を作り、VLA は visual grounding / target confidence の cross-check に使う。</p>
+    <p class="pro">＋ X-ER 設計を壊しにくい / 安全な cross-check</p>
+    <p class="con">－ VLA の action 能力を使わない / disagreement policy が必要</p>
+    <div class="src"><code>01:17-47</code></div>
+  </div>
+  <div class="panel">
+    <h4><span class="badge b-vla">B</span> ER Planner + VLA L3 Candidate</h4>
+    <p class="s" style="font-size:12.5px">ER が high-level task graph、VLA が Visual Resolver / action candidate を補助。</p>
+    <p class="pro">＋ 役割分担が明確 / L3 一部代行のユーザー意図に近い</p>
+    <p class="con">－ Safety Compiler 設計が必要 / Command へ落とす境界が難</p>
+    <div class="src"><code>01:49-73</code></div>
+  </div>
+  <div class="panel">
+    <h4><span class="badge b-opt">C</span> Sim-First Policy 評価</h4>
+    <p class="s" style="font-size:12.5px">実機 command path 接続前に Isaac Sim / offline fixture で policy candidate として評価。</p>
+    <p class="pro">＋ 実機前に相互作用を観察 / runtime・GPU・I-O を検証 / 失敗を golden fixture 化</p>
+    <p class="con">－ 実機 E2E まで遠い / sim scene 整備が前提</p>
+    <div class="src"><code>01:75-97</code></div>
+  </div>
+</div>
+<div class="opt-order">
+  <span class="pill">① C: sim/offline 観察</span><span class="arr" style="color:var(--faint)">▶</span>
+  <span class="pill">② A: grounding 補助なら</span><span class="arr" style="color:var(--faint)">▶</span>
+  <span class="pill">③ B: action candidate なら</span>
+  <span class="src" style="display:inline;margin-left:8px"><code>01:99-109</code></span>
+</div>
+<div class="note">どの option でも ER/VLA から直接 Nav2 / ROS / Jetson / ESP32 を叩かせない。移動のみの scenario は Mode X-ER で先に完結させ、Mode X-ER-VLA では manipulation subtask を含む scenario を追加評価する（<code>01:106-109</code>）。</div>
+
+<!-- ===================== 6. VLA output 分類 + request ===================== -->
+<h2>6. VLA output 分類と subtask request</h2>
+<p class="lead">OpenVLA の output は実装前に分類する。<b>未分類の output は実機へ流さない</b>。<span class="src"><code>04:152-190</code></span></p>
+<table>
+  <thead><tr><th>output class</th><th>内容</th><th>扱い</th></tr></thead>
+  <tbody>
+    <tr><td><code>grounding_report</code></td><td>対象物・bbox・confidence・見えている/いない</td><td class="acc-yes">Option A の cross-check に使える</td></tr>
+    <tr><td><code>action_candidate</code></td><td>grasp / place などの候補動作</td><td class="impl-no">SafetyCompiler が必要</td></tr>
+    <tr><td><code>trajectory_candidate</code></td><td>end-effector trajectory など</td><td class="acc-sim">sim-only で検証・直接実行禁止</td></tr>
+    <tr><td><code>low_level_velocity</code></td><td>wheel / motor velocity</td><td class="acc-no">reject</td></tr>
+    <tr><td><code>unknown</code></td><td>型が説明できない output</td><td class="acc-no">reject</td></tr>
+  </tbody>
+</table>
+
+<h3>VlaSubtaskRequest — 渡す / 渡さない <span class="badge b-unfrozen">未凍結 v0</span></h3>
+<div class="compare">
+  <div class="panel good">
+    <h4>✅ 渡す（局所作業に必要な最小情報）</h4>
+    <ul class="tight" style="font-size:12.5px">
+      <li><code>skill</code> / <code>instruction</code>（例: 赤い箱の中の赤いボールを掴む）</li>
+      <li><code>target</code>: object_id / class_hint / color_hint / container_hint</li>
+      <li><code>observation_refs</code>: camera_frame / state_snapshot（<b>参照のみ</b>）</li>
+      <li><code>constraints</code>: base_motion=not_allowed / allowed_output=action_candidate_only / direct_actuation=forbidden</li>
+    </ul>
+    <div class="src"><code>04:111-140</code></div>
+  </div>
+  <div class="panel bad">
+    <h4>❌ 渡さない</h4>
+    <ul class="tight" style="font-size:12.5px">
+      <li>Nav2 Bridge URL ・ ROS topic 名 ・ <code>/cmd_vel</code></li>
+      <li>Jetson service endpoint ・ ESP32 / micro-ROS の詳細</li>
+      <li><code>gen_id</code> / <code>idempotency_key</code></li>
+      <li>battery / emergency を bypass できる権限</li>
+    </ul>
+    <div class="src"><code>04:142-150</code></div>
+  </div>
+</div>
+
+<!-- ===================== 7. SafetyCompiler ===================== -->
+<h2>7. SafetyCompiler — manipulation の compile 境界 <span class="badge b-unfrozen">内部案</span></h2>
+<p class="lead">既存 <code>Command</code> は navigate/wait/stop/yield/charge の移動命令中心で、grasp/place などの manipulation は別の compile 境界が要る。<span class="src"><code>04:192-220</code></span></p>
+<div class="flow">
+  <div class="node n-vla"><div class="t" style="font-size:12.5px">VlaActionCandidate</div></div>
+  <div class="arr">▶</div>
+  <div class="node n-l3"><div class="t" style="font-size:12.5px">SafetyCompiler</div><div class="s">class 分類 / reject / 前提確認</div></div>
+  <div class="arr">▶</div>
+  <div class="node n-unfrozen"><div class="t" style="font-size:12.5px">ManipulationSkillCall</div><div class="s">抽象 skill call</div></div>
+  <div class="arr">▶</div>
+  <div class="node n-safe"><div class="t" style="font-size:12.5px">skill executor /<br>arm controller</div></div>
+  <div class="arr">▶</div>
+  <div class="node n-l3"><div class="t" style="font-size:12.5px">ManipulationSkillResult</div><div class="s">→ Task Graph Executor</div></div>
+</div>
+<div class="grid2">
+  <div class="node n-l3">
+    <div class="t">責務（案）</div>
+    <ul class="tight" style="font-size:12.5px">
+      <li>VLA output class を分類し、未対応型を reject</li>
+      <li>対象物が ER の task graph と一致するか確認</li>
+      <li>container / workspace / robot pose の前提を確認</li>
+      <li>base motion 禁止 subtask で base motion 相当の出力がないか確認</li>
+      <li>trajectory / velocity を直接実行しない</li>
+      <li>skill executor に渡せる抽象 skill call へ変換</li>
+    </ul>
+  </div>
+  <div class="node n-unfrozen">
+    <div class="t">未凍結</div>
+    <div class="s"><code>ManipulationSkillCall</code> をどの package / topic / REST endpoint で表現するかは未凍結。
+    <code>confidence</code> 閾値・座標系・trajectory 表現・controller 接続方式も未凍結。
+    この段階では <b>OpenVLA → controller 直結を禁止</b>。</div>
+    <div class="src"><code>04:189,219-220</code></div>
+  </div>
+</div>
+
+<!-- ===================== 8. 状態遷移 ===================== -->
+<h2>8. 状態遷移 — 移動 task と VLA task</h2>
+<p class="lead">L3 は task ごとに状態を持つ。移動 task と VLA task で経路が分かれる。<span class="src"><code>04:222-264</code></span></p>
+<div class="statebox">pending → ready → dispatching → running → <span class="ok">succeeded</span>
+                                     → <span class="bad">failed</span>
+                                     → <span class="bad">blocked</span>
+                                     → <span class="bad">cancelled</span></div>
+<div class="grid2">
+  <div class="node n-safe">
+    <div class="t">移動 task</div>
+    <div class="statebox" style="margin-top:6px">ready
+ → Command Compiler
+ → MCP / Policy Gate
+ → Nav2
+ → Nav2 result + State Cache
+ → <span class="ok">succeeded</span> / <span class="bad">failed</span></div>
+  </div>
+  <div class="node n-vla">
+    <div class="t">VLA task</div>
+    <div class="statebox" style="margin-top:6px">ready
+ → <span class="vla">VlaSubtaskRequest</span>
+ → VLA Adapter
+ → <span class="vla">VlaActionCandidate</span>
+ → SafetyCompiler
+ → skill executor
+ → <span class="vla">ManipulationSkillResult</span>
+ → <span class="ok">succeeded</span> / <span class="bad">failed / blocked</span></div>
+  </div>
+</div>
+<div class="node n-l3" style="margin-top:10px">
+  <div class="t">VLA task の起動条件（すべて満たす）<span class="src" style="display:inline"><code>04:257-264</code> / <code>03:32-45</code></span></div>
+  <div class="s">parent task の <code>after</code> 依存が満たされている ・ robot が expected location にいる ・ state snapshot が fresh ・ emergency active でない ・
+  target が unresolved でない or VLA grounding で確認できる ・ fixture / sim gate で同じ output class が検証済み。</div>
+</div>
+
+<h3>ER に戻して再計画する条件</h3>
+<p class="lead">通常の retry は L3 が扱う。次の場合だけ ER へ戻す。<span class="src"><code>04:266-294</code></span></p>
+<table>
+  <thead><tr><th>condition</th><th>L3 の初期対応</th><th>ER に戻す理由</th></tr></thead>
+  <tbody>
+    <tr><td><code>target_not_visible</code></td><td>camera 再取得 / 視点変更 request</td><td>そもそも対象が存在しない可能性</td></tr>
+    <tr><td><code>multiple_matching_targets</code></td><td>operator clarification か ER replan</td><td>赤い物体が複数あり intent が曖昧</td></tr>
+    <tr><td><code>grasp_failed_repeatedly</code></td><td>retry 上限後に blocked</td><td>別戦略が必要</td></tr>
+    <tr><td><code>object_moved</code></td><td>latest observation を保存</td><td>task graph の前提が崩れた</td></tr>
+    <tr><td><code>unsafe_candidate</code></td><td>candidate reject</td><td>別 subtask または中止判断が必要</td></tr>
+    <tr><td><code>emergency_active</code></td><td>immediate 0 dispatch</td><td>safety 優先。回復後に再開判断</td></tr>
+  </tbody>
+</table>
+<div class="note">ER の再提案も L3 Validator / SafetyCompiler / MCP / Policy Gate を通す（<code>04:294</code>）。</div>
+
+<!-- ===================== 9. Gates ===================== -->
+<h2>9. Simulation / Safety Gates（G0→G7）</h2>
+<p class="lead">ER と VLA の両方が候補を出すため、実機接続前に simulation と offline fixture を必須にする。<span class="src"><code>03:11-22</code></span></p>
+<div class="ladder">
+  <div class="rung"><span class="gid">G0</span><div>fixture — recorded image + text instruction + fake state を ER/VLA に入力 → <b>response を保存できる</b></div></div>
+  <div class="rung"><span class="gid">G1</span><div>output classification — grounding / action / trajectory / unknown のどれか → <b>docs に output shape を記録</b></div></div>
+  <div class="rung"><span class="gid">G2</span><div>fusion decision — ER と VLA の output 統合方式 → <b>Cross-check / L3 candidate / Safety Compiler を選ぶ</b></div></div>
+  <div class="rung"><span class="gid">G3</span><div>offline validator — invalid robot/action/target/stale/emergency を <b>0 dispatch</b> → reject reason を <code>ValidationReport</code> 相当で残す</div></div>
+  <div class="rung"><span class="gid">G4</span><div>sim-only replay — Isaac Sim / offline evaluator で candidate を replay → <b>実機なしで failure を再現</b></div></div>
+  <div class="rung"><span class="gid">G5</span><div>compiler decision — <code>Command Compiler</code> で足りるか <code>SafetyCompiler</code> が要るか → <b>docs に判断を残す</b></div></div>
+  <div class="rung"><span class="gid">G6</span><div>MCP path — command candidate が MCP / Policy Gate を通る → <b>bypass なし</b></div></div>
+  <div class="rung human"><span class="gid">G7</span><div>robot-gated — 実機接続を <b>人間 gate</b> に → Jetson / ESP32 / safety の確認後のみ</div></div>
+</div>
+<div class="note danger"><b>実機接続前に禁止（03:24-30）:</b> VLA velocity を <code>/cmd_vel</code> 直 publish ・ VLA trajectory を Nav2 action 直送 ・ Jetson service/REST を ER/VLA に教える ・ ESP32 速度 clamp を前提に上位安全を省略 ・ fixture/sim で未検証の output shape を実機に流す。</div>
+
+<!-- ===================== 10. 採用判断 + productization ===================== -->
+<h2>10. OpenVLA 採用判断 — task 別</h2>
+<p class="lead">移動だけの task は Mode X-ER（<code>ER → L3 → Command → MCP/Policy Gate → Nav2</code>）。OpenVLA は Nav2 だけで表現できない局所操作が入った時の候補。<span class="src"><code>README.md:60-68</code> / <code>04:15-22,296-320</code></span></p>
+<table>
+  <thead><tr><th>task</th><th>推奨構成</th><th>OpenVLA の扱い</th></tr></thead>
+  <tbody>
+    <tr><td>赤箱へ移動する</td><td>ER + L3 + MCP/Policy Gate + Nav2</td><td class="impl-yes">不要</td></tr>
+    <tr><td>赤箱を視覚で見つけて移動する</td><td>ER + L3 Visual Resolver + Nav2</td><td class="impl-yes">原則不要・cross-check のみ候補</td></tr>
+    <tr><td>赤箱へ行って赤ボールを確認する</td><td>ER + L3 + optional VLA grounding</td><td class="impl-no">補助として候補</td></tr>
+    <tr><td>赤箱の赤ボールを掴む</td><td>ER + L3 + VLA + SafetyCompiler + skill controller</td><td class="acc-no">必要になる可能性が高い</td></tr>
+    <tr><td>赤ボールをトレーへ置く</td><td>ER + L3 + VLA + SafetyCompiler + skill controller</td><td class="acc-no">必要になる可能性が高い</td></tr>
+    <tr><td>充電器へ戻る / 棚Aへ行く</td><td>ER + L3 + Nav2</td><td class="impl-yes">不要</td></tr>
+  </tbody>
+</table>
+<div class="compare">
+  <div class="panel good">
+    <h4>✅ OpenVLA を使う（04:310-319）</h4>
+    <ul class="tight" style="font-size:12.5px">
+      <li>移動後に grasp / place / align / dock など局所操作が必要</li>
+      <li>対象物の位置・姿勢が毎回変わる</li>
+      <li>output を <code>grounding_report</code> / <code>action_candidate</code> に分類できる</li>
+      <li>SafetyCompiler 等で reject できる ・ fixture/sim gate 通過</li>
+    </ul>
+  </div>
+  <div class="panel bad">
+    <h4>❌ OpenVLA を使わない（04:296-308）</h4>
+    <ul class="tight" style="font-size:12.5px">
+      <li>named location への移動だけで完結 / Nav2・Open-RMF で解ける</li>
+      <li>target が known location に snap でき把持/配置が不要</li>
+      <li>runtime / license / GPU 要件が未確認</li>
+      <li>output class を説明できない / reject path 未確認</li>
+    </ul>
+  </div>
+</div>
+
+<h2>11. productization box 体系との対応</h2>
+<p class="lead">Mode X-ER-VLA の各要素は、productization の box 図解（<a href="../productization/box-taxonomy.html">box-taxonomy.html</a>）の「L4 Model Adapter sub-box / L3 box（いずれも未実装）」に当たる。下表は <b>設計提案（本モード） → box 体系 → repo 実体</b> の対応。</p>
+<table>
+  <thead><tr><th>Mode X-ER-VLA 要素</th><th>productization box</th><th>repo 実体 / 状態</th></tr></thead>
+  <tbody>
+    <tr><td>ER / VLA / STT adapter</td><td class="doc-cell">L4 Model Adapter <span class="boxkind">sub-box</span></td><td class="impl-no">未実装（proposal）</td></tr>
+    <tr><td>Fusion（ER/VLA 調停・optional）</td><td class="doc-cell">L4 Fusion <span class="boxkind">sub-box</span></td><td class="impl-no">未実装</td></tr>
+    <tr><td>L3 Planning Core（Validator/Resolver/Executor/Compiler）</td><td class="doc-cell">L3 Robotics Planning Core <span class="boxkind">box</span></td><td class="impl-no">未実装</td></tr>
+    <tr><td>SafetyCompiler / ManipulationSkillCall</td><td class="doc-cell">L3 Core 配下（manipulation 用 compile 境界）</td><td class="impl-no">未凍結 proposal</td></tr>
+    <tr><td>MCP / Policy Gate</td><td class="doc-cell">Governance <span class="boxkind">box</span></td><td class="impl-yes"><code>warehouse_mcp_server</code></td></tr>
+    <tr><td>Traffic（Nav2 / Open-RMF 切替）</td><td class="doc-cell">Traffic <span class="boxkind">box</span></td><td class="impl-yes"><code>warehouse_traffic</code> / <code>warehouse_rmf_adapter</code></td></tr>
+    <tr><td>Nav2 移動</td><td class="doc-cell">Navigation <span class="boxkind">box</span></td><td class="impl-yes"><code>warehouse_nav2_bridge</code></td></tr>
+    <tr><td>Emergency Guardian / 速度監視（<code>README.md:22</code> Layer0 safety）</td><td class="doc-cell">Safety <span class="boxkind">box</span></td><td class="impl-yes"><code>warehouse_safety</code> ・ <code>safety.py:18</code></td></tr>
+    <tr><td>L0 firmware（速度 clamp）</td><td class="doc-cell">Hardware <span class="boxkind">box</span></td><td class="impl-yes"><code>firmware/</code> ・ <code>safety_clamp.h</code></td></tr>
+    <tr><td>凍結契約（Command / 安全定数 / locations）</td><td class="doc-cell">Contract <span class="boxkind">box</span></td><td class="impl-yes"><code>warehouse_interfaces</code>（<code>schemas.py</code> / <code>safety.py:18</code> / <code>locations.py</code>）</td></tr>
+  </tbody>
+</table>
+
+<h3>調査計画（OpenVLA spike）と未凍結事項</h3>
+<div class="grid2">
+  <div class="node n-vla">
+    <div class="t">spike の確認項目 <span class="src" style="display:inline"><code>02:27-52</code></span></div>
+    <div class="s">model availability / license（商用・再配布・demo 公開）/ input・output shape / ER integration / robot embodiment（minicar との適合）/ runtime（GPU memory・latency・Jetson vs RunPod）/ simulation / safety / observability。
+    <br><b>完了条件:</b> 静止画 or sim camera frame で offline response を得る・output 型を説明・ER↔VLA 突合方法・代行できる L3 component・GPU 要件・license・MCP bypass しない接続案。</div>
+  </div>
+  <div class="node n-unfrozen">
+    <div class="t">未凍結事項 <span class="src" style="display:inline"><code>README.md:70-80</code></span></div>
+    <div class="s">OpenVLA 採用可否 ・ ER/VLA input contract ・ ER/VLA output contract ・ fusion strategy ・ VLA が代行する L3 component ・ SafetyCompiler の必要性 ・ Mode X-ER-VLA の config key ・ VLA 実行環境/GPU/license ・ X-lite / X-rmf のどちらへ接続するか。</div>
+  </div>
+</div>
+<div class="note"><b>MVP 方針（04:321-333）:</b> OpenVLA の能力を最大限使うことではなく <b>安全な接続境界の確認</b>が目的。① 移動のみは Mode X-ER で完結 → ② OpenVLA は offline fixture で output class 観察 → ③ まず <code>grounding_report</code> cross-check → ④ action candidate は sim-only replay → ⑤ grasp/place の実機接続は human gate と contract freeze 後。</div>
+
+<footer>
+  <p>このページは <code>docs/mode-x-er-vla/mode-x-er-vla-overview.html</code>（補足図解・ダークモード固定）。種別・しきい値・schema・file:line の一次ソースは <code>README.md</code> / <code>01〜04.md</code> と凍結契約コード。コード引用は実 Read で裏取り（<code>safety.py:18</code> / <code>schemas.py:136-140</code> / <code>locations.py:23</code>）。productization 連携は <a href="../productization/box-taxonomy.html">box-taxonomy.html</a>。</p>
+  <p>Cursor で開く: <span class="kbd">python3 -m http.server 8123 --directory docs/mode-x-er-vla</span> → <span class="kbd">Simple Browser: Show</span> → <span class="kbd">http://localhost:8123/mode-x-er-vla-overview.html</span></p>
+</footer>
+
+</div>
+</body>
+</html>
