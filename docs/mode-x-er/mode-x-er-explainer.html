@@ -90,6 +90,9 @@
   .lyr{display:inline-block;font-size:10px;font-weight:800;padding:1px 7px;border-radius:5px;color:var(--badge-ink);margin-right:7px;vertical-align:middle}
   .optline{font-family:"SF Mono",Menlo,Consolas,monospace;font-size:12px;color:var(--muted);background:var(--code);border-radius:6px;padding:8px 11px;margin:8px 0;line-height:1.7;overflow-x:auto}
   .optline b{color:var(--ink)}
+  /* implementation-scope: unused = dimmed + center strike line */
+  .unused{position:relative;opacity:.5;filter:grayscale(.65)}
+  .unused::after{content:"";position:absolute;left:8px;right:8px;top:50%;height:2px;background:var(--faint);transform:translateY(-1px);border-radius:2px}
   @media(max-width:720px){.grid2,.grid3{grid-template-columns:1fr}}
 </style>
 </head>
@@ -257,6 +260,63 @@
   <div class="node n-box"><div class="t">L4 が持たないもの</div><div class="s">
     target 解決・DAG 検証・state freshness policy などの L3 validation ／ MCP / Policy Gate の実行許可 ／ Nav2 action・ROS topic・<code>/cmd_vel</code>・ESP32 motor command ／ <code>gen_id</code> / <code>idempotency_key</code> を model に作らせること。<span class="dref">01:108-130</span>
   </div></div>
+</div>
+
+<h3>L4 box の実装スコープ（使う / 使わない / 一部使用 / optional）</h3>
+<p class="lead">§1 の L4 Super-Box 図を <b>Mode X-ER MVP の実装スコープ</b>で色分け。<b>使わない box は暗く＋真ん中に取消線</b>、<b>一部使用</b>は文章で範囲を明記、将来/条件付きは <b>optional</b>。</p>
+<div class="legend">
+  <div class="item"><span class="sw" style="background:var(--sub)"></span>使用する（MVP で実装）</div>
+  <div class="item"><span class="sw" style="background:var(--faint)"></span>使用しない（暗く＋取消線）</div>
+  <div class="item"><span class="sw" style="background:var(--seam)"></span>一部使用（文章で範囲明記）</div>
+  <div class="item"><span class="role">optional</span> 将来 / 条件付き</div>
+</div>
+
+<div class="superbox">
+  <div class="sbh">L4 Robotics Bridge Super-Box <span class="badge b-box">box</span> — Mode X-ER MVP スコープ</div>
+  <div class="sbs">明色＝使う、暗く＋取消線＝使わない、<span class="role">一部使用</span>／<span class="role">optional</span>＝文章で範囲を明記。</div>
+
+  <div class="sub-nest">
+    <div class="nh">▼ 内部 sub-box（入力 → モデル → 調停）</div>
+    <div class="node n-sub"><div class="t">① Input Context <span class="badge b-sub">sub-box</span> <span class="role" style="color:var(--sub);border-color:var(--sub)">使用</span></div><div class="s">
+      <code>situation.py</code>。音声＋<b>指示時点の俯瞰1枚</b>＋（最小 state）を <code>ErTaskRequest</code> に。<b>実装する</b>。<span class="dref">situation.py / 04 §STT の要否 30-44</span>
+    </div></div>
+    <div class="nest-arrow">▼</div>
+    <div class="node n-sub"><div class="t">② Model Adapter（registry）<span class="role" style="color:var(--seam);border-color:var(--seam)">一部使用</span></div><div class="s">
+      registry の <b>ER leg のみ使用</b>（<code>provider_type:er</code>）。VLA/STT leg は Mode X-ER では使わない。
+      <div class="grid3" style="margin-top:8px">
+        <div class="node n-sub" style="padding:6px 8px;margin:0"><div class="t" style="font-size:12px">ER <span class="role" style="color:var(--sub);border-color:var(--sub)">使用</span></div><div class="s"><code>provider_type:er</code></div></div>
+        <div class="node n-sub unused" style="padding:6px 8px;margin:0"><div class="t" style="font-size:12px">VLA</div><div class="s">使用しない（→ Mode X-ER-VLA）</div></div>
+        <div class="node n-sub" style="padding:6px 8px;margin:0"><div class="t" style="font-size:12px">STT <span class="role">optional</span></div><div class="s">一部使用：既定 OFF・audit/fallback のみ</div></div>
+      </div>
+      <div class="transport-band"><b>transport: hermes（第一候補）</b>｜ direct（fallback）＝<b>使用</b>（Hermes-first）。<span class="dref">01 §L4 transport selection 155-168 / 04 §STT の要否 30-44</span></div>
+    </div></div>
+    <div class="nest-arrow">▼</div>
+    <div class="node n-sub unused" style="border-style:dashed"><div class="t">③ Fusion <span class="badge b-sub">sub-box</span> <span class="role">optional</span></div><div class="s">
+      <b>使用しない</b>：ER 単体は cross-model arbitration が無く pass-through。2 model 目（VLA 等）投入時に活性化＝<b>将来 seam として残す optional</b>。<span class="dref">04 §4 ER 単体での Fusion 51-66・§6 74-80</span>
+    </div></div>
+  </div>
+
+  <div class="sub-nest" style="border-color:var(--demoted);background:var(--demoted-bg)">
+    <div class="nh" style="color:var(--faint)">▼ Super-Box が直接所有する核（demoted）</div>
+    <div class="grid2">
+      <div class="node n-box"><div class="t">司令官サイクル / 0 dispatch <span class="role" style="color:var(--sub);border-color:var(--sub)">使用</span></div><div class="s"><code>scheduler.py</code>。実装する。</div></div>
+      <div class="node n-box"><div class="t">trace root / Langfuse <span class="role" style="color:var(--sub);border-color:var(--sub)">使用</span></div><div class="s"><code>tracing.py</code>。実装する。</div></div>
+    </div>
+    <div class="node n-demoted unused" style="margin-top:8px"><div class="t">Memory / Skills</div><div class="s">使用しない（Phase 4 比較 run では強制 OFF）。<span class="dref">productization/02 §Hermes 表（Memory/Skills）</span></div></div>
+  </div>
+
+  <div class="seam-out">
+    <span class="arrow">└▶</span>
+    <div class="node n-seam" style="flex:1 1 320px;margin:0"><div class="t">action_map ＋ MCP dispatch seam <span class="badge b-seam">seam</span> <span class="role" style="color:var(--sub);border-color:var(--sub)">使用</span></div><div class="s">
+      Command → ToolCall（<code>gen_id</code>/<code>idempotency_key</code> mint）→ Governance。<b>実装する</b>。<span class="dref">01 §L2 以降の data 184-198 / action_map.py</span>
+    </div></div>
+    <span class="arrow">▶</span>
+    <div class="gov-chip">Governance Box</div>
+  </div>
+</div>
+
+<div class="note">
+  <b>L2 以降の実行 profile</b>: <b>X-lite（Nav2 Bridge REST）＝使用する</b>（MVP）。<b>X-rmf（Open-RMF）＝一部使用 / optional</b>（再評価候補・複数台予約や狭路交渉が要るときのみ）。VLA 経路・Mode X-ER-VLA は別モード。<span class="dref">01 §X-lite と X-rmf 199-207 / mode-x-er-vla/01</span>
 </div>
 
 <h3>ER の入出力契約と入力方針</h3>
