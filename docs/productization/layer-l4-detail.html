@@ -467,7 +467,7 @@
 
 <!-- mode x-er-vla -->
 <h2>6. Mode X-ER-VLA 詳細図（VLA + Fusion sub-box が実体化）</h2>
-<p class="lead">Mode X-ER の派生ではなく <b>別モード</b>。§0/§3 の <b>Fusion sub-box</b> と VLA（OpenVLA 等）が実体化する。VLA の主目的は<b>移動ではなく、移動後の局所操作</b>（把持 / 配置 / ドッキング / 近接位置合わせ）。移動だけの task は Mode X-ER で完結させる。<span class="dref">mode-x-er-vla/README §位置づけ / 04 §結論</span></p>
+<p class="lead">Mode X-ER の派生ではなく <b>別モード</b>。§0/§3 の <b>Fusion sub-box</b> と VLA（OpenVLA 等）が実体化する。VLA の主目的は<b>移動ではなく、移動後の局所操作</b>（把持 / 配置 / ドッキング / 近接位置合わせ）。移動だけの task は Mode X-ER で完結させる。<b>専用の全体図解は <a href="../mode-x-er-vla/mode-x-er-vla-overview.html">mode-x-er-vla-overview.html</a></b>（本節はその L4 視点の要約）。<span class="dref">mode-x-er-vla/README §位置づけ / 04 §結論 / mode-x-er-vla-overview.html</span></p>
 
 <div class="note">
   <b>未凍結の内部案</b>: <code>VlaSubtaskRequest</code> / <code>VlaActionCandidate</code> / <code>ManipulationSkillResult</code> / <code>SafetyCompiler</code> は Mode X-ER-VLA <b>内部案</b>で、ROS topic / REST API / config key / <code>warehouse_interfaces</code> frozen contract を追加しない。実装前に <b>contract PR で凍結</b>する（docs に無い契約/型/topic を発明しない）。<span class="dref">mode-x-er-vla/04 §状態バナー(冒頭) / README §未凍結事項</span>
@@ -625,7 +625,7 @@
     <tr><td>Model Adapter / ER / VLA / STT</td><td><span class="badge b-sub">sub</span></td><td>02 §保管場所・151-188 / mode-x-er/03（実体化 → §5）</td><td class="impl-no">ER/VLA/STT registry は未実装</td></tr>
     <tr><td>Fusion</td><td><span class="badge b-sub">sub</span></td><td>02 §VLA adapter / 06 §L4 Fusion / mode-x-er-vla/03（実体化 → §6）</td><td class="impl-no">未実装（ER 単体は pass-through・2 model 目で活性化）</td></tr>
     <tr><td>Mode X-ER（ER + L3 + X-lite/X-rmf）</td><td>—</td><td>mode-x-er/01・03・04 / README（→ §5・<a href="../mode-x-er/mode-x-er-explainer.html">explainer</a>）</td><td class="impl-no">未実装（設計提案）</td></tr>
-    <tr><td>Mode X-ER-VLA（ER + VLA + Fusion / SafetyCompiler）</td><td>—</td><td>mode-x-er-vla/01・03・04 / README（→ §6）</td><td class="impl-no">未実装（設計候補）</td></tr>
+    <tr><td>Mode X-ER-VLA（ER + VLA + Fusion / SafetyCompiler）</td><td>—</td><td>mode-x-er-vla/01・03・04 / README（→ §6・<a href="../mode-x-er-vla/mode-x-er-vla-overview.html">overview</a>）</td><td class="impl-no">未実装（設計候補）</td></tr>
     <tr><td>action_map</td><td><span class="badge b-seam">seam</span></td><td>01 §境界の原則 / mode-a/08a</td><td class="impl-yes"><code>action_map.py:43</code></td></tr>
     <tr><td>MCP dispatch</td><td><span class="badge b-seam">seam</span></td><td>architecture/15-mcp-platform</td><td class="impl-yes"><code>DispatchToolExecutor</code>(executor.py:35)</td></tr>
     <tr><td>trace root / Langfuse</td><td><span class="badge b-demoted">demoted→Super-Box</span></td><td>02 §Langfuse / architecture/08</td><td class="impl-yes"><code>tracing.py</code></td></tr>
