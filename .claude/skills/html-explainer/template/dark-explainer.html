@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<!--
+  html-explainer DARK template — self-contained (no external deps / no CDN).
+  使い方: このファイルをコピーして docs/.../<topic>.html を作る。
+  - <style> はそのまま流用（ダークモード固定）。色や構造を足すときも CSS 変数を使う。
+  - 各セクションのコンポーネント（badge / node / layer / flow / compare / table）を
+    必要なものだけ残し、PLACEHOLDER を実内容（file:line 付き）に置き換える。
+  - 主張は必ず docs/code の file:line を併記（docs-first）。発明しない。
+-->
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PLACEHOLDER タイトル — 図解</title>
+<style>
+  :root{
+    color-scheme: dark;
+    --bg:#0d1117; --card:#161b22; --card2:#1c2230; --ink:#e6edf3; --muted:#8b949e; --line:#30363d;
+    --box:#58a6ff;     --box-bg:rgba(56,139,253,.14);
+    --sub:#3fb950;     --sub-bg:rgba(63,185,80,.14);
+    --seam:#f0883e;    --seam-bg:rgba(240,136,62,.14);
+    --plugin:#bc8cff;  --plugin-bg:rgba(188,140,255,.14);
+    --demoted:#768390; --demoted-bg:rgba(118,131,144,.12);
+    --code:#262c36;
+    --L1t:rgba(56,139,253,.07); --L2t:rgba(63,185,80,.07); --L3t:rgba(240,136,62,.07);
+    --L4t:rgba(188,140,255,.07); --L5t:rgba(56,211,209,.07);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Noto Sans JP",Meiryo,sans-serif;
+    line-height:1.7;font-size:15px;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1080px;margin:0 auto;padding:32px 20px 80px}
+  header.top{border-bottom:3px solid var(--box);padding-bottom:18px;margin-bottom:8px}
+  h1{font-size:26px;margin:0 0 6px}
+  h2{font-size:21px;margin:46px 0 14px;padding-left:10px;border-left:5px solid var(--box)}
+  h3{font-size:16px;margin:26px 0 10px;color:#c9d1d9}
+  p{margin:10px 0}
+  .lead{color:var(--muted);font-size:14px}
+  a{color:var(--box)}
+  code{background:var(--code);padding:1px 6px;border-radius:4px;font-size:.9em;
+    font-family:"SF Mono",Menlo,Consolas,monospace;color:#e6edf3}
+  .note{background:rgba(240,136,62,.10);border:1px solid rgba(240,136,62,.4);border-radius:8px;
+    padding:12px 16px;margin:16px 0;font-size:14px}
+  .meta{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 16px;
+    font-size:13px;color:var(--muted);margin:14px 0}
+
+  /* badges (種別/状態タグ) */
+  .badge{display:inline-block;font-size:11px;font-weight:700;padding:2px 9px;border-radius:999px;
+    color:#0d1117;letter-spacing:.3px;vertical-align:middle}
+  .b-box{background:var(--box)} .b-sub{background:var(--sub)} .b-seam{background:var(--seam)}
+  .b-plugin{background:var(--plugin)} .b-demoted{background:var(--demoted);color:#e6edf3}
+
+  /* legend */
+  .legend{display:flex;flex-wrap:wrap;gap:10px;margin:16px 0}
+  .legend .item{background:var(--card);border:1px solid var(--line);border-radius:10px;
+    padding:10px 14px;flex:1 1 180px;min-width:180px}
+  .legend .item b{display:block;margin-bottom:3px} .legend .item small{color:var(--muted);font-size:12.5px}
+
+  /* generic node card (種別で色分け) */
+  .node{border-radius:10px;padding:10px 12px;border:2px solid;background:var(--card);font-size:13.5px}
+  .node .t{font-weight:700;font-size:14px} .node .s{color:var(--muted);font-size:12px;margin-top:2px}
+  .n-box{border-color:var(--box);background:var(--box-bg)}
+  .n-sub{border-color:var(--sub);background:var(--sub-bg)}
+  .n-seam{border-color:var(--seam);background:var(--seam-bg);border-style:dashed}
+  .n-plugin{border-color:var(--plugin);background:var(--plugin-bg)}
+  .n-demoted{border-color:var(--demoted);background:var(--demoted-bg);color:var(--muted)}
+  .n-demoted .t{text-decoration:line-through;text-decoration-color:var(--demoted)}
+
+  /* layered map */
+  .layer{border-radius:12px;padding:12px 14px;margin:10px 0;border:1px solid var(--line)}
+  .layer .lh{font-size:12px;font-weight:700;color:#adbac7;letter-spacing:.5px;margin-bottom:8px;
+    display:flex;justify-content:space-between;align-items:center}
+  .layer .lh .rt{font-weight:500;color:var(--muted);font-size:11px}
+  .row{display:flex;flex-wrap:wrap;gap:10px} .row .node{flex:1 1 150px}
+  .Lt1{background:var(--L1t)} .Lt2{background:var(--L2t)} .Lt3{background:var(--L3t)}
+  .Lt4{background:var(--L4t)} .Lt5{background:var(--L5t)}
+  .arrow-down{text-align:center;color:var(--muted);font-size:18px;line-height:1;margin:-2px 0}
+
+  /* horizontal flow */
+  .flow{display:flex;flex-wrap:wrap;align-items:stretch;gap:6px;margin:14px 0}
+  .flow .node{flex:1 1 110px;min-width:108px;display:flex;flex-direction:column;justify-content:center}
+  .flow .arr{display:flex;align-items:center;color:var(--muted);font-weight:700;font-size:18px;padding:0 1px}
+  .flow .seamtag{font-size:10px;color:var(--seam);font-weight:700;text-align:center;align-self:center}
+  .lane{border:1.5px dashed var(--plugin);background:var(--plugin-bg);border-radius:10px;
+    padding:8px 12px;margin:6px 0 0;font-size:12.5px;color:#d2b8ff}
+
+  /* compare panels (❌ before / ✅ after) */
+  .compare{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:14px 0}
+  .panel{border-radius:12px;padding:14px;border:1px solid var(--line);background:var(--card)}
+  .panel.bad{border-color:rgba(248,81,73,.5);background:rgba(248,81,73,.08)}
+  .panel.good{border-color:rgba(63,185,80,.5);background:rgba(63,185,80,.08)}
+  .panel h4{margin:0 0 10px;font-size:14px}
+
+  /* tables */
+  table{border-collapse:collapse;width:100%;margin:14px 0;font-size:13px;background:var(--card)}
+  th,td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
+  th{background:#1c2230;font-size:12.5px;color:#c9d1d9}
+  tr:nth-child(even) td{background:rgba(255,255,255,.02)}
+  td code{font-size:.85em}
+  .impl-yes{color:var(--sub);font-weight:700} .impl-no{color:#e3b341;font-weight:700}
+
+  ul.tight{margin:8px 0;padding-left:22px} ul.tight li{margin:5px 0}
+  footer{margin-top:50px;padding-top:18px;border-top:1px solid var(--line);color:var(--muted);font-size:12.5px}
+  .kbd{font-family:monospace;background:#21262d;color:#e6edf3;padding:1px 7px;border-radius:4px;font-size:.85em;border:1px solid var(--line)}
+  @media(max-width:720px){.compare{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <h1>PLACEHOLDER タイトル</h1>
+  <p class="lead">PLACEHOLDER 1行サマリ（何を図解するか）。</p>
+</header>
+
+<div class="meta">
+  正本: <code>docs/.../NN-....md</code> §PLACEHOLDER ／ 本ページはその図解（補足資料）。
+  定義・file:line は必ず一次ソースの .md を参照する。
+</div>
+
+<!-- ① 凡例（種別/カテゴリの色分け。不要なら削除） -->
+<h2>0. 凡例</h2>
+<div class="legend">
+  <div class="item"><b><span class="badge b-box">box</span></b><small>PLACEHOLDER 定義</small></div>
+  <div class="item"><b><span class="badge b-sub">sub</span></b><small>PLACEHOLDER 定義</small></div>
+  <div class="item"><b><span class="badge b-seam">seam</span></b><small>PLACEHOLDER 定義</small></div>
+  <div class="item"><b><span class="badge b-plugin">plugin</span></b><small>PLACEHOLDER 定義</small></div>
+  <div class="item"><b><span class="badge b-demoted">demoted</span></b><small>PLACEHOLDER 定義</small></div>
+</div>
+<div class="note"><b>核心原則:</b> PLACEHOLDER（1〜2文で図全体の読み筋）。</div>
+
+<!-- ② レイヤ×種別マップ（縦に積む。各 layer に node を並べる） -->
+<h2>1. 全体マップ</h2>
+<div class="layer Lt4">
+  <div class="lh"><span>レイヤ名</span><span class="rt">補足（RT 性など）</span></div>
+  <div class="row">
+    <div class="node n-box"><div class="t">親 <span class="badge b-box">box</span></div><div class="s">= <code>repo/実体</code></div></div>
+    <div class="node n-sub"><div class="t">内部 <span class="badge b-sub">sub</span></div><div class="s">PLACEHOLDER</div></div>
+    <div class="node n-seam"><div class="t">境界 <span class="badge b-seam">seam</span></div><div class="s">→ 隣接先</div></div>
+    <div class="node n-demoted"><div class="t">降格 <span class="badge b-demoted">demoted</span></div><div class="s">→ 吸収先</div></div>
+  </div>
+</div>
+<div class="arrow-down">▼</div>
+<div class="layer Lt2">
+  <div class="lh"><span>下位レイヤ</span><span class="rt">補足</span></div>
+  <div class="row"><div class="node n-box"><div class="t">box A</div><div class="s">PLACEHOLDER</div></div></div>
+</div>
+
+<!-- ③ 横フロー（採用経路・データフロー。seam を矢印間に置く） -->
+<h2>2. フロー</h2>
+<div class="flow">
+  <div class="node n-box"><div class="t" style="font-size:12.5px">起点</div></div>
+  <div class="arr">▶</div><div class="seamtag">seam名</div><div class="arr">▶</div>
+  <div class="node n-box"><div class="t" style="font-size:12.5px">中継</div></div>
+  <div class="arr">▶</div>
+  <div class="node n-box"><div class="t" style="font-size:12.5px">終点</div></div>
+</div>
+<div class="lane"><b>横レーン</b>: 本流に触れない補助経路（例: transport / 観測）。</div>
+
+<!-- ④ before/after 対比（❌ 旧 / ✅ 新） -->
+<h2>3. 対比</h2>
+<div class="compare">
+  <div class="panel bad"><h4>❌ PLACEHOLDER（問題のある形）</h4><p class="lead">PLACEHOLDER 説明。</p></div>
+  <div class="panel good"><h4>✅ PLACEHOLDER（正しい形）</h4><p class="lead">PLACEHOLDER 説明。</p></div>
+</div>
+
+<!-- ⑤ 紐付け詳細表（各要素 → docs / repo 実体） -->
+<h2>4. 各要素 → docs / 実体</h2>
+<table>
+  <thead><tr><th>要素</th><th>種別</th><th>設計正本 docs</th><th>repo 実体 / 凍結契約</th></tr></thead>
+  <tbody>
+    <tr><td>PLACEHOLDER</td><td><span class="badge b-box">box</span></td><td><code>docs/...:行</code></td><td class="impl-yes"><code>pkg/...</code></td></tr>
+    <tr><td>PLACEHOLDER</td><td><span class="badge b-sub">sub</span></td><td><code>docs/...:行</code></td><td class="impl-no">未実装</td></tr>
+  </tbody>
+</table>
+
+<!-- ⑥ 要判断/残課題（任意） -->
+<h2>5. 要判断・残課題</h2>
+<ul class="tight"><li>PLACEHOLDER（file:line 付き）</li></ul>
+
+<footer>
+  <p>このページは <code>docs/.../&lt;topic&gt;.html</code>（補足図解）。一次ソースは関連 .md。
+  検証: <code>scripts/check_consistency.py</code> 0 ERROR / コード引用は実 Read で裏取り。</p>
+  <p>Cursor で開く: ターミナルで <span class="kbd">python3 -m http.server 8123 --directory docs/...</span> →
+  コマンドパレット <span class="kbd">Simple Browser: Show</span> → <span class="kbd">http://localhost:8123/&lt;topic&gt;.html</span></p>
+</footer>
+
+</div>
+</body>
+</html>
