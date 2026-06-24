@@ -277,7 +277,7 @@ transport は box interface 裏の `transport: hermes|direct` 選択であって
 ## 7. 未凍結事項 / TODO
 
 - `OperatorNotice` schema（`box, reason_code, locale, text, severity, source_decision_ref`）を product contract に昇格するか。`warehouse_interfaces` には**まだ追加しない**。
-- `decision_event` の transport は §5.2 で方針確定（**L4-local reject = 直接 in-process render / 別ノード reject = non-blocking event・gate は TTS を待たない**）。**採用は A（専用 `/operator/notice` topic）＝将来拡張性・lossless 優先**。**next step = doc03 トピック契約 ＋ `contract` PR**（additive・既存購読者は無視可・§7.2）。**State Cache の boolean フラグは transition 取りこぼしのため不可**。残る未凍結は topic 名・型・QoS（reliable/transient_local 等）。
+- `decision_event` の transport は §5.2 で方針確定（**L4-local reject = 直接 in-process render / 別ノード reject = non-blocking event・gate は TTS を待たない**）。**採用は A（専用 `/operator/notice` topic）＝将来拡張性・lossless 優先**。**next step = doc03 トピック契約 ＋ `contract` PR**（additive・既存購読者は無視可・§7.2）。**State Cache の boolean フラグは transition 取りこぼしのため不可**。**契約ドラフト（型 `std_msgs/String`(JSON)・QoS RELIABLE/KEEP_LAST/VOLATILE・payload・pub/sub）は §8**、残る未凍結は §8.8。
 - **TTS provider（speaker の中身）は LLM ではなく専用 TTS エンジン**（text→audio）。経路は2つ: **(a) Hermes 経由**（`transport: hermes`）— Hermes が TTS エンジンを proxy し、**Google Gemini TTS / OpenAI TTS / Edge / Piper(ローカル) など 10 provider をネイティブ対応**（config `tts.provider` / `tts.<provider>.voice`）。**(b) direct adapter**（`transport: direct`）— Gemini API TTS（`gemini-2.5-flash-preview-tts` / `gemini-2.5-pro-preview-tts`・text→audio・日本語対応）や Google Cloud TTS（Chirp 3 HD・SSML）。**Mode X-ER は司令塔が Gemini Robotics-ER ゆえ TTS も Gemini 系で揃えるのが自然**（Hermes ネイティブなので `transport:hermes` でそのまま使える）。preview model のため実装時に再確認。出典（確認 2026-06-24）: `https://ai.google.dev/gemini-api/docs/speech-generation`・`https://hermes-agent.nousresearch.com/docs/user-guide/features/tts`。
 - **発話スコープの確定値**: speakable な `decision` 集合（`rejected`/`needs_clarification`/`emergency_stop` に加え `arrived`/`completed` を喋るか）、milestone（右折・到着）を喋る範囲、同一 reason の抑制間隔は現場依存（§5.3）。実装時に config 化する。
 - taxonomy 正本 `docs/productization/01-commercial-box-map.md` の Box 一覧 / 観測 funnel への登録（owner = box-map / Eval-Obs トラックと調整・§2.4）。
@@ -287,14 +287,110 @@ transport は box interface 裏の `transport: hermes|direct` 選択であって
 
 ---
 
-## 8. 参照
+## 8. doc03 トピック契約ドラフト（`/operator/notice`）— contract PR 用
 
-- 正本（mode-x-er）: `docs/mode-x-er/01-architecture-and-flow.md`（data flow・戻り `:83-92`・Voice/TTS `:219`）/ `docs/mode-x-er/02-l3-planning-core.md`（`message_for_operator` `:95`・validation code `:96`・unresolved `:151`）/ `docs/mode-x-er/04-er-input-modalities-and-stt.md`（STT 任意・deterministic 思想 `:79`）/ `docs/mode-x-er/README.md`（標準フロー `:40-61`）
+> **状態**: 契約 PR 用ドラフト。§5.2 で採用した**案A（専用 topic）**の実体。doc03（トピック契約カタログ）には **topic 名・型・一行責務**のみを足し、**payload schema / QoS / publisher / subscriber の正本は本節**に置く（doc03 の慣習: `docs/architecture/03-software-architecture.md:112`「doc03 は topic 名・型・一行責務のみ」）。**doc03 への行追加は別 contract PR**（owner = skeleton/governance・`.claude/rules/parallel-workflow.md` §4）で行い、本書では凍結しない。
+
+### 8.1 doc03 へ追加する行（提案）
+
+doc03 §ROS 2 トピック設計「Jetson 内部」表（`docs/architecture/03-software-architecture.md:92-110`）に1行追加:
+
+```
+| `/operator/notice` | `std_msgs/String`（JSON） | 別ノード(L2/L1/L0)の operator 起因 reject/clarification/emergency 通知。L4 Operator Feedback Box が購読し音声化（契約正本: mode-x-er/05 §8。Phase 4 で `.msg` 化, doc16 §3） |
+```
+
+### 8.2 役割（何を運ぶか）
+
+- 別ノード（L2/L1/L0＝別プロセス: Jetson Nav2 / MCP / ESP32）で **operator 命令が止まったとき**、その reject/clarification/emergency を **L4 Operator Feedback Box**（`warehouse_llm_bridge` の feedback sub-box）へ運ぶ非ブロッキング event チャネル。
+- **L4-local reject（Input Context / Model Adapter / Fusion / L3）は本 topic を使わない**＝同一プロセスで直接 in-process render（§5.2）。本 topic は**別ノード分だけ**。
+- gate は本 topic へ **publish して即継続**（TTS を待たない・非ブロッキング・上位非依存。§5.2 不変条件）。
+
+### 8.3 型
+
+- `std_msgs/String`（JSON 文字列）。doc16 §3 の凍結方針に従い **Phase 4 まで JSON 文字列**で運用（`.msg` 再ビルド回避）。Phase 4 で `.msg` 化を検討。
+
+### 8.4 payload JSON schema（`operator_notice.v0`）
+
+既存の **decision_event 形**（`docs/productization/05-decision-observability-and-tooling.md:48-65`）を**そのまま消費**する（新語彙を発明しない・§0）。operator-relevant な reject のみが流れる:
+
+```json
+{
+  "schema_version": "operator_notice.v0",
+  "timestamp": "2026-06-24T12:00:00.000Z",
+  "run_id": "run_x_er_...",
+  "gen_id": 42,
+  "robot": "bot1",
+  "box": "navigation",
+  "stage": "result",
+  "decision": "rejected",
+  "reason_code": "no_path",
+  "reason_detail": "no valid path to shelf_1",
+  "message_for_operator": "（optional・L3 が出す場合）"
+}
+```
+
+- `decision` は固定語彙のうち **`rejected` / `needs_clarification` / `emergency_stop`** のみ（`accepted` / `warning` は本 topic に流さない＝喋らない・`docs/productization/05-decision-observability-and-tooling.md:69`）。
+- `reason_code` は box ごとの catalog から（自由文にしない・同 `:70`）。`reason_detail` は人間向け補足（集計軸でない・同 `:71`）。`message_for_operator` は L3 が出す確定文面（optional・`docs/mode-x-er/02-l3-planning-core.md:95`）。
+- `gen_id` / `run_id` / `robot` は **attribution の鍵**（box が「自分の命令か・節目か」を filter・§5.3）。大きな raw data は埋めず参照（同 `:72`）。
+
+### 8.5 QoS
+
+| QoS policy | 値 | 根拠 |
+|---|---|---|
+| Reliability | **RELIABLE** | 案A 採用の理由＝**lossless**（reject の取りこぼし不可・State Cache フラグを却下した理由・§5.2） |
+| History | **KEEP_LAST, depth=20**（暫定） | バースト緩衝。単一購読者（box）が捌ける前提。depth は実装時に調整 |
+| Durability | **VOLATILE** | event は瞬間値。**late-join / box 再起動後に古い reject を再生しない**（古い拒否を後から喋らない）。`transient_local`（latch）は不可 |
+| Liveliness | AUTOMATIC（default） | 特別要件なし |
+
+> RELIABLE ＋ KEEP_LAST で **live session 内は lossless・順序保証**（節目を取りこぼさない）。VOLATILE で **再起動跨ぎの stale 再生を防ぐ**。これが「State Cache の boolean フラグ（latest-value・transition 取りこぼし）」を不可とした理由（§5.2）。
+
+### 8.6 publisher / subscriber
+
+**publisher（別ノードの gate・operator 起因 reject を出す側）**:
+
+| 層 | node（候補） | 出す reason_code 例 |
+|---|---|---|
+| L2 | `warehouse_mcp_server`（Governance / Policy Gate） | `battery_low` / `emergency_active` / `stale_generation` / `duplicate_command` / `unknown_location` |
+| L2 | `warehouse_traffic` / `warehouse_rmf_adapter` | `route_conflict` / `no_route` / `rmf_unavailable` |
+| L1 | `warehouse_nav2_bridge`（Navigation） | `no_path` / `recovery_exhausted` / `localization_unhealthy` / `goal_rejected` |
+| L1 | `warehouse_safety`（Emergency Guardian） | `emergency`（near_collision / pose_stale）※既存 `/emergency/event` と棲み分け＝§8.7 |
+| L0 | firmware / micro-ROS Agent | `nonfinite_cmd` / `clamped_velocity` / `heartbeat_lost`（Phase 1+・bridge 経由） |
+
+**subscriber**:
+
+- **L4 Operator Feedback Box**（`warehouse_llm_bridge` の feedback sub-box）— 主購読者（単一）。filter→template→TTS。
+- （任意）**Eval / Observability**（audit・observe-only）、**web_bridge**（doc22・observe-only）。
+
+### 8.7 既存トピックとの関係（重複回避）
+
+- **`/emergency/event`**（既存・`docs/architecture/03-software-architecture.md:98`）: Emergency Guardian の estop 構造化イベント。emergency reject は**既にここに流れている**。**MVP 推奨: emergency は box が既存 `/emergency/event` を直接購読、それ以外の reject を `/operator/notice` で受ける**（emergency を二重 publish させない）。確定は配線時。
+- **`/state_cache/snapshot`**（`docs/architecture/03-software-architecture.md:103`）: 最新値 state（latest-value）。本 topic は **event**（transition）で別物（§5.2 で State Cache フラグを却下した理由）。
+
+### 8.8 残る未凍結（contract PR で確定）
+
+- topic 名の最終確定（本 topic は box の**入力** decision_event を運ぶ。box の**出力** `OperatorNotice`（§7）とは別物。名前で誤読しないか・`/operator/reject_event` 等の候補）。
+- KEEP_LAST depth 値・QoS 微調整。
+- どの node が実際に publish するか（§8.6 候補のうち MVP 配線）・L0 Hardware の bridge 方法。
+- emergency の `/emergency/event` 相乗りか `/operator/notice` 二重化か（§8.7）。
+- `schema_version` 値の凍結・Phase 4 `.msg` 化の型定義。
+
+### 8.9 contract PR チェックリスト
+
+- [ ] **additive 確認**: 新 topic は既存購読者が無視できる（破壊的でない・§7.2）。
+- [ ] doc03 §トピック設計「Jetson 内部」表に §8.1 の行を追加（`contract` ラベル）。
+- [ ] 依存トラック（safety-state / nav-traffic / wo / web）へ予告し合意（§4）。
+- [ ] 本 §8 を payload / QoS / pub-sub の正本としてリンク（doc03 は一行のみ）。
+- [ ] `OperatorNotice`（box の出力・§7）と本 topic（box の入力 decision_event）の別物性を明記。
+
+---
+
+## 9. 参照
+
+- 正本（mode-x-er）: `docs/mode-x-er/01-architecture-and-flow.md`（data flow・戻り `:85-94`・Voice/TTS `:219`）/ `docs/mode-x-er/02-l3-planning-core.md`（`message_for_operator` `:95`・validation code `:96`・unresolved `:151`）/ `docs/mode-x-er/04-er-input-modalities-and-stt.md`（STT 任意・deterministic 思想 `:79`）/ `docs/mode-x-er/README.md`（標準フロー `:42-63`）
 - box taxonomy 正本: `docs/productization/01-commercial-box-map.md`（種別 `:42-48`・operator 入力境界 `:10`・Input Context sub-box `:13`・Plugin TTS `:106`・安全境界 `:53`）
-- L4 box / Hermes transport: `docs/productization/02-l4-robotics-bridge-box.md`（責務 `:32-63`・Plugin TTS `:108`・module 案 `:196-214`）
+- L4 box / Hermes transport: `docs/productization/02-l4-robotics-bridge-box.md`（責務 `:56-87`・Plugin TTS `:132`・module 案 `:240-266`）
 - decision / reject 集計: `docs/productization/05-decision-observability-and-tooling.md`（decision_event `:48-69`・reason_detail `:71`・dispatch gate `:254-259`・fail-open `:279`）
-- box 小設計テンプレ / Input Context 対称: `docs/productization/06-oss-reuse-and-box-small-designs.md`（テンプレ `:74-83`・Input Context `:85-104`・E-G2 `:244`）
+- box 小設計テンプレ / Input Context 対称: `docs/productization/06-oss-reuse-and-box-small-designs.md`（テンプレ `:74-83`・Input Context `:85-104`・E-G2 `:249`）
 - web sink precedent: `docs/architecture/22-web-observability.md`（`/character/speech` `:36,112`）
 - 図解（本書の補足）: [`operator-feedback-flow.html`](operator-feedback-flow.html)
-</content>
 </invoke>
