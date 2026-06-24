@@ -2,7 +2,7 @@
 
 作成日: 2026-06-24
 
-> **状態**: 設計提案。本書が定義する **L4 Operator Feedback Box** と `OperatorNotice` は未凍結の内部案であり、ROS topic / REST API / config key / `warehouse_interfaces` frozen contract を追加するものではない。実装前に offline fixture と契約 PR で確定する。`reason_code` / decision_event の語彙は既存 proposal catalog（`docs/productization/05-decision-observability-and-tooling.md:48-65`）を**消費**するだけで、新語彙を発明しない。
+> **状態**: 設計提案。本書が定義する **L4 Operator Feedback Box** と `OperatorNotice` は未凍結の内部案であり、本 doc では ROS topic / REST API / config key / `warehouse_interfaces` frozen contract を**凍結しない**（別ノード event の運び方は §5.2 で案A＝専用 `/operator/notice` topic を採用するが、topic 名/型の凍結は別 contract PR）。実装前に offline fixture と契約 PR で確定する。`reason_code` / decision_event の語彙は既存 proposal catalog（`docs/productization/05-decision-observability-and-tooling.md:48-65`）を**消費**するだけで、新語彙を発明しない。
 
 ## 結論（先に要点）
 
@@ -67,7 +67,7 @@ L4 Robotics Bridge Super-Box（親 box）
 
 | 問い | 判定 | 根拠 |
 |---|---|---|
-| 独立した produces/consumes を持つか | **持つ**（consumes: gate の decision_event / `OperatorNotice` 候補。produces: 音声出力 + 自身の `box=l4_operator_feedback` event） | seam ではない（seam は新 schema を産まない・`01:46`） |
+| 独立した produces/consumes を持つか | **持つ**（consumes: gate の decision_event。produces: `OperatorNotice`（音声出力＋`operator_notice_ref`）＋ 自身の `box=l4_operator_feedback` event） | seam ではない（seam は新 schema を産まない・`01:46`） |
 | 親 interface を越えて単独 consume されるか | 描画/transport は Super-Box 内に閉じ単一 consume（operator I/O ＋ TTS）。ただし **event 入力は横断 decision_event バス**（Eval/Obs と共有・`05:88`）から取る＝**所有層は L4・event source 層は横断**（直交軸・`01:73`） | → **L4-owned sub-box（＝横断 consumer）**（`01:45`） |
 | 丸ごと省略/縮退できるか | できる（speaker 無し site では log / web sink のみに縮退） | optional sub-box（Fusion と同じ扱い・`01:63`） |
 
@@ -102,7 +102,7 @@ box taxonomy / Box 一覧の正本は `docs/productization/01-commercial-box-map
 | 出力 artifact | `operator_notice_ref`（喋った文面 + 音声 ref）、自身の `decision_event`（`box=l4_operator_feedback`） |
 | decision event | `box=l4_operator_feedback`、`stage=render / speak`、`reason_code=template_missing, tts_failed, sink_unavailable, message_too_long, locale_missing` |
 | fixture | 各 gate の reject fixture（§1 表の代表）→ 期待文面 golden、emergency 割り込み、TTS 失敗（fail-open）、locale 切替、unknown reason_code（fallback 文面） |
-| acceptance gate | §6 の L4OF-G0〜G4 |
+| acceptance gate | §6 の L4OF-G0〜G5 |
 
 > **0 actuation の対称性**: Input Context は「model quality に効くが実行許可は持たない」と明記されている（`docs/productization/06-oss-reuse-and-box-small-designs.md:102`）。Operator Feedback も同様に**operator 体験に効くが実行許可を持たない**。両者は L4 の operator I/O ペアとして対称。
 
