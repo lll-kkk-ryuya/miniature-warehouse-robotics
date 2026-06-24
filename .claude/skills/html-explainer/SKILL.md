@@ -23,12 +23,40 @@ allowed-tools: Read, Grep, Glob, Bash, Write
 
 1. **自己完結**: `<style>` をインラインに持ち、**外部 CDN / JS ライブラリ / 画像 / フォントに依存しない**
    （Mermaid 等の CDN も使わない）。オフライン・file:// でも開ける。
-2. **ダークモード固定**: 雛形の CSS 変数（`--bg:#0d1117` 等・`color-scheme: dark`）を使う。
-   ライトテーマを別途作らない（ユーザー標準＝ダーク）。
+2. **ダークモード固定・落ち着いた配色**: 雛形の `:root` CSS 変数（`color-scheme: dark`）をそのまま使う。
+   ライトテーマを別途作らない（ユーザー標準＝ダーク）。**色はすべて `:root` 変数で駆動**し、本文に
+   16進をハードコードしない（配色変更は `:root` 一箇所で済む）。具体値は §カラーパレット。
 3. **docs-first**: 図の各要素に **辿れる `file:line`**（repo-relative path + 行 or symbol）を併記。
    docs に無い契約・トピック・しきい値を **発明しない**。例示と凍結契約を区別する。
 4. **配置**: 出力は対象 docs の隣に置く（例 `docs/productization/<topic>.html`）。
    一次ソースの .md を置き換えず、補足図解として添える。
+
+## カラーパレット（固定・落ち着いた Cursor 風ニュートラル・ダーク）
+
+ユーザー標準。雛形 `template/dark-explainer.html` の `:root` がこの値を持つ。**背景は黒に近い無彩色、
+文字ははっきりした白、アクセントは calm（彩度低め・読みやすさ優先）**。新規 HTML もこの `:root` を流用する。
+
+```css
+:root{
+  color-scheme: dark;
+  --bg:#1a1a1a; --bg2:#141414; --card:#222222; --card2:#262626; --surface:#2d2d2d;
+  --ink:#ededed;        /* 本文＝はっきりした白 */
+  --muted:#c4c4c4;      /* 補足＝薄すぎない灰 */
+  --faint:#8f8f8f; --line:#3a3a3a; --code:#141414;
+  --badge-ink:#1a1a1a;  /* 明るい badge 上の文字＝背景色 */
+  --head:#dcdcdc;       /* 見出し/表ヘッダ */
+  --box:#7aa2f7;     --box-bg:rgba(122,162,247,.13);   /* blue   */
+  --sub:#9ece6a;     --sub-bg:rgba(158,206,106,.12);   /* green  */
+  --seam:#e0af68;    --seam-bg:rgba(224,175,104,.12);  /* amber  */
+  --plugin:#bb9af7;  --plugin-bg:rgba(187,154,247,.12);/* purple */
+  --demoted:#9a9a9a; --demoted-bg:rgba(154,154,154,.10);/* gray  */
+  --red:#f7768e; --yellow:#e0c07a; --teal:#7dcfff;     /* dref=teal */
+}
+```
+
+ルール: ① 文字色は `--ink`/`--muted`/`--head` のみ（薄い灰を本文に使わない）。② badge 等の濃色背景上の文字は
+`--badge-ink`。③ アクセントは上記5色＋`--red/--yellow/--teal` に限定し統一感を保つ。④ 配色を変えるときは
+`:root` だけ直す（本文ハードコード禁止＝grep `#[0-9a-f]{6}` が本文 0 件になるのが理想）。
 
 ## 1. 手順
 

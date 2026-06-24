@@ -18,11 +18,32 @@ Template (copy this): `.claude/skills/html-explainer/template/dark-explainer.htm
 
 1. **Self-contained**: inline `<style>`, no CDN / JS library / Mermaid / web font / image.
    Must open offline and via `file://`.
-2. **Dark mode fixed**: reuse the template CSS variables (`--bg:#0d1117`, `color-scheme: dark`).
-   Do not add a light theme (dark is the user standard).
+2. **Dark mode fixed, calm palette**: reuse the template `:root` CSS variables (`color-scheme: dark`).
+   Do not add a light theme (dark is the user standard). Drive ALL colors from `:root` variables;
+   do not hardcode hex in the body (so a recolor touches `:root` only). See Color palette below.
 3. **docs-first**: each node/row carries a traceable `file:line` (repo-relative path + line
    or symbol). Do not invent contracts/topics/thresholds; verify by Read/Grep yourself.
 4. **Placement**: write to `docs/<dir>/<topic>.html` next to the design `.md`; never replace it.
+
+## Color palette (fixed — calm, Cursor-like neutral dark)
+
+User standard. The template `:root` carries these values: near-black neutral background,
+bright near-white text, low-saturation accents. Reuse this `:root` for new pages.
+
+```css
+:root{
+  color-scheme: dark;
+  --bg:#1a1a1a; --bg2:#141414; --card:#222222; --card2:#262626; --surface:#2d2d2d;
+  --ink:#ededed; --muted:#c4c4c4; --faint:#8f8f8f; --line:#3a3a3a; --code:#141414;
+  --badge-ink:#1a1a1a; --head:#dcdcdc;
+  --box:#7aa2f7; --sub:#9ece6a; --seam:#e0af68; --plugin:#bb9af7; --demoted:#9a9a9a;
+  --red:#f7768e; --yellow:#e0c07a; --teal:#7dcfff;
+}
+```
+
+Rules: text uses only `--ink`/`--muted`/`--head` (no faint gray for body); text on colored
+badges uses `--badge-ink`; accents limited to the set above for cohesion; to recolor, edit
+`:root` only (no body hex — ideally `grep '#[0-9a-f]\{6\}'` finds 0 in the body).
 
 ## Steps
 

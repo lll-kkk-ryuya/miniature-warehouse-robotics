@@ -1,10 +1,12 @@
 <!DOCTYPE html>
 <!--
   html-explainer DARK template — self-contained (no external deps / no CDN).
+  配色: 落ち着いた Cursor 風ニュートラル・ダーク（背景=黒に近い無彩色 / 文字=はっきりした白）。
+  すべて :root の CSS 変数で駆動するので、配色変更は :root だけ直せばよい（SKILL.md「カラーパレット」参照）。
   使い方: このファイルをコピーして docs/.../<topic>.html を作る。
-  - <style> はそのまま流用（ダークモード固定）。色や構造を足すときも CSS 変数を使う。
-  - 各セクションのコンポーネント（badge / node / layer / flow / compare / table）を
-    必要なものだけ残し、PLACEHOLDER を実内容（file:line 付き）に置き換える。
+  - <style> はそのまま流用（ダークモード固定）。色は :root の変数だけ使い、ハードコードしない。
+  - 各セクションのコンポーネント（badge / node / layer / flow / compare / table）を必要なものだけ残し、
+    PLACEHOLDER を実内容（file:line 付き）に置き換える。
   - 主張は必ず docs/code の file:line を併記（docs-first）。発明しない。
 -->
 <html lang="ja">
@@ -15,15 +17,18 @@
 <style>
   :root{
     color-scheme: dark;
-    --bg:#0d1117; --card:#161b22; --card2:#1c2230; --ink:#e6edf3; --muted:#8b949e; --line:#30363d;
-    --box:#58a6ff;     --box-bg:rgba(56,139,253,.14);
-    --sub:#3fb950;     --sub-bg:rgba(63,185,80,.14);
-    --seam:#f0883e;    --seam-bg:rgba(240,136,62,.14);
-    --plugin:#bc8cff;  --plugin-bg:rgba(188,140,255,.14);
-    --demoted:#768390; --demoted-bg:rgba(118,131,144,.12);
-    --code:#262c36;
-    --L1t:rgba(56,139,253,.07); --L2t:rgba(63,185,80,.07); --L3t:rgba(240,136,62,.07);
-    --L4t:rgba(188,140,255,.07); --L5t:rgba(56,211,209,.07);
+    /* === カラーパレット（固定・落ち着いた Cursor 風ニュートラル・ダーク）=== */
+    --bg:#1a1a1a; --bg2:#141414; --card:#222222; --card2:#262626; --surface:#2d2d2d;
+    --ink:#ededed; --muted:#c4c4c4; --faint:#8f8f8f; --line:#3a3a3a; --code:#141414;
+    --badge-ink:#1a1a1a; --head:#dcdcdc;
+    --box:#7aa2f7;     --box-bg:rgba(122,162,247,.13);
+    --sub:#9ece6a;     --sub-bg:rgba(158,206,106,.12);
+    --seam:#e0af68;    --seam-bg:rgba(224,175,104,.12);
+    --plugin:#bb9af7;  --plugin-bg:rgba(187,154,247,.12);
+    --demoted:#9a9a9a; --demoted-bg:rgba(154,154,154,.10);
+    --red:#f7768e; --yellow:#e0c07a; --teal:#7dcfff;
+    --Lt1:rgba(122,162,247,.05); --Lt2:rgba(158,206,106,.05); --Lt3:rgba(224,175,104,.05);
+    --Lt4:rgba(187,154,247,.06); --Lt5:rgba(125,207,255,.05);
   }
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--ink);
@@ -33,22 +38,21 @@
   header.top{border-bottom:3px solid var(--box);padding-bottom:18px;margin-bottom:8px}
   h1{font-size:26px;margin:0 0 6px}
   h2{font-size:21px;margin:46px 0 14px;padding-left:10px;border-left:5px solid var(--box)}
-  h3{font-size:16px;margin:26px 0 10px;color:#c9d1d9}
+  h3{font-size:16px;margin:26px 0 10px;color:var(--head)}
   p{margin:10px 0}
   .lead{color:var(--muted);font-size:14px}
-  a{color:var(--box)}
+  a{color:var(--box);text-decoration:none} a:hover{text-decoration:underline}
   code{background:var(--code);padding:1px 6px;border-radius:4px;font-size:.9em;
-    font-family:"SF Mono",Menlo,Consolas,monospace;color:#e6edf3}
-  .note{background:rgba(240,136,62,.10);border:1px solid rgba(240,136,62,.4);border-radius:8px;
-    padding:12px 16px;margin:16px 0;font-size:14px}
-  .meta{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 16px;
-    font-size:13px;color:var(--muted);margin:14px 0}
+    font-family:"SF Mono",Menlo,Consolas,monospace;color:var(--ink)}
+  .dref{color:var(--teal);font-size:.82em;font-family:"SF Mono",Menlo,monospace;white-space:nowrap}
+  .note{background:var(--seam-bg);border:1px solid rgba(224,175,104,.4);border-radius:8px;padding:12px 16px;margin:16px 0;font-size:14px}
+  .meta{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 16px;font-size:13px;color:var(--muted);margin:14px 0}
 
   /* badges (種別/状態タグ) */
   .badge{display:inline-block;font-size:11px;font-weight:700;padding:2px 9px;border-radius:999px;
-    color:#0d1117;letter-spacing:.3px;vertical-align:middle}
+    color:var(--badge-ink);letter-spacing:.3px;vertical-align:middle}
   .b-box{background:var(--box)} .b-sub{background:var(--sub)} .b-seam{background:var(--seam)}
-  .b-plugin{background:var(--plugin)} .b-demoted{background:var(--demoted);color:#e6edf3}
+  .b-plugin{background:var(--plugin)} .b-demoted{background:var(--demoted);color:var(--ink)}
 
   /* legend */
   .legend{display:flex;flex-wrap:wrap;gap:10px;margin:16px 0}
@@ -64,44 +68,44 @@
   .n-seam{border-color:var(--seam);background:var(--seam-bg);border-style:dashed}
   .n-plugin{border-color:var(--plugin);background:var(--plugin-bg)}
   .n-demoted{border-color:var(--demoted);background:var(--demoted-bg);color:var(--muted)}
-  .n-demoted .t{text-decoration:line-through;text-decoration-color:var(--demoted)}
+  .n-demoted .t{text-decoration:line-through;text-decoration-color:var(--faint)}
 
   /* layered map */
   .layer{border-radius:12px;padding:12px 14px;margin:10px 0;border:1px solid var(--line)}
-  .layer .lh{font-size:12px;font-weight:700;color:#adbac7;letter-spacing:.5px;margin-bottom:8px;
+  .layer .lh{font-size:12px;font-weight:700;color:var(--head);letter-spacing:.5px;margin-bottom:8px;
     display:flex;justify-content:space-between;align-items:center}
   .layer .lh .rt{font-weight:500;color:var(--muted);font-size:11px}
   .row{display:flex;flex-wrap:wrap;gap:10px} .row .node{flex:1 1 150px}
-  .Lt1{background:var(--L1t)} .Lt2{background:var(--L2t)} .Lt3{background:var(--L3t)}
-  .Lt4{background:var(--L4t)} .Lt5{background:var(--L5t)}
-  .arrow-down{text-align:center;color:var(--muted);font-size:18px;line-height:1;margin:-2px 0}
+  .Lt1{background:var(--Lt1)} .Lt2{background:var(--Lt2)} .Lt3{background:var(--Lt3)}
+  .Lt4{background:var(--Lt4)} .Lt5{background:var(--Lt5)}
+  .arrow-down{text-align:center;color:var(--faint);font-size:18px;line-height:1;margin:-2px 0}
 
   /* horizontal flow */
   .flow{display:flex;flex-wrap:wrap;align-items:stretch;gap:6px;margin:14px 0}
   .flow .node{flex:1 1 110px;min-width:108px;display:flex;flex-direction:column;justify-content:center}
-  .flow .arr{display:flex;align-items:center;color:var(--muted);font-weight:700;font-size:18px;padding:0 1px}
+  .flow .arr{display:flex;align-items:center;color:var(--faint);font-weight:700;font-size:18px;padding:0 1px}
   .flow .seamtag{font-size:10px;color:var(--seam);font-weight:700;text-align:center;align-self:center}
   .lane{border:1.5px dashed var(--plugin);background:var(--plugin-bg);border-radius:10px;
-    padding:8px 12px;margin:6px 0 0;font-size:12.5px;color:#d2b8ff}
+    padding:8px 12px;margin:6px 0 0;font-size:12.5px;color:#d8c8f2}
 
   /* compare panels (❌ before / ✅ after) */
   .compare{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:14px 0}
   .panel{border-radius:12px;padding:14px;border:1px solid var(--line);background:var(--card)}
-  .panel.bad{border-color:rgba(248,81,73,.5);background:rgba(248,81,73,.08)}
-  .panel.good{border-color:rgba(63,185,80,.5);background:rgba(63,185,80,.08)}
+  .panel.bad{border-color:rgba(247,118,142,.45);background:rgba(247,118,142,.07)}
+  .panel.good{border-color:rgba(158,206,106,.45);background:rgba(158,206,106,.07)}
   .panel h4{margin:0 0 10px;font-size:14px}
 
   /* tables */
   table{border-collapse:collapse;width:100%;margin:14px 0;font-size:13px;background:var(--card)}
   th,td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
-  th{background:#1c2230;font-size:12.5px;color:#c9d1d9}
+  th{background:var(--surface);font-size:12.5px;color:var(--head)}
   tr:nth-child(even) td{background:rgba(255,255,255,.02)}
   td code{font-size:.85em}
-  .impl-yes{color:var(--sub);font-weight:700} .impl-no{color:#e3b341;font-weight:700}
+  .impl-yes{color:var(--sub);font-weight:700} .impl-no{color:var(--yellow);font-weight:700}
 
   ul.tight{margin:8px 0;padding-left:22px} ul.tight li{margin:5px 0}
   footer{margin-top:50px;padding-top:18px;border-top:1px solid var(--line);color:var(--muted);font-size:12.5px}
-  .kbd{font-family:monospace;background:#21262d;color:#e6edf3;padding:1px 7px;border-radius:4px;font-size:.85em;border:1px solid var(--line)}
+  .kbd{font-family:monospace;background:var(--surface);color:var(--ink);padding:1px 7px;border-radius:4px;font-size:.85em;border:1px solid var(--line)}
   @media(max-width:720px){.compare{grid-template-columns:1fr}}
 </style>
 </head>
@@ -114,8 +118,8 @@
 </header>
 
 <div class="meta">
-  正本: <code>docs/.../NN-....md</code> §PLACEHOLDER ／ 本ページはその図解（補足資料）。
-  定義・file:line は必ず一次ソースの .md を参照する。
+  正本: <a href="NN-....md"><code>docs/.../NN-....md</code></a> §PLACEHOLDER ／ 本ページはその図解（補足資料）。
+  定義・file:line は必ず一次ソースの .md を参照する。<span class="dref">file:line</span> 形で併記。
 </div>
 
 <!-- ① 凡例（種別/カテゴリの色分け。不要なら削除） -->
@@ -169,7 +173,7 @@
 <table>
   <thead><tr><th>要素</th><th>種別</th><th>設計正本 docs</th><th>repo 実体 / 凍結契約</th></tr></thead>
   <tbody>
-    <tr><td>PLACEHOLDER</td><td><span class="badge b-box">box</span></td><td><code>docs/...:行</code></td><td class="impl-yes"><code>pkg/...</code></td></tr>
+    <tr><td>PLACEHOLDER</td><td><span class="badge b-box">box</span></td><td><a href="NN-....md">docs/...</a> <span class="dref">:行</span></td><td class="impl-yes"><code>pkg/...</code></td></tr>
     <tr><td>PLACEHOLDER</td><td><span class="badge b-sub">sub</span></td><td><code>docs/...:行</code></td><td class="impl-no">未実装</td></tr>
   </tbody>
 </table>
@@ -179,7 +183,7 @@
 <ul class="tight"><li>PLACEHOLDER（file:line 付き）</li></ul>
 
 <footer>
-  <p>このページは <code>docs/.../&lt;topic&gt;.html</code>（補足図解）。一次ソースは関連 .md。
+  <p>このページは <code>docs/.../&lt;topic&gt;.html</code>（補足図解・ダーク）。一次ソースは関連 .md。
   検証: <code>scripts/check_consistency.py</code> 0 ERROR / コード引用は実 Read で裏取り。</p>
   <p>Cursor で開く: ターミナルで <span class="kbd">python3 -m http.server 8123 --directory docs/...</span> →
   コマンドパレット <span class="kbd">Simple Browser: Show</span> → <span class="kbd">http://localhost:8123/&lt;topic&gt;.html</span></p>
