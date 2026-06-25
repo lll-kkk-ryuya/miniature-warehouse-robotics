@@ -16,7 +16,7 @@
     --seam:#e0af68;    --seam-bg:rgba(224,175,104,.12);
     --plugin:#bb9af7;  --plugin-bg:rgba(187,154,247,.12);
     --demoted:#9a9a9a; --demoted-bg:rgba(154,154,154,.10);
-    --red:#f7768e; --yellow:#e0c07a; --teal:#7dcfff;
+    --red:#f7768e; --yellow:#e0c07a; --teal:#7dcfff; --pink:#f7a8d8;
   }
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--ink);
@@ -29,8 +29,11 @@
   p{margin:10px 0} .lead{color:var(--muted);font-size:14px}
   a{color:var(--box);text-decoration:none} a:hover{text-decoration:underline}
   code{background:var(--code);padding:1px 6px;border-radius:4px;font-size:.88em;font-family:"SF Mono",Menlo,Consolas,monospace;color:var(--ink)}
+  pre{background:var(--code);border:1px solid var(--line);border-radius:8px;padding:12px 14px;overflow-x:auto;font-size:12.5px;line-height:1.6;margin:10px 0}
+  pre code{background:none;padding:0;font-size:1em}
   .dref{color:var(--teal);font-size:.82em;font-family:"SF Mono",Menlo,monospace;white-space:nowrap}
   .note{background:var(--seam-bg);border:1px solid rgba(224,175,104,.4);border-radius:8px;padding:12px 16px;margin:16px 0;font-size:14px}
+  .safe{background:rgba(243,139,168,.08);border:1px solid rgba(243,139,168,.4);border-radius:8px;padding:12px 16px;margin:16px 0;font-size:14px}
   .meta{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 16px;font-size:13px;color:var(--muted);margin:14px 0}
   .nav{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0}
   .nav a{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:7px 13px;font-size:13px;font-weight:600}
@@ -45,9 +48,28 @@
   .n-seam{border-color:var(--seam);background:var(--seam-bg);border-style:dashed} .n-plugin{border-color:var(--plugin);background:var(--plugin-bg)}
   .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 
+  /* superbox container */
   .superbox{border:2px solid var(--box);background:var(--box-bg);border-radius:14px;padding:16px;margin:14px 0}
   .sbh{font-weight:700;color:var(--box);font-size:16px;margin-bottom:2px} .sbs{font-size:12px;color:var(--muted);margin-bottom:12px}
 
+  /* internal-structure diagram (sub-box / seam / demoted nesting) */
+  .legend{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
+  .legend .item{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:6px 11px;font-size:11.5px;color:var(--muted)}
+  .legend .sw{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:6px;vertical-align:middle}
+  .n-demoted{border-color:var(--demoted);background:var(--demoted-bg);color:var(--muted)}
+  .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+  .sub-nest{border:1.5px dashed var(--box);border-radius:12px;padding:13px;margin-top:12px;background:rgba(122,162,247,.05)}
+  .sub-nest > .nh{font-size:11px;font-weight:700;color:var(--box);letter-spacing:.5px;margin-bottom:9px}
+  .nest-arrow{text-align:center;color:var(--faint);font-size:16px;line-height:1;margin:5px 0}
+  .role{display:inline-block;font-size:10.5px;font-weight:700;color:var(--faint);border:1px solid var(--line);border-radius:5px;padding:1px 6px;margin-left:6px;vertical-align:middle}
+  .cap{display:inline-block;font-size:10.5px;color:var(--faint);font-style:italic;margin-left:6px;vertical-align:middle}
+  .plugin-band{margin-top:9px;border:1.5px dashed var(--plugin);background:var(--plugin-bg);border-radius:8px;padding:7px 10px;font-size:12px;color:#d8c8f2}
+  .plugin-band b{color:var(--plugin)}
+  .seam-out{display:flex;flex-wrap:wrap;align-items:stretch;gap:8px;margin:12px 0 2px}
+  .seam-out .arrow{color:var(--seam);font-weight:700;font-size:18px;display:flex;align-items:center}
+  .gov-chip{border:2px solid var(--box);background:var(--box-bg);border-radius:10px;padding:8px 12px;font-size:12.5px;font-weight:700;white-space:nowrap;display:flex;flex-direction:column;justify-content:center;text-align:center}
+
+  /* numbered steps (pipeline) */
   .steps{counter-reset:st;margin:14px 0}
   .step{position:relative;border:1px solid var(--line);background:var(--card);border-radius:10px;padding:11px 14px 11px 46px;margin:8px 0;font-size:13.5px}
   .step::before{counter-increment:st;content:counter(st);position:absolute;left:12px;top:11px;width:24px;height:24px;border-radius:50%;
@@ -56,6 +78,20 @@
   .step.seam{border-color:var(--seam);border-left:4px solid var(--seam)} .step.seam::before{background:var(--seam)}
   .step-down{text-align:left;padding-left:22px;color:var(--faint);font-size:15px;line-height:1;margin:-3px 0}
 
+  /* horizontal flow band (stages) */
+  .flow{display:flex;flex-wrap:wrap;align-items:stretch;gap:6px;margin:10px 0}
+  .flow .node{flex:1 1 130px;min-width:112px;margin:0;display:flex;flex-direction:column;justify-content:center}
+  .flow .arr{display:flex;align-items:center;color:var(--faint);font-weight:700;font-size:16px}
+  .lyr{display:inline-block;font-size:10px;font-weight:800;padding:1px 7px;border-radius:5px;color:var(--badge-ink);margin-right:7px;vertical-align:middle}
+  .optline{font-family:"SF Mono",Menlo,Consolas,monospace;font-size:12px;color:var(--muted);background:var(--code);border-radius:6px;padding:8px 11px;margin:8px 0;line-height:1.7;overflow-x:auto}
+  .optline b{color:var(--ink)}
+
+  /* reuse layers A/B/C style chips (for cross-industry mapping) */
+  .ex{display:grid;grid-template-columns:46px 1fr;gap:10px;align-items:start;border:1px solid var(--line);border-radius:10px;padding:11px 13px;margin:8px 0;background:var(--card)}
+  .ex .tag{font-weight:800;font-size:14px;color:var(--badge-ink);background:var(--teal);border-radius:8px;text-align:center;padding:8px 4px;line-height:1.15}
+  .ex.b3 .tag{background:var(--box)} .ex.c .tag{background:var(--seam)} .ex.d .tag{background:var(--plugin)}
+  .ex .body b{color:var(--ink)} .ex .body{font-size:13px;color:var(--muted)}
+
   table{border-collapse:collapse;width:100%;margin:12px 0;font-size:13px;background:var(--card)}
   th,td{border:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top}
   th{background:var(--surface);font-size:12.5px;color:var(--head)} td code{font-size:.85em}
@@ -63,7 +99,7 @@
   .impl-yes{color:var(--sub);font-weight:700} .impl-no{color:var(--yellow);font-weight:700}
   ul.tight{margin:8px 0;padding-left:22px} ul.tight li{margin:5px 0}
   footer{margin-top:50px;padding-top:18px;border-top:1px solid var(--line);color:var(--muted);font-size:12.5px}
-  @media(max-width:720px){.grid2{grid-template-columns:1fr}}
+  @media(max-width:720px){.grid2,.grid3{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -71,79 +107,286 @@
 
 <header class="top">
   <h1>L3 詳細図 — Robotics Planning Core Box</h1>
-  <p class="lead">L4 の model output を「安全経路に通せる command 候補」へ変換する deterministic planning box。<b>未実装＝proposal（docs only）</b>・optional（経路依存）。Core+Plugin 構造で site 差替。</p>
+  <p class="lead">L4 の model output を「安全経路に通せる command 候補」へ変換する <b>deterministic な正規化・検証 box</b>。<b>未実装＝proposal（docs only）</b>・経路依存で optional。Core+Plugin 構造で site/産業を差替（§2・§6）。各要素に紐づく docs を併記。</p>
 </header>
 
 <div class="nav">
   <a href="layer-l4-detail.html">◂ L4 詳細図</a>
   <a href="box-taxonomy.html">全体（box-taxonomy）</a>
+  <a href="layer-l3-reuse-detail.html">再利用・商用化 詳細 ▸</a>
   <a href="03-l3-planning-core-box.md">正本: 03 l3-planning-core-box.md</a>
   <a href="../mode-x-er/02-l3-planning-core.md">mode-x-er/02</a>
+  <a href="../mode-x-er/mode-x-er-explainer.html">Mode X-ER explainer</a>
 </div>
 
 <div class="meta">
-  正本: <a href="03-l3-planning-core-box.md"><code>03-l3-planning-core-box.md</code></a> ／ <code>docs/mode-x-er/02-l3-planning-core.md</code>。
-  <b>実コードは未実装</b>（ws/src に L3 package なし）＝引用は docs の exact line。現行 Mode A/B/C は LLM の <code>Command</code> JSON → <code>action_map</code> 直行で L3 を経由しない（§6 optional 注記）。
+  正本: <a href="03-l3-planning-core-box.md"><code>03-l3-planning-core-box.md</code></a>（商用 box 設計）／ <code>docs/mode-x-er/02-l3-planning-core.md</code>（Mode X-ER 詳細・I/O 例）。
+  <b>L3 は未実装</b>（ws/src に L3 package なし）＝引用は <b>docs の exact line</b>（<span class="dref">03:NN</span> / <span class="dref">mode-x-er/02:NN</span>）。現行 Mode A/B/C は LLM の <code>Command</code> JSON → <code>action_map</code> 直行で L3 を経由しない（§5 末尾の optional 注記）。
 </div>
 
-<!-- pipeline -->
+<!-- ===================== 0. 全体構造図 ===================== -->
+<h2>0. L3 box の全体構造図（I/O・先頭 seam・4 stage・Core/Plugin・出口）</h2>
+<p class="lead">L3 Planning Core は<b>1つの差替単位（box）</b>で、内部に <span class="badge b-seam">seam</span>（先頭の L3 Handoff）・<span class="badge b-sub">stage</span>（4 段の typed normalizer）・<span class="badge b-demoted">core</span>（box が直接所有する再利用核）・<span class="badge b-plugin">plugin</span>（site/産業差替）を入れ子で持つ。<b>出口 seam だけが箱の外（L2: MCP / Policy Gate）へ抜ける</b>。L3 は<b>実行許可を持たない</b>。<span class="dref">03:9-21 / box-taxonomy §2</span></p>
+
+<div class="legend">
+  <div class="item"><span class="sw" style="background:var(--box)"></span>box（契約を変えず差替/省略できる再利用単位）</div>
+  <div class="item"><span class="sw" style="background:var(--sub)"></span>stage / sub-box（box 内部の段・親ごと差替）</div>
+  <div class="item"><span class="sw" style="background:var(--seam)"></span>seam（境界の写像・常時随伴で省略不可）</div>
+  <div class="item"><span class="sw" style="background:var(--plugin)"></span>plugin（interface 裏の site/産業差替）</div>
+  <div class="item"><span class="sw" style="background:var(--demoted)"></span>core（box が直接所有・産業非依存の再利用核）</div>
+</div>
+
+<div class="superbox">
+  <div class="sbh">L3 Robotics Planning Core <span class="badge b-box">box</span> <span class="role">未実装＝proposal（docs only）</span></div>
+  <div class="sbs">RawModelOutput を「安全経路に通せる Command candidate」へ変換する deterministic box（<span class="dref">03:9-19</span>）。以下の枠内すべてを所有し、契約（consumes/produces）を変えず差し替える。</div>
+
+  <!-- I/O -->
+  <div class="grid2">
+    <div class="node n-box"><div class="t">consumes（入力）</div><div class="s">
+      <code>RawModelOutput</code> / <code>RoboticsPlan draft</code>（<span class="dref">未凍結 robotics_plan_draft.v0</span>）／ <code>StateSnapshot</code>（state freshness 検証用・<span class="dref">schemas.py StateSnapshot</span>）／ calibration artifact（camera id / homography / valid polygon）／ context: <code>known_robots</code> / <code>known_locations</code> / <code>allowed_actions</code>。<span class="dref">mode-x-er/02:43-55,76-82,115-121 / 03:35-39</span>
+    </div></div>
+    <div class="node n-box"><div class="t">produces（出力）</div><div class="s">
+      <code>Command candidate</code> → 出口 seam → L2（<span class="dref">schemas.py Command</span>・<b>実行許可ではない</b>）／ <code>ValidationReport</code>（未凍結・stable error code）／ audit record（raw output ↔ normalized plan ↔ command candidate を 1:1）。<span class="dref">03:18-21 / mode-x-er/02:57-66,99,242</span>
+    </div></div>
+  </div>
+
+  <!-- leading seam -->
+  <div class="seam-out" style="margin-top:12px">
+    <span class="arrow" style="color:var(--seam)">▶</span>
+    <div class="node n-seam" style="flex:1 1 320px;margin:0"><div class="t">先頭 seam: L3 Handoff <span class="badge b-seam">seam</span></div><div class="s">
+      <code>RawModelOutput</code> → <code>RoboticsPlan draft</code> に正規化。新 schema を産まず、出力は次の Validator の入力契約そのもの＝独立 box でなく <b>L3 Core 配下の seam</b>。<span class="dref">03:11-13 / 06 §L3 Handoff / mode-x-er/01 §L4 の data</span>
+    </div></div>
+  </div>
+
+  <!-- 4 stages -->
+  <div class="sub-nest">
+    <div class="nh">▼ 4 stage（typed normalizer・型付き中間生成物を順に産む・親ごと差替）</div>
+    <div class="node n-sub"><div class="t">① Validator <span class="badge b-sub">stage</span></div><div class="s">
+      実行候補として扱えるか判定（JSON 変換ではない）。最も site/産業-specific な rule 設計。→ <code>ValidationReport</code> + <code>NormalizedPlan</code>。<span class="dref">03:35-66 / mode-x-er/02:39-107</span>
+    </div></div>
+    <div class="nest-arrow">▼</div>
+    <div class="node n-sub"><div class="t">② Visual Resolver <span class="badge b-sub">stage</span></div><div class="s">
+      画像座標 → map/robot frame の target へ変換（calibration → homography → snap）。→ <code>ResolvedTarget</code>。<span class="dref">03:68-99 / mode-x-er/02:109-159</span>
+    </div></div>
+    <div class="nest-arrow">▼</div>
+    <div class="node n-sub"><div class="t">③ Task Graph Executor <span class="badge b-sub">stage</span></div><div class="s">
+      <code>task_graph</code> を一度に全 dispatch しない（DAG・topological order・lifecycle）。→ <code>ReadyTask</code>。<span class="dref">03:100-138 / mode-x-er/02:161-199</span>
+    </div></div>
+    <div class="nest-arrow">▼</div>
+    <div class="node n-sub"><div class="t">④ Command Compiler <span class="badge b-sub">stage</span></div><div class="s">
+      ready task を既存安全経路（<code>Command</code>）へ落とす。backend ごとに plugin 化。→ <code>Command candidate</code>。<span class="dref">03:140-157 / mode-x-er/02:200-242</span>
+    </div></div>
+
+    <!-- plugin band under stages -->
+    <div class="plugin-band"><b>plugin（site/産業差替）</b>: Site Policy（known robot / allowed action / confidence / state freshness / emergency）｜ Visual（calibration / homography / valid polygon / snap）｜ Compiler（WarehouseNav / RmfTask / ArmManipulation / …）｜ Store（in-memory / file / Redis / DB）。<span class="badge b-plugin" style="font-size:10px">plugin</span> は各 stage の interface 裏の実装選択で box を割らない。<span class="dref">03:23-33,30-33</span></div>
+  </div>
+
+  <!-- core owned -->
+  <div class="sub-nest" style="border-color:var(--demoted);background:var(--demoted-bg)">
+    <div class="nh" style="color:var(--faint)">▼ box が直接所有する Core（産業非依存・変更頻度: 低・独立 box でない＝ここへ吸収）</div>
+    <div class="grid2">
+      <div class="node n-box"><div class="t">parse / schema validation / DAG 検証</div><div class="s">JSON parse・<code>schema_version</code> check・required field・<code>is_directed_acyclic_graph</code> 判定。<span class="dref">03:27-29,41-49,131</span></div></div>
+      <div class="node n-box"><div class="t">task lifecycle / audit / compiler interface</div><div class="s"><code>pending/ready/running/succeeded/failed/cancelled</code>・duplicate dispatch guard・audit record・compiler base IF。<span class="dref">03:27-29,104-111</span></div></div>
+    </div>
+  </div>
+
+  <!-- exit seam → L2 -->
+  <div class="seam-out">
+    <span class="arrow">└▶</span>
+    <div class="node n-seam" style="flex:1 1 320px;margin:0"><div class="t">出口（box の<b>外</b>へ・→ L2）<span class="badge b-seam">seam</span></div><div class="s">
+      <code>Command candidate</code> → L4 の <code>action_map</code>（<code>gen_id</code>/<code>idempotency_key</code> は <b>Bridge が mint・L3/model 由来不可</b>）→ MCP / Policy Gate。<b>L3 は許可しない</b>。<span class="dref">03:18-21 / mode-x-er/02:230 / layer-l4-detail §3</span>
+    </div></div>
+    <span class="arrow">▶</span>
+    <div class="gov-chip">L2<span style="font-weight:400;color:var(--muted);font-size:11px">MCP / Policy Gate（別プロセス）</span></div>
+  </div>
+</div>
+
+<div class="note">
+  <b>図の読み方</b>: 外枠＝L3 box（1つの差替単位）。<b>橙の破線</b>＝seam（先頭 Handoff と出口・省略不可）、<b>緑枠</b>＝4 stage（typed normalizer）、<b>グレー枠</b>＝Core（産業非依存の再利用核）、<b>紫の破線帯</b>＝plugin（site/産業差替で box を割らない）。<b>seam だけが箱の外（L2）へ抜ける</b>＝L3 は実行許可を持たない安全核。Core/Plugin 分離が商用・産業横断の差替軸（§2・§6）。<span class="dref">分類正本: box-taxonomy §0 / 01 §Box 種別と分類規則</span>
+</div>
+
+<!-- ===================== 1. パイプライン ===================== -->
 <h2>1. パイプライン（RawModelOutput → Command candidate）</h2>
-<p class="lead">L3 は実行許可を持たない。Command candidate は L2 の MCP / Policy Gate で reject されうる。<span class="dref">03:11-21</span></p>
+<p class="lead">L3 は実行許可を持たない。Command candidate は L2 の MCP / Policy Gate で reject されうる。4 stage は<b>型付き中間生成物を順に産む typed normalizer</b>。<span class="dref">03:9-21</span></p>
 
 <div class="steps">
   <div class="step seam"><b>L3 Handoff（先頭 seam）</b> <span class="badge b-seam" style="font-size:10px">seam</span>
-    <div class="s"><code>RawModelOutput</code> → <code>RoboticsPlan draft</code> に正規化。新 schema を産まず、出力は次の Validator の入力契約そのもの＝独立 box でなく L3 Core 配下の seam。<span class="dref">03:11-13 / 06 §L3 Handoff / mode-x-er/01:104</span></div></div>
+    <div class="s"><code>RawModelOutput</code> → <code>RoboticsPlan draft</code> に正規化。新 schema を産まず、出力は次の Validator の入力契約そのもの＝独立 box でなく L3 Core 配下の seam。<span class="dref">03:11-13 / 06 §L3 Handoff</span></div></div>
   <div class="step-down">▼</div>
-  <div class="step"><b>Validator</b>
-    <div class="s">実行候補として扱えるか判定（JSON 変換ではない）。最も site-specific な rule 設計。<span class="dref">03:35-66</span></div></div>
+  <div class="step"><b>Validator</b> → <code>ValidationReport</code> + <code>NormalizedPlan</code>
+    <div class="s">実行候補として扱えるか判定（JSON 変換ではない）。<code>status != accepted</code> は 0 dispatch。<span class="dref">03:35-66 / mode-x-er/02:39-68</span></div></div>
   <div class="step-down">▼</div>
-  <div class="step"><b>Visual Resolver</b>
-    <div class="s">画像上の object target → map target へ変換（calibration→homography→snap）。<span class="dref">03:68-99</span></div></div>
+  <div class="step"><b>Visual Resolver</b> → <code>ResolvedTarget</code>
+    <div class="s">画像上の object target → map target へ変換（calibration→homography→snap）。<span class="dref">03:68-99 / mode-x-er/02:109-159</span></div></div>
   <div class="step-down">▼</div>
-  <div class="step"><b>Task Graph Executor</b>
-    <div class="s"><code>task_graph</code> を一度に全 dispatch しない（DAG・topological order・lifecycle）。<span class="dref">03:100-120</span></div></div>
+  <div class="step"><b>Task Graph Executor</b> → <code>ReadyTask</code>
+    <div class="s"><code>task_graph</code> を一度に全 dispatch しない（DAG・topological order・lifecycle）。<span class="dref">03:100-120 / mode-x-er/02:161-199</span></div></div>
   <div class="step-down">▼</div>
-  <div class="step"><b>Command Compiler</b>
-    <div class="s">ready task を既存安全経路（<code>Command</code>）へ落とす。<span class="dref">03:122-139</span></div></div>
+  <div class="step"><b>Command Compiler</b> → <code>Command candidate</code>
+    <div class="s">ready task を既存安全経路（<code>Command</code>）へ落とす。<span class="dref">03:140-157 / mode-x-er/02:200-242</span></div></div>
   <div class="step-down">▼</div>
-  <div class="step"><b>Command candidate</b> → L2 へ
+  <div class="step seam"><b>Command candidate</b> → L2 へ（出口 seam）
     <div class="s">既存 <code>action_map</code> / MCP / Policy Gate 経路へ（L3 は許可しない）。<span class="dref">03:18-21</span></div></div>
 </div>
+<div class="optline">RawModelOutput → RoboticsPlan draft → <b>ValidationReport</b>（未凍結）+ NormalizedPlan → ResolvedTarget → ReadyTask → <b>Command candidate</b>（実行許可ではない）</div>
+<div class="note">
+  <b>責務分離の肝</b>: <b>completion 判定 / 二重 dispatch 防止 = L3 Task Graph Executor</b>（model は依存提案のみ）、<b>calibration / map frame の最終責任 = L3 Visual Resolver</b>（model の pixel/bbox は入力）、<b><code>gen_id</code>/<code>idempotency_key</code> の mint = L4 action_map</b>（L3/model は作らない）。<span class="dref">mode-x-er/02:148-149,184,188-190,228-234 / layer-l4-detail §5.1</span>
+</div>
 
-<!-- core + plugin -->
+<!-- ===================== 2. Core + Plugin ===================== -->
 <h2>2. Core + Plugin 構造（商用再利用の肝）</h2>
-<p class="lead">L3 を「変えない core」と「現場ごとに差し替える plugin」に分ける。<span class="dref">03:23-33</span></p>
+<p class="lead">L3 を「変えない core」と「現場ごとに差し替える plugin」に分ける。これが商用再利用（§後半は産業横断）の差替軸。<span class="dref">03:23-33</span></p>
 <div class="grid2">
-  <div class="node n-box"><div class="t">Core（変更頻度: 低）<span class="badge b-box">box</span></div><div class="s">parse・schema validation・DAG 検証・task lifecycle・audit・compiler interface。<span class="dref">03:27-29</span></div></div>
+  <div class="node n-box"><div class="t">Core（変更頻度: 低）<span class="badge b-box">box</span></div><div class="s">parse・schema validation・DAG 検証・task lifecycle・audit・compiler interface。<b>産業非依存</b>でそのまま再利用。<span class="dref">03:27-29</span></div></div>
   <div class="node n-plugin"><div class="t">Plugin（差替軸）<span class="badge b-plugin">plugin</span></div><div class="s">
     <b>Site Policy</b>（known robot / allowed action / confidence / state freshness / emergency）／ <b>Visual</b>（calibration / homography / valid polygon / snap）／ <b>Compiler</b>（WarehouseNav / RmfTask / ArmManipulation）／ <b>Store</b>（in-memory / file / Redis / DB）。<span class="dref">03:30-33</span></div></div>
 </div>
+<table>
+  <thead><tr><th>分類</th><th>内容</th><th>変える頻度</th></tr></thead>
+  <tbody>
+    <tr><td>Core</td><td>parse、schema validation、DAG 検証、task lifecycle、audit、compiler interface</td><td class="impl-yes">低</td></tr>
+    <tr><td>Site Policy Plugin</td><td>known robot、allowed action、confidence policy、state freshness、emergency policy</td><td>中</td></tr>
+    <tr><td>Visual Plugin</td><td>camera calibration、homography、valid polygon、snap rule</td><td>現場ごと</td></tr>
+    <tr><td>Compiler Plugin</td><td>WarehouseNavCompiler、RmfTaskCompiler、ArmManipulationCompiler</td><td>backend ごと</td></tr>
+    <tr><td>Store Plugin</td><td>in-memory、file、Redis、DB-backed TaskGraphStore</td><td>商用運用ごと</td></tr>
+  </tbody>
+</table>
+<p class="lead"><span class="dref">表の正本: 03:27-33（Commercial Core と Site Plugin）</span></p>
 
-<!-- sub box detail -->
-<h2>3. 各 box（stage）の細部</h2>
+<!-- ===================== 3. 各 stage の細部 ===================== -->
+<h2>3. 各 stage（box）の細部</h2>
 
-<h3>Validator Box <span class="dref">03:35-66</span></h3>
+<h3>① Validator Box <span class="dref">03:35-66 / mode-x-er/02:39-107</span></h3>
+<p class="lead">Validator は JSON 変換ではなく、Gemini Robotics-ER 等の raw output が<b>実行候補として扱えるか</b>を actuation 前に構造化判定する。<code>status != accepted</code> は 0 dispatch。<span class="dref">mode-x-er/02:41,68</span></p>
+<div class="grid2">
+  <div class="node n-sub"><div class="t">入力 RoboticsPlan draft <span class="role">未凍結</span></div><div class="s">
+<pre><code>{
+  "schema_version": "robotics_plan_draft.v0",
+  "plan_id": "plan_...",
+  "source_model": "gemini-robotics-er",
+  "transcript": "...",
+  "interpreted_intent": "...",
+  "detections": [],
+  "task_graph": []
+}</code></pre><span class="dref">mode-x-er/02:45-55</span>
+  </div></div>
+  <div class="node n-box"><div class="t">出力 ValidationReport</div><div class="s">
+<pre><code>{
+  "status": "accepted",
+  "errors": [],
+  "warnings": [],
+  "normalized_plan": {}
+}</code></pre>rule result は <code>code / severity / field_path / message_for_operator / debug_detail / dispatch_effect</code>。<span class="dref">mode-x-er/02:59-66,95</span>
+  </div></div>
+</div>
+<table>
+  <thead><tr><th>カテゴリ</th><th>検証内容</th><th>失敗時</th></tr></thead>
+  <tbody>
+    <tr><td>parse</td><td>JSON object として読めるか</td><td class="impl-no">reject</td></tr>
+    <tr><td>schema</td><td><code>schema_version</code> 対応範囲・必須 field</td><td class="impl-no">reject</td></tr>
+    <tr><td>robot registry</td><td><code>robot</code> が既知 robot か</td><td class="impl-no">reject</td></tr>
+    <tr><td>action allowlist</td><td><code>action</code> ∈ navigate/wait/stop/yield/charge</td><td class="impl-no">reject</td></tr>
+    <tr><td>target reference</td><td><code>target</code> が <code>detections[].id</code> か known location</td><td class="impl-no">reject</td></tr>
+    <tr><td>confidence</td><td>detection / interpreted target の confidence が policy を満たすか</td><td class="impl-no">reject / needs_clarification</td></tr>
+    <tr><td>graph reference / structure</td><td><code>after</code> が同一 graph 内・task graph が DAG か</td><td class="impl-no">reject</td></tr>
+    <tr><td>state freshness / emergency</td><td>cycle 時点の state が古すぎないか・emergency active でないか</td><td class="impl-no">reject</td></tr>
+    <tr><td>clarification</td><td>operator clarification が必要と model が示していないか</td><td class="impl-no">needs_clarification</td></tr>
+  </tbody>
+</table>
 <div class="grid2">
   <div class="node n-box"><div class="t">再利用 core</div><div class="s">JSON parse・<code>schema_version</code> check・required field・stable error code・validation report shape・audit record。<span class="dref">03:41-49</span></div></div>
   <div class="node n-plugin"><div class="t">site 差替 plugin</div><div class="s">known robot registry・allowed action・target reference rule・confidence policy・stale state policy・emergency policy・operator clarification policy。<span class="dref">03:50-58</span></div></div>
 </div>
-<div class="note">商用価値: provider が ER/VLA/LLM/WMS に変わっても<b>危険な output を同じ形で止められる</b>・顧客に reject 理由を説明できる・regression fixture を作りやすい。<span class="dref">03:60-64</span></div>
+<div class="note">商用価値: provider が ER/VLA/LLM/WMS に変わっても<b>危険な output を同じ形で止められる</b>・顧客に reject 理由を説明できる・regression fixture を作りやすい。stable code 例: <code>UNKNOWN_ROBOT</code> / <code>UNKNOWN_ACTION</code> / <code>UNKNOWN_TARGET</code> / <code>LOW_CONFIDENCE_TARGET</code> / <code>INVALID_AFTER_REFERENCE</code> / <code>TASK_GRAPH_CYCLE</code> / <code>CYCLE_STATE_STALE</code> / <code>EMERGENCY_ACTIVE</code>。<span class="dref">03:60-64 / mode-x-er/02:96</span></div>
 
-<h3>Visual Resolver Box <span class="dref">03:68-99</span></h3>
+<h3>② Visual Resolver Box <span class="dref">03:68-99 / mode-x-er/02:109-159</span></h3>
+<p class="lead">画像上の object target を robot が使える map target へ変換する。最終 confidence は ER detection confidence と homography/snap confidence を合成する。<span class="dref">mode-x-er/02:111,159</span></p>
+<div class="grid2">
+  <div class="node n-sub"><div class="t">入力 detection</div><div class="s">
+<pre><code>{
+  "detection": {"id":"red_box","pixel":[420,310],"confidence":0.92},
+  "calibration_id": "calib-YYYYMMDD",
+  "state_timestamp": "..."
+}</code></pre><span class="dref">mode-x-er/02:115-121</span>
+  </div></div>
+  <div class="node n-box"><div class="t">出力 ResolvedTarget</div><div class="s">
+<pre><code>{
+  "target_id": "red_box",
+  "resolution": "known_location",
+  "destination": "shelf_1",
+  "confidence": 0.88,
+  "reason": "snapped_to_shelf_1"
+}</code></pre><span class="dref">mode-x-er/02:125-133</span>
+  </div></div>
+</div>
+<div class="lead" style="margin:6px 0 2px"><b>前段: 2種類の歪みを順に処理（undistort と homography は別物）</b></div>
 <div class="steps">
-  <div class="step"><b>pixel / bbox</b></div>
+  <div class="step"><b>pixel / bbox</b><div class="s">ER が画像から出した検出点（生 pixel）。</div></div>
   <div class="step-down">▼</div>
-  <div class="step"><b>camera calibration → homography</b><div class="s">site ごと: camera id・map frame・homography matrix。<span class="dref">03:89-96</span></div></div>
+  <div class="step"><b>① undistort（レンズ歪み除去）</b> <span class="role">一般CV前段</span><div class="s">樽型/糸巻きの歪みを camera <b>intrinsics</b>（内部パラメータ＋歪み係数）で補正。<b>homography とは別工程</b>。<span style="color:var(--faint)">doc は②homography を calibration 正本にする</span> <span class="dref">mode-x-er/02:148</span></div></div>
   <div class="step-down">▼</div>
-  <div class="step"><b>map(x, y) → valid polygon → known location snap</b><div class="s">MVP は known location に snap できた場合だけ Command Compiler へ。<b>coordinate goal は未凍結＝別 gate</b>。<span class="dref">03:77-79,98</span></div></div>
+  <div class="step"><b>② homography（遠近＝平面射影変換）</b><div class="s">斜め視点の「画像平面 → 床平面」の写像（台形⇄正方形）。<span class="cap">一般CV: 3×3 行列 H・≥4 点対応で求める</span> site ごと: camera id・map frame・homography matrix・reprojection error・valid polygon。<span class="dref">03:89-96 / mode-x-er/02:148-149</span></div></div>
+  <div class="step-down">▼</div>
+  <div class="step"><b>map(x, y) → valid polygon → known location snap</b><div class="s">MVP は known location に snap できた場合だけ Command Compiler へ。map 外・polygon 外・reprojection error 過大は <code>unresolved</code>（fail-closed＝信用できなければ動かさない）。<b>coordinate goal は未凍結＝別 gate</b>。<span class="dref">03:77-79,98 / mode-x-er/02:151-152</span></div></div>
+</div>
+<div class="note">
+  <b>homography ≠ レンズ歪み補正</b>: ①は「レンズの歪み」を直す（intrinsics）、②は「画像平面→床平面」の対応づけ（perspective）。口語ではどちらも calibration だが Visual Resolver の <code>homography</code> は②専用（①undistort は一般 CV 前段で doc は②を正本にする）。<b>平面前提</b>のため高さのある物体は視差（parallax）誤差 → 倉庫は床直置き箱の接地点で十分だが、<b>製造の 3D part pose は 2D homography では足りず hand-eye ＋ 深度</b>が要る（§6.4 coordinate goal gate 前提）。
+</div>
+<div class="grid2">
+  <div class="node n-box"><div class="t">再利用 core</div><div class="s">calibration artifact loader IF・homography transform・valid polygon check・confidence 合成・replay fixture runner。<span class="dref">03:81-87</span></div></div>
+  <div class="node n-plugin"><div class="t">site 差替 plugin</div><div class="s">camera id・map frame・homography matrix・valid polygon・known location 座標・snap threshold。calibration は file で version 管理し現場ごとに差替、更新後は replay fixture で既存タスクが壊れないか確認。<span class="dref">03:89-96 / mode-x-er/02:156-158</span></div></div>
 </div>
 
-<h3>Task Graph Executor Box <span class="dref">03:100-120</span></h3>
-<div class="node n-box"><div class="s">
-  <b>core</b>: DAG check・topological order・lifecycle（<code>pending / ready / running / succeeded / failed / cancelled</code>）・duplicate dispatch guard・timeout/failed handling IF。<b>plugin</b>: completion source・task timeout・retry・durable store・operator intervention。最初は process memory、案件化で <code>TaskGraphStore</code> を file/Redis/DB へ差替。<span class="dref">03:104-120</span>
-</div></div>
+<div class="sub-nest" style="border-color:var(--teal);background:rgba(125,207,255,.05);margin-top:14px">
+  <div class="nh" style="color:var(--teal)">▼ 知覚の2系統（混同しない）— Visual Resolver は<b>物体系統</b>に属する</div>
+  <p class="lead" style="margin:2px 0 8px">「どこに何があるか」は性質の異なる2系統で別々に取得し、<b>役割が交わらない</b>（LiDAR は色/物体クラスを判別できず、カメラ homography は連続自己位置に使わない）。<span class="dref">mode-x-er/01:222-243</span></p>
+  <div class="grid2">
+    <div class="node n-sub"><div class="t">系統1: 物体「何がどこ」<span class="role" style="color:var(--sub);border-color:var(--sub)">Visual Resolver はここ</span></div><div class="s">
+      俯瞰カメラ（C922n・床上120-150cm）＋ ER vision → pixel detection → <b>L3 Visual Resolver が homography で map へ → known location snap</b>（undistort 前段は §3② パイプライン参照）。<b>指示の瞬間に1枚</b>（Non-RT）。色・物体クラスの認識。<span class="dref">mode-x-er/01:226-231</span>
+    </div></div>
+    <div class="node n-box"><div class="t">系統2: 幾何「どこ」<span class="cap">L1・常時・独立</span></div><div class="s">
+      minicar 搭載 LiDAR（ORBBEC MS200・360°）→ <code>/bot{n}/scan</code> → <b>AMCL 自己位置 / costmap 障害物</b>（常時・ER/L3 サイクルと独立）。地図は<b>事前 SLAM</b>（MS200 を teleop で1回）。色は判別不能。<span class="dref">mode-x-er/01:232-237</span>
+    </div></div>
+  </div>
+  <div class="optline">役割分担: <b>ER＝物体認識</b> → <b>L3＝known location へ snap</b> → <b>L1＝MS200/costmap で走行中の衝突回避を常時</b>。両者は別レイヤ・別センサ。<span style="color:var(--faint)">（mode-x-er/01:239-241）</span></div>
+</div>
 
-<h3>Command Compiler Box <span class="dref">03:122-139</span></h3>
+<h3>③ Task Graph Executor Box <span class="dref">03:100-138 / mode-x-er/02:161-199</span></h3>
+<p class="lead">model が出した <code>task_graph</code> を一度に全 dispatch せず、依存を守って ready task だけを出す。<span class="dref">03:102 / mode-x-er/02:163</span></p>
+<div class="optline">pending → ready → running → <b>succeeded</b> / failed / cancelled　<span style="color:var(--faint)">（mode-x-er/02:178-182）</span></div>
+<div class="node n-box"><div class="s">
+  <b>core</b>: DAG check・topological order・lifecycle・duplicate dispatch guard・timeout/failed handling IF。<b>plugin</b>: completion source・task timeout・retry・durable store・operator intervention。最初は process memory、案件化で <code>TaskGraphStore</code> を file/Redis/DB へ差替。runtime state machine は自作し、NetworkX object を wire schema/audit の正本にしない。<span class="dref">03:104-120 / mode-x-er/02:194-199</span>
+</div></div>
+<div class="safe">
+  <b>DAG 循環 = デッドロック（無限実行ではない）</b>: <code>after</code> が輪を作ると（<code>t1→t2→t3→t1</code>）最初に開始できる task が無く <b>1 件も dispatch されない（zero dispatch）</b>＝「永久に未開始」。巡回し続けたい patrol は DAG 循環で表現せず recurring/periodic task か BT のループで別に組む。<b>検出（決定論）= NetworkX</b>（<code>is_directed_acyclic_graph</code> / <code>topological_sort</code> の <code>NetworkXUnfeasible</code>）、<b>reject 判断 = 自作 box</b>（<code>task_graph_cycle</code> decision event）。L3-G0（不正 0 dispatch）/ L3-G2（<code>after</code> で ready 1 件）で検証。<span class="dref">03:122-138</span>
+</div>
+
+<p class="lead"><b>完了→再計画ループ</b>: 完了確認（<code>/nav2_bridge/goal_result</code> / State Cache）は次サイクルの ready 判定に使うだけでなく、model の<b>次 turn 入力にも戻り「知覚→再計画」ループを閉じる</b>（L3 は1発 pipeline でなくサイクル）。<span class="dref">mode-x-er/01:85-94 / mode-x-er/02:184</span></p>
+
+<h3>④ Command Compiler Box <span class="dref">03:140-157 / mode-x-er/02:200-242</span></h3>
+<p class="lead">ready task を既存の安全な実行契約（<code>warehouse_interfaces.schemas.Command</code>）へ落とす最終段。backend ごとに plugin 化。<span class="dref">mode-x-er/02:202,229,240</span></p>
+<div class="grid2">
+  <div class="node n-sub"><div class="t">入力 ready task</div><div class="s">
+<pre><code>{
+  "task_id": "t1", "robot": "bot1",
+  "action": "navigate",
+  "resolved_target": {
+    "kind": "known_location",
+    "destination": "shelf_1"
+  }
+}</code></pre><span class="dref">mode-x-er/02:204-213</span>
+  </div></div>
+  <div class="node n-box"><div class="t">出力 Command</div><div class="s">
+<pre><code>{
+  "reasoning": "Mode X-ER compiled task t1",
+  "commands": [
+    {"bot":"bot1","action":"navigate",
+     "destination":"shelf_1"}
+  ],
+  "priority_explanation": "visual target resolved to known location"
+}</code></pre><span class="dref">mode-x-er/02:217-225</span>
+  </div></div>
+</div>
 <table>
   <thead><tr><th>Compiler（plugin）</th><th>出力先</th><th>用途</th></tr></thead>
   <tbody>
@@ -152,10 +395,25 @@
     <tr><td><code>ArmManipulationCompiler</code></td><td>future action candidate</td><td>把持・配置・ドッキング</td></tr>
   </tbody>
 </table>
-<div class="note"><b>Compiler の禁止事項</b>（<span class="dref">03:134-139</span>）: <code>gen_id</code>/<code>idempotency_key</code> を作らない（＝L4 の action_map 責務）・velocity を compile しない・ER/VLA の low-level action をそのまま採用しない・known location 以外の coordinate goal を未凍結のまま既存 Command に混ぜない。</div>
+<p class="lead"><b>ExecutionProfile（実行 profile）</b>: <code>x_lite</code>＝Nav2 Bridge REST（<b>MVP 採用</b>）／ <code>x_rmf</code>＝Open-RMF Task API（<b>再評価候補・optional</b>・複数台予約や狭路交渉時のみ）。draft schema は共通に保ち、差分だけ profile で分ける。<span class="dref">mode-x-er/01:201-206 / mode-x-er/02:234</span></p>
+<div class="safe"><b>Compiler の禁止事項</b>（<span class="dref">03:152-157 / mode-x-er/02:228-234</span>）: <code>gen_id</code>/<code>idempotency_key</code> を作らない（＝L4 action_map 責務）・velocity を compile しない・ER/VLA の low-level action をそのまま採用しない・known location 以外の coordinate goal を未凍結のまま既存 Command に混ぜない。X-lite/X-rmf 差分は <code>ExecutionProfile</code> で分け、draft schema は共通に保つ。</div>
 
-<!-- gates -->
-<h2>4. Acceptance Gates（L3-G0〜G6）<span class="dref">03:174-184</span></h2>
+<h3>L3 Interface Skeleton（内部案・未凍結）<span class="dref">mode-x-er/02:244-278</span></h3>
+<pre><code>class PlanValidator:
+    def validate(raw: dict, context: PlanningContext) -> ValidationResult: ...
+
+class VisualTaskResolver:
+    def resolve(plan: RoboticsPlanDraft, calibration: Calibration) -> ResolutionResult: ...
+
+class TaskGraphExecutor:
+    def ready_tasks(self, plan: RoboticsPlanDraft, state: TaskGraphState) -> list[ReadyTask]: ...
+
+class CommandCompiler:
+    def compile(self, tasks: list[ReadyTask], targets: ResolutionResult, profile: str) -> Command: ...</code></pre>
+<p class="lead">避けること: model の response shape を下流 MCP/Nav2 に直接漏らす・OpenCV の pixel を <code>Command</code> に入れる・NetworkX graph object を audit/wire schema に保存・site 固有 calibration をコード定数に埋める・<code>RoboticsPlan</code> を最初から <code>warehouse_interfaces</code> に凍結する。<span class="dref">mode-x-er/02:272-278</span></p>
+
+<!-- ===================== 4. Acceptance Gates ===================== -->
+<h2>4. Acceptance Gates（L3-G0〜G6）<span class="dref">03:192-202</span></h2>
 <table>
   <thead><tr><th>Gate</th><th>内容</th></tr></thead>
   <tbody>
@@ -168,36 +426,166 @@
     <tr><td>L3-G6</td><td>raw output・normalized plan・command candidate を audit で追跡できる</td></tr>
   </tbody>
 </table>
+<p class="lead">fixture 例（offline regression）: <code>red_blue_sequence</code> / <code>invalid_robot</code> / <code>low_confidence</code> / <code>stale_state</code>。<span class="dref">03:185-190（推奨 module fixtures/）/ 04 §Fixture Strategy</span></p>
 
-<!-- VLA -->
-<h2>5. L4 / VLA との関係 <span class="dref">03:186-194</span></h2>
-<p class="lead">VLA は L3 を直接置換せず、以下のいずれかで接続する（どの場合も最後は既存安全経路に渡せる command candidate）。</p>
+<!-- ===================== 5. L4 / VLA ===================== -->
+<h2>5. L4 / VLA との関係 <span class="dref">03:204-212</span></h2>
+<p class="lead">VLA は L3 を直接置換せず、以下のいずれかで接続する（どの場合も最後は既存安全経路に渡せる command candidate）。<span class="dref">03:206</span></p>
 <ul class="tight">
-  <li>VLA grounding report を Visual Resolver / Validator の<b>補助情報</b>にする。<span class="dref">03:190</span></li>
-  <li>VLA action candidate を <b>Safety Compiler</b> の入力にする。<span class="dref">03:191</span></li>
-  <li>Sim-first evaluator で fixture 化し、L3 の rule を増やす材料にする。<span class="dref">03:192</span></li>
+  <li>VLA grounding report を Visual Resolver / Validator の<b>補助情報</b>にする。<span class="dref">03:208</span></li>
+  <li>VLA action candidate を <b>Safety Compiler</b> の入力にする。<span class="dref">03:209</span></li>
+  <li>Sim-first evaluator で fixture 化し、L3 の rule を増やす材料にする。<span class="dref">03:210</span></li>
+</ul>
+<div class="note">
+  <b>※ optional の意味（要判断）</b>: 既存 Mode A/B/C は LLM の <code>Command</code> JSON → <code>action_map</code> が L3 相当を担い、独立 L3 package は未在。L3 Core が事実上必須になるのは <b>Mode X-ER 経路</b>（ER/VLA の曖昧 output を deterministic plan に正規化する必要がある）。つまり「Mode によって box 境界が動く」＝<a href="box-taxonomy.html">box-taxonomy §6</a> の open-decision ①。VLA + Fusion / SafetyCompiler の細部は <a href="layer-l4-detail.html">L4 詳細図 §6</a> / <a href="../mode-x-er-vla/mode-x-er-vla-overview.html">Mode X-ER-VLA overview</a>。<span class="dref">layer-l4-detail §6 / mode-x-er-vla/04</span>
+</div>
+
+<!-- ===================== 6. 製造業・他産業への横展開 ===================== -->
+<h2>6. 製造業・他産業への横展開（再利用）<span class="dref">03:214-252</span></h2>
+<p class="lead">L3 Planning Core は本質的に「AI model の曖昧な出力」と「ロボットの安全な実行契約」の間に立つ <b>deterministic な正規化・検証層</b>で、この役割は倉庫固有ではない。倉庫デモは最初の 1 事例で、<b>Core は産業非依存・Plugin が産業差を吸収</b>する。再利用の保管・成熟度・site profile は <a href="04-box-storage-and-reuse-guidelines.md">04</a> を正本にする。<span class="dref">03:214-220</span></p>
+
+<div class="note">
+  <b>核心</b>: §2 の Core+Plugin 分離を<b>そのまま産業横断の差替軸</b>に使う。Core（parse / schema validation / DAG / lifecycle / audit / compiler interface）は変えず、Plugin（site policy / visual / compiler / store）だけを製造現場のものへ差し替える。<span class="dref">03:218-220</span>
+</div>
+
+<h3>6.1 stage 別 対応表（倉庫 Mode X-ER → 製造）<span class="dref">03:222-229</span></h3>
+<table>
+  <thead><tr><th>stage</th><th>倉庫（Mode X-ER）</th><th>製造（assembly / machine tending / palletize）</th><th>再利用する core</th><th>差し替える plugin</th></tr></thead>
+  <tbody>
+    <tr><td>Validator</td><td>known robot / allowed action(navigate…) / target / confidence / stale / emergency</td><td>known 設備 registry（アーム / AGV / PLC station）/ 工程 allowlist(pick/place/insert/fasten) / part・治具・work order 参照 / 品質 gate confidence / interlock freshness / safety state</td><td class="impl-yes">parse・schema・required field・stable error code・report shape・audit</td><td>設備 registry・工程 allowlist・参照 rule・confidence・interlock・emergency policy</td></tr>
+    <tr><td>Visual Resolver</td><td>pixel → homography → map(x,y) → known location snap</td><td>pixel/bbox → hand-eye calibration → robot/fixture frame → 公称 part pose / 治具 nest へ snap</td><td class="impl-yes">calibration loader IF・transform・valid polygon・confidence 合成・replay runner</td><td>intrinsics/extrinsics・hand-eye 行列・work envelope polygon・公称 pose・snap threshold</td></tr>
+    <tr><td>Task Graph Executor</td><td><code>after</code> 依存で ready のみ・二重 dispatch 防止・lifecycle</td><td>工程インターロック（配置前に締結しない / クランプ前に溶接しない）・工程順序・再投入防止</td><td class="impl-yes">DAG check・topological order・lifecycle・duplicate guard・timeout IF</td><td>completion source（PLC I/O / 検査 / トルク）・timeout/retry・durable store</td></tr>
+    <tr><td>Command Compiler</td><td><code>WarehouseNavCompiler</code> / <code>RmfTaskCompiler</code></td><td><code>FanucCompiler</code> / <code>UrScriptCompiler</code> / <code>AbbRapidCompiler</code> / <code>PlcTagCompiler</code> / <code>RosControlCompiler</code></td><td class="impl-yes">compiler interface ＋ 禁止事項（§3④）</td><td>controller backend ごとの compiler plugin</td></tr>
+  </tbody>
+</table>
+
+<p class="lead" style="margin-top:18px"><b>§6.1 補足 — Command Compiler の差込口（共通 interface → backend 別 plugin）</b>: 上表 Command Compiler 行を「<b>どの backend に・どう繋ぐか</b>」で展開する。<code>ready task</code> を受ける <b>compiler interface(core) は固定</b>し、その裏に backend ごとの plugin を差す（§3④の「2つの世界をつなぐ変換器＝アダプタ」）。倉庫の Nav2 / Open-RMF も製造の FANUC / UR / PLC も<b>同じ差込口に並ぶ</b>。<span class="dref">03:140-157,226-229,250 / mode-x-er/02:236</span></p>
+
+<!-- compiler fan-out diagram -->
+<div class="superbox">
+  <div class="sbh">CommandCompiler interface <span class="badge b-box">core・固定</span></div>
+  <div class="sbs">入力 = <code>ready task</code>(robot / action / resolved_target)・出力 = 各 backend のネイティブ命令。禁止事項（<code>gen_id</code> を作らない・velocity を compile しない・low-level 不採用・未凍結 coordinate 不混入）は<b>全 plugin 共通</b>。<span class="dref">03:152-157</span></div>
+  <div class="plugin-band"><b>plugin（backend 別・差替）</b> ↓ いずれか1つを差し込む（上流3 stage は再利用）</div>
+  <div class="flow">
+    <div class="node n-plugin"><div class="t" style="font-size:12.5px">WarehouseNavCompiler <span class="role" style="color:var(--sub);border-color:var(--sub)">03正本</span></div><div class="s">▶ Nav2（移動ロボット）</div></div>
+    <div class="node n-plugin"><div class="t" style="font-size:12.5px">RmfTaskCompiler <span class="role" style="color:var(--sub);border-color:var(--sub)">03正本</span></div><div class="s">▶ Open-RMF（フリート）</div></div>
+    <div class="node n-plugin"><div class="t" style="font-size:12.5px">FanucCompiler <span class="role">例示</span></div><div class="s">▶ FANUC アーム</div></div>
+    <div class="node n-plugin"><div class="t" style="font-size:12.5px">UrScriptCompiler <span class="role">例示</span></div><div class="s">▶ UR 協働ロボット</div></div>
+    <div class="node n-plugin"><div class="t" style="font-size:12.5px">PlcTagCompiler <span class="role">例示</span></div><div class="s">▶ ライン PLC</div></div>
+  </div>
+</div>
+
+<table>
+  <thead><tr><th>Compiler（plugin）</th><th>繋ぐ相手</th><th>翻訳先（母国語）</th><th>通信</th><th>完了の取り方<br><span style="font-weight:400;color:var(--faint);font-size:11px">= Task Graph Executor の completion source</span></th></tr></thead>
+  <tbody>
+    <tr><td><code>WarehouseNavCompiler</code><br><span class="role" style="color:var(--sub);border-color:var(--sub)">03正本</span></td><td>Nav2（移動ロボット用ミドルウェア）</td><td>既存 <code>Command</code>(navigate/wait/stop) → action_map</td><td>Nav2 Bridge REST → ROS 2 / Nav2</td><td><code>/nav2_bridge/goal_result</code> + State Cache pose</td></tr>
+    <tr><td><code>RmfTaskCompiler</code><br><span class="role" style="color:var(--sub);border-color:var(--sub)">03正本</span></td><td>Open-RMF（複数台フリート管理）</td><td>既存 <code>Command</code> + RMF profile（dispatch task）</td><td>RMF Task API → Fleet Adapter → Nav2</td><td>RMF task state</td></tr>
+    <tr><td><code>FanucCompiler</code><br><span class="role">例示</span></td><td>FANUC アーム（産業用ロボット）</td><td>TP プログラム呼出 / 位置レジスタ更新</td><td>PROFINET / EtherNet/IP</td><td>ロボット状態信号</td></tr>
+    <tr><td><code>UrScriptCompiler</code><br><span class="role">例示</span></td><td>UR 協働ロボット（cobot）</td><td>URScript（<code>movej</code> / <code>movel</code>）</td><td>ソケット（TCP 30002 等）にテキスト送信</td><td>状態ポート読取</td></tr>
+    <tr><td><code>PlcTagCompiler</code><br><span class="role">例示</span></td><td>ライン PLC（設備統括の制御盤）</td><td>タグ書込（起動ビット等）</td><td>OPC UA / Modbus / EtherNet/IP</td><td>タグ読取（完了ビット）＝工程インターロック</td></tr>
+  </tbody>
+</table>
+<div class="note">
+  <b>例示の扱い</b>: Nav2 / Open-RMF 行は <code>03:146-150</code> の正本例。FANUC / UR / PLC 行の <b>繋ぐ相手・母国語・通信・完了手段は外部技術の一般情報＝例示</b>（凍結契約でない・compiler 名は 03:229・vendor 列挙は 03:250）で、実案件は実機で確定する。<b>翻訳先（母国語）列は compiler が"呼ぶ" backend のネイティブ命令</b>であって、L3 が軌道・速度を生成するのではない（例: URScript <code>movej</code>/<code>movel</code> も既存プログラム呼出 / 位置レジスタ更新を選ぶだけ・軌道/速度は controller=L1 責務・§3④/§6.4）。fan-out 図・詳細表は §6.1 表の5 compiler のうち<b>代表3例</b>を図示（ABB / ros2_control も同じ差込口）。<b>「完了の取り方」列は Task Graph Executor の completion source plugin</b> に対応する（移動は Nav2 result / State Cache、製造は PLC タグ / 検査結果 / トルク）。<span class="dref">03:114 / mode-x-er/02:184,194-199</span><br>どの行でも禁止事項（§3④）と「<b>L3 は実行許可を持たない</b>（最後は必ずその現場の安全経路へ渡せる候補）」は不変。製造で生 part pose を流すには <code>coordinate goal</code> gate の凍結が前提（§6.4）。
+</div>
+
+<h3>6.2 横断的に再利用できる資産 <span class="dref">03:231-238</span></h3>
+<div class="note">▸ <b>6 資産の拡張機構</b>（decision_event → funnel/report・データ保管〔artifact ref / Store plugin / Langfuse〕・eval-sdk・site profile 運用・成熟度ラダー）の詳細は別ページ <a href="layer-l3-reuse-detail.html"><b>L3 再利用・商用化 詳細図</b></a> へ。本節はその早見。</div>
+<ul class="tight">
+  <li><b>Core+Plugin 分離そのもの</b>が productization architecture（site = 現場/ライン/セル、plugin = 現場差分）。</li>
+  <li><b>ValidationReport の形 + stable error code</b> → 製造の traceability / genealogy 要件・operator への reject 説明にそのまま効く（<code>code / severity / field_path / message_for_operator / dispatch_effect</code>）。<span class="dref">03:234 / mode-x-er/02:95-96</span></li>
+  <li><b>audit の 1:1</b>（raw model output ↔ normalized plan ↔ command candidate）→ ISO / IATF 16949 等の追跡要件に直結。</li>
+  <li><b>acceptance gate（L3-G0〜G6）</b> → 新ライン / 新セルの go-live 前 受け入れテストの雛形。</li>
+  <li><b>fixture / replay</b> → calibration / model 更新後の再検証 suite（製造は変更後の再 validation が必須で価値↑）。</li>
+  <li><b>site profile</b>（<a href="04-box-storage-and-reuse-guidelines.md">04</a> §Site Profile）→ line profile / cell profile としてそのまま使える。</li>
 </ul>
 
-<!-- docs mapping -->
-<h2>6. L3 各要素 → docs / 実体</h2>
+<div class="lead" style="margin-top:6px"><b>図解（資産①〜⑥を簡略化）</b> — 各資産が「なぜ製造で効くか」を1枚で。</div>
+
+<div class="node n-box"><div class="t">① Core+Plugin 分離そのもの（= productization architecture）</div><div class="s">
+  <b>全資産の土台</b>。Core は<b>産業非依存でそのまま再利用</b>、Plugin が<b>現場差分を吸収</b>。site の粒度（工場 / ライン / セル）が変わっても同じ構造:
+  <div class="flow" style="margin-top:8px">
+    <div class="node n-box"><div class="t" style="font-size:12px">Core（固定・低頻度）</div><div class="s">parse / schema / DAG / lifecycle / audit / compiler IF</div></div>
+    <div class="arr">＋</div>
+    <div class="node n-plugin"><div class="t" style="font-size:12px">Plugin（差替）</div><div class="s">site policy / visual / compiler / store</div></div>
+  </div>
+  <div class="optline"><b>site</b> = 現場 / ライン / セル　｜　<b>plugin</b> = その現場ごとの差分（calibration・registry・compiler・threshold）</div>
+  詳細は §2（Core+Plugin 表）・§0（全体図）。<span class="dref">03:23-33,233</span>
+</div></div>
+
+<div class="node n-box"><div class="t">② ValidationReport + stable error code</div><div class="s">
+  1件 = <code>code / severity / field_path / message_for_operator / dispatch_effect</code>。<b>意味が固定の code</b>（<code>UNKNOWN_ROBOT</code> / <code>TASK_GRAPH_CYCLE</code> …）が<b>3箇所で同じ語彙</b>になる＝報告書も回帰テストもブレない:
+  <div class="flow" style="margin-top:8px">
+    <div class="node n-sub"><div class="t" style="font-size:12px">HMI 表示</div><div class="s">その場で操作員に説明（message_for_operator）</div></div>
+    <div class="arr">＝</div>
+    <div class="node n-sub"><div class="t" style="font-size:12px">監査ログ</div><div class="s">半年後の IATF 監査で件数突合</div></div>
+    <div class="arr">＝</div>
+    <div class="node n-sub"><div class="t" style="font-size:12px">CI fixture</div><div class="s">未登録設備→必ず UNKNOWN_ROBOT で 0 dispatch</div></div>
+  </div>
+  <span class="dref">03:63-64,234 / mode-x-er/02:95-96</span>
+</div></div>
+
+<div class="node n-box"><div class="t">③ audit の 1:1（追跡可能な鎖）</div><div class="s">
+  <div class="optline">raw ER output → normalized_plan(insert, nest_B, 0.88) → command candidate(arm1, insert, nest_B)　<b>← 欠けず 1:1 で辿れる</b></div>
+  「どの判断がどの動作を生んだか」を証明（IATF 16949 / ISO 9001）。生モデル出力を下流に漏らさず正規化形で残す→<b>provider が変わっても同じ監査様式</b>。リコール調査は1クエリで提出。<span class="dref">03:235 / mode-x-er/02:242,274 / L3-G6=03:202</span>
+</div></div>
+
+<div class="node n-box"><div class="t">④ acceptance gate（L3-G0〜G6）= 受け入れテストの雛形</div><div class="s">
+  §4 の7関門（不正0 dispatch / snap / 順序・二重防止 / 下流互換 / 未凍結を流さない / 生 actuation 無視 / 追跡可能）を、そのまま<b>新ライン・新セルの go-live 受け入れ仕様書に転記</b>し、takt 等 現場固有の基準だけ足す。各 gate は fixture 付き＝<b>実行可能なテスト</b>。<span class="dref">03:192-202（→ §4 表）</span>
+</div></div>
+
+<div class="node n-box"><div class="t">⑤ fixture / replay（更新後の命綱）</div><div class="s">
+  <div class="optline">calibration / model を更新 → <b>全 fixture を replay</b> → 1つでも落ちたら <b>戻さない</b></div>
+  fixture = 入力＋期待結果（<code>red_blue_sequence / invalid_robot / low_confidence / stale_state</code>）。製造は更新後に必ず再検証してから戻すのが鉄則。stable code + gate と一体で<b>合否が機械判定</b>→目視確認から自動回帰へ格上げ。<span class="dref">03:87,185-190,237 / mode-x-er/02:157 / 04:115-131</span>
+</div></div>
+
+<div class="node n-box"><div class="t">⑥ site profile（案件差分を1か所に）</div><div class="s">
+  <div class="optline">site_profiles/customer_a/<b>line_weld/cell_03/</b>{ locations・robots・cameras・calibration・safety・traffic・nav2/・eval }</div>
+  <b>置く</b>=座標 / robot id / camera calibration / safety threshold / map / KPI。　<b>置かない</b>=secret・.env / 生出力の長期保存 / 契約を勝手に拡張する schema。入れ物の規約は<b>工場/ライン/セルどの粒度でも共通</b>→隣のセルは <code>cell_04/</code> を1個足すだけ（Core も上位 profile も触らない）。「置かないもの」が明確なので配布・版管理しても漏えい/契約破壊なし。<span class="dref">04:78-113 / 03:238</span>
+</div></div>
+
+<h3>6.3 製造で特に価値が上がる点 <span class="dref">03:240-243</span></h3>
+<div class="ex"><div class="tag">V</div><div class="body">
+  <b>Validator</b>: 製造は誤 actuation のコストが桁違いに高い（高価な治具との衝突 / スクラップ / 人身）。provider が VLM/VLA/LLM/WMS に変わっても「危険な output を同じ型で止める」<b>provider 非依存 gate</b> の価値が倉庫より大きい。<span class="dref">03:242</span>
+</div></div>
+<div class="ex b3"><div class="tag">T</div><div class="body">
+  <b>Task Graph Executor</b>: 工程インターロックを軽量 DAG で表現でき、<b>MES / PLC sequence の上位 orchestration</b>（高レベル工程順序）を補完する。MES/PLC を<b>置換せず</b>、その前段で「実行候補を安全に並べる」層になる。<span class="dref">03:243</span>
+</div></div>
+
+<h3>6.4 そのまま移せない / 設計し直す箇所（注意点）<span class="dref">03:245-250</span></h3>
+<div class="safe">
+  <b>L3 は motor controller でも safety controller でもない</b>。L3 が担うのは工程制御（sequence / state / 実行候補の安全変換）で、軌道・力制御は robot controller（L1 相当）の責務。<b>機能安全</b>（E-stop / light curtain / safety PLC / safety-rated speed &amp; separation = ISO 10218 / ISO/TS 15066 / ISO 13849 / IEC 61508）は認証済み safety hardware（L0/L1 相当）に残す。Validator の emergency policy plugin は safety state を<b>読んで拒否する</b>のであって safety system を<b>置換しない</b>。<span class="dref">03:247 / layer-l4-detail §6 役割分担表</span>
+</div>
+<table>
+  <thead><tr><th>項目</th><th>倉庫の前提</th><th>製造で設計し直す</th></tr></thead>
+  <tbody>
+    <tr><td>takt / cycle time</td><td>Non-RT で十分</td><td>hard takt 制約。budget に収まらなければ事前計算 / キャッシュへ寄せる</td></tr>
+    <tr><td>coordinate goal</td><td>known location snap・coordinate は defer（L3-G4）</td><td>精密 part pose が常態 → coordinate-goal 経路が <b>first-class 必須</b>。work envelope / reachability / collision check を持つ独自 gate を<b>先に凍結</b></td></tr>
+    <tr><td>Command Compiler plugin</td><td>WarehouseNav / RmfTask</td><td>ロボットベンダ多様（FANUC / ABB / UR / 安川 / PLC / ros2_control）→ per-controller で増殖。Core の interface と禁止事項は<b>共通の安全契約として維持</b></td></tr>
+  </tbody>
+</table>
+<div class="note">
+  横展開しても、L3 の最後は必ず「その現場の安全経路（MCP / Policy Gate / controller safety）に渡せる command 候補」であり、<b>L3 自身が実行許可を持たない</b>点は不変。<span class="dref">03:252</span>
+</div>
+
+<!-- ===================== 7. docs / 実体 ===================== -->
+<h2>7. L3 各要素 → docs / 実体</h2>
 <table>
   <thead><tr><th>要素</th><th>種別</th><th>docs（正本）</th><th>実体</th></tr></thead>
   <tbody>
     <tr><td>L3 Planning Core</td><td><span class="badge b-box">box</span></td><td><a href="03-l3-planning-core-box.md">03</a> 全体 / mode-x-er/02</td><td class="impl-no">未実装（docs only）</td></tr>
-    <tr><td>L3 Handoff（先頭）</td><td><span class="badge b-seam">seam</span></td><td>03:11-19 / 06 §L3 Handoff</td><td class="impl-no">未実装</td></tr>
-    <tr><td>Validator / Visual Resolver / Task Graph Executor / Command Compiler</td><td>core+plugin</td><td>03:35-139</td><td class="impl-no">未実装</td></tr>
+    <tr><td>L3 Handoff（先頭）/ 出口 seam</td><td><span class="badge b-seam">seam</span></td><td>03:11-19 / 06 §L3 Handoff</td><td class="impl-no">未実装</td></tr>
+    <tr><td>Validator / Visual Resolver / Task Graph Executor / Command Compiler</td><td>core+plugin</td><td>03:35-157 / mode-x-er/02:39-242</td><td class="impl-no">未実装</td></tr>
     <tr><td>site / visual / compiler / store plugin</td><td><span class="badge b-plugin">plugin</span></td><td>03:30-33</td><td class="impl-no">未実装</td></tr>
+    <tr><td>製造業・他産業 横展開</td><td>設計指針</td><td>03:214-252（→ §6）</td><td class="impl-no">提案</td></tr>
+    <tr><td>L3 Interface Skeleton</td><td>内部案</td><td>mode-x-er/02:244-278</td><td class="impl-no">未凍結（warehouse_interfaces に入れない）</td></tr>
     <tr><td>funnel <code>box=l3_validator</code></td><td>観測軸</td><td><a href="05-decision-observability-and-tooling.md">05</a> §L3 Validator</td><td>—</td></tr>
   </tbody>
 </table>
 
-<div class="note">
-  <b>※ optional の意味（要判断）</b>: 既存 Mode A/B/C は LLM の <code>Command</code> JSON → <code>action_map</code> が L3 相当を担い、独立 L3 package は未在。L3 Core が事実上必須になるのは <b>Mode X-ER 経路</b>（ER/VLA の曖昧 output を deterministic plan に正規化する必要がある）。つまり「Mode によって box 境界が動く」＝<a href="box-taxonomy.html">box-taxonomy §6</a> の open-decision ①。
-</div>
-
 <footer>
-  <p>このページは <code>docs/productization/layer-l3-detail.html</code>（補足図解・ダーク）。一次ソース: <a href="03-l3-planning-core-box.md">03</a> / <code>docs/mode-x-er/02-l3-planning-core.md</code>。L3 は未実装＝引用は docs の exact line。</p>
-  <p>← <a href="layer-l4-detail.html">L4 詳細図</a> ／ <a href="box-taxonomy.html">box-taxonomy</a></p>
+  <p>このページは <code>docs/productization/layer-l3-detail.html</code>（補足図解・ダーク）。一次ソース: <a href="03-l3-planning-core-box.md">03</a> / <code>docs/mode-x-er/02-l3-planning-core.md</code>。L3 は未実装＝引用は docs の exact line。製造業横展開（§6）は <code>03:214-252</code> を正本にした設計指針（frozen contract / topic / config key を追加しない）。</p>
+  <p>← <a href="layer-l4-detail.html">L4 詳細図</a> ／ <a href="box-taxonomy.html">box-taxonomy</a> ／ <a href="layer-l3-reuse-detail.html">L3 再利用・商用化 詳細</a> ／ <a href="../mode-x-er/mode-x-er-explainer.html">Mode X-ER explainer</a></p>
 </footer>
 
 </div>
