@@ -96,6 +96,7 @@ docs/
 | [03-er-adapter-skeleton](mode-x-er/03-er-adapter-skeleton.md) | Gemini Robotics-ER 単体 adapter skeleton と integration gates |
 | [04-er-input-modalities-and-stt](mode-x-er/04-er-input-modalities-and-stt.md) | ER の入力モダリティ（audio 直受け）・STT の要否・ER 単体時の Fusion 必要性 |
 | [05-operator-feedback-and-voice-response](mode-x-er/05-operator-feedback-and-voice-response.md) | 拒否/要確認/緊急を「どの箱の・どの理由か」音声で人へ返す **L4 Operator Feedback Box**（新 sub-box・出力）＋図解 |
+| [06-unfrozen-contract-resolutions](mode-x-er/06-unfrozen-contract-resolutions.md) | 未凍結7ブロッカーの凍結/延期判定（FREEZE-NOW / DEFER / NEEDS-PROBE）＋ contract PR ロードマップ |
 
 ## mode-x-er-vla/ — Gemini Robotics-ER + VLA 統合モード（設計提案）
 
