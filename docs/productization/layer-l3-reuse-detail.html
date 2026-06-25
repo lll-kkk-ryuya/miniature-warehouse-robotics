@@ -143,15 +143,16 @@
 <!-- ===================== 1. 6資産 早見 ===================== -->
 <h2>1. 横断的に再利用できる 6 資産（早見）<span class="dref">03:231-238</span></h2>
 <p class="lead">各資産の「何か / なぜ製造で価値が上がるか」は <a href="layer-l3-detail.html">L3 詳細図 §6.2</a> の図解と相補。本ページは <b>§2 以降でその拡張機構を深掘り</b>する。<span class="dref">03:231-238</span></p>
+<div class="note"><b>「住所」の 3 分類</b>（Q: 6 つは L3 の機能か？ → 住所が分かれる）: <b>L3 produce</b>＝L3 Core が<b>生成</b>する機能（②③の生成・④ gate・⑤ replay runner）／<b>観測·eval</b>＝Eval/Observability box ＋ eval-sdk が<b>集計・保管</b>（②③の下流＝§2–4。<b>L3 ではない横断層</b>）／<b>規律</b>＝全 box 共通の productization 保管（①の分離パターン・⑤ fixture 戦略・⑥ site profile）。<span class="dref">L3: 03 / 観測: 05・architecture/21 / 規律: 04</span></div>
 <table>
-  <thead><tr><th>#</th><th>資産</th><th>何か（1 行）</th><th>製造で価値が上がる理由</th><th>正本</th></tr></thead>
+  <thead><tr><th>#</th><th>資産</th><th>住所（機能の所有層）</th><th>何か（1 行）</th><th>製造で価値が上がる理由</th><th>正本</th></tr></thead>
   <tbody>
-    <tr><td>①</td><td><b>Core+Plugin 分離</b></td><td>「変えない核」と「現場ごと差替」の割り方そのもの</td><td>新案件は Plugin（profile）だけ差替＝毎回ゼロから作らない</td><td class="impl-yes"><span class="dref">03:233 / 27-33</span></td></tr>
-    <tr><td>②</td><td><b>ValidationReport + stable error code</b></td><td>reject 1 件 = <code>code/severity/field_path/message_for_operator/dispatch_effect</code>。code は意味固定</td><td>同じ語彙が HMI 説明・監査集計・CI fixture の 3 箇所で使える</td><td class="impl-yes"><span class="dref">03:234 / mode-x-er/02:95-96</span></td></tr>
-    <tr><td>③</td><td><b>audit の 1:1</b></td><td>raw 出力 ↔ normalized plan ↔ command candidate を欠けず追跡</td><td>「どの判断がどの動作を生んだか」を証明（ISO/IATF 追跡要件）</td><td class="impl-yes"><span class="dref">03:235 / mode-x-er/02:242</span></td></tr>
-    <tr><td>④</td><td><b>acceptance gate（L3-G0〜G6）</b></td><td>受け入れ判定の 7 関門</td><td>新ライン/新セル go-live 前の受け入れテスト雛形</td><td class="impl-yes"><span class="dref">03:236 / 194-202</span></td></tr>
-    <tr><td>⑤</td><td><b>fixture / replay</b></td><td>入力＋期待結果のセット＝offline 回帰テスト</td><td>calibration/model 更新後の再検証 suite（変更後の再 validation 必須）</td><td class="impl-yes"><span class="dref">03:237 / 04:115-131 / mode-x-er/02:156-157</span></td></tr>
-    <tr><td>⑥</td><td><b>site profile</b></td><td>案件差分を 1 か所に寄せた設定ディレクトリ</td><td>line/cell profile としてそのまま使え、案件を重ねるほど資産化</td><td class="impl-yes"><span class="dref">03:238 / 04:78-113</span></td></tr>
+    <tr><td>①</td><td><b>Core+Plugin 分離</b></td><td>L3 構造 ＋ 全 box 共通の規律</td><td>「変えない核」と「現場ごと差替」の割り方そのもの</td><td>新案件は Plugin（profile）だけ差替＝毎回ゼロから作らない</td><td class="impl-yes"><span class="dref">03:233 / 27-33</span></td></tr>
+    <tr><td>②</td><td><b>ValidationReport + stable error code</b></td><td><b>L3 produce</b> → 観測/eval</td><td>reject 1 件 = <code>code/severity/field_path/message_for_operator/dispatch_effect</code>。code は意味固定</td><td>同じ語彙が HMI 説明・監査集計・CI fixture の 3 箇所で使える</td><td class="impl-yes"><span class="dref">03:234 / mode-x-er/02:95-96</span></td></tr>
+    <tr><td>③</td><td><b>audit の 1:1</b></td><td><b>L3 produce</b> → 観測/eval</td><td>raw 出力 ↔ normalized plan ↔ command candidate を欠けず追跡</td><td>「どの判断がどの動作を生んだか」を証明（ISO/IATF 追跡要件）</td><td class="impl-yes"><span class="dref">03:235 / mode-x-er/02:242</span></td></tr>
+    <tr><td>④</td><td><b>acceptance gate（L3-G0〜G6）</b></td><td><b>L3</b>（gate / DoD）</td><td>受け入れ判定の 7 関門</td><td>新ライン/新セル go-live 前の受け入れテスト雛形</td><td class="impl-yes"><span class="dref">03:236 / 194-202</span></td></tr>
+    <tr><td>⑤</td><td><b>fixture / replay</b></td><td><b>L3</b>（replay runner）＋規律</td><td>入力＋期待結果のセット＝offline 回帰テスト</td><td>calibration/model 更新後の再検証 suite（変更後の再 validation 必須）</td><td class="impl-yes"><span class="dref">03:237 / 04:115-131 / mode-x-er/02:156-157</span></td></tr>
+    <tr><td>⑥</td><td><b>site profile</b></td><td>productization（全 box 共通）</td><td>案件差分を 1 か所に寄せた設定ディレクトリ</td><td>line/cell profile としてそのまま使え、案件を重ねるほど資産化</td><td class="impl-yes"><span class="dref">03:238 / 04:78-113</span></td></tr>
   </tbody>
 </table>
 <div class="note"><b>②③⑤⑥ には拡張余地がある</b>。②③は <b>観測/評価層</b>（§2 decision_event → report・§3 データ保管・§4 eval-sdk）へデータを流し込む入口、⑤⑥は <b>site profile 運用</b>（§5）で資産化する。以降はその拡張機構を正本で裏取りして深掘りする。</div>
@@ -224,7 +225,7 @@ governance.reject_reason:
   <div class="sbh">eval_sdk <span class="badge b-demoted">proposal</span> — ドメイン非依存・5 モジュール</div>
   <div class="sbs">Langfuse / OTel に「乗る」薄い結合層。倉庫を知らない＝製造でもそのまま再利用できる。<span class="dref">21:54-60,75</span></div>
   <div class="flow">
-    <div class="node n-box"><div class="t" style="font-size:12px">seed</div><div class="s">decision 的 join key</div></div>
+    <div class="node n-box"><div class="t" style="font-size:12px">seed</div><div class="s">決定的 join key</div></div>
     <div class="node n-box"><div class="t" style="font-size:12px">tracer</div><div class="s">Tracer/Noop/Langfuse</div></div>
     <div class="node n-box"><div class="t" style="font-size:12px">sink</div><div class="s">FailOpenScoreSink</div></div>
     <div class="node n-box"><div class="t" style="font-size:12px">stats</div><div class="s">percentile/completion</div></div>
