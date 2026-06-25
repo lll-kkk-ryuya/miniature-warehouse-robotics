@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<!--
+  Mode X-ER Operator Feedback / 音声リジェクト応答 — 図解（自己完結ダーク・外部依存ゼロ）。
+  正本: docs/mode-x-er/05-operator-feedback-and-voice-response.md。本ページは補足図解。
+  視覚スタイルは docs/mode-x-er/mode-x-er-explainer.html に準拠（layer 色分け nested / 番号ステップ / flow / mapping 表）。
+  主張は辿れる file:line を併記（docs-first）。色は :root 変数のみで駆動。
+-->
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mode X-ER Operator Feedback 図解 — 拒否理由を音声で人へ返す</title>
+<style>
+  :root{
+    color-scheme: dark;
+    --bg:#1a1a1a; --bg2:#141414; --card:#222222; --card2:#262626; --surface:#2d2d2d;
+    --ink:#ededed; --muted:#c4c4c4; --faint:#8f8f8f; --line:#3a3a3a; --code:#141414;
+    --badge-ink:#1a1a1a; --head:#dcdcdc;
+    --box:#7aa2f7;     --box-bg:rgba(122,162,247,.13);
+    --sub:#9ece6a;     --sub-bg:rgba(158,206,106,.12);
+    --seam:#e0af68;    --seam-bg:rgba(224,175,104,.12);
+    --plugin:#bb9af7;  --plugin-bg:rgba(187,154,247,.12);
+    --demoted:#9a9a9a; --demoted-bg:rgba(154,154,154,.10);
+    --red:#f7768e; --red-bg:rgba(247,118,142,.10); --yellow:#e0c07a; --teal:#7dcfff; --pink:#f7a8d8;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Noto Sans JP",Meiryo,sans-serif;
+    line-height:1.7;font-size:15px;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1080px;margin:0 auto;padding:32px 20px 80px}
+  header.top{border-bottom:3px solid var(--sub);padding-bottom:18px;margin-bottom:8px}
+  h1{font-size:25px;margin:0 0 6px} h2{font-size:20px;margin:44px 0 12px;padding-left:10px;border-left:5px solid var(--sub)}
+  h3{font-size:15.5px;margin:24px 0 9px;color:var(--head)}
+  p{margin:10px 0} .lead{color:var(--muted);font-size:14px}
+  a{color:var(--box);text-decoration:none} a:hover{text-decoration:underline}
+  code{background:var(--code);padding:1px 6px;border-radius:4px;font-size:.88em;font-family:"SF Mono",Menlo,Consolas,monospace;color:var(--ink)}
+  .dref{color:var(--teal);font-size:.82em;font-family:"SF Mono",Menlo,monospace;white-space:nowrap}
+  .note{background:var(--seam-bg);border:1px solid rgba(250,179,135,.4);border-radius:8px;padding:12px 16px;margin:16px 0;font-size:14px}
+  .safe{background:rgba(243,139,168,.08);border:1px solid rgba(243,139,168,.4);border-radius:8px;padding:12px 16px;margin:16px 0;font-size:14px}
+  .meta{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 16px;font-size:13px;color:var(--muted);margin:14px 0}
+  .nav{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0}
+  .nav a{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:7px 13px;font-size:13px;font-weight:600}
+  .nav a:hover{border-color:var(--box);text-decoration:none}
+
+  .badge{display:inline-block;font-size:11px;font-weight:700;padding:2px 9px;border-radius:999px;color:var(--badge-ink);letter-spacing:.3px;vertical-align:middle}
+  .b-box{background:var(--box)} .b-sub{background:var(--sub)} .b-seam{background:var(--seam)} .b-plugin{background:var(--plugin)} .b-demoted{background:var(--demoted);color:var(--ink)}
+  .b-new{background:var(--sub);color:var(--badge-ink)} .b-reject{background:var(--red);color:var(--badge-ink)}
+
+  .node{border-radius:10px;padding:11px 13px;border:2px solid;background:var(--card);font-size:13.5px;margin:8px 0}
+  .node .t{font-weight:700;font-size:14px} .node .s{color:var(--muted);font-size:12.5px;margin-top:3px}
+  .n-box{border-color:var(--box);background:var(--box-bg)} .n-sub{border-color:var(--sub);background:var(--sub-bg)}
+  .n-seam{border-color:var(--seam);background:var(--seam-bg);border-style:dashed} .n-plugin{border-color:var(--plugin);background:var(--plugin-bg)}
+  .n-demoted{border-color:var(--demoted);background:var(--demoted-bg);color:var(--muted)}
+  .n-reject{border-color:var(--red);background:var(--red-bg)}
+  .n-new{border-color:var(--sub);background:var(--sub-bg);box-shadow:0 0 0 3px rgba(158,206,106,.22)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+
+  .legend{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
+  .legend .item{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:6px 11px;font-size:11.5px;color:var(--muted)}
+  .legend .sw{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:6px;vertical-align:middle}
+
+  .sub-nest{border:1.5px dashed var(--box);border-radius:12px;padding:13px;margin-top:12px;background:rgba(122,162,247,.05)}
+  .sub-nest > .nh{font-size:11px;font-weight:700;color:var(--box);letter-spacing:.5px;margin-bottom:9px}
+  .nest-arrow{text-align:center;color:var(--faint);font-size:16px;line-height:1;margin:5px 0}
+  .role{display:inline-block;font-size:10.5px;font-weight:700;color:var(--faint);border:1px solid var(--line);border-radius:5px;padding:1px 6px;margin-left:6px;vertical-align:middle}
+
+  .superbox{border:2px solid var(--box);background:var(--box-bg);border-radius:14px;padding:16px;margin:14px 0}
+  .sbh{font-weight:700;color:var(--box);font-size:16px;margin-bottom:2px} .sbs{font-size:12px;color:var(--muted);margin-bottom:12px}
+
+  .steps{counter-reset:st;margin:14px 0}
+  .step{position:relative;border:1px solid var(--line);background:var(--card);border-radius:10px;padding:12px 14px 12px 48px;margin:8px 0;font-size:13.5px}
+  .step::before{counter-increment:st;content:counter(st);position:absolute;left:12px;top:12px;width:26px;height:26px;border-radius:50%;
+    background:var(--sub);color:var(--badge-ink);font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:center}
+  .step b{color:var(--ink)} .step .s{color:var(--muted);font-size:12.5px;margin-top:3px}
+  .step.reject{border-color:var(--red);border-left:4px solid var(--red)} .step.reject::before{background:var(--red)}
+  .step.out{border-color:var(--box);border-left:4px solid var(--box)} .step.out::before{background:var(--box)}
+  .step.sink{border-color:var(--plugin);border-left:4px solid var(--plugin)} .step.sink::before{background:var(--plugin)}
+  .step-down{text-align:left;padding-left:23px;color:var(--faint);font-size:16px;line-height:1;margin:-3px 0}
+
+  .flow{display:flex;flex-wrap:wrap;align-items:stretch;gap:6px;margin:10px 0}
+  .flow .node{flex:1 1 150px;min-width:120px;margin:0;display:flex;flex-direction:column;justify-content:center}
+  .flow .arr{display:flex;align-items:center;color:var(--faint);font-weight:700;font-size:14px;text-align:center}
+  .lyr{display:inline-block;font-size:10px;font-weight:800;padding:1px 7px;border-radius:5px;color:var(--badge-ink);margin-right:7px;vertical-align:middle}
+  .rc{display:inline-block;background:var(--red-bg);border:1px solid rgba(247,118,142,.4);color:#f3aab6;border-radius:5px;padding:0 6px;margin:3px 4px 0 0;font-size:11.5px;font-family:"SF Mono",Menlo,monospace}
+  .optline{font-family:"SF Mono",Menlo,Consolas,monospace;font-size:12px;color:var(--muted);background:var(--code);border-radius:6px;padding:8px 11px;margin:8px 0;line-height:1.8;overflow-x:auto}
+  .optline b{color:var(--ink)}
+
+  .compare{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:14px 0}
+  .panel{border-radius:12px;padding:14px;border:1px solid var(--line);background:var(--card)}
+  .panel.bad{border-color:rgba(247,118,142,.45);background:rgba(247,118,142,.07)}
+  .panel.good{border-color:rgba(158,206,106,.45);background:rgba(158,206,106,.07)}
+  .panel h4{margin:0 0 9px;font-size:14px}
+
+  table{border-collapse:collapse;width:100%;margin:12px 0;font-size:13px;background:var(--card)}
+  th,td{border:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top}
+  th{background:var(--surface);font-size:12.5px;color:var(--head)} td code{font-size:.85em}
+  tr:nth-child(even) td{background:rgba(255,255,255,.02)}
+  .impl-yes{color:var(--sub);font-weight:700} .impl-no{color:var(--yellow);font-weight:700}
+  ul.tight{margin:8px 0;padding-left:22px} ul.tight li{margin:5px 0}
+  footer{margin-top:50px;padding-top:18px;border-top:1px solid var(--line);color:var(--muted);font-size:12.5px}
+  .kbd{font-family:monospace;background:var(--surface);color:var(--ink);padding:1px 7px;border-radius:4px;font-size:.85em;border:1px solid var(--line)}
+  @media(max-width:720px){.grid2,.compare{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <h1>Mode X-ER Operator Feedback 図解 — 拒否理由を音声で人へ返す</h1>
+  <p class="lead">人の音声命令がどこかで止まったとき「<b>この部分（どの箱）の・この箇所（どの理由）がおかしいので動作できません</b>」を音声で operator に戻す。新設は <b>1 箱だけ</b>＝<span class="badge b-new">L4 Operator Feedback Box</span>（Input Context の鏡像）。本ページは図解（補足）で、設計の正本は <code>05</code> の .md。</p>
+</header>
+
+<div class="nav">
+  <a href="05-operator-feedback-and-voice-response.md">正本: 05 operator-feedback</a>
+  <a href="mode-x-er-explainer.html">Mode X-ER 全体図解 ▸</a>
+  <a href="01-architecture-and-flow.md">01 architecture-and-flow</a>
+  <a href="02-l3-planning-core.md">02 l3-planning-core</a>
+  <a href="../productization/layer-l4-detail.html">L4 詳細図 ▸</a>
+  <a href="../productization/01-commercial-box-map.md">01 box-map（種別正本）</a>
+</div>
+
+<div class="meta">
+  正本: <a href="05-operator-feedback-and-voice-response.md"><code>05-operator-feedback-and-voice-response.md</code></a>。
+  <b>dref は file:line</b>（例 <span class="dref">05:88</span> = <code>05-...:88</code> / <span class="dref">02-l3:95</span> = <code>02-l3-planning-core.md:95</code> / <span class="dref">01:89</span> = <code>productization/01-commercial-box-map.md:89</code>）。
+  <b>状態</b>: Operator Feedback Box は<b>設計提案・未実装</b>（config / topic / 凍結契約をまだ追加しない）。視覚は <a href="mode-x-er-explainer.html"><code>mode-x-er-explainer.html</code></a> に準拠。
+</div>
+
+<div class="legend">
+  <div class="item"><span class="sw" style="background:var(--sub);box-shadow:0 0 0 2px rgba(158,206,106,.4)"></span>★ 本書で新設（sub-box）</div>
+  <div class="item"><span class="sw" style="background:var(--red)"></span>reject 源（拒否を emit する箱）</div>
+  <div class="item"><span class="sw" style="background:var(--plugin)"></span>L4 / transport・plugin</div>
+  <div class="item"><span class="sw" style="background:var(--teal)"></span>L3 司令・検証</div>
+  <div class="item"><span class="sw" style="background:var(--seam)"></span>L2 実行許可 / seam</div>
+  <div class="item"><span class="sw" style="background:var(--red)"></span>L1 安全</div>
+  <div class="item"><span class="sw" style="background:var(--box)"></span>L0 物理</div>
+</div>
+
+<!-- §0 which box -->
+<h2>0. どの box に入れるか — L4 Super-Box の中の新 sub-box</h2>
+<p class="lead">新設は 1 箱。既存 <b>Input Context Box（人の声を入れる）の鏡像</b>＝<b>拒否理由を声で返す</b> sub-box を、同じ L4 Robotics Bridge Super-Box の中に置く。<span class="dref">01:13 / 06:85-104</span></p>
+
+<div class="superbox">
+  <div class="sbh">L4 Robotics Bridge Super-Box <span class="badge b-box">box</span> = <code>warehouse_llm_bridge</code></div>
+  <div class="sbs">operator I/O・transport・trace を所有する orchestration box。voice の<b>入口</b>と<b>出口</b>は同じこの箱に置く。</div>
+
+  <div class="sub-nest">
+    <div class="nh">▼ 内部 sub-box（operator I/O は入口と出口の対称ペア・親ごと差替）</div>
+    <div class="grid2">
+      <div class="node n-sub"><div class="t">Input Context <span class="badge b-sub">sub</span> <span class="role">実装あり</span></div><div class="s">人の声 / 画像 / state を 1 bundle に（<b>入口</b>）。<span class="dref">situation.py / 01:13</span></div></div>
+      <div class="node n-new"><div class="t">★ Operator Feedback <span class="badge b-new">新 sub・optional</span></div><div class="s">拒否/要確認/緊急 → 現場語テンプレ → 音声で人へ（<b>出口</b>）。<b>motion を持たない（0 actuation）</b>。<span class="dref">05 §2</span></div></div>
+      <div class="node n-sub"><div class="t">Model Adapter <span class="badge b-sub">sub</span> <span class="role" style="color:var(--yellow);border-color:var(--yellow)">proposal</span></div><div class="s">ER/VLA/STT transport。<span class="dref">02:201-238</span></div></div>
+      <div class="node n-sub" style="border-style:dashed"><div class="t">Fusion <span class="badge b-sub">sub</span> <span class="role">optional</span></div><div class="s">複数 model の食い違い調停。単一 model では抜ける。<span class="dref">06:130-147</span></div></div>
+    </div>
+    <div class="nest-arrow">▼ ★ の consumes / produces</div>
+    <div class="grid2">
+      <div class="node n-reject"><div class="t">consumes（入力）</div><div class="s"><b>全層の gate が出す decision_event</b>（<code>decision / reason_code / reason_detail</code>・L3 は <code>message_for_operator</code>）。Eval/Obs と同じ event を読む。<span class="dref">05:48-69 / 02-l3:95 / 05:88</span></div></div>
+      <div class="node n-box"><div class="t">produces（出力）</div><div class="s"><code>OperatorNotice</code>（喋った文面＋音声 ref）→ speaker（第一）＋ web/OBS（併走 fail-open）／ 自身の <code>box=l4_operator_feedback</code> event。<span class="dref">05 §3</span></div></div>
+    </div>
+  </div>
+</div>
+
+<div class="note">
+  <b>所有層 ≠ event source 層（誤読しやすい肝）:</b> ★ の <b>home は L4</b>（operator I/O＋Hermes TTS・Input Context の対称）。だが消費する reject は <b>L2/L1/L0 を含む全層</b>から来る＝横断 Eval/Observability と同じ decision_event を読む（<code>run_id/gen_id</code> で join <span class="dref">05:88</span>）。layer と 種別 は<b>直交軸</b><span class="dref">01:73</span>なので「L4 所有 sub-box」かつ「横断 consumer」は両立。Eval/Obs との違いは<b>層でなく責務</b>＝observe-only 集計か、人へ出す一次チャネルか<span class="dref">05:88-106 / 01:71</span>。
+</div>
+
+<!-- §1 where rejects originate -->
+<h2>1. 拒否はどこで生まれるか — 全層で止まりうる（中身は既にある）</h2>
+<p class="lead">命令は L4→L0 を下る。各層で止まりうるが、<b>「人へ返す理由」は既にどの gate も出している</b>（<code>reason_code</code>＋<code>reason_detail</code>、L3 は <code>message_for_operator</code>）。足りないのは<b>それを音声化する箱だけ</b>。<span class="dref">05 §1 / 02-l3:95</span></p>
+
+<div class="sub-nest" style="border-color:var(--plugin);background:var(--plugin-bg)">
+  <div class="nh" style="color:var(--plugin)"><span class="lyr" style="background:var(--plugin)">L4</span>入力・知覚（Input Context / Model Adapter / Fusion）</div>
+  <div><span class="rc">missing_image</span><span class="rc">stale_state</span><span class="rc">stt_failed</span><span class="rc">timeout</span><span class="rc">empty_output</span><span class="rc">needs_operator</span></div>
+  <div class="s" style="margin-top:5px"><span class="dref">06:98 / 06:117 / 06:141</span></div>
+</div>
+<div class="sub-nest" style="border-color:var(--teal);background:rgba(125,207,255,.05)">
+  <div class="nh" style="color:var(--teal)"><span class="lyr" style="background:var(--teal)">L3</span>司令・検証（Validator / Visual Resolver）</div>
+  <div><span class="rc">UNKNOWN_TARGET</span><span class="rc">LOW_CONFIDENCE_TARGET</span><span class="rc">TASK_GRAPH_CYCLE</span><span class="rc">EMERGENCY_ACTIVE</span><span class="rc">unresolved</span></div>
+  <div class="s" style="margin-top:5px"><span class="dref">02-l3:96 / 02-l3:151</span></div>
+</div>
+<div class="sub-nest" style="border-color:var(--seam);background:var(--seam-bg)">
+  <div class="nh" style="color:var(--seam)"><span class="lyr" style="background:var(--seam)">L2</span>実行許可・交通（Governance / Policy Gate・Traffic）</div>
+  <div><span class="rc">battery_low</span><span class="rc">emergency_active</span><span class="rc">stale_generation</span><span class="rc">duplicate_command</span><span class="rc">unknown_location</span><span class="rc">route_conflict</span><span class="rc">rmf_unavailable</span></div>
+  <div class="s" style="margin-top:5px"><span class="dref">05:254-259 / 06:177</span></div>
+</div>
+<div class="sub-nest" style="border-color:var(--red);background:var(--red-bg)">
+  <div class="nh" style="color:var(--red)"><span class="lyr" style="background:var(--red)">L1</span>自律走行・安全（Navigation / Safety）</div>
+  <div><span class="rc">no_path</span><span class="rc">recovery_exhausted</span><span class="rc">localization_unhealthy</span><span class="rc">emergency</span><span style="color:var(--faint);font-size:11px">（Safety: near_collision / pose_stale）</span></div>
+  <div class="s" style="margin-top:5px"><span class="dref">06:196 / 05:84</span></div>
+</div>
+<div class="sub-nest" style="border-color:var(--box);background:rgba(122,162,247,.05)">
+  <div class="nh" style="color:var(--box)"><span class="lyr" style="background:var(--box)">L0</span>物理安全（Hardware・ESP32 最終防衛線）</div>
+  <div><span class="rc">clamped_velocity</span><span class="rc">nonfinite_cmd</span><span class="rc">heartbeat_lost</span></div>
+  <div class="s" style="margin-top:5px"><span class="dref">06:228</span></div>
+</div>
+
+<div class="note">
+  <b>↓ すべて decision_event として emit される（監査 / Eval funnel のため・どのみち出る）</b>。<code>run_id / gen_id / robot</code> で join <span class="dref">05:88-106</span>。中身（人へ返す文面）は<b>既に存在</b>＝<code>reason_detail</code> / L3 <code>message_for_operator</code><span class="dref">05:71 / 02-l3:95</span>。欠けているのは<b>音声化して人へ戻す ★ の箱だけ</b>。
+</div>
+
+<!-- §2 return flow -->
+<h2>2. 戻りフロー — reject から音声まで（番号順）</h2>
+<div class="steps">
+  <div class="step reject"><b>任意の gate が止める</b> <span class="badge b-reject" style="font-size:10px">decision</span>
+    <div class="s"><code>decision ∈ rejected / needs_clarification / emergency_stop</code>（固定語彙）。gate は <b>emit するだけで TTS を待たない</b>（non-blocking）。<span class="dref">05:69 / 05 §5.2</span></div></div>
+  <div class="step-down">▼</div>
+  <div class="step reject"><b>decision_event として流れる</b> <span class="badge b-reject" style="font-size:10px">監査用にどのみち出る</span>
+    <div class="s"><code>box / reason_code / reason_detail / robot / gen_id</code> を持つ event。L4 内 reject は同一プロセス＝<b>直接 in-process</b>、別ノード reject は <b>event 経由</b>（§3）。<span class="dref">05:48-69 / 05 §5.2</span></div></div>
+  <div class="step-down">▼</div>
+  <div class="step out"><b>★ が「自分の命令か?・節目か?」で filter</b> <span class="badge b-new" style="font-size:10px">発話スコープ §4</span>
+    <div class="s"><code>gen_id</code> が operator 命令と一致 ＆ lifecycle の節目だけ通す。命令外の自律停止・50ms tick は<b>黙る</b>（鳴り続けない）。<span class="dref">05 §5.3</span></div></div>
+  <div class="step-down">▼</div>
+  <div class="step out"><b>★ Operator Feedback が文面化</b> <span class="badge b-new" style="font-size:10px">新 sub-box</span>
+    <div class="s"><code>(box, reason_code)</code> → <b>現場語テンプレート（deterministic lookup）</b>。L3 reject は <code>message_for_operator</code> をそのまま使える。<b>LLM に作文させない</b>。<span class="dref">05 §4 / 02-l3:95</span></div></div>
+  <div class="step-down">▼</div>
+  <div class="step sink"><b>Hermes Voice/TTS で音声化</b> <span class="badge b-plugin" style="font-size:10px">transport: hermes / direct</span>
+    <div class="s">Super-Box の Hermes-managed transport（Plugin STT/TTS）。満たさなければ direct TTS。<span class="dref">01:106 / 01-arch:219</span></div></div>
+  <div class="step-down">▼</div>
+  <div class="step out"><b>speaker → 人</b> <span class="badge b-box" style="font-size:10px">operator</span>
+    <div class="s">「<b>bot1 の『赤い箱』が地図に無いので動かせません</b>」＝どの箱(L3 Validator)・どの理由(UNKNOWN_TARGET)。併走で web/OBS にも（fail-open）。<span class="dref">22:36,112</span></div></div>
+</div>
+
+<div class="safe">
+  <b>安全（なぜ文面は deterministic か）:</b> 拒否文面を fallible な LLM に作文させると、安全 reject の理由を hallucinate しうる。文面は固定テンプレートで作り、LLM 整形は<b>安全に無関係な言い回しのみ</b> optional（reason_code を ground truth として必ず添付）。emergency / battery / collision は整形層を通さない。<span class="dref">05 §4 / 思想 01:53</span>
+</div>
+<div class="note">
+  <b>叩き方（速度の肝）:</b> gate は emit のみ・<b>TTS を待たない</b>。<b>L4 内 reject は直接 in-process で ★ を render</b>（hub 経由なし＝「直接叩く」直感どおり）。<b>L2/L1/L0 reject は別ノード</b>なので event 経由（§3）——<b>Safety → L4 の同期呼び出しは上位依存で禁止</b><span class="dref">01:89 / 05:304</span>。遅延の支配項は <b>TTS 合成（数百ms〜秒）</b>で emit/transport は無視できる。直接<b>同期</b>呼び出しは速くならず、TTS 秒を安全 critical path に乗せて危険。<span class="dref">05 §5.2</span>
+</div>
+
+<div class="note">
+  <b>speaker の中身（TTS）= LLM ではなく専用 TTS エンジン</b>（text→audio）。経路2つ: <b>(a) Hermes 経由</b>（<code>transport:hermes</code>）— Hermes が <b>Gemini TTS / OpenAI TTS / Edge / Piper(ローカル) など 10 provider をネイティブ proxy</b>（config <code>tts.provider</code> / <code>tts.&lt;p&gt;.voice</code>）。<b>(b) direct</b>（<code>transport:direct</code>）— Gemini API TTS（<code>gemini-2.5-flash-preview-tts</code> / <code>-pro-preview-tts</code>・日本語対応）や Google Cloud TTS（Chirp 3 HD・SSML）。<b>Mode X-ER は司令塔が Gemini Robotics-ER ゆえ TTS も Gemini 系で揃えると自然</b>（Hermes ネイティブなので <code>transport:hermes</code> でそのまま）。preview model のため実装時に再確認。<span class="dref">確認 2026-06-24: ai.google.dev/…/speech-generation・hermes-agent…/features/tts / 05 §7</span>
+</div>
+
+<!-- §3 A/B transport -->
+<h2>3. 別ノードの拒否をどう運ぶか — 案A 採用（残る未凍結は topic 名/型/QoS）</h2>
+<div class="note">
+  <b>まず誤解を解く:</b> A/B は <b>「別ノード（L2/L1/L0＝Jetson Nav2 / ESP32）で止まった通知を、★（L4）まで運ぶ“配線”」</b>の選択<b>だけ</b>。<b>★ の働き・喋る中身・安全則は A でも B でも変わらない</b>。L4 内で止まった分は<b>同一プロセス＝配線不要（直接 render）</b>なので、この §3 は<b>別ノード分だけ</b>の話。
+</div>
+
+<h3>案A — 専用トピック <code>/operator/notice</code> を新設（＝新しい郵便受けを1本作る）<span class="badge b-new" style="margin-left:6px">採用・将来拡張性優先</span></h3>
+<div class="flow">
+  <div class="node n-reject"><div class="t" style="font-size:12px">L2/L1/L0 で命令(gen_id=N)が停止</div><div class="s">別ノード（Jetson/ESP32）</div></div>
+  <div class="arr">─ publish →</div>
+  <div class="node n-seam"><div class="t" style="font-size:12px">🆕 <code>/operator/notice</code> topic</div><div class="s"><b>新 frozen 契約</b>（doc03 + contract PR）</div></div>
+  <div class="arr">─ subscribe →</div>
+  <div class="node n-new"><div class="t" style="font-size:12px">★ Operator Feedback</div><div class="s">1 本の専用チャネルを購読</div></div>
+</div>
+
+<h3>案B — 既存 decision_event ストリームに相乗り（＝既にあるログを読むだけ）<span class="role" style="margin-left:6px">将来の簡略化オプション</span></h3>
+<div class="flow">
+  <div class="node n-reject"><div class="t" style="font-size:12px">L2/L1/L0 で命令(gen_id=N)が停止</div><div class="s">別ノード（Jetson/ESP32）</div></div>
+  <div class="arr">─ どのみち書く →</div>
+  <div class="node n-box"><div class="t" style="font-size:12px">既存 decision_event ストリーム</div><div class="s">監査 / Eval 用に<b>元から出ている</b><span class="dref">05:88</span></div></div>
+  <div class="arr">─ 読むだけ →</div>
+  <div class="node n-new"><div class="t" style="font-size:12px">★ Operator Feedback</div><div class="s">そのストリームを filter（§4）</div></div>
+</div>
+
+<table>
+  <thead><tr><th>観点</th><th>案A 専用 topic（採用）</th><th>案B 相乗り（不採用・将来簡略化オプション）</th></tr></thead>
+  <tbody>
+    <tr><td>新しく作るもの</td><td class="impl-no">新トピック＝<b>新 frozen 契約</b>（doc03＋contract PR＋全トラック予告）</td><td class="impl-yes"><b>何も作らない</b>（監査用 event を読むだけ・最速）</td></tr>
+    <tr><td>取りこぼし</td><td><b>lossless・順序保証</b>（離散イベント向き）</td><td>event stream なら可。ただし観測経路は <b>fail-open＝負荷時 drop すると音声も静かに落ちる</b> <span class="dref">05:279</span></td></tr>
+    <tr><td>結合</td><td>明確な1チャネル（各箱は topic schema だけに依存）</td><td>観測（observe-only）経路に相乗り＝粒度/latency が観測都合に依存</td></tr>
+    <tr><td>向く場面</td><td><b>別ノード reject が多い / lossless 必須 / 2件目 site で安定契約 ← 採用理由</b></td><td>MVP・2台 PoC・大半が L4-local（将来の簡略化時のみ）</td></tr>
+  </tbody>
+</table>
+
+<div class="safe">
+  <b>State Cache の boolean フラグは使えない:</b> フラグは「最新値」しか持たないので、<code>reject → 即 recover</code> や右折・到着のような<b>一瞬の節目を取りこぼす</b>。節目を喋りたいなら<b>イベント列</b>が必須＝だから B でも「フラグ」でなく「decision_event ストリーム」に相乗りする。<span class="dref">05 §5.2</span>
+</div>
+<div class="note">
+  <b>採用方針:</b> <b>案A（専用 <code>/operator/notice</code> topic）を採用</b>（将来拡張性・lossless 優先）。<b>代償は新 frozen 契約</b>＝doc03 トピック契約＋<code>contract</code> PR＋全トラック予告（ただし additive＝既存購読者は無視可で破壊的でない）。<b>L4-local reject は topic 不要＝直接 in-process render</b>（topic は別ノード分だけ）。<b>State Cache フラグは transition 取りこぼしで不可</b>。どちらでも §2 の不変条件（emit only・非ブロッキング・上位非依存）は不変。<span class="dref">05 §5.2</span>
+</div>
+
+<!-- §4 scope -->
+<h2>4. 発話スコープ — 鳴り続けない工夫（命令に紐づく節目だけ）</h2>
+<p class="lead">L2〜L0 は <b>operator 命令と無関係にも</b>止まりうる（自律 collision stop・battery 自律帰還・相手への一時 yield・50ms tick…）。全部喋ると鳴り続けるので、<b>喋るのは「命令(gen_id=N)に紐づく失敗・節目」だけ</b>。<span class="dref">05 §5.3</span></p>
+
+<div class="optline">speak ⟺ <b>event.gen_id ∈ {live な operator 命令}</b> ∧ <b>decision ∈ {rejected, needs_clarification, emergency_stop,（任意で arrived/completed）}</b> ∧ <b>lifecycle transition</b>（高頻度 tick ではない）</div>
+
+<div class="grid2">
+  <div class="panel good"><h4>🔊 喋る（命令起因・実アクションの節目）</h4><p class="lead">deadlock 解消不能 / no_path / recovery_exhausted / target 未解決 / battery 不足で命令不可 / 到着(completed) / 右折など task の milestone。</p></div>
+  <div class="panel bad"><h4>🔇 黙る（命令外・高頻度・無関係）</h4><p class="lead">命令外の自律 collision stop / 相手への一時 yield（命令は継続中）/ 50ms 安全 tick / Eval 集計用の routine sample。＝web/log のみ。</p></div>
+</div>
+
+<div class="note">
+  <b>「私の命令が L2〜L0 で止まったら？」の処理:</b> ① 命令は L3 で <code>Command(gen_id=N)</code> に compile → action_map が <code>gen_id=N</code> を注入して dispatch。② 下流で その命令が止まると、止めた箱が <code>gen_id=N</code> 付き decision_event を emit（非ブロッキング）。③ ★ が「<code>gen_id=N</code> は自分の live 命令か?・節目か?」で filter → yes なら音声化。④ 命令と無関係な停止（gen_id 無 / autonomous / tick）→ 除外 → 無音（web/log のみ）。紐付け鍵は funnel と同じ <code>gen_id</code>/<code>run_id</code>。<span class="dref">05 §5.3 / 02-l3:178-182</span>
+</div>
+
+<!-- §5 mapping -->
+<h2>5. reject源 → 種別 → 設計正本 → 音声文面例（deterministic）</h2>
+<table>
+  <thead><tr><th>reject源（box）</th><th>レイヤ / 種別</th><th>代表 reason_code</th><th>正本 <span class="dref">file:line</span></th><th>音声文面例</th></tr></thead>
+  <tbody>
+    <tr><td>Model Adapter</td><td><span class="lyr" style="background:var(--plugin)">L4</span><span class="badge b-sub">sub</span></td><td><code>timeout</code></td><td><code>06:117</code></td><td>モデルの応答が時間内に返らなかったので、指示を実行できません</td></tr>
+    <tr><td>L3 Validator</td><td><span class="lyr" style="background:var(--teal)">L3</span><span class="badge b-box">box</span></td><td><code>UNKNOWN_TARGET</code></td><td><code>02-l3:96 / 95</code></td><td>『赤い箱』が地図上の登録位置に見つからないので、bot1 を動かせません</td></tr>
+    <tr><td>L3 Visual Resolver</td><td><span class="lyr" style="background:var(--teal)">L3</span><span class="badge b-box">box</span></td><td><code>unresolved</code></td><td><code>02-l3:151</code></td><td>見えた箱を地図の位置に対応づけられないので、移動先を決められません</td></tr>
+    <tr><td>L2 Governance</td><td><span class="lyr" style="background:var(--seam)">L2</span><span class="badge b-box">box</span></td><td><code>battery_low</code></td><td><code>05:259</code></td><td>bot2 のバッテリーが不足しているので、この指示は実行できません</td></tr>
+    <tr><td>L1 Safety</td><td><span class="lyr" style="background:var(--red)">L1</span><span class="badge b-box">box</span></td><td><code>emergency</code>(near_collision)</td><td><code>05:84</code></td><td>衝突の危険を検知して止めました（割り込み・整形なし）</td></tr>
+    <tr><td>L0 Hardware</td><td><span class="lyr" style="background:var(--box)">L0</span><span class="badge b-box">box</span></td><td><code>nonfinite_cmd</code></td><td><code>06:228</code></td><td>不正な速度指令を検知したので安全のため停止しました（整形なし）</td></tr>
+    <tr><td>★ Operator Feedback 自身</td><td><span class="lyr" style="background:var(--sub)">L4</span><span class="badge b-new">新 sub</span></td><td><code>tts_failed</code></td><td class="impl-no"><code>05 §3</code> proposal</td><td>（音声不可時は web/overlay に fallback・run は止めない＝fail-open）</td></tr>
+  </tbody>
+</table>
+<p class="lead">種別の根拠 <span class="dref">01:44-45</span>。観測 funnel の <code>box=</code> literal は集計軸で再利用 box 階層とは別レイヤ <span class="dref">01:54</span>。</p>
+<div class="note">
+  <b>表 最終行 <code>tts_failed</code> の意味（混同しない）:</b> これは「止まった gate の理由」ではなく <b>★ が喋れなかった時の自分の失敗 event</b>＝<b>audit と fail-open（web/overlay へ fallback・run は止めない）用</b>。データを LLM に分からせるためのものではない。文面生成は LLM でなく deterministic テンプレートで、TTS provider に渡すのは<b>確定した文字列だけ</b>（provider は text→audio するだけ）。<span class="dref">05 §3 / §4</span>
+</div>
+
+<!-- §6 unfrozen -->
+<h2>6. 未凍結事項（実装前に docs / contract で確定）</h2>
+<ul class="tight">
+  <li><code>OperatorNotice</code> schema を <code>warehouse_interfaces</code> に昇格するか。今は追加しない。<span class="dref">05 §7</span></li>
+  <li><b>採用=案A（専用 <code>/operator/notice</code> topic・将来拡張性優先）</b>。next step=doc03 トピック契約＋<code>contract</code> PR（additive）。State Cache フラグは transition 取りこぼしで不可。<span class="dref">05 §5.2</span></li>
+  <li><b>TTS provider（speaker の中身）は LLM でなく専用 TTS エンジン</b>。Hermes 経由（Gemini TTS / OpenAI / Edge / Piper 等を proxy）か direct（Gemini API TTS / Google Cloud TTS Chirp 3 HD）。Mode X-ER は ER が Gemini 系ゆえ TTS も Gemini で揃えると自然。<span class="dref">05 §7・確認 2026-06-24</span></li>
+  <li>taxonomy 正本 <code>01</code> の Box 一覧 / funnel への <code>l4_operator_feedback</code> 登録は box-map / Eval-Obs owner と調整する別 PR（L4 所有分類はそれまで暫定）。<span class="dref">05 §2.4</span></li>
+  <li>発話スコープの確定値（<code>arrived/completed</code> を喋るか・milestone 範囲・同一 reason の抑制間隔）は現場依存で config 化。<span class="dref">05 §5.3 / §7</span></li>
+  <li>Hermes Voice/TTS が日本語・低 latency・割り込みを満たすかの offline probe（満たさなければ direct TTS・STT と同じく実証前は併走）。<span class="dref">05 §7</span></li>
+</ul>
+
+<footer>
+  <p>このページは <code>docs/mode-x-er/operator-feedback-flow.html</code>（自己完結ダークモード図解・補足資料）。設計の正本は <a href="05-operator-feedback-and-voice-response.md">05</a>。視覚は <a href="mode-x-er-explainer.html">mode-x-er-explainer.html</a> に準拠。dref は file:line（再検証可能）。</p>
+  <p>外部 CDN / JS / 画像に依存しない単一 HTML。プレビュー: <span class="kbd">python3 -m http.server 8147 --directory docs</span>（docs/ を root に）→ <span class="kbd">http://localhost:8147/mode-x-er/operator-feedback-flow.html</span>。</p>
+</footer>
+
+</div>
+</body>
+</html>
