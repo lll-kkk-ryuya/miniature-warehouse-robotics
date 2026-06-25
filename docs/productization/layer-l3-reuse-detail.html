@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L3 再利用・商用化 詳細図 — Productization &amp; Reuse of the Planning Core</title>
+<style>
+  :root{
+    color-scheme: dark;
+    /* 落ち着いた Cursor 風ニュートラル・ダーク（背景=黒に近い無彩色 / 文字=はっきりした白） */
+    --bg:#1a1a1a; --bg2:#141414; --card:#222222; --card2:#262626; --surface:#2d2d2d;
+    --ink:#ededed; --muted:#c4c4c4; --faint:#8f8f8f; --line:#3a3a3a; --code:#141414;
+    --badge-ink:#1a1a1a; --head:#dcdcdc;
+    --box:#7aa2f7;     --box-bg:rgba(122,162,247,.13);
+    --sub:#9ece6a;     --sub-bg:rgba(158,206,106,.12);
+    --seam:#e0af68;    --seam-bg:rgba(224,175,104,.12);
+    --plugin:#bb9af7;  --plugin-bg:rgba(187,154,247,.12);
+    --demoted:#9a9a9a; --demoted-bg:rgba(154,154,154,.10);
+    --red:#f7768e; --yellow:#e0c07a; --teal:#7dcfff; --pink:#f7a8d8;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Noto Sans JP",Meiryo,sans-serif;
+    line-height:1.7;font-size:15px;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1080px;margin:0 auto;padding:32px 20px 80px}
+  header.top{border-bottom:3px solid var(--box);padding-bottom:18px;margin-bottom:8px}
+  h1{font-size:25px;margin:0 0 6px} h2{font-size:20px;margin:44px 0 12px;padding-left:10px;border-left:5px solid var(--box)}
+  h3{font-size:15.5px;margin:24px 0 9px;color:var(--head)}
+  p{margin:10px 0} .lead{color:var(--muted);font-size:14px}
+  a{color:var(--box);text-decoration:none} a:hover{text-decoration:underline}
+  code{background:var(--code);padding:1px 6px;border-radius:4px;font-size:.88em;font-family:"SF Mono",Menlo,Consolas,monospace;color:var(--ink)}
+  pre{background:var(--code);border:1px solid var(--line);border-radius:8px;padding:12px 14px;overflow-x:auto;font-size:12.5px;line-height:1.6;margin:10px 0}
+  pre code{background:none;padding:0;font-size:1em}
+  .dref{color:var(--teal);font-size:.82em;font-family:"SF Mono",Menlo,monospace;white-space:nowrap}
+  .note{background:var(--seam-bg);border:1px solid rgba(224,175,104,.4);border-radius:8px;padding:12px 16px;margin:16px 0;font-size:14px}
+  .safe{background:rgba(243,139,168,.08);border:1px solid rgba(243,139,168,.4);border-radius:8px;padding:12px 16px;margin:16px 0;font-size:14px}
+  .meta{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 16px;font-size:13px;color:var(--muted);margin:14px 0}
+  .nav{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0}
+  .nav a{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:7px 13px;font-size:13px;font-weight:600}
+  .nav a:hover{border-color:var(--box);text-decoration:none}
+
+  .badge{display:inline-block;font-size:11px;font-weight:700;padding:2px 9px;border-radius:999px;color:var(--badge-ink);letter-spacing:.3px;vertical-align:middle}
+  .b-box{background:var(--box)} .b-sub{background:var(--sub)} .b-seam{background:var(--seam)} .b-plugin{background:var(--plugin)} .b-demoted{background:var(--demoted);color:var(--ink)}
+
+  .node{border-radius:10px;padding:11px 13px;border:2px solid;background:var(--card);font-size:13.5px;margin:8px 0}
+  .node .t{font-weight:700;font-size:14px} .node .s{color:var(--muted);font-size:12.5px;margin-top:3px}
+  .n-box{border-color:var(--box);background:var(--box-bg)} .n-sub{border-color:var(--sub);background:var(--sub-bg)}
+  .n-seam{border-color:var(--seam);background:var(--seam-bg);border-style:dashed} .n-plugin{border-color:var(--plugin);background:var(--plugin-bg)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+
+  /* superbox container */
+  .superbox{border:2px solid var(--box);background:var(--box-bg);border-radius:14px;padding:16px;margin:14px 0}
+  .sbh{font-weight:700;color:var(--box);font-size:16px;margin-bottom:2px} .sbs{font-size:12px;color:var(--muted);margin-bottom:12px}
+
+  /* internal-structure diagram (sub-box / seam / demoted nesting) */
+  .legend{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
+  .legend .item{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:6px 11px;font-size:11.5px;color:var(--muted)}
+  .legend .sw{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:6px;vertical-align:middle}
+  .n-demoted{border-color:var(--demoted);background:var(--demoted-bg);color:var(--muted)}
+  .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+  .sub-nest{border:1.5px dashed var(--box);border-radius:12px;padding:13px;margin-top:12px;background:rgba(122,162,247,.05)}
+  .sub-nest > .nh{font-size:11px;font-weight:700;color:var(--box);letter-spacing:.5px;margin-bottom:9px}
+  .nest-arrow{text-align:center;color:var(--faint);font-size:16px;line-height:1;margin:5px 0}
+  .role{display:inline-block;font-size:10.5px;font-weight:700;color:var(--faint);border:1px solid var(--line);border-radius:5px;padding:1px 6px;margin-left:6px;vertical-align:middle}
+  .cap{display:inline-block;font-size:10.5px;color:var(--faint);font-style:italic;margin-left:6px;vertical-align:middle}
+  .plugin-band{margin-top:9px;border:1.5px dashed var(--plugin);background:var(--plugin-bg);border-radius:8px;padding:7px 10px;font-size:12px;color:#d8c8f2}
+  .plugin-band b{color:var(--plugin)}
+  .seam-out{display:flex;flex-wrap:wrap;align-items:stretch;gap:8px;margin:12px 0 2px}
+  .seam-out .arrow{color:var(--seam);font-weight:700;font-size:18px;display:flex;align-items:center}
+  .gov-chip{border:2px solid var(--box);background:var(--box-bg);border-radius:10px;padding:8px 12px;font-size:12.5px;font-weight:700;white-space:nowrap;display:flex;flex-direction:column;justify-content:center;text-align:center}
+
+  /* numbered steps (pipeline) */
+  .steps{counter-reset:st;margin:14px 0}
+  .step{position:relative;border:1px solid var(--line);background:var(--card);border-radius:10px;padding:11px 14px 11px 46px;margin:8px 0;font-size:13.5px}
+  .step::before{counter-increment:st;content:counter(st);position:absolute;left:12px;top:11px;width:24px;height:24px;border-radius:50%;
+    background:var(--box);color:var(--badge-ink);font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:center}
+  .step b{color:var(--ink)} .step .s{color:var(--muted);font-size:12.5px;margin-top:2px}
+  .step.seam{border-color:var(--seam);border-left:4px solid var(--seam)} .step.seam::before{background:var(--seam)}
+  .step-down{text-align:left;padding-left:22px;color:var(--faint);font-size:15px;line-height:1;margin:-3px 0}
+
+  /* horizontal flow band (stages) */
+  .flow{display:flex;flex-wrap:wrap;align-items:stretch;gap:6px;margin:10px 0}
+  .flow .node{flex:1 1 130px;min-width:112px;margin:0;display:flex;flex-direction:column;justify-content:center}
+  .flow .arr{display:flex;align-items:center;color:var(--faint);font-weight:700;font-size:16px}
+  .lyr{display:inline-block;font-size:10px;font-weight:800;padding:1px 7px;border-radius:5px;color:var(--badge-ink);margin-right:7px;vertical-align:middle}
+  .optline{font-family:"SF Mono",Menlo,Consolas,monospace;font-size:12px;color:var(--muted);background:var(--code);border-radius:6px;padding:8px 11px;margin:8px 0;line-height:1.7;overflow-x:auto}
+  .optline b{color:var(--ink)}
+
+  /* reuse layers A/B/C style chips (for cross-industry mapping) */
+  .ex{display:grid;grid-template-columns:46px 1fr;gap:10px;align-items:start;border:1px solid var(--line);border-radius:10px;padding:11px 13px;margin:8px 0;background:var(--card)}
+  .ex .tag{font-weight:800;font-size:14px;color:var(--badge-ink);background:var(--teal);border-radius:8px;text-align:center;padding:8px 4px;line-height:1.15}
+  .ex.b3 .tag{background:var(--box)} .ex.c .tag{background:var(--seam)} .ex.d .tag{background:var(--plugin)}
+  .ex .body b{color:var(--ink)} .ex .body{font-size:13px;color:var(--muted)}
+
+  table{border-collapse:collapse;width:100%;margin:12px 0;font-size:13px;background:var(--card)}
+  th,td{border:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top}
+  th{background:var(--surface);font-size:12.5px;color:var(--head)} td code{font-size:.85em}
+  tr:nth-child(even) td{background:rgba(255,255,255,.02)}
+  .impl-yes{color:var(--sub);font-weight:700} .impl-no{color:var(--yellow);font-weight:700}
+  ul.tight{margin:8px 0;padding-left:22px} ul.tight li{margin:5px 0}
+  footer{margin-top:50px;padding-top:18px;border-top:1px solid var(--line);color:var(--muted);font-size:12.5px}
+  @media(max-width:720px){.grid2,.grid3{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <h1>L3 再利用・商用化 詳細図 — Productization &amp; Reuse</h1>
+  <p class="lead"><a href="layer-l3-detail.html">L3 詳細図 §6</a> の「横断的に再利用できる 6 資産」を 1 ページに深掘りし、その<b>拡張機構</b>（decision_event → funnel/report・データ保管・eval-sdk・site profile 運用）まで繋ぐ。<b>L3 は未実装＝proposal（docs only）</b>。引用は <b>docs の exact line</b>。<b>新しい frozen 契約 / topic / しきい値は足さない</b>（各正本の非追加スタンスを継ぐ）。</p>
+</header>
+
+<div class="nav">
+  <a href="layer-l3-detail.html">◂ L3 詳細図</a>
+  <a href="box-taxonomy.html">全体（box-taxonomy）</a>
+  <a href="03-l3-planning-core-box.md">正本: 03（§6 横展開）</a>
+  <a href="04-box-storage-and-reuse-guidelines.md">04 保管・site profile</a>
+  <a href="05-decision-observability-and-tooling.md">05 観測・report</a>
+  <a href="../architecture/21-eval-sdk-extraction.md">architecture/21 eval-sdk</a>
+  <a href="../mode-x-er/02-l3-planning-core.md">mode-x-er/02</a>
+</div>
+
+<div class="meta">
+  正本: <a href="03-l3-planning-core-box.md"><code>03-l3-planning-core-box.md</code></a>（§6 横展開・<span class="dref">03:214-252</span>）／ <a href="04-box-storage-and-reuse-guidelines.md"><code>04</code></a>（box 保管・成熟度・site profile）／ <a href="05-decision-observability-and-tooling.md"><code>05</code></a>（decision_event・funnel・report）／ <a href="../architecture/21-eval-sdk-extraction.md"><code>architecture/21</code></a>（eval_sdk 抽出・<b>PROPOSAL</b> <span class="dref">21:5,7</span>）。
+  <b>L3 は未実装</b>＝引用は docs の exact line（<span class="dref">03:NN</span> / <span class="dref">04:NN</span> / <span class="dref">05:NN</span> / <span class="dref">21:NN</span> / <span class="dref">mode-x-er/02:NN</span>）。<b>新 frozen 契約 / topic / しきい値を発明しない</b>（<span class="dref">03:5 / 04:5 / 05:5 / 21:7</span>）。proposal と frozen は §7 で区別。<b>音声リジェクト</b>（reject 理由を人へ音声で返す）は重複させず <a href="../mode-x-er/operator-feedback-flow.html">operator-feedback-flow.html</a> を参照。
+</div>
+
+<!-- ===================== 0. 総括 ===================== -->
+<h2>0. なぜ再利用できるか（Core 不変 / Plugin 差替の総括）</h2>
+<p class="lead">L3 Planning Core は「AI model の曖昧な出力」と「ロボットの安全な実行契約」の間に立つ <b>deterministic な正規化・検証層</b>で、<b>この役割は倉庫固有ではない</b>。倉庫デモは最初の 1 事例にすぎず、<b>Core（産業非依存）は変えず・Plugin（現場差分）だけを差し替える</b>のが商用・産業横断の差替軸。以下の 6 資産はすべてこの 1 つの分離の派生。<span class="dref">03:218-220</span></p>
+
+<div class="superbox">
+  <div class="sbh">Core + Plugin 分離 <span class="badge b-box">差替軸</span></div>
+  <div class="sbs">変えない核 ＋ 現場ごとに差し替える注入点。site の粒度（工場 / ライン / セル）が変わっても同じ構造。<span class="dref">03:27-33</span></div>
+  <div class="flow">
+    <div class="node n-box"><div class="t" style="font-size:12.5px">Core（固定・変更頻度: 低）</div><div class="s">parse / schema validation / DAG 検証 / task lifecycle / audit / compiler interface <span class="dref">03:29</span></div></div>
+    <div class="arr">＋</div>
+    <div class="node n-plugin"><div class="t" style="font-size:12.5px">Plugin（差替）</div><div class="s">Site Policy / Visual / Compiler / Store <span class="dref">03:30-33</span></div></div>
+  </div>
+  <div class="optline"><b>site</b> = 現場 / ライン / セル　｜　<b>plugin</b> = その現場ごとの差分（calibration・registry・compiler・threshold・store）</div>
+</div>
+
+<!-- ===================== 1. 6資産 早見 ===================== -->
+<h2>1. 横断的に再利用できる 6 資産（早見）<span class="dref">03:231-238</span></h2>
+<p class="lead">各資産の「何か / なぜ製造で価値が上がるか」は <a href="layer-l3-detail.html">L3 詳細図 §6.2</a> の図解と相補。本ページは <b>§2 以降でその拡張機構を深掘り</b>する。<span class="dref">03:231-238</span></p>
+<table>
+  <thead><tr><th>#</th><th>資産</th><th>何か（1 行）</th><th>製造で価値が上がる理由</th><th>正本</th></tr></thead>
+  <tbody>
+    <tr><td>①</td><td><b>Core+Plugin 分離</b></td><td>「変えない核」と「現場ごと差替」の割り方そのもの</td><td>新案件は Plugin（profile）だけ差替＝毎回ゼロから作らない</td><td class="impl-yes"><span class="dref">03:233 / 27-33</span></td></tr>
+    <tr><td>②</td><td><b>ValidationReport + stable error code</b></td><td>reject 1 件 = <code>code/severity/field_path/message_for_operator/dispatch_effect</code>。code は意味固定</td><td>同じ語彙が HMI 説明・監査集計・CI fixture の 3 箇所で使える</td><td class="impl-yes"><span class="dref">03:234 / mode-x-er/02:95-96</span></td></tr>
+    <tr><td>③</td><td><b>audit の 1:1</b></td><td>raw 出力 ↔ normalized plan ↔ command candidate を欠けず追跡</td><td>「どの判断がどの動作を生んだか」を証明（ISO/IATF 追跡要件）</td><td class="impl-yes"><span class="dref">03:235 / mode-x-er/02:242</span></td></tr>
+    <tr><td>④</td><td><b>acceptance gate（L3-G0〜G6）</b></td><td>受け入れ判定の 7 関門</td><td>新ライン/新セル go-live 前の受け入れテスト雛形</td><td class="impl-yes"><span class="dref">03:236 / 194-202</span></td></tr>
+    <tr><td>⑤</td><td><b>fixture / replay</b></td><td>入力＋期待結果のセット＝offline 回帰テスト</td><td>calibration/model 更新後の再検証 suite（変更後の再 validation 必須）</td><td class="impl-yes"><span class="dref">03:237 / 04:115-131 / mode-x-er/02:156-157</span></td></tr>
+    <tr><td>⑥</td><td><b>site profile</b></td><td>案件差分を 1 か所に寄せた設定ディレクトリ</td><td>line/cell profile としてそのまま使え、案件を重ねるほど資産化</td><td class="impl-yes"><span class="dref">03:238 / 04:78-113</span></td></tr>
+  </tbody>
+</table>
+<div class="note"><b>②③⑤⑥ には拡張余地がある</b>。②③は <b>観測/評価層</b>（§2 decision_event → report・§3 データ保管・§4 eval-sdk）へデータを流し込む入口、⑤⑥は <b>site profile 運用</b>（§5）で資産化する。以降はその拡張機構を正本で裏取りして深掘りする。</div>
+
+<!-- ===================== 2. 拡張機構 ===================== -->
+<h2>2. 拡張機構: decision_event → funnel / report<span class="dref">05:44-105,306-355</span></h2>
+<p class="lead">②（ValidationReport）と③（audit）は単独で完結せず、<b>各 box の decision_event を集計する観測層</b>（<a href="05-decision-observability-and-tooling.md">05</a>）へ流れ込む。拡張は<b>既存の形に「品番」と「指標」を足すだけ（additive）</b>で、契約を壊さない。<span class="dref">05:44-73</span></p>
+
+<h3>2.1 decision_event の基本形（audit artifact の目標形）<span class="dref">05:44-73</span></h3>
+<div class="node n-box"><div class="s">
+<pre><code>{
+  "run_id": "...", "trace_id": "optional-langfuse-trace-id",
+  "gen_id": 42, "robot": "bot1",
+  "box": "l3_validator", "stage": "target_reference",
+  "decision": "rejected",            // 固定語彙（05:69）
+  "reason_code": "unknown_target",   // box ごと catalog から（05:70）
+  "reason_detail": "...",            // 人間向け補足・集計軸でない（05:71）
+  "input_ref": "...", "output_ref": "...",   // raw は埋めず参照（05:72）
+  "profile": "customer_a_site_01",
+  "schema_version": "proposal"       // ← 未昇格（05:46,63）
+}</code></pre>
+<b>拡張の作法</b>: <code>decision</code> は固定語彙 <code>accepted/rejected/warning/needs_clarification/emergency_stop</code>（<span class="dref">05:69</span>）。新しい reject 理由は <b>box ごとの reason_code catalog に「品番」を 1 つ足す</b>（自由文にしない・<span class="dref">05:70</span>）。<code>profile/schema_version/policy_version</code> で案件差分と migration を追える（<span class="dref">05:73</span>）。
+</div></div>
+
+<h3>2.2 funnel と reason top-N（商用 report の骨格）<span class="dref">05:306-355</span></h3>
+<div class="grid2">
+  <div class="node n-box"><div class="t">funnel（box 別カウント）</div><div class="s">
+<pre><code>raw_model_outputs_total: 100
+l4_adapter_failed_total:   6
+l3_validator_rejected_total: 18
+contract_rejected_total:   4
+governance_rejected_total: 7
+... executed_total: 62 / success_total: 54</code></pre>
+「どこで落ちているか」を切り分ける共通レンズ。<span class="dref">05:306-327</span>
+  </div></div>
+  <div class="node n-box"><div class="t">reason top-N（box 別）</div><div class="s">
+<pre><code>l3_validator.reject_reason:
+  low_confidence: 8
+  unknown_target: 5
+  task_graph_cycle: 3
+governance.reject_reason:
+  duplicate_command: 3 ...</code></pre>
+②の stable code がそのまま集計軸になる。<span class="dref">05:329-355</span>
+  </div></div>
+</div>
+<div class="note"><b>report は企業・案件で変わる</b>: funnel と reason top-N の<b>骨格は共通（固定）</b>。一方<b>「何を合格とみなすか・どんな report を出すか」は site profile の <code>eval.yaml</code> / KPI vocabulary / report target に寄せる</b>（<span class="dref">04:95,106</span>・案件開始時に「Eval Box で acceptance KPI と report を決める」<span class="dref">04:155</span>）。つまり <b>集計エンジン＝Core（再利用）・KPI 語彙/report target＝Plugin（profile 差替）</b>で、①の Core+Plugin 分離の observability 版。</div>
+
+<!-- ===================== 3. データ保管 ===================== -->
+<h2>3. データの保管（どこに・どう貯めるか）<span class="dref">05:72,107-122 / 03:33</span></h2>
+<p class="lead">「軽い伝票 ＋ 別ストアに本体 ＋ 粒度で間引く」の 3 段で設計する。</p>
+<div class="steps">
+  <div class="step"><b>軽い伝票（decision_event）に raw を埋めない</b>
+    <div class="s"><code>input_ref</code> / <code>output_ref</code> は大きな raw data を直接埋めず <b>artifact 参照</b>にする。伝票は軽く、raw は別ストアに置いて ref で指す。<span class="dref">05:72</span></div></div>
+  <div class="step-down">▼</div>
+  <div class="step"><b>永続化先は Store plugin で差し替え</b>
+    <div class="s">最初は process memory → 案件化で <code>TaskGraphStore</code> を <b>file / Redis / DB</b> へ差し替え（運用規模ごとの plugin 差替軸）。<span class="dref">03:33 / 03:117,120</span></div></div>
+  <div class="step-down">▼</div>
+  <div class="step"><b>保管庫の本命は Langfuse</b>
+    <div class="s">trace / observation / score の保管（dashboard 付き）。decision_event の <code>trace_id</code> がそこを指す。<span class="dref">21:38 / 05:52</span></div></div>
+  <div class="step-down">▼</div>
+  <div class="step"><b>記録粒度ポリシーで量を制御</b>
+    <div class="s">全保存ではなく層ごとに方針を変える: L3 Validator=全 decision 保存（<span class="dref">05:113</span>）／ Safety 50ms tick=通常 metrics・状態変化と emergency だけ event（<span class="dref">05:118,122</span>）。高頻度を全ログにしない。<span class="dref">05:107-122</span></div></div>
+</div>
+<div class="note"><b>proposal 注記</b>: decision_event の形は <code>schema_version="proposal"</code>＝<b>product contract への昇格は未決</b>（<span class="dref">05:46,63</span>）。生モデル出力を audit/wire に直接保存しない（正規化形で残す）<span class="dref">mode-x-er/02:274,276</span>。</div>
+
+<!-- ===================== 4. eval-sdk ===================== -->
+<h2>4. eval-sdk — ③ を「横断で結合・保管・集計する再利用機械」<span class="dref">21:43-75</span> <span class="role">PROPOSAL</span></h2>
+<p class="lead">③ audit 1:1 は「raw↔normalized↔command を欠けず残せ」という<b>設計要件</b>（何を残すべきか）。それを<b>横断で結合・保管・集計する再利用機械</b>が <code>eval_sdk</code>。両者は「要件」と「機械」の関係。<span class="dref">03:235 / 21:43-75</span></p>
+<div class="superbox">
+  <div class="sbh">eval_sdk <span class="badge b-demoted">proposal</span> — ドメイン非依存・5 モジュール</div>
+  <div class="sbs">Langfuse / OTel に「乗る」薄い結合層。倉庫を知らない＝製造でもそのまま再利用できる。<span class="dref">21:54-60,75</span></div>
+  <div class="flow">
+    <div class="node n-box"><div class="t" style="font-size:12px">seed</div><div class="s">decision 的 join key</div></div>
+    <div class="node n-box"><div class="t" style="font-size:12px">tracer</div><div class="s">Tracer/Noop/Langfuse</div></div>
+    <div class="node n-box"><div class="t" style="font-size:12px">sink</div><div class="s">FailOpenScoreSink</div></div>
+    <div class="node n-box"><div class="t" style="font-size:12px">stats</div><div class="s">percentile/completion</div></div>
+    <div class="node n-box"><div class="t" style="font-size:12px">cost</div><div class="s">token-cost（価格注入）</div></div>
+  </div>
+  <div class="optline"><b>核心 = deterministic join key</b>　<code>derive_trace_id(seed="run:work")</code>　あらゆる emitter（判断・結果・sim・scorer・Langfuse sink）が<b>同じデータから同じ trace_id を再導出</b>→「判断 ↔ 動作」が同じ 1 本のトレースに結合。<span class="dref">21:74</span></div>
+</div>
+<div class="note"><b>eval-sdk の強みが ③ を成立させる</b>: この決定的 join key が「リコール調査は 1 クエリで提出」（③）を技術的に実現する。ただし <b>eval_sdk はまだ PROPOSAL</b>（既存の Langfuse/KPI コードを脱ROS・脱倉庫してパッケージ化する計画段階・API/スキーマ未凍結）。<b>③の audit 記録そのものは L3 が produce</b>し、eval_sdk は出された event/trace を結合・保管・集計する側。<span class="dref">21:5,7 / 03:235</span></div>
+
+<!-- ===================== 5. site profile 運用 ===================== -->
+<h2>5. site profile の成長・組み合わせ・成熟度<span class="dref">04:67-113,133-155</span></h2>
+<p class="lead">⑤⑥はここで資産化する。<b>案件をこなすほど site profile が増え</b>、きちんと管理すれば<b>中身を組み合わせて似た案件で再利用</b>できる。<span class="dref">04:78-113</span></p>
+<div class="grid2">
+  <div class="node n-box"><div class="t">site profile に置くもの<span class="dref">04:98-106</span></div><div class="s">
+<pre><code>site_profiles/customer_a/site_01/
+  locations.yaml  robots.yaml
+  cameras.yaml    calibration.json
+  safety.yaml     traffic.yaml
+  nav2/{map.yaml, nav2_params.yaml}
+  eval.yaml   # KPI vocabulary / report target</code></pre>
+known location 座標・robot id・camera calibration・safety threshold・map/Nav2・KPI。
+  </div></div>
+  <div class="node n-plugin"><div class="t">置かないもの<span class="dref">04:108-113</span></div><div class="s">
+  secret / API key・<code>.env</code>・model raw output の長期保存・<b>frozen contract を勝手に拡張する schema</b>。「置かないもの」が明確だから、profile を<b>配布・版管理しても漏えい/契約破壊が起きない</b>。
+  </div></div>
+</div>
+<p class="lead"><b>組み合わせ再利用が効く理由</b>: policy は <code>project default → site profile → runtime safety state</code> の順に<b>層で重なる</b>（<span class="dref">mode-x-er/02:97</span>）→ 共通テンプレ＋現場差分を重ねられる。site profile は <b>line profile / cell profile としてそのまま使える</b>（<span class="dref">03:238</span>）→ 似た新案件は「既存 profile をコピー＋差分だけ調整」。隣のセルは <code>cell_04/</code> を 1 個足すだけ（Core も上位 profile も触らない）。</p>
+<h3>5.1 成熟度ラダー（profile が増える＝box が昇格する）<span class="dref">04:67-76</span></h3>
+<table>
+  <thead><tr><th>Level</th><th>条件</th></tr></thead>
+  <tbody>
+    <tr><td><code>proposal</code></td><td>正本 docs と未凍結事項がある（L3 Planning Core は現状ここ）</td></tr>
+    <tr><td><code>incubating</code></td><td>repo 内 package/module ＋ fixture、<b>site profile は 1 件</b></td></tr>
+    <tr><td><code>reusable</code></td><td><b>2 つ以上の scenario/mode</b> で使える ＋ regression fixture/gate/audit が揃う</td></tr>
+    <tr><td><code>product-ready</code></td><td>versioning/migration/security/operator runbook が揃い顧客へ持ち出せる</td></tr>
+  </tbody>
+</table>
+<div class="note"><b>分離基準</b>（別 repo / product package へ）: ① 利用者 2 件以上・② <b>site profile だけで差し替えられる範囲が明確</b>・③ fixture+gate があり warehouse 固有 import 無し・④ versioning/migration・⑤ secret 境界が明確。それまで monorepo で incubate。<b>profile ライブラリが育つ＝この昇格の道筋そのもの</b>。<span class="dref">04:133-143 / 04:145-155</span></div>
+
+<!-- ===================== 6. ISO/IATF ===================== -->
+<h2>6. ISO / IATF 16949 — 「動機」と「機能安全の境界」<span class="dref">03:235,245-251</span></h2>
+<p class="lead">ISO/IATF は repo 内に <b>契約・schema・しきい値としての定義は無く</b>、設計 docs が <b>③の商用価値の動機</b>と <b>L3 が機能安全を置換しない境界</b>として言及するのみ。</p>
+<div class="grid2">
+  <div class="node n-box"><div class="t">動機（なぜ ③ が刺さるか）<span class="dref">03:235</span></div><div class="s">
+  <b>IATF 16949</b>（自動車部品サプライヤー向け品質規格・ISO 9001 ベース）/ <b>ISO 9001</b>（一般 QMS）は「どの判断がどの actuation を生んだか」の<b>追跡可能性（traceability/genealogy）</b>を要求する。③ audit 1:1 はこの要件にそのまま刺さる＝B2B 製造での競争力。<b>視覚的なものではなく</b>、工程・記録・追跡の<b>仕組みの認証</b>。
+  </div></div>
+  <div class="node n-seam"><div class="t">境界（L3 が担わないもの）<span class="dref">03:247</span></div><div class="s">
+  <b>機能安全</b>（E-stop / light curtain / safety PLC / ISO 10218・ISO/TS 15066・ISO 13849・IEC 61508）は<b>認証済み safety hardware（L0/L1 相当）に残す</b>。Validator の emergency policy plugin は safety state を<b>読んで拒否する</b>だけで safety system を<b>置換しない</b>。
+  </div></div>
+</div>
+<div class="note"><b>準拠主張をしない</b>: 本デモ（YouTube）で ISO/IATF を<b>取得する話ではない</b>。これらは「audit 1:1 や stable error code が、将来の製造案件でこういう規格要件に効く」という<b>動機・境界としての引用のみ</b>。横展開しても <b>L3 自身は実行許可を持たず、最後は必ずその現場の安全経路に渡せる command 候補で終わる</b>点は不変。<span class="dref">03:252</span></div>
+
+<!-- ===================== 7. proposal / frozen 区分 ===================== -->
+<h2>7. 各要素 → docs / proposal・frozen 区分</h2>
+<p class="lead">本ページの要素が <b>proposal（未凍結・発明禁止）</b>か <b>frozen（参照可）</b>かを明示する。新 frozen 契約を足さないための一覧。<span class="dref">区分根拠: 04:63（marker 規約）/ 05:46,63 / 21:5,7</span></p>
+<table>
+  <thead><tr><th>要素</th><th>区分</th><th>docs（正本）</th><th>注記</th></tr></thead>
+  <tbody>
+    <tr><td>Core+Plugin 分離</td><td>設計指針</td><td><span class="dref">03:27-33,218-220</span></td><td>差替軸そのもの（§0）</td></tr>
+    <tr><td><code>ValidationReport</code> 形 + stable code</td><td class="impl-no">proposal（未凍結）</td><td><span class="dref">mode-x-er/02:5,95-96</span></td><td>内部案。product contract 昇格は未決</td></tr>
+    <tr><td><code>decision_event</code> schema</td><td class="impl-no">proposal</td><td><span class="dref">05:46,63</span></td><td><code>schema_version="proposal"</code></td></tr>
+    <tr><td>reason_code catalog</td><td>観測軸（additive）</td><td><span class="dref">05:70</span></td><td>box ごと catalog・自由文にしない</td></tr>
+    <tr><td>funnel / reason top-N</td><td>観測 taxonomy</td><td><span class="dref">05:306-355</span></td><td>骨格は共通。KPI/report target は site profile <code>eval.yaml</code> <span class="dref">04:95,106</span></td></tr>
+    <tr><td>audit 1:1（追跡の鎖）</td><td>設計要件</td><td><span class="dref">03:235 / mode-x-er/02:242</span></td><td>L3-G6 で検証 <span class="dref">03:202</span></td></tr>
+    <tr><td><code>eval_sdk</code>（seed/tracer/sink/stats/cost）</td><td class="impl-no">proposal（PROPOSAL）</td><td><span class="dref">21:5,7,54-60</span></td><td>API/スキーマ未凍結。抽出＝既存コードのリネーム</td></tr>
+    <tr><td>Store plugin（in-memory/file/Redis/DB）</td><td><span class="badge b-plugin">plugin</span></td><td><span class="dref">03:33</span></td><td>運用規模ごと差替</td></tr>
+    <tr><td>site profile schema / ファイル形式</td><td class="impl-no">未凍結</td><td><span class="dref">04:78-113</span></td><td>frozen 契約を拡張する schema を置かない <span class="dref">04:113</span></td></tr>
+    <tr><td><code>RoboticsPlan draft</code></td><td class="impl-no">未凍結（wire）</td><td><span class="dref">04:43,63 / mode-x-er/02:278</span></td><td><code>(wire/未凍結)</code> marker 必須</td></tr>
+    <tr><td><code>Command</code> schema</td><td class="impl-yes">frozen</td><td><span class="dref">04:42 / mode-x-er/02:229</span></td><td><code>warehouse_interfaces/schemas.py</code></td></tr>
+    <tr><td><code>gen_id</code> / <code>idempotency_key</code> mint</td><td class="impl-yes">frozen（Bridge）</td><td><span class="dref">03:154 / mode-x-er/02:230</span></td><td>Compiler は作らない・LLM 由来不可</td></tr>
+    <tr><td>速度上限 0.3 m/s</td><td class="impl-yes">frozen（R-26）</td><td><span class="dref">safety.md / mode-x-er/02:233</span></td><td>velocity は compile しない（L0/L1 責務）</td></tr>
+    <tr><td>ISO / IATF 16949 / 機能安全 ISO</td><td>外部規格（動機・境界）</td><td><span class="dref">03:235,247（言及のみ）</span></td><td>repo 内に契約定義なし・準拠主張しない</td></tr>
+  </tbody>
+</table>
+
+<footer>
+  <p>このページは <code>docs/productization/layer-l3-reuse-detail.html</code>（補足図解・ダーク）。一次ソース: <a href="03-l3-planning-core-box.md">03 §6</a>（<code>03:214-252</code>）/ <a href="04-box-storage-and-reuse-guidelines.md">04</a> / <a href="05-decision-observability-and-tooling.md">05</a> / <a href="../architecture/21-eval-sdk-extraction.md">architecture/21</a>。L3 は未実装＝引用は docs の exact line。<b>新 frozen 契約 / topic / config key / しきい値を追加しない</b>。</p>
+  <p>← <a href="layer-l3-detail.html">L3 詳細図</a> ／ <a href="box-taxonomy.html">box-taxonomy</a> ／ <a href="../mode-x-er/mode-x-er-explainer.html">Mode X-ER explainer</a> ／ <a href="../mode-x-er/operator-feedback-flow.html">operator-feedback-flow（音声リジェクト）</a></p>
+</footer>
+
+</div>
+</body>
+</html>
