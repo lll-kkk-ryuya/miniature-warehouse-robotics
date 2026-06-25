@@ -113,6 +113,7 @@
 <div class="nav">
   <a href="layer-l3-detail.html">◂ L3 詳細図</a>
   <a href="box-taxonomy.html">全体（box-taxonomy）</a>
+  <a href="eval-sdk-detail.html">eval-sdk 詳細図 ▸</a>
   <a href="03-l3-planning-core-box.md">正本: 03（§6 横展開）</a>
   <a href="04-box-storage-and-reuse-guidelines.md">04 保管・site profile</a>
   <a href="05-decision-observability-and-tooling.md">05 観測・report</a>
@@ -233,7 +234,7 @@ governance.reject_reason:
   </div>
   <div class="optline"><b>核心 = deterministic join key</b>　<code>derive_trace_id(seed="run:work")</code>　あらゆる emitter（判断・結果・sim・scorer・Langfuse sink）が<b>同じデータから同じ trace_id を再導出</b>→「判断 ↔ 動作」が同じ 1 本のトレースに結合。<span class="dref">21:74</span></div>
 </div>
-<div class="note"><b>eval-sdk の強みが ③ を成立させる</b>: この決定的 join key が「リコール調査は 1 クエリで提出」（③）を技術的に実現する。ただし <b>eval_sdk はまだ PROPOSAL</b>（既存の Langfuse/KPI コードを脱ROS・脱倉庫してパッケージ化する計画段階・API/スキーマ未凍結）。<b>③の audit 記録そのものは L3 が produce</b>し、eval_sdk は出された event/trace を結合・保管・集計する側。<span class="dref">21:5,7 / 03:235</span></div>
+<div class="note"><b>eval-sdk の強みが ③ を成立させる</b>: この決定的 join key が「リコール調査は 1 クエリで提出」（③）を技術的に実現する。ただし <b>eval_sdk はまだ PROPOSAL</b>（既存の Langfuse/KPI コードを脱ROS・脱倉庫してパッケージ化する計画段階・API/スキーマ未凍結）。<b>③の audit 記録そのものは L3 が produce</b>し、eval_sdk は出された event/trace を結合・保管・集計する側。<b>詳細図</b>: <a href="eval-sdk-detail.html">eval-sdk 詳細図</a>（3層・5モジュール・L4〜L0 producer マップ・enforcement 非接触）。<span class="dref">21:5,7 / 03:235</span></div>
 
 <!-- ===================== 5. site profile 運用 ===================== -->
 <h2>5. site profile の成長・組み合わせ・成熟度<span class="dref">04:67-113,133-155</span></h2>
@@ -303,7 +304,7 @@ known location 座標・robot id・camera calibration・safety threshold・map/N
 
 <footer>
   <p>このページは <code>docs/productization/layer-l3-reuse-detail.html</code>（補足図解・ダーク）。一次ソース: <a href="03-l3-planning-core-box.md">03 §6</a>（<code>03:214-252</code>）/ <a href="04-box-storage-and-reuse-guidelines.md">04</a> / <a href="05-decision-observability-and-tooling.md">05</a> / <a href="../architecture/21-eval-sdk-extraction.md">architecture/21</a>。L3 は未実装＝引用は docs の exact line。<b>新 frozen 契約 / topic / config key / しきい値を追加しない</b>。</p>
-  <p>← <a href="layer-l3-detail.html">L3 詳細図</a> ／ <a href="box-taxonomy.html">box-taxonomy</a> ／ <a href="../mode-x-er/mode-x-er-explainer.html">Mode X-ER explainer</a> ／ <a href="../mode-x-er/operator-feedback-flow.html">operator-feedback-flow（音声リジェクト）</a></p>
+  <p>← <a href="layer-l3-detail.html">L3 詳細図</a> ／ <a href="box-taxonomy.html">box-taxonomy</a> ／ <a href="eval-sdk-detail.html">eval-sdk 詳細</a> ／ <a href="../mode-x-er/mode-x-er-explainer.html">Mode X-ER explainer</a> ／ <a href="../mode-x-er/operator-feedback-flow.html">operator-feedback-flow（音声リジェクト）</a></p>
 </footer>
 
 </div>
