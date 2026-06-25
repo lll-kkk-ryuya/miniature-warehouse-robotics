@@ -34,6 +34,7 @@ manifest、timeout、trace ownership、L3 handoff、`action_map`、`gen_id` /
 | [03-er-adapter-skeleton](03-er-adapter-skeleton.md) | Gemini Robotics-ER 単体 adapter skeleton と integration gates |
 | [04-er-input-modalities-and-stt](04-er-input-modalities-and-stt.md) | ER の入力モダリティ（audio 直受け）と STT の要否、ER 単体時の Fusion 必要性 |
 | [05-operator-feedback-and-voice-response](05-operator-feedback-and-voice-response.md) | 拒否/要確認/緊急を「どの箱の・どの理由か」音声で人へ返す **L4 Operator Feedback Box**（新 sub-box）。図解 [`operator-feedback-flow.html`](operator-feedback-flow.html) |
+| [06-unfrozen-contract-resolutions](06-unfrozen-contract-resolutions.md) | 未凍結7ブロッカーの **FREEZE-NOW / DEFER / NEEDS-PROBE** 判定 + 提案形 + contract PR ロードマップ（Langfuse trace owner / taxonomy / OpenVLA runtime は対象外） |
 
 旧 `docs/mode-x/` は互換参照として残す。Gemini Robotics-ER 単体の新規設計・実装判断は本 `docs/mode-x-er/` を正本にする。Gemini Robotics-ER と OpenVLA などの VLA を統合する設計は、同階層の `docs/mode-x-er-vla/` を正本にする。
 
