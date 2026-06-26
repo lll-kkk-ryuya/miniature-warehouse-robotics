@@ -4,12 +4,17 @@ Proves the end-to-end XER1/G0 wiring against the REAL model: call gemini-robotic
 actual response, and run it through ``to_robotics_plan_draft`` (the L3 Handoff seam this slice
 implements). Normal CI/unit runs skip the whole module.
 
-Transport reality (docs/dev/vla-access-and-runtime-spike.md, doc06 §5):
-- ``direct`` (Gemini REST ``generateContent``) is the proven path (HTTP 200). Its response shape
-  (``candidates[].content.parts[].text``) IS the handoff's "direct envelope", so a real response
-  flows straight into ``to_robotics_plan_draft``.
-- The local Hermes (``~/.hermes``) routes to ``openai-codex``, NOT Gemini, so it cannot call
-  gemini-robotics-er without a Gemini provider configured — the Hermes path is a separate probe.
+Transport reality (verified 2026-06-26 against Hermes v0.15.1 + Gemini API; doc06 §5):
+- ``direct`` (Gemini REST ``generateContent``, ``candidates[].content.parts[].text``) = the
+  handoff's "direct envelope" -> ``test_live_er_response_flows_through_l3_handoff``.
+- ER ALSO works on Google's OpenAI-compatible endpoint (``/v1beta/openai/chat/completions``,
+  HTTP 200) returning the OpenAI ``choices`` shape = the handoff's "hermes envelope" ->
+  ``test_live_er_openai_compat_flows_through_l3_handoff``.
+- Hermes v0.15.1's API server IGNORES the request ``model`` field and uses the single
+  server-side active model (no per-request routing). So ER "via Hermes" needs a DEDICATED
+  gateway whose active model is a custom OpenAI-compatible Google provider — the local
+  ``~/.hermes`` is the personal openai-codex daily driver and must not be repurposed. The
+  OpenAI-compat probe above proves the wire shape such a gateway would deliver.
 
 Usage (credentials via env, never printed; .env access needs explicit scope approval —
 .claude/rules/environments.md):
@@ -113,8 +118,65 @@ def test_live_er_response_flows_through_l3_handoff(capsys):
     with capsys.disabled():
         usage = response.get("usageMetadata", {})
         print(
-            f"\n[live ER->handoff] model={response.get('modelVersion', MODEL)} "
+            f"\n[live ER->handoff DIRECT] model={response.get('modelVersion', MODEL)} "
             f"tokens={usage.get('totalTokenCount')} -> RoboticsPlanDraft("
+            f"plan_id={draft.plan_id!r}, detections={len(draft.detections)}, "
+            f"tasks={[t.id + ':' + t.robot + '->' + (t.target or '') for t in draft.task_graph]})"
+        )
+
+
+def _call_er_openai_compat() -> dict:
+    """Call ER via Google's OpenAI-compatible endpoint; returns the OpenAI ``choices`` envelope.
+
+    This is the SAME wire shape a Hermes gateway would return (a dedicated Hermes whose active
+    model is a custom OpenAI-compatible Google provider). Hermes v0.15.1's /v1/chat/completions
+    ignores the request ``model`` field and uses the single server-side active model, so ER via
+    Hermes requires a dedicated gateway — but the response shape is this one, which the handoff's
+    "hermes envelope" branch parses. Proving it here validates that branch against real ER without
+    touching the user's personal gateway.
+    """
+    body = json.dumps(
+        {
+            "model": MODEL,
+            "messages": [{"role": "user", "content": _SCHEMA_INSTRUCTION + "\n\n" + _INSTRUCTION}],
+            "response_format": {"type": "json_object"},
+            "temperature": 0.2,
+        }
+    ).encode("utf-8")
+    url = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+    req = urllib.request.Request(
+        url,
+        data=body,
+        headers={"Content-Type": "application/json", "Authorization": f"Bearer {_API_KEY}"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            status, raw = resp.status, resp.read().decode("utf-8", "replace")
+    except urllib.error.HTTPError as exc:
+        pytest.fail(f"ER OpenAI-compat call failed HTTP {exc.code}: {exc.read().decode()[:300]}")
+    assert status == 200, f"expected HTTP 200, got {status}"
+    return json.loads(raw)
+
+
+def test_live_er_openai_compat_flows_through_l3_handoff(capsys):
+    if not _API_KEY:
+        pytest.skip("GEMINI_API_KEY / GOOGLE_API_KEY not set")
+
+    response = _call_er_openai_compat()  # OpenAI 'choices' shape == the handoff's "hermes" envelope
+
+    raw = RawModelOutput(transport="hermes", provider="er", source_model=MODEL, payload=response)
+    draft = to_robotics_plan_draft(raw)
+
+    assert isinstance(draft, RoboticsPlanDraft)
+    assert draft.schema_version == "robotics_plan_draft.v0"
+    assert draft.task_graph, "expected at least one task in the live plan"
+
+    with capsys.disabled():
+        usage = response.get("usage", {})
+        print(
+            f"\n[live ER->handoff HERMES-envelope] model={response.get('model', MODEL)} "
+            f"tokens={usage.get('total_tokens')} -> RoboticsPlanDraft("
             f"plan_id={draft.plan_id!r}, detections={len(draft.detections)}, "
             f"tasks={[t.id + ':' + t.robot + '->' + (t.target or '') for t in draft.task_graph]})"
         )
