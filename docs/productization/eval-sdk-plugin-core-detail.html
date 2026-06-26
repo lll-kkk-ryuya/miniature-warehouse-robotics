@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>eval_sdk 拡張 詳細図 — core（再利用）vs plugin（差替）の3分割と指標の増やし方</title>
+<style>
+  :root{
+    color-scheme: dark;
+    --bg:#1a1a1a; --bg2:#141414; --card:#222222; --card2:#262626; --surface:#2d2d2d;
+    --ink:#ededed; --muted:#c4c4c4; --faint:#8f8f8f; --line:#3a3a3a; --code:#141414;
+    --badge-ink:#1a1a1a; --head:#dcdcdc;
+    --box:#7aa2f7;     --box-bg:rgba(122,162,247,.13);
+    --sub:#9ece6a;     --sub-bg:rgba(158,206,106,.12);
+    --seam:#e0af68;    --seam-bg:rgba(224,175,104,.12);
+    --plugin:#bb9af7;  --plugin-bg:rgba(187,154,247,.12);
+    --teal:#7dcfff;    --teal-bg:rgba(125,207,255,.12);
+    --demoted:#9a9a9a; --demoted-bg:rgba(154,154,154,.10);
+    --red:#f7768e; --yellow:#e0c07a; --pink:#f7a8d8;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Noto Sans JP",Meiryo,sans-serif;
+    line-height:1.7;font-size:15px;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1080px;margin:0 auto;padding:32px 20px 80px}
+  header.top{border-bottom:3px solid var(--plugin);padding-bottom:18px;margin-bottom:8px}
+  h1{font-size:23px;margin:0 0 6px} h2{font-size:20px;margin:44px 0 12px;padding-left:10px;border-left:5px solid var(--plugin)}
+  h3{font-size:15.5px;margin:24px 0 9px;color:var(--head)}
+  p{margin:10px 0} .lead{color:var(--muted);font-size:14px}
+  a{color:var(--box);text-decoration:none} a:hover{text-decoration:underline}
+  code{background:var(--code);padding:1px 6px;border-radius:4px;font-size:.88em;font-family:"SF Mono",Menlo,Consolas,monospace;color:var(--ink)}
+  pre{background:var(--code);border:1px solid var(--line);border-radius:8px;padding:12px 14px;overflow-x:auto;font-size:12.5px;line-height:1.6;margin:10px 0}
+  pre code{background:none;padding:0;font-size:1em}
+  .dref{color:var(--teal);font-size:.82em;font-family:"SF Mono",Menlo,monospace;white-space:nowrap}
+  .note{background:var(--seam-bg);border:1px solid rgba(224,175,104,.4);border-radius:8px;padding:12px 16px;margin:16px 0;font-size:14px}
+  .gap{background:rgba(187,154,247,.07);border:1.5px dashed var(--plugin);border-radius:8px;padding:12px 16px;margin:16px 0;font-size:13.5px}
+  .gap b{color:var(--plugin)}
+  .meta{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 16px;font-size:13px;color:var(--muted);margin:14px 0}
+  .nav{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0}
+  .nav a{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:7px 13px;font-size:13px;font-weight:600}
+  .nav a:hover{border-color:var(--plugin);text-decoration:none}
+
+  .badge{display:inline-block;font-size:11px;font-weight:700;padding:2px 9px;border-radius:999px;color:var(--badge-ink);letter-spacing:.3px;vertical-align:middle}
+  .b-core{background:var(--teal)} .b-plugin{background:var(--plugin)} .b-manifest{background:var(--seam)} .b-box{background:var(--box)} .b-sub{background:var(--sub)}
+
+  .node{border-radius:10px;padding:11px 13px;border:2px solid;background:var(--card);font-size:13.5px;margin:8px 0}
+  .node .t{font-weight:700;font-size:14px} .node .s{color:var(--muted);font-size:12.5px;margin-top:3px}
+  .n-core{border-color:var(--teal);background:var(--teal-bg)} .n-plugin{border-color:var(--plugin);background:var(--plugin-bg)}
+  .n-manifest{border-color:var(--seam);background:var(--seam-bg)} .n-box{border-color:var(--box);background:var(--box-bg)}
+  .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+
+  /* 3-split core columns */
+  .split{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin:14px 0}
+  .col{border:2px solid;border-radius:12px;padding:13px;background:var(--card)}
+  .col.c-core{border-color:var(--teal);background:var(--teal-bg)} .col.c-plugin{border-color:var(--plugin);background:var(--plugin-bg);border-style:dashed} .col.c-manifest{border-color:var(--seam);background:var(--seam-bg)}
+  .col .h{font-weight:800;font-size:14px;margin-bottom:3px} .col .sub{font-size:11.5px;color:var(--muted);margin-bottom:9px}
+  .col ul{margin:6px 0 0;padding-left:18px;font-size:12.5px} .col li{margin:4px 0;color:var(--ink)}
+
+  /* example chips (core vs plugin) */
+  .ex{display:grid;grid-template-columns:64px 1fr;gap:10px;align-items:start;border:1px solid var(--line);border-radius:10px;padding:11px 13px;margin:8px 0;background:var(--card)}
+  .ex .tag{font-weight:800;font-size:11.5px;color:var(--badge-ink);border-radius:8px;text-align:center;padding:8px 4px;line-height:1.2}
+  .ex.core .tag{background:var(--teal)} .ex.plugin .tag{background:var(--plugin)}
+  .ex .body b{color:var(--ink)} .ex .body{font-size:13px;color:var(--muted)}
+
+  /* numbered steps */
+  .steps{counter-reset:st;margin:14px 0}
+  .step{position:relative;border:1px solid var(--line);background:var(--card);border-radius:10px;padding:11px 14px 11px 46px;margin:8px 0;font-size:13.5px}
+  .step::before{counter-increment:st;content:counter(st);position:absolute;left:12px;top:11px;width:24px;height:24px;border-radius:50%;
+    background:var(--plugin);color:var(--badge-ink);font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:center}
+  .step b{color:var(--ink)} .step .s{color:var(--muted);font-size:12.5px;margin-top:2px}
+  .step.core{border-color:var(--teal);border-left:4px solid var(--teal)} .step.core::before{background:var(--teal)}
+
+  .legend{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
+  .legend .item{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:6px 11px;font-size:11.5px;color:var(--muted)}
+  .legend .sw{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:6px;vertical-align:middle}
+
+  table{border-collapse:collapse;width:100%;margin:12px 0;font-size:13px;background:var(--card)}
+  th,td{border:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top}
+  th{background:var(--surface);font-size:12.5px;color:var(--head)} td code{font-size:.85em}
+  tr:nth-child(even) td{background:rgba(255,255,255,.02)}
+  .impl-yes{color:var(--sub);font-weight:700} .impl-no{color:var(--yellow);font-weight:700} .impl-core{color:var(--teal);font-weight:700} .impl-plugin{color:var(--plugin);font-weight:700}
+  ul.tight{margin:8px 0;padding-left:22px} ul.tight li{margin:5px 0}
+  footer{margin-top:50px;padding-top:18px;border-top:1px solid var(--line);color:var(--muted);font-size:12.5px}
+  @media(max-width:760px){.split,.grid3,.grid2{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <h1>eval_sdk 拡張 詳細図 — core（再利用）vs plugin（差替）の3分割</h1>
+  <p class="lead">新しい現場・新しい指標を足すとき、<b>eval_sdk の数式（stats）は書き換えず、ドメイン側に「producer ＋ score 名」を足して既存 stats/sink を再利用する</b>。何が <b>core（汎用・一度作れば再利用）</b>か、何が <b>plugin（現場ごとに差し替える）</b>かを <b>3 つに割る</b>のが拡張の肝。<b>「指標定義・データ producer はドメインに残す」</b>（<span class="dref">21:75</span>）が原則。正本 <a href="../architecture/21-eval-sdk-extraction.md">architecture/21</a> ＋ <a href="03-l3-planning-core-box.md">03</a> / <a href="05-decision-observability-and-tooling.md">05</a>。</p>
+</header>
+
+<div class="nav">
+  <a href="eval-sdk-detail.html">◂ eval-sdk 詳細（5 モジュール）</a>
+  <a href="observability-tiering-detail.html">観測ログ 格納先 階層分離</a>
+  <a href="03-l3-planning-core-box.md">03 L3 core/plugin（stage 表）</a>
+  <a href="05-decision-observability-and-tooling.md">05 Validator 案件固有 rule</a>
+  <a href="../architecture/21-eval-sdk-extraction.md">正本: architecture/21（§3/§4/§13.3）</a>
+  <a href="box-taxonomy.html">全体（box-taxonomy）</a>
+</div>
+
+<div class="meta">
+  正本: <a href="../architecture/21-eval-sdk-extraction.md"><code>21</code></a>（指標定義はドメイン <span class="dref">21:75</span>・5 モジュール <span class="dref">21:123-135</span>・name registry は Phase 2 contract <span class="dref">21:238</span>・Mode A 指標 判定者 <span class="dref">21:312-322</span>）／ <a href="03-l3-planning-core-box.md"><code>03</code></a>（stage ごと 再利用 core / 差し替え plugin <span class="dref">03:224-235</span>）／ <a href="05-decision-observability-and-tooling.md"><code>05</code></a>（L3 Validator の core/案件/既存 tool <span class="dref">05:124-165</span>）。
+  <b>区分</b>: <code>eval_sdk.stats</code>（数式 core）は <b>Phase 1 実装済</b>（<span class="dref">eval_sdk/stats.py</span>）／ <code>ScoreSpec</code> 名 registry は <b>Phase 2 contract</b>（未凍結・<span class="dref">21:238</span>）／ 指標定義・producer は <b>ドメイン永続</b>。<b>新 frozen 契約 / 指標 / しきい値を発明しない</b>。製造例は <code>03</code>/<code>05</code> の literal を図示。
+</div>
+
+<!-- ===================== 0. なぜ ===================== -->
+<h2>0. なぜ「3 分割」か — 数式は共通、意味はドメイン</h2>
+<p class="lead">「合格率を出す割り算」はどの業界でも同じ＝<b>core</b>。だが<b>「何を合格とするか」「その pass/fail 信号を誰が出すか」は現場ごとに違う＝plugin</b>。eval_sdk は前者（数学・emit・join-key の素材）だけを持ち、後者（指標定義・producer）はドメインに残す。<span class="dref">21:75</span></p>
+<div class="legend">
+  <div class="item"><span class="sw" style="background:var(--teal)"></span>core（汎用・一度作れば再利用・★eval_sdk）</div>
+  <div class="item"><span class="sw" style="background:var(--plugin)"></span>plugin（現場ごとに差し替える・ドメイン）</div>
+  <div class="item"><span class="sw" style="background:var(--seam)"></span>manifest（名前語彙・Phase 2 で contract 化）</div>
+</div>
+
+<!-- ===================== 1. 3分割 ===================== -->
+<h2>1. 核心 — 何が core / plugin / manifest か<span class="dref">21:75,123-135,238</span></h2>
+<div class="split">
+  <div class="col c-core">
+    <div class="h">① 数式（core）<span class="badge b-core">再利用</span></div>
+    <div class="sub">eval_sdk.stats（純関数・Phase 1 実装済）</div>
+    <ul>
+      <li><code>rate</code>（pass/total の割り算）</li>
+      <li><code>percentile</code> / <code>path_lengths</code> / <code>distance_traveled</code></li>
+      <li>emit = <code>eval_sdk.sink</code>（fail-open）</li>
+      <li>join-key = <code>eval_sdk.seed</code>（決定的 trace_id）</li>
+    </ul>
+  </div>
+  <div class="col c-plugin">
+    <div class="h">② 定義＋producer（plugin）<span class="badge b-plugin">差替</span></div>
+    <div class="sub">ドメイン（現場ごと・永続的にドメイン）</div>
+    <ul>
+      <li><b>何を success とするか</b>（goal 述語・しきい値）</li>
+      <li>その <b>pass/fail 信号を出す producer</b></li>
+      <li>例: 「挿入トルク検査が閾値内か」を出すノード</li>
+      <li>設備 registry・工程 allowlist・interlock policy</li>
+    </ul>
+  </div>
+  <div class="col c-manifest">
+    <div class="h">③ 名前（manifest）<span class="badge b-manifest">contract</span></div>
+    <div class="sub">dashboard 列見出し（Phase 2 で contract）</div>
+    <ul>
+      <li>score 名 = <code>insertion_torque_pass_rate</code> 等</li>
+      <li>nav 標準名（<code>success_rate</code>/<code>spl</code> …）は <code>plugin="nav"</code> 登録</li>
+      <li><b>改名は履歴孤児化</b>＝<code>contract</code> ラベル＋予告</li>
+      <li>現状は <code>SCORE_*</code> 予約（inert）<span class="dref">21:238</span></li>
+    </ul>
+  </div>
+</div>
+<div class="note"><b>増やすとき書くのは ② と ③ だけ</b>。① の数式は書き換えない（既存 <code>stats.rate</code>/<code>sink</code> を再利用）。＝「製造現場が要件ごとに指標を増やす」とは <b>新 producer ＋ 新 score 名</b>を足すこと。これが eval_sdk が <b>産業非依存のまま再利用</b>できる正体。<span class="dref">21:75,117</span></div>
+
+<!-- ===================== 2. 製造例 ===================== -->
+<h2>2. 製造での core / plugin（03 の stage 表を図示）<span class="dref">03:224-235</span></h2>
+<p class="lead"><code>03:224-235</code> は L3 の各 stage を「<b>再利用する core</b>」と「<b>差し替える plugin</b>」に literal に割っている（倉庫 Mode X-ER ↔ 製造 assembly/machine tending/palletize）。発明ではなく既存表の図示。</p>
+<h3>Validator stage</h3>
+<div class="ex core"><div class="tag">core<br>再利用</div><div class="body"><b>JSON parse・<code>schema_version</code> check・required field・stable error code・report shape・audit</b>（どの業界でも同じ検証骨格）<span class="dref">03:224</span></div></div>
+<div class="ex plugin"><div class="tag">plugin<br>差替</div><div class="body"><b>設備 registry（どのアーム/AGV/PLC）・工程 allowlist（pick/place/insert/fasten…）・参照 rule・confidence policy・interlock policy・emergency policy</b>（現場の意味づけ）<span class="dref">03:224</span></div></div>
+<h3>Visual Resolver stage</h3>
+<div class="ex core"><div class="tag">core<br>再利用</div><div class="body">calibration loader IF・transform・valid polygon check・confidence 合成・replay runner<span class="dref">03:225</span></div></div>
+<div class="ex plugin"><div class="tag">plugin<br>差替</div><div class="body">camera intrinsics/extrinsics・hand-eye 行列・work envelope polygon・公称 pose・snap threshold<span class="dref">03:225</span></div></div>
+
+<!-- ===================== 3. 増やす手順 ===================== -->
+<h2>3. 「指標を 1 個増やす」手順（new producer ＋ score 名 ＋ 既存再利用）</h2>
+<div class="steps">
+  <div class="step plugin"><b>① success を定義</b>（plugin）<div class="s">「何を pass とするか」の述語・しきい値を現場仕様として決める。<span class="dref">05:145-153 / 21:386</span></div></div>
+  <div class="step plugin"><b>② producer を書く</b>（plugin）<div class="s">その pass/fail（または生信号）を出すドメインノード。観測専用レーン（enforcement と混ぜない）。<span class="dref">21:189,193</span></div></div>
+  <div class="step core"><b>③ 既存 stats で数値化</b>（core・書かない）<div class="s"><code>eval_sdk.stats.rate</code>（pass/total）等をそのまま呼ぶ＝新数式を書かない。<span class="dref">eval_sdk/stats.py</span></div></div>
+  <div class="step core"><b>④ sink で emit</b>（core・書かない）<div class="s"><code>eval_sdk.sink.score(trace_id, name, value, …)</code> を fail-open 送信。同じ trace_id で他指標と束ねる。<span class="dref">eval_sdk/sink.py:99-136</span></div></div>
+  <div class="step"><b>⑤ score 名を manifest 登録</b>（Phase 2・contract）<div class="s">dashboard 列見出しを固定（改名は履歴孤児化＝<code>contract</code> ＋全レーン予告）。<span class="dref">21:238</span></div></div>
+</div>
+<div class="note">手で書くのは <b>① success 定義</b>と <b>② producer</b> だけ。<b>③④ は既存 core をそのまま使う</b>。⑤ は Phase 2 の name contract。＝「stats 数式の追加」は基本不要。</div>
+
+<!-- ===================== 4. L3 Validator 具体 ===================== -->
+<h2>4. L3 Validator の core / 案件 / 既存 tool（05 を図示）<span class="dref">05:124-165</span></h2>
+<p class="lead">L3 Validator は最も案件固有の作り込みが大きい box。<code>05</code> は「再利用 core / 案件ごとに作る / 既存 tool で済む」を明示している。</p>
+<div class="grid3">
+  <div class="node n-core"><div class="t">再利用 core<span class="badge b-core">汎用</span></div><div class="s">JSON parse・schema/required field validation・stable error code・validation report 生成・DAG/task graph 検証・fixture replay runner・audit event 生成。<span class="dref">05:135-143</span></div></div>
+  <div class="node n-plugin"><div class="t">案件ごとに作る<span class="badge b-plugin">差替</span></div><div class="s">known target/robot rule・allowed action・confidence threshold・camera calibration/homography/snap rule・operator clarification rule・task graph policy・unsafe output catalog。<span class="dref">05:145-153</span></div></div>
+  <div class="node n-box"><div class="t">既存 tool で済む<span class="badge b-box">乗る</span></div><div class="s">Pydantic/JSON Schema（schema validation）・NetworkX（task graph）・BehaviorTree.CPP/Nav2 BT（task logic 参考）・OpenCV（visual geometry）・pytest/golden fixture（replay/regression）。<span class="dref">05:155-164</span></div></div>
+</div>
+<div class="note"><b>境界</b>: 「この顧客現場で赤箱を shelf_A に snap してよいか」「低 confidence で operator に聞くか reject するか」は<b>既存 tool に無い＝商用案件の大枠 rule 設計</b>＝plugin の核。<span class="dref">05:165</span></div>
+
+<!-- ===================== 5. Mode A 例 ===================== -->
+<h2>5. 同じ思想が貫かれている例 — Mode A 会話指標の「判定者」割り<span class="dref">21:312-322</span></h2>
+<p class="lead">Mode A の会話評価カタログも、各指標の <b>判定者</b>が <b>deterministic producer / structured verdict / domain metric / stats function</b> に割れていて、3 分割と同じ。LLM を主審にしない（決定的 producer が出す）。</p>
+<table>
+  <thead><tr><th>metric</th><th>primary data source（producer = plugin）</th><th>判定者</th></tr></thead>
+  <tbody>
+    <tr><td><code>autonomy_ratio</code></td><td><code>conversation_events.jsonl</code> の decision episode・commander audit・deadlock detector</td><td class="impl-plugin">deterministic producer</td></tr>
+    <tr><td><code>commander_override_rate</code></td><td>commander review event <code>{proposal_id, verdict}</code></td><td class="impl-plugin">structured verdict</td></tr>
+    <tr><td><code>agreement_latency</code></td><td>episode start event・local agreement event</td><td class="impl-core">stats function</td></tr>
+    <tr><td><code>local_resolution_rate</code></td><td>deadlock detector・local agreement・self-action outcome</td><td class="impl-plugin">deterministic producer</td></tr>
+    <tr><td><code>communication_efficiency</code></td><td>transcript metadata・episode outcome・token usage</td><td class="impl-no">domain metric</td></tr>
+  </tbody>
+</table>
+<div class="note"><b>読み方</b>: <code>stats function</code> = ③ core（eval_sdk.stats で計算）／ <code>deterministic producer</code> / <code>structured verdict</code> / <code>domain metric</code> = ② plugin（ドメインが出す）。＝指標カタログ全体が core/plugin に割れている。<span class="dref">21:310,312-322</span></div>
+
+<!-- ===================== 6. 凍結/proposal ===================== -->
+<h2>6. 凍結 / proposal 区分</h2>
+<table>
+  <thead><tr><th>要素</th><th>区分</th><th>docs（正本）</th><th>注記</th></tr></thead>
+  <tbody>
+    <tr><td>① 数式 <code>eval_sdk.stats</code>（rate/percentile/distance）</td><td class="impl-yes">Phase 1 実装済</td><td><span class="dref">21:123-135 / eval_sdk/stats.py</span></td><td>core＝倉庫が再利用・産業非依存</td></tr>
+    <tr><td>① emit/join <code>eval_sdk.sink</code> / <code>seed</code></td><td class="impl-yes">Phase 1 実装済</td><td><span class="dref">eval_sdk/sink.py,seed.py</span></td><td>fail-open / 決定的 trace_id</td></tr>
+    <tr><td>② 指標定義・producer（success 述語・pass/fail 源）</td><td class="impl-plugin">ドメイン永続</td><td><span class="dref">21:75 / 03:224-235</span></td><td>現場ごとに差し替え＝eval_sdk に入れない</td></tr>
+    <tr><td>③ score 名 registry（<code>ScoreSpec</code> manifest）</td><td class="impl-no">Phase 2 contract（未凍結）</td><td><span class="dref">21:238</span></td><td>改名は履歴孤児化＝<code>contract</code>＋全レーン予告</td></tr>
+    <tr><td>観測専用 producer ノード（collision/deadlock 等）</td><td class="impl-no">Tier2 未実装（★新 producer）</td><td><span class="dref">21:189,190,193</span></td><td>enforcement と別ノード・名前/topic 未凍結</td></tr>
+  </tbody>
+</table>
+
+<!-- ===================== 7. docs/実体 ===================== -->
+<h2>7. 各要素 → docs / 実体</h2>
+<table>
+  <thead><tr><th>要素</th><th>種別</th><th>docs（正本）</th><th>実体</th></tr></thead>
+  <tbody>
+    <tr><td>core/plugin/manifest 3分割</td><td>拡張原則</td><td><span class="dref">21:75</span> / <a href="03-l3-planning-core-box.md">03</a> <span class="dref">03:224-235</span></td><td class="impl-yes">設計決定済（本図で統合）</td></tr>
+    <tr><td>① stats/sink/seed（数式 core）</td><td>5 モジュール</td><td><a href="eval-sdk-detail.html">eval-sdk 詳細</a></td><td class="impl-yes">eval_sdk 実装済（Phase 1）</td></tr>
+    <tr><td>② producer（pass/fail 源）</td><td>ドメイン plugin</td><td>03:224-235 / 05:145-153</td><td class="impl-plugin">現場ごと（観測ノードは Tier2 未実装）</td></tr>
+    <tr><td>③ score 名 manifest</td><td>name registry</td><td>21:238</td><td class="impl-no">Phase 2 contract（未凍結）</td></tr>
+    <tr><td>Mode A 会話指標カタログ</td><td>判定者割り例</td><td>21:308-322</td><td>設計（producer 実装は Mode A レーン）</td></tr>
+  </tbody>
+</table>
+
+<footer>
+  <p>このページは <code>docs/productization/eval-sdk-plugin-core-detail.html</code>（補足図解・ダーク）。一次ソース: <a href="../architecture/21-eval-sdk-extraction.md">architecture/21 §3/§4/§13.3</a>（<span class="dref">21:75,123-135,238,312-322</span>）/ <a href="03-l3-planning-core-box.md">03 §stage 表</a>（<span class="dref">03:224-235</span>）/ <a href="05-decision-observability-and-tooling.md">05 §L3 Validator</a>（<span class="dref">05:124-165</span>）。<b>数式 core は実装済・name registry は Phase 2 未凍結・指標定義はドメイン。新 frozen 契約 / 指標 / しきい値を追加しない</b>。</p>
+  <p>← <a href="eval-sdk-detail.html">eval-sdk 詳細</a> ／ <a href="observability-tiering-detail.html">観測ログ 格納先 階層分離</a> ／ <a href="03-l3-planning-core-box.md">03 L3 core</a> ／ <a href="box-taxonomy.html">box-taxonomy</a></p>
+</footer>
+
+</div>
+</body>
+</html>
