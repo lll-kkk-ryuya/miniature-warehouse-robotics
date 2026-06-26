@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>観測ログ 格納先 階層分離 詳細図 — Langfuse(判断) vs rosbag/audit/metrics(生・高頻度)</title>
+<style>
+  :root{
+    color-scheme: dark;
+    /* 落ち着いた Cursor 風ニュートラル・ダーク（eval-sdk-detail.html と同系統） */
+    --bg:#1a1a1a; --bg2:#141414; --card:#222222; --card2:#262626; --surface:#2d2d2d;
+    --ink:#ededed; --muted:#c4c4c4; --faint:#8f8f8f; --line:#3a3a3a; --code:#141414;
+    --badge-ink:#1a1a1a; --head:#dcdcdc;
+    --box:#7aa2f7;     --box-bg:rgba(122,162,247,.13);   /* Langfuse / 判断 tier */
+    --sub:#9ece6a;     --sub-bg:rgba(158,206,106,.12);   /* event / audit tier */
+    --seam:#e0af68;    --seam-bg:rgba(224,175,104,.12);  /* 集計 / metrics tier */
+    --plugin:#bb9af7;  --plugin-bg:rgba(187,154,247,.12);/* 生 / rosbag tier */
+    --demoted:#9a9a9a; --demoted-bg:rgba(154,154,154,.10);
+    --red:#f7768e; --yellow:#e0c07a; --teal:#7dcfff; --pink:#f7a8d8;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Noto Sans JP",Meiryo,sans-serif;
+    line-height:1.7;font-size:15px;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1080px;margin:0 auto;padding:32px 20px 80px}
+  header.top{border-bottom:3px solid var(--box);padding-bottom:18px;margin-bottom:8px}
+  h1{font-size:24px;margin:0 0 6px} h2{font-size:20px;margin:44px 0 12px;padding-left:10px;border-left:5px solid var(--box)}
+  h3{font-size:15.5px;margin:24px 0 9px;color:var(--head)}
+  p{margin:10px 0} .lead{color:var(--muted);font-size:14px}
+  a{color:var(--box);text-decoration:none} a:hover{text-decoration:underline}
+  code{background:var(--code);padding:1px 6px;border-radius:4px;font-size:.88em;font-family:"SF Mono",Menlo,Consolas,monospace;color:var(--ink)}
+  pre{background:var(--code);border:1px solid var(--line);border-radius:8px;padding:12px 14px;overflow-x:auto;font-size:12.5px;line-height:1.6;margin:10px 0}
+  pre code{background:none;padding:0;font-size:1em}
+  .dref{color:var(--teal);font-size:.82em;font-family:"SF Mono",Menlo,monospace;white-space:nowrap}
+  .note{background:var(--seam-bg);border:1px solid rgba(224,175,104,.4);border-radius:8px;padding:12px 16px;margin:16px 0;font-size:14px}
+  .safe{background:rgba(243,139,168,.08);border:1px solid rgba(243,139,168,.4);border-radius:8px;padding:12px 16px;margin:16px 0;font-size:14px}
+  .gap{background:rgba(187,154,247,.07);border:1.5px dashed var(--plugin);border-radius:8px;padding:12px 16px;margin:16px 0;font-size:13.5px}
+  .gap b{color:var(--plugin)}
+  .meta{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 16px;font-size:13px;color:var(--muted);margin:14px 0}
+  .nav{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0}
+  .nav a{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:7px 13px;font-size:13px;font-weight:600}
+  .nav a:hover{border-color:var(--box);text-decoration:none}
+
+  .badge{display:inline-block;font-size:11px;font-weight:700;padding:2px 9px;border-radius:999px;color:var(--badge-ink);letter-spacing:.3px;vertical-align:middle}
+  .b-box{background:var(--box)} .b-sub{background:var(--sub)} .b-seam{background:var(--seam)} .b-plugin{background:var(--plugin)} .b-demoted{background:var(--demoted);color:var(--ink)}
+
+  .node{border-radius:10px;padding:11px 13px;border:2px solid;background:var(--card);font-size:13.5px;margin:8px 0}
+  .node .t{font-weight:700;font-size:14px} .node .s{color:var(--muted);font-size:12.5px;margin-top:3px}
+  .n-box{border-color:var(--box);background:var(--box-bg)} .n-sub{border-color:var(--sub);background:var(--sub-bg)}
+  .n-seam{border-color:var(--seam);background:var(--seam-bg)} .n-plugin{border-color:var(--plugin);background:var(--plugin-bg)}
+  .n-demoted{border-color:var(--demoted);background:var(--demoted-bg);color:var(--muted)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+
+  /* tier rows: 格納先 × 頻度 */
+  .tiers{margin:14px 0}
+  .tier{display:grid;grid-template-columns:150px 1fr 132px;gap:10px;align-items:stretch;border:2px solid;border-radius:11px;padding:11px 13px;margin:8px 0;background:var(--card)}
+  .tier.t-box{border-color:var(--box);background:var(--box-bg)} .tier.t-sub{border-color:var(--sub);background:var(--sub-bg)}
+  .tier.t-seam{border-color:var(--seam);background:var(--seam-bg)} .tier.t-plugin{border-color:var(--plugin);background:var(--plugin-bg)}
+  .tier .lbl{font-weight:800;font-size:14px;display:flex;flex-direction:column;justify-content:center}
+  .tier .lbl small{font-weight:600;color:var(--muted);font-size:11.5px;margin-top:2px}
+  .tier .desc{font-size:13px;color:var(--ink);display:flex;flex-direction:column;justify-content:center}
+  .tier .desc .s{color:var(--muted);font-size:12px;margin-top:3px}
+  .tier .freq{display:flex;flex-direction:column;justify-content:center;align-items:flex-end;text-align:right;font-size:11.5px;color:var(--muted)}
+  .freq .bar{display:inline-block;height:7px;border-radius:4px;margin-top:5px}
+  .freq .f1{width:26px;background:var(--box)} .freq .f2{width:48px;background:var(--sub)} .freq .f3{width:84px;background:var(--seam)} .freq .f4{width:118px;background:var(--plugin)}
+
+  .flow{display:flex;flex-wrap:wrap;align-items:stretch;gap:6px;margin:10px 0}
+  .flow .node{flex:1 1 130px;min-width:112px;margin:0;display:flex;flex-direction:column;justify-content:center}
+  .flow .arr{display:flex;align-items:center;color:var(--faint);font-weight:700;font-size:16px}
+  .nest-arrow{text-align:center;color:var(--faint);font-size:16px;line-height:1;margin:5px 0}
+
+  /* numbered transport steps */
+  .steps{counter-reset:st;margin:14px 0}
+  .step{position:relative;border:1px solid var(--line);background:var(--card);border-radius:10px;padding:11px 14px 11px 46px;margin:8px 0;font-size:13.5px}
+  .step::before{counter-increment:st;content:counter(st);position:absolute;left:12px;top:11px;width:24px;height:24px;border-radius:50%;
+    background:var(--box);color:var(--badge-ink);font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:center}
+  .step b{color:var(--ink)} .step .s{color:var(--muted);font-size:12.5px;margin-top:2px}
+  .step.plugin{border-color:var(--plugin);border-left:4px solid var(--plugin)} .step.plugin::before{background:var(--plugin)}
+
+  .legend{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
+  .legend .item{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:6px 11px;font-size:11.5px;color:var(--muted)}
+  .legend .sw{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:6px;vertical-align:middle}
+
+  table{border-collapse:collapse;width:100%;margin:12px 0;font-size:13px;background:var(--card)}
+  th,td{border:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top}
+  th{background:var(--surface);font-size:12.5px;color:var(--head)} td code{font-size:.85em}
+  tr:nth-child(even) td{background:rgba(255,255,255,.02)}
+  .impl-yes{color:var(--sub);font-weight:700} .impl-no{color:var(--yellow);font-weight:700} .impl-gap{color:var(--plugin);font-weight:700}
+  .lyr{display:inline-block;font-size:10px;font-weight:800;padding:1px 7px;border-radius:5px;color:var(--badge-ink);margin-right:7px;vertical-align:middle}
+  ul.tight{margin:8px 0;padding-left:22px} ul.tight li{margin:5px 0}
+  footer{margin-top:50px;padding-top:18px;border-top:1px solid var(--line);color:var(--muted);font-size:12.5px}
+  @media(max-width:720px){.grid2,.grid3{grid-template-columns:1fr}.tier{grid-template-columns:1fr}.tier .freq{align-items:flex-start;text-align:left}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <h1>観測ログ 格納先 階層分離 詳細図 — どこに何の log を置くか</h1>
+  <p class="lead"><b>判断（L3〜L4・低頻度）は Langfuse、生の高頻度 ROS / safety signal（L2〜L0）は Langfuse に流さず rosbag2 / ros2_tracing / metrics に分ける</b>——これは受付ゲート <b>E-G2「high-rate separation」</b>として既に決定済み（<span class="dref">08:144</span>）。本図は <b>doc05 §呼び出し頻度と記録粒度</b>（<span class="dref">05:107-122</span>）＋ doc08 E-G2/E-G5 を illustrate する。<b>決定済みアーキテクチャの統合・可視化であり、新 frozen 契約 / topic / しきい値を発明しない</b>。正本 <a href="05-decision-observability-and-tooling.md">05</a> / <a href="08-navigation-hardware-eval-gates.md">08</a>。</p>
+</header>
+
+<div class="nav">
+  <a href="eval-sdk-detail.html">◂ eval-sdk 詳細（producer→eval_sdk→Langfuse）</a>
+  <a href="05-decision-observability-and-tooling.md">05 観測・decision_event・記録粒度</a>
+  <a href="08-navigation-hardware-eval-gates.md">08 eval gates（E-G2/E-G5）</a>
+  <a href="07-layer-tool-decision-matrix.md">07 layer×tool 決定マトリクス</a>
+  <a href="box-taxonomy.html">全体（box-taxonomy）</a>
+  <a href="../architecture/20-dev-quality-and-testing.md">doc20 §8 Langfuse taxonomy</a>
+  <a href="../architecture/22-web-observability.md">doc22 web 観測（live vs 耐久）</a>
+</div>
+
+<div class="meta">
+  正本: <a href="05-decision-observability-and-tooling.md"><code>05-decision-observability-and-tooling.md</code></a>（§呼び出し頻度と記録粒度 <span class="dref">05:107-122</span>・decision_event <span class="dref">05:46-64</span>）／ <a href="08-navigation-hardware-eval-gates.md"><code>08-navigation-hardware-eval-gates.md</code></a>（<b>E-G2 high-rate separation</b> <span class="dref">08:144</span>・E-G5 replay <span class="dref">08:147</span>）／ <a href="07-layer-tool-decision-matrix.md"><code>07</code></a>（OSS 採用・anti-goal <span class="dref">07:57,59</span>）。
+  <b>Langfuse のラベル taxonomy（弁別子）の正本は別</b>＝<a href="../architecture/20-dev-quality-and-testing.md">doc20 §8</a>（<span class="dref">20:79-96</span>）＋ doc08 §比較検証ログ。本図はそれらを<b>「どこに何を置くか」</b>の格納先地図として束ねる図であり、矛盾時は各正本を優先。<b>未決（metrics backend / rosbag format / retention 数値 / correlator）は §7 に proposal として隔離し、数値・OSS 選定を発明しない</b>。
+</div>
+
+<!-- ===================== 0. なぜ ===================== -->
+<h2>0. なぜ分けるのか — Langfuse は live feed の代替に物理的になり得ない</h2>
+<p class="lead">低い layer ほど呼び出し頻度が上がる（Safety は 50ms tick、Hardware は cmd_vel/heartbeat/sensor）。これを丸ごと Langfuse trace に入れると<b>量が爆発し、肝心の「判断」が埋もれる</b>。<span class="dref">05:109,122</span></p>
+<div class="safe">
+  <b>結論（doc22:132 明言）</b>: 「ライブの真実 = <b>ROS via web_bridge</b>、耐久・比較の真実 = <b>Langfuse + audit.jsonl</b>、両者は <code>trace_id</code> で join。<b>Langfuse はライブ feed の代替に物理的になり得ない</b>」。よって <b>高頻度 ROS signal を常時 Langfuse へ投げることは Eval box の禁止事項</b>（<span class="dref">07:59</span>）、<b>Langfuse を高頻度 safety enforcement path にすることは Safety box の禁止事項</b>（<span class="dref">07:57</span>）。<span class="dref">22:132 / 07:57,59</span>
+</div>
+<div class="legend">
+  <div class="item"><span class="sw" style="background:var(--box)"></span>判断 tier（Langfuse・低頻度）</div>
+  <div class="item"><span class="sw" style="background:var(--sub)"></span>event tier（audit.jsonl・event 時）</div>
+  <div class="item"><span class="sw" style="background:var(--seam)"></span>集計 tier（metrics・常時だが潰す）</div>
+  <div class="item"><span class="sw" style="background:var(--plugin)"></span>生 tier（rosbag2/ros2_tracing・sub-second）</div>
+</div>
+
+<!-- ===================== 1. 4階層 ===================== -->
+<h2>1. 格納先の 4 階層（頻度で記録粒度を変える）<span class="dref">05:107-122 / 08:144</span></h2>
+<p class="lead">同じ事象でも<b>「判断は1本の trace、状態変化は event、通常 tick は集計値、生波形は rosbag」</b>と<b>頻度に応じて格納先を分ける</b>。右のバーは概念的な発生頻度（右ほど高頻度）。</p>
+<div class="tiers">
+  <div class="tier t-box">
+    <div class="lbl">① 判断 tier<small>Langfuse</small></div>
+    <div class="desc">L4 generation（input/output/latency/cost）＋ <code>result</code>/SR/SPL を score。<b>Bridge 所有</b>（Hermes 側 Langfuse plugin は二重計上回避で無効）。<div class="s">1 判断 = 1 trace。決定的 <code>trace_id</code>（<code>run_id:gen_id</code>）で判断↔結果を結合。<span class="dref">08:343-361,375 / 20:79-96</span></div></div>
+    <div class="freq">数秒に1回<span class="bar f1"></span><br>低頻度</div>
+  </div>
+  <div class="tier t-sub">
+    <div class="lbl">② event tier<small>audit.jsonl / decision_event</small></div>
+    <div class="desc">MCP command audit（executed/rejected/error）＋ 各 box の状態変化・emergency を <code>decision_event</code> として JSONL 追記。<div class="s">生 raw は埋め込まず <code>input_ref</code>/<code>output_ref</code>/<code>rosbag ref</code> で参照。<span class="dref">05:72,86 / 16:114</span></div></div>
+    <div class="freq">event 時のみ<span class="bar f2"></span><br>中頻度</div>
+  </div>
+  <div class="tier t-seam">
+    <div class="lbl">③ 集計 tier<small>metrics（counter/histogram）</small></div>
+    <div class="desc">通常 50ms tick は<b>全保存せず counter / histogram に潰す</b>（介入率・near_collision_count・layer_latency_ms 等）。<div class="s">「危険時だけ event を確実に残す」。<span class="dref">05:118-122 / 05:90-105</span></div></div>
+    <div class="freq">常時（集計済）<span class="bar f3"></span><br>高頻度→縮約</div>
+  </div>
+  <div class="tier t-plugin">
+    <div class="lbl">④ 生 tier<small>rosbag2 + ros2_tracing</small></div>
+    <div class="desc">odom / scan / cmd_vel の<b>生波形</b>は rosbag2 に record（incident replay）。timing/executor/DDS は ros2_tracing。<div class="s">decision_event はここを <code>rosbag ref</code> で指すだけ。<span class="dref">05:119 / 08:134-135,144</span></div></div>
+    <div class="freq">sub-second<span class="bar f4"></span><br>最高頻度</div>
+  </div>
+</div>
+
+<!-- ===================== 2. ルーティングルール ===================== -->
+<h2>2. ルーティング・ルール（受付ゲート E-G2 / E-G5）<span class="dref">08:144,147</span></h2>
+<div class="grid2">
+  <div class="node n-box"><div class="t">E-G2 high-rate separation</div><div class="s"><b>高頻度 ROS / safety signal を Langfuse に常時流さない</b>。high-rate は rosbag2 / ros2_tracing / metrics、Langfuse は L4 / summary 中心。情報を落とした時は <code>high_rate_signal_sampled</code> warning で明示。<span class="dref">08:144,159</span></div></div>
+  <div class="node n-sub"><div class="t">E-G5 replay export</div><div class="s">incident を後から再現・説明できる。<b>rosbag2 ＋ decision JSONL ＋ run manifest</b> から raw refs / replay refs へ辿れる。<span class="dref">08:147</span></div></div>
+</div>
+<div class="note"><b>判定基準＝「edge か level か」</b>: <b>状態変化・危険・clamp/reject/fault（edge）</b>は確実に event 保存し判断 tier へ上げる。<b>通常 tick・連続ストリーム（level）</b>は metrics に縮約 ＋ 生は rosbag。Safety box は「event edge / level 分離」「fail-closed stop path と独立」が要件（<span class="dref">07:57</span>）。<b>Eval は observation only・enforcement に入らない</b>（E-G3 / §5）。<span class="dref">08:145</span></div>
+
+<!-- ===================== 3. box ごとの記録粒度 ===================== -->
+<h2>3. box ごとの記録粒度（呼び出し頻度 → 記録方針）<span class="dref">05:111-122</span></h2>
+<p class="lead">doc05 の表をそのまま図示（<b>発明しない</b>）。低 layer ほど高頻度＝metrics/rosbag に寄せ、event 保存は edge だけ。</p>
+<table>
+  <thead><tr><th>Box（層）</th><th>呼び出し頻度</th><th>記録方針</th></tr></thead>
+  <tbody>
+    <tr><td><span class="lyr" style="background:var(--sub)">L3</span> Validator</td><td>model output ごと（数秒に1回）</td><td class="impl-no">全 decision を保存（→ ①判断/②event）</td></tr>
+    <tr><td><span class="lyr" style="background:var(--seam)">L2</span> Governance</td><td>command/tool dispatch ごと（1 cycle 複数回）</td><td class="impl-no">accepted/rejected を全保存（→ ②event）</td></tr>
+    <tr><td><span class="lyr" style="background:var(--seam)">L2</span> Traffic</td><td>route allocation ごと</td><td>conflict/fallback は全保存、success は count/route ref</td></tr>
+    <tr><td><span class="lyr" style="background:var(--plugin)">L1</span> Navigation</td><td>goal acceptance/progress/result ごと</td><td>acceptance/final は全保存、progress は summary/sample</td></tr>
+    <tr><td><span class="lyr" style="background:var(--plugin)">L1</span> Safety</td><td><b>50ms tick・sensor・cmd_vel stream など高頻度</b></td><td class="impl-yes">通常 tick は <b>metrics</b>、状態変化と emergency は <b>event</b>（→ ③/②）</td></tr>
+    <tr><td><span class="lyr" style="background:var(--demoted);color:var(--ink)">L0</span> Hardware</td><td><b>cmd_vel apply/heartbeat/sensor read など高頻度</b></td><td class="impl-yes">clamp/reject/fault は <b>event</b>、通常 sample は <b>metrics / rosbag</b>（→ ③/④）</td></tr>
+    <tr><td>Eval / Observability</td><td>run export/score/join ごと</td><td>join/export failure は全保存、success は manifest と summary</td></tr>
+  </tbody>
+</table>
+<div class="note"><span class="dref">05:122</span>: 「<b>Safety Box は full log を常時保存すると量が大きくなる。通常時は counter / histogram / rosbag / trace sample、危険時だけ event を確実に残す</b>」。＝あなたの「エラーのみでも大きい」への答え＝<b>通常は metrics に縮約、event は edge だけ</b>。</div>
+
+<!-- ===================== 4. ストア一覧 ===================== -->
+<h2>4. ストア一覧（どのファイル / 何が owner / 正本）</h2>
+<table>
+  <thead><tr><th>ストア</th><th>tier</th><th>中身</th><th>owner / path</th><th>正本</th></tr></thead>
+  <tbody>
+    <tr><td>Langfuse（trace + score）</td><td><span class="badge b-box">①判断</span></td><td>L4 generation ＋ result/SR/SPL score</td><td>Bridge 所有（Hermes plugin 無効）</td><td><span class="dref">08:343-361,375</span></td></tr>
+    <tr><td><code>audit.jsonl</code></td><td><span class="badge b-sub">②event</span></td><td>MCP command audit（executed/rejected/error）</td><td>MCP Server / <code>$WAREHOUSE_AUDIT_LOG_PATH</code>（既定 <code>/tmp/warehouse/audit.jsonl</code>）</td><td><span class="dref">16:114</span></td></tr>
+    <tr><td><code>conversation_events.jsonl</code></td><td><span class="badge b-sub">②event</span></td><td>lifecycle/local agreement/Self-Action Gate verdict</td><td>Bridge / <code>WAREHOUSE_CONVERSATION_EVENT_LOG_PATH</code>。<b>audit と混ぜると KPI が歪むので別ファイル</b></td><td><span class="dref">08a:522 / 14:443</span></td></tr>
+    <tr><td>metrics（counter/histogram）</td><td><span class="badge b-seam">③集計</span></td><td>介入率・near_collision_count・layer_latency_ms・min_separation 等</td><td>Eval/Observability box（counter 名 = <span class="dref">05:90-105</span>）</td><td><span class="dref">05:118</span></td></tr>
+    <tr><td>rosbag2 / ros2_tracing</td><td><span class="badge b-plugin">④生</span></td><td>odom/scan/cmd_vel 生波形・timing/executor/DDS</td><td>ROS（record/replay・incident replay）</td><td><span class="dref">05:119 / 08:134-135</span></td></tr>
+    <tr><td><code>state.json</code> ＋ <code>/state_cache/snapshot</code></td><td>—</td><td>State Cache 100ms snapshot（凍結 <code>StateSnapshot</code>）</td><td>warehouse_state（atomic file ＋ topic 2 経路）</td><td><span class="dref">12:262</span></td></tr>
+    <tr><td>DuckDB ＋ JSONL</td><td>集計/report</td><td>offline aggregation・customer report export（<b>候補</b>）</td><td>Eval（offline・「audit.jsonl + DuckDB で当面十分」）</td><td><span class="dref">21:213 / 08:136</span></td></tr>
+  </tbody>
+</table>
+
+<!-- ===================== 5. eval_sdk 移送 ===================== -->
+<h2>5. eval_sdk への移送経路（eval_sdk は生 data も ROS も見に行かない）<span class="dref">21:82-102,119,189</span></h2>
+<p class="lead"><b>eval_sdk は純 stdlib コアで <code>rclpy</code> を import せず、ROS 購読を一切持たない</b>（<span class="dref">eval_sdk/sink.py:22 / package.xml:16 / CLAUDE.md:5</span>）。生トピックを購読するのは<b>別のドメイン観測ノード</b>で、eval_sdk はそれが渡す観測値を数学・emit するライブラリ。</p>
+<div class="steps">
+  <div class="step plugin"><b>① 生 ROS topic</b>（<code>near_collision</code> / <code>/bot{n}/odom</code> / State Cache）<div class="s">sub-second の生信号。④生 tier（rosbag2）にも同時に流れる。<span class="dref">21:82-86</span></div></div>
+  <div class="step plugin"><b>② ドメイン観測ノード</b>（観測専用 subscriber / deadlock detector node）<div class="s">生を <b>count / derive</b>（near_collision を count 化＋inter-robot 距離をログ）。<b>Emergency Guardian の enforcement とは別ノード</b>（観測≠制御・fail-closed と混ぜない）。<span class="dref">21:189,190,193</span></div></div>
+  <div class="step"><b>③ <code>eval_sdk.stats</code></b>（純関数の数学）<div class="s">count → rate / histogram / percentile / distance。ROS も domain も知らない。<span class="dref">eval_sdk/stats.py:1-9 / 21:117</span></div></div>
+  <div class="step"><b>④ <code>eval_sdk.sink</code></b>（fail-open emit）<div class="s">score を Langfuse v4 <code>create_score</code> で送信。creds 無/通信断でも no-op（走行無傷）。<span class="dref">eval_sdk/sink.py:99-145</span></div></div>
+  <div class="step"><b>⑤ Langfuse</b>（①判断 tier に着地）<div class="s">同じ <code>trace_id</code> で判断と結合。<span class="dref">21:98-101</span></div></div>
+</div>
+<div class="safe"><b>「観測専用の複製イベントを見に行く」の正確な意味</b>: eval が読むのは <b>near_collision の count 等の観測専用の複製だけで、enforcement 経路には触れない</b>（<span class="dref">21:119</span>）。ただし <b>eval_sdk 自身が subscribe するのではなく、ドメイン観測ノードが生から複製・集計して eval_sdk に渡す</b>。Emergency Guardian / collision_monitor / 0.3 m/s は fail-closed の能動制御で、producer ではなく「観測タップ」を指す。</div>
+
+<!-- ===================== 6. OSS マップ ===================== -->
+<h2>6. 既存 OSS マップ（再発明しない・各 verdict）<span class="dref">21:264-272 / 07:38,57,96</span></h2>
+<p class="lead">sub-second hardware data は<b>世に出ている ROS2 ネイティブ OSS をそのまま使う</b>のが設計方針。下表は docs が既に名指し・判定済みのもの。</p>
+<table>
+  <thead><tr><th>OSS</th><th>用途</th><th>verdict</th><th>正本</th></tr></thead>
+  <tbody>
+    <tr><td><b>rosbag2</b></td><td>生 ROS message の record/playback・incident replay（④生 tier の正解）</td><td class="impl-yes">採用</td><td><span class="dref">05:119 / 07:38 / 08:144</span></td></tr>
+    <tr><td><b>ros2_tracing</b></td><td>high-rate timing・executor・DDS/callback 解析</td><td class="impl-yes">採用</td><td><span class="dref">08:135 / 07:96</span></td></tr>
+    <tr><td><b>OpenTelemetry / OTLP</b></td><td>vendor-neutral envelope。LLM 判断の wire（<code>gen_ai.*</code>）。ただし <code>gen_ai.*</code> はまだ "Development"＝隔離・gate・optional</td><td class="impl-no">採用（任意・隔離）</td><td><span class="dref">21:265,286 / 07:59</span></td></tr>
+    <tr><td><b>DuckDB ＋ JSONL</b></td><td>offline 集計・report export（「audit.jsonl + DuckDB で当面十分」）</td><td class="impl-no">候補</td><td><span class="dref">21:213 / 08:136</span></td></tr>
+    <tr><td>Langfuse</td><td>①判断 tier（trace/score/cost）。seam で包む・任意 extra</td><td class="impl-yes">借りる（seam）</td><td><span class="dref">21:264</span></td></tr>
+    <tr><td>AllenAct <code>spl_metric</code> / Habitat SR/SPL</td><td>評価式（<code>eval_sdk.stats</code>）</td><td class="impl-yes">コピー / 写経</td><td><span class="dref">21:266-267</span></td></tr>
+    <tr><td>LangSmith / W&amp;B</td><td>proprietary・SaaS 課金</td><td class="impl-no">避ける</td><td><span class="dref">21:272 / 07:59</span></td></tr>
+  </tbody>
+</table>
+
+<!-- ===================== 7. 未決 ===================== -->
+<h2>7. 未決（proposal・docs に無い＝発明しない）</h2>
+<p class="lead">以下は <b>docs にまだ決定が無い</b>＝本図は<b>描かない／値を発明しない</b>。決める時は <code>docs/*</code>（契約なら contract）PR で先に正本を確定してから図に「採用」として落とす。</p>
+<div class="gap">
+  <ul class="tight">
+    <li><b>③集計 tier の metrics backend</b>: counter 名（<span class="dref">05:90-105</span>）はあるが、保持する TSDB/exporter（Prometheus / Grafana / InfluxDB / Timescale）は <b>docs に一切無い</b>。当面は audit.jsonl→DuckDB で集計する想定（<span class="dref">21:213</span>）。</li>
+    <li><b>rosbag2 の保存 format</b>: <code>mcap</code> vs <code>sqlite3</code> は未指定（mcap は docs に無い）。</li>
+    <li><b>retention / rotation 数値・sample rate</b>: doc22 が「N runs / M MB」を実測（S6）に defer。<span class="dref">22:208-223</span></li>
+    <li><b>decision↔outcome correlator ＋ embodied OTel <code>*.nav.*</code> namespace</b>: OTLP 属性生存の 30 分 spike ＋ 利用者#2 で gated。<span class="dref">21:240,247</span></li>
+    <li><b>観測専用 subscriber / deadlock detector node</b>: doc21 §6 Tier2 の <b>未実装 ★新 producer</b>。具体ノード名/package/topic は未凍結。<code>replans</code> は Nav2 露出の contract PR 待ち。<span class="dref">21:189,190,191,193</span></li>
+    <li><b>Full Parquet <code>(s,a,s',r)</code> exporter</b>: 利用者#2 まで defer（学習モデル不在・MLflow/W&amp;B 冗長）。<span class="dref">21:199,213</span></li>
+  </ul>
+</div>
+
+<!-- ===================== 8. docs / 実体 ===================== -->
+<h2>8. 各要素 → docs / 実体</h2>
+<table>
+  <thead><tr><th>要素</th><th>種別</th><th>docs（正本）</th><th>実体</th></tr></thead>
+  <tbody>
+    <tr><td>4 階層 格納先分離</td><td>記録粒度</td><td><a href="05-decision-observability-and-tooling.md">05 §呼び出し頻度</a> <span class="dref">05:107-122</span></td><td class="impl-yes">設計決定済（散在を本図で統合）</td></tr>
+    <tr><td>E-G2 / E-G5 ゲート</td><td>受付ゲート</td><td><a href="08-navigation-hardware-eval-gates.md">08</a> <span class="dref">08:144,147</span></td><td class="impl-yes">決定済（gate 形）</td></tr>
+    <tr><td>Langfuse 弁別子 taxonomy</td><td>ラベル地図</td><td><a href="../architecture/20-dev-quality-and-testing.md">doc20 §8</a> / doc08 §比較検証ログ</td><td class="impl-yes">offline 実装済（live 検証 #88）</td></tr>
+    <tr><td>eval_sdk 移送（観測ノード→stats→sink）</td><td>5 モジュール</td><td><a href="eval-sdk-detail.html">eval-sdk 詳細</a> / 21:82-102,189</td><td class="impl-yes">eval_sdk 実装済 / 観測ノードは未実装(★Tier2)</td></tr>
+    <tr><td>metrics backend / mcap / retention</td><td>未決</td><td>—（§7）</td><td class="impl-gap">proposal（docs に無い）</td></tr>
+    <tr><td>decision↔outcome correlator</td><td>未決</td><td>21:240,247</td><td class="impl-gap">defer（利用者#2 + OTLP spike）</td></tr>
+  </tbody>
+</table>
+
+<footer>
+  <p>このページは <code>docs/productization/observability-tiering-detail.html</code>（補足図解・ダーク）。一次ソース: <a href="05-decision-observability-and-tooling.md">05 §呼び出し頻度と記録粒度</a>（<span class="dref">05:107-122</span>）/ <a href="08-navigation-hardware-eval-gates.md">08 E-G2/E-G5</a>（<span class="dref">08:144,147</span>）/ <a href="../architecture/22-web-observability.md">doc22</a>（live vs 耐久・<span class="dref">22:132</span>）。<b>決定済みの統合・可視化であり、新 frozen 契約 / topic / config key / threshold を追加しない。未決は §7 に隔離</b>。</p>
+  <p>← <a href="eval-sdk-detail.html">eval-sdk 詳細</a> ／ <a href="05-decision-observability-and-tooling.md">05 観測</a> ／ <a href="08-navigation-hardware-eval-gates.md">08 eval gates</a> ／ <a href="box-taxonomy.html">box-taxonomy</a> ／ <a href="../architecture/20-dev-quality-and-testing.md">doc20 §8</a></p>
+</footer>
+
+</div>
+</body>
+</html>
