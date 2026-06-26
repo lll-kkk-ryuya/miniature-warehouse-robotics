@@ -63,7 +63,7 @@
   .tier .desc .s{color:var(--muted);font-size:12px;margin-top:3px}
   .tier .freq{display:flex;flex-direction:column;justify-content:center;align-items:flex-end;text-align:right;font-size:11.5px;color:var(--muted)}
   .freq .bar{display:inline-block;height:7px;border-radius:4px;margin-top:5px}
-  .freq .f1{width:26px;background:var(--box)} .freq .f2{width:48px;background:var(--sub)} .freq .f3{width:84px;background:var(--seam)} .freq .f4{width:118px;background:var(--plugin)}
+  .freq .f1{width:26px;background:var(--sub)} .freq .f2{width:48px;background:var(--seam)} .freq .f3{width:84px;background:var(--box)} .freq .f4{width:118px;background:var(--plugin)}
 
   .flow{display:flex;flex-wrap:wrap;align-items:stretch;gap:6px;margin:10px 0}
   .flow .node{flex:1 1 130px;min-width:112px;margin:0;display:flex;flex-direction:column;justify-content:center}
@@ -77,6 +77,7 @@
     background:var(--box);color:var(--badge-ink);font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:center}
   .step b{color:var(--ink)} .step .s{color:var(--muted);font-size:12.5px;margin-top:2px}
   .step.plugin{border-color:var(--plugin);border-left:4px solid var(--plugin)} .step.plugin::before{background:var(--plugin)}
+  .step.sub{border-color:var(--sub);border-left:4px solid var(--sub)} .step.sub::before{background:var(--sub)}
 
   .legend{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
   .legend .item{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:6px 11px;font-size:11.5px;color:var(--muted)}
@@ -124,9 +125,9 @@
   <b>結論（doc22:132 明言）</b>: 「ライブの真実 = <b>ROS via web_bridge</b>、耐久・比較の真実 = <b>Langfuse + audit.jsonl</b>、両者は <code>trace_id</code> で join。<b>Langfuse はライブ feed の代替に物理的になり得ない</b>」。よって <b>高頻度 ROS signal を常時 Langfuse へ投げることは Eval box の禁止事項</b>（<span class="dref">07:59</span>）、<b>Langfuse を高頻度 safety enforcement path にすることは Safety box の禁止事項</b>（<span class="dref">07:57</span>）。<span class="dref">22:132 / 07:57,59</span>
 </div>
 <div class="legend">
-  <div class="item"><span class="sw" style="background:var(--box)"></span>判断 tier（Langfuse・低頻度）</div>
-  <div class="item"><span class="sw" style="background:var(--sub)"></span>event tier（audit.jsonl・event 時）</div>
-  <div class="item"><span class="sw" style="background:var(--seam)"></span>集計 tier（metrics・常時だが潰す）</div>
+  <div class="item"><span class="sw" style="background:var(--sub)"></span>判断 tier（Langfuse・低頻度）</div>
+  <div class="item"><span class="sw" style="background:var(--seam)"></span>event tier（audit.jsonl・event 時）</div>
+  <div class="item"><span class="sw" style="background:var(--box)"></span>集計 tier（metrics・常時だが潰す）</div>
   <div class="item"><span class="sw" style="background:var(--plugin)"></span>生 tier（rosbag2/ros2_tracing・sub-second）</div>
 </div>
 
@@ -134,17 +135,17 @@
 <h2>1. 格納先の 4 階層（頻度で記録粒度を変える）<span class="dref">05:107-122 / 08:144</span></h2>
 <p class="lead">同じ事象でも<b>「判断は1本の trace、状態変化は event、通常 tick は集計値、生波形は rosbag」</b>と<b>頻度に応じて格納先を分ける</b>。右のバーは概念的な発生頻度（右ほど高頻度）。</p>
 <div class="tiers">
-  <div class="tier t-box">
+  <div class="tier t-sub">
     <div class="lbl">① 判断 tier<small>Langfuse</small></div>
     <div class="desc">L4 generation（input/output/latency/cost）＋ <code>result</code>/SR/SPL を score。<b>Bridge 所有</b>（Hermes 側 Langfuse plugin は二重計上回避で無効）。<div class="s">1 判断 = 1 trace。決定的 <code>trace_id</code>（<code>run_id:gen_id</code>）で判断↔結果を結合。<span class="dref">08:343-361,375 / 20:79-96</span></div></div>
     <div class="freq">数秒に1回<span class="bar f1"></span><br>低頻度</div>
   </div>
-  <div class="tier t-sub">
+  <div class="tier t-seam">
     <div class="lbl">② event tier<small>audit.jsonl / decision_event</small></div>
     <div class="desc">MCP command audit（executed/rejected/error）＋ 各 box の状態変化・emergency を <code>decision_event</code> として JSONL 追記。<div class="s">生 raw は埋め込まず <code>input_ref</code>/<code>output_ref</code>/<code>rosbag ref</code> で参照。<span class="dref">05:72,86 / 16:114</span></div></div>
     <div class="freq">event 時のみ<span class="bar f2"></span><br>中頻度</div>
   </div>
-  <div class="tier t-seam">
+  <div class="tier t-box">
     <div class="lbl">③ 集計 tier<small>metrics（counter/histogram）</small></div>
     <div class="desc">通常 50ms tick は<b>全保存せず counter / histogram に潰す</b>（介入率・near_collision_count・layer_latency_ms 等）。<div class="s">「危険時だけ event を確実に残す」。<span class="dref">05:118-122 / 05:90-105</span></div></div>
     <div class="freq">常時（集計済）<span class="bar f3"></span><br>高頻度→縮約</div>
@@ -195,10 +196,10 @@
 <table>
   <thead><tr><th>ストア</th><th>tier</th><th>中身</th><th>owner / path</th><th>正本</th></tr></thead>
   <tbody>
-    <tr><td>Langfuse（trace + score）</td><td><span class="badge b-box">①判断</span></td><td>L4 generation ＋ result/SR/SPL score</td><td>Bridge 所有（Hermes plugin 無効）</td><td><span class="dref">08:343-361,375</span></td></tr>
-    <tr><td><code>audit.jsonl</code></td><td><span class="badge b-sub">②event</span></td><td>MCP command audit（executed/rejected/error）</td><td>MCP Server / <code>$WAREHOUSE_AUDIT_LOG_PATH</code>（既定 <code>/tmp/warehouse/audit.jsonl</code>）</td><td><span class="dref">16:114</span></td></tr>
-    <tr><td><code>conversation_events.jsonl</code></td><td><span class="badge b-sub">②event</span></td><td>lifecycle/local agreement/Self-Action Gate verdict</td><td>Bridge / <code>WAREHOUSE_CONVERSATION_EVENT_LOG_PATH</code>。<b>audit と混ぜると KPI が歪むので別ファイル</b></td><td><span class="dref">08a:522 / 14:443</span></td></tr>
-    <tr><td>metrics（counter/histogram）</td><td><span class="badge b-seam">③集計</span></td><td>介入率・near_collision_count・layer_latency_ms・min_separation 等</td><td>Eval/Observability box（counter 名 = <span class="dref">05:90-105</span>）</td><td><span class="dref">05:118</span></td></tr>
+    <tr><td>Langfuse（trace + score）</td><td><span class="badge b-sub">①判断</span></td><td>L4 generation ＋ result/SR/SPL score</td><td>Bridge 所有（Hermes plugin 無効）</td><td><span class="dref">08:343-361,375</span></td></tr>
+    <tr><td><code>audit.jsonl</code></td><td><span class="badge b-seam">②event</span></td><td>MCP command audit（executed/rejected/error）</td><td>MCP Server / <code>$WAREHOUSE_AUDIT_LOG_PATH</code>（既定 <code>/tmp/warehouse/audit.jsonl</code>）</td><td><span class="dref">16:114</span></td></tr>
+    <tr><td><code>conversation_events.jsonl</code></td><td><span class="badge b-seam">②event</span></td><td>lifecycle/local agreement/Self-Action Gate verdict</td><td>Bridge / <code>WAREHOUSE_CONVERSATION_EVENT_LOG_PATH</code>。<b>audit と混ぜると KPI が歪むので別ファイル</b></td><td><span class="dref">08a:522 / 14:443</span></td></tr>
+    <tr><td>metrics（counter/histogram）</td><td><span class="badge b-box">③集計</span></td><td>介入率・near_collision_count・layer_latency_ms・min_separation 等</td><td>Eval/Observability box（counter 名 = <span class="dref">05:90-105</span>）</td><td><span class="dref">05:118</span></td></tr>
     <tr><td>rosbag2 / ros2_tracing</td><td><span class="badge b-plugin">④生</span></td><td>odom/scan/cmd_vel 生波形・timing/executor/DDS</td><td>ROS（record/replay・incident replay）</td><td><span class="dref">05:119 / 08:134-135</span></td></tr>
     <tr><td><code>state.json</code> ＋ <code>/state_cache/snapshot</code></td><td>—</td><td>State Cache 100ms snapshot（凍結 <code>StateSnapshot</code>）</td><td>warehouse_state（atomic file ＋ topic 2 経路）</td><td><span class="dref">12:262</span></td></tr>
     <tr><td>DuckDB ＋ JSONL</td><td>集計/report</td><td>offline aggregation・customer report export（<b>候補</b>）</td><td>Eval（offline・「audit.jsonl + DuckDB で当面十分」）</td><td><span class="dref">21:213 / 08:136</span></td></tr>
@@ -213,7 +214,7 @@
   <div class="step plugin"><b>② ドメイン観測ノード</b>（観測専用 subscriber / deadlock detector node）<div class="s">生を <b>count / derive</b>（near_collision を count 化＋inter-robot 距離をログ）。<b>Emergency Guardian の enforcement とは別ノード</b>（観測≠制御・fail-closed と混ぜない）。<span class="dref">21:189,190,193</span></div></div>
   <div class="step"><b>③ <code>eval_sdk.stats</code></b>（純関数の数学）<div class="s">count → rate / histogram / percentile / distance。ROS も domain も知らない。<span class="dref">eval_sdk/stats.py:1-9 / 21:117</span></div></div>
   <div class="step"><b>④ <code>eval_sdk.sink</code></b>（fail-open emit）<div class="s">score を Langfuse v4 <code>create_score</code> で送信。creds 無/通信断でも no-op（走行無傷）。<span class="dref">eval_sdk/sink.py:99-145</span></div></div>
-  <div class="step"><b>⑤ Langfuse</b>（①判断 tier に着地）<div class="s">同じ <code>trace_id</code> で判断と結合。<span class="dref">21:98-101</span></div></div>
+  <div class="step sub"><b>⑤ Langfuse</b>（①判断 tier に着地）<div class="s">同じ <code>trace_id</code> で判断と結合。<span class="dref">21:98-101</span></div></div>
 </div>
 <div class="safe"><b>「観測専用の複製イベントを見に行く」の正確な意味</b>: eval が読むのは <b>near_collision の count 等の観測専用の複製だけで、enforcement 経路には触れない</b>（<span class="dref">21:119</span>）。ただし <b>eval_sdk 自身が subscribe するのではなく、ドメイン観測ノードが生から複製・集計して eval_sdk に渡す</b>。Emergency Guardian / collision_monitor / 0.3 m/s は fail-closed の能動制御で、producer ではなく「観測タップ」を指す。</div>
 
