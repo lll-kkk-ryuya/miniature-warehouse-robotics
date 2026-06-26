@@ -306,9 +306,12 @@ def test_live_two_lane_er_and_hermes_stt(capsys):
     """Audio triggers BOTH lanes in parallel: ER (critical) ∥ Hermes-side STT (out-of-band).
 
     ER lane = audio -> direct ER -> handoff -> plan (critical path). STT lane = the SAME audio ->
-    Hermes dashboard /api/audio/transcribe -> transcript -> sink (for a realtime UI). The STT runs
-    out-of-band and never blocks the ER plan. Needs MWR_ER_AUDIO + a Hermes dashboard at
-    HERMES_DASHBOARD_URL (e.g. http://127.0.0.1:9119 — `hermes dashboard`).
+    Hermes web API /api/audio/transcribe -> transcript -> sink (for a realtime UI). The STT runs
+    out-of-band and never blocks the ER plan (verified live 2026-06-26 over real HTTP).
+
+    Start the Hermes STT HTTP endpoint WITHOUT the dashboard UI build:
+      HERMES_DASHBOARD_SESSION_TOKEN=tok deploy/dev/run-er-stt-http.sh   # bare uvicorn on :9119
+    then set MWR_ER_AUDIO + HERMES_DASHBOARD_URL=http://127.0.0.1:9119 + HERMES_DASHBOARD_SESSION_TOKEN=tok.
     """
     import asyncio
     import base64
@@ -363,7 +366,7 @@ def test_live_two_lane_er_and_hermes_stt(capsys):
             RawModelOutput(transport="direct", payload=json.loads(resp.decode()))
         )
 
-    transcriber = HermesTranscriber(dash)
+    transcriber = HermesTranscriber(dash, session_token=os.getenv("HERMES_DASHBOARD_SESSION_TOKEN"))
     sink = InMemoryTranscriptSink()
 
     async def run():

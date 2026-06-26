@@ -37,25 +37,34 @@ class Transcriber(Protocol):
 
 
 class HermesTranscriber:
-    """Hermes-side STT via the dashboard ``/api/audio/transcribe`` (``hermes dashboard``).
+    """Hermes-side STT over HTTP via the dashboard ``/api/audio/transcribe``.
 
-    base_url e.g. ``http://127.0.0.1:9119``. Runs the blocking POST in a worker thread so it stays
-    off the event loop. Fail-soft: any error returns ``success=False`` (the caller treats STT as
-    best-effort provenance — it never blocks ER / motion).
+    The endpoint lives on the Hermes web app (``hermes dashboard``, or just ``uvicorn
+    hermes_cli.web_server:app`` — the API serves without the UI build). On loopback there is no
+    OAuth gate, but ``/api/`` still requires the dashboard session token (``X-Hermes-Session-Token``),
+    which is pinned via the ``HERMES_DASHBOARD_SESSION_TOKEN`` env when the server starts. Pass that
+    same value as ``session_token``. The endpoint returns ``{"ok": true, "transcript": ..., "provider": ...}``.
+
+    base_url e.g. ``http://127.0.0.1:9119``. The blocking POST runs in a worker thread so it stays off
+    the event loop. Fail-soft: any error returns ``success=False`` (STT is best-effort provenance —
+    it never blocks ER / motion).
     """
 
-    def __init__(self, base_url: str, *, timeout: float = 30.0) -> None:
+    def __init__(
+        self, base_url: str, *, session_token: str | None = None, timeout: float = 30.0
+    ) -> None:
         self._base = base_url.rstrip("/")
+        self._token = session_token
         self._timeout = timeout
 
     async def transcribe(self, audio: bytes, *, mime: str = "audio/wav") -> TranscriptResult:
         data_url = f"data:{mime};base64," + base64.b64encode(audio).decode("ascii")
         body = json.dumps({"data_url": data_url, "mime_type": mime}).encode("utf-8")
+        headers = {"Content-Type": "application/json"}
+        if self._token:
+            headers["X-Hermes-Session-Token"] = self._token
         req = urllib.request.Request(
-            self._base + "/api/audio/transcribe",
-            data=body,
-            headers={"Content-Type": "application/json"},
-            method="POST",
+            self._base + "/api/audio/transcribe", data=body, headers=headers, method="POST"
         )
 
         def _call() -> dict[str, Any]:
@@ -72,7 +81,7 @@ class HermesTranscriber:
         return TranscriptResult(
             transcript=transcript or "",
             provider=data.get("provider", "hermes"),
-            success=bool(transcript),
+            success=bool(data.get("ok", transcript is not None)) and bool(transcript),
         )
 
 
