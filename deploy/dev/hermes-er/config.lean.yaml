@@ -1,0 +1,48 @@
+# Dedicated, LEAN Hermes gateway for Mode X-ER (Gemini Robotics-ER transport).
+#
+# Purpose: route the ER text+image leg through a Hermes OpenAI-compatible API server
+# (uniform transport + optional Langfuse observability) while stripping the agent loop so
+# latency/overhead is minimal. The audio leg does NOT use this (Hermes can't carry audio —
+# 400 unsupported_content_type); audio goes DIRECT to ER. See docs/mode-x-er/06 §5.
+#
+# This is applied to a SEPARATE HERMES_HOME (deploy/dev/run-er-hermes.sh) — it NEVER touches
+# the personal ~/.hermes (the user's openai-codex daily driver, memory ON).
+#
+# Why each key (verified 2026-06-26 against Hermes v0.15.1, file:line in the Hermes install):
+# - model.provider "google" is the native Gemini provider (uses GOOGLE_API_KEY/GEMINI_API_KEY);
+#   the API server ignores the request "model" field and uses this single server-side model.
+# - platform_toolsets.api_server: [] — an EXPLICIT empty list yields ZERO tools (a None/unset
+#   value falls back to the 35-tool default). No tools => no tool-loop, and the skills catalog +
+#   memory/skills guidance drop out (they are gated on tools being present). This removes the
+#   bulk of the ~20k-token agent overhead observed when running ER through the full agent.
+# - memory off — no MEMORY.md / USER.md snapshot blocks; also required for fair LLM comparison.
+# - agent.* guidance off — drops tool-use / task-completion / environment-probe prompt blocks.
+#
+# It is still a normal /v1/chat/completions endpoint, so the L3 handoff is unchanged (it already
+# tolerates the ```json fence the agent formats its answer with).
+
+model:
+  default: "gemini-robotics-er-1.6-preview"
+  provider: "google" # native Gemini provider; key from GOOGLE_API_KEY/GEMINI_API_KEY in .env
+
+# Strip the agent loop -> near-thin transport (no raw/proxy mode exists; this is the lean path).
+platform_toolsets:
+  api_server: [] # explicit empty list = zero tools (NOT unset, which defaults to 35 tools)
+
+memory:
+  memory_enabled: false
+  user_profile_enabled: false
+
+agent:
+  tool_use_enforcement: false
+  task_completion_guidance: false
+  environment_probe: false
+  disabled_toolsets: []
+
+# Observability is OUT-OF-BAND and fail-open. To trace ER calls to Langfuse, enable the built-in
+# plugin on this instance (does NOT block the response — background-thread ingestion):
+#   pip install langfuse
+#   HERMES_HOME=<this home> hermes plugins enable observability/langfuse
+# and set HERMES_LANGFUSE_PUBLIC_KEY / HERMES_LANGFUSE_SECRET_KEY / HERMES_LANGFUSE_BASE_URL in .env.
+# NOTE: because the audio leg bypasses Hermes, this plugin does NOT observe the audio-ER call —
+# the Bridge-owned Langfuse trace remains the uniform owner (docs/architecture/08, prod/02 §HLF gate).

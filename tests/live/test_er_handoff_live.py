@@ -235,3 +235,68 @@ def test_live_er_via_hermes_gateway_flows_through_l3_handoff(capsys):
             f"plan_id={draft.plan_id!r}, detections={len(draft.detections)}, "
             f"tasks={[t.id + ':' + t.robot + '->' + (t.target or '') for t in draft.task_graph]})"
         )
+
+
+def test_live_er_audio_direct_flows_through_l3_handoff(capsys):
+    """PROBE-1 (audio): send SPOKEN audio DIRECTLY to ER (Hermes can't carry audio) -> handoff.
+
+    Set MWR_ER_AUDIO to a small wav/aiff/mp3 of the spoken instruction. Verified 2026-06-26:
+    ER transcribes the audio AND produces the ordered plan in one call (no STT pre-stage).
+    Generate a clip on macOS:  say -o /tmp/i.aiff "..."; afconvert -f WAVE -d LEI16@16000 -c 1 /tmp/i.aiff /tmp/i.wav
+    """
+    import base64
+    from pathlib import Path
+
+    if not _API_KEY:
+        pytest.skip("GEMINI_API_KEY / GOOGLE_API_KEY not set")
+    audio_path = os.getenv("MWR_ER_AUDIO")
+    if not audio_path or not Path(audio_path).is_file():
+        pytest.skip(
+            "set MWR_ER_AUDIO to a spoken-instruction audio file for the audio-direct probe"
+        )
+
+    mime = "audio/wav" if audio_path.lower().endswith(".wav") else "audio/aiff"
+    audio_b64 = base64.b64encode(Path(audio_path).read_bytes()).decode("ascii")
+    schema = _SCHEMA_INSTRUCTION.replace("matching exactly this schema", "matching this schema")
+    body = json.dumps(
+        {
+            "contents": [
+                {
+                    "role": "user",
+                    "parts": [
+                        {"text": schema + "\nThe operator instruction is the attached AUDIO."},
+                        {"inline_data": {"mime_type": mime, "data": audio_b64}},
+                    ],
+                }
+            ],
+            "generationConfig": {"temperature": 0.2, "responseMimeType": "application/json"},
+        }
+    ).encode("utf-8")
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent"
+    req = urllib.request.Request(
+        url,
+        data=body,
+        headers={"Content-Type": "application/json", "x-goog-api-key": _API_KEY},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=90) as resp:
+            status, raw = resp.status, resp.read().decode("utf-8", "replace")
+    except urllib.error.HTTPError as exc:
+        pytest.fail(f"ER audio call failed HTTP {exc.code}: {exc.read().decode()[:300]}")
+    assert status == 200, f"expected HTTP 200, got {status}"
+    response = json.loads(raw)
+
+    draft = to_robotics_plan_draft(
+        RawModelOutput(transport="direct", provider="er", source_model=MODEL, payload=response)
+    )
+    assert isinstance(draft, RoboticsPlanDraft)
+    assert draft.task_graph, "expected the spoken instruction to yield at least one task"
+
+    with capsys.disabled():
+        usage = response.get("usageMetadata", {})
+        print(
+            f"\n[live ER->handoff AUDIO-DIRECT] tokens={usage.get('totalTokenCount')} "
+            f"transcript={(draft.transcript or '')[:70]!r} -> "
+            f"tasks={[t.id + ':' + t.robot + '->' + (t.target or '') for t in draft.task_graph]}"
+        )
