@@ -300,3 +300,90 @@ def test_live_er_audio_direct_flows_through_l3_handoff(capsys):
             f"transcript={(draft.transcript or '')[:70]!r} -> "
             f"tasks={[t.id + ':' + t.robot + '->' + (t.target or '') for t in draft.task_graph]}"
         )
+
+
+def test_live_two_lane_er_and_hermes_stt(capsys):
+    """Audio triggers BOTH lanes in parallel: ER (critical) ∥ Hermes-side STT (out-of-band).
+
+    ER lane = audio -> direct ER -> handoff -> plan (critical path). STT lane = the SAME audio ->
+    Hermes dashboard /api/audio/transcribe -> transcript -> sink (for a realtime UI). The STT runs
+    out-of-band and never blocks the ER plan. Needs MWR_ER_AUDIO + a Hermes dashboard at
+    HERMES_DASHBOARD_URL (e.g. http://127.0.0.1:9119 — `hermes dashboard`).
+    """
+    import asyncio
+    import base64
+    from pathlib import Path
+
+    from warehouse_llm_bridge.robotics import (
+        HermesTranscriber,
+        InMemoryTranscriptSink,
+        run_perception_lanes,
+    )
+
+    if not _API_KEY:
+        pytest.skip("GEMINI_API_KEY / GOOGLE_API_KEY not set")
+    audio_path = os.getenv("MWR_ER_AUDIO")
+    dash = os.getenv("HERMES_DASHBOARD_URL")
+    if not audio_path or not Path(audio_path).is_file() or not dash:
+        pytest.skip(
+            "set MWR_ER_AUDIO + HERMES_DASHBOARD_URL for the two-lane (ER ∥ Hermes-STT) probe"
+        )
+
+    audio_bytes = Path(audio_path).read_bytes()
+    audio_b64 = base64.b64encode(audio_bytes).decode("ascii")
+    mime = "audio/wav" if audio_path.lower().endswith(".wav") else "audio/aiff"
+
+    async def er_lane():  # critical path: audio -> ER -> handoff -> plan
+        body = json.dumps(
+            {
+                "contents": [
+                    {
+                        "role": "user",
+                        "parts": [
+                            {
+                                "text": _SCHEMA_INSTRUCTION
+                                + "\nThe instruction is the attached AUDIO."
+                            },
+                            {"inline_data": {"mime_type": mime, "data": audio_b64}},
+                        ],
+                    }
+                ],
+                "generationConfig": {"temperature": 0.2, "responseMimeType": "application/json"},
+            }
+        ).encode("utf-8")
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent"
+        req = urllib.request.Request(
+            url,
+            data=body,
+            headers={"Content-Type": "application/json", "x-goog-api-key": _API_KEY},
+            method="POST",
+        )
+        resp = await asyncio.to_thread(lambda: urllib.request.urlopen(req, timeout=90).read())
+        return to_robotics_plan_draft(
+            RawModelOutput(transport="direct", payload=json.loads(resp.decode()))
+        )
+
+    transcriber = HermesTranscriber(dash)
+    sink = InMemoryTranscriptSink()
+
+    async def run():
+        res = await run_perception_lanes(
+            er_lane=er_lane,
+            stt_lane=lambda: transcriber.transcribe(audio_bytes, mime=mime),
+            sink=sink,
+            run_id="two-lane-probe",
+        )
+        transcript = await res.stt_task
+        return res.er_output, transcript
+
+    draft, transcript = asyncio.run(run())
+
+    assert isinstance(draft, RoboticsPlanDraft) and draft.task_graph  # ER lane produced a plan
+    assert sink.events and sink.events[0]["type"] == "transcript"  # STT lane published to the sink
+
+    with capsys.disabled():
+        print(
+            f"\n[live TWO-LANE] ER -> plan={draft.plan_id!r} tasks={[t.id for t in draft.task_graph]} | "
+            f"Hermes-STT(out-of-band) -> provider={transcript.provider if transcript else None} "
+            f"transcript={(transcript.transcript if transcript else '')[:60]!r}"
+        )
