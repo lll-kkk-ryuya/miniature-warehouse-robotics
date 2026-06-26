@@ -140,3 +140,24 @@ def test_valid_plan_passes_all_gates():
     # L3H-G2: a clean valid plan is handed through to (future) L3 Validator.
     draft = to_robotics_plan_draft(RawModelOutput(payload=dict(INNER_PLAN)))
     assert draft.plan_id == "plan_demo_red_blue"
+
+
+# --- markdown code-fence tolerance (real agent/Hermes output, verified live) -------
+
+
+def test_handoff_strips_json_code_fence():
+    # Agent gateways (live ER via the Hermes Agent gateway) wrap JSON in a ```json fence.
+    fenced = "```json\n" + json.dumps(INNER_PLAN) + "\n```"
+    draft = to_robotics_plan_draft(
+        RawModelOutput(transport="hermes", payload={"choices": [{"message": {"content": fenced}}]})
+    )
+    assert draft.plan_id == "plan_demo_red_blue"
+    assert [t.id for t in draft.task_graph] == ["t1", "t2"]
+
+
+def test_handoff_strips_bare_code_fence():
+    fenced = "```\n" + json.dumps(INNER_PLAN) + "\n```"
+    draft = to_robotics_plan_draft(
+        RawModelOutput(payload={"candidates": [{"content": {"parts": [{"text": fenced}]}}]})
+    )
+    assert draft.plan_id == "plan_demo_red_blue"

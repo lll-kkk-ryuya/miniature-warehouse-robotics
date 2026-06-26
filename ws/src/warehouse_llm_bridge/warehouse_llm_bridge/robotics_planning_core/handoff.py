@@ -146,11 +146,31 @@ def _coerce_plan_dict(content: Any) -> dict:
     if isinstance(content, Mapping):
         return dict(content)
     if isinstance(content, str):
+        text = _strip_code_fence(content)
         try:
-            parsed = json.loads(content)
+            parsed = json.loads(text)
         except json.JSONDecodeError as exc:
             raise ValueError(f"ER output content is not valid JSON: {exc}") from exc
         if not isinstance(parsed, dict):
             raise ValueError("ER output content JSON is not an object")
         return parsed
     raise ValueError(f"unsupported ER output content type: {type(content).__name__}")
+
+
+def _strip_code_fence(text: str) -> str:
+    """Strip a leading/trailing Markdown code fence (```json ... ```).
+
+    Models and agent gateways (verified live with ER via the Hermes Agent gateway, 2026-06-26)
+    routinely wrap JSON in a ```json fence, even when asked for raw JSON. This mirrors the
+    leniency the commander parser already applies (doc08:293). Only an outer fence is removed;
+    non-fenced content is returned unchanged.
+    """
+    t = text.strip()
+    if not t.startswith("```"):
+        return t
+    lines = t.splitlines()
+    if lines and lines[0].startswith("```"):  # drop ``` or ```json opener
+        lines = lines[1:]
+    if lines and lines[-1].strip() == "```":  # drop closing ```
+        lines = lines[:-1]
+    return "\n".join(lines).strip()

@@ -180,3 +180,58 @@ def test_live_er_openai_compat_flows_through_l3_handoff(capsys):
             f"plan_id={draft.plan_id!r}, detections={len(draft.detections)}, "
             f"tasks={[t.id + ':' + t.robot + '->' + (t.target or '') for t in draft.task_graph]})"
         )
+
+
+def test_live_er_via_hermes_gateway_flows_through_l3_handoff(capsys):
+    """REAL Hermes-gateway path (PROBE-3): route ER through a dedicated Hermes gateway -> handoff.
+
+    Needs a dedicated Hermes whose active model is ER (provider: google,
+    default: gemini-robotics-er-1.6-preview) — NOT the personal ~/.hermes. Set
+    HERMES_BASE_URL (e.g. http://127.0.0.1:8643) and HERMES_API_KEY (the gateway API_SERVER_KEY).
+    Verified 2026-06-26: the gateway returns the plan inside a ```json fence (agent wrapping), which
+    the handoff now tolerates.
+    """
+    base = os.getenv("HERMES_BASE_URL")
+    gw_key = os.getenv("HERMES_API_KEY") or os.getenv("API_SERVER_KEY")
+    if not base or not gw_key:
+        pytest.skip(
+            "set HERMES_BASE_URL + HERMES_API_KEY (dedicated ER gateway) for the Hermes path"
+        )
+
+    body = json.dumps(
+        {
+            "model": "hermes-agent",  # cosmetic; the gateway uses its server-side active model (ER)
+            "messages": [{"role": "user", "content": _SCHEMA_INSTRUCTION + "\n\n" + _INSTRUCTION}],
+        }
+    ).encode("utf-8")
+    req = urllib.request.Request(
+        base.rstrip("/") + "/v1/chat/completions",
+        data=body,
+        headers={"Content-Type": "application/json", "Authorization": f"Bearer {gw_key}"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=150) as resp:
+            status, raw = resp.status, resp.read().decode("utf-8", "replace")
+    except urllib.error.HTTPError as exc:
+        pytest.fail(f"Hermes gateway call failed HTTP {exc.code}: {exc.read().decode()[:300]}")
+    assert status == 200, f"expected HTTP 200, got {status}"
+    response = json.loads(raw)
+
+    raw_out = RawModelOutput(
+        transport="hermes", provider="er", source_model=MODEL, payload=response
+    )
+    draft = to_robotics_plan_draft(raw_out)
+
+    assert isinstance(draft, RoboticsPlanDraft)
+    assert draft.schema_version == "robotics_plan_draft.v0"
+    assert draft.task_graph, "expected at least one task in the live plan"
+
+    with capsys.disabled():
+        usage = response.get("usage", {})
+        print(
+            f"\n[live ER->handoff via HERMES GATEWAY] base={base} "
+            f"tokens={usage.get('total_tokens')} -> RoboticsPlanDraft("
+            f"plan_id={draft.plan_id!r}, detections={len(draft.detections)}, "
+            f"tasks={[t.id + ':' + t.robot + '->' + (t.target or '') for t in draft.task_graph]})"
+        )
