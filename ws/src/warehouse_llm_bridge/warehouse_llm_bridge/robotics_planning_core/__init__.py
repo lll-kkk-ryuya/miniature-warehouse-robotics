@@ -1,45 +1,37 @@
-"""Mode X-ER L3 Robotics Planning Core (XER1/G0 — offline seam only).
+"""Mode X-ER **L3** Robotics Planning Core (XER1/G0 — Handoff seam + input models only).
 
-This sub-package is the deterministic L3 planning core for Mode X-ER: it turns a
-Gemini Robotics-ER raw model output into command candidates the existing safe
-execution path can run, WITHOUT granting execution permission itself (that stays
-with the L2 MCP / Policy Gate). It lives *inside* ``warehouse_llm_bridge`` because
-docs treat L4 as "the LLM Bridge extended into a Robotics Bridge Super-Box"
-(docs/mode-x-er/01-architecture-and-flow.md:99); keeping it here avoids a
-cross-track import when the commander cycle wires it at XER6. The module is kept
-ROS-free and depends only on the frozen ``warehouse_interfaces`` contract so it can
-be lifted into a standalone reuse "box" later (docs/productization/01-commercial-box-map.md:5;
-the per-file layout in docs/productization/03-l3-planning-core-box.md:159-190 is a
-推奨/illustrative module layout, not a frozen structure).
+This package is the deterministic, **provider-agnostic L3** planning core: it turns a model
+raw output into command candidates the existing safe path can run, WITHOUT granting execution
+permission itself (that stays with the L2 MCP / Policy Gate). It depends only on the frozen
+``warehouse_interfaces`` contract and never imports the L4 ``robotics`` package, so it can be
+lifted into a standalone reuse "box" later (docs/productization/01-commercial-box-map.md:5,
+03-l3-planning-core-box.md:159-190 — the per-file layout there is illustrative).
 
-Scope of XER1/G0 (this slice): the L4 ER adapter *seam*, the bridge-local
-``RoboticsPlan draft`` / ``ErTaskRequest`` models, the L4->L3 normalization that
-makes the Hermes-transport and direct-transport request shapes collapse onto the
-SAME L3 handoff input (docs/mode-x-er/README.md:86,
-docs/mode-x-er/01-architecture-and-flow.md:167), and observation-only transport /
-provider enums. The Validator, Visual Resolver, Task Graph Executor and Command
-Compiler arrive in XER2-XER5 (docs/mode-x-er/README.md:85-92).
+What is HERE (L3):
+- ``handoff`` — the L3 Handoff seam (RawModelOutput -> RoboticsPlan draft) + its fail-closed
+  acceptance gates L3H-G0/G1 (docs/productization/06-oss-reuse-and-box-small-designs.md:148-164).
+- ``models`` — ``RawModelOutput`` (L3 input boundary contract), ``RoboticsPlanDraft`` /
+  ``Detection`` / ``TaskNode`` / ``InputRefs`` (the normalized L3 input).
+- ``fixtures`` — offline replay fixtures.
 
-Nothing here is a frozen contract: these models stay bridge-local (NOT promoted to
-``warehouse_interfaces``) until XER1-XER2 stabilize their shape
-(docs/mode-x-er/06-unfrozen-contract-resolutions.md §1).
+What is NOT here (it is L4, in the sibling ``robotics`` package): the Gemini-ER adapter, the
+``ErTaskRequest`` input bundle, and the transport/provider observation enums — L4 owns input
+context / transport / the model call (docs/mode-x-er/01-architecture-and-flow.md:99).
+
+What is STILL AHEAD (XER2-XER5): the 4 L3 *stages* — ``Validator`` (the site-specific,
+plugin-based safety gate that judges whether the model OUTPUT is an executable candidate and
+emits ``ValidationReport``), ``Visual Resolver``, ``Task Graph Executor``, ``Command Compiler``
+(docs/mode-x-er/README.md:87-91, productization/06:160 L3H-G2 hands valid drafts to them).
 """
 
-from warehouse_llm_bridge.robotics_planning_core.adapters.enums import (
-    ProviderType,
-    Transport,
-)
-from warehouse_llm_bridge.robotics_planning_core.adapters.gemini_er import (
-    ErAdapter,
-    GeminiErAdapter,
-)
 from warehouse_llm_bridge.robotics_planning_core.handoff import (
     extract_plan_content,
     to_robotics_plan_draft,
 )
 from warehouse_llm_bridge.robotics_planning_core.models import (
+    ROBOTICS_PLAN_DRAFT_VERSION,
+    SUPPORTED_PLAN_VERSIONS,
     Detection,
-    ErTaskRequest,
     InputRefs,
     RawModelOutput,
     RoboticsPlanDraft,
@@ -47,16 +39,13 @@ from warehouse_llm_bridge.robotics_planning_core.models import (
 )
 
 __all__ = [
+    "ROBOTICS_PLAN_DRAFT_VERSION",
+    "SUPPORTED_PLAN_VERSIONS",
     "Detection",
-    "ErAdapter",
-    "ErTaskRequest",
-    "GeminiErAdapter",
     "InputRefs",
-    "ProviderType",
     "RawModelOutput",
     "RoboticsPlanDraft",
     "TaskNode",
-    "Transport",
     "extract_plan_content",
     "to_robotics_plan_draft",
 ]

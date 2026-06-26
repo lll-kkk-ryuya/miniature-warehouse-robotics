@@ -1,11 +1,15 @@
-"""Mode X-ER bridge-local pydantic models (L4 boundary + L3 handoff)."""
+"""Mode X-ER L3 Planning Core data models (provider-agnostic).
 
-from warehouse_llm_bridge.robotics_planning_core.models.er_task import (
-    ErTaskRequest,
+The L4 input model ``ErTaskRequest`` and the ER adapter live in the L4 ``robotics``
+package, not here — this package is the reusable, provider-agnostic L3 core.
+"""
+
+from warehouse_llm_bridge.robotics_planning_core.models.boundary import (
+    ROBOTICS_PLAN_DRAFT_VERSION,
+    SUPPORTED_PLAN_VERSIONS,
     RawModelOutput,
 )
 from warehouse_llm_bridge.robotics_planning_core.models.robotics_plan_draft import (
-    ROBOTICS_PLAN_DRAFT_VERSION,
     Detection,
     InputRefs,
     RoboticsPlanDraft,
@@ -14,8 +18,8 @@ from warehouse_llm_bridge.robotics_planning_core.models.robotics_plan_draft impo
 
 __all__ = [
     "ROBOTICS_PLAN_DRAFT_VERSION",
+    "SUPPORTED_PLAN_VERSIONS",
     "Detection",
-    "ErTaskRequest",
     "InputRefs",
     "RawModelOutput",
     "RoboticsPlanDraft",

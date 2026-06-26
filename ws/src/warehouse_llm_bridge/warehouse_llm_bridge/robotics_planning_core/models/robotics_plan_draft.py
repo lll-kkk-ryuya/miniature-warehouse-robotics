@@ -1,13 +1,19 @@
 """``RoboticsPlan draft`` — the normalized L4->L3 handoff representation.
 
-This is what the L3 Planning Core consumes: the Gemini Robotics-ER raw output after
-it has been parsed out of its transport envelope and normalized. It is deliberately
-permissive (``extra="ignore"``, ``action`` is a free ``str``, no confidence/threshold
-checks): the *Validator* (XER2) is what rejects unknown robots/actions/targets, low
-confidence, stale state and emergencies into a structured ``ValidationReport`` with
-stable error codes — if this model rejected them at parse time we would lose those
-codes (docs/mode-x-er/02-l3-planning-core.md:70-107). Thresholds are never hardcoded
-here (docs/mode-x-er/02-l3-planning-core.md:98).
+This is what the L3 Planning Core consumes: the model raw output after it has been parsed
+out of its transport envelope and normalized. It is deliberately permissive for *content*
+(``extra="ignore"``, ``action`` is a free ``str``, no confidence/threshold checks): the
+*Validator* (XER2) is what rejects unknown robots/actions/targets, low confidence, stale
+state and emergencies into a structured ``ValidationReport`` with stable error codes — if
+this model rejected them at parse time we would lose those codes
+(docs/mode-x-er/02-l3-planning-core.md:70-107). Thresholds are never hardcoded here
+(docs/mode-x-er/02-l3-planning-core.md:98).
+
+The ONE exception is ``schema_version``: it determines whether the rest of the fields can be
+interpreted at all, so it is pinned to ``SUPPORTED_PLAN_VERSIONS`` (an unknown version is
+``unknown_schema_version``, docs/productization/06-oss-reuse-and-box-small-designs.md:158).
+This is a "can I read this version's shape" gate, distinct from the Validator's semantic
+content checks.
 
 Shape source of truth (docs, not invented):
 - ``RoboticsPlanDraft`` minimal form: docs/mode-x-er/03-er-adapter-skeleton.md:55-73
@@ -18,25 +24,21 @@ Shape source of truth (docs, not invented):
   docs/mode-x-er/01-architecture-and-flow.md:146-147
 - field digest: docs/mode-x-er/06-unfrozen-contract-resolutions.md §1:49
 
-Detection / TaskNode are independent models (one of the "(発明/要確定): inline vs
-independent" choices flagged in doc06 §1:53) so the Validator/Visual-Resolver can
-reuse them directly in XER2-XER3.
+``TaskNode`` is NOT a doc term (the task_graph node structure is, but the class name is this
+slice's naming, flagged in doc06 §1:53 "(発明/要確定): inline vs independent").
 """
 
-from pydantic import Field
+from pydantic import Field, field_validator
 
 from warehouse_llm_bridge.robotics_planning_core.models.base import _BridgeModel
-
-# Default L4->L3 contract version string (docs/mode-x-er/03-er-adapter-skeleton.md:59).
-ROBOTICS_PLAN_DRAFT_VERSION = "robotics_plan_draft.v0"
+from warehouse_llm_bridge.robotics_planning_core.models.boundary import (
+    ROBOTICS_PLAN_DRAFT_VERSION,
+    SUPPORTED_PLAN_VERSIONS,
+)
 
 
 class InputRefs(_BridgeModel):
-    """Audit refs for the inputs the ER call saw (docs/mode-x-er/03:62-66).
-
-    Refs (not bytes): the audio/image/state are passed by reference so the draft and
-    its Langfuse trace can be replayed/audited without carrying payloads.
-    """
+    """Audit refs for the inputs the model call saw (docs/mode-x-er/03:62-66)."""
 
     audio: str | None = None
     image: str | None = None
@@ -44,13 +46,12 @@ class InputRefs(_BridgeModel):
 
 
 class Detection(_BridgeModel):
-    """One object target the ER model reports in the overhead frame.
+    """One object target the model reports in the overhead frame.
 
-    ``pixel`` is the image coordinate (u, v) the L3 Visual Resolver later maps to a
-    map (x, y) and snaps to a known location (docs/mode-x-er/02:117,138). ``confidence``
-    is the model's raw detection confidence; the confidence *policy* (reject vs
-    operator-clarification) is the Validator's job, not a constraint here
-    (docs/mode-x-er/02:79,98).
+    ``pixel`` is the image coordinate (u, v) the L3 Visual Resolver later maps to a map
+    (x, y) and snaps to a known location (docs/mode-x-er/02:117,138). ``confidence`` is the
+    model's raw detection confidence; the confidence *policy* is the Validator's job, not a
+    constraint here (docs/mode-x-er/02:79,98).
     """
 
     id: str
@@ -60,13 +61,13 @@ class Detection(_BridgeModel):
 
 
 class TaskNode(_BridgeModel):
-    """One node of the ER ``task_graph``.
+    """One node of the model ``task_graph``.
 
-    ``action`` is a free ``str`` (NOT the frozen ``CommandAction`` enum) on purpose:
-    an unknown action must survive parsing so the Validator can reject it as a
-    structured ``UNKNOWN_ACTION`` code rather than a pydantic parse error
-    (docs/mode-x-er/02:77,103). ``after`` is the dependency in "<task_id>.completed"
-    form (docs/mode-x-er/02:147,171-173); the Task Graph Executor (XER4) enforces it.
+    ``action`` is a free ``str`` (NOT the frozen ``CommandAction`` enum) on purpose: an
+    unknown action must survive parsing so the XER2 Validator can reject it as a structured
+    ``UNKNOWN_ACTION`` code rather than a pydantic parse error (docs/mode-x-er/02:77,103).
+    ``after`` is the dependency in "<task_id>.completed" form (docs/mode-x-er/02:147,171-173);
+    the Task Graph Executor (XER4) enforces it.
     """
 
     id: str
@@ -77,12 +78,12 @@ class TaskNode(_BridgeModel):
 
 
 class RoboticsPlanDraft(_BridgeModel):
-    """Normalized ER output handed to the L3 Planning Core. NOT executable as-is.
+    """Normalized model output handed to the L3 Planning Core. NOT executable as-is.
 
-    It can still contain image coordinates, ambiguous targets, dependencies, stale
-    state assumptions or emergencies; L3 must validate/resolve before any actuation
-    (docs/mode-x-er/01:153, 02:19). ``source_model`` is audit-only and must NOT drive
-    any downstream execution branch (docs/mode-x-er/03:75).
+    It can still contain image coordinates, ambiguous targets, dependencies, stale state
+    assumptions or emergencies; L3 must validate/resolve before any actuation
+    (docs/mode-x-er/01:153, 02:19). ``source_model`` is audit-only and must NOT drive any
+    downstream execution branch (docs/mode-x-er/03:75).
     """
 
     schema_version: str = ROBOTICS_PLAN_DRAFT_VERSION
@@ -94,3 +95,15 @@ class RoboticsPlanDraft(_BridgeModel):
     detections: list[Detection] = Field(default_factory=list)
     task_graph: list[TaskNode] = Field(default_factory=list)
     operator_clarification_required: bool = False
+
+    @field_validator("schema_version")
+    @classmethod
+    def _supported_version(cls, value: str) -> str:
+        # Pin the contract version (unknown_schema_version, doc productization/06:158). The
+        # default is supported; an explicit unknown version is rejected even on direct
+        # construction. Missing-version rejection on the raw-output path is the Handoff's job.
+        if value not in SUPPORTED_PLAN_VERSIONS:
+            raise ValueError(
+                f"unknown_schema_version {value!r} (supported: {sorted(SUPPORTED_PLAN_VERSIONS)})"
+            )
+        return value

@@ -1,25 +1,20 @@
-"""XER1/G0 unit tests for the Mode X-ER bridge-local models.
+"""XER1/G0 unit tests for the L3 draft data models (robotics_planning_core).
 
-Covers the ``RoboticsPlanDraft`` / ``Detection`` / ``TaskNode`` parse shape and the
-``ErTaskRequest`` allowlist validators (known_locations subset of KNOWN_LOCATIONS,
-allowed_actions subset of CommandAction). Offline, no ROS / no network
-(docs/mode-x-er/03-er-adapter-skeleton.md:88-98, README.md:86).
+Covers ``RoboticsPlanDraft`` / ``Detection`` / ``TaskNode`` parse shape and the pinned
+``schema_version`` (unknown_schema_version, productization/06:158). The L4 ``ErTaskRequest``
+input model is tested in test_er_task_request.py; the L3 Handoff seam in test_l3_handoff.py.
+Offline, no ROS / no network.
 """
 
 import pytest
 from pydantic import ValidationError
-from warehouse_interfaces.locations import KNOWN_LOCATIONS
-from warehouse_interfaces.schemas import CommandAction
-from warehouse_llm_bridge.robotics_planning_core.fixtures.red_blue_sequence import (
-    INNER_PLAN,
-)
-from warehouse_llm_bridge.robotics_planning_core.models import (
+from warehouse_llm_bridge.robotics_planning_core import (
     ROBOTICS_PLAN_DRAFT_VERSION,
     Detection,
-    ErTaskRequest,
     RoboticsPlanDraft,
     TaskNode,
 )
+from warehouse_llm_bridge.robotics_planning_core.fixtures.red_blue_sequence import INNER_PLAN
 
 
 def test_inner_plan_parses_into_draft():
@@ -65,30 +60,14 @@ def test_detection_confidence_is_unconstrained_at_draft_stage():
     assert det.confidence == 1.5
 
 
-def test_er_task_request_defaults():
-    req = ErTaskRequest(request_id="turn_1")
-    assert req.mode == "mode-x-er"
-    assert req.output_contract == ROBOTICS_PLAN_DRAFT_VERSION
-    # allowed_actions defaults to the frozen CommandAction vocabulary (doc03:48).
-    assert req.allowed_actions == [a.value for a in CommandAction]
-    assert req.known_locations == []
-
-
-def test_er_task_request_accepts_known_locations_subset():
-    req = ErTaskRequest(request_id="t", known_locations=["shelf_1", "charging_station"])
-    assert set(req.known_locations) <= KNOWN_LOCATIONS
-
-
-def test_er_task_request_rejects_unknown_location():
+def test_draft_rejects_unknown_schema_version():
+    # schema_version is pinned (unknown_schema_version, productization/06:158) — unlike the
+    # permissive content fields, an explicit unknown version is rejected even on direct build.
     with pytest.raises(ValidationError):
-        ErTaskRequest(request_id="t", known_locations=["shelf_1", "not_a_place"])
+        RoboticsPlanDraft.model_validate(
+            {"plan_id": "p", "schema_version": "robotics_plan_draft.v999"}
+        )
 
 
-def test_er_task_request_rejects_unknown_action():
-    with pytest.raises(ValidationError):
-        ErTaskRequest(request_id="t", allowed_actions=["navigate", "teleport"])
-
-
-def test_er_task_request_accepts_action_subset():
-    req = ErTaskRequest(request_id="t", allowed_actions=["navigate", "stop"])
-    assert req.allowed_actions == ["navigate", "stop"]
+def test_draft_default_version_is_supported():
+    assert RoboticsPlanDraft(plan_id="p").schema_version in {ROBOTICS_PLAN_DRAFT_VERSION}
