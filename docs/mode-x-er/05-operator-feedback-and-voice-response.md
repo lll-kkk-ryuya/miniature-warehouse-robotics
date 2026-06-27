@@ -110,11 +110,11 @@ box taxonomy / Box 一覧の正本は `docs/productization/01-commercial-box-map
 
 ### 3.1 再利用性 — mode 非依存の商用 box か（YES）
 
-**Operator Feedback は単一 mode 専用ではなく、mode 非依存で再利用できる商用 box として設計する**（再利用境界は productization に写す・`docs/productization/04-box-storage-and-reuse-guidelines.md:160`）。
+**Operator Feedback は単一 mode 専用ではなく、mode 非依存で再利用できる商用 box として設計する**（再利用境界は productization に写す・`docs/productization/04-box-storage-and-reuse-guidelines.md:159`）。
 
 - **mode 非依存**: consume するのは generic な `decision_event`（全 gate 共通形・§1）。Mode A/B/C/X-ER/X-ER-VLA いずれでも reject を emit する pipeline ならそのまま接続できる。Input Context（operator 入力）の鏡像＝operator 出力を担う再利用ペア（`docs/productization/01-commercial-box-map.md:13`）。
 - **保管単位（04 の box manifest）**: `status: proposal`（実装ゼロの sub-box＝`docs/productization/04-box-storage-and-reuse-guidelines.md:61`）。design=本書 / interfaces=`decision_event` consume・`OperatorNotice` produce / fixtures=各 gate reject golden（§5.5）/ acceptance-gates=L4OF-G0〜G5（§6）/ decision-events=`box=l4_operator_feedback` / audit-eval=自身の decision_event。
-- **差し替え点（案件差分は site profile に寄せる・`docs/productization/04-box-storage-and-reuse-guidelines.md:80`）＝コア（filter→template→sink）は再利用し profile だけ swap**:
+- **差し替え点（案件差分は site profile に寄せる・`docs/productization/04-box-storage-and-reuse-guidelines.md:85`）＝コア（filter→template→sink）は再利用し profile だけ swap**:
 
 | 差し替えるもの | site profile に置く |
 |---|---|
@@ -170,7 +170,7 @@ operator voice → Input Context → ER Adapter → RoboticsPlan draft
 
 > **"emit" とは**: ある node が**小さな event レコード（decision_event）を channel に publish して即座に戻る**こと。誰かが consume するのを待たない fire-and-forget（ROS なら `publisher.publish(msg)`、in-process なら callback への非同期 dispatch）。「関数を呼んで戻り値を待つ（＝同期 call）」の対義。**gate は emit するだけで TTS を待たない**のが安全の肝。
 
-**不変条件（最優先・安全）**: **gate は reject を decision_event として emit したら即座に処理を続け、TTS の完了を絶対に待たない（non-blocking）。** 理由 — Safety / Hardware は上位 model に依存せず、上位が止まっても下位が独立に止める（`docs/productization/01-commercial-box-map.md:89`・`docs/productization/05-decision-observability-and-tooling.md:304`）。enforcement と観測 producer を同一 node にせず観測は fail-open（`docs/productization/06-oss-reuse-and-box-small-designs.md:249`・`docs/productization/05-decision-observability-and-tooling.md:279`）。L1 は Hard-RT（50ms tick）、L0 は MCU 即時なので、外部 API の TTS（数百ms〜秒）を gate の critical path に乗せない。
+**不変条件（最優先・安全）**: **gate は reject を decision_event として emit したら即座に処理を続け、TTS の完了を絶対に待たない（non-blocking）。** 理由 — Safety / Hardware は上位 model に依存せず、上位が止まっても下位が独立に止める（`docs/productization/01-commercial-box-map.md:89`・`docs/productization/05-decision-observability-and-tooling.md:304`）。enforcement と観測 producer を同一 node にせず観測は fail-open（`docs/productization/06-oss-reuse-and-box-small-designs.md:249`・`docs/productization/05-decision-observability-and-tooling.md:283`）。L1 は Hard-RT（50ms tick）、L0 は MCU 即時なので、外部 API の TTS（数百ms〜秒）を gate の critical path に乗せない。
 
 **起点の層で "叩き方" を分ける**（どちらも「止まった瞬間に L4 render が走る」点は同じ。違いは transport だけ）:
 
@@ -187,7 +187,7 @@ operator voice → Input Context → ER Adapter → RoboticsPlan draft
 |---|---|---|
 | 契約コスト | **新 frozen 契約**（doc03 topic ＋ `contract` PR ＋ 全トラック予告・`.claude/rules/parallel-workflow.md` §4）。additive で既存購読者は無視可（§7.2） | **新契約ゼロ**（最小ガバナンス・最速）。decision_event は監査用に**どのみち emit される**（`docs/productization/05-decision-observability-and-tooling.md:88`）のを購読するだけ |
 | 配信意味論 | **event stream＝lossless・順序保証**。deadlock / 到着など離散イベントを取りこぼさない | decision_event の **event stream なら可**。ただし **State Cache フラグ（latest-value）は transition を取りこぼす**＝右折/到着の節目に不向き |
-| 結合 | 1 本の明確な operator チャネル。各箱は topic schema にだけ依存 | 観測（observe-only・fail-open・`docs/productization/05-decision-observability-and-tooling.md:279`）経路に相乗り＝**負荷時に event drop すると音声も静かに落ちる**。粒度/latency が観測都合に引っ張られる |
+| 結合 | 1 本の明確な operator チャネル。各箱は topic schema にだけ依存 | 観測（observe-only・fail-open・`docs/productization/05-decision-observability-and-tooling.md:283`）経路に相乗り＝**負荷時に event drop すると音声も静かに落ちる**。粒度/latency が観測都合に引っ張られる |
 | テスト/再現 | rosbag で record/replay 容易 | 既存 Eval fixture に相乗り |
 | 向く場面 | 別ノード reject が多い / lossless 必須 / 2 件目 site で安定契約が要る | MVP・2台 PoC・大半が L4-local reject |
 
@@ -267,7 +267,7 @@ transport は box interface 裏の `transport: hermes|direct` 選択であって
 |---|---|
 | L4OF-G0 | §1 の各 gate `reason_code` が locale テンプレートに写像できる（既知 code で `template_missing` を出さない。未知 code は安全 fallback 文面） |
 | L4OF-G1 | **0 actuation**: Operator Feedback Box は motion command / tool dispatch を一切 emit しない（reject fixture を流して assert） |
-| L4OF-G2 | **fail-open**: TTS / sink 失敗は log に残して run を止めない（観測 sink fail-open 原則・`docs/productization/05-decision-observability-and-tooling.md:279`） |
+| L4OF-G2 | **fail-open**: TTS / sink 失敗は log に残して run を止めない（観測 sink fail-open 原則・`docs/productization/05-decision-observability-and-tooling.md:283`） |
 | L4OF-G3 | 安全 reject（emergency / battery / collision）の文面は **deterministic テンプレート固定**で、LLM 整形層を通らない（§4） |
 | L4OF-G4 | 喋る文面が「**どの box（この部分）**・**どの reason_code / field（この箇所）**で動けないか」を含む（operator が原因箇所を特定できる） |
 | L4OF-G5 | **発話スコープ**: 命令外の自律停止・高頻度 tick・無関係 reject は**喋らない**（`gen_id`/`run_id` 相関＋lifecycle filter・§5.3）。命令起因の terminal/notable event だけ発話する fixture で固定（鳴り続けないことを assert） |

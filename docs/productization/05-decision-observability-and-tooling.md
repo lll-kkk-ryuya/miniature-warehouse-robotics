@@ -86,6 +86,10 @@ model output
 | Eval / Observability Box | decision event refs、trace id、rosbag ref、run manifest、score sink result | join gap、sink failure、report completeness、reason top N |
 
 Eval / Observability Box は、各 box の event を `run_id` / `gen_id` / `robot` / timestamp で join し、以下を作る。
+`run_id` / `gen_id` / `trace_id` の呼び分け、run manifest、expected emitter、
+plugin reason_code の増減は
+[09-run-manifest-and-plugin-composition.md](09-run-manifest-and-plugin-composition.md)
+に分ける。
 
 - `model_outputs_total`
 - `l3_validator_rejected_total`
