@@ -155,7 +155,7 @@
 <p class="lead">人の指示（音声・自然言語）から motor まで。各層の境界で何が起き、どこで安全に止まるか。<span class="dref">01 §全体像 15-83</span></p>
 
 <div class="note">
-  <b>入力方針（最小変換・音声直接）</b>: 音声は <b>ER へ直接入力</b>（事前 STT は既定 OFF・<code>transcript</code> は任意/audit 用）。俯瞰カメラは<b>単一・固定</b>で、ER へ渡すのは <b>音声と同時刻の俯瞰フレーム1枚</b>（time-aligned・連続ストリームでなく指示時点の静止）。calibration は<b>固定定数参照</b>（<code>calibration_id</code>・毎 turn 再計算しない）。入力アセンブリは<b>軽量</b>＝同時刻の俯瞰1枚＋音声（＋最小/任意 state）の ref を 1 回の ER 呼び出しに揃えるだけで、別形式へ<b>変換しない</b>。音声/画像の robotics 実証は未凍結（<a href="04-er-input-modalities-and-stt.md">04</a> / <a href="../productization/02-l4-robotics-bridge-box.md">productization/02</a>）＝<b>Hermes Gateway を第一候補 transport</b>、未対応時のみ direct adapter を fallback に。<span class="dref">04 §STT の要否 30-44・§3 45-50 / 01 §L4 transport selection 155-168</span>
+  <b>入力方針（最小変換・音声直接）</b>: 音声は <b>ER へ直接入力</b>（事前 STT は既定 OFF・<code>transcript</code> は任意/audit 用）。俯瞰カメラは<b>単一・固定</b>で、ER へ渡すのは <b>音声と同時刻の俯瞰フレーム1枚</b>（time-aligned・連続ストリームでなく指示時点の静止）。calibration は<b>固定定数参照</b>（<code>calibration_id</code>・毎 turn 再計算しない）。入力アセンブリは<b>軽量</b>＝同時刻の俯瞰1枚＋音声（＋最小/任意 state）の ref を 1 回の ER 呼び出しに揃えるだけで、別形式へ<b>変換しない</b>。transport は <b>既定（default）= Hermes</b>（{llm,er,vla,stt}）・direct は明示 fallback。text/image は Hermes で成立（PROBE-3 HTTP 200）。<b>audio は CURRENT=direct</b>（unforked Hermes `input_audio`→400・PROBE-2）／<b>TARGET</b>=2-file fork で Hermes 経由（2026-06-27 demonstrated・未 ship、<a href="06-unfrozen-contract-resolutions.md">06</a> §5 補遺）。<span class="dref">04 §STT の要否 30-44・§3 45-50 / 01 §L4 transport selection 155-168</span>
 </div>
 
 <div class="optline">指示例:「bot1 は赤い箱へ。到達したら bot2 は青い箱へ」<span style="color:var(--faint)"> → ER が intent + detections + task_graph を提案 → L3 が検証・解決・順序化 → 既存 Command</span></div>
@@ -177,7 +177,7 @@
     <div class="sbs">context / request id / timeout / cancellation / trace / raw output audit を所有（model 判断は作らない）。下の adapter を<b>内部 sub-box として所有</b>。<span class="dref">01 §L4 の data 96-154 / productization/02 §Box の保管場所</span></div>
     <div class="node n-sub"><div class="t">Gemini Robotics-ER Adapter <span class="badge b-sub">Model Adapter（sub-box）</span></div><div class="s">
       input: <b>音声（直接）</b> / overhead image /（最小 state）。output: <code>transcript</code>（audit 用）/ <code>interpreted_intent</code> / <code>detections</code> / <code>task_graph</code>。<b>ER は Nav2 / ROS / Jetson / <code>/cmd_vel</code> を叩かない</b>。<span class="dref">01:132-153 / 03 §Adapter 境界 13-34</span>
-      <div class="transport-band"><b>transport: hermes（第一候補）| direct（fallback）</b> ← <b>Hermes Gateway を第一候補</b>（main の Hermes-first）。interface 裏の実装選択で box を割らない。音声/画像 API の robotics 実証は未凍結＝未対応時のみ direct。<span class="dref">04 §STT の要否 30-44・§3 45-50 / 01 §L4 transport selection 155-168</span></div>
+      <div class="transport-band"><b>transport: hermes（既定/default）| direct（explicit fallback）</b> ← Hermes を既定 transport（{llm,er,vla,stt}）。interface 裏の実装選択で box を割らない。text/image=Hermes(PROBE-3 200)／<b>audio CURRENT=direct</b>(unforked 400・PROBE-2)・<b>TARGET=fork で Hermes</b>(demonstrated 未 ship・06 §5 補遺)。<span class="dref">04 §STT の要否 30-44・§3 45-50 / 01 §L4 transport selection 155-168</span></div>
     </div></div>
   </div>
 
@@ -288,7 +288,7 @@
         <div class="node n-sub unused" style="padding:6px 8px;margin:0"><div class="t" style="font-size:12px">VLA</div><div class="s">使用しない（→ Mode X-ER-VLA）</div></div>
         <div class="node n-sub" style="padding:6px 8px;margin:0"><div class="t" style="font-size:12px">STT <span class="role">optional</span></div><div class="s">一部使用：既定 OFF・audit/fallback のみ</div></div>
       </div>
-      <div class="transport-band"><b>transport: hermes（第一候補）</b>｜ direct（fallback）＝<b>使用</b>（Hermes-first）。<span class="dref">01 §L4 transport selection 155-168 / 04 §STT の要否 30-44</span></div>
+      <div class="transport-band"><b>transport: hermes（既定/default）</b>｜ direct（explicit fallback・現状 audio はこちら）＝<b>使用</b>。<span class="dref">01 §L4 transport selection 155-168 / 04 §STT の要否 30-44</span></div>
     </div></div>
     <div class="nest-arrow">▼</div>
     <div class="node n-sub unused" style="border-style:dashed"><div class="t">③ Fusion <span class="badge b-sub">sub-box</span> <span class="role">optional</span></div><div class="s">
