@@ -139,7 +139,7 @@
 <div class="tiers">
   <div class="tier t-sub">
     <div class="lbl">① 判断 tier<small>Langfuse</small></div>
-    <div class="desc">L4 generation（input/output/latency/cost）＋ <code>result</code>/SR/SPL を score。<b>Bridge 所有</b>（Hermes 側 Langfuse plugin は二重計上回避で無効）。<div class="s">1 判断 = 1 trace。決定的 <code>trace_id</code>（<code>run_id:gen_id</code>）で判断↔結果を結合。<span class="dref">arch/08:343-361,375 / 20:79-96</span></div></div>
+    <div class="desc">L4 generation（input/output/latency/cost）＋ <code>result</code>/<code>task_completion_time</code> を score（SR/SPL は <code>eval_sdk.stats</code>・Phase 1.5）。<b>Bridge 所有</b>（Hermes 側 Langfuse plugin は二重計上回避で無効）。<div class="s">1 判断 = 1 trace。決定的 <code>trace_id</code>（<code>run_id:gen_id</code>）で判断↔結果を結合。<span class="dref">arch/08:343-361,375 / 21:293-300 / 20:79-96</span></div></div>
     <div class="freq">数秒に1回<span class="bar f1"></span><br>低頻度</div>
   </div>
   <div class="tier t-seam">
@@ -211,7 +211,7 @@
 <table>
   <thead><tr><th>ストア</th><th>tier</th><th>中身</th><th>owner / path</th><th>正本</th></tr></thead>
   <tbody>
-    <tr><td>Langfuse（trace + score）</td><td><span class="badge b-sub">①判断</span></td><td>L4 generation ＋ result/SR/SPL score</td><td>Bridge 所有（Hermes plugin 無効）</td><td><span class="dref">arch/08:343-361,375</span></td></tr>
+    <tr><td>Langfuse（trace + score）</td><td><span class="badge b-sub">①判断</span></td><td>L4 generation ＋ result/task_completion_time score（SR/SPL=<code>eval_sdk.stats</code>・Phase 1.5）</td><td>Bridge 所有（Hermes plugin 無効）</td><td><span class="dref">arch/08:343-361,375 / 21:293-300</span></td></tr>
     <tr><td><code>audit.jsonl</code></td><td><span class="badge b-seam">②event</span></td><td>MCP command audit（executed/rejected/error）</td><td>MCP Server / <code>$WAREHOUSE_AUDIT_LOG_PATH</code>（既定 <code>/tmp/warehouse/audit.jsonl</code>）</td><td><span class="dref">16:114</span></td></tr>
     <tr><td><code>conversation_events.jsonl</code></td><td><span class="badge b-seam">②event</span></td><td>lifecycle/local agreement/Self-Action Gate verdict</td><td>Bridge / <code>WAREHOUSE_CONVERSATION_EVENT_LOG_PATH</code>。<b>audit と混ぜると KPI が歪むので別ファイル</b></td><td><span class="dref">08a:522 / 14:443</span></td></tr>
     <tr><td>metrics（counter/histogram）</td><td><span class="badge b-box">③集計</span></td><td>介入率・near_collision_count・layer_latency_ms・min_separation 等</td><td>Eval/Observability box（counter 名 = <span class="dref">05:90-105</span>）</td><td><span class="dref">05:118</span></td></tr>
@@ -254,8 +254,8 @@
 <p class="lead">以下は <b>docs にまだ決定が無い</b>＝本図は<b>描かない／値を発明しない</b>。決める時は <code>docs/*</code>（契約なら contract）PR で先に正本を確定してから図に「採用」として落とす。</p>
 <div class="gap">
   <ul class="tight">
-    <li><b>③集計 tier の metrics backend</b>: counter 名（<span class="dref">05:90-105</span>）はあるが、保持する TSDB/exporter（Prometheus / Grafana / InfluxDB / Timescale）は <b>docs に一切無い</b>。当面は audit.jsonl→DuckDB で集計する想定（<span class="dref">21:213</span>）。</li>
-    <li><b>rosbag2 の保存 format</b>: <code>mcap</code> vs <code>sqlite3</code> は未指定（mcap は docs に無い）。</li>
+    <li><b>③集計 tier の metrics backend</b>: counter 名（<span class="dref">05:90-105</span>）はあるが、保持する TSDB/exporter（Prometheus / Grafana）は <b>doc07/doc05 に「要 spike 候補」として登録済</b>だが採用 backend は未決。当面は audit.jsonl→DuckDB で集計（<span class="dref">07:108 / 05:394 / 21:213</span>）。</li>
+    <li><b>rosbag2 の保存 format</b>: <code>mcap</code> vs <code>sqlite3</code>（mcap は <b>doc07/doc05 に要 spike 登録済</b>・採用は未決）<span class="dref">07:105 / 05:395</span>。</li>
     <li><b>retention / rotation 数値・sample rate</b>: doc22 が「N runs / M MB」を実測（S6）に defer。<span class="dref">22:208-223</span></li>
     <li><b>decision↔outcome correlator ＋ embodied OTel <code>*.nav.*</code> namespace</b>: OTLP 属性生存の 30 分 spike ＋ 利用者#2 で gated。<span class="dref">21:240,247</span></li>
     <li><b>観測専用 subscriber / deadlock detector node</b>: doc21 §6 Tier2 の <b>未実装 ★新 producer</b>。具体ノード名/package/topic は未凍結。<code>replans</code> は Nav2 露出の contract PR 待ち。<span class="dref">21:189,190,191,193</span></li>
@@ -272,7 +272,7 @@
     <tr><td>E-G2 / E-G5 ゲート</td><td>受付ゲート</td><td><a href="08-navigation-hardware-eval-gates.md">08</a> <span class="dref">prod/08:144,147</span></td><td class="impl-yes">決定済（gate 形）</td></tr>
     <tr><td>Langfuse 弁別子 taxonomy</td><td>ラベル地図</td><td><a href="../architecture/20-dev-quality-and-testing.md">doc20 §8</a> / doc08 §比較検証ログ</td><td class="impl-yes">offline 実装済（live 検証 #88）</td></tr>
     <tr><td>eval_sdk 移送（観測ノード→stats→sink）</td><td>5 モジュール</td><td><a href="eval-sdk-detail.html">eval-sdk 詳細</a> / 21:82-102,189</td><td class="impl-yes">eval_sdk 実装済 / 観測ノードは未実装(★Tier2)</td></tr>
-    <tr><td>metrics backend / mcap / retention</td><td>未決</td><td>—（§7）</td><td class="impl-gap">proposal（docs に無い）</td></tr>
+    <tr><td>metrics backend / mcap / retention</td><td>未決</td><td><span class="dref">07:105,108 / 05:394-395 / 22:208-223</span></td><td class="impl-gap">要spike 登録済・採用未決</td></tr>
     <tr><td>decision↔outcome correlator</td><td>未決</td><td>21:240,247</td><td class="impl-gap">defer（利用者#2 + OTLP spike）</td></tr>
   </tbody>
 </table>

@@ -70,7 +70,7 @@
 </div>
 
 <div class="meta">
-  これは<b>集約索引</b>であり、各問題の詳細・判断は各正本にある（重複させない）: eval_sdk defer=<a href="../architecture/21-eval-sdk-extraction.md">doc21 §7/§10/§11</a>／ Hermes-Langfuse gate=<a href="02-l4-robotics-bridge-box.md">productization/02 §HLF</a> <span class="dref">02:177-197</span>／ audio-direct=<a href="../mode-x-er/06-unfrozen-contract-resolutions.md">mode-x-er/06 §5</a> <span class="dref">06:135-148</span>／ tool 候補=<a href="07-layer-tool-decision-matrix.md">doc07 §観測 tool 追加候補</a>／ retention=<a href="../architecture/22-web-observability.md">doc22</a>。<b>状態が変わったら正本を先に直し、本ボードを追従</b>（docs-first）。
+  これは<b>集約索引</b>であり、各問題の詳細・判断は各正本にある（重複させない）: eval_sdk defer=<a href="../architecture/21-eval-sdk-extraction.md">doc21 §7/§10/§11</a>／ Hermes-Langfuse gate=<a href="02-l4-robotics-bridge-box.md">productization/02 §HLF</a> <span class="dref">02:177-199</span>／ audio-direct=<a href="../mode-x-er/06-unfrozen-contract-resolutions.md">mode-x-er/06 §5</a> <span class="dref">06:135-148</span>／ tool 候補=<a href="07-layer-tool-decision-matrix.md">doc07 §観測 tool 追加候補</a>／ retention=<a href="../architecture/22-web-observability.md">doc22</a>。<b>状態が変わったら正本を先に直し、本ボードを追従</b>（docs-first）。
 </div>
 
 <h2>0. 凡例 — 色＝「なぜ開いているか」</h2>
@@ -88,10 +88,10 @@
   <div class="src">解錠: 利用者#2 ∧ OTLP 30分 spike green。<span class="dref">doc21:200,215,240</span></div></div>
 <div class="pb gate"><span class="nm">STT transcript の Langfuse 配線（<code>LangfuseTranscriptTracer</code>）</span> <span class="st st-gate">gate待ち</span>
   <div class="ds">音声/transcript leg を ①Langfuse へ trace する seam は<b>雛形のみ（未配線）</b>。fail-open no-op。</div>
-  <div class="src">解錠: HLF spike。<span class="dref">robotics/observability.py:8-15,56-80 / productization/02:177-197</span></div></div>
+  <div class="src">解錠: HLF spike。<span class="dref">robotics/observability.py:8-15,56-80 / productization/02:177-199</span></div></div>
 <div class="pb gate"><span class="nm">audio leg の Langfuse owner（音声は Hermes バイパス）</span> <span class="st st-gate">gate待ち</span>
   <div class="ds">音声は Hermes が <code>input_audio</code> を 400 で拒否（PROBE-2 実測）→ direct ER。Hermes Langfuse が観測不可ゆえ <b>Bridge-side tracer が唯一の owner</b>。その live 検証が未。</div>
-  <div class="src">解錠: HLF-G0〜G5 ∧ #88 系 live。<span class="dref">mode-x-er/06 §5:135-148 / productization/02:177-197 / #88</span></div></div>
+  <div class="src">解錠: HLF-G0〜G5 ∧ #88 系 live。<span class="dref">mode-x-er/06 §5:135-148 / productization/02:177-199 / #88</span></div></div>
 <div class="pb gate"><span class="nm">Langfuse Phase-3 live 検証（trace 集約 / cost / managed-prompt）</span> <span class="st st-gate">gate待ち</span>
   <div class="ds">実 Langfuse 4.9.x での 1-trace 集約・Grok cost・prompt 連携は human gate。offline は実装済。</div>
   <div class="src">解錠: #88 live credentials ∧ 専用 Hermes。<span class="dref">doc21:246 / doc20 §8.4 / #88</span></div></div>
@@ -138,7 +138,7 @@
   <thead><tr><th>領域</th><th>正本（ここを先に直す）</th><th>問題</th></tr></thead>
   <tbody>
     <tr><td>eval_sdk 抽出・defer</td><td><a href="../architecture/21-eval-sdk-extraction.md">doc21</a> §7 非目標 / §10 ロードマップ / §11 リスク</td><td>correlator・Tier2 ノード・SR/SPL・API 凍結</td></tr>
-    <tr><td>Hermes-Langfuse 採用 gate</td><td><a href="02-l4-robotics-bridge-box.md">productization/02</a> §HLF <span class="dref">02:177-197</span></td><td>transcript 配線・audio leg owner・二重 generation</td></tr>
+    <tr><td>Hermes-Langfuse 採用 gate</td><td><a href="02-l4-robotics-bridge-box.md">productization/02</a> §HLF <span class="dref">02:177-199</span></td><td>transcript 配線・audio leg owner・二重 generation</td></tr>
     <tr><td>音声/画像 transport</td><td><a href="../mode-x-er/06-unfrozen-contract-resolutions.md">mode-x-er/06</a> §5 <span class="dref">06:135-148</span></td><td>audio-direct（実測 RESOLVED）・残 live 検証</td></tr>
     <tr><td>観測 tool 候補</td><td><a href="07-layer-tool-decision-matrix.md">doc07</a> §観測 tool 追加候補</td><td>metrics backend・mcap・PlotJuggler・Foxglove</td></tr>
     <tr><td>web 永続化・retention</td><td><a href="../architecture/22-web-observability.md">doc22</a> <span class="dref">22:208-223</span></td><td>retention/rotation 数値・coalesce</td></tr>

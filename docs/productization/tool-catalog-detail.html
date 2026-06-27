@@ -110,7 +110,7 @@
 <div class="tier-grp">
   <div class="gh">② event tier <span class="st st-adopt">採用</span></div>
   <div class="gs">decision_event / audit（executed/rejected/error・状態変化・emergency）</div>
-  <div class="tool adopt"><span class="nm">audit.jsonl / JSONL（decision_event）</span> <span class="st st-adopt">採用</span><div class="ds">MCP command audit ＋ decision_event。<code>eval_sdk</code> が emit。<span class="dref">07:59 / 16:114</span></div></div>
+  <div class="tool adopt"><span class="nm">audit.jsonl / JSONL（decision_event）</span> <span class="st st-adopt">採用</span><div class="ds">MCP command audit ＋ decision_event。<b>書込 = MCP Server</b>（<code>eval_sdk</code> は書かず <code>run_id</code>/<code>gen_id</code> で join するだけ）。<span class="dref">07:59 / 16:114（書込=MCP Server）</span></div></div>
   <div class="tool cand"><span class="nm">DuckDB</span> <span class="st st-cand">候補</span><div class="ds">offline 集計・customer report export。「audit.jsonl + DuckDB で当面十分」。<span class="dref">07:59 / 21:213</span></div></div>
 </div>
 
@@ -124,11 +124,11 @@
 <div class="tier-grp">
   <div class="gh">④ 生 tier <span class="st st-adopt">採用(rosbag2)</span></div>
   <div class="gs">odom / scan / cmd_vel 生波形（sub-second）</div>
-  <div class="tool adopt"><span class="nm">rosbag2</span> <span class="st st-adopt">採用</span><div class="ds">ROS message の record/playback・incident replay。生 tier の正解。<span class="dref">07:38,59 / 06:45</span></div></div>
+  <div class="tool adopt"><span class="nm">rosbag2</span> <span class="st st-adopt">採用</span><div class="ds">ROS message の record/playback・incident replay。生 tier の正解（最小構成に採用）。<span class="dref">05:107-122 / 07:110 / 06:45</span></div></div>
   <div class="tool cand"><span class="nm">ros2_tracing</span> <span class="st st-cand">候補</span><div class="ds">high-rate timing / executor / DDS・callback 解析。<span class="dref">07:39,59 / 06:46</span></div></div>
   <div class="tool spike"><span class="nm">mcap</span> <span class="st st-spike">要 spike</span><div class="ds">rosbag2 の保存 format（既定 sqlite3 ↔ mcap）。容量/読出/互換を検証。<b>docs 未登録だった→追記済</b>。<span class="dref">07:§追加候補</span></div></div>
   <div class="tool cand"><span class="nm">PlotJuggler</span> <span class="st st-cand">候補</span><div class="ds">odom/cmd_vel/imu の時系列 plot（解析補助・常設保存ではない）。<b>追記済</b>。<span class="dref">07:§追加候補</span></div></div>
-  <div class="tool cand"><span class="nm">Foxglove</span> <span class="st st-cand">候補</span><div class="ds">rosbag/ライブ可視化（Phase 4 demo）。<b>ブラウザ直結はしない</b>＝観測 UI は web_bridge 経由。<span class="dref">07:§追加候補 / 22:25 / 03:281</span></div></div>
+  <div class="tool cand"><span class="nm">Foxglove</span> <span class="st st-cand">候補</span><div class="ds">rosbag/ライブ可視化（Phase 4 demo）。<b>ブラウザ直結はしない</b>＝観測 UI は web_bridge 経由。<span class="dref">07:§追加候補 / 22:25 / arch/03:281</span></div></div>
 </div>
 
 <!-- ===================== 2. producer tool ===================== -->

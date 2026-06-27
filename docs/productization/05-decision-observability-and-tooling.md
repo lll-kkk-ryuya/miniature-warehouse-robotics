@@ -385,8 +385,8 @@ hardware.event_reason:
 | 問題 | 状態 | 正本（ここを先に直す） |
 |---|---|---|
 | decision↔outcome correlator ＋ embodied OTel `*.nav.*` | gate待ち（利用者#2 ∧ OTLP 30分 spike） | [doc21](../architecture/21-eval-sdk-extraction.md):200,215,240 |
-| STT transcript の Langfuse 配線（`LangfuseTranscriptTracer`＝雛形） | gate待ち（HLF spike） | `ws/src/warehouse_llm_bridge/.../robotics/observability.py:8-15,56-80` / [productization/02](02-l4-robotics-bridge-box.md):177-197 |
-| audio leg の Langfuse owner（音声は Hermes バイパス＝direct ER） | gate待ち（HLF-G0〜G5 ∧ #88） | [mode-x-er/06](../mode-x-er/06-unfrozen-contract-resolutions.md) §5:135-148 / [productization/02](02-l4-robotics-bridge-box.md):177-197 |
+| STT transcript の Langfuse 配線（`LangfuseTranscriptTracer`＝雛形） | gate待ち（HLF spike） | `ws/src/warehouse_llm_bridge/.../robotics/observability.py:8-15,56-80` / [productization/02](02-l4-robotics-bridge-box.md):177-199 |
+| audio leg の Langfuse owner（音声は Hermes バイパス＝direct ER） | gate待ち（HLF-G0〜G5 ∧ #88） | [mode-x-er/06](../mode-x-er/06-unfrozen-contract-resolutions.md) §5:135-148 / [productization/02](02-l4-robotics-bridge-box.md):177-199 |
 | Langfuse Phase-3 live（trace 集約 / cost / managed-prompt） | gate待ち（#88 live） | [doc21](../architecture/21-eval-sdk-extraction.md):246 / [doc20 §8.4](../architecture/20-dev-quality-and-testing.md) |
 | Tier2 観測ノード（collision / deadlock subscriber・★新 producer） | 未実装（計画） | [doc21](../architecture/21-eval-sdk-extraction.md):189,190,193 |
 | SR / SPL / SoftSPL / jerk（`eval_sdk.stats` 純関数） | 未実装（Phase 1.5） | [doc21](../architecture/21-eval-sdk-extraction.md):293-300 / `ws/src/eval_sdk/eval_sdk/stats.py:7` |

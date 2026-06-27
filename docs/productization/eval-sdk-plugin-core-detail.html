@@ -150,17 +150,17 @@
     </ul>
   </div>
 </div>
-<div class="note"><b>増やすとき書くのは ② と ③ だけ</b>。① の数式は書き換えない（既存 <code>stats.rate</code>/<code>sink</code> を再利用）。＝「製造現場が要件ごとに指標を増やす」とは <b>新 producer ＋ 新 score 名</b>を足すこと。これが eval_sdk が <b>産業非依存のまま再利用</b>できる正体。<span class="dref">21:75,117</span></div>
+<div class="note"><b>増やすとき書くのは ② と ③ だけ</b>。① の数式は書き換えない（既存 <code>sink</code> ＋ 純関数 <code>percentile</code>/<code>path_lengths</code>/<code>distance_traveled</code> を再利用。pass/total の <code>rate</code> は doc21 §6 helper 案・現状 stats 未実装＝domain が合成）。＝「製造現場が要件ごとに指標を増やす」とは <b>新 producer ＋ 新 score 名</b>を足すこと。これが eval_sdk が <b>産業非依存のまま再利用</b>できる正体。<span class="dref">21:75,117</span></div>
 
 <!-- ===================== 2. 製造例 ===================== -->
 <h2>2. 製造での core / plugin（03 の stage 表を図示）<span class="dref">03:224-235</span></h2>
 <p class="lead"><code>03:224-235</code> は L3 の各 stage を「<b>再利用する core</b>」と「<b>差し替える plugin</b>」に literal に割っている（倉庫 Mode X-ER ↔ 製造 assembly/machine tending/palletize）。発明ではなく既存表の図示。</p>
 <h3>Validator stage</h3>
-<div class="ex core"><div class="tag">core<br>再利用</div><div class="body"><b>JSON parse・<code>schema_version</code> check・required field・stable error code・report shape・audit</b>（どの業界でも同じ検証骨格）<span class="dref">03:225</span></div></div>
-<div class="ex plugin"><div class="tag">plugin<br>差替</div><div class="body"><b>設備 registry（どのアーム/AGV/PLC）・工程 allowlist（pick/place/insert/fasten…）・参照 rule・confidence policy・interlock policy・emergency policy</b>（現場の意味づけ）<span class="dref">03:225</span></div></div>
+<div class="ex core"><div class="tag">core<br>再利用</div><div class="body"><b>JSON parse・<code>schema_version</code> check・required field・stable error code・report shape・audit</b>（どの業界でも同じ検証骨格）<span class="dref">03:226</span></div></div>
+<div class="ex plugin"><div class="tag">plugin<br>差替</div><div class="body"><b>設備 registry（どのアーム/AGV/PLC）・工程 allowlist（pick/place/insert/fasten…）・参照 rule・confidence policy・interlock policy・emergency policy</b>（現場の意味づけ）<span class="dref">03:226</span></div></div>
 <h3>Visual Resolver stage</h3>
-<div class="ex core"><div class="tag">core<br>再利用</div><div class="body">calibration loader IF・transform・valid polygon check・confidence 合成・replay runner<span class="dref">03:226</span></div></div>
-<div class="ex plugin"><div class="tag">plugin<br>差替</div><div class="body">camera intrinsics/extrinsics・hand-eye 行列・work envelope polygon・公称 pose・snap threshold<span class="dref">03:226</span></div></div>
+<div class="ex core"><div class="tag">core<br>再利用</div><div class="body">calibration loader IF・transform・valid polygon check・confidence 合成・replay runner<span class="dref">03:227</span></div></div>
+<div class="ex plugin"><div class="tag">plugin<br>差替</div><div class="body">camera intrinsics/extrinsics・hand-eye 行列・work envelope polygon・公称 pose・snap threshold<span class="dref">03:227</span></div></div>
 
 <!-- ===================== 3. 増やす手順 ===================== -->
 <h2>3. 「指標を 1 個増やす」手順（new producer ＋ score 名 ＋ 既存再利用）</h2>
