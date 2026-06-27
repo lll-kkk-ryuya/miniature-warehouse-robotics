@@ -40,10 +40,31 @@ agent:
   environment_probe: false
   disabled_toolsets: []
 
-# Observability is OUT-OF-BAND and fail-open. To trace ER calls to Langfuse, enable the built-in
-# plugin on this instance (does NOT block the response — background-thread ingestion):
-#   pip install langfuse
-#   HERMES_HOME=<this home> hermes plugins enable observability/langfuse
-# and set HERMES_LANGFUSE_PUBLIC_KEY / HERMES_LANGFUSE_SECRET_KEY / HERMES_LANGFUSE_BASE_URL in .env.
-# NOTE: because the audio leg bypasses Hermes, this plugin does NOT observe the audio-ER call —
-# the Bridge-owned Langfuse trace remains the uniform owner (docs/architecture/08, prod/02 §HLF gate).
+# Observability is OUT-OF-BAND and fail-open. The built-in Langfuse plugin is ENABLED below, but it
+# is OPT-IN scaffolding for the HLF-G0 / Option-D trace-owner probe — NOT the shipped default trace
+# owner. It is consumed ONLY by hlf-g0-langfuse/run-er-gateway-langfuse.sh (which supplies langfuse
+# via pip --target + PYTHONPATH and enables the plugin against the isolated home). The base launcher
+# run-er-gateway.sh does NOT put langfuse on PYTHONPATH, so there the plugin FAILS OPEN (no traces,
+# no crash). Set HERMES_LANGFUSE_PUBLIC_KEY / _SECRET_KEY / _BASE_URL in .env for a meaningful probe.
+#
+# SHIPPED DEFAULT trace owner stays Bridge-owned (langfuse.openai wrapper in the LLM Bridge), per
+# merged docs/mode-x-er/06-unfrozen-contract-resolutions.md:9 and docs/productization/02-l4-robotics-
+# bridge-box.md:179. Turning this plugin ON for observation is NOT the same as the Bridge-wrapper
+# removal (Pattern B) — the latter is gated on live HLF-G0/G5 PASS (hlf-g0-langfuse/WRAPPER-REMOVAL-
+# PLAN.md). eval_sdk still owns outcome scores either way (README-hlf-g0.md).
+#
+# EVIDENCE for "plugin-owned trace works" (do not over/under-claim — see hlf-g0-langfuse/RESULT.md):
+#   2026-06-27 LIVE-OBSERVED (#360 spike, via run-er-gateway-langfuse.sh): with the input_audio fork
+#   applied the audio-ER call DOES traverse this gateway, and the plugin lands a trace at the
+#   deterministic Option-D seed create_trace_id(seed="H::H") (observed trace d1477eef..,
+#   spike/langfuse-plugin-d/verify_d_audio.py PASS). NOT yet verified (human-gate): this package's
+#   own literal HLF-G0 probe (inbound trace_id honor; static prediction = stock FAIL) and the full
+#   #6 scorer-leg end-to-end join. Without the fork, audio bypasses Hermes entirely and only the
+#   Bridge-owned trace covers it.
+# IMPORTANT: keep this as a REAL plugins.enabled key, NOT only a comment — an earlier comment-only
+# mention false-matched the launcher's enable check, so the plugin was never loaded (root cause fix).
+# Removing it would re-break Option D (plugin minted no trace) — keep it; the fence is the comment
+# above, not deletion.
+plugins:
+  enabled:
+    - observability/langfuse

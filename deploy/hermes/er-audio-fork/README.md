@@ -1,0 +1,258 @@
+# ER native-audio Hermes overlay (`er-audio-fork`)
+
+> **設計正本**: [PR #355（docs・MERGED `3002fd8`）](https://github.com/lll-kkk-ryuya/miniature-warehouse-robotics/pull/355) / [`docs/mode-x-er/06-unfrozen-contract-resolutions.md` §5 + §5 補遺（:263-271）](../../../docs/mode-x-er/06-unfrozen-contract-resolutions.md) / [issue #356](https://github.com/lll-kkk-ryuya/miniature-warehouse-robotics/issues/356)
+> ✅ **依存（解消済み）**: 本パッケージが productionize する forked-Hermes-200 の記録（"default = Hermes for audio" の TARGET）は docs PR **#355 が main に land 済み（`3002fd8`）**で、**merged doc06 §5 補遺（:263-271）に着地済み**。補遺は「UNFORKED Hermes = 400（PROBE-2 不変）／ fork ありなら audio を Hermes に乗せられる（TARGET）／ **CURRENT = 音声 direct のまま（恒久 fallback）**」と honest に精緻化（:269）。よって本パッケージの設計正本リンクは merged main 上で解決する。
+> 本書は **transport/input レイヤの overlay** のみを扱う。orchestration / safety は一切触らない（下記「触らないもの」）。
+
+このディレクトリは、Hermes Gateway（hermes-agent v0.15.1）の OpenAI 互換
+`/v1/chat/completions` が **OpenAI `input_audio` content part を受理し、Gemini native
+`inlineData{ mimeType: audio/wav }` にマップする**ようにする 2 ファイルパッチ（overlay）と、
+それを **personal な `~/.hermes` を一切触らずに** 当てて動かすための applier を収める。
+
+**transport/input レイヤ（commit 1・本 PR の主成果物 `er-audio-fork/`）**:
+
+| ファイル | 役割 |
+|---|---|
+| `0001-input_audio-passthrough.patch` | 2 ファイルパッチ本体（`gateway/platforms/api_server.py` + `agent/gemini_native_adapter.py`） |
+| `apply-fork.sh` | 冪等な applier（`--check` dry-run / `--revert` 対応・personal clone を in-place で触ることを拒否） |
+| `run-er-gateway.sh` | **one-shot ランチャ**（隔離 worktree 作成 → patch 適用 → lean ER gateway 起動を一気通貫。`--probe`/`--stop`。langfuse は **載せない**＝plugin は fail-open no-op） |
+| `.env.example` | secrets ひな型（placeholder のみ・`GOOGLE_API_KEY` / `API_SERVER_KEY` / port） |
+| `UPSTREAM-PR.md` | `NousResearch/hermes-agent` 向け upstream PR 草案（**NOT SUBMITTED**＝外向き承認ゲート） |
+| `TRANSPORT-FLIP-PLAN.md` | ER audio leg を default-Hermes に flip する **design-only** プラン（コードは `feat/mode-x-er` 側） |
+| `README.md` | 本書 |
+
+**観測（commit 2・別 concern・`hlf-g0-langfuse/` ＝ Langfuse trace 所有の探索。詳細は [`hlf-g0-langfuse/README-hlf-g0.md`](hlf-g0-langfuse/README-hlf-g0.md)）**:
+
+> ⚠️ これは **trace 所有レイヤの opt-in scaffolding** で、input/transport とは**別 concern**。`run-er-gateway-langfuse.sh` だけが消費し、shipped default の trace owner は **Bridge-owned 継続**（doc06:9 / doc02:179・下記「現状（honest status）」§観測 の fence 参照）。`config.lean.yaml` の `plugins.enabled` は Option D の root-cause 退行を防ぐために残す。
+
+| ファイル | 役割 |
+|---|---|
+| `hlf-g0-langfuse/run-er-gateway-langfuse.sh` | `run-er-gateway.sh` を source し、隔離 langfuse install ＋ plugin ON を足す launcher |
+| `hlf-g0-langfuse/run-hlf-g0.sh` + `hlf_g0_probe.py` | HLF-G0 live probe（human-gated・PASS/FAIL/INCONCLUSIVE 判定） |
+| `hlf-g0-langfuse/probe-hlf-g0.sh` | design-only scaffold（gate チェックリスト印字・live は placeholder） |
+| `hlf-g0-langfuse/README-hlf-g0.md` / `PLUGIN-TRACEID-ANALYSIS.md` / `WRAPPER-REMOVAL-PLAN.md` | 分析・予測・Pattern B 設計（design-only） |
+| `hlf-g0-langfuse/RESULT.md` | live 結果の転記先（Option D は #360 spike で live 観測済＝下記） |
+| `hlf-g0-langfuse/.env.example` | Langfuse 用 secrets ひな型（placeholder のみ） |
+
+そして本 overlay の lean config 正本 [`deploy/dev/hermes-er/config.lean.yaml`](../../dev/hermes-er/config.lean.yaml)（commit 2 で plugin ON 化・上記 fence 参照）。
+
+---
+
+## このフォークが何をするか / なぜ必要か
+
+- **何を**: OpenAI 互換 chat content part `{"type":"input_audio","input_audio":{"data":"<base64>","format":"wav"}}`
+  を Hermes が受理し、native Gemini 側に `inlineData{ mimeType: "audio/<format>", data: <base64> }` として渡す。
+  これは **入力 MODALITY を 1 つ足すだけ**の transport-only 変更（image_url passthrough と同型）。
+- **なぜ**: **unforked の Hermes は audio を運べない**。専用 lean Hermes gateway の
+  `/v1/chat/completions` に `input_audio` を POST すると **HTTP 400 `unsupported_content_type`**
+  （メッセージ: `Unsupported content part type 'input_audio'. Only text and image_url/input_image parts are supported.`）。
+  これは **PROBE-2 として 2026-06-27 に実測確定**（[06 §5:159 PROBE-2](../../../docs/mode-x-er/06-unfrozen-contract-resolutions.md)）。
+  Gemini Robotics-ER 自体は audio 入力を native サポートするため、欠けているのは
+  「Hermes が OpenAI `input_audio` part を Gemini へ透過する」最後の 1 段だけ。この overlay がその段を足す。
+- **位置づけ**: これは **productionization seam**。`docs/mode-x-er/06 §5 補遺`（:263-271・特に :269）の
+  *"fork ありなら audio を Hermes default target にできる"* は **この overlay が deploy されて初めて到達できる TARGET**。
+  **deploy されるまでは現行の音声 transport は `direct`（ER へ直送）が恒久 fallback** であり、
+  本フォークは「ER 音声を direct ではなく uniform Hermes transport に載せ替える」ための前提部品。
+
+### 触らないもの（transport/input layer のみ・本フォークの不変条件）
+
+本フォークは **入力 modality の透過のみ**で、以下には一切手を入れない:
+
+- `action_map` の idempotency mint（冪等な action 採番）
+- Policy Gate
+- timeout 時の 0-dispatch（タイムアウトで何も実機投入しない契約）
+- eval_sdk の outcome scores（result / SR / SPL / collision / deadlock）
+
+これらは orchestration / safety 層であり、本パッチの diff（2 ファイル・content-part 正規化のみ）には現れない。
+
+---
+
+## ライブ実証結果（2026-06-27・grounded）
+
+専用 lean ER gateway（下記）に対して `input_audio` を POST した実測:
+
+- **HTTP 200**。ER は **native audio** を理解した（音声に含まれる語の transcript のみで応答＝
+  音声を実際に聴いて処理している）。
+- lean 経路の latency 中央値 **3.69s** vs direct **4.24s**（n=4・comparable・ER-thinking の交絡あり）。
+- 1 call あたり **+約 408 prompt tokens**（Hermes 経由の overhead）。
+
+> **注意（multi-provider 比較）**: Hermes は **server-side で単一 active model**（per-request の
+> provider routing は無い）。4-provider 比較を回すには **provider ごとに gateway を分ける**
+> （config 切替 + 再起動）必要がある。本フォーク 1 つでは ER（Gemini native）1 系統のみ。
+
+> **ER audio = Gemini-native 経路 限定**: パッチの adapter hunk は **Gemini *native* adapter**
+> （`agent/gemini_native_adapter.py`）だけに `input_audio`→`inlineData` のマッピングを足す。
+> 第2の Gemini 経路 `agent/gemini_cloudcode_adapter.py` は `input_audio` を **drop** する
+> （`_coerce_content_to_text` が `image_url`/`input_audio` を `logger.debug("Dropping multimodal
+> part …")` で落とす＝debug ログのみで実質 silent。verified against v0.15.1 source）。shipped
+> lean config は provider `google`＝native なので**到達しない**が、cloudcode provider を使う
+> gateway では audio が落ちる footgun。本 productionization は **native provider 前提**。
+
+---
+
+## 適用方法
+
+### 一気通貫（one-shot ランチャ・推奨）
+
+手順を手で踏まずに `run-er-gateway.sh` 1 本で「隔離 worktree 作成 → patch 適用 → lean ER gateway 起動」まで通る。**初回は lean home の `config.yaml` + `.env` が必要**（下記「初期化」）:
+
+```bash
+cd deploy/hermes/er-audio-fork
+
+# 0) 初期化（初回のみ）: lean ER home に config と secrets を置く
+#    config.yaml = config.lean.yaml をコピー、.env = .env.example を埋める。
+#    既存の deploy/dev/run-er-hermes.sh も同じ home を seed する（どちらでも可）。
+mkdir -p ~/.hermes-mwr-er-lean
+cp ../../dev/hermes-er/config.lean.yaml ~/.hermes-mwr-er-lean/config.yaml
+cp .env.example                          ~/.hermes-mwr-er-lean/.env   # then fill GOOGLE_API_KEY / API_SERVER_KEY
+
+# 1) 起動（fg）: 隔離 worktree + patch + lean gateway を一気通貫で
+./run-er-gateway.sh
+
+# 起動 + input_audio が HTTP 200 を返すか自己検証（bg のまま残す）:
+./run-er-gateway.sh --probe
+# 停止 + 隔離 worktree 削除:
+./run-er-gateway.sh --stop
+```
+
+ポート/HOME などは env で可変（`PORT` 既定 `8644`・`HERMES_HOME` 既定 `~/.hermes-mwr-er-lean`・`HERMES_SRC` 既定 `~/.hermes/hermes-agent`）。**secrets は `$HERMES_HOME/.env` を source するのみ・値は非表示**。`run-er-gateway.sh` は **langfuse を PYTHONPATH に載せない**（plugin は fail-open no-op）＝観測を足したい HLF-G0 探索は `hlf-g0-langfuse/run-er-gateway-langfuse.sh`。
+
+> **注意（既存 `deploy/dev/run-er-hermes.sh` との関係）**: 旧 launcher（`run-er-hermes.sh`）は **同じ lean home `~/.hermes-mwr-er-lean` を default port `8643`** で起動する。本 `run-er-gateway.sh` の default は **`8644`**（`.env` の `API_SERVER_PORT` が両者で優先）。**両者を同時起動しない**（同一 home の bind 競合）。Bridge は `8644` を想定するので、本 productionization 経路では `run-er-gateway.sh`（または `.env` の `API_SERVER_PORT=8644`）に統一する。HOME override 変数も非対称（旧 `run-er-hermes.sh` は別変数）なので、env を渡すときは各 launcher の USAGE ヘッダのポート/HOME 変数名を確認する。
+
+### 手動（isolated worktree + PYTHONPATH override・ランチャを使わない場合）
+
+### 鉄則（SAFETY）
+
+- **`~/.hermes/hermes-agent`（personal daily-driver clone・port 8642・memory ON）は絶対に
+  in-place で patch / checkout-branch しない。** これは利用者の openai-codex daily-driver。
+- パッチを当ててよいのは **personal clone の ISOLATED worktree**（または別 clone）だけ。
+  `apply-fork.sh` は `HERMES_SRC` が personal clone を指すと **REFUSE する**。
+
+### 手順
+
+```bash
+# 0) 変数（このディレクトリへの絶対パス）
+FORK_DIR=/Users/<you>/Developer/mwr-hermes-er-fork/deploy/hermes/er-audio-fork
+PERSONAL=~/.hermes/hermes-agent          # personal clone — 触らない
+SRC=/tmp/hermes-er-fork                   # 隔離 worktree の置き場（gitignore 対象・任意）
+
+# 1) personal clone の ISOLATED worktree を作る（venv/node_modules はコピーされない＝軽量）
+git -C "$PERSONAL" worktree add "$SRC" -b mwr-er-audio HEAD
+
+# 2) パッチを当てる（冪等・先に git apply --check の dry-run を内部で実行）
+HERMES_SRC="$SRC" "$FORK_DIR/apply-fork.sh"
+#   事前確認だけ:  HERMES_SRC="$SRC" "$FORK_DIR/apply-fork.sh" --check
+#   元に戻す:      HERMES_SRC="$SRC" "$FORK_DIR/apply-fork.sh" --revert
+
+# 3) patched モジュールを起動する（PYTHONPATH override で personal venv の依存を再利用）
+#    PYTHONPATH が editable finder を上書きし、patched モジュールが <SRC> からロードされる。
+#    personal の source は読み取りすらしない（worktree 側が勝つ）。
+PYTHONPATH="$SRC" "$PERSONAL/venv/bin/python" -m hermes_cli.main gateway run --accept-hooks
+```
+
+**PYTHONPATH override の要点（実証済み）**: `PYTHONPATH=<SRC>` は editable（PEP660）install の
+finder より優先される。patched な `gateway/platforms/api_server.py` /
+`agent/gemini_native_adapter.py` は `<SRC>` からロードされる一方、依存（venv の site-packages）は
+**personal venv をそのまま再利用**する。＝personal の source を 1 行も変えずに patched code を走らせられる。
+
+### 隔離 worktree の片付け
+
+```bash
+git -C "$PERSONAL" worktree remove "$SRC"     # 未コミット残があると拒否される
+git -C "$PERSONAL" branch -D mwr-er-audio      # 使い捨てブランチ
+git -C "$PERSONAL" worktree prune
+```
+
+---
+
+## lean ER gateway の構成（実証済み・参考）
+
+この overlay は **専用 lean Hermes gateway** と組み合わせて使う（personal `~/.hermes` とは別 `HERMES_HOME`）。
+構成の正本は同じ worktree の [`deploy/dev/hermes-er/config.lean.yaml`](../../dev/hermes-er/config.lean.yaml) と
+launcher [`deploy/dev/run-er-hermes.sh`](../../dev/run-er-hermes.sh)、secrets ひな型は
+[`deploy/dev/hermes-er/.env.example`](../../dev/hermes-er/.env.example)。要点:
+
+| 項目 | 値 | 出所 |
+|---|---|---|
+| provider | `google`（native Gemini） | `config.lean.yaml` |
+| model | `gemini-robotics-er-1.6-preview` | `config.lean.yaml`（API server は request の `model` を無視し server-side 固定） |
+| `platform_toolsets.api_server` | `[]`（明示空＝**0 tools**。unset は 35 tools default） | `config.lean.yaml` |
+| memory | off（`memory_enabled: false` / `user_profile_enabled: false`） | `config.lean.yaml` |
+| API server port | `8644`（**personal の 8642 と分離**。`API_SERVER_PORT` / `MWR_ER_HERMES_PORT` で可変） | `.env.example` / `run-er-gateway.sh` |
+| secrets | `HERMES_HOME/.env` の `GOOGLE_API_KEY` + `API_SERVER_KEY` + `API_SERVER_HOST/PORT` | `.env.example` |
+
+> **secrets 規約**: 値は `HERMES_HOME/.env`（gitignore 対象）に置き、**スクリプトは `.env` を SOURCE する。
+> 値を echo / print しない**（[safety.md](../../../.claude/rules/safety.md) / [environments.md](../../../.claude/rules/environments.md)）。
+> repo に置くのは `.env.example`（プレースホルダのみ）。
+>
+> 実証ラン（grounded fact）は instance home `~/.hermes-mwr-er-lean` で port **8644** だった
+> （`API_SERVER_PORT` 可変ゆえ instance によって port が変わりうる）。本書は repo default の
+> 8644 を一次値とし、port は常に env で parameterize する。
+
+---
+
+## MAINTENANCE（保守戦略）
+
+このフォークは **薄い overlay**（2 ファイル・transport のみ）として「upstream に追従しやすく・退役しやすい」形を保つ。
+
+1. **upstream bump 時の再適用**: hermes-agent の version が上がったら、まず
+   `apply-fork.sh --check`（内部で `git apply --check` dry-run）で当たるか確認する。
+   - 当たれば（exit 0）そのまま `apply-fork.sh` で適用。
+   - 当たらなければ（exit 3＝context drift）、新 version 上で 2 ファイルを手で当て直し、
+     `git diff` で **パッチを再 cut** する（hunk offset / context を更新）。パッチ先頭の
+     `index <old>..<new>` blob hash は当たり判定に使われないので、context が一致すれば良い。
+   - `apply-fork.sh` は target が **hermes-agent v0.15.1** であることを `pyproject`（name+version）
+     または 2 target ファイルの存在で検証する。version を上げる際はこのガードも追従させる
+     （applier 冒頭の `verify_version` の `0.15.1` 期待値）。
+2. **overlay の退役を優先**: 長期的には **upstream への PR**（OpenAI `input_audio` part の
+   native 透過）を出して overlay を不要化するのが望ましい。overlay は「upstream が受け入れるまでの
+   橋渡し」であり、恒久 fork を意図しない。退役できれば `direct` ではなく Hermes 経由を
+   標準にする TARGET（06 §5 + #355 の §5 補遺）が本家機能で満たされる。
+3. **冪等性**: `apply-fork.sh` は適用済み（`_AUDIO_PART_TYPES` マーカー検出）なら no-op。
+   `--revert` で安全に剥がせる（reverse `--check` を先に通すので drift があれば拒否）。
+
+---
+
+## SAFETY（再掲・最重要）
+
+- **personal `~/.hermes/hermes-agent` を in-place で patch / checkout-branch しない。**
+  必ず **isolated worktree（または別 clone）**に当てる。`apply-fork.sh` は personal clone を
+  指す `HERMES_SRC` を **拒否**する（多層防御）。
+- **secrets を echo / print / commit しない。** `.env` は SOURCE するのみ・repo には `.env.example` のみ。
+- 本フォークは **transport/input layer 限定**。orchestration / safety
+  （action_map idempotency / Policy Gate / 0-dispatch-on-timeout / eval_sdk scores）は不変。
+
+---
+
+## 現状（honest status）
+
+- **検証済み（2026-06-27 live）**: パッチ適用 → lean ER gateway 起動 → `input_audio` POST →
+  **HTTP 200・ER が native audio を理解**（上記「ライブ実証結果」）。
+- **未出荷（not yet shipped）**: 本 overlay の deploy（Bridge の default を audio=Hermes に切替）は
+  **未実施**。それまで **音声 transport の default は `direct`**（恒久 fallback）。
+  *"default = Hermes for audio"* は本フォークが productionize する **TARGET**。
+- **applier の自己検証範囲**: `apply-fork.sh` の guard / 冪等 / `--check` / `--revert` の分岐は検証済み。
+  実 v0.15.1 source への clean-apply は `git apply --check` が通ることを確認済み
+  （personal clone の sandbox 制約上、clean-apply→revert の往復はホスト側の隔離 worktree で実走して確認すること）。
+- **deferred productionization（#356 DoD の一部・未実装）**: パッチは現状
+  - `data` が **非空 base64 文字列**であることを検証し（`api_server.py` hunk）、`format` を欠落時 `wav`
+    に default する（error path はある）が、
+  - **`format` の allowlist（wav/mp3/… の許可リスト）と base64 の妥当性検証・サイズ上限を持たない**。
+    任意 `format` は `audio/<fmt>` に素通しされ、provider 側 4xx で初めて弾かれる。
+  これは「最小・transport-only・additive」を保つための意図的 defer（盲目にパッチを編集すると
+  `git apply --check` を壊す risk があるため）。upstream/forked いずれの hardening でも、format
+  allowlist + size guard を `_normalize_multimodal_content` の `input_audio` 分岐に足すのが次の一手
+  （`UPSTREAM-PR.md` の error-path 記述と整合させる）。
+- **観測（Langfuse trace 所有・commit 2 / `hlf-g0-langfuse/`）の検証状態（誇張回避のため厳密に）**:
+  - **live 観測済み（#360 spike）**: 本 package の `run-er-gateway-langfuse.sh`（plugin ON）経由で audio が
+    HTTP 200 で ER に届き、**plugin が trace を `create_trace_id(seed="H::H")` の決定的位置に着地**させる
+    （**Option D / predict-seed**）ことを #360（`spike/langfuse-plugin-d/verify_d_audio.py`）が **live PASS**
+    （観測 trace = `d1477eef…`）。＝「plugin-owned trace は実体として観測できる」は **検証済み**。
+  - **未検証（human-gate のまま）**: ① 本 package 内の **literal HLF-G0 probe**（`hlf-g0-langfuse/`・
+    *inbound* `trace_id` を plugin が honor するか）は **未実走**（`RESULT.md` 参照）。静的解析の予測は
+    **stock では FAIL**（plugin は trace_id を自生成・inbound を読まない＝`PLUGIN-TRACEID-ANALYSIS.md`）で、
+    Option D は「inbound honor」ではなく「seed 一致で再導出」という別解。② #6 scorer 脚まで含む
+    **end-to-end score-join の live 実証**は #360 でも human-gate（#360 review 参照）。
+  - したがって **shipped default の trace owner は Bridge-owned 継続**（doc06:9 / doc02:179）。
+    `config.lean.yaml` の `plugins.enabled` は **Option D 探索用 opt-in scaffolding** で、消費するのは
+    `run-er-gateway-langfuse.sh` のみ（base `run-er-gateway.sh` は langfuse を載せず fail-open no-op）。
