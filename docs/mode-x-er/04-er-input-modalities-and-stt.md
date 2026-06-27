@@ -7,7 +7,7 @@
 ## 結論
 
 1. **Gemini Robotics-ER 1.6 Preview は音声（audio）を直接入力できる**（一次情報、§1）。したがって **STT を ER の必須上流ステージにしない**。STT は optional（fallback / audit / 非 ER 経路向け）として持つ（§2）。
-2. data flow 上「`STT -> Input Context -> ER`」を必須直列にしない。Input Context は `instruction_audio_ref` を第一級入力として持ち、`transcript` は optional（§3）。既存 docs も既に optional 表記であり（`docs/mode-x-er/01-architecture-and-flow.md:21`・`docs/mode-x-er/01-architecture-and-flow.md:119`・`docs/mode-x-er/README.md:41`）、本書はその**根拠（ER が audio を直受けできること）**を明文化する。
+2. data flow 上「`STT -> Input Context -> ER`」を必須直列にしない。Input Context は `instruction_audio_ref` を第一級入力として持ち、`transcript` は optional（§3）。既存 docs も既に optional 表記であり（`docs/mode-x-er/01-architecture-and-flow.md:21`・`docs/mode-x-er/01-architecture-and-flow.md:119`・`docs/mode-x-er/README.md:44`）、本書はその**根拠（ER が audio を直受けできること）**を明文化する。
 3. **ER 単体（VLA なし）では Fusion box の cross-model arbitration はほぼ空振り（pass-through）になる**。本来 Fusion が拾う食い違い reason_code（`target_mismatch` 等）は「ER と VLA など複数 model の出力差」を見るものだから（§4）。ER 単体でも有用な検査（task graph 矛盾検出・低 confidence 時の clarification）は、box 分類上は Fusion ではなく **L3 Validator / L3 Handoff の責務**である。
 4. Fusion の必要性は **ER + VLA（または 2 つ目以降の model 投入）** で立ち上がる（§5）。よって ER 単体 MVP では Fusion を「定義された通過点 / 将来 seam」として残し、活性化は 2 model 目の導入時にする。これは商用再利用 box の思想と一致し、将来の physical AI 普及の下地としても妥当（§6）。
 
@@ -26,7 +26,7 @@ Google Gemini API の公式 model ページを 2026-06-23 に確認した。
 
 - **audio は input 一覧に明記される**が、公式 docs の robotics 例は画像・動画中心で、音声指示を直接食わせる robotics 用途の作例は提示されていなかった。当初は「API capability としては可能だが robotics command としての実証は未確認」として扱っていた。
 - **✅ 疎通＋parseable plan 生成を実証（2026-06-26・PROBE-1）**: ER（`gemini-robotics-er-1.6-preview`）に `generateContent` で text(schema)+`inline_data`(audio/wav) を直接渡し → HTTP 200・**音声理解**・transcript＋ordered task plan を返却（`to_robotics_plan_draft` で valid `RoboticsPlanDraft`）。→ **audio→direct-ER の疎通＋parseable plan 生成が成立**。**robotics-grade command 品質は別 eval・未確認**（連結誤認識耐性・現場性能は本 probe の対象外）。STT を ER の上流直列に入れない方針はこの疎通実測で裏付け。詳細・harness は [`06-unfrozen-contract-resolutions.md` §5 実測結果](06-unfrozen-contract-resolutions.md) / `tests/live/test_er_handoff_live.py`（companion transport PR で着地）。
-- 既存 spike で text / image probe は `HTTP 200` 実測済み（`docs/dev/vla-access-and-runtime-spike.md:23-28`）。audio probe は **2026-06-26 に実施・成功**（上記）。**Hermes 経由の audio は不可**（OpenAI 互換 API server は text+image_url のみ・`input_audio` は `400`）＝音声は Hermes をバイパスして direct ER（`06` §5）。
+- 既存 spike で text / image probe は `HTTP 200` 実測済み（`docs/dev/vla-access-and-runtime-spike.md:23-28`）。audio probe は **2026-06-26 に疎通成功**（上記）。**Hermes 経由の audio は不可**（OpenAI 互換 API server は text+image_url のみ・`input_audio` は `400`）＝音声は Hermes をバイパスして direct ER（`06` §5）。
 
 ## 2. STT の要否
 
@@ -46,7 +46,7 @@ Google Gemini API の公式 model ページを 2026-06-23 に確認した。
 ## 3. data flow への含意
 
 - 「`STT -> Input Context -> ER`」を**必須直列にしない**。Input Context Box は `instruction_audio_ref` を第一級入力として持ち、`transcript` は optional とする。
-- 既存の data flow 図とフローは既に STT を optional 表記しているため、**構造変更は不要**（`docs/mode-x-er/01-architecture-and-flow.md:21` `optional [STT Adapter]` / `docs/mode-x-er/README.md:41` `optional STT / transcript`）。本書はその意図と根拠を補足する位置づけ。
+- 既存の data flow 図とフローは既に STT を optional 表記しているため、**構造変更は不要**（`docs/mode-x-er/01-architecture-and-flow.md:21` `optional [STT Adapter]` / `docs/mode-x-er/README.md:44` `optional STT / transcript`）。本書はその意図と根拠を補足する位置づけ。
 - Input Context Box の責務（音声 / 画像 / state / calibration を束ねる）と「実行許可を持たない」性質は productization 側の正本に従う（`docs/productization/06-oss-reuse-and-box-small-designs.md:85-100`）。
 
 ## 4. ER 単体での Fusion の要否
