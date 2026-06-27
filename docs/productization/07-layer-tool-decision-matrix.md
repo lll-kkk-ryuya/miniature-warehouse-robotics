@@ -97,3 +97,16 @@ Jetson / Docker / host CI での runtime、failure 時の挙動を owner doc で
 | Hardware / MCU | [micro-ROS Features and Architecture](https://micro.ros.org/docs/overview/features/)、[ros2_control hardware interface types](https://control.ros.org/jazzy/doc/ros2_control/hardware_interface/doc/hardware_interface_types_userdoc.html) |
 | Recording / tracing | [rosbag2](https://github.com/ros2/rosbag2)、[ros2_tracing](https://github.com/ros2/ros2_tracing) |
 | Telemetry / observability | [OpenTelemetry](https://opentelemetry.io/docs/what-is-opentelemetry/)、[Langfuse Observability](https://langfuse.com/docs/observability/overview)、[DuckDB Docs](https://duckdb.org/docs/stable/) |
+
+## 観測 tool の追加候補（洗い出し・docs 未登録 → 候補 / 要 spike）
+
+> 「今は使わないが将来の観測拡張で必要になりうる」tool の洗い出し。doc05 §呼び出し頻度の **4 tier**（①判断=Langfuse / ②event=audit.jsonl / ③集計=metrics / ④生=rosbag2）に紐付けて管理する。**採用は各々 spike 後・docs-first PR で正本化してから**（本節は候補登録であって採用ではない）。視覚化は [tool-catalog-detail.html](tool-catalog-detail.html) / [observability-tiering-detail.html](observability-tiering-detail.html)。
+
+| 用途 | tool | tier | 状態 | 採用条件 / 備考 |
+|---|---|---|---|---|
+| ROS bag 保存 format | [mcap](https://mcap.dev/) | ④生 | 要 spike | rosbag2 の保存 format（既定 sqlite3 ↔ mcap）。容量・読出速度・tool 互換を検証してから |
+| 高頻度時系列 plot | [PlotJuggler](https://github.com/facontidavide/PlotJuggler) | ④生（viz） | 候補 | odom / cmd_vel / imu の時系列可視化。常設保存ではなく解析補助 |
+| robot 可視化 | [Foxglove](https://foxglove.dev/) | ④生（viz） | 候補 | rosbag / ライブ可視化（Phase 4 demo）。**ブラウザ直結はしない**＝観測 UI は web_bridge 経由（doc22 §1） |
+| metrics backend（TSDB） | [Prometheus](https://prometheus.io/) / [Grafana](https://grafana.com/) | ③集計 | 要 spike | ③集計 tier の counter / histogram を保持・可視化。当面は `audit.jsonl`→DuckDB で代替（doc21:213）。常設ダッシュボードが要る段階で採用判断 |
+
+> **不採用ではなく未採用**: これらは「観測 tier の将来拡張の選択肢」。採用すると依存・運用が増えるため、E-G2 / E-G5 を満たす最小構成（rosbag2 + `audit.jsonl`→DuckDB）で当面足りる（doc21:213「audit.jsonl + DuckDB で当面十分」）。
