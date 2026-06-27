@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>観測・実装 tool カタログ 詳細図 — 4 tier × 採用/候補/要spike/不採用</title>
+<style>
+  :root{
+    color-scheme: dark;
+    --bg:#1a1a1a; --bg2:#141414; --card:#222222; --card2:#262626; --surface:#2d2d2d;
+    --ink:#ededed; --muted:#c4c4c4; --faint:#8f8f8f; --line:#3a3a3a; --code:#141414;
+    --badge-ink:#1a1a1a; --head:#dcdcdc;
+    --box:#7aa2f7;     --box-bg:rgba(122,162,247,.13);
+    --sub:#9ece6a;     --sub-bg:rgba(158,206,106,.12);
+    --seam:#e0af68;    --seam-bg:rgba(224,175,104,.12);
+    --plugin:#bb9af7;  --plugin-bg:rgba(187,154,247,.12);
+    --demoted:#9a9a9a; --demoted-bg:rgba(154,154,154,.10);
+    --red:#f7768e; --yellow:#e0c07a; --teal:#7dcfff; --pink:#f7a8d8;
+    /* status colors (this figure's single colored axis) */
+    --adopt:#9ece6a;  --cand:#7aa2f7;  --spike:#e0af68;  --no:#9a9a9a;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Noto Sans JP",Meiryo,sans-serif;
+    line-height:1.7;font-size:15px;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1080px;margin:0 auto;padding:32px 20px 80px}
+  header.top{border-bottom:3px solid var(--box);padding-bottom:18px;margin-bottom:8px}
+  h1{font-size:23px;margin:0 0 6px} h2{font-size:20px;margin:44px 0 12px;padding-left:10px;border-left:5px solid var(--box)}
+  h3{font-size:15.5px;margin:22px 0 9px;color:var(--head)}
+  p{margin:10px 0} .lead{color:var(--muted);font-size:14px}
+  a{color:var(--box);text-decoration:none} a:hover{text-decoration:underline}
+  code{background:var(--code);padding:1px 6px;border-radius:4px;font-size:.88em;font-family:"SF Mono",Menlo,Consolas,monospace;color:var(--ink)}
+  .dref{color:var(--teal);font-size:.82em;font-family:"SF Mono",Menlo,monospace;white-space:nowrap}
+  .note{background:var(--seam-bg);border:1px solid rgba(224,175,104,.4);border-radius:8px;padding:12px 16px;margin:16px 0;font-size:14px}
+  .meta{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 16px;font-size:13px;color:var(--muted);margin:14px 0}
+  .nav{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0}
+  .nav a{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:7px 13px;font-size:13px;font-weight:600}
+  .nav a:hover{border-color:var(--box);text-decoration:none}
+
+  /* status badge */
+  .st{display:inline-block;font-size:10.5px;font-weight:800;padding:1px 8px;border-radius:999px;color:var(--badge-ink);letter-spacing:.3px;vertical-align:middle}
+  .st-adopt{background:var(--adopt)} .st-cand{background:var(--cand)} .st-spike{background:var(--spike)} .st-no{background:var(--no);color:var(--ink)}
+
+  /* tier group box (neutral — tier shown by grouping, not color) */
+  .tier-grp{border:1.5px solid var(--line);border-radius:12px;padding:13px 14px;margin:12px 0;background:var(--card2)}
+  .tier-grp > .gh{font-weight:800;font-size:14.5px;color:var(--head);margin-bottom:3px}
+  .tier-grp > .gs{font-size:12px;color:var(--muted);margin-bottom:10px}
+
+  /* tool chip: left border = status color */
+  .tool{border:1px solid var(--line);border-left:5px solid var(--line);border-radius:9px;padding:9px 12px;margin:7px 0;background:var(--card);font-size:13px}
+  .tool.adopt{border-left-color:var(--adopt)} .tool.cand{border-left-color:var(--cand)} .tool.spike{border-left-color:var(--spike)} .tool.no{border-left-color:var(--no)}
+  .tool .nm{font-weight:700;color:var(--ink)} .tool .ds{color:var(--muted);font-size:12px;margin-top:2px}
+  .legend{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
+  .legend .item{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:6px 11px;font-size:11.5px;color:var(--muted)}
+  .legend .sw{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:6px;vertical-align:middle}
+
+  table{border-collapse:collapse;width:100%;margin:12px 0;font-size:13px;background:var(--card)}
+  th,td{border:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top}
+  th{background:var(--surface);font-size:12.5px;color:var(--head)} td code{font-size:.85em}
+  tr:nth-child(even) td{background:rgba(255,255,255,.02)}
+  ul.tight{margin:8px 0;padding-left:22px} ul.tight li{margin:5px 0}
+  footer{margin-top:50px;padding-top:18px;border-top:1px solid var(--line);color:var(--muted);font-size:12.5px}
+  @media(max-width:760px){.grid2{grid-template-columns:1fr}}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <h1>観測・実装 tool カタログ 詳細図 — 4 tier × 採用/候補/要spike/不採用</h1>
+  <p class="lead">既存 OSS / 標準 tool を「<b>観測 4 tier のどこに紐付くか</b>」と「<b>採用状態</b>（採用 / 候補 / 要 spike / 不採用）」で一覧化。<b>色は状態だけ</b>に使い（tier は<b>グループ分け</b>で表す＝色の二重意味を避ける）。今は使わなくても将来拡張で要るものを <b>tool として洗い出し・管理</b>する。正本 <a href="07-layer-tool-decision-matrix.md">07</a>（layer×tool 決定マトリクス）／ <a href="06-oss-reuse-and-box-small-designs.md">06</a>。<b>採用判断を図示するだけで発明しない</b>。</p>
+</header>
+
+<div class="nav">
+  <a href="observability-tiering-detail.html">◂ 観測ログ 格納先 階層分離（4 tier）</a>
+  <a href="07-layer-tool-decision-matrix.md">正本: 07 layer×tool 決定マトリクス</a>
+  <a href="06-oss-reuse-and-box-small-designs.md">06 OSS 再利用</a>
+  <a href="eval-sdk-detail.html">eval-sdk 詳細</a>
+  <a href="eval-sdk-plugin-core-detail.html">eval_sdk 拡張（core/plugin）</a>
+  <a href="box-taxonomy.html">全体（box-taxonomy）</a>
+</div>
+
+<div class="meta">
+  正本: <a href="07-layer-tool-decision-matrix.md"><code>07-layer-tool-decision-matrix.md</code></a>（状態定義 <span class="dref">07:18-22</span>・OSS 一覧 <span class="dref">07:27-42</span>・Layer/Box 判断 <span class="dref">07:44-59</span>・追加候補 §観測 tool 追加候補）／ <a href="06-oss-reuse-and-box-small-designs.md"><code>06</code></a> <span class="dref">06:44-50</span>。状態語彙は doc07 準拠＝<b>採用</b>（採用済/基本方針）/ <b>候補</b>（条件が合えば・今は依存追加しない）/ <b>要 spike</b>（性能・失敗時・license・API drift を検証）/ <b>不採用</b>（その用途では使わない）。<b>未登録の追加候補（mcap / PlotJuggler / Foxglove / Prometheus）は doc07 に「候補/要 spike」として追記済</b>。
+</div>
+
+<!-- ===================== 0. 凡例 + 区別 ===================== -->
+<h2>0. 凡例 — 色＝状態 / tier＝グループ / 観測 tool と producer の別</h2>
+<div class="legend">
+  <div class="item"><span class="sw" style="background:var(--adopt)"></span><b>採用</b>（採用済・基本方針）</div>
+  <div class="item"><span class="sw" style="background:var(--cand)"></span><b>候補</b>（条件が合えば・今は依存しない）</div>
+  <div class="item"><span class="sw" style="background:var(--spike)"></span><b>要 spike</b>（検証してから）</div>
+  <div class="item"><span class="sw" style="background:var(--no)"></span><b>不採用</b>（この用途では使わない）</div>
+</div>
+<div class="note"><b>2 種類の tool を分ける</b>: <b>① 観測ストア tool</b>（§1）＝4 tier そのものを構成する（Langfuse / audit.jsonl / metrics / rosbag2…）。<b>② producer tool</b>（§2）＝機能 box が信号を出す側で、<b>tool そのものは tier ではなく、その出力が ②event / ④生 に記録される</b>（Nav2 / Open-RMF / micro-ROS…）。4 tier の正本は <a href="observability-tiering-detail.html">観測ログ 格納先 階層分離</a>（<span class="dref">05:107-122</span>）。</div>
+
+<!-- ===================== 1. 観測ストア tool → 4 tier ===================== -->
+<h2>1. 観測ストア tool → 4 tier マッピング<span class="dref">07:27-42,59 / 06:44-50</span></h2>
+<p class="lead">各 tier を構成する OSS。色＝採用状態。<b>最小構成（採用）= Langfuse + audit.jsonl + rosbag2</b>、それ以外は候補/要 spike。</p>
+
+<div class="tier-grp">
+  <div class="gh">① 判断 tier <span class="st st-adopt">採用</span></div>
+  <div class="gs">L4 generation ＋ 要約 score（低頻度・per gen_id）</div>
+  <div class="tool adopt"><span class="nm">Langfuse</span> <span class="st st-adopt">採用</span><div class="ds">L4 model trace / prompt / cost / latency / score。Bridge 所有・fail-open。<span class="dref">07:59 / 06:48</span></div></div>
+  <div class="tool cand"><span class="nm">OpenTelemetry / OTLP</span> <span class="st st-cand">候補</span><div class="ds">vendor-neutral envelope。<code>gen_ai.*</code> はまだ "Development"＝隔離・gate・optional。<span class="dref">07:40,59 / 21:286</span></div></div>
+  <div class="tool no"><span class="nm">LangSmith / W&amp;B</span> <span class="st st-no">不採用</span><div class="ds">proprietary・SaaS 課金。必要なら OTel 経由のみ。<span class="dref">21:272</span></div></div>
+</div>
+
+<div class="tier-grp">
+  <div class="gh">② event tier <span class="st st-adopt">採用</span></div>
+  <div class="gs">decision_event / audit（executed/rejected/error・状態変化・emergency）</div>
+  <div class="tool adopt"><span class="nm">audit.jsonl / JSONL（decision_event）</span> <span class="st st-adopt">採用</span><div class="ds">MCP command audit ＋ decision_event。<code>eval_sdk</code> が emit。<span class="dref">07:59 / 16:114</span></div></div>
+  <div class="tool cand"><span class="nm">DuckDB</span> <span class="st st-cand">候補</span><div class="ds">offline 集計・customer report export。「audit.jsonl + DuckDB で当面十分」。<span class="dref">07:59 / 21:213</span></div></div>
+</div>
+
+<div class="tier-grp">
+  <div class="gh">③ 集計 tier <span class="st st-spike">採用(metrics) ＋ backend は要 spike</span></div>
+  <div class="gs">counter / histogram（高頻度 tick を縮約）</div>
+  <div class="tool cand"><span class="nm">OpenTelemetry metrics</span> <span class="st st-cand">候補</span><div class="ds">counter/histogram の vendor-neutral 形。Safety の観測補助。<span class="dref">07:57</span></div></div>
+  <div class="tool spike"><span class="nm">Prometheus / Grafana（TSDB）</span> <span class="st st-spike">要 spike</span><div class="ds">counter/histogram を保持・可視化する backend 候補。<b>docs 未登録だった→追記済</b>。当面は audit.jsonl→DuckDB で代替。<span class="dref">07:§追加候補 / 21:213</span></div></div>
+</div>
+
+<div class="tier-grp">
+  <div class="gh">④ 生 tier <span class="st st-adopt">採用(rosbag2)</span></div>
+  <div class="gs">odom / scan / cmd_vel 生波形（sub-second）</div>
+  <div class="tool adopt"><span class="nm">rosbag2</span> <span class="st st-adopt">採用</span><div class="ds">ROS message の record/playback・incident replay。生 tier の正解。<span class="dref">07:38,59 / 06:45</span></div></div>
+  <div class="tool cand"><span class="nm">ros2_tracing</span> <span class="st st-cand">候補</span><div class="ds">high-rate timing / executor / DDS・callback 解析。<span class="dref">07:39,59 / 06:46</span></div></div>
+  <div class="tool spike"><span class="nm">mcap</span> <span class="st st-spike">要 spike</span><div class="ds">rosbag2 の保存 format（既定 sqlite3 ↔ mcap）。容量/読出/互換を検証。<b>docs 未登録だった→追記済</b>。<span class="dref">07:§追加候補</span></div></div>
+  <div class="tool cand"><span class="nm">PlotJuggler</span> <span class="st st-cand">候補</span><div class="ds">odom/cmd_vel/imu の時系列 plot（解析補助・常設保存ではない）。<b>追記済</b>。<span class="dref">07:§追加候補</span></div></div>
+  <div class="tool cand"><span class="nm">Foxglove</span> <span class="st st-cand">候補</span><div class="ds">rosbag/ライブ可視化（Phase 4 demo）。<b>ブラウザ直結はしない</b>＝観測 UI は web_bridge 経由。<span class="dref">07:§追加候補 / 22:25 / 03:281</span></div></div>
+</div>
+
+<!-- ===================== 2. producer tool ===================== -->
+<h2>2. producer tool（機能 box）→ 出力がどの tier に落ちるか<span class="dref">07:44-59</span></h2>
+<p class="lead">これらは<b>観測 tool ではなく機能 tool</b>。box が出す信号が ②event / ④生 に記録される（＝producer）。色＝doc07 の採用状態。</p>
+<table>
+  <thead><tr><th>tool</th><th>box</th><th>状態</th><th>出力が落ちる tier</th><th>正本</th></tr></thead>
+  <tbody>
+    <tr><td>Nav2（＋ <code>warehouse_nav2_bridge</code>）</td><td>Navigation</td><td><span class="st st-adopt">採用</span></td><td>goal result→②event / odom→④生</td><td><span class="dref">07:56</span></td></tr>
+    <tr><td>Nav2 collision_monitor</td><td>Safety（enforcement）</td><td><span class="st st-cand">候補</span></td><td>near_collision の<b>観測複製</b>→③集計（enforcement 本体は非接触）</td><td><span class="dref">07:34,57</span></td></tr>
+    <tr><td>Emergency Guardian / twist_mux</td><td>Safety（enforcement）</td><td><span class="st st-adopt">採用</span></td><td>emergency event→②event（fail-closed・eval は観測タップのみ）</td><td><span class="dref">07:57</span></td></tr>
+    <tr><td>Open-RMF / Free Fleet</td><td>Traffic</td><td><span class="st st-cand">候補</span></td><td>route/fleet decision→②event</td><td><span class="dref">07:55</span></td></tr>
+    <tr><td>micro-ROS</td><td>Hardware</td><td><span class="st st-adopt">採用</span></td><td>clamp/heartbeat/nonfinite stop→②event / sample→④生</td><td><span class="dref">07:58 / 06:50</span></td></tr>
+    <tr><td>ros2_control（hardware interface）</td><td>Hardware</td><td><span class="st st-spike">要 spike</span></td><td>将来の hardware interface 抽象（即置換しない）</td><td><span class="dref">07:37,58</span></td></tr>
+    <tr><td>Open Policy Agent</td><td>Governance</td><td><span class="st st-cand">候補</span></td><td>accept/reject decision→②event（最終 gate は project 側）</td><td><span class="dref">07:42</span></td></tr>
+  </tbody>
+</table>
+
+<!-- ===================== 3. 洗い出し漏れ ===================== -->
+<h2>3. 洗い出し漏れ → doc07 に候補/要 spike として追記済</h2>
+<p class="lead">前回 §未決で「docs に無い」とした観測 tool を doc07 に登録（採用ではない＝将来拡張の選択肢）。<span class="dref">07:§観測 tool 追加候補</span></p>
+<table>
+  <thead><tr><th>tool</th><th>tier</th><th>状態</th><th>採用条件 / 備考</th></tr></thead>
+  <tbody>
+    <tr><td><code>mcap</code></td><td>④生</td><td><span class="st st-spike">要 spike</span></td><td>rosbag2 保存 format。容量・読出・tool 互換を検証してから</td></tr>
+    <tr><td>PlotJuggler</td><td>④生（viz）</td><td><span class="st st-cand">候補</span></td><td>時系列 plot（解析補助・常設保存ではない）</td></tr>
+    <tr><td>Foxglove</td><td>④生（viz）</td><td><span class="st st-cand">候補</span></td><td>Phase 4 demo・ブラウザ直結はしない（web_bridge 経由）</td></tr>
+    <tr><td>Prometheus / Grafana</td><td>③集計</td><td><span class="st st-spike">要 spike</span></td><td>metrics backend。当面は audit.jsonl→DuckDB で代替（<span class="dref">21:213</span>）</td></tr>
+  </tbody>
+</table>
+
+<!-- ===================== 4. 採用条件の読み方 ===================== -->
+<h2>4. 採用条件の読み方（依存を入れる前の最小 gate）<span class="dref">07:61-63</span></h2>
+<div class="grid2">
+  <div class="note" style="margin:0"><b>候補 → 採用</b>に上げる共通 gate（<span class="dref">07:61-63</span>）: ① <b>spike で性能/失敗時/license/API drift を検証</b>。② <b>E-G2/E-G5 を満たす</b>（高頻度を Langfuse に流さない・replay できる）。③ 依存・運用コストが見合う。</div>
+  <div class="note" style="margin:0"><b>当面の最小構成（採用）</b>: <code>Langfuse</code>（①）＋ <code>audit.jsonl</code>（②）＋ <code>rosbag2</code>（④）＋ <code>audit.jsonl→DuckDB</code>（③/report）。<b>専用 TSDB（Prometheus）/ mcap / viz は将来拡張</b>＝候補/要 spike のまま洗い出し。<span class="dref">21:213</span></div>
+</div>
+
+<!-- ===================== 5. docs / 正本 ===================== -->
+<h2>5. 各要素 → docs / 正本</h2>
+<table>
+  <thead><tr><th>要素</th><th>正本</th><th>状態</th></tr></thead>
+  <tbody>
+    <tr><td>OSS 一覧 ＋ 採用/候補/要spike/不採用</td><td><a href="07-layer-tool-decision-matrix.md">07</a> <span class="dref">07:27-59</span></td><td>決定済（本図で図示）</td></tr>
+    <tr><td>OSS 再利用テーブル（URL 付き）</td><td><a href="06-oss-reuse-and-box-small-designs.md">06</a> <span class="dref">06:44-50</span></td><td>決定済</td></tr>
+    <tr><td>4 tier 格納先（観測 tool の落ち先）</td><td><a href="observability-tiering-detail.html">観測ログ 格納先 階層分離</a> <span class="dref">05:107-122</span></td><td>決定済</td></tr>
+    <tr><td>追加候補（mcap/PlotJuggler/Foxglove/Prometheus）</td><td><a href="07-layer-tool-decision-matrix.md">07 §観測 tool 追加候補</a></td><td>候補/要 spike（本セッション追記）</td></tr>
+    <tr><td>eval 数式 OSS（AllenAct/Habitat/numpy）</td><td><a href="eval-sdk-plugin-core-detail.html">eval_sdk 拡張</a> <span class="dref">21:264-272</span></td><td>コピー/写経（stats 側・本図対象外）</td></tr>
+  </tbody>
+</table>
+
+<footer>
+  <p>このページは <code>docs/productization/tool-catalog-detail.html</code>（補足図解・ダーク）。一次ソース: <a href="07-layer-tool-decision-matrix.md">07 layer×tool 決定マトリクス</a>（<span class="dref">07:18-59 ＋ §観測 tool 追加候補</span>）/ <a href="06-oss-reuse-and-box-small-designs.md">06 OSS 再利用</a>。<b>色＝採用状態のみ・tier はグループ・採用判断を図示するだけで発明しない</b>。追加候補は採用ではなく将来拡張の洗い出し。</p>
+  <p>← <a href="observability-tiering-detail.html">観測ログ 格納先 階層分離</a> ／ <a href="eval-sdk-detail.html">eval-sdk 詳細</a> ／ <a href="eval-sdk-plugin-core-detail.html">eval_sdk 拡張</a> ／ <a href="07-layer-tool-decision-matrix.md">07</a> ／ <a href="box-taxonomy.html">box-taxonomy</a></p>
+</footer>
+
+</div>
+</body>
+</html>

@@ -105,6 +105,7 @@
 <div class="nav">
   <a href="eval-sdk-detail.html">◂ eval-sdk 詳細（producer→eval_sdk→Langfuse）</a>
   <a href="eval-sdk-plugin-core-detail.html">eval_sdk 拡張（core/plugin 3分割）</a>
+  <a href="tool-catalog-detail.html">tool カタログ（採用/候補/要spike）</a>
   <a href="05-decision-observability-and-tooling.md">05 観測・decision_event・記録粒度</a>
   <a href="08-navigation-hardware-eval-gates.md">08 eval gates（E-G2/E-G5）</a>
   <a href="07-layer-tool-decision-matrix.md">07 layer×tool 決定マトリクス</a>
@@ -167,25 +168,38 @@
 <div class="note"><b>非 Langfuse ストアも同じ key で集約</b>: <code>audit.jsonl</code> / rosbag は同じ <code>run_id</code> / <code>trace_id</code> を持ち、report（DuckDB）が run_id で全 tier を join。bundle 化は受付ゲート <b>E-G5 replay export</b>（rosbag2 ＋ decision JSONL ＋ run manifest）。<span class="dref">08:147 / 21:213</span></div>
 
 <!-- ===================== 2. ルーティングルール ===================== -->
-<h2>2. ルーティング・ルール（受付ゲート E-G2 / E-G5）<span class="dref">08:144,147</span></h2>
+<h2>2. ルーティング・ルール（受付ゲート E-G0〜E-G6）<span class="dref">08:130-152</span></h2>
+<p class="lead">tier 分けの根拠＝ Eval box の<b>受付試験 7 ゲート</b>。中でも <b>E-G2</b>（どこに流すか）と <b>E-G5</b>（どう束ねるか）が本図の格納先分離を直接定める。</p>
 <div class="grid2">
-  <div class="node n-box"><div class="t">E-G2 high-rate separation</div><div class="s"><b>高頻度 ROS / safety signal を Langfuse に常時流さない</b>。high-rate は rosbag2 / ros2_tracing / metrics、Langfuse は L4 / summary 中心。情報を落とした時は <code>high_rate_signal_sampled</code> warning で明示。<span class="dref">08:144,159</span></div></div>
-  <div class="node n-sub"><div class="t">E-G5 replay export</div><div class="s">incident を後から再現・説明できる。<b>rosbag2 ＋ decision JSONL ＋ run manifest</b> から raw refs / replay refs へ辿れる。<span class="dref">08:147</span></div></div>
+  <div class="node n-box"><div class="t">E-G2 high-rate separation（核）</div><div class="s"><b>高頻度 ROS / safety signal を Langfuse に常時流さない</b>。high-rate は rosbag2 / ros2_tracing / metrics、Langfuse は L4 / summary 中心。情報を落とした時は <code>high_rate_signal_sampled</code> warning で明示。<span class="dref">08:144,159</span></div></div>
+  <div class="node n-sub"><div class="t">E-G5 replay export（束）</div><div class="s">incident を後から再現・説明できる。<b>rosbag2 ＋ decision JSONL ＋ run manifest</b> から raw refs / replay refs へ辿れる。<span class="dref">08:147</span></div></div>
 </div>
+<table>
+  <thead><tr><th>Gate</th><th>目的</th><th>pass criteria</th><th>代表 reason_code</th><th>owner</th></tr></thead>
+  <tbody>
+    <tr><td><b>E-G0</b> trace join</td><td>L4〜Hardware を同じ run で追える</td><td>同 <code>run_id</code>/<code>gen_id</code>/<code>robot</code> で funnel 集計できる</td><td><code>missing_trace_id</code> / <code>join_gap</code></td><td>Eval</td></tr>
+    <tr><td><b>E-G1</b> sink fail-open</td><td>observability 障害で走行を止めない</td><td>sink error は no-op / fallback・motion path は継続</td><td><code>score_sink_failed</code></td><td><code>eval_sdk</code></td></tr>
+    <tr><td><b>E-G2</b> high-rate separation</td><td>高頻度を Langfuse に常時流さない</td><td>high-rate→rosbag2/ros2_tracing/metrics、Langfuse は L4/summary</td><td><code>high_rate_signal_sampled</code></td><td>Eval+Safety</td></tr>
+    <tr><td><b>E-G3</b> enforcement separation</td><td>Eval が stop/reject 判断を持たない</td><td>observation only・enforcement に import されない</td><td><code>enforcement_boundary_violation</code></td><td>Eval+Safety</td></tr>
+    <tr><td><b>E-G4</b> decision funnel</td><td>layer 別の失敗率を説明する</td><td>funnel が layer 別分類・unknown bucket が残りすぎない</td><td><code>artifact_missing</code> / <code>schema_version_mismatch</code></td><td>Eval</td></tr>
+    <tr><td><b>E-G5</b> replay export</td><td>incident を後から再現/説明</td><td>rosbag2 ＋ decision JSONL ＋ run manifest から辿れる</td><td><code>run_export_failed</code> / <code>nav_replay_missing</code></td><td>Eval+Nav</td></tr>
+    <tr><td><b>E-G6</b> live sink gate</td><td>live を過大宣伝しない</td><td>live sink は #88 human gate 後に customer 向け</td><td><code>live_sink_unverified</code></td><td>Eval</td></tr>
+  </tbody>
+</table>
 <div class="note"><b>判定基準＝「edge か level か」</b>: <b>状態変化・危険・clamp/reject/fault（edge）</b>は確実に event 保存し判断 tier へ上げる。<b>通常 tick・連続ストリーム（level）</b>は metrics に縮約 ＋ 生は rosbag。Safety box は「event edge / level 分離」「fail-closed stop path と独立」が要件（<span class="dref">07:57</span>）。<b>Eval は observation only・enforcement に入らない</b>（E-G3 / §5）。<span class="dref">08:145</span></div>
 
 <!-- ===================== 3. box ごとの記録粒度 ===================== -->
 <h2>3. box ごとの記録粒度（呼び出し頻度 → 記録方針）<span class="dref">05:111-122</span></h2>
-<p class="lead">doc05 の表をそのまま図示（<b>発明しない</b>）。低 layer ほど高頻度＝metrics/rosbag に寄せ、event 保存は edge だけ。</p>
+<p class="lead">doc05 の表をそのまま図示（<b>発明しない</b>）。低 layer ほど高頻度＝metrics/rosbag に寄せ、event 保存は edge だけ。<b>層 chip は中立グレー</b>（色は §0/§1 の <b>4 tier 専用</b>＝層と tier の色の混同を避ける）。</p>
 <table>
   <thead><tr><th>Box（層）</th><th>呼び出し頻度</th><th>記録方針</th></tr></thead>
   <tbody>
-    <tr><td><span class="lyr" style="background:var(--sub)">L3</span> Validator</td><td>model output ごと（数秒に1回）</td><td class="impl-no">全 decision を保存（→ ①判断/②event）</td></tr>
-    <tr><td><span class="lyr" style="background:var(--seam)">L2</span> Governance</td><td>command/tool dispatch ごと（1 cycle 複数回）</td><td class="impl-no">accepted/rejected を全保存（→ ②event）</td></tr>
-    <tr><td><span class="lyr" style="background:var(--seam)">L2</span> Traffic</td><td>route allocation ごと</td><td>conflict/fallback は全保存、success は count/route ref</td></tr>
-    <tr><td><span class="lyr" style="background:var(--plugin)">L1</span> Navigation</td><td>goal acceptance/progress/result ごと</td><td>acceptance/final は全保存、progress は summary/sample</td></tr>
-    <tr><td><span class="lyr" style="background:var(--plugin)">L1</span> Safety</td><td><b>50ms tick・sensor・cmd_vel stream など高頻度</b></td><td class="impl-yes">通常 tick は <b>metrics</b>、状態変化と emergency は <b>event</b>（→ ③/②）</td></tr>
-    <tr><td><span class="lyr" style="background:var(--demoted);color:var(--ink)">L0</span> Hardware</td><td><b>cmd_vel apply/heartbeat/sensor read など高頻度</b></td><td class="impl-yes">clamp/reject/fault は <b>event</b>、通常 sample は <b>metrics / rosbag</b>（→ ③/④）</td></tr>
+    <tr><td><span class="lyr" style="background:#c8c8c8">L3</span> Validator</td><td>model output ごと（数秒に1回）</td><td class="impl-no">全 decision を保存（→ ①判断/②event）</td></tr>
+    <tr><td><span class="lyr" style="background:#b4b4b4">L2</span> Governance</td><td>command/tool dispatch ごと（1 cycle 複数回）</td><td class="impl-no">accepted/rejected を全保存（→ ②event）</td></tr>
+    <tr><td><span class="lyr" style="background:#b4b4b4">L2</span> Traffic</td><td>route allocation ごと</td><td>conflict/fallback は全保存、success は count/route ref</td></tr>
+    <tr><td><span class="lyr" style="background:#a0a0a0">L1</span> Navigation</td><td>goal acceptance/progress/result ごと</td><td>acceptance/final は全保存、progress は summary/sample</td></tr>
+    <tr><td><span class="lyr" style="background:#a0a0a0">L1</span> Safety</td><td><b>50ms tick・sensor・cmd_vel stream など高頻度</b></td><td class="impl-yes">通常 tick は <b>metrics</b>、状態変化と emergency は <b>event</b>（→ ③/②）</td></tr>
+    <tr><td><span class="lyr" style="background:#8c8c8c">L0</span> Hardware</td><td><b>cmd_vel apply/heartbeat/sensor read など高頻度</b></td><td class="impl-yes">clamp/reject/fault は <b>event</b>、通常 sample は <b>metrics / rosbag</b>（→ ③/④）</td></tr>
     <tr><td>Eval / Observability</td><td>run export/score/join ごと</td><td>join/export failure は全保存、success は manifest と summary</td></tr>
   </tbody>
 </table>
@@ -264,7 +278,7 @@
 
 <footer>
   <p>このページは <code>docs/productization/observability-tiering-detail.html</code>（補足図解・ダーク）。一次ソース: <a href="05-decision-observability-and-tooling.md">05 §呼び出し頻度と記録粒度</a>（<span class="dref">05:107-122</span>）/ <a href="08-navigation-hardware-eval-gates.md">08 E-G2/E-G5</a>（<span class="dref">08:144,147</span>）/ <a href="../architecture/22-web-observability.md">doc22</a>（live vs 耐久・<span class="dref">22:132</span>）。<b>決定済みの統合・可視化であり、新 frozen 契約 / topic / config key / threshold を追加しない。未決は §7 に隔離</b>。</p>
-  <p>← <a href="eval-sdk-detail.html">eval-sdk 詳細</a> ／ <a href="eval-sdk-plugin-core-detail.html">eval_sdk 拡張（core/plugin）</a> ／ <a href="05-decision-observability-and-tooling.md">05 観測</a> ／ <a href="08-navigation-hardware-eval-gates.md">08 eval gates</a> ／ <a href="box-taxonomy.html">box-taxonomy</a> ／ <a href="../architecture/20-dev-quality-and-testing.md">doc20 §8</a></p>
+  <p>← <a href="eval-sdk-detail.html">eval-sdk 詳細</a> ／ <a href="eval-sdk-plugin-core-detail.html">eval_sdk 拡張（core/plugin）</a> ／ <a href="05-decision-observability-and-tooling.md">05 観測</a> ／ <a href="08-navigation-hardware-eval-gates.md">08 eval gates</a> ／ <a href="tool-catalog-detail.html">tool カタログ</a> ／ <a href="box-taxonomy.html">box-taxonomy</a> ／ <a href="../architecture/20-dev-quality-and-testing.md">doc20 §8</a></p>
 </footer>
 
 </div>
