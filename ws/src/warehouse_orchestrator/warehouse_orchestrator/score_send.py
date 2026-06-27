@@ -22,6 +22,8 @@ match with doc08's illustrative dict (docs-first.md: example vs frozen).
 import os
 from collections.abc import Callable, Mapping, Sequence
 
+from eval_sdk.seed import derive_plugin_trace_id
+
 from warehouse_orchestrator.audit_reader import AuditEntry
 from warehouse_orchestrator.kpi import KpiReport, latest_gen_id
 from warehouse_orchestrator.langfuse_sink import LangfuseScoreSink
@@ -76,6 +78,7 @@ def send_scores(
     mode: str | None,
     provider: str | None,
     create_fn: Callable[..., str] | None = None,
+    pattern_d: bool = False,
 ) -> tuple[int, str | None]:
     """Gated, fail-open send of the documented KPI scores; returns ``(#sent, trace_id|None)``.
 
@@ -91,11 +94,32 @@ def send_scores(
     :func:`build_score_metadata` (``robot`` added per-leg). ``flush`` is the caller's
     responsibility (the node flushes on its timer and at shutdown, doc08:347). ``create_fn``
     is injectable for unit tests (the langfuse ``create_trace_id`` static helper by default).
+
+    ``pattern_d`` selects which side mints the root trace (the trace id this scorer must MATCH):
+
+    * ``False`` (DEFAULT — Pattern A): the **LLM Bridge owns the trace** and derives it directly
+      from ``seed_for(run_id, gen_id)`` with the Hermes Langfuse plugin OFF (doc13:516,553). We
+      re-derive the same id via :func:`~warehouse_orchestrator.trace_id.trace_id_for`.
+    * ``True`` (Pattern D): the **Hermes Langfuse plugin is ON** and mints the root trace from the
+      request session/task ids, which the Bridge pins to ``H = seed_for(run_id, gen_id)`` via the
+      ``X-Hermes-Session-Id`` header; the plugin then hashes ``f"{H}::{H}"`` (plugin __init__:544).
+      We re-derive that id via :func:`eval_sdk.seed.derive_plugin_trace_id`. The old recipe is NOT
+      removed — Pattern A stays the default and is unaffected (opt-in, contingent on the live
+      audio D-verify passing). Both paths share the same fail-open ``None`` contract.
     """
     if not sink.enabled or not run_id:
         return 0, None
     gen_id = latest_gen_id(entries)
-    trace = trace_id_for(gen_id, run_id_value=run_id, create_fn=create_fn)
+    if pattern_d:
+        # Plugin-ON join: the plugin minted the trace from f"{H}::{H}" with H=seed_for(...).
+        # gen_id None → no seed half → None (same inert no-op as Pattern A).
+        trace = (
+            derive_plugin_trace_id(run_id, gen_id, create_fn=create_fn)
+            if gen_id is not None
+            else None
+        )
+    else:
+        trace = trace_id_for(gen_id, run_id_value=run_id, create_fn=create_fn)
     if trace is None:
         return 0, None
     meta = build_score_metadata(run_id=run_id, mode=mode, provider=provider, gen_id=gen_id)

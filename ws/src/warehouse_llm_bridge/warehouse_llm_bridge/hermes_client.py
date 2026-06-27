@@ -28,13 +28,84 @@ error raises :class:`LLMUnavailableError` (→ Nav2-only); a malformed body rais
 """
 
 import json
+import logging
 from typing import Any
 
+from eval_sdk.seed import seed_for
+
 from warehouse_llm_bridge.llm_client import LLMClient, LLMUnavailableError
+
+log = logging.getLogger(__name__)
 
 # Sent as ``model`` on every request; Hermes routes to its active_provider
 # (doc13:171 — NOT the provider's own model id).
 HERMES_MODEL = "hermes-agent"
+
+# ── Langfuse-owner selector (Pattern A vs Option D; doc13:517) ───────────────
+# WHO mints the Langfuse trace + LLM generation for the commander cycle:
+#
+# * ``"bridge"`` (DEFAULT, Pattern A, doc13:517 / doc08:354-356): the BRIDGE owns the
+#   trace. ``decide`` calls through ``from langfuse.openai import AsyncOpenAI`` so the
+#   generation is captured under the Bridge-owned trace (opened by ``LangfuseTracer.turn``)
+#   and ``langfuse_prompt=`` links the managed prompt. The Hermes-side Langfuse plugin is
+#   DISABLED on this path to avoid double-counting (doc13:517). This is the frozen, shipped
+#   behaviour and stays the default — UNCHANGED.
+# * ``"hermes_plugin"`` (Option D, OPT-IN, CONTINGENT on the live audio D-verify PASS): the
+#   Hermes Langfuse plugin is left ON and mints the root trace + generation server-side from a
+#   seed it derives from the request session/task ids (plugin __init__:544 =
+#   ``create_trace_id(seed=f"{session_id or 'sessionless'}::{task_id or task_key}")``). To make
+#   the scorer (#6) re-derive that id with zero data coupling, the Bridge pins the session id to
+#   ``H = seed_for(run_id, gen_id)`` via the ``X-Hermes-Session-Id`` header; on the stateless
+#   chat path the plugin defaults task_id to session_id so the plugin seed collapses to
+#   ``f"{H}::{H}"`` (eval_sdk.seed.plugin_seed / derive_plugin_trace_id). On THIS path ``decide``
+#   uses plain ``from openai import AsyncOpenAI`` (NO langfuse.openai wrapper, so the Bridge does
+#   NOT create a duplicate generation) and DROPS ``langfuse_prompt=`` (the plugin has no
+#   ``prompt=`` path — managed-prompt link is lost; see spike/langfuse-plugin-d/
+#   MANAGED-PROMPT-DECISION.md). Drift-detect: the Bridge reads the echoed ``session_id`` and, if
+#   it != H, skips the score join for that cycle — FAIL-OPEN, it NEVER raises into the cycle.
+LANGFUSE_OWNER_BRIDGE = "bridge"
+LANGFUSE_OWNER_HERMES_PLUGIN = "hermes_plugin"
+
+# Header the Bridge sends to pin the plugin's session_id to H (verified: api_server.py:1515
+# ``effective_session_id = result.get("session_id")`` echoes it back, and the plugin seeds its
+# trace from it — see spike/langfuse-plugin-d/FORK-DISTINCTION.md and the er-audio-fork
+# hlf-g0-langfuse/PLUGIN-TRACEID-ANALYSIS.md). Header name is the canonical Hermes session id
+# header; the value is OUR deterministic join key H (NOT a Hermes-internal id).
+HERMES_SESSION_HEADER = "X-Hermes-Session-Id"
+
+# Env var that selects the Langfuse owner (env over config, like the other Bridge run-level
+# labels in llm_bridge.py — provider/scenario/run_id). default = bridge (Pattern A UNCHANGED).
+LANGFUSE_OWNER_ENV = "WAREHOUSE_LANGFUSE_OWNER"
+_LANGFUSE_OWNERS = frozenset({LANGFUSE_OWNER_BRIDGE, LANGFUSE_OWNER_HERMES_PLUGIN})
+
+
+def resolve_langfuse_owner(cfg: dict, env: dict | None = None) -> str:
+    """Resolve who owns the Langfuse trace: ``WAREHOUSE_LANGFUSE_OWNER`` env, then ``hermes.langfuse_owner`` config, else default ``bridge``.
+
+    Pattern A (``bridge``) is the DEFAULT and stays the shipped behaviour; ``hermes_plugin``
+    (Option D) is opt-in and CONTINGENT on the live audio D-verify passing. An unknown value
+    fails SAFE to ``bridge`` (never silently enables Option D) and is logged. Pure (env injected
+    for tests); never raises on a malformed config block.
+    """
+    import os
+
+    env = os.environ if env is None else env
+    raw = env.get(LANGFUSE_OWNER_ENV)
+    if raw is None or not str(raw).strip():
+        hermes = cfg.get("hermes") if isinstance(cfg, dict) else None
+        raw = hermes.get("langfuse_owner") if isinstance(hermes, dict) else None
+    owner = str(raw).strip() if raw is not None else ""
+    if owner in _LANGFUSE_OWNERS:
+        return owner
+    if owner:
+        log.warning(
+            "unknown %s=%r; falling back to %r (Pattern A, Option D stays off)",
+            LANGFUSE_OWNER_ENV,
+            owner,
+            LANGFUSE_OWNER_BRIDGE,
+        )
+    return LANGFUSE_OWNER_BRIDGE
+
 
 # Mode-neutral base system prompt: the output contract (frozen Command JSON,
 # doc mode-a/08a:257-264), the safety-over-efficiency / 3-stage battery guidance common to
@@ -272,6 +343,8 @@ class HermesClient(LLMClient):
         model: str = HERMES_MODEL,
         timeout: float = 5.0,
         langfuse_prompt: object | None = None,
+        langfuse_owner: str = LANGFUSE_OWNER_BRIDGE,
+        run_id: str | None = None,
     ) -> None:
         """Wire the endpoint.
 
@@ -284,6 +357,17 @@ class HermesClient(LLMClient):
         passed as ``langfuse_prompt=`` to link each generation to the managed prompt version
         for prompt-level analytics (Pattern A, doc08 §Langfuse Prompt Management 方針).
         ``None`` (the default, and when the code fallback is used) leaves the call unchanged.
+
+        ``langfuse_owner`` selects who mints the Langfuse trace/generation
+        (:data:`LANGFUSE_OWNER_BRIDGE` default = Pattern A, UNCHANGED;
+        :data:`LANGFUSE_OWNER_HERMES_PLUGIN` = Option D, opt-in). On the Option-D path the
+        Bridge sends ``X-Hermes-Session-Id: H`` with ``H = seed_for(run_id, gen_id)`` so the
+        Hermes Langfuse plugin seeds its trace from our deterministic join key, and DROPS the
+        ``langfuse.openai`` wrapper + ``langfuse_prompt=`` (see the module docstring on
+        ``LANGFUSE_OWNER_*``). ``run_id`` is the shared ``WAREHOUSE_RUN_ID``-derived run id
+        (:func:`eval_sdk.seed.resolve_run_id`); it is REQUIRED for a usable Option-D join (a
+        blank/None run_id makes H non-joinable, so the path fails open to "no score this cycle"
+        per the drift-detect contract). Unused on the default Pattern-A path.
         """
         # OpenAI SDK appends ``/chat/completions`` to ``base_url`` itself.
         self._base_url = base_url.rstrip("/") + "/v1"
@@ -292,12 +376,51 @@ class HermesClient(LLMClient):
         self._model = model
         self._timeout = timeout
         self._langfuse_prompt = langfuse_prompt
+        self._langfuse_owner = langfuse_owner
+        self._run_id = run_id
 
     async def decide(self, situation: dict) -> dict:
         """Call Hermes (traced) and return the parsed Command JSON dict.
 
         Raises :class:`LLMUnavailableError` on a transport / non-2xx error,
         ``ValueError`` on a malformed response body (doc08:288-293).
+
+        On the default :data:`LANGFUSE_OWNER_BRIDGE` path this is UNCHANGED Pattern A:
+        the ``langfuse.openai`` wrapper captures the generation under the Bridge-owned
+        trace and ``langfuse_prompt=`` links the managed prompt. On the opt-in
+        :data:`LANGFUSE_OWNER_HERMES_PLUGIN` (Option D) path it instead sends the
+        ``X-Hermes-Session-Id: H`` header, uses a plain (un-wrapped) ``AsyncOpenAI`` and
+        drift-detects the echoed session id — see :meth:`_decide_plugin_owned`.
+
+        The R-26 cycle contract is IDENTICAL on both paths: a transport/2xx failure →
+        ``LLMUnavailableError`` (→ Nav2-only); a malformed body → ``ValueError`` (→ ignore
+        cycle); the parsed Command is the only return. Observability is obs-only and never
+        actuates; the drift-detect only suppresses an obs join and NEVER raises into the cycle.
+        """
+        if self._langfuse_owner == LANGFUSE_OWNER_HERMES_PLUGIN:
+            return await self._decide_plugin_owned(situation)
+        return await self._decide_bridge_owned(situation)
+
+    def _build_create_kwargs(self, situation: dict) -> dict[str, Any]:
+        """Assemble the shared ``chat.completions.create`` kwargs (both owner paths).
+
+        Identical request body on both paths so the commander prompt + situation the LLM
+        sees is byte-for-byte the same regardless of who owns the trace (R-26: the
+        decision logic must not change with the observability owner).
+        """
+        return {
+            "model": self._model,
+            "messages": [
+                {"role": "system", "content": self._system_prompt},
+                {"role": "user", "content": json.dumps(situation)},
+            ],
+            "timeout": self._timeout,
+        }
+
+    async def _decide_bridge_owned(self, situation: dict) -> dict:
+        """Pattern A (DEFAULT, doc13:517): Bridge-owned trace via ``langfuse.openai``.
+
+        Behaviour-preserving — byte-for-byte the historical ``decide`` body.
         """
         # Lazy: langfuse.openai is a pip extra and traces the generation under the
         # active Bridge-owned trace (tracing.LangfuseTracer.turn); openai supplies
@@ -311,14 +434,7 @@ class HermesClient(LLMClient):
             raise LLMUnavailableError(f"langfuse/openai not installed: {exc}") from exc
 
         client = AsyncOpenAI(base_url=self._base_url, api_key=self._api_key or "no-key")
-        create_kwargs: dict[str, Any] = {
-            "model": self._model,
-            "messages": [
-                {"role": "system", "content": self._system_prompt},
-                {"role": "user", "content": json.dumps(situation)},
-            ],
-            "timeout": self._timeout,
-        }
+        create_kwargs = self._build_create_kwargs(situation)
         # Link the generation to the managed prompt version (doc08 §Langfuse Prompt
         # Management 方針). The langfuse.openai wrapper supports langfuse_prompt= on
         # .create(); only added when a real prompt object is present so the default path
@@ -334,3 +450,93 @@ class HermesClient(LLMClient):
         except (AttributeError, IndexError, TypeError) as exc:
             raise ValueError(f"unexpected completion shape: {exc}") from exc
         return parse_command_content(content)
+
+    async def _decide_plugin_owned(self, situation: dict) -> dict:
+        """Option D (OPT-IN): Hermes Langfuse plugin owns the trace; Bridge pins the seed.
+
+        Differences vs Pattern A (and ONLY these — the request body, the failure contract
+        and the returned Command are identical):
+
+        * plain ``from openai import AsyncOpenAI`` (NO ``langfuse.openai`` wrapper) so the
+          Bridge does NOT mint a duplicate generation — the plugin owns it server-side.
+        * ``langfuse_prompt=`` is NOT sent (the plugin has no ``prompt=`` path; the managed
+          prompt link is the known regression of any plugin-ON option — see
+          spike/langfuse-plugin-d/MANAGED-PROMPT-DECISION.md).
+        * ``extra_headers={"X-Hermes-Session-Id": H}`` with ``H = seed_for(run_id, gen_id)``
+          so the plugin seeds its trace from our join key (plugin __init__:544 →
+          ``create_trace_id(seed="H::H")``; #6 re-derives via
+          :func:`eval_sdk.seed.derive_plugin_trace_id`).
+        * DRIFT-DETECT (fail-open): read the echoed ``session_id`` (api_server.py:1515
+          ``effective_session_id = result.get("session_id")``); if it != H the plugin trace
+          will NOT match our derived id, so the obs join for THIS cycle is skipped (logged,
+          NEVER raised). ``import openai`` is still used only for the error TYPE so a
+          transport failure maps to the same ``LLMUnavailableError`` as Pattern A.
+        """
+        try:
+            import openai
+            from openai import AsyncOpenAI
+        except ImportError as exc:
+            raise LLMUnavailableError(f"openai not installed: {exc}") from exc
+
+        # H = the deterministic join key the plugin will seed its trace from. gen_id comes
+        # from the situation the scheduler built this cycle; run_id is the shared run id.
+        # A blank H (no run_id / no gen_id) is non-joinable -> skip the join (fail-open) but
+        # STILL make the LLM call (the cycle must decide regardless of observability).
+        h = self._plugin_session_id(situation)
+
+        client = AsyncOpenAI(base_url=self._base_url, api_key=self._api_key or "no-key")
+        create_kwargs = self._build_create_kwargs(situation)
+        if h is not None:
+            create_kwargs["extra_headers"] = {HERMES_SESSION_HEADER: h}
+        try:
+            completion = await client.chat.completions.create(**create_kwargs)
+        except openai.OpenAIError as exc:
+            raise LLMUnavailableError(f"hermes request failed: {exc}") from exc
+
+        # Obs-only drift-detect: compare the echoed session id to H. A mismatch (or a missing
+        # echo) means the plugin's minted trace will not equal our derived id, so the score
+        # join would orphan -> note it and move on. This NEVER affects the dispatched command
+        # (R-26: observability must not change actuation) and NEVER raises into the cycle.
+        if h is not None:
+            self._detect_session_drift(completion, h)
+
+        try:
+            content = completion.choices[0].message.content
+        except (AttributeError, IndexError, TypeError) as exc:
+            raise ValueError(f"unexpected completion shape: {exc}") from exc
+        return parse_command_content(content)
+
+    def _plugin_session_id(self, situation: dict) -> str | None:
+        """``H = seed_for(run_id, gen_id)`` for the Option-D session header, or ``None``.
+
+        ``None`` when ``run_id`` is unset/blank or the situation carries no usable ``gen_id``
+        — then H is non-joinable, so the cycle still runs but the obs join is skipped (the
+        score side independently fails open on a None trace, score_send.py).
+        """
+        run_id = self._run_id
+        if not run_id or not run_id.strip():
+            return None
+        gen_id = situation.get("gen_id")
+        if gen_id is None:
+            return None
+        return seed_for(run_id, gen_id)
+
+    def _detect_session_drift(self, completion: object, expected: str) -> None:
+        """Fail-open: warn if the echoed ``session_id`` != H (the obs join would orphan).
+
+        Best-effort read of ``completion.session_id`` (the OpenAI SDK surfaces unknown
+        top-level response fields; api_server.py:1515 echoes ``effective_session_id``). Any
+        read error or mismatch is logged and swallowed — this is observability only and must
+        NEVER raise into the commander cycle (R-26 fail-open, doc08:333).
+        """
+        try:
+            echoed = getattr(completion, "session_id", None)
+        except Exception:  # pragma: no cover - defensive; getattr should not raise
+            echoed = None
+        if echoed != expected:
+            log.warning(
+                "Option-D session drift: echoed session_id %r != H %r; skipping this "
+                "cycle's score join (fail-open, obs-only)",
+                echoed,
+                expected,
+            )

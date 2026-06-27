@@ -1,0 +1,5 @@
+# Run-specific artifacts (never source). The harness writes NO secrets, but live
+# run logs / dumps are per-run, not source.
+out/
+logs/
+*.wav

@@ -57,7 +57,11 @@ from warehouse_mcp_server.tools import WarehouseTools
 from warehouse_llm_bridge.conversation_events import ConversationEventLog
 from warehouse_llm_bridge.executor import DispatchToolExecutor
 from warehouse_llm_bridge.fairness import assert_fairness, fairness_log_line, resolve_memory_policy
-from warehouse_llm_bridge.hermes_client import HermesClient
+from warehouse_llm_bridge.hermes_client import (
+    LANGFUSE_OWNER_HERMES_PLUGIN,
+    HermesClient,
+    resolve_langfuse_owner,
+)
 from warehouse_llm_bridge.negotiation_messages import (
     TOPIC_PROPOSAL,
     TOPIC_START,
@@ -72,7 +76,13 @@ from warehouse_llm_bridge.scheduler import (
     resolve_cycle_wait,
 )
 from warehouse_llm_bridge.situation import DEFAULT_EMERGENCY_MIN_DISTANCE, SituationBuilder
-from warehouse_llm_bridge.tracing import LangfuseTracer, build_session_id, resolve_run_id
+from warehouse_llm_bridge.tracing import (
+    LangfuseTracer,
+    NoopTracer,
+    Tracer,
+    build_session_id,
+    resolve_run_id,
+)
 
 # Hermes Gateway default endpoint (doc13:24,369) if config leaves it blank.
 DEFAULT_HERMES_BASE_URL = "http://localhost:8642"
@@ -164,6 +174,15 @@ class LlmBridge(Node):
         # create_trace_id(seed=f"{run_id}:{gen_id}"); session_id (timestamped) is only a
         # display label / fallback when WAREHOUSE_RUN_ID is unset (#108).
         run_id = resolve_run_id(os.environ.get("WAREHOUSE_RUN_ID"), session_id)
+        # WHO owns the Langfuse trace this run (Pattern A vs Option D, doc13:517). Default
+        # = "bridge" (Pattern A, UNCHANGED); "hermes_plugin" (Option D) is OPT-IN via
+        # WAREHOUSE_LANGFUSE_OWNER / hermes.langfuse_owner and CONTINGENT on the live audio
+        # D-verify passing. Under Option D the plugin mints the trace+generation server-side,
+        # so the Bridge must NOT also open its own per-turn trace (that would double-count);
+        # the per-turn tracer below degrades to NoopTracer and HermesClient sends the
+        # X-Hermes-Session-Id=H header instead of the langfuse.openai wrapper.
+        langfuse_owner = resolve_langfuse_owner(cfg)
+        plugin_owned = langfuse_owner == LANGFUSE_OWNER_HERMES_PLUGIN
         # Mode-aware commander prompt — MANAGED in Langfuse Prompt Management (doc08
         # §Langfuse Prompt Management 方針): fetched by mode (warehouse-commander-mode-ab for
         # none/simple, warehouse-commander-mode-c for open-rmf) with the code constant as a
@@ -180,26 +199,38 @@ class LlmBridge(Node):
         # Deployment environment is another opaque trace tag. Resolve WAREHOUSE_ENV in the
         # Bridge so eval_sdk remains domain-free; keep env last in the emitted tag list.
         env_tag = f"env={warehouse_env()}"
-        tracer = LangfuseTracer(
-            run_id=run_id,
-            session_id=session_id,
-            provider=provider,
-            mode=mode,
-            extra_tags=[f"prompt:{resolved_prompt.name}", env_tag],
-            extra_metadata={
-                "prompt_name": resolved_prompt.name,
-                "prompt_version": resolved_prompt.version,
-                "prompt_source": prompt_source,
-                # readable companion to the bare mode tag (none -> "Mode A (LLM単独交通管理)").
-                "mode_label": mode_label(mode),
-            },
-        )
+        # Option D: the Hermes plugin owns the trace server-side, so a Bridge-owned
+        # LangfuseTracer here would double-count -> use NoopTracer (the cycle stays
+        # untraced on the Bridge side; the plugin's trace is the single source). Pattern A
+        # (default) keeps the Bridge-owned LangfuseTracer exactly as before.
+        tracer: Tracer
+        if plugin_owned:
+            tracer = NoopTracer()
+        else:
+            tracer = LangfuseTracer(
+                run_id=run_id,
+                session_id=session_id,
+                provider=provider,
+                mode=mode,
+                extra_tags=[f"prompt:{resolved_prompt.name}", env_tag],
+                extra_metadata={
+                    "prompt_name": resolved_prompt.name,
+                    "prompt_version": resolved_prompt.version,
+                    "prompt_source": prompt_source,
+                    # readable companion to the bare mode tag (none -> "Mode A (LLM単独交通管理)").
+                    "mode_label": mode_label(mode),
+                },
+            )
         self._scheduler = BridgeScheduler(
             llm_client=HermesClient(
                 base_url,
                 api_key=api_key,
                 system_prompt=resolved_prompt.text,
-                langfuse_prompt=resolved_prompt.langfuse_prompt,
+                # Pattern A links the managed prompt; Option D drops it (plugin has no
+                # prompt= path — see HermesClient + MANAGED-PROMPT-DECISION.md).
+                langfuse_prompt=None if plugin_owned else resolved_prompt.langfuse_prompt,
+                langfuse_owner=langfuse_owner,
+                run_id=run_id,
             ),
             situation_builder=SituationBuilder(
                 state_store, mode=mode, emergency_min_distance=emergency_min_distance
@@ -227,7 +258,7 @@ class LlmBridge(Node):
         self.get_logger().info(
             f"llm_bridge ready (mode={mode}, hermes={base_url}, nav2_bridge={nav2_desc}, "
             f"cycle_wait={cycle_wait}s, seed_tasks={len(seed_tasks)}, prompt={prompt_src}, "
-            f"session={session_id})"
+            f"langfuse_owner={langfuse_owner}, session={session_id})"
         )
 
     def _publish_reasoning(self, text: str) -> None:

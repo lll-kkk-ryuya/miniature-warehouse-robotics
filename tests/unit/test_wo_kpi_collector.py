@@ -289,6 +289,85 @@ def test_trace_id_is_deterministic_per_seed(
     assert _trace_for("run-c") != _trace_for("run-d")  # different seed → different id
 
 
+# ── Pattern-D switch (plugin-ON join; Pattern A stays default) ────────────────
+
+
+@pytest.mark.unit
+def test_pattern_a_is_default_bridge_owned_trace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Default (pattern_d unset) keeps the Pattern-A recipe: trace = hash(seed_for(run, gen)).
+    _write_audit(tmp_path, monkeypatch, [_DISPATCH_WITH_GEN])
+    entries = read_audit_log()
+    report = compute_kpis(entries, completions={"nav_001": 130.0})
+    sink, fake = _enabled_sink()
+    sent, trace = send_scores(
+        sink,
+        report,
+        entries,
+        {"bot1": 12.5},
+        run_id="run-c",
+        mode="A",
+        provider="claude",
+        create_fn=_fake_create,
+    )
+    assert sent == 2
+    assert trace == normalize_trace_id(_fake_create(seed="run-c:7"))  # Pattern A (Bridge-owned)
+
+
+@pytest.mark.unit
+def test_pattern_d_switch_uses_plugin_double_seed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # pattern_d=True re-derives the trace the Hermes Langfuse plugin minted: hash(f"{H}::{H}")
+    # with H = seed_for(run, gen) — the plugin-ON (Option D) join key (plugin __init__:544).
+    _write_audit(tmp_path, monkeypatch, [_DISPATCH_WITH_GEN])
+    entries = read_audit_log()
+    report = compute_kpis(entries, completions={"nav_001": 130.0})
+    sink, fake = _enabled_sink()
+    sent, trace = send_scores(
+        sink,
+        report,
+        entries,
+        {"bot1": 12.5},
+        run_id="run-c",
+        mode="A",
+        provider="claude",
+        create_fn=_fake_create,
+        pattern_d=True,
+    )
+    assert sent == 2
+    assert trace == normalize_trace_id(_fake_create(seed="run-c:7::run-c:7"))  # Pattern D
+    # The switch genuinely diverges from the default Pattern-A recipe.
+    assert trace != normalize_trace_id(_fake_create(seed="run-c:7"))
+    # Scores still attach to the (plugin) trace and carry the documented metadata.
+    assert all(c["trace_id"] == trace for c in fake.calls)
+    tct = next(c for c in fake.calls if c["name"] == "task_completion_time")
+    assert tct["metadata"] == {"run_id": "run-c", "mode": "A", "provider": "claude", "gen_id": 7}
+
+
+@pytest.mark.unit
+def test_pattern_d_inert_without_gen_id(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # gen_id None (dev reality until mcp_server writes it) → no seed half → (0, None), no raise.
+    _write_audit(tmp_path, monkeypatch, [_DISPATCH_NO_GEN])
+    entries = read_audit_log()
+    report = compute_kpis(entries)
+    sink, fake = _enabled_sink()
+    sent, trace = send_scores(
+        sink,
+        report,
+        entries,
+        {"bot1": 12.5},
+        run_id="run-c",
+        mode="A",
+        provider="claude",
+        create_fn=_fake_create,
+        pattern_d=True,
+    )
+    assert (sent, trace) == (0, None)
+    assert fake.calls == []
+
+
 @pytest.mark.unit
 def test_node_flushes_after_a_successful_derivation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
