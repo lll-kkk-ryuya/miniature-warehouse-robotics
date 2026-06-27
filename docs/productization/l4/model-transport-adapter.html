@@ -13,7 +13,7 @@
 <div class="wrap">
 <header>
   <h1>L4 Model Transport / Adapter — Hermes-first 詳細図</h1>
-  <p class="lead">L4 Robotics Bridge Super-Box 内の model 呼び出し部分を拡大した図。現行 commander LLM は Hermes 実装済み、ER / VLA / STT は Hermes-first proposal。</p>
+  <p class="lead">L4 Robotics Bridge Super-Box 内の model 呼び出し部分を拡大した図。<code>transport: hermes</code> は <code>{llm, er, vla, stt}</code> の <b>既定 (default)</b>、<code>direct</code> / <code>worker</code> は明示的 fallback (F1)。現行 commander LLM は Hermes 実装済み。ER native audio は fork で実証済みだが現行は direct (F3/F4)。</p>
 </header>
 
 <div class="nav">
@@ -37,17 +37,34 @@
       <div class="node n-sub"><div class="t">VLA</div><div class="s"><span class="no">proposal</span><br><code>provider_type:vla</code></div></div>
       <div class="node n-sub"><div class="t">STT</div><div class="s"><span class="no">proposal</span><br><code>provider_type:stt</code></div></div>
     </div>
-    <div class="band"><b>transport: hermes | direct | worker</b><br>Hermes は第一候補 transport。現行 LLM は <code>model: hermes-agent</code> で実装済み。ER / VLA / STT / Vision は Hermes-first で追加する。</div>
+    <div class="band"><b>transport: hermes | direct | worker</b><br>Hermes は <code>{llm, er, vla, stt}</code> の <b>既定 (default) transport</b> (F1)。現行 LLM は <code>model: hermes-agent</code> で実装済み。ER / VLA / STT / Vision も既定は Hermes。<code>direct</code> / <code>worker</code> は <b>明示的 fallback</b>（Hermes が modality / runtime / response shape / latency を満たせない、または必要な fork が未配備の場合のみ）。従来「第一候補」と書いていた方針を default として明示化したもので、新しい config key / contract は増やさない。</div>
     <div class="grid3">
-      <div class="node n-plugin"><div class="t">hermes</div><div class="s">OpenAI互換 API、provider routing / fallback、vision / STT / MCP entry。server-side motion 実行は使わない。</div></div>
-      <div class="node n-demoted"><div class="t">direct</div><div class="s">Hermes 非対応 API / response shape / latency 要件の fallback。</div></div>
-      <div class="node n-demoted"><div class="t">worker</div><div class="s">GPU / separate process runtime。VLA や重い local model の fallback。</div></div>
+      <div class="node n-plugin"><div class="t">hermes <span class="badge b-plugin">default</span></div><div class="s">OpenAI互換 API、provider routing / fallback、vision / STT / MCP entry。server-side motion 実行は使わない。ER native audio は <code>input_audio</code> fork が要る（下記 §0.5 / F3）。</div></div>
+      <div class="node n-demoted"><div class="t">direct <span class="badge b-demoted">explicit fallback</span></div><div class="s">Hermes 非対応 API / response shape / latency 要件の fallback。ER native audio の <b>現行経路</b>（fork が ship されるまで・F4）。</div></div>
+      <div class="node n-demoted"><div class="t">worker <span class="badge b-demoted">explicit fallback</span></div><div class="s">GPU / separate process runtime。VLA や重い local model の fallback。</div></div>
     </div>
   </div>
   <div class="arrow">▼</div>
   <div class="node n-seam"><div class="t">L3 Handoff <span class="badge b-seam">seam</span></div><div class="s">どの transport でも同じ内部 shape へ正規化して L3 Planning Core へ渡す。</div></div>
   <div class="arrow">▼</div>
   <div class="node n-seam"><div class="t">action_map / MCP / Policy Gate <span class="badge b-seam">seam</span></div><div class="s">Bridge が <code>gen_id</code> / <code>idempotency_key</code> を mint。motion 採用判定は Hermes に渡さない。</div></div>
+</div>
+
+<h2>0.5 ER native audio と input_audio fork</h2>
+<div class="note">
+  <b>audio modality の carve-out（measured 2026-06-27）:</b> ER の image / text は unforked Hermes 経由で動作する（PROBE-3, HTTP 200・F2）。一方 ER の <b>native audio</b> は、unforked Hermes の <code>/v1/chat/completions</code> に <code>input_audio</code> を渡すと <code>HTTP 400 unsupported_content_type</code> になる（PROBE-2, 2026-06-27 実測・F2）。
+</div>
+<div class="node n-plugin">
+  <div class="t">fork demonstration（2026-06-27・demonstrated, not-yet-shipped）<span class="badge b-plugin">F3</span></div>
+  <div class="s">
+    native audio を Hermes に載せるには <code>hermes-agent</code> v0.15.1 への 2-file fork が要る:<br>
+    • patch 1: <code>gateway/platforms/api_server.py</code> — <code>_normalize_multimodal_content</code> が <code>input_audio</code> を受理、<code>_content_has_visible_payload</code> と新設 <code>_AUDIO_PART_TYPES</code> を追加。<br>
+    • patch 2: <code>agent/gemini_native_adapter.py</code> — <code>_extract_multimodal_parts</code> の <code>input_audio</code> を Gemini <code>inlineData{mimeType: audio/wav}</code> へ写像。<br>
+    LIVE RESULT: HTTP 200、ER が native audio を理解（音声にしか無い語の transcript を返した）、latency は direct と comparable（lean Hermes median 3.69s vs direct 4.24s, n=4・ER-thinking confound あり）、prompt token は +~408/call。
+  </div>
+</div>
+<div class="safe">
+  <b>TARGET と CURRENT を取り違えない（F4）:</b> <b>TARGET</b> は audio を含む全 modality で Hermes default（audio は上記 fork 経由）。ただし fork はまだ productionize / ship していないため、<b>CURRENT の audio path は <code>direct</code></b> であり、これは default 化後も permanent fallback として残す。<b>「audio は今 Hermes default」とは書かない</b> — fork が出荷されて初めて default になる。
 </div>
 
 <h2>1. Hermes-managed と Bridge-owned の分担</h2>
@@ -57,9 +74,10 @@
     <tr><td>Model transport</td><td>OpenAI互換 API、provider routing / fallback、custom endpoint</td><td>request_id、timeout、0 dispatch、L3 Handoff 正規化</td></tr>
     <tr><td>STT / Vision</td><td>Hermes が扱える provider / plugin / image input entry</td><td>audio / image / state / calibration の final bundle、artifact retention</td></tr>
     <tr><td>MCP</td><td>tool filter、read-only / operator-facing tool の接続候補</td><td>motion tool の accepted path、Policy Gate、idempotency_key</td></tr>
-    <tr><td>Trace</td><td>Hermes plugin は HLF-G0〜G5 後に再評価</td><td>現採用は Bridge-owned root trace。二重 generation を避ける</td></tr>
+    <tr><td>Trace (Langfuse = Opt C)</td><td>FUTURE TARGET = Hermes-owned plugin。HLF-G0〜G5 を全て満たした場合に <b>限って</b> 切替（gate 越えが前提・F6）</td><td>CURRENT = Bridge-owned root trace（<code>create_trace_id(seed=run_id:gen_id)</code>・managed-prompt link・4-provider 単一 codepath で公平比較）。Hermes plugin は double-counting 回避のため disabled。flip 後も <b>eval_sdk が outcome score（result/SR/SPL/collision/deadlock）を所有し続ける</b>（Hermes は robot result を見ない・F6）</td></tr>
   </tbody>
 </table>
+<div class="note"><b>provider routing の含意（F5）:</b> Hermes は <b>server-side で active model 1 つ</b>を持ち、<b>per-request の provider 選択は無い</b>。よって Mode A/B/C の 4-provider 比較は request field では切替えられず、<b>provider ごとに別 gateway（config + restart）</b>を立てる必要がある。これは新しい contract / request field を増やすものではない。</div>
 
 <h2>2. 商用再利用で保管するもの</h2>
 <div class="grid2">

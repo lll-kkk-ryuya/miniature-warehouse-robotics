@@ -154,12 +154,12 @@ ER output の内部案:
 
 ## L4 transport selection
 
-Mode X-ER の L4 transport は Hermes-first とする。
+Mode X-ER の L4 transport は Hermes-first とする（`provider_type ∈ {llm, er, vla, stt}` の既定＝`hermes`、`direct`/`worker` は明示 fallback。audio の CURRENT=direct／fork で Hermes-default は末尾「2026-06-27 補足」参照）。
 
 | transport | 位置づけ | 採用条件 |
 |---|---|---|
-| `hermes` | 既定の第一候補 | Hermes が対象 model / audio / image input / STT / provider fallback / OpenAI 互換 response を扱える。server-side motion tool execution は使わず、Bridge が final output を受けて L3 に渡す |
-| `direct` | 明示 fallback | Gemini Robotics-ER の API、audio / image modality、response envelope、latency 要件が Hermes 経由に合わない |
+| `hermes` | 既定（default） | Hermes が対象 model / audio / image input / STT / provider fallback / OpenAI 互換 response を扱える。server-side motion tool execution は使わず、Bridge が final output を受けて L3 に渡す |
+| `direct` | 明示 fallback | Gemini Robotics-ER の API、audio / image modality、response envelope、latency 要件が Hermes 経由に合わない（現状 audio leg は direct） |
 | `worker` | GPU / VLA runtime 用 fallback | OpenVLA など別 process / GPU worker を使う必要がある。Mode X-ER 単体では原則使わず、Mode X-ER-VLA 側で扱う |
 
 比較 run では provider routing / fallback が公平性に影響するため、固定 provider leg と
@@ -241,3 +241,10 @@ L4 transport の再利用判断では、Nous Research の Hermes Agent 公式 do
 自己位置は L1 の LiDAR / AMCL が常時担う。両者は **別レイヤ・別センサ**である。
 
 正本: [`shared/09-navigation-internals.md`](../shared/09-navigation-internals.md)（センサ役割・AMCL・SLAM・§111-119）/ [`shared/02-hardware-design.md`](../shared/02-hardware-design.md)（俯瞰カメラ :243-249・RPLiDAR :191）。
+
+## 2026-06-27 補足 — transport default と audio fork（末尾追記＝行参照非破壊）
+
+> 「## L4 transport selection」の補足。上の表/本文の行参照を動かさないため末尾に置く（#165 末尾追記原則）。
+
+- **provider 選択（F5）**: Hermes は**単一の server-side active model**を持ち per-request の provider 選択を行わない。Mode A/B/C の 4-provider 比較は request field でなく **per-provider gateway**（config + restart）で切替える。
+- **audio modality の CURRENT vs TARGET（過大宣言しない）**: **CURRENT（稼働中）= ER audio leg は `direct` ER**（unforked Hermes v0.15.1 の `input_audio` は HTTP 400 `unsupported_content_type`＝透過不可・2026-06-27 PROBE-2 実測）。**TARGET = audio を含む全 modality を default `hermes`**。2026-06-27 に hermes-agent v0.15.1 の **2-file fork**（`gateway/platforms/api_server.py` の `input_audio` 受理＋`agent/gemini_native_adapter.py` の `input_audio → Gemini inlineData{mimeType:audio/wav}`）で **native audio が Hermes を通ること**を live 実証（HTTP 200・ER が音声中にのみ存在する語の transcript を返却＝native 理解・lean latency 中央値 3.69s vs direct 4.24s〔n=4〕・+~408 prompt tok/call）。この fork は **demonstrated だが未 ship**＝audio が Hermes default になるのは fork 配備後で、それまで direct が CURRENT・かつ fork 後も恒久 fallback。正本は [`06`](06-unfrozen-contract-resolutions.md) §5 補遺。

@@ -159,15 +159,15 @@
 
     <div class="nest-arrow">▼</div>
 
-    <div class="node n-sub"><div class="t">② Model Transport / Adapter <span class="badge b-sub">sub-box</span> <span class="role" style="color:var(--yellow);border-color:var(--yellow)">ER/VLA/STT は未実装＝proposal</span></div><div class="s">
-      現行 commander LLM は <code>hermes_client.py HermesClient</code> が <code>transport:hermes</code> として実装済み。ER/VLA/STT の registry は proposal。<code>provider_type: er | vla | stt</code>（vision は enum 外）。raw output recorder・timeout・0 dispatch は Bridge-owned。<span class="dref">hermes_client.py / <a href="l4/model-transport-adapter.html">L4 Model Transport 詳細</a> / mode-x-er/03</span>
+    <div class="node n-sub"><div class="t">② Model Transport / Adapter <span class="badge b-sub">sub-box</span> <span class="role" style="color:var(--yellow);border-color:var(--yellow)">ER/VLA/STT registry は未実装</span></div><div class="s">
+      現行 commander LLM は <code>hermes_client.py HermesClient</code> が <code>transport:hermes</code> として実装済み。ER/VLA/STT の registry は未実装だが、<b>transport の既定は <code>hermes</code></b>（<code>provider_type in {llm, er, vla, stt}</code>・F1）。<code>provider_type: er | vla | stt</code>（vision は enum 外）。raw output recorder・timeout・0 dispatch は Bridge-owned。<span class="dref">hermes_client.py / <a href="l4/model-transport-adapter.html">L4 Model Transport 詳細</a> / 02 §Hermes-first 33-38 / mode-x-er/03</span>
       <div class="grid3" style="margin-top:8px">
         <div class="node n-sub" style="padding:6px 8px;margin:0"><div class="t" style="font-size:12px">ER</div><div class="s" style="margin-top:1px"><code>provider_type:er</code>・opt</div></div>
         <div class="node n-sub" style="padding:6px 8px;margin:0"><div class="t" style="font-size:12px">VLA</div><div class="s" style="margin-top:1px"><code>provider_type:vla</code>・opt</div></div>
         <div class="node n-sub" style="padding:6px 8px;margin:0"><div class="t" style="font-size:12px">STT</div><div class="s" style="margin-top:1px"><code>provider_type:stt</code>・opt</div></div>
       </div>
-      <div class="transport-band"><b>transport: hermes | direct | worker</b> ← 現行 LLM は Hermes 実装済み（<code>model: hermes-agent</code>）。ER/VLA/STT は Hermes-first で追加する proposal。<span class="badge b-plugin" style="font-size:10px">plugin</span> Provider Routing も同じ層。<span class="dref">02 §Hermes-first / hermes_client.py</span></div>
-      <div class="node n-plugin" style="margin-top:8px"><div class="t">Hermes Agent Gateway <span class="badge b-plugin">transport/plugin</span> <span class="role">一部実装済み</span></div><div class="s">担う: OpenAI 互換 model transport、provider routing / fallback、vision / STT / MCP 接続の入口。<b>実装済み</b>: commander LLM は <code>hermes_client.py</code> から <code>/v1/chat/completions</code> へ送る。<b>proposal</b>: ER / VLA / STT / Vision の Hermes-first adapter。担わない: input bundle 確定、timeout 後 0 dispatch、L3 handoff、<code>action_map</code>、motion 採用判定、Langfuse root trace。<span class="dref">02 §Hermes-first / 13 §7.7 / hermes_client.py</span></div></div>
+      <div class="transport-band"><b>transport: hermes（既定/default）｜ direct・worker（explicit fallback・F1）</b> ← 現行 LLM は Hermes 実装済み（<code>model: hermes-agent</code>）。ER/VLA/STT も <code>hermes</code> を default に格上げ（第一候補でなく既定）。<code>direct</code>/<code>worker</code> は Hermes が modality/runtime/response/latency に合わない、または当該 fork が未デプロイのときの fallback。<b>音声</b>: 現行=direct（unforked Hermes の <code>input_audio</code> は <code>400 unsupported_content_type</code>・PROBE-2 実測 2026-06-27）／2-file fork demonstration（2026-06-27・HTTP 200・native audio 理解・latency 中立）で fork ship 後は audio も default-Hermes に合流。<b>direct は恒久 fallback として残す</b>。<span class="badge b-plugin" style="font-size:10px">plugin</span> Provider Routing も同じ層（Hermes は server-side 単一 active model＝per-request provider 選択不可・F5）。<span class="dref">02 §Hermes-first 33-38 / mode-x-er/06 §5 / hermes_client.py</span></div>
+      <div class="node n-plugin" style="margin-top:8px"><div class="t">Hermes Agent Gateway <span class="badge b-plugin">transport/plugin</span> <span class="role">一部実装済み</span></div><div class="s">担う: OpenAI 互換 model transport、provider routing / fallback、vision / STT / MCP 接続の入口。<b>実装済み</b>: commander LLM は <code>hermes_client.py</code> から <code>/v1/chat/completions</code> へ送る。<b>default 化（未実装 registry）</b>: ER / VLA / STT / Vision も <code>transport:hermes</code> を既定に（F1）。担わない: input bundle 確定、timeout 後 0 dispatch、L3 handoff、<code>action_map</code>、motion 採用判定。<b>Langfuse root trace は現状 Bridge 所有</b>（Hermes plugin は double-count 回避で OFF）／将来 target = Hermes-owned plugin（<b>HLF-G0..G5 後</b>のみ・F6）。<span class="dref">02 §Hermes-first 33-38・§Langfuse plugin gate 177-199 / 13 §7.7 551-570 / hermes_client.py</span></div></div>
     </div></div>
 
     <div class="nest-arrow">▼</div>
@@ -182,7 +182,7 @@
     <div class="nh" style="color:var(--faint)">▼ Super-Box が直接所有する核 — 独立 box でない＝ここへ吸収（demoted）</div>
     <div class="grid2">
       <div class="node n-box"><div class="t">司令官サイクル / 0 dispatch <span class="role">実装あり</span></div><div class="s">single global loop・request id・timeout 後 0 dispatch・final output 採用判定。<span class="dref">scheduler.py BridgeScheduler.run_cycle（§1）</span></div></div>
-      <div class="node n-box"><div class="t">trace root / Langfuse <span class="role">実装あり</span></div><div class="s">1 trace/turn・決定的 trace_id・mode/provider tag・Eval join は Bridge 側所有。<span class="dref">tracing.py / 02 §Langfuse の置き場所</span></div></div>
+      <div class="node n-box"><div class="t">trace root / Langfuse <span class="role">実装あり</span></div><div class="s">1 trace/turn・決定的 trace_id・mode/provider tag・Eval join。<b>現状=Bridge 所有（Opt C）</b>（Hermes plugin は二重計上回避で OFF）／<b>将来 target=Hermes-owned plugin（HLF-G0..G5 後のみ）</b>。flip しても outcome score は eval_sdk 所有のまま（Hermes は robot 結果を見ない・F6）。<span class="dref">tracing.py / 02 §Langfuse・§plugin gate 177-199 / 13:551-570</span></div></div>
     </div>
     <div class="node n-demoted" style="margin-top:8px"><div class="t">Run Orchestration / API Server / Memory・Skills <span class="badge b-demoted">demoted</span></div><div class="s">
       設計実体ゼロ or Hermes 機能。cycle・<code>transport:hermes</code> へ吸収（box の真ん中を Hermes 線で割らない）。<span class="dref">02 §Hermes に寄せる範囲 Hermes 表</span>
@@ -263,9 +263,9 @@
   <code>situation.py SituationBuilder</code>。<b>mode-aware</b>: Mode A/B は <code>predicted_position_3s</code>（CTRV 等速・等旋回）＋ <code>obstacle_ahead</code>（<code>&lt;emergency_min_distance</code>=0.3）含む全フィールド。Mode C(open-rmf) は velocity/heading/predicted/obstacle を<b>構築せず省略</b>（~200tok 節約）。<code>current_task</code>(bot→destination) と <code>pending_tasks</code>（<code>WAREHOUSE_TASKS</code> seed・<code>PendingTask</code> with alias <code>from</code>）を両モードで供給。consumes <code>StateSnapshot</code> → produces 凍結 <code>Situation</code>。<span class="dref">situation.py / 06 §L4 Input Context / mode-a/08a</span>
 </div></div>
 
-<h3>Model Transport / Adapter <span class="badge b-sub">sub-box</span> <span style="color:var(--yellow);font-size:12px">ER/VLA/STT は未実装＝proposal</span></h3>
+<h3>Model Transport / Adapter <span class="badge b-sub">sub-box</span> <span style="color:var(--yellow);font-size:12px">ER/VLA/STT registry は未実装</span></h3>
 <div class="node n-sub"><div class="s">
-  現行 commander LLM の Hermes transport は <code>hermes_client.py</code> で実装済み。ER/VLA/STT の transport registry は proposal。<code>transport: hermes | direct | worker</code> は interface 裏の実装選択（box を割らない）。raw output recorder・timeout・0 dispatch は Bridge-owned。<span class="dref">hermes_client.py / 02 §Box の保管場所 / mode-x-er/03-er-adapter-skeleton</span>
+  現行 commander LLM の Hermes transport は <code>hermes_client.py</code> で実装済み。ER/VLA/STT の transport registry は未実装だが <b>既定 transport は <code>hermes</code></b>（<code>provider_type in {llm, er, vla, stt}</code>・F1）。<code>transport: hermes</code>=default ｜ <code>direct</code>/<code>worker</code>=explicit fallback（modality/runtime/response/latency が合わない、または当該 fork 未デプロイ時）。interface 裏の実装選択で box を割らない。raw output recorder・timeout・0 dispatch は Bridge-owned。<b>音声</b>: 現行=direct（unforked Hermes は <code>input_audio</code> 400・PROBE-2）／2-file fork demonstration（2026-06-27・HTTP 200・latency 中立）後は audio も default-Hermes へ合流・direct は恒久 fallback。<span class="dref">hermes_client.py / 02 §Hermes-first 33-38 / mode-x-er/06 §5 / mode-x-er/03-er-adapter-skeleton</span>
 </div></div>
 
 <h3>Fusion <span class="badge b-sub">sub-box</span> <span style="color:var(--muted);font-size:12px">optional・未実装</span></h3>
@@ -299,7 +299,7 @@
 
 <!-- mode x-er -->
 <h2>5. Mode X-ER 詳細図（ER sub-box + L3 Planning Core が実体化）</h2>
-<p class="lead">§0/§3 で「未実装＝proposal」とした <b>Model Adapter（ER）sub-box</b> と <b>L3 Planning Core box</b> が実体化するモード。Gemini Robotics-ER 単独（VLA は §6）で「見る・理解する・計画する」を担い、L4 は model 判断を作らず <b>input context / transport / timeout / trace / L3 handoff</b> を所有する。L2 以降は既存の安全経路をそのまま使う。<span class="dref">mode-x-er/README §位置づけ / mode-x-er/01 §L4 の data・§L4 transport selection</span></p>
+<p class="lead">§0/§3 で「registry 未実装（既定 transport=<code>hermes</code>）」とした <b>Model Adapter（ER）sub-box</b> と <b>L3 Planning Core box</b> が実体化するモード。Gemini Robotics-ER 単独（VLA は §6）で「見る・理解する・計画する」を担い、L4 は model 判断を作らず <b>input context / transport / timeout / trace / L3 handoff</b> を所有する。L2 以降は既存の安全経路をそのまま使う。<span class="dref">mode-x-er/README §位置づけ / mode-x-er/01 §L4 の data・§L4 transport selection</span></p>
 
 <div class="note">
   <b>なぜここで L3 が要るか</b>: Mode A/B/C は LLM の <code>Command</code> JSON → action_map 直行で L3 を経由しない（§4）。Mode X-ER は ER の曖昧 output（画像座標・曖昧 target・依存・古い state・緊急）を deterministic に正規化する必要があるため、<b>ここで初めて L3 Planning Core が必須</b>になる。L3 内部の細部は <a href="layer-l3-detail.html">L3 詳細図</a>。<span class="dref">mode-x-er/01 §全体像</span>
@@ -331,7 +331,7 @@
         <div class="node n-sub unused" style="padding:6px 8px;margin:0"><div class="t" style="font-size:12px">VLA</div><div class="s">使用しない（→ Mode X-ER-VLA）</div></div>
         <div class="node n-sub" style="padding:6px 8px;margin:0"><div class="t" style="font-size:12px">STT <span class="role">optional</span></div><div class="s">一部使用：既定 OFF・audit/fallback のみ</div></div>
       </div>
-      <div class="transport-band"><b>transport: hermes（第一候補）</b>｜ direct（fallback）＝<b>使用</b>（Hermes-first）。<span class="dref">mode-x-er/01 §L4 transport selection / 04 §STT の要否</span></div>
+      <div class="transport-band"><b>transport: hermes（既定/default・F1）</b>｜ direct（explicit fallback）＝<b>使用</b>。text/image は Hermes 経由 default。<b>音声</b>: 現行=direct（unforked Hermes <code>input_audio</code>=400・PROBE-2）／2-file fork（2026-06-27・HTTP 200・latency 中立）ship 後は audio も default-Hermes へ合流・direct は恒久 fallback。<span class="dref">mode-x-er/01 §L4 transport selection / 06 §5 / 04 §STT の要否</span></div>
     </div></div>
     <div class="nest-arrow">▼</div>
     <div class="node n-sub unused" style="border-style:dashed"><div class="t">③ Fusion <span class="badge b-sub">sub-box</span> <span class="role">optional</span></div><div class="s">
@@ -372,7 +372,7 @@
   <div class="nest-arrow">▼</div>
   <div class="node n-sub"><div class="t">Gemini Robotics-ER Adapter <span class="badge b-sub">Model Adapter</span></div><div class="s">
     input: audio / transcript / overhead image / state JSON。output: transcript / interpreted_intent / detections / task_graph。<b>ER は Nav2 / ROS / Jetson / <code>/cmd_vel</code> を叩かない</b>。
-    <div class="transport-band"><b>transport: hermes（第一候補）| direct（fallback）</b> ← <b>Hermes Gateway を第一候補 transport</b>に（main の Hermes-first 方針）。音声/画像 API の robotics 実証は未凍結＝未対応時のみ direct adapter（interface 裏の選択・box を割らない）。<span class="dref">mode-x-er/01 §L4 transport selection / 04 §STT の要否</span></div>
+    <div class="transport-band"><b>transport: hermes（既定/default・F1）| direct・worker（explicit fallback）</b> ← <b>Hermes Gateway を既定 transport</b>に（第一候補でなく default に格上げ・main の Hermes-first 方針）。direct/worker は modality/runtime/response/latency が合わない、または当該 fork 未デプロイ時の fallback。<b>音声 = 現行 direct</b>（unforked Hermes の <code>input_audio</code> は <code>400 unsupported_content_type</code>・PROBE-2 実測 2026-06-27）。ただし hermes-agent v0.15.1 の <b>2-file fork demonstration</b>（2026-06-27・<code>api_server.py</code>+<code>gemini_native_adapter.py</code> patch）で native audio が Hermes に乗ることを実証（HTTP 200・ER が音声のみの語を transcript・lean Hermes median 3.69s vs direct 4.24s で latency 中立・約+408 prompt tokens/call）。target = fork ship 後は audio も default-Hermes へ合流、direct は恒久 fallback として残す（現状はまだ direct）。<span class="dref">mode-x-er/01 §L4 transport selection / 06 §5 / 02 §Hermes-first 33-38</span></div>
   </div></div>
   <div class="nest-arrow">▼</div>
   <div class="node n-box" style="border-style:dashed"><div class="t">RoboticsPlan draft <span class="role">未凍結 robotics_plan_draft.v0</span></div><div class="s">
@@ -623,13 +623,13 @@
     <tr><td>排他 A/B-3/C</td><td>—</td><td>doc08:161-179 / doc15 §2</td><td class="impl-yes"><code>wait_for</code> / <code>gen_check.py</code> / <code>action_map.py</code></td></tr>
     <tr><td>Input Context</td><td><span class="badge b-sub">sub</span></td><td>06 §L4 Input Context / mode-a/08a</td><td class="impl-yes"><code>situation.py</code> → <code>Situation</code></td></tr>
     <tr><td>LLM commander transport</td><td><span class="badge b-demoted">transport</span></td><td>02 §Hermes-first / architecture/08</td><td class="impl-yes"><code>hermes_client.py</code> → Hermes Gateway</td></tr>
-    <tr><td>Model Adapter / ER / VLA / STT</td><td><span class="badge b-sub">sub</span></td><td>02 §保管場所・151-188 / mode-x-er/03（実体化 → §5）</td><td class="impl-no">ER/VLA/STT registry は未実装</td></tr>
+    <tr><td>Model Adapter / ER / VLA / STT<br><span class="dref" style="white-space:normal">transport 既定=<code>hermes</code>（F1）・direct/worker=fallback</span></td><td><span class="badge b-sub">sub</span></td><td>02 §Hermes-first 33-38・§保管場所・151-188 / mode-x-er/03・06 §5（実体化 → §5）</td><td class="impl-no">registry 未実装。既定 <code>transport:hermes</code>／音声は現行 direct（PROBE-2 400）→ 2-file fork ship 後 default-Hermes・direct は恒久 fallback</td></tr>
     <tr><td>Fusion</td><td><span class="badge b-sub">sub</span></td><td>02 §VLA adapter / 06 §L4 Fusion / mode-x-er-vla/03（実体化 → §6）</td><td class="impl-no">未実装（ER 単体は pass-through・2 model 目で活性化）</td></tr>
     <tr><td>Mode X-ER（ER + L3 + X-lite/X-rmf）</td><td>—</td><td>mode-x-er/01・03・04 / README（→ §5・<a href="../mode-x-er/mode-x-er-explainer.html">explainer</a>）</td><td class="impl-no">未実装（設計提案）</td></tr>
     <tr><td>Mode X-ER-VLA（ER + VLA + Fusion / SafetyCompiler）</td><td>—</td><td>mode-x-er-vla/01・03・04 / README（→ §6・<a href="../mode-x-er-vla/mode-x-er-vla-overview.html">overview</a>）</td><td class="impl-no">未実装（設計候補）</td></tr>
     <tr><td>action_map</td><td><span class="badge b-seam">seam</span></td><td>01 §境界の原則 / mode-a/08a</td><td class="impl-yes"><code>action_map.py:43</code></td></tr>
     <tr><td>MCP dispatch</td><td><span class="badge b-seam">seam</span></td><td>architecture/15-mcp-platform</td><td class="impl-yes"><code>DispatchToolExecutor</code>(executor.py:35)</td></tr>
-    <tr><td>trace root / Langfuse</td><td><span class="badge b-demoted">demoted→Super-Box</span></td><td>02 §Langfuse / architecture/08</td><td class="impl-yes"><code>tracing.py</code></td></tr>
+    <tr><td>trace root / Langfuse</td><td><span class="badge b-demoted">demoted→Super-Box</span></td><td>02 §Langfuse・§plugin gate 177-199 / 13:551-570 / architecture/08</td><td class="impl-yes"><code>tracing.py</code>（現状=Bridge 所有/Opt C・plugin OFF）／将来 target=Hermes-owned plugin（HLF-G0..G5 後のみ・F6）。outcome score は flip 後も eval_sdk 所有</td></tr>
     <tr><td>キャラLLM交渉</td><td>—</td><td>doc14 §交渉モード</td><td class="impl-yes"><code>character_node.py</code> / <code>negotiation.py</code></td></tr>
   </tbody>
 </table>
