@@ -18,7 +18,14 @@ The "接続するだけ" surface (doc21 §5)::
 """
 
 from eval_sdk.cost import TokenPrice, cost_for_model, resolve_price, token_cost
-from eval_sdk.seed import derive_trace_id, normalize_trace_id, resolve_run_id, seed_for
+from eval_sdk.seed import (
+    derive_plugin_trace_id,
+    derive_trace_id,
+    normalize_trace_id,
+    plugin_seed,
+    resolve_run_id,
+    seed_for,
+)
 from eval_sdk.sink import (
     DATA_TYPE_BOOLEAN,
     DATA_TYPE_CATEGORICAL,
@@ -34,6 +41,8 @@ __all__ = [
     "seed_for",
     "derive_trace_id",
     "normalize_trace_id",
+    "plugin_seed",
+    "derive_plugin_trace_id",
     "resolve_run_id",
     # tracer
     "Tracer",

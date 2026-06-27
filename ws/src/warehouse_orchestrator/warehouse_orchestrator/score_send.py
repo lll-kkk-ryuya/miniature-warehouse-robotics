@@ -19,8 +19,11 @@ other half of the deterministic trace seed ``f"{run_id}:{gen_id}"``, #73) — we
 match with doc08's illustrative dict (docs-first.md: example vs frozen).
 """
 
+import logging
 import os
 from collections.abc import Callable, Mapping, Sequence
+
+from eval_sdk.seed import derive_plugin_trace_id
 
 from warehouse_orchestrator.audit_reader import AuditEntry
 from warehouse_orchestrator.kpi import KpiReport, latest_gen_id
@@ -33,7 +36,57 @@ from warehouse_orchestrator.tags import (
 )
 from warehouse_orchestrator.trace_id import trace_id_for
 
+log = logging.getLogger(__name__)
+
 WAREHOUSE_PROVIDER_ENV = "WAREHOUSE_PROVIDER"
+
+# Langfuse-owner knob shared with the LLM Bridge (doc13:517). The SAME env var /
+# config key flips BOTH lanes so Option D is a one-config end-to-end switch:
+#   * Bridge side: warehouse_llm_bridge.hermes_client.resolve_langfuse_owner →
+#     who mints the trace (Pattern A "bridge" default vs Option D "hermes_plugin").
+#   * Scorer side (here): resolve_pattern_d → which recipe re-derives the trace id
+#     this scorer must MATCH (Pattern A trace_id_for vs Pattern D derive_plugin_trace_id).
+# CROSS-LANE STRING CONTRACT: these two literals MUST stay byte-identical to the Bridge's
+# copies (warehouse_llm_bridge.hermes_client.LANGFUSE_OWNER_BRIDGE / LANGFUSE_OWNER_HERMES_PLUGIN).
+# We deliberately DO NOT import the Bridge constants (one-way dependency: the orchestrator
+# depends only on warehouse_interfaces + eval_sdk, parallel-workflow §2.1). Re-stating the two
+# literal values here (mirrored, byte-identical to the Bridge) keeps the lanes decoupled while
+# reading the SAME knob — the values are a stable cross-lane contract, like the trace seed itself
+# (eval_sdk.seed). A rename on only one side would silently orphan every score onto the wrong
+# trace recipe, so a cross-check unit (tests/unit/test_hermes_client_option_d.py) asserts the two
+# copies are equal WITHOUT a runtime cross-lane import. Unknown values fail SAFE to Pattern A
+# (never silently enable Option D) and are logged, exactly like the Bridge resolver.
+WAREHOUSE_LANGFUSE_OWNER_ENV = "WAREHOUSE_LANGFUSE_OWNER"
+_LANGFUSE_OWNER_BRIDGE = "bridge"
+_LANGFUSE_OWNER_HERMES_PLUGIN = "hermes_plugin"
+_LANGFUSE_OWNERS = frozenset({_LANGFUSE_OWNER_BRIDGE, _LANGFUSE_OWNER_HERMES_PLUGIN})
+
+
+def resolve_pattern_d(cfg: Mapping[str, object], env: Mapping[str, str] | None = None) -> bool:
+    """Is the Hermes Langfuse plugin the trace owner this run? (Option D ⇒ ``pattern_d=True``).
+
+    Mirrors the Bridge's ``resolve_langfuse_owner`` precedence so ONE knob flips both legs:
+    ``WAREHOUSE_LANGFUSE_OWNER`` env first, then ``hermes.langfuse_owner`` config, else the
+    default ``bridge`` (Pattern A). Returns ``True`` ONLY for the exact value
+    ``hermes_plugin``; a blank env falls through to config, and any unknown/typo value fails
+    SAFE to Pattern A (``False``) so a misconfig never silently orphans every score onto the
+    wrong trace recipe — and (like the Bridge resolver) the unknown value is LOGGED so the
+    misconfig is not silent. Uses ``isinstance(..., Mapping)`` to match the Bridge resolver
+    byte-for-byte. Pure (env injected for tests); never raises on a malformed config block.
+    """
+    env = os.environ if env is None else env
+    raw = env.get(WAREHOUSE_LANGFUSE_OWNER_ENV)
+    if raw is None or not str(raw).strip():
+        hermes = cfg.get("hermes") if isinstance(cfg, Mapping) else None
+        raw = hermes.get("langfuse_owner") if isinstance(hermes, Mapping) else None
+    owner = str(raw).strip() if raw is not None else ""
+    if owner and owner not in _LANGFUSE_OWNERS:
+        log.warning(
+            "unknown %s=%r; falling back to Pattern A (Option D stays off)",
+            WAREHOUSE_LANGFUSE_OWNER_ENV,
+            owner,
+        )
+    return owner == _LANGFUSE_OWNER_HERMES_PLUGIN
 
 
 def resolve_provider(param: str | None) -> str | None:
@@ -76,6 +129,7 @@ def send_scores(
     mode: str | None,
     provider: str | None,
     create_fn: Callable[..., str] | None = None,
+    pattern_d: bool = False,
 ) -> tuple[int, str | None]:
     """Gated, fail-open send of the documented KPI scores; returns ``(#sent, trace_id|None)``.
 
@@ -91,11 +145,35 @@ def send_scores(
     :func:`build_score_metadata` (``robot`` added per-leg). ``flush`` is the caller's
     responsibility (the node flushes on its timer and at shutdown, doc08:347). ``create_fn``
     is injectable for unit tests (the langfuse ``create_trace_id`` static helper by default).
+
+    ``pattern_d`` selects which side mints the root trace (the trace id this scorer must MATCH):
+
+    * ``False`` (DEFAULT — Pattern A): the **LLM Bridge owns the trace** and derives it directly
+      from ``seed_for(run_id, gen_id)`` with the Hermes Langfuse plugin OFF (doc13:516,553). We
+      re-derive the same id via :func:`~warehouse_orchestrator.trace_id.trace_id_for`.
+    * ``True`` (Pattern D): the **Hermes Langfuse plugin is ON** and mints the root trace from the
+      request session/task ids, which the Bridge pins to ``H = seed_for(run_id, gen_id)`` via the
+      ``X-Hermes-Session-Id`` header; the plugin then hashes ``f"{H}::{H}"`` (plugin __init__:544).
+      We re-derive that id via :func:`eval_sdk.seed.derive_plugin_trace_id`. The old recipe is NOT
+      removed — Pattern A stays the default and is unaffected (opt-in, contingent on the live
+      audio D-verify passing). Both paths share the same fail-open ``None`` contract.
     """
     if not sink.enabled or not run_id:
         return 0, None
     gen_id = latest_gen_id(entries)
-    trace = trace_id_for(gen_id, run_id_value=run_id, create_fn=create_fn)
+    if pattern_d:
+        # Plugin-ON join: the plugin minted the trace from f"{H}::{H}" with H=seed_for(...).
+        # Guard the seed exactly like Pattern A's trace_id_for (and the Bridge's
+        # _plugin_session_id): a blank/all-whitespace run_id is a misconfig → None (we never
+        # seed "   :gen"), and gen_id None → no seed half → None (the inert dev no-op). Both
+        # legs must decline on the SAME inputs so the cross-lane recipe cannot diverge.
+        trace = (
+            derive_plugin_trace_id(run_id, gen_id, create_fn=create_fn)
+            if (run_id.strip() and gen_id is not None)
+            else None
+        )
+    else:
+        trace = trace_id_for(gen_id, run_id_value=run_id, create_fn=create_fn)
     if trace is None:
         return 0, None
     meta = build_score_metadata(run_id=run_id, mode=mode, provider=provider, gen_id=gen_id)

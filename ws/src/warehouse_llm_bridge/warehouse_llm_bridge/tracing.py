@@ -18,6 +18,21 @@ extra) and is **fail-open**. What stays HERE is the Bridge-specific ``session_id
 :func:`eval_sdk.seed.seed_for` — formerly also implemented in
 ``warehouse_orchestrator/trace_id.py``). Hermes' built-in Langfuse plugin must be disabled to
 avoid double-counting (doc13:517) — that is a deploy handoff, not bridge code.
+
+Role under Option D (OPT-IN, plugin-ON; doc13:517 reversed):
+    Pattern A above has the BRIDGE own the trace — :meth:`LangfuseTracer.turn` opens the
+    per-turn root trace and the LLM generation is created by the ``langfuse.openai`` wrapper in
+    ``hermes_client`` (nesting inside it). Under Option D the Hermes Langfuse plugin is left ON
+    and mints BOTH the root trace AND the generation server-side (it seeds the trace from
+    ``X-Hermes-Session-Id = H = seed_for(run_id, gen_id)``; ``hermes_client._decide_plugin_owned``).
+    So under D the :class:`LangfuseTracer` **no longer creates the generation** (the un-wrapped
+    ``openai.AsyncOpenAI`` makes no generation) and would only DOUBLE-COUNT the trace — therefore
+    the node (``llm_bridge``) swaps in :class:`NoopTracer` when ``langfuse_owner == hermes_plugin``
+    (the per-turn Bridge trace is suppressed; the plugin's is the single source). This module is
+    UNCHANGED by D: :class:`LangfuseTracer` stays the Pattern-A (default) tracer and
+    :class:`NoopTracer` keeps the cycle langfuse-free + unit-testable on BOTH paths. The scorer
+    side (#6) re-derives the plugin's trace id via :func:`eval_sdk.seed.derive_plugin_trace_id`
+    — see ``warehouse_orchestrator/score_send.py`` (``pattern_d``).
 """
 
 from eval_sdk.seed import resolve_run_id, seed_for
