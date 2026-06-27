@@ -134,12 +134,12 @@
 </div>
 
 <!-- ===================== 1. 4階層 ===================== -->
-<h2>1. 格納先の 4 階層（頻度で記録粒度を変える）<span class="dref">05:107-122 / prod/08:144</span></h2>
+<h2>1. 格納先の 4 階層（頻度で記録粒度を変える）<span class="dref">05:111-126 / prod/08:144</span></h2>
 <p class="lead">同じ事象でも<b>「判断は1本の trace、状態変化は event、通常 tick は集計値、生波形は rosbag」</b>と<b>頻度に応じて格納先を分ける</b>。右のバーは概念的な発生頻度（右ほど高頻度）。</p>
 <div class="tiers">
   <div class="tier t-sub">
     <div class="lbl">① 判断 tier<small>Langfuse</small></div>
-    <div class="desc">L4 generation（input/output/latency/cost）＋ <code>result</code>/<code>task_completion_time</code> を score（SR/SPL は <code>eval_sdk.stats</code>・Phase 1.5）。<b>Bridge 所有</b>（Hermes 側 Langfuse plugin は二重計上回避で無効）。<div class="s">1 判断 = 1 trace。決定的 <code>trace_id</code>（<code>run_id:gen_id</code>）で判断↔結果を結合。<span class="dref">arch/08:343-361,375 / 21:293-300 / 20:79-96</span></div></div>
+    <div class="desc">L4 generation（input/output/latency/cost）＋ <code>result</code>/<code>task_completion_time</code> を score（SR/SPL は <code>eval_sdk.stats</code>・Phase 1.5）。<b>Bridge 所有</b>（Hermes 側 Langfuse plugin は二重計上回避で無効）。<div class="s">1 判断 = 1 trace。決定的 <code>trace_id</code>（<code>run_id:gen_id</code>）で判断↔結果を結合。<span class="dref">arch/08:343-361,375 / 21:299-306 / 20:79-96</span></div></div>
     <div class="freq">数秒に1回<span class="bar f1"></span><br>低頻度</div>
   </div>
   <div class="tier t-seam">
@@ -149,12 +149,12 @@
   </div>
   <div class="tier t-box">
     <div class="lbl">③ 集計 tier<small>metrics（counter/histogram）</small></div>
-    <div class="desc">通常 50ms tick は<b>全保存せず counter / histogram に潰す</b>（介入率・near_collision_count・layer_latency_ms 等）。<div class="s">「危険時だけ event を確実に残す」。<span class="dref">05:118-122 / 05:90-105</span></div></div>
+    <div class="desc">通常 50ms tick は<b>全保存せず counter / histogram に潰す</b>（介入率・near_collision_count・layer_latency_ms 等）。<div class="s">「危険時だけ event を確実に残す」。<span class="dref">05:122-126 / 05:94-110</span></div></div>
     <div class="freq">常時（集計済）<span class="bar f3"></span><br>高頻度→縮約</div>
   </div>
   <div class="tier t-plugin">
     <div class="lbl">④ 生 tier<small>rosbag2 + ros2_tracing</small></div>
-    <div class="desc">odom / scan / cmd_vel の<b>生波形</b>は rosbag2 に record（incident replay）。timing/executor/DDS は ros2_tracing。<div class="s">decision_event はここを <code>rosbag ref</code> で指すだけ。<span class="dref">05:119 / prod/08:134-135,144</span></div></div>
+    <div class="desc">odom / scan / cmd_vel の<b>生波形</b>は rosbag2 に record（incident replay）。timing/executor/DDS は ros2_tracing。<div class="s">decision_event はここを <code>rosbag ref</code> で指すだけ。<span class="dref">05:123,126 / prod/08:134-135,144</span></div></div>
     <div class="freq">sub-second<span class="bar f4"></span><br>最高頻度</div>
   </div>
 </div>
@@ -165,8 +165,8 @@
   <div class="node n-box"><div class="t">判断単位 = <code>trace_id</code><span class="badge b-box">decision</span></div><div class="s"><code>create_trace_id(seed=f"{run_id}:{gen_id}")</code>（決定的）。L4 generation ↔ score ↔ <code>audit.jsonl</code> 行（gen_id）↔ rosbag ref が<b>同じ id に集まる</b>。<span class="dref">arch/08:377</span></div></div>
   <div class="node n-sub"><div class="t">run 単位 = <code>session_id</code> = run_id<span class="badge b-sub">session</span></div><div class="s"><code>session_id = f"run_{mode}_{provider}_{scenario}_{ts}"</code>＝run_id。Langfuse の <b>session</b> が run の全 trace を束ねる＝「1 session に集約」。<span class="dref">arch/08:383,385 / 20:93</span></div></div>
 </div>
-<div class="note"><b>Langfuse の trace に書くのは 2-leg だけ</b>: #4 LLM Bridge（判断 generation）＋ #6 wo KPI（<code>result</code>/SR/SPL/cost score）が<b>同じ trace_id を独立導出して 1 本に合流</b>。<b>L2 <code>audit.jsonl</code> / L1 emergency / L0 clamp / 観測ノード（collision/deadlock）は Langfuse trace には書かず</b>、各 tier の別ストアに出して <b>Eval box が <code>run_id</code>/<code>gen_id</code>/<code>robot</code>/<code>timestamp</code> で JOIN</b>（書き込み合流ではなく key join）。だから「1 session 集約」はこの join が成立させる。<b>要約 score は Langfuse 残置</b>＝Phase-4 比較ダッシュボードが成立（数個＝bloat でない）。<span class="dref">arch/08:355-361,371,388 / 05:88 / 21:104-107</span></div>
-<div class="note"><b>非 Langfuse ストアも同じ key で集約</b>: <code>audit.jsonl</code> / rosbag は同じ <code>run_id</code> / <code>trace_id</code> を持ち、report（DuckDB）が run_id で全 tier を join。bundle 化は受付ゲート <b>E-G5 replay export</b>（rosbag2 ＋ decision JSONL ＋ run manifest）。<span class="dref">prod/08:147 / 21:213</span></div>
+<div class="note"><b>Langfuse の trace に書くのは 2-leg だけ</b>: #4 LLM Bridge（判断 generation）＋ #6 wo KPI（<code>result</code>/SR/SPL/cost score）が<b>同じ trace_id を独立導出して 1 本に合流</b>。<b>L2 <code>audit.jsonl</code> / L1 emergency / L0 clamp / 観測ノード（collision/deadlock）は Langfuse trace には書かず</b>、各 tier の別ストアに出して <b>Eval box が <code>run_id</code>/<code>gen_id</code>/<code>robot</code>/<code>timestamp</code> で JOIN</b>（書き込み合流ではなく key join）。だから「1 session 集約」はこの join が成立させる。<b>要約 score は Langfuse 残置</b>＝Phase-4 比較ダッシュボードが成立（数個＝bloat でない）。<span class="dref">arch/08:355-361,371,388 / 05:88 / 21:105-107</span></div>
+<div class="note"><b>非 Langfuse ストアも同じ key で集約</b>: <code>audit.jsonl</code> / rosbag は同じ <code>run_id</code> / <code>trace_id</code> を持ち、report（DuckDB）が run_id で全 tier を join。bundle 化は受付ゲート <b>E-G5 replay export</b>（rosbag2 ＋ decision JSONL ＋ run manifest）。<span class="dref">prod/08:147 / 21:219</span></div>
 
 <!-- ===================== 2. ルーティングルール ===================== -->
 <h2>2. ルーティング・ルール（受付ゲート E-G0〜E-G6）<span class="dref">prod/08:130-152</span></h2>
@@ -190,7 +190,7 @@
 <div class="note"><b>判定基準＝「edge か level か」</b>: <b>状態変化・危険・clamp/reject/fault（edge）</b>は確実に event 保存し判断 tier へ上げる。<b>通常 tick・連続ストリーム（level）</b>は metrics に縮約 ＋ 生は rosbag。Safety box は「event edge / level 分離」「fail-closed stop path と独立」が要件（<span class="dref">07:57</span>）。<b>Eval は observation only・enforcement に入らない</b>（E-G3 / §5）。<span class="dref">prod/08:145</span></div>
 
 <!-- ===================== 3. box ごとの記録粒度 ===================== -->
-<h2>3. box ごとの記録粒度（呼び出し頻度 → 記録方針）<span class="dref">05:111-122</span></h2>
+<h2>3. box ごとの記録粒度（呼び出し頻度 → 記録方針）<span class="dref">05:111-124</span></h2>
 <p class="lead">doc05 の表をそのまま図示（<b>発明しない</b>）。低 layer ほど高頻度＝metrics/rosbag に寄せ、event 保存は edge だけ。<b>層 chip は中立グレー</b>（色は §0/§1 の <b>4 tier 専用</b>＝層と tier の色の混同を避ける）。</p>
 <table>
   <thead><tr><th>Box（層）</th><th>呼び出し頻度</th><th>記録方針</th></tr></thead>
@@ -204,48 +204,48 @@
     <tr><td>Eval / Observability</td><td>run export/score/join ごと</td><td>join/export failure は全保存、success は manifest と summary</td></tr>
   </tbody>
 </table>
-<div class="note"><span class="dref">05:122</span>: 「<b>Safety Box は full log を常時保存すると量が大きくなる。通常時は counter / histogram / rosbag / trace sample、危険時だけ event を確実に残す</b>」。＝あなたの「エラーのみでも大きい」への答え＝<b>通常は metrics に縮約、event は edge だけ</b>。</div>
+<div class="note"><span class="dref">05:126</span>: 「<b>Safety Box は full log を常時保存すると量が大きくなる。通常時は counter / histogram / rosbag / trace sample、危険時だけ event を確実に残す</b>」。＝あなたの「エラーのみでも大きい」への答え＝<b>通常は metrics に縮約、event は edge だけ</b>。</div>
 
 <!-- ===================== 4. ストア一覧 ===================== -->
 <h2>4. ストア一覧（どのファイル / 何が owner / 正本）</h2>
 <table>
   <thead><tr><th>ストア</th><th>tier</th><th>中身</th><th>owner / path</th><th>正本</th></tr></thead>
   <tbody>
-    <tr><td>Langfuse（trace + score）</td><td><span class="badge b-sub">①判断</span></td><td>L4 generation ＋ result/task_completion_time score（SR/SPL=<code>eval_sdk.stats</code>・Phase 1.5）</td><td>Bridge 所有（Hermes plugin 無効）</td><td><span class="dref">arch/08:343-361,375 / 21:293-300</span></td></tr>
+    <tr><td>Langfuse（trace + score）</td><td><span class="badge b-sub">①判断</span></td><td>L4 generation ＋ result/task_completion_time score（SR/SPL=<code>eval_sdk.stats</code>・Phase 1.5）</td><td>Bridge 所有（Hermes plugin 無効）</td><td><span class="dref">arch/08:343-361,375 / 21:299-306</span></td></tr>
     <tr><td><code>audit.jsonl</code></td><td><span class="badge b-seam">②event</span></td><td>MCP command audit（executed/rejected/error）</td><td>MCP Server / <code>$WAREHOUSE_AUDIT_LOG_PATH</code>（既定 <code>/tmp/warehouse/audit.jsonl</code>）</td><td><span class="dref">16:114</span></td></tr>
     <tr><td><code>conversation_events.jsonl</code></td><td><span class="badge b-seam">②event</span></td><td>lifecycle/local agreement/Self-Action Gate verdict</td><td>Bridge / <code>WAREHOUSE_CONVERSATION_EVENT_LOG_PATH</code>。<b>audit と混ぜると KPI が歪むので別ファイル</b></td><td><span class="dref">08a:522 / 14:443</span></td></tr>
-    <tr><td>metrics（counter/histogram）</td><td><span class="badge b-box">③集計</span></td><td>介入率・near_collision_count・layer_latency_ms・min_separation 等</td><td>Eval/Observability box（counter 名 = <span class="dref">05:90-105</span>）</td><td><span class="dref">05:118</span></td></tr>
-    <tr><td>rosbag2 / ros2_tracing</td><td><span class="badge b-plugin">④生</span></td><td>odom/scan/cmd_vel 生波形・timing/executor/DDS</td><td>ROS（record/replay・incident replay）</td><td><span class="dref">05:119 / prod/08:134-135</span></td></tr>
+    <tr><td>metrics（counter/histogram）</td><td><span class="badge b-box">③集計</span></td><td>介入率・near_collision_count・layer_latency_ms・min_separation 等</td><td>Eval/Observability box（counter 名 = <span class="dref">05:94-110</span>）</td><td><span class="dref">05:122,126</span></td></tr>
+    <tr><td>rosbag2 / ros2_tracing</td><td><span class="badge b-plugin">④生</span></td><td>odom/scan/cmd_vel 生波形・timing/executor/DDS</td><td>ROS（record/replay・incident replay）</td><td><span class="dref">05:123,126 / prod/08:134-135</span></td></tr>
     <tr><td><code>state.json</code> ＋ <code>/state_cache/snapshot</code></td><td>—</td><td>State Cache 100ms snapshot（凍結 <code>StateSnapshot</code>）</td><td>warehouse_state（atomic file ＋ topic 2 経路）</td><td><span class="dref">12:262</span></td></tr>
-    <tr><td>DuckDB ＋ JSONL</td><td>集計/report</td><td>offline aggregation・customer report export（<b>候補</b>）</td><td>Eval（offline・「audit.jsonl + DuckDB で当面十分」）</td><td><span class="dref">21:213 / prod/08:136</span></td></tr>
+    <tr><td>DuckDB ＋ JSONL</td><td>集計/report</td><td>offline aggregation・customer report export（<b>候補</b>）</td><td>Eval（offline・「audit.jsonl + DuckDB で当面十分」）</td><td><span class="dref">21:219 / prod/08:136</span></td></tr>
   </tbody>
 </table>
 
 <!-- ===================== 5. eval_sdk 移送 ===================== -->
-<h2>5. eval_sdk への移送経路（eval_sdk は生 data も ROS も見に行かない）<span class="dref">21:82-102,119,189</span></h2>
+<h2>5. eval_sdk への移送経路（eval_sdk は生 data も ROS も見に行かない）<span class="dref">21:82-102,125,191-199</span></h2>
 <p class="lead"><b>eval_sdk は純 stdlib コアで <code>rclpy</code> を import せず、ROS 購読を一切持たない</b>（<span class="dref">eval_sdk/sink.py:22 / package.xml:16 / CLAUDE.md:5</span>）。生トピックを購読するのは<b>別のドメイン観測ノード</b>で、eval_sdk はそれが渡す観測値を数学・emit するライブラリ。</p>
 <div class="steps">
   <div class="step plugin"><b>① 生 ROS topic</b>（<code>near_collision</code> / <code>/bot{n}/odom</code> / State Cache）<div class="s">sub-second の生信号。④生 tier（rosbag2）にも同時に流れる。<span class="dref">21:82-86</span></div></div>
-  <div class="step plugin"><b>② ドメイン観測ノード</b>（観測専用 subscriber / deadlock detector node）<div class="s">生を <b>count / derive</b>（near_collision を count 化＋inter-robot 距離をログ）。<b>Emergency Guardian の enforcement とは別ノード</b>（観測≠制御・fail-closed と混ぜない）。<span class="dref">21:189,190,193</span></div></div>
-  <div class="step"><b>③ <code>eval_sdk.stats</code></b>（純関数の数学）<div class="s">count → rate / histogram / percentile / distance。ROS も domain も知らない。<span class="dref">eval_sdk/stats.py:1-9 / 21:117</span></div></div>
+  <div class="step plugin"><b>② ドメイン観測ノード</b>（観測専用 subscriber / deadlock detector node）<div class="s">生を <b>count / derive</b>（near_collision を count 化＋inter-robot 距離をログ）。<b>Emergency Guardian の enforcement とは別ノード</b>（観測≠制御・fail-closed と混ぜない）。<span class="dref">21:191-199</span></div></div>
+  <div class="step"><b>③ <code>eval_sdk.stats</code></b>（純関数の数学）<div class="s">count → rate / histogram / percentile / distance。ROS も domain も知らない。<span class="dref">eval_sdk/stats.py:1-9 / 21:118</span></div></div>
   <div class="step"><b>④ <code>eval_sdk.sink</code></b>（fail-open emit）<div class="s">score を Langfuse v4 <code>create_score</code> で送信。creds 無/通信断でも no-op（走行無傷）。<span class="dref">eval_sdk/sink.py:99-145</span></div></div>
-  <div class="step sub"><b>⑤ Langfuse</b>（①判断 tier に着地）<div class="s">同じ <code>trace_id</code> で判断と結合。<span class="dref">21:98-101</span></div></div>
+  <div class="step sub"><b>⑤ Langfuse</b>（①判断 tier に着地）<div class="s">同じ <code>trace_id</code> で判断と結合。<span class="dref">21:99-102</span></div></div>
 </div>
-<div class="safe"><b>「観測専用の複製イベントを見に行く」の正確な意味</b>: eval が読むのは <b>near_collision の count 等の観測専用の複製だけで、enforcement 経路には触れない</b>（<span class="dref">21:119</span>）。ただし <b>eval_sdk 自身が subscribe するのではなく、ドメイン観測ノードが生から複製・集計して eval_sdk に渡す</b>。Emergency Guardian / collision_monitor / 0.3 m/s は fail-closed の能動制御で、producer ではなく「観測タップ」を指す。</div>
+<div class="safe"><b>「観測専用の複製イベントを見に行く」の正確な意味</b>: eval が読むのは <b>near_collision の count 等の観測専用の複製だけで、enforcement 経路には触れない</b>（<span class="dref">21:125</span>）。ただし <b>eval_sdk 自身が subscribe するのではなく、ドメイン観測ノードが生から複製・集計して eval_sdk に渡す</b>。Emergency Guardian / collision_monitor / 0.3 m/s は fail-closed の能動制御で、producer ではなく「観測タップ」を指す。</div>
 
 <!-- ===================== 6. OSS マップ ===================== -->
-<h2>6. 既存 OSS マップ（再発明しない・各 verdict）<span class="dref">21:264-272 / 07:38,57,96</span></h2>
+<h2>6. 既存 OSS マップ（再発明しない・各 verdict）<span class="dref">21:264-278 / 07:38,57,96</span></h2>
 <p class="lead">sub-second hardware data は<b>世に出ている ROS2 ネイティブ OSS をそのまま使う</b>のが設計方針。下表は docs が既に名指し・判定済みのもの。</p>
 <table>
   <thead><tr><th>OSS</th><th>用途</th><th>verdict</th><th>正本</th></tr></thead>
   <tbody>
     <tr><td><b>rosbag2</b></td><td>生 ROS message の record/playback・incident replay（④生 tier の正解）</td><td class="impl-yes">採用</td><td><span class="dref">05:119 / 07:38 / prod/08:144</span></td></tr>
     <tr><td><b>ros2_tracing</b></td><td>high-rate timing・executor・DDS/callback 解析</td><td class="impl-yes">採用</td><td><span class="dref">prod/08:135 / 07:96</span></td></tr>
-    <tr><td><b>OpenTelemetry / OTLP</b></td><td>vendor-neutral envelope。LLM 判断の wire（<code>gen_ai.*</code>）。ただし <code>gen_ai.*</code> はまだ "Development"＝隔離・gate・optional</td><td class="impl-no">採用（任意・隔離）</td><td><span class="dref">21:265,286 / 07:59</span></td></tr>
-    <tr><td><b>DuckDB ＋ JSONL</b></td><td>offline 集計・report export（「audit.jsonl + DuckDB で当面十分」）</td><td class="impl-no">候補</td><td><span class="dref">21:213 / prod/08:136</span></td></tr>
-    <tr><td>Langfuse</td><td>①判断 tier（trace/score/cost）。seam で包む・任意 extra</td><td class="impl-yes">借りる（seam）</td><td><span class="dref">21:264</span></td></tr>
-    <tr><td>AllenAct <code>spl_metric</code> / Habitat SR/SPL</td><td>評価式（<code>eval_sdk.stats</code>）</td><td class="impl-yes">コピー / 写経</td><td><span class="dref">21:266-267</span></td></tr>
-    <tr><td>LangSmith / W&amp;B</td><td>proprietary・SaaS 課金</td><td class="impl-no">避ける</td><td><span class="dref">21:272 / 07:59</span></td></tr>
+    <tr><td><b>OpenTelemetry / OTLP</b></td><td>vendor-neutral envelope。LLM 判断の wire（<code>gen_ai.*</code>）。ただし <code>gen_ai.*</code> はまだ "Development"＝隔離・gate・optional</td><td class="impl-no">採用（任意・隔離）</td><td><span class="dref">21:271,292 / 07:59</span></td></tr>
+    <tr><td><b>DuckDB ＋ JSONL</b></td><td>offline 集計・report export（「audit.jsonl + DuckDB で当面十分」）</td><td class="impl-no">候補</td><td><span class="dref">21:219 / prod/08:136</span></td></tr>
+    <tr><td>Langfuse</td><td>①判断 tier（trace/score/cost）。seam で包む・任意 extra</td><td class="impl-yes">借りる（seam）</td><td><span class="dref">21:270</span></td></tr>
+    <tr><td>AllenAct <code>spl_metric</code> / Habitat SR/SPL</td><td>評価式（<code>eval_sdk.stats</code>）</td><td class="impl-yes">コピー / 写経</td><td><span class="dref">21:272-273</span></td></tr>
+    <tr><td>LangSmith / W&amp;B</td><td>proprietary・SaaS 課金</td><td class="impl-no">避ける</td><td><span class="dref">21:278 / 07:59</span></td></tr>
   </tbody>
 </table>
 
@@ -254,12 +254,12 @@
 <p class="lead">以下は <b>docs にまだ決定が無い</b>＝本図は<b>描かない／値を発明しない</b>。決める時は <code>docs/*</code>（契約なら contract）PR で先に正本を確定してから図に「採用」として落とす。</p>
 <div class="gap">
   <ul class="tight">
-    <li><b>③集計 tier の metrics backend</b>: counter 名（<span class="dref">05:90-105</span>）はあるが、保持する TSDB/exporter（Prometheus / Grafana）は <b>doc07/doc05 に「要 spike 候補」として登録済</b>だが採用 backend は未決。当面は audit.jsonl→DuckDB で集計（<span class="dref">07:108 / 05:394 / 21:213</span>）。</li>
-    <li><b>rosbag2 の保存 format</b>: <code>mcap</code> vs <code>sqlite3</code>（mcap は <b>doc07/doc05 に要 spike 登録済</b>・採用は未決）<span class="dref">07:105 / 05:395</span>。</li>
+    <li><b>③集計 tier の metrics backend</b>: counter 名（<span class="dref">05:94-110</span>）はあるが、保持する TSDB/exporter（Prometheus / Grafana）は <b>doc07 に「要 spike 候補」として登録済</b>だが採用 backend は未決。当面は audit.jsonl→DuckDB で集計（<span class="dref">07:110 / 21:219</span>）。</li>
+    <li><b>rosbag2 の保存 format</b>: <code>mcap</code> vs <code>sqlite3</code>（mcap は <b>doc07 に要 spike 登録済</b>・採用は未決）<span class="dref">07:107</span>。</li>
     <li><b>retention / rotation 数値・sample rate</b>: doc22 が「N runs / M MB」を実測（S6）に defer。<span class="dref">22:208-223</span></li>
-    <li><b>decision↔outcome correlator ＋ embodied OTel <code>*.nav.*</code> namespace</b>: OTLP 属性生存の 30 分 spike ＋ 利用者#2 で gated。<span class="dref">21:240,247</span></li>
-    <li><b>観測専用 subscriber / deadlock detector node</b>: doc21 §6 Tier2 の <b>未実装 ★新 producer</b>。具体ノード名/package/topic は未凍結。<code>replans</code> は Nav2 露出の contract PR 待ち。<span class="dref">21:189,190,191,193</span></li>
-    <li><b>Full Parquet <code>(s,a,s',r)</code> exporter</b>: 利用者#2 まで defer（学習モデル不在・MLflow/W&amp;B 冗長）。<span class="dref">21:199,213</span></li>
+    <li><b>decision↔outcome correlator ＋ embodied OTel <code>*.nav.*</code> namespace</b>: OTLP 属性生存の 30 分 spike ＋ 利用者#2 で gated。<span class="dref">21:246,252</span></li>
+    <li><b>観測専用 subscriber / deadlock detector node</b>: doc21 §6 Tier2 の <b>未実装 ★新 producer</b>。具体ノード名/package/topic は未凍結。<code>replans</code> は Nav2 露出の contract PR 待ち。<span class="dref">21:191-199</span></li>
+    <li><b>Full Parquet <code>(s,a,s',r)</code> exporter</b>: 利用者#2 まで defer（学習モデル不在・MLflow/W&amp;B 冗長）。<span class="dref">21:219</span></li>
   </ul>
 </div>
 
@@ -271,9 +271,9 @@
     <tr><td>4 階層 格納先分離</td><td>記録粒度</td><td><a href="05-decision-observability-and-tooling.md">05 §呼び出し頻度</a> <span class="dref">05:107-122</span></td><td class="impl-yes">設計決定済（散在を本図で統合）</td></tr>
     <tr><td>E-G2 / E-G5 ゲート</td><td>受付ゲート</td><td><a href="08-navigation-hardware-eval-gates.md">08</a> <span class="dref">prod/08:144,147</span></td><td class="impl-yes">決定済（gate 形）</td></tr>
     <tr><td>Langfuse 弁別子 taxonomy</td><td>ラベル地図</td><td><a href="../architecture/20-dev-quality-and-testing.md">doc20 §8</a> / doc08 §比較検証ログ</td><td class="impl-yes">offline 実装済（live 検証 #88）</td></tr>
-    <tr><td>eval_sdk 移送（観測ノード→stats→sink）</td><td>5 モジュール</td><td><a href="eval-sdk-detail.html">eval-sdk 詳細</a> / 21:82-102,189</td><td class="impl-yes">eval_sdk 実装済 / 観測ノードは未実装(★Tier2)</td></tr>
+    <tr><td>eval_sdk 移送（観測ノード→stats→sink）</td><td>5 モジュール</td><td><a href="eval-sdk-detail.html">eval-sdk 詳細</a> / 21:82-102,191-199</td><td class="impl-yes">eval_sdk 実装済 / 観測ノードは未実装(★Tier2)</td></tr>
     <tr><td>metrics backend / mcap / retention</td><td>未決</td><td><span class="dref">07:105,108 / 05:394-395 / 22:208-223</span></td><td class="impl-gap">要spike 登録済・採用未決</td></tr>
-    <tr><td>decision↔outcome correlator</td><td>未決</td><td>21:240,247</td><td class="impl-gap">defer（利用者#2 + OTLP spike）</td></tr>
+    <tr><td>decision↔outcome correlator</td><td>未決</td><td>21:246,252</td><td class="impl-gap">defer（利用者#2 + OTLP spike）</td></tr>
   </tbody>
 </table>
 

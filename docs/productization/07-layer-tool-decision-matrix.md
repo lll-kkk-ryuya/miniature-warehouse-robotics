@@ -107,6 +107,6 @@ Jetson / Docker / host CI での runtime、failure 時の挙動を owner doc で
 | ROS bag 保存 format | [mcap](https://mcap.dev/) | ④生 | 要 spike | rosbag2 の保存 format（既定 sqlite3 ↔ mcap）。容量・読出速度・tool 互換を検証してから |
 | 高頻度時系列 plot | [PlotJuggler](https://github.com/facontidavide/PlotJuggler) | ④生（viz） | 候補 | odom / cmd_vel / imu の時系列可視化。常設保存ではなく解析補助 |
 | robot 可視化 | [Foxglove](https://foxglove.dev/) | ④生（viz） | 候補 | rosbag / ライブ可視化（Phase 4 demo）。**ブラウザ直結はしない**＝観測 UI は web_bridge 経由（doc22 §1） |
-| metrics backend（TSDB） | [Prometheus](https://prometheus.io/) / [Grafana](https://grafana.com/) | ③集計 | 要 spike | ③集計 tier の counter / histogram を保持・可視化。当面は `audit.jsonl`→DuckDB で代替（doc21:213）。常設ダッシュボードが要る段階で採用判断 |
+| metrics backend（TSDB） | [Prometheus](https://prometheus.io/) / [Grafana](https://grafana.com/) | ③集計 | 要 spike | ③集計 tier の counter / histogram を保持・可視化。当面は `audit.jsonl`→DuckDB で代替（doc21:219）。常設ダッシュボードが要る段階で採用判断 |
 
-> **不採用ではなく未採用**: これらは「観測 tier の将来拡張の選択肢」。採用すると依存・運用が増えるため、E-G2 / E-G5 を満たす最小構成（rosbag2 + `audit.jsonl`→DuckDB）で当面足りる（doc21:213「audit.jsonl + DuckDB で当面十分」）。
+> **不採用ではなく未採用**: これらは「観測 tier の将来拡張の選択肢」。採用すると依存・運用が増えるため、E-G2 / E-G5 を満たす最小構成（rosbag2 + `audit.jsonl`→DuckDB）で当面足りる（doc21:219「audit.jsonl + DuckDB で当面十分」）。
