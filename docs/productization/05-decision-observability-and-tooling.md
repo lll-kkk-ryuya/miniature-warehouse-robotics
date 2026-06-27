@@ -377,3 +377,23 @@ hardware.event_reason:
 - ros2_tracing: https://github.com/ros2/ros2_tracing
 - OpenTelemetry: https://opentelemetry.io/docs/what-is-opentelemetry/
 - Langfuse Observability: https://langfuse.com/docs/observability/overview
+
+## 未解決問題（観測・eval・横断）
+
+> 観測 / eval 周りの未解決・defer・gate 待ちを集約した**索引**。**新規問題を発明せず、各々の正本へリンク**する（詳細・判断は各正本にあり、重複させない）。図解は [observability-open-problems-detail.html](observability-open-problems-detail.html)。状態が変わったら**正本を先に直し**、本索引と図を追従する（docs-first）。
+
+| 問題 | 状態 | 正本（ここを先に直す） |
+|---|---|---|
+| decision↔outcome correlator ＋ embodied OTel `*.nav.*` | gate待ち（利用者#2 ∧ OTLP 30分 spike） | [doc21](../architecture/21-eval-sdk-extraction.md):200,215,240 |
+| STT transcript の Langfuse 配線（`LangfuseTranscriptTracer`＝雛形） | gate待ち（HLF spike） | `ws/src/warehouse_llm_bridge/.../robotics/observability.py:8-15,56-80` / [productization/02](02-l4-robotics-bridge-box.md):177-199 |
+| audio leg の Langfuse owner（音声は Hermes バイパス＝direct ER） | gate待ち（HLF-G0〜G5 ∧ #88） | [mode-x-er/06](../mode-x-er/06-unfrozen-contract-resolutions.md) §5:135-148 / [productization/02](02-l4-robotics-bridge-box.md):177-199 |
+| Langfuse Phase-3 live（trace 集約 / cost / managed-prompt） | gate待ち（#88 live） | [doc21](../architecture/21-eval-sdk-extraction.md):246 / [doc20 §8.4](../architecture/20-dev-quality-and-testing.md) |
+| Tier2 観測ノード（collision / deadlock subscriber・★新 producer） | 未実装（計画） | [doc21](../architecture/21-eval-sdk-extraction.md):189,190,193 |
+| SR / SPL / SoftSPL / jerk（`eval_sdk.stats` 純関数） | 未実装（Phase 1.5） | [doc21](../architecture/21-eval-sdk-extraction.md):293-300 / `ws/src/eval_sdk/eval_sdk/stats.py:7` |
+| XER2-5（Validator / Visual Resolver / Task Graph / Command Compiler） | 未実装（design-deferred） | [mode-x-er/02](../mode-x-er/02-l3-planning-core.md):78 / [mode-x-er/06](../mode-x-er/06-unfrozen-contract-resolutions.md) §1 |
+| ③集計 tier の metrics backend（Prometheus / Grafana） | 要 spike | [doc07 §観測 tool 追加候補](07-layer-tool-decision-matrix.md) / [doc21](../architecture/21-eval-sdk-extraction.md):213 |
+| ④生 tier の rosbag2 format（mcap ↔ sqlite3） | 要 spike | [doc07 §観測 tool 追加候補](07-layer-tool-decision-matrix.md) |
+| retention / rotation 数値・sample rate | 要 spike（実測） | [doc22](../architecture/22-web-observability.md):208-223 |
+| eval_sdk API ／ decision_event schema の凍結 | 未決 design | [doc21](../architecture/21-eval-sdk-extraction.md):238 / 本書:46,63（`schema_version="proposal"`） |
+| 本観測 docs ブランチの push / PR | process（要承認） | ①PR → ②CI 緑 → ③別ステップ merge |
+| STATUS.md の sha refresh | process（orchestrator batch） | [.claude/rules/status-maintenance.md](../../.claude/rules/status-maintenance.md) |
