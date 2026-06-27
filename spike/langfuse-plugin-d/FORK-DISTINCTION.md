@@ -31,8 +31,10 @@ Langfuse fork** because the plugin's trace id is **deterministic from a seed** �
 `create_trace_id(seed=f"{session_id or 'sessionless'}::{task_id or task_key}")`
 (`~/.hermes/.../observability/langfuse/__init__.py:544`) — so the Bridge can **re-derive** that
 id instead of forcing the plugin to read an inbound one. The Bridge pins
-`session_id = H = seed_for(run_id, gen_id)` via the `X-Hermes-Session-Id` header; the response
-echoes it (`api_server.py:1515 effective_session_id = result.get("session_id")`); on the
+`session_id = H = seed_for(run_id, gen_id)` via the `X-Hermes-Session-Id` header; on the
+`/v1/chat/completions` path the response echoes it as the **`X-Hermes-Session-Id` RESPONSE
+HEADER** (the body `session_id` field `api_server.py:1515 result.get("session_id")` is the echo
+for the separate `/api/sessions/.../chat` endpoint, not `/v1`); on the
 stateless chat path `task_id` defaults to `session_id`, so the plugin seed collapses to
 `f"{H}::{H}"` and the scorer re-derives the identical id via
 `eval_sdk.seed.derive_plugin_trace_id` — **with no plugin change**.

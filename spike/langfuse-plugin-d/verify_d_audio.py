@@ -45,10 +45,14 @@
 #   * The plugin fires via the pre_api_request hook (__init__.py:999 register;
 #     invoked at agent/conversation_loop.py:1258 with task_id=effective_task_id,
 #     session_id=agent.session_id).
-#   * The request header X-Hermes-Session-Id sets session_id, and the gateway
-#     echoes it back: effective_session_id = result.get("session_id")
-#     (api_server.py:1515) -> response "session_id" field + X-Hermes-Session-Id
-#     header.
+#   * The request header X-Hermes-Session-Id sets session_id. On the
+#     /v1/chat/completions path the gateway echoes it back as the
+#     X-Hermes-Session-Id RESPONSE HEADER (NOT a body field). The body
+#     "session_id" field (api_server.py:1515 result.get("session_id")) is the
+#     echo for the SEPARATE /api/sessions/.../chat endpoint, not /v1. This
+#     harness reads body-then-header (echoed_session_id, below) to cover BOTH
+#     endpoints; the Bridge drift-detect reads only the /v1 header
+#     (hermes_client._detect_session_drift).
 #   * For the stateless/agent chat path the gateway sets
 #       effective_task_id = session_id or uuid   (api_server.py:3464 / :3706)
 #     and passes task_id=effective_task_id into run_conversation, where

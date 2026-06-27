@@ -19,6 +19,7 @@ other half of the deterministic trace seed ``f"{run_id}:{gen_id}"``, #73) — we
 match with doc08's illustrative dict (docs-first.md: example vs frozen).
 """
 
+import logging
 import os
 from collections.abc import Callable, Mapping, Sequence
 
@@ -35,6 +36,8 @@ from warehouse_orchestrator.tags import (
 )
 from warehouse_orchestrator.trace_id import trace_id_for
 
+log = logging.getLogger(__name__)
+
 WAREHOUSE_PROVIDER_ENV = "WAREHOUSE_PROVIDER"
 
 # Langfuse-owner knob shared with the LLM Bridge (doc13:517). The SAME env var /
@@ -43,12 +46,16 @@ WAREHOUSE_PROVIDER_ENV = "WAREHOUSE_PROVIDER"
 #     who mints the trace (Pattern A "bridge" default vs Option D "hermes_plugin").
 #   * Scorer side (here): resolve_pattern_d → which recipe re-derives the trace id
 #     this scorer must MATCH (Pattern A trace_id_for vs Pattern D derive_plugin_trace_id).
-# We deliberately DO NOT import the Bridge constants (one-way dependency: the
-# orchestrator depends only on warehouse_interfaces + eval_sdk, parallel-workflow §2.1).
-# Re-stating the two literal values here (mirrored, byte-identical to the Bridge) keeps
-# the lanes decoupled while reading the SAME knob — the values are a stable cross-lane
-# contract, like the trace seed itself (eval_sdk.seed). Unknown values fail SAFE to
-# Pattern A (never silently enable Option D), exactly like the Bridge resolver.
+# CROSS-LANE STRING CONTRACT: these two literals MUST stay byte-identical to the Bridge's
+# copies (warehouse_llm_bridge.hermes_client.LANGFUSE_OWNER_BRIDGE / LANGFUSE_OWNER_HERMES_PLUGIN).
+# We deliberately DO NOT import the Bridge constants (one-way dependency: the orchestrator
+# depends only on warehouse_interfaces + eval_sdk, parallel-workflow §2.1). Re-stating the two
+# literal values here (mirrored, byte-identical to the Bridge) keeps the lanes decoupled while
+# reading the SAME knob — the values are a stable cross-lane contract, like the trace seed itself
+# (eval_sdk.seed). A rename on only one side would silently orphan every score onto the wrong
+# trace recipe, so a cross-check unit (tests/unit/test_hermes_client_option_d.py) asserts the two
+# copies are equal WITHOUT a runtime cross-lane import. Unknown values fail SAFE to Pattern A
+# (never silently enable Option D) and are logged, exactly like the Bridge resolver.
 WAREHOUSE_LANGFUSE_OWNER_ENV = "WAREHOUSE_LANGFUSE_OWNER"
 _LANGFUSE_OWNER_BRIDGE = "bridge"
 _LANGFUSE_OWNER_HERMES_PLUGIN = "hermes_plugin"
@@ -63,7 +70,9 @@ def resolve_pattern_d(cfg: Mapping[str, object], env: Mapping[str, str] | None =
     default ``bridge`` (Pattern A). Returns ``True`` ONLY for the exact value
     ``hermes_plugin``; a blank env falls through to config, and any unknown/typo value fails
     SAFE to Pattern A (``False``) so a misconfig never silently orphans every score onto the
-    wrong trace recipe. Pure (env injected for tests); never raises on a malformed config block.
+    wrong trace recipe — and (like the Bridge resolver) the unknown value is LOGGED so the
+    misconfig is not silent. Uses ``isinstance(..., Mapping)`` to match the Bridge resolver
+    byte-for-byte. Pure (env injected for tests); never raises on a malformed config block.
     """
     env = os.environ if env is None else env
     raw = env.get(WAREHOUSE_LANGFUSE_OWNER_ENV)
@@ -71,6 +80,12 @@ def resolve_pattern_d(cfg: Mapping[str, object], env: Mapping[str, str] | None =
         hermes = cfg.get("hermes") if isinstance(cfg, Mapping) else None
         raw = hermes.get("langfuse_owner") if isinstance(hermes, Mapping) else None
     owner = str(raw).strip() if raw is not None else ""
+    if owner and owner not in _LANGFUSE_OWNERS:
+        log.warning(
+            "unknown %s=%r; falling back to Pattern A (Option D stays off)",
+            WAREHOUSE_LANGFUSE_OWNER_ENV,
+            owner,
+        )
     return owner == _LANGFUSE_OWNER_HERMES_PLUGIN
 
 

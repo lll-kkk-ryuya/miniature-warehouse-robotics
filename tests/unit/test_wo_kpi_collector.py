@@ -460,6 +460,41 @@ def test_pattern_d_unknown_value_fails_safe_to_pattern_a() -> None:
 
 
 @pytest.mark.unit
+def test_pattern_d_unknown_value_is_logged_not_silent(caplog: pytest.LogCaptureFixture) -> None:
+    # The misconfig is NOT silent: like the Bridge resolver, an unknown owner LOGS a warning so
+    # an operator typo surfaces instead of silently orphaning every score (round-2 D(b)).
+    import logging
+
+    with caplog.at_level(logging.WARNING):
+        assert resolve_pattern_d({}, env={"WAREHOUSE_LANGFUSE_OWNER": "plugn"}) is False
+    assert any("plugn" in r.message for r in caplog.records)
+
+
+@pytest.mark.unit
+def test_pattern_d_reads_non_dict_mapping_config() -> None:
+    # resolve_pattern_d uses isinstance(..., Mapping); a non-dict Mapping config (and a
+    # non-dict Mapping ``hermes`` block) selects Option D — proving the type check matches the
+    # Bridge resolver, which now also uses Mapping (round-2 D(a)).
+    from collections.abc import Iterator, Mapping
+
+    class _RoMap(Mapping):
+        def __init__(self, d: dict) -> None:
+            self._d = d
+
+        def __getitem__(self, k: object) -> object:
+            return self._d[k]
+
+        def __iter__(self) -> Iterator:
+            return iter(self._d)
+
+        def __len__(self) -> int:
+            return len(self._d)
+
+    cfg = _RoMap({"hermes": _RoMap({"langfuse_owner": "hermes_plugin"})})
+    assert resolve_pattern_d(cfg, env={}) is True
+
+
+@pytest.mark.unit
 def test_pattern_d_blank_env_falls_through_to_config_then_default() -> None:
     cfg = {"hermes": {"langfuse_owner": "hermes_plugin"}}
     assert resolve_pattern_d(cfg, env={"WAREHOUSE_LANGFUSE_OWNER": "  "}) is True

@@ -206,6 +206,51 @@ def test_owner_blank_env_falls_through_to_config_then_default() -> None:
     assert resolve_langfuse_owner({}, env={"WAREHOUSE_LANGFUSE_OWNER": "  "}) == "bridge"
 
 
+@pytest.mark.unit
+def test_owner_reads_non_dict_mapping_config() -> None:
+    # The resolver uses isinstance(..., Mapping) (NOT dict) so it must read a non-dict Mapping
+    # config exactly like the scorer mirror (score_send.resolve_pattern_d). A custom Mapping
+    # whose ``hermes`` block is also a Mapping selects Option D — proving the two type checks
+    # cannot diverge on a non-dict Mapping (round-2 D(a)).
+    from collections.abc import Iterator, Mapping
+
+    class _RoMap(Mapping):
+        def __init__(self, d: dict) -> None:
+            self._d = d
+
+        def __getitem__(self, k: object) -> object:
+            return self._d[k]
+
+        def __iter__(self) -> Iterator:
+            return iter(self._d)
+
+        def __len__(self) -> int:
+            return len(self._d)
+
+    cfg = _RoMap({"hermes": _RoMap({"langfuse_owner": "hermes_plugin"})})
+    assert resolve_langfuse_owner(cfg, env={}) == LANGFUSE_OWNER_HERMES_PLUGIN
+
+
+# ── Cross-lane string-contract pin: Bridge owner literals == scorer mirror ─────
+#
+# The Bridge (resolve_langfuse_owner) and the scorer (score_send.resolve_pattern_d) read the
+# SAME WAREHOUSE_LANGFUSE_OWNER knob but, per parallel-workflow §2.1, each lane keeps its OWN
+# copy of the "bridge"/"hermes_plugin" literals (no cross-package runtime import). This pin asserts
+# the two copies stay byte-identical so a rename on one side can never silently orphan every score
+# onto the wrong trace recipe (round-2 D(c)). The cross-lane import lives ONLY in this test, never
+# in production code.
+@pytest.mark.unit
+def test_owner_literals_match_scorer_mirror() -> None:
+    from warehouse_orchestrator import score_send
+
+    assert LANGFUSE_OWNER_BRIDGE == score_send._LANGFUSE_OWNER_BRIDGE
+    assert LANGFUSE_OWNER_HERMES_PLUGIN == score_send._LANGFUSE_OWNER_HERMES_PLUGIN
+    # And the knob env-var name is the same on both lanes.
+    from warehouse_llm_bridge.hermes_client import LANGFUSE_OWNER_ENV
+
+    assert LANGFUSE_OWNER_ENV == score_send.WAREHOUSE_LANGFUSE_OWNER_ENV
+
+
 # ── Option-D decide(): header, no wrapper, no prompt link ─────────────────────
 
 

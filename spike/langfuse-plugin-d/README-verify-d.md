@@ -55,8 +55,13 @@ The five live assertions (`verify_d_audio.py`):
   (`langfuse/_client/client.py:1759`).
 - Plugin fires via the **`pre_api_request`** hook (`__init__.py:999` register;
   invoked `agent/conversation_loop.py:1258`).
-- `X-Hermes-Session-Id` sets `session_id`; the gateway **echoes** it back
-  (`api_server.py:1515` `effective_session_id = result.get("session_id")`).
+- `X-Hermes-Session-Id` sets `session_id`; on the `/v1/chat/completions` path the
+  gateway **echoes** it back as the **`X-Hermes-Session-Id` RESPONSE HEADER** (NOT a
+  body field). The body `session_id` field
+  (`api_server.py:1515` `effective_session_id = result.get("session_id")`) is the echo
+  for the **separate** `/api/sessions/.../chat` endpoint, not `/v1`. The harness reads
+  body-then-header to cover both endpoints; the Bridge drift-detect reads only the
+  `/v1` header (`hermes_client._detect_session_drift`).
 - On the agent chat path the gateway sets `effective_task_id = session_id or uuid`
   (`api_server.py:3464` / `:3706`) and `conversation_loop.py:432` keeps it, so the
   hook receives **`task_id == session_id == H`** ⇒ `_trace_key` (`__init__.py:222`)
