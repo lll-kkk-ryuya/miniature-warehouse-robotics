@@ -1,0 +1,56 @@
+diff --git a/agent/gemini_native_adapter.py b/agent/gemini_native_adapter.py
+index b0d903372..12d690f0a 100644
+--- a/agent/gemini_native_adapter.py
++++ b/agent/gemini_native_adapter.py
+@@ -209,6 +209,12 @@ def _extract_multimodal_parts(content: Any) -> List[Dict[str, Any]]:
+                     }
+                 }
+             )
++        elif ptype == "input_audio":
++            audio = item.get("input_audio") or {}
++            adata = audio.get("data")
++            afmt = str(audio.get("format") or "wav").strip().lower()
++            if isinstance(adata, str) and adata:
++                parts.append({"inlineData": {"mimeType": f"audio/{afmt}", "data": adata}})
+     return parts
+ 
+ 
+diff --git a/gateway/platforms/api_server.py b/gateway/platforms/api_server.py
+index 22bf199b3..c14743870 100644
+--- a/gateway/platforms/api_server.py
++++ b/gateway/platforms/api_server.py
+@@ -173,6 +173,7 @@ def _normalize_chat_content(
+ _TEXT_PART_TYPES = frozenset({"text", "input_text", "output_text"})
+ _IMAGE_PART_TYPES = frozenset({"image_url", "input_image"})
+ _FILE_PART_TYPES = frozenset({"file", "input_file"})
++_AUDIO_PART_TYPES = frozenset({"input_audio"})  # MWR ER fork
+ 
+ 
+ def _normalize_multimodal_content(content: Any) -> Any:
+@@ -268,6 +269,17 @@ def _normalize_multimodal_content(content: Any) -> Any:
+             normalized_parts.append(image_part)
+             continue
+ 
++        if part_type in _AUDIO_PART_TYPES:
++            audio_ref = part.get("input_audio")
++            if not isinstance(audio_ref, dict):
++                raise ValueError("invalid_content_part:input_audio parts must include an input_audio object.")
++            audio_data = audio_ref.get("data")
++            audio_fmt = str(audio_ref.get("format") or "wav").strip().lower()
++            if not isinstance(audio_data, str) or not audio_data.strip():
++                raise ValueError("invalid_content_part:input_audio parts must include non-empty base64 data.")
++            normalized_parts.append({"type": "input_audio", "input_audio": {"data": audio_data.strip(), "format": audio_fmt}})
++            continue
++
+         if part_type in _FILE_PART_TYPES:
+             raise ValueError(
+                 "unsupported_content_type:Inline image inputs are supported, "
+@@ -305,6 +317,8 @@ def _content_has_visible_payload(content: Any) -> bool:
+                     return True
+                 if ptype in _IMAGE_PART_TYPES:
+                     return True
++                if ptype in _AUDIO_PART_TYPES:  # MWR ER fork
++                    return True
+     return False
+ 
+ 
