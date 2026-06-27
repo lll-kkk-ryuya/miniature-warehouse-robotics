@@ -20,6 +20,7 @@ from pathlib import Path
 import rclpy
 from nav_msgs.msg import Odometry
 from rclpy.node import Node
+from warehouse_interfaces.config import load_config
 
 from warehouse_orchestrator.audit_reader import AuditEntry, read_audit_log
 from warehouse_orchestrator.kpi import (
@@ -28,7 +29,7 @@ from warehouse_orchestrator.kpi import (
     format_report,
 )
 from warehouse_orchestrator.langfuse_sink import LangfuseScoreSink
-from warehouse_orchestrator.score_send import resolve_provider, send_scores
+from warehouse_orchestrator.score_send import resolve_pattern_d, resolve_provider, send_scores
 from warehouse_orchestrator.trace_id import run_id as env_run_id
 
 _DEFAULT_REPORT_INTERVAL_SEC = 30.0
@@ -56,6 +57,18 @@ class KpiCollector(Node):
         self._run_id = str(self.get_parameter("run_id").value) or None
         self._mode = str(self.get_parameter("mode").value) or None
         self._provider = resolve_provider(str(self.get_parameter("provider").value))
+        # WHO owns the Langfuse trace this run (Pattern A vs Option D, doc13:517) — resolved
+        # from the SAME WAREHOUSE_LANGFUSE_OWNER env / hermes.langfuse_owner config the LLM
+        # Bridge reads (resolve_langfuse_owner), so ONE knob flips both legs: under Option D
+        # the Bridge lets the Hermes plugin mint the trace and THIS scorer re-derives the same
+        # id via Pattern D (derive_plugin_trace_id) instead of Pattern A. Default = bridge
+        # (Pattern A, UNCHANGED); fail-open on a missing/malformed config (never raises).
+        try:
+            cfg = load_config()
+        except Exception as exc:  # config absent/malformed must not stop scoring (fail-open)
+            self.get_logger().warning(f"config load failed; assuming Pattern A: {exc}")
+            cfg = {}
+        self._pattern_d = resolve_pattern_d(cfg)
 
         self._distances = DistanceAccumulator()
         self._langfuse = LangfuseScoreSink()
@@ -70,6 +83,7 @@ class KpiCollector(Node):
             f"kpi_collector started (interval={interval}s, robots={self._robots}, "
             f"exclude_cancelled={self._exclude_cancelled}, langfuse={self._langfuse.enabled}, "
             f"provider={self._provider or 'unset'}, "
+            f"langfuse_owner={'hermes_plugin (Option D)' if self._pattern_d else 'bridge (Pattern A)'}, "
             f"run_id={'set' if (self._run_id or env_run_id()) else 'unset'})"
         )
 
@@ -106,6 +120,7 @@ class KpiCollector(Node):
             run_id=self._run_id or env_run_id(),
             mode=self._mode,
             provider=self._provider,
+            pattern_d=self._pattern_d,
         )
         if trace is not None:
             self.flush()

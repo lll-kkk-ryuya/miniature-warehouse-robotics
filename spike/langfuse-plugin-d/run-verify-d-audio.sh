@@ -63,7 +63,7 @@ stop_gateway() {
   [ "$_stopped" = 1 ] && return 0
   _stopped=1
   log "stopping gateway via launcher --stop (kills by port $PORT; removes isolated worktree)"
-  HERMES_HOME="$HERMES_HOME" PORT="$PORT" "$GATEWAY_LAUNCHER" --stop >&2 2>&1 || \
+  HERMES_HOME="$HERMES_HOME" PORT="$PORT" "$GATEWAY_LAUNCHER" --stop >&2 || \
     log "launcher --stop reported an issue (continuing)."
 }
 trap stop_gateway EXIT INT TERM

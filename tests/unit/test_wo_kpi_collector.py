@@ -9,6 +9,7 @@ chain — fake ``audit.jsonl`` (``tmp_path`` + ``WAREHOUSE_AUDIT_LOG_PATH``) →
 SDK is imported.
 """
 
+import ast
 import hashlib
 import json
 from pathlib import Path
@@ -19,6 +20,7 @@ from warehouse_orchestrator.kpi import compute_kpis
 from warehouse_orchestrator.langfuse_sink import LangfuseScoreSink
 from warehouse_orchestrator.score_send import (
     build_score_metadata,
+    resolve_pattern_d,
     resolve_provider,
     send_scores,
 )
@@ -369,6 +371,34 @@ def test_pattern_d_inert_without_gen_id(tmp_path: Path, monkeypatch: pytest.Monk
 
 
 @pytest.mark.unit
+def test_pattern_d_blank_run_id_is_inert_like_pattern_a(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # MINOR #3: a blank/all-whitespace run_id must decline on BOTH legs. Pattern A strips inside
+    # trace_id_for; the pattern_d branch must guard identically (and the Bridge's
+    # _plugin_session_id returns None for a blank run_id) so a stray "   " never seeds "   :gen"
+    # and sends a score to a non-joinable trace. The leading `if not run_id` gate already drops
+    # "" / None; this pins the all-whitespace case for the plugin recipe specifically.
+    _write_audit(tmp_path, monkeypatch, [_DISPATCH_WITH_GEN])
+    entries = read_audit_log()
+    report = compute_kpis(entries, completions={"nav_001": 130.0})
+    sink, fake = _enabled_sink()
+    sent, trace = send_scores(
+        sink,
+        report,
+        entries,
+        {"bot1": 12.5},
+        run_id="   ",  # all-whitespace → non-joinable
+        mode="A",
+        provider="claude",
+        create_fn=_fake_create,
+        pattern_d=True,
+    )
+    assert (sent, trace) == (0, None)
+    assert fake.calls == []
+
+
+@pytest.mark.unit
 def test_node_flushes_after_a_successful_derivation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -390,3 +420,111 @@ def test_node_flushes_after_a_successful_derivation(
     )
     assert sent == 1 and trace is not None
     assert fake.flushed == 0  # helper is pure send-orchestration; flush is the node's job
+
+
+# ── resolve_pattern_d: the scorer leg of the ONE-knob Option-D switch (#2) ────
+# Mirrors the Bridge's resolve_langfuse_owner so WAREHOUSE_LANGFUSE_OWNER /
+# hermes.langfuse_owner flips BOTH legs. Without this the scorer always used Pattern A
+# and every Option-D score orphaned (the trace the plugin minted via H::H vs the Pattern-A
+# id the scorer derived from seed_for) — the new derive_plugin_trace_id was dead code.
+
+
+@pytest.mark.unit
+def test_pattern_d_default_is_false_pattern_a() -> None:
+    assert resolve_pattern_d({}, env={}) is False
+
+
+@pytest.mark.unit
+def test_pattern_d_env_selects_plugin() -> None:
+    assert resolve_pattern_d({}, env={"WAREHOUSE_LANGFUSE_OWNER": "hermes_plugin"}) is True
+
+
+@pytest.mark.unit
+def test_pattern_d_env_overrides_config() -> None:
+    # env wins over config (env-over-config, identical precedence to the Bridge resolver).
+    cfg = {"hermes": {"langfuse_owner": "hermes_plugin"}}
+    assert resolve_pattern_d(cfg, env={"WAREHOUSE_LANGFUSE_OWNER": "bridge"}) is False
+
+
+@pytest.mark.unit
+def test_pattern_d_config_used_when_env_absent() -> None:
+    cfg = {"hermes": {"langfuse_owner": "hermes_plugin"}}
+    assert resolve_pattern_d(cfg, env={}) is True
+
+
+@pytest.mark.unit
+def test_pattern_d_unknown_value_fails_safe_to_pattern_a() -> None:
+    # An unknown/typo value NEVER silently enables Option D (would orphan every score).
+    assert resolve_pattern_d({}, env={"WAREHOUSE_LANGFUSE_OWNER": "plugin"}) is False
+    assert resolve_pattern_d({"hermes": "x"}, env={}) is False  # malformed block → safe
+
+
+@pytest.mark.unit
+def test_pattern_d_blank_env_falls_through_to_config_then_default() -> None:
+    cfg = {"hermes": {"langfuse_owner": "hermes_plugin"}}
+    assert resolve_pattern_d(cfg, env={"WAREHOUSE_LANGFUSE_OWNER": "  "}) is True
+    assert resolve_pattern_d({}, env={"WAREHOUSE_LANGFUSE_OWNER": "  "}) is False
+
+
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+_KPI_COLLECTOR_PY = (
+    _REPO_ROOT / "ws/src/warehouse_orchestrator/warehouse_orchestrator/kpi_collector.py"
+)
+
+
+def _kpi_collector_method(name: str) -> ast.FunctionDef:
+    """Return a KpiCollector method's AST from SOURCE (no import — the node imports rclpy).
+
+    ``kpi_collector.py`` does ``import rclpy`` at module top and ``class KpiCollector(Node)``,
+    so it can't be imported in host CI (same constraint as test_modec_noactuation.py).
+    """
+    tree = ast.parse(_KPI_COLLECTOR_PY.read_text())
+    for cls in ast.walk(tree):
+        if isinstance(cls, ast.ClassDef) and cls.name == "KpiCollector":
+            for fn in cls.body:
+                if isinstance(fn, ast.FunctionDef) and fn.name == name:
+                    return fn
+    raise AssertionError(f"KpiCollector.{name} not found in kpi_collector.py")
+
+
+@pytest.mark.unit
+def test_kpi_collector_forwards_pattern_d_to_send_scores() -> None:
+    # Regression for the dead-code orphan bug (#2): the node MUST pass pattern_d into
+    # send_scores, wired to self._pattern_d (the init-resolved owner switch) — NOT a literal.
+    # Without this the scorer always ran Pattern A and every Option-D score orphaned. AST on
+    # source so a future refactor that drops the wiring fails this test.
+    fn = _kpi_collector_method("_send_scores")
+    send_calls = [
+        c
+        for c in ast.walk(fn)
+        if isinstance(c, ast.Call) and isinstance(c.func, ast.Name) and c.func.id == "send_scores"
+    ]
+    assert send_calls, "_send_scores must call send_scores(...)"
+    kw = {k.arg: k.value for k in send_calls[0].keywords}
+    assert "pattern_d" in kw, "send_scores(...) must receive pattern_d (Option-D scorer leg)"
+    val = kw["pattern_d"]
+    assert (
+        isinstance(val, ast.Attribute)
+        and val.attr == "_pattern_d"
+        and isinstance(val.value, ast.Name)
+        and val.value.id == "self"
+    ), "pattern_d must be wired to self._pattern_d (resolved from WAREHOUSE_LANGFUSE_OWNER)"
+
+
+@pytest.mark.unit
+def test_kpi_collector_resolves_pattern_d_at_init() -> None:
+    # The node __init__ must resolve self._pattern_d via resolve_pattern_d(...) so the knob is
+    # read once at startup (not hard-coded False). Source-level (rclpy node not constructible).
+    init = _kpi_collector_method("__init__")
+    calls = {
+        c.func.id
+        for c in ast.walk(init)
+        if isinstance(c, ast.Call) and isinstance(c.func, ast.Name)
+    }
+    assert "resolve_pattern_d" in calls, (
+        "__init__ must resolve pattern_d via resolve_pattern_d(...)"
+    )
+    assigns_pattern_d = any(
+        isinstance(n, ast.Attribute) and n.attr == "_pattern_d" for n in ast.walk(init)
+    )
+    assert assigns_pattern_d, "__init__ must set self._pattern_d"

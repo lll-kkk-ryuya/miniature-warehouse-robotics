@@ -37,6 +37,42 @@ from warehouse_orchestrator.trace_id import trace_id_for
 
 WAREHOUSE_PROVIDER_ENV = "WAREHOUSE_PROVIDER"
 
+# Langfuse-owner knob shared with the LLM Bridge (doc13:517). The SAME env var /
+# config key flips BOTH lanes so Option D is a one-config end-to-end switch:
+#   * Bridge side: warehouse_llm_bridge.hermes_client.resolve_langfuse_owner →
+#     who mints the trace (Pattern A "bridge" default vs Option D "hermes_plugin").
+#   * Scorer side (here): resolve_pattern_d → which recipe re-derives the trace id
+#     this scorer must MATCH (Pattern A trace_id_for vs Pattern D derive_plugin_trace_id).
+# We deliberately DO NOT import the Bridge constants (one-way dependency: the
+# orchestrator depends only on warehouse_interfaces + eval_sdk, parallel-workflow §2.1).
+# Re-stating the two literal values here (mirrored, byte-identical to the Bridge) keeps
+# the lanes decoupled while reading the SAME knob — the values are a stable cross-lane
+# contract, like the trace seed itself (eval_sdk.seed). Unknown values fail SAFE to
+# Pattern A (never silently enable Option D), exactly like the Bridge resolver.
+WAREHOUSE_LANGFUSE_OWNER_ENV = "WAREHOUSE_LANGFUSE_OWNER"
+_LANGFUSE_OWNER_BRIDGE = "bridge"
+_LANGFUSE_OWNER_HERMES_PLUGIN = "hermes_plugin"
+_LANGFUSE_OWNERS = frozenset({_LANGFUSE_OWNER_BRIDGE, _LANGFUSE_OWNER_HERMES_PLUGIN})
+
+
+def resolve_pattern_d(cfg: Mapping[str, object], env: Mapping[str, str] | None = None) -> bool:
+    """Is the Hermes Langfuse plugin the trace owner this run? (Option D ⇒ ``pattern_d=True``).
+
+    Mirrors the Bridge's ``resolve_langfuse_owner`` precedence so ONE knob flips both legs:
+    ``WAREHOUSE_LANGFUSE_OWNER`` env first, then ``hermes.langfuse_owner`` config, else the
+    default ``bridge`` (Pattern A). Returns ``True`` ONLY for the exact value
+    ``hermes_plugin``; a blank env falls through to config, and any unknown/typo value fails
+    SAFE to Pattern A (``False``) so a misconfig never silently orphans every score onto the
+    wrong trace recipe. Pure (env injected for tests); never raises on a malformed config block.
+    """
+    env = os.environ if env is None else env
+    raw = env.get(WAREHOUSE_LANGFUSE_OWNER_ENV)
+    if raw is None or not str(raw).strip():
+        hermes = cfg.get("hermes") if isinstance(cfg, Mapping) else None
+        raw = hermes.get("langfuse_owner") if isinstance(hermes, Mapping) else None
+    owner = str(raw).strip() if raw is not None else ""
+    return owner == _LANGFUSE_OWNER_HERMES_PLUGIN
+
 
 def resolve_provider(param: str | None) -> str | None:
     """The score ``provider`` label: the explicit param, else ``WAREHOUSE_PROVIDER`` env.
@@ -112,10 +148,13 @@ def send_scores(
     gen_id = latest_gen_id(entries)
     if pattern_d:
         # Plugin-ON join: the plugin minted the trace from f"{H}::{H}" with H=seed_for(...).
-        # gen_id None → no seed half → None (same inert no-op as Pattern A).
+        # Guard the seed exactly like Pattern A's trace_id_for (and the Bridge's
+        # _plugin_session_id): a blank/all-whitespace run_id is a misconfig → None (we never
+        # seed "   :gen"), and gen_id None → no seed half → None (the inert dev no-op). Both
+        # legs must decline on the SAME inputs so the cross-lane recipe cannot diverge.
         trace = (
             derive_plugin_trace_id(run_id, gen_id, create_fn=create_fn)
-            if gen_id is not None
+            if (run_id.strip() and gen_id is not None)
             else None
         )
     else:

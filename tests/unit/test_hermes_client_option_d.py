@@ -7,7 +7,9 @@ opt-in path ``HermesClient`` (``langfuse_owner=hermes_plugin``):
 * sends ``extra_headers={"X-Hermes-Session-Id": H}`` with ``H = seed_for(run_id, gen_id)`` so the
   plugin seeds its trace from our deterministic join key (plugin __init__:544),
 * does NOT send ``langfuse_prompt=`` (the plugin has no ``prompt=`` path),
-* DRIFT-DETECTs the echoed ``session_id`` (api_server.py:1515) — fail-open, never raises.
+* DRIFT-DETECTs the echoed session id read from the ``X-Hermes-Session-Id`` RESPONSE HEADER (via
+  ``with_raw_response`` → ``.headers``; the ``/v1/chat/completions`` path echoes it there, not in
+  the body — api_server.py:1515) — fail-open, never raises.
 
 The DEFAULT (Pattern A, ``langfuse_owner=bridge``) is verified to be UNCHANGED: it goes through
 ``langfuse.openai`` and keeps ``langfuse_prompt=``.
@@ -50,19 +52,56 @@ class _FakeChoice:
 
 
 class _FakeCompletion:
-    """Stand-in for the OpenAI chat completion; optionally carries an echoed ``session_id``."""
+    """Stand-in for the OpenAI chat completion (just the ``choices`` the parser reads)."""
 
-    def __init__(self, content: object, *, session_id: object = "__unset__") -> None:
+    def __init__(self, content: object) -> None:
         self.choices = [_FakeChoice(content)]
-        if session_id != "__unset__":
-            self.session_id = session_id
+
+
+class _FakeRawResponse:
+    """Stand-in for ``with_raw_response`` result: ``.headers`` (echo) + ``.parse()``.
+
+    The Option-D drift-detect reads the echoed session id from the ``X-Hermes-Session-Id``
+    RESPONSE HEADER (case-insensitive httpx-like mapping), then ``.parse()`` yields the typed
+    completion — exactly the OpenAI SDK shape.
+    """
+
+    def __init__(self, completion: object, headers: dict[str, str]) -> None:
+        self.headers = _Headers(headers)
+        self._completion = completion
+
+    def parse(self) -> object:
+        return self._completion
+
+
+class _Headers:
+    """Case-insensitive header mapping (mirrors httpx.Headers ``.get``)."""
+
+    def __init__(self, data: dict[str, str]) -> None:
+        self._data = {k.lower(): v for k, v in data.items()}
+
+    def get(self, key: str, default: object = None) -> object:
+        return self._data.get(key.lower(), default)
+
+
+class _FakeWithRawResponse:
+    def __init__(self, parent: "_FakeAsyncOpenAI") -> None:
+        self._parent = parent
+
+    async def create(self, **kwargs: object) -> object:
+        self._parent.create_kwargs = kwargs
+        if self._parent.raise_exc is not None:
+            raise self._parent.raise_exc
+        return _FakeRawResponse(self._parent.completion, self._parent.echo_headers)
 
 
 class _FakeCompletions:
     def __init__(self, parent: "_FakeAsyncOpenAI") -> None:
         self._parent = parent
+        self.with_raw_response = _FakeWithRawResponse(parent)
 
     async def create(self, **kwargs: object) -> object:
+        # Pattern A path (langfuse.openai wrapper) calls .create() directly (no raw response).
         self._parent.create_kwargs = kwargs
         if self._parent.raise_exc is not None:
             raise self._parent.raise_exc
@@ -79,10 +118,12 @@ class _FakeAsyncOpenAI:
 
     ``instances`` (class-level) collects every constructed client so a test can assert WHICH
     SDK class was used (plain ``openai`` vs ``langfuse.openai``) by which factory was patched.
+    ``echo_headers`` is the response-header set the Option-D path drift-detects against.
     """
 
     instances: list["_FakeAsyncOpenAI"] = []
     completion: object = _FakeCompletion(_VALID_CONTENT)
+    echo_headers: dict[str, str] = {}
     raise_exc: BaseException | None = None
 
     def __init__(self, **kwargs: object) -> None:
@@ -96,7 +137,13 @@ class _FakeAsyncOpenAI:
 def _reset_fake() -> None:
     _FakeAsyncOpenAI.instances = []
     _FakeAsyncOpenAI.completion = _FakeCompletion(_VALID_CONTENT)
+    _FakeAsyncOpenAI.echo_headers = {}
     _FakeAsyncOpenAI.raise_exc = None
+
+
+def _echo_session(value: str) -> None:
+    """Configure the X-Hermes-Session-Id RESPONSE HEADER the plugin path drift-detects on."""
+    _FakeAsyncOpenAI.echo_headers = {HERMES_SESSION_HEADER: value}
 
 
 def _patch_plain_openai(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -160,7 +207,7 @@ def test_plugin_path_sends_session_header_h(monkeypatch: pytest.MonkeyPatch) -> 
         langfuse_owner=LANGFUSE_OWNER_HERMES_PLUGIN,
         run_id="run-7",
     )
-    _FakeAsyncOpenAI.completion = _FakeCompletion(_VALID_CONTENT, session_id=seed_for("run-7", 42))
+    _echo_session(seed_for("run-7", 42))
     cmd = _run(client, {"gen_id": 42})
     assert cmd["commands"][0]["action"] == "navigate"
     create_kwargs = _FakeAsyncOpenAI.instances[0].create_kwargs
@@ -183,7 +230,7 @@ def test_plugin_path_drops_langfuse_prompt_even_if_set(
         run_id="run-7",
         langfuse_prompt=object(),
     )
-    _FakeAsyncOpenAI.completion = _FakeCompletion(_VALID_CONTENT, session_id="run-7:1")
+    _echo_session("run-7:1")
     _run(client, {"gen_id": 1})
     assert "langfuse_prompt" not in _FakeAsyncOpenAI.instances[0].create_kwargs
 
@@ -221,10 +268,10 @@ def test_plugin_path_missing_gen_id_omits_header(
 def test_drift_detected_logs_but_returns_command(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
-    # Echoed session_id != H → the obs join would orphan → warn + skip, but the command is
+    # Echoed session header != H → the obs join would orphan → warn + skip, but the command is
     # STILL returned and NO exception is raised (R-26: obs never changes actuation).
     _patch_plain_openai(monkeypatch)
-    _FakeAsyncOpenAI.completion = _FakeCompletion(_VALID_CONTENT, session_id="DIFFERENT")
+    _echo_session("DIFFERENT")
     client = HermesClient(
         "http://hermes:8642", langfuse_owner=LANGFUSE_OWNER_HERMES_PLUGIN, run_id="run-7"
     )
@@ -238,9 +285,9 @@ def test_drift_detected_logs_but_returns_command(
 def test_missing_session_echo_treated_as_drift_fail_open(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # No session_id on the response (older/raw path) → treated as drift → still returns command.
+    # No echo header on the response → treated as drift → still returns command (fail-open).
     _patch_plain_openai(monkeypatch)
-    _FakeAsyncOpenAI.completion = _FakeCompletion(_VALID_CONTENT)  # no session_id
+    # echo_headers stays {} (reset fixture) → no X-Hermes-Session-Id header.
     client = HermesClient(
         "http://hermes:8642", langfuse_owner=LANGFUSE_OWNER_HERMES_PLUGIN, run_id="run-7"
     )
@@ -249,14 +296,36 @@ def test_missing_session_echo_treated_as_drift_fail_open(
 
 
 @pytest.mark.unit
-def test_matching_session_echo_no_drift(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_matching_session_echo_no_drift(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
     _patch_plain_openai(monkeypatch)
-    _FakeAsyncOpenAI.completion = _FakeCompletion(_VALID_CONTENT, session_id="run-7:42")
+    _echo_session("run-7:42")
     client = HermesClient(
         "http://hermes:8642", langfuse_owner=LANGFUSE_OWNER_HERMES_PLUGIN, run_id="run-7"
     )
-    cmd = _run(client, {"gen_id": 42})  # H == echoed → no drift
+    with caplog.at_level("WARNING"):
+        cmd = _run(client, {"gen_id": 42})  # H == echoed header → no drift
     assert cmd["commands"][0]["action"] == "navigate"
+    # The echoed header matched H, so NO drift warning is emitted (case-insensitive read).
+    assert not any("drift" in r.message.lower() for r in caplog.records)
+
+
+@pytest.mark.unit
+def test_matching_session_echo_case_insensitive_header(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    # HTTP headers are case-insensitive (httpx.Headers); a gateway echoing a different case
+    # (e.g. lowercase) must STILL match H so we never report false drift on the live path.
+    _patch_plain_openai(monkeypatch)
+    _FakeAsyncOpenAI.echo_headers = {HERMES_SESSION_HEADER.lower(): "run-7:42"}
+    client = HermesClient(
+        "http://hermes:8642", langfuse_owner=LANGFUSE_OWNER_HERMES_PLUGIN, run_id="run-7"
+    )
+    with caplog.at_level("WARNING"):
+        cmd = _run(client, {"gen_id": 42})
+    assert cmd["commands"][0]["action"] == "navigate"
+    assert not any("drift" in r.message.lower() for r in caplog.records)
 
 
 # ── R-26: identical failure contract on the Option-D path ─────────────────────
@@ -282,7 +351,8 @@ def test_plugin_path_malformed_content_is_valueerror(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _patch_plain_openai(monkeypatch)
-    _FakeAsyncOpenAI.completion = _FakeCompletion("not json", session_id="run-7:1")
+    _FakeAsyncOpenAI.completion = _FakeCompletion("not json")
+    _echo_session("run-7:1")
     client = HermesClient(
         "http://hermes:8642", langfuse_owner=LANGFUSE_OWNER_HERMES_PLUGIN, run_id="run-7"
     )

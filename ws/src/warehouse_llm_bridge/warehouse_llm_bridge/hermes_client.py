@@ -61,8 +61,11 @@ HERMES_MODEL = "hermes-agent"
 #   uses plain ``from openai import AsyncOpenAI`` (NO langfuse.openai wrapper, so the Bridge does
 #   NOT create a duplicate generation) and DROPS ``langfuse_prompt=`` (the plugin has no
 #   ``prompt=`` path — managed-prompt link is lost; see spike/langfuse-plugin-d/
-#   MANAGED-PROMPT-DECISION.md). Drift-detect: the Bridge reads the echoed ``session_id`` and, if
-#   it != H, skips the score join for that cycle — FAIL-OPEN, it NEVER raises into the cycle.
+#   MANAGED-PROMPT-DECISION.md). Drift-detect: the Bridge reads the echoed session id from the
+#   ``X-Hermes-Session-Id`` RESPONSE HEADER and, if it != H, LOGS that this cycle's score join
+#   WOULD ORPHAN (the plugin seeded on a different id than the scorer re-derives). It does NOT
+#   suppress the scorer (a separate process, score_send.py) — there is no cross-lane suppression
+#   path; the Bridge only notes it. FAIL-OPEN: it NEVER raises into the cycle (R-26).
 LANGFUSE_OWNER_BRIDGE = "bridge"
 LANGFUSE_OWNER_HERMES_PLUGIN = "hermes_plugin"
 
@@ -466,11 +469,15 @@ class HermesClient(LLMClient):
           so the plugin seeds its trace from our join key (plugin __init__:544 →
           ``create_trace_id(seed="H::H")``; #6 re-derives via
           :func:`eval_sdk.seed.derive_plugin_trace_id`).
-        * DRIFT-DETECT (fail-open): read the echoed ``session_id`` (api_server.py:1515
-          ``effective_session_id = result.get("session_id")``); if it != H the plugin trace
-          will NOT match our derived id, so the obs join for THIS cycle is skipped (logged,
-          NEVER raised). ``import openai`` is still used only for the error TYPE so a
-          transport failure maps to the same ``LLMUnavailableError`` as Pattern A.
+        * DRIFT-DETECT (fail-open): read the echoed session id from the
+          ``X-Hermes-Session-Id`` RESPONSE HEADER (the ``/v1/chat/completions`` path echoes it
+          there, NOT in the body — see :meth:`_detect_session_drift`); if it != H the plugin
+          trace will NOT match our derived id, so the obs join for THIS cycle is skipped
+          (logged, NEVER raised). To read the header we go through
+          ``chat.completions.with_raw_response.create`` (``.headers`` + ``.parse()``); the
+          request body is byte-for-byte identical to Pattern A. ``import openai`` is still used
+          only for the error TYPE so a transport failure maps to the same
+          ``LLMUnavailableError`` as Pattern A.
         """
         try:
             import openai
@@ -489,18 +496,23 @@ class HermesClient(LLMClient):
         if h is not None:
             create_kwargs["extra_headers"] = {HERMES_SESSION_HEADER: h}
         try:
-            completion = await client.chat.completions.create(**create_kwargs)
+            # with_raw_response so the drift-detect can read the echoed session id from the
+            # RESPONSE HEADER (the chat path echoes it there, not in the body). Same request
+            # body as Pattern A; .parse() yields the identical typed completion.
+            raw = await client.chat.completions.with_raw_response.create(**create_kwargs)
         except openai.OpenAIError as exc:
             raise LLMUnavailableError(f"hermes request failed: {exc}") from exc
 
-        # Obs-only drift-detect: compare the echoed session id to H. A mismatch (or a missing
-        # echo) means the plugin's minted trace will not equal our derived id, so the score
-        # join would orphan -> note it and move on. This NEVER affects the dispatched command
-        # (R-26: observability must not change actuation) and NEVER raises into the cycle.
+        # Obs-only drift-detect: compare the echoed session id (response header) to H. A
+        # mismatch (or a missing echo) means the plugin's minted trace will not equal our
+        # derived id, so the score join would orphan -> note it and move on. This NEVER affects
+        # the dispatched command (R-26: observability must not change actuation) and NEVER
+        # raises into the cycle.
         if h is not None:
-            self._detect_session_drift(completion, h)
+            self._detect_session_drift(raw, h)
 
         try:
+            completion = raw.parse()
             content = completion.choices[0].message.content
         except (AttributeError, IndexError, TypeError) as exc:
             raise ValueError(f"unexpected completion shape: {exc}") from exc
@@ -521,22 +533,29 @@ class HermesClient(LLMClient):
             return None
         return seed_for(run_id, gen_id)
 
-    def _detect_session_drift(self, completion: object, expected: str) -> None:
-        """Fail-open: warn if the echoed ``session_id`` != H (the obs join would orphan).
+    def _detect_session_drift(self, raw: object, expected: str) -> None:
+        """Fail-open: warn if the echoed session id != H (the obs join would orphan).
 
-        Best-effort read of ``completion.session_id`` (the OpenAI SDK surfaces unknown
-        top-level response fields; api_server.py:1515 echoes ``effective_session_id``). Any
-        read error or mismatch is logged and swallowed — this is observability only and must
-        NEVER raise into the commander cycle (R-26 fail-open, doc08:333).
+        Best-effort read of the ``X-Hermes-Session-Id`` RESPONSE HEADER from the raw API
+        response (``with_raw_response`` → ``.headers``). The ``/v1/chat/completions`` path
+        echoes ``effective_session_id`` as that header, NOT a body field (the body
+        ``session_id`` only exists on the ``/api/sessions/.../chat`` endpoint, api_server.py:
+        1515) — so a body read would have mismatched on EVERY live cycle. ``.headers`` is the
+        case-insensitive httpx mapping. Any read error or mismatch is logged and swallowed —
+        this is observability only and must NEVER raise into the commander cycle (R-26
+        fail-open, doc08:333).
         """
         try:
-            echoed = getattr(completion, "session_id", None)
-        except Exception:  # pragma: no cover - defensive; getattr should not raise
+            headers = getattr(raw, "headers", None)
+            echoed = headers.get(HERMES_SESSION_HEADER) if headers is not None else None
+        except Exception:  # pragma: no cover - defensive; .get should not raise
             echoed = None
         if echoed != expected:
             log.warning(
-                "Option-D session drift: echoed session_id %r != H %r; skipping this "
-                "cycle's score join (fail-open, obs-only)",
+                "Option-D session drift: echoed %s=%r != H %r; this cycle's score join "
+                "WOULD ORPHAN (plugin seeded on a different id than the scorer re-derives) "
+                "(fail-open, obs-only — the dispatched command is unaffected)",
+                HERMES_SESSION_HEADER,
                 echoed,
                 expected,
             )

@@ -9,7 +9,7 @@
 # warehouse_llm_bridge / eval_sdk / warehouse_interfaces packages on PYTHONPATH so
 # it imports the REAL Bridge code (not a hand-built POST).
 #
-# EXIT: 0 PASS / 1 FAIL (from bridge_live_test.py) ; other = setup/teardown error.
+# EXIT: 0 PASS / 1 FAIL / 2 INCONCLUSIVE (from bridge_live_test.py) ; other = setup error.
 # =============================================================================
 set -euo pipefail
 
@@ -26,7 +26,9 @@ HOST="${API_SERVER_HOST:-127.0.0.1}"
 BASE="http://${HOST}:${PORT}"
 HEALTH_TIMEOUT_S="${HEALTH_TIMEOUT_S:-90}"
 
-VENV_PY="${VENV_PY:-/Users/kawaguchiryuya/Developer/miniature-warehouse-robotics/.venv/bin/python}"
+# Prefer the .venv (py3.12) two levels up from this worktree; fall back to a system py3.12/3
+# (do NOT hard-code a personal absolute path — the sibling run-verify-d-audio.sh derives it too).
+VENV_PY="${VENV_PY:-$WT_ROOT/../miniature-warehouse-robotics/.venv/bin/python}"
 [ -x "$VENV_PY" ] || VENV_PY="$(command -v python3.12 || command -v python3)"
 
 log() { printf '[run-bridge-live] %s\n' "$*" >&2; }
@@ -43,7 +45,7 @@ stop_gateway() {
   [ "$_stopped" = 1 ] && return 0
   _stopped=1
   log "stopping gateway via launcher --stop (port $PORT)"
-  HERMES_HOME="$HERMES_HOME" PORT="$PORT" "$GATEWAY_LAUNCHER" --stop >&2 2>&1 || log "stop reported an issue (continuing)."
+  HERMES_HOME="$HERMES_HOME" PORT="$PORT" "$GATEWAY_LAUNCHER" --stop >&2 || log "stop reported an issue (continuing)."
 }
 trap stop_gateway EXIT INT TERM
 
@@ -67,6 +69,11 @@ log "gateway healthy ✓"
 log "sourcing creds from \$HERMES_HOME/.env (values never printed)"
 set -a; . "$HERMES_HOME/.env"; set +a
 [ -n "${API_SERVER_KEY:-}" ] || die "API_SERVER_KEY not set after sourcing .env."
+# Distinguish "Langfuse not configured" (test returns INCONCLUSIVE=2) from a real setup error,
+# so an empty key is not mistaken for a bare FAIL (parity with run-verify-d-audio.sh).
+if [ -z "${HERMES_LANGFUSE_PUBLIC_KEY:-}" ] || [ -z "${HERMES_LANGFUSE_SECRET_KEY:-}" ]; then
+  log "WARNING: HERMES_LANGFUSE_* not set — the trace lookup will be INCONCLUSIVE (plugin no-ops)."
+fi
 [ -d "$LANGFUSE_LIBS" ] || die "isolated langfuse libs missing at $LANGFUSE_LIBS."
 
 # REAL Bridge code + its deps. Do NOT put LANGFUSE_LIBS on the TEST's path: it is a
