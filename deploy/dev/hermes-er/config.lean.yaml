@@ -40,10 +40,17 @@ agent:
   environment_probe: false
   disabled_toolsets: []
 
-# Observability is OUT-OF-BAND and fail-open. To trace ER calls to Langfuse, enable the built-in
-# plugin on this instance (does NOT block the response — background-thread ingestion):
-#   pip install langfuse
-#   HERMES_HOME=<this home> hermes plugins enable observability/langfuse
-# and set HERMES_LANGFUSE_PUBLIC_KEY / HERMES_LANGFUSE_SECRET_KEY / HERMES_LANGFUSE_BASE_URL in .env.
-# NOTE: because the audio leg bypasses Hermes, this plugin does NOT observe the audio-ER call —
-# the Bridge-owned Langfuse trace remains the uniform owner (docs/architecture/08, prod/02 §HLF gate).
+# Observability is OUT-OF-BAND and fail-open. The built-in Langfuse plugin is ENABLED below so ER
+# calls through this gateway are traced to Langfuse (background-thread ingestion; never blocks the
+# response). Set HERMES_LANGFUSE_PUBLIC_KEY / _SECRET_KEY / _BASE_URL in .env and install langfuse in
+# the gateway interpreter (the run-er-gateway-langfuse.sh launcher does this via pip --target +
+# PYTHONPATH). If langfuse is absent the plugin fails open (no traces, no crash).
+# NOTE: with the input_audio fork applied (run-er-gateway-langfuse.sh), the audio-ER call DOES
+# traverse this gateway, so the plugin observes it too (Option D plugin-owned trace, verified
+# 2026-06-27). Without the fork, audio bypasses Hermes and only the Bridge-owned trace covers it
+# (docs/architecture/08, prod/02 §HLF gate).
+# IMPORTANT: keep this as a REAL plugins.enabled key, NOT only a comment — an earlier comment-only
+# mention false-matched the launcher's enable check, so the plugin was never loaded (root cause fix).
+plugins:
+  enabled:
+    - observability/langfuse
