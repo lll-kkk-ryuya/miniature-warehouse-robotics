@@ -26,11 +26,37 @@ from warehouse_llm_bridge.robotics.adapters import (
     Transport,
 )
 from warehouse_llm_bridge.robotics.er_task import ErTaskRequest
+from warehouse_llm_bridge.robotics.observability import (
+    InMemoryTranscriptSink,
+    JsonlTranscriptSink,
+    LangfuseTranscriptTracer,
+    TranscriptSink,
+)
+from warehouse_llm_bridge.robotics.perception_lanes import (
+    PerceptionLaneResult,
+    run_perception_lanes,
+)
+from warehouse_llm_bridge.robotics.transcription import (
+    CallableTranscriber,
+    HermesTranscriber,
+    Transcriber,
+    TranscriptResult,
+)
 
 __all__ = [
+    "CallableTranscriber",
     "ErAdapter",
     "ErTaskRequest",
     "GeminiErAdapter",
+    "HermesTranscriber",
+    "InMemoryTranscriptSink",
+    "JsonlTranscriptSink",
+    "LangfuseTranscriptTracer",
+    "PerceptionLaneResult",
     "ProviderType",
+    "Transcriber",
+    "TranscriptResult",
+    "TranscriptSink",
     "Transport",
+    "run_perception_lanes",
 ]
