@@ -97,10 +97,12 @@
 #    prints any secret value.
 # =============================================================================
 """HLF-G0 live probe. Human/main-session only. See module docstring."""
+
 from __future__ import annotations
 
 import argparse
 import base64
+import contextlib
 import hashlib
 import json
 import os
@@ -110,8 +112,7 @@ import tempfile
 import time
 import urllib.error
 import urllib.request
-import uuid
-from typing import Any, Optional
+from typing import Any
 
 # --- Markers used in the final verdict line (greppable by the wrapper/README) --
 PASS = "HLF-G0 PASS"  # plugin honored an INBOUND trace_id
@@ -126,7 +127,7 @@ def log(msg: str) -> None:
     print(f"[hlf-g0] {msg}", file=sys.stderr, flush=True)
 
 
-def die(msg: str, code: int = 1) -> "None":
+def die(msg: str, code: int = 1) -> None:
     log(f"ERROR: {msg}")
     sys.exit(code)
 
@@ -167,7 +168,7 @@ def plugin_rederived_trace_id(session_id: str) -> str:
 # --------------------------------------------------------------------------- #
 # WAV input                                                                    #
 # --------------------------------------------------------------------------- #
-def build_wav(path_arg: Optional[str], tmpdir: str) -> Optional[str]:
+def build_wav(path_arg: str | None, tmpdir: str) -> str | None:
     """Return base64 wav. Prefer an explicit --wav path; else say+afconvert.
 
     Returns None if neither is available (audio leg is then SKIPPED — but the
@@ -191,11 +192,13 @@ def build_wav(path_arg: Optional[str], tmpdir: str) -> Optional[str]:
     try:
         subprocess.run(
             [say, "-o", aiff, "Move the red box to the loading dock."],
-            check=True, capture_output=True,
+            check=True,
+            capture_output=True,
         )
         subprocess.run(
             [afconvert, "-f", "WAVE", "-d", "LEI16@16000", "-c", "1", aiff, wav],
-            check=True, capture_output=True,
+            check=True,
+            capture_output=True,
         )
     except (subprocess.CalledProcessError, OSError) as exc:
         log(f"WAV generation failed ({exc}); audio leg will be SKIPPED.")
@@ -204,16 +207,18 @@ def build_wav(path_arg: Optional[str], tmpdir: str) -> Optional[str]:
         return base64.b64encode(fh.read()).decode("ascii")
 
 
-def _which(name: str) -> Optional[str]:
+def _which(name: str) -> str | None:
     from shutil import which
+
     return which(name)
 
 
 # --------------------------------------------------------------------------- #
 # Gateway POST                                                                 #
 # --------------------------------------------------------------------------- #
-def post_chat(base: str, api_key: str, wav_b64: Optional[str],
-              session_id: str, inbound_tid: str, timeout: float) -> tuple[int, dict]:
+def post_chat(
+    base: str, api_key: str, wav_b64: str | None, session_id: str, inbound_tid: str, timeout: float
+) -> tuple[int, dict]:
     """POST input_audio (or text) to /v1/chat/completions on the plugin-ON gateway.
 
     We attach the inbound trace_id THREE ways to maximize the chance the plugin
@@ -288,6 +293,7 @@ def post_chat(base: str, api_key: str, wav_b64: Optional[str],
 def import_langfuse():
     try:
         from langfuse import Langfuse  # noqa: WPS433 (isolated import by design)
+
         return Langfuse
     except Exception as exc:  # pragma: no cover - env-gated
         die(
@@ -297,12 +303,11 @@ def import_langfuse():
         )
 
 
-def make_langfuse_client(Langfuse):
+def make_langfuse_client(langfuse_cls):
     pub = os.environ.get("HERMES_LANGFUSE_PUBLIC_KEY", "").strip()
     sec = os.environ.get("HERMES_LANGFUSE_SECRET_KEY", "").strip()
     base_url = (
-        os.environ.get("HERMES_LANGFUSE_BASE_URL", "").strip()
-        or "https://cloud.langfuse.com"
+        os.environ.get("HERMES_LANGFUSE_BASE_URL", "").strip() or "https://cloud.langfuse.com"
     )
     if not (pub and sec):
         die(
@@ -312,7 +317,7 @@ def make_langfuse_client(Langfuse):
         )
     # Construct exactly as the plugin would (same keys/base_url), so we read the
     # same project the plugin wrote to. Never print the values.
-    return Langfuse(public_key=pub, secret_key=sec, base_url=base_url)
+    return langfuse_cls(public_key=pub, secret_key=sec, base_url=base_url)
 
 
 def fetch_spike_traces(client, *, since_ms: int) -> list:
@@ -351,21 +356,23 @@ def fetch_spike_traces(client, *, since_ms: int) -> list:
     try:
         page = api.list(limit=20)
         recent = []
-        for t in (getattr(page, "data", []) or []):
+        for t in getattr(page, "data", []) or []:
             ts = getattr(t, "timestamp", None)
             ms = _to_ms(ts)
             if ms is None or ms >= since_ms - 5000:
                 recent.append(t)
         if recent:
-            log(f"Langfuse: {len(recent)} recent trace(s) (no session/tag match — "
-                "plugin did not propagate spike session/tag; inspecting by recency)")
+            log(
+                f"Langfuse: {len(recent)} recent trace(s) (no session/tag match — "
+                "plugin did not propagate spike session/tag; inspecting by recency)"
+            )
         return recent
     except Exception as exc:  # pragma: no cover - live
         log(f"trace.list(recent) failed: {exc}")
         return []
 
 
-def _to_ms(ts: Any) -> Optional[int]:
+def _to_ms(ts: Any) -> int | None:
     if ts is None:
         return None
     if isinstance(ts, (int, float)):
@@ -468,36 +475,61 @@ def decide_verdict(traces, inbound_tid: str, rederived_tid: str) -> tuple[str, s
 def main() -> int:
     ap = argparse.ArgumentParser(
         description="HLF-G0 live probe (HUMAN/main-session only; needs creds + "
-                    "running plugin-ON gateway + Langfuse).",
+        "running plugin-ON gateway + Langfuse).",
     )
-    ap.add_argument("--base", default=os.environ.get("HLF_G0_BASE", ""),
-                    help="Gateway base URL, e.g. http://127.0.0.1:8644 "
-                         "(default $HLF_G0_BASE).")
-    ap.add_argument("--wav", default=None,
-                    help="Path to a wav file. Default: generate via say+afconvert "
-                         "(macOS); if unavailable the audio leg is SKIPPED.")
-    ap.add_argument("--run-id", default=os.environ.get("HLF_G0_RUN_ID", "hlfg0run"),
-                    help="run_id half of the inbound trace seed (deterministic).")
-    ap.add_argument("--gen-id", default=os.environ.get("HLF_G0_GEN_ID", "gen0001"),
-                    help="gen_id half of the inbound trace seed (deterministic).")
-    ap.add_argument("--session-id", default=SPIKE_SESSION_ID,
-                    help=f"X-Hermes-Session-Id to send (default {SPIKE_SESSION_ID!r}).")
-    ap.add_argument("--settle", type=float, default=8.0,
-                    help="Seconds to wait for the plugin's async flush before "
-                         "querying Langfuse (default 8).")
-    ap.add_argument("--timeout", type=float, default=90.0,
-                    help="HTTP timeout for the gateway POST (default 90).")
+    ap.add_argument(
+        "--base",
+        default=os.environ.get("HLF_G0_BASE", ""),
+        help="Gateway base URL, e.g. http://127.0.0.1:8644 (default $HLF_G0_BASE).",
+    )
+    ap.add_argument(
+        "--wav",
+        default=None,
+        help="Path to a wav file. Default: generate via say+afconvert "
+        "(macOS); if unavailable the audio leg is SKIPPED.",
+    )
+    ap.add_argument(
+        "--run-id",
+        default=os.environ.get("HLF_G0_RUN_ID", "hlfg0run"),
+        help="run_id half of the inbound trace seed (deterministic).",
+    )
+    ap.add_argument(
+        "--gen-id",
+        default=os.environ.get("HLF_G0_GEN_ID", "gen0001"),
+        help="gen_id half of the inbound trace seed (deterministic).",
+    )
+    ap.add_argument(
+        "--session-id",
+        default=SPIKE_SESSION_ID,
+        help=f"X-Hermes-Session-Id to send (default {SPIKE_SESSION_ID!r}).",
+    )
+    ap.add_argument(
+        "--settle",
+        type=float,
+        default=8.0,
+        help="Seconds to wait for the plugin's async flush before querying Langfuse (default 8).",
+    )
+    ap.add_argument(
+        "--timeout",
+        type=float,
+        default=90.0,
+        help="HTTP timeout for the gateway POST (default 90).",
+    )
     args = ap.parse_args()
 
     if not args.base:
-        die("missing --base (or $HLF_G0_BASE): the plugin-ON gateway base URL, "
-            "e.g. http://127.0.0.1:8644")
+        die(
+            "missing --base (or $HLF_G0_BASE): the plugin-ON gateway base URL, "
+            "e.g. http://127.0.0.1:8644"
+        )
     base = args.base.rstrip("/")
 
     api_key = os.environ.get("API_SERVER_KEY", "").strip()
     if not api_key:
-        die("API_SERVER_KEY not set in env (the gateway bearer token). Source the "
-            "gateway HERMES_HOME/.env (run-hlf-g0.sh does).")
+        die(
+            "API_SERVER_KEY not set in env (the gateway bearer token). Source the "
+            "gateway HERMES_HOME/.env (run-hlf-g0.sh does)."
+        )
 
     inbound_tid = inbound_trace_id(args.run_id, args.gen_id)
     rederived_tid = plugin_rederived_trace_id(args.session_id)
@@ -505,8 +537,8 @@ def main() -> int:
     log(f"plugin-seed re-derived trace_id (sid={args.session_id!r}) = {rederived_tid}")
 
     # --- import langfuse FIRST (fail fast if libs not isolated) ---------------
-    Langfuse = import_langfuse()
-    client = make_langfuse_client(Langfuse)
+    langfuse_cls = import_langfuse()
+    client = make_langfuse_client(langfuse_cls)
 
     # --- (1) POST + assert 200 (audio still works with plugin ON) -------------
     with tempfile.TemporaryDirectory(prefix="hlf-g0.") as tmpdir:
@@ -514,17 +546,20 @@ def main() -> int:
         audio_leg = "AUDIO" if wav_b64 is not None else "TEXT-ONLY (audio skipped)"
         log(f"POST /v1/chat/completions ({audio_leg}) to plugin-ON gateway ...")
         post_ms = int(time.time() * 1000)
-        status, resp = post_chat(
-            base, api_key, wav_b64, args.session_id, inbound_tid, args.timeout
-        )
+        status, resp = post_chat(base, api_key, wav_b64, args.session_id, inbound_tid, args.timeout)
 
     if status == 200:
-        log(f"PASS: chat/completions -> HTTP 200 (audio/transport works with plugin ON). "
-            f"leg={audio_leg}")
+        log(
+            f"PASS: chat/completions -> HTTP 200 (audio/transport works with plugin ON). "
+            f"leg={audio_leg}"
+        )
     else:
         head = json.dumps(resp)[:400]
-        die(f"chat/completions -> HTTP {status} (expected 200). Plugin ON may have "
-            f"broken the request path. Body head: {head}", code=2)
+        die(
+            f"chat/completions -> HTTP {status} (expected 200). Plugin ON may have "
+            f"broken the request path. Body head: {head}",
+            code=2,
+        )
 
     # --- (2) wait for async flush, then query Langfuse ------------------------
     log(f"waiting {args.settle}s for the plugin's background flush ...")
@@ -555,10 +590,8 @@ def main() -> int:
     verdict, rationale = decide_verdict(traces, inbound_tid, rederived_tid)
 
     # Flush our own read client (no-op for reads, but tidy).
-    try:
+    with contextlib.suppress(Exception):
         client.flush()
-    except Exception:
-        pass
 
     print("")
     print("=" * 78)
