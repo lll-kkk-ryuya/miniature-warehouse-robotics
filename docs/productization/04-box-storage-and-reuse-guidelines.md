@@ -112,7 +112,7 @@ site profile に置くもの:
 - map / Nav2 profile
 - KPI vocabulary / report target
 - run manifest へ渡す profile 名（実行 run そのものは `out/runs/<run_id>/manifest.yaml` へ保存）
-- plugin に渡す案件別 parameter set（例: `l3.zone_policy` が読む zone polygon / target rule）
+- `plugin_profiles/*.yaml` に置く plugin parameter set（例: `l3.zone_policy` が読む zone polygon / target rule）
 
 site profile に置かないもの:
 
@@ -122,7 +122,7 @@ site profile に置かないもの:
 - frozen contract を勝手に拡張する schema
 
 plugin 本体は再利用可能な rule / adapter / resolver として repo 内 `plugins/` または
-別 package に置き、現場ごとの値は site profile に置く。例えば
+別 package に置き、現場ごとの値は `plugin_profiles/*.yaml` に置く。例えば
 `l3.zone_policy` plugin は「target が許可 zone 外なら reject」という実装だけを持ち、
 `red_box` を `zone_a` 内に限定するかどうかは site profile の parameter set で決める。
 run manifest には、どの plugin をどの profile 名で使ったかだけを残す
