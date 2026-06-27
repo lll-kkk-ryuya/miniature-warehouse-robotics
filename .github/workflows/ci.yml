@@ -45,6 +45,34 @@ jobs:
           WAREHOUSE_RUN_LANGFUSE_API_CONTRACT: "1"
         run: pytest tests/unit/test_eval_sdk_langfuse_api_contract.py
 
+  bridge-option-d:
+    name: Bridge Option-D path (openai + langfuse SDK)
+    runs-on: ubuntu-latest
+    # Gates the bridge-leg Option-D tests that NO other job runs. The default
+    # python-quality pytest installs only `ruff pytest pydantic pyyaml` — neither
+    # `openai` nor `langfuse` — so tests/unit/test_hermes_client_option_d.py
+    # `pytest.importorskip("openai")` / `importorskip("langfuse.openai")` (those
+    # SDKs are lazy pip extras imported inside HermesClient.decide) SKIP entirely
+    # there. The Option-D request shape, the `X-Hermes-Session-Id` header seeding,
+    # and the fail-open drift-detect (_detect_session_drift, whitespace strip) thus
+    # never ran in CI. Installing the SDK extras turns those importorskips into real
+    # collection so the bridge leg is gated (cf. langfuse-api-contract above, and
+    # firmware-safety which likewise runs host units no other job collects).
+    # 正本: docs/architecture/20-dev-quality-and-testing.md:48 (CI job 一覧).
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install bridge Option-D deps (SDK extras + contract runtime)
+        # ruff pytest "pydantic>=2" pyyaml: same runtime as python-quality (the
+        # bridge imports warehouse_interfaces contract schemas + config loader).
+        # openai + "langfuse>=4.9,<5": the lazy SDK extras the production decide()
+        # path imports — pinned to the same langfuse range as langfuse-api-contract.
+        run: pip install ruff pytest "pydantic>=2" pyyaml openai "langfuse>=4.9,<5"
+      - name: Pytest (bridge Option-D path — openai/langfuse must collect, not skip)
+        run: pytest tests/unit/test_hermes_client_option_d.py
+
   governance:
     name: Governance (contract label + track boundaries)
     runs-on: ubuntu-latest
