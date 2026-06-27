@@ -9,7 +9,7 @@
 1. 人の音声指示がパイプラインのどこか（schema / target / confidence / DAG / policy / battery / emergency / nav / clamp …）で **reject / needs_clarification / emergency_stop** になったとき、「**どの箱（この部分）の・どの理由（この箇所）でおかしいから動作できない**」を**人へ音声で返す**機能を追加する。
 2. これは新しい判断ロジックではなく、**operator 向け出力チャネル**である。各 gate は既に人間可読の理由（`decision` / `reason_code` / `reason_detail` / L3 の `message_for_operator`）を**出している**（`docs/productization/05-decision-observability-and-tooling.md:48-69`・`docs/mode-x-er/02-l3-planning-core.md:95`）。欠けているのは**それを音声化して人へ戻す箱**だけ。
 3. 置き場所は **L4 Robotics Bridge Super-Box 内の新 sub-box「Operator Feedback Box」**。既存の **Input Context Box（operator→system の入力 sub-box・`docs/productization/01-commercial-box-map.md:13`）の鏡像**（system→operator の出力）として対称に置く。理由とほかの候補を却下した根拠は §2。
-4. **安全のため reject 理由の文面は deterministic（テンプレート lookup）で作り、LLM に作文させない**。fallible な model の周りに deterministic な安全 gate と説明可能な reason_code を置く本プロジェクトの思想（`docs/productization/01-commercial-box-map.md:53`・`docs/mode-x-er/04-er-input-modalities-and-stt.md:79`）に合わせる。LLM は**安全に無関係な言い回し整形**にのみ optional で使い、reason_code を ground truth として必ず添える（§4）。
+4. **安全のため reject 理由の文面は deterministic（テンプレート lookup）で作り、LLM に作文させない**。fallible な model の周りに deterministic な安全 gate と説明可能な reason_code を置く本プロジェクトの思想（`docs/productization/01-commercial-box-map.md:53`・`docs/mode-x-er/04-er-input-modalities-and-stt.md:80`）に合わせる。LLM は**安全に無関係な言い回し整形**にのみ optional で使い、reason_code を ground truth として必ず添える（§4）。
 5. まず **Mode X-ER** に組み込む。Mode X-ER は既に **operator voice 入力**と **Hermes Voice/TTS transport** を持つ（`docs/mode-x-er/01-architecture-and-flow.md:23`・`:219`）ので、対称な**音声出力**を足すのが最小増分になる。組み込み方は §5。
 6. **喋るのは「operator が音声で出した命令に紐づく失敗・節目」だけ**（`gen_id` 相関 + lifecycle filter）。命令外の自律停止・50ms tick まで喋ると**鳴り続けて使えない**ので黙らせる（web/log のみ）。発話スコープは §5.3。
 
@@ -137,7 +137,7 @@ reject 理由の音声文面は **2 段**にする。
    - 例: `("l3_validator","UNKNOWN_TARGET")` → 「**bot1 に出した『赤い箱』が地図上の登録位置に見つからないので、動かせません。**」（"この部分=L3 Validator・この箇所=target 参照"）。
 2. **LLM 整形層（任意・安全に無関係な範囲のみ）**: トーンや言い回しを会話的にしたい場合のみ ER/LLM で整形してよい。ただし **reason_code と deterministic 文面を ground truth として必ず添付**し、model 出力が reason を**変えていない**ことを検査してから喋る（変えていれば deterministic 文面に fallback）。安全 reject（emergency / battery / collision）は**整形層を通さない**。
 
-根拠: 「fallible な model 群の周りに deterministic な安全 gate と説明可能な reason_code を置く」のが本プロジェクトの中核思想（`docs/productization/01-commercial-box-map.md:53`・`docs/mode-x-er/04-er-input-modalities-and-stt.md:79`）。reject の**説明可能性**を model の作文に委ねると、その思想を operator 出口で崩す。
+根拠: 「fallible な model 群の周りに deterministic な安全 gate と説明可能な reason_code を置く」のが本プロジェクトの中核思想（`docs/productization/01-commercial-box-map.md:53`・`docs/mode-x-er/04-er-input-modalities-and-stt.md:80`）。reject の**説明可能性**を model の作文に委ねると、その思想を operator 出口で崩す。
 
 ---
 
@@ -387,7 +387,7 @@ doc03 §ROS 2 トピック設計「Jetson 内部」表（`docs/architecture/03-s
 
 ## 9. 参照
 
-- 正本（mode-x-er）: `docs/mode-x-er/01-architecture-and-flow.md`（data flow・戻り `:85-94`・Voice/TTS `:219`）/ `docs/mode-x-er/02-l3-planning-core.md`（`message_for_operator` `:95`・validation code `:96`・unresolved `:151`）/ `docs/mode-x-er/04-er-input-modalities-and-stt.md`（STT 任意・deterministic 思想 `:79`）/ `docs/mode-x-er/README.md`（標準フロー `:42-63`）
+- 正本（mode-x-er）: `docs/mode-x-er/01-architecture-and-flow.md`（data flow・戻り `:85-94`・Voice/TTS `:219`）/ `docs/mode-x-er/02-l3-planning-core.md`（`message_for_operator` `:95`・validation code `:96`・unresolved `:151`）/ `docs/mode-x-er/04-er-input-modalities-and-stt.md`（STT 任意・deterministic 思想 `:80`）/ `docs/mode-x-er/README.md`（標準フロー `:42-63`）
 - box taxonomy 正本: `docs/productization/01-commercial-box-map.md`（種別 `:42-48`・operator 入力境界 `:10`・Input Context sub-box `:13`・Plugin TTS `:106`・安全境界 `:53`）
 - L4 box / Hermes transport: `docs/productization/02-l4-robotics-bridge-box.md`（責務 `:56-87`・Plugin TTS `:132`・module 案 `:240-266`）
 - decision / reject 集計: `docs/productization/05-decision-observability-and-tooling.md`（decision_event `:48-69`・reason_detail `:71`・dispatch gate `:254-259`・fail-open `:279`）
