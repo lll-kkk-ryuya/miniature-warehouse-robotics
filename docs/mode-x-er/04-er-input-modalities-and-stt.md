@@ -25,8 +25,8 @@ Google Gemini API の公式 model ページを 2026-06-23 に確認した。
 補足:
 
 - **audio は input 一覧に明記される**が、公式 docs の robotics 例は画像・動画中心で、音声指示を直接食わせる robotics 用途の作例は提示されていなかった。当初は「API capability としては可能だが robotics command としての実証は未確認」として扱っていた。
-- **✅ 疎通＋parseable plan 生成を実証（2026-06-26・PROBE-1）**: ER（`gemini-robotics-er-1.6-preview`）に `generateContent` で text(schema)+`inline_data`(audio/wav) を直接渡し → HTTP 200・**音声理解**・transcript＋ordered task plan を返却（`to_robotics_plan_draft` で valid `RoboticsPlanDraft`）。→ **audio→direct-ER の疎通＋parseable plan 生成が成立**。**robotics-grade command 品質は別 eval・未確認**（連結誤認識耐性・現場性能は本 probe の対象外）。STT を ER の上流直列に入れない方針はこの疎通実測で裏付け。詳細・harness は [`06-unfrozen-contract-resolutions.md` §5 実測結果](06-unfrozen-contract-resolutions.md) / `tests/live/test_er_handoff_live.py`（companion transport PR で着地）。
-- 既存 spike で text / image probe は `HTTP 200` 実測済み（`docs/dev/vla-access-and-runtime-spike.md:23-28`）。audio probe は **2026-06-26 に疎通成功**（上記）。**Hermes 経由の audio は不可**（OpenAI 互換 API server は text+image_url のみ・`input_audio` は `400`）＝音声は Hermes をバイパスして direct ER（`06` §5）。
+- **✅ 疎通＋parseable plan 生成を実証（2026-06-26・PROBE-1）**: ER（`gemini-robotics-er-1.6-preview`）に `generateContent` で text(schema)+`inline_data`(audio/wav) を直接渡し → HTTP 200・**音声理解**・transcript＋ordered task plan を返却（`to_robotics_plan_draft` で valid `RoboticsPlanDraft`）。→ **audio→direct-ER の疎通＋parseable plan 生成が成立**。**robotics-grade command 品質は別 eval・未確認**（連結誤認識耐性・現場性能は本 probe の対象外）。STT を ER の上流直列に入れない方針はこの疎通実測で裏付け。詳細・harness は [`06-unfrozen-contract-resolutions.md` §5 実測結果](06-unfrozen-contract-resolutions.md) / `tests/live/test_er_handoff_live.py`（#351 で着地済）。
+- 既存 spike で text / image probe は `HTTP 200` 実測済み（`docs/dev/vla-access-and-runtime-spike.md:23-28`）。audio probe は **2026-06-26 に疎通成功**（上記）。**unforked Hermes 経由の audio は不可**（OpenAI 互換 API server は text+image_url のみ・`input_audio` は `400`・PROBE-2）＝**現状（CURRENT）**は音声を Hermes バイパスして direct ER。ただし 2026-06-27 に **2-file fork で audio-via-Hermes を実証**（HTTP 200・native 理解・lean latency ≈ direct・**demonstrated だが未 ship**）＝fork 配備後は audio も Hermes default が **TARGET**（`06` §5 補遺）。
 
 ## 2. STT の要否
 

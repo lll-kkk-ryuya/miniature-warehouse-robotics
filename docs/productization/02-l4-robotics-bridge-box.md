@@ -32,7 +32,7 @@ Mode X-ER の L4 は、単なる Gemini Robotics-ER adapter ではなく、
 ### Hermes-first transport 方針（2026-06-24）
 
 Mode X-ER / Mode X-ER-VLA の L4 実装では、model / modality / MCP 接続が
-Hermes Agent の公式機能で扱える限り **`transport: hermes` を第一候補**にする。
+Hermes Agent の公式機能で扱える限り **`transport: hermes` を既定（default）**にする（第一候補でなく default・末尾補足参照）。
 direct adapter / worker は、Hermes が対象 API、audio / image modality、GPU runtime、
 response shape、または latency 要件を満たせない場合の fallback として扱う。
 
@@ -149,8 +149,8 @@ Hermes Agent に寄せないもの:
 
 | 経路 | 使う条件 | 守るべきこと |
 |---|---|---|
-| Hermes 経由 | **既定の第一候補**。Hermes が対象 model、OpenAI 互換 request、image input、voice/STT/TTS provider、provider fallback を扱える | server-side motion tool execution を使わず、Bridge が final output を受けて L3 へ渡す。比較 run では provider 固定 / fallback 条件を trace metadata に残す |
-| Direct adapter / worker | ER/VLA runtime、GPU、audio/image API、latency 要件、response shape が Hermes 経由に合わない | trace、timeout、audit、L3 接続、secret 管理を Bridge 側に残す。Hermes と同じ L3 Handoff input を返す fixture を必須にする |
+| Hermes 経由 | **既定（default）**。Hermes が対象 model、OpenAI 互換 request、image input、voice/STT/TTS provider、provider fallback を扱える | server-side motion tool execution を使わず、Bridge が final output を受けて L3 へ渡す。比較 run では provider 固定 / fallback 条件を trace metadata に残す |
+| Direct adapter / worker | **explicit fallback**。ER/VLA runtime、GPU、audio/image API、latency 要件、response shape が Hermes 経由に合わない | trace、timeout、audit、L3 接続、secret 管理を Bridge 側に残す。Hermes と同じ L3 Handoff input を返す fixture を必須にする |
 
 重要なのは、Hermes か direct かではなく、**Bridge が orchestration owner であり続けること**である。
 
@@ -176,7 +176,7 @@ Robotics Bridge trace
 
 ### Hermes Langfuse plugin の再評価 gate
 
-現採用は Bridge-owned trace（`langfuse.openai` + `base_url=Hermes`）である。これは
+現採用は **Opt C**（Bridge-owned now / Hermes-owned は HLF gate 後・末尾補足参照）。Bridge-owned trace（`langfuse.openai` + `base_url=Hermes`）である。これは
 `run_id:gen_id` から決定的な `trace_id` を作り、Bridge の model generation、MCP span、
 Warehouse Orchestrator の score を 1 本に結合するためである。Hermes 側 Langfuse plugin
 を同時に有効化すると、同じ model call が Bridge wrapper と Hermes plugin の両方で
@@ -278,7 +278,7 @@ robotics_bridge/
 
 ## 未凍結事項
 
-- Hermes が Gemini Robotics-ER の audio / image API を扱えるか。
+- Hermes が Gemini Robotics-ER の audio / image API を扱えるか（→ 末尾「2026-06-27 補足」の「解決状況」で解決済: image/text=200・audio=unforked 400＋2-file fork 200 実証だが未 ship）。
 - OpenVLA runtime を Bridge process 内に置くか、別 process / GPU worker にするか。
 - `RoboticsPlan draft` を `warehouse_interfaces` に昇格するか。
 - Langfuse trace taxonomy に Mode X-ER / Mode X-ER-VLA 固有 tag を追加するか。
@@ -299,3 +299,21 @@ Nous Research / Hermes Agent 公式 docs。参照日: 2026-06-23。
 - [Persistent Memory](https://hermes-agent.nousresearch.com/docs/user-guide/features/memory)
 - [Skills System](https://hermes-agent.nousresearch.com/docs/user-guide/features/skills)
 - [Configuration Guide](https://hermes-agent.nousresearch.com/docs/user-guide/configuration)
+
+## 2026-06-27 補足 — Hermes transport=default / audio fork / Langfuse Opt C（末尾追記・行参照非破壊）
+
+> 上の各節（§Hermes-first transport 方針・§Hermes Langfuse plugin の再評価 gate〔HLF-G0〜G5＝`02:177-199`〕・§未凍結事項）の行参照を動かさないため末尾に追記する（#165）。
+
+**Findings 凡例（F1–F6・この L4 transport doc 群に閉じたローカル記号）**: **F1**=transport 既定（`provider_type ∈ {llm,er,vla,stt}` → `hermes` default・`direct`/`worker` は explicit fallback）／**F2**=PROBE 実測（unforked Hermes audio=`400`・image/text=`200`）／**F3**=2-file fork demonstration（audio `200`・demonstrated だが未 ship）／**F4**=CURRENT（audio=direct）と TARGET（fork ship 後に Hermes 既定）の切り分け／**F5**=provider routing（Hermes は server-side 単一 active model → per-provider gateway）／**F6**=Langfuse Opt C（CURRENT=Bridge-owned trace・FUTURE=Hermes-owned は HLF-G0〜G5 後）。**[`docs/jetson/01-fidelity-and-validation.md`](../jetson/01-fidelity-and-validation.md):52-57 の fidelity tier `F1–F6`（ROS 論理／config overlay／2台 Gazebo E2E／GPU・CUDA／実時間性 jitter／micro-ROS WiFi UDP）とは別体系**＝記号は重なるが意味は無関係。
+
+**transport（F1）**: `provider_type ∈ {llm, er, vla, stt}` の既定（default）= `hermes`。`direct`/`worker` は Hermes が modality/runtime/response/latency を満たせない（または下記 audio fork 未デプロイ）時の **explicit fallback**。
+
+**provider 選択の現実（F5）**: Hermes は server-side 単一 active model で per-request の provider 選択フィールドが無い。4-provider 比較（Mode A/B/C）は **per-provider gateway**（config + restart）で実現する。比較 run の「provider 固定」はこの per-provider gateway 起動を指す。
+
+**audio carve-out（measured 2026-06-27）**: text/image は Hermes 既定で成立（commander LLM=Hermes shipped〔`hermes_client.py`〕・ER image/text=PROBE-3 で HTTP 200）。**unforked Hermes は `/v1/chat/completions` の `input_audio` で HTTP 400 `unsupported_content_type`**（PROBE-2 実測）。よって audio は CURRENT/TARGET を分ける — **TARGET**=全 modality を Hermes 既定（audio は fork 経由）/ **CURRENT（running state）**=audio は `transport: direct`（fork が productionize/ship されるまで・かつ恒久 fallback）。**「audio が現在 Hermes に default する」とは書かない**（target であって shipped でない）。
+
+**fork demonstration（F3）**: hermes-agent v0.15.1 の 2-file fork — patch1 `gateway/platforms/api_server.py`（`_normalize_multimodal_content` が `input_audio` 受理＋`_content_has_visible_payload`＋新 `_AUDIO_PART_TYPES`）/ patch2 `agent/gemini_native_adapter.py`（`_extract_multimodal_parts` が `input_audio → inlineData{mimeType:audio/wav}`）。**LIVE**: HTTP 200・ER が native audio 理解・lean latency 中央値 3.69s vs direct 4.24s（n=4・ER-thinking 交絡）・+~408 prompt tok/call。**demonstrated だが未 ship**＝default-Hermes-audio は fork の productionize が前提。
+
+**Langfuse（F6・Opt C）**: §「Hermes Langfuse plugin の再評価 gate」の置き方は **Opt C**。**CURRENT = Bridge-owned trace**（`create_trace_id(seed=run_id:gen_id)`・managed-prompt link・4-provider 単一 codepath fairness・double-count 回避で Hermes plugin disabled）。**FUTURE TARGET = Hermes-owned plugin** だが **HLF-G0〜G5（`02:177-199` の gate 表）をすべて満たした場合に限り** `trace_owner: hermes` へ切替（[`architecture/13`](../architecture/13-hermes-setup.md):551-570）。**flip しても outcome score（result/SR/SPL/collision/deadlock）は eval_sdk 所有のまま**（Hermes は robot result を見ない・score join は Bridge/Eval 側・HLF-G2 が「Bridge 外 emitter が同一 trace に `create_score` できるか」を確認するのはこのため）。
+
+**未凍結事項「Hermes が ER の audio/image API を扱えるか」の解決状況**: image/text は **解決済**（PROBE-3 200・F2）/ audio は **unforked 400**（PROBE-2・F2）＋**2-file fork で 200 実証済だが未 ship**（F3）。残課題＝**fork の productionize**（default-Hermes-audio の前提）・それまで current は direct（F4）。
