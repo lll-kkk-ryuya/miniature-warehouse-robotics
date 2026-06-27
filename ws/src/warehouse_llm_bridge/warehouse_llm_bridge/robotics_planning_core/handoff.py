@@ -51,7 +51,11 @@ from warehouse_llm_bridge.robotics_planning_core.models import (
 # Categories + reason literals are doc-grounded (productization/06:155 "禁止 field の削除 /
 # 未凍結 coordinate goal の遮断", 06:158 reason_code row, 06:160 L3H-G0/G1; the Compiler
 # forbidden items at productization/03:155-157 list the same velocity / low-level-action /
-# coordinate-goal categories); the specific substrings implement those categories. No
+# coordinate-goal categories); the specific substrings implement those categories. The
+# endpoint substrings (jetson / service / mcp_tool, alongside nav2 / ros_topic / url) are
+# grounded by docs/mode-x-er/03-er-adapter-skeleton.md:53, which states the ER request is the
+# upper bound of what is sent and that "Nav2 Bridge URL、ROS topic、Jetson service、MCP
+# internal tool name は渡さない" (the same forbidden endpoints er_task.py:5-6 cites). No
 # legitimate RoboticsPlanDraft field name contains any of these.
 #
 # The match is INTENTIONALLY conservative (plain substring, not word-boundary): a benign
