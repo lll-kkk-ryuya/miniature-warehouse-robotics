@@ -85,6 +85,47 @@ def derive_trace_id(seed: str, *, create_fn: Callable[..., str] | None = None) -
         return None
 
 
+def plugin_seed(h: str) -> str:
+    """The seed the **Hermes Langfuse plugin** hashes when it (not the Bridge) mints the trace.
+
+    Pattern A (default) has the Bridge own the trace and derives it from ``seed_for`` directly
+    (the ``f"{run_id}:{work_id}"`` join key). Option D instead leaves the Hermes Langfuse plugin
+    ON and lets *it* mint the root trace; the plugin's seed is built from the request's
+    session/task ids as ``f"{session_id or 'sessionless'}::{task_id or task_key}"`` (verified at
+    ``~/.hermes/.../observability/langfuse/__init__.py:544``). On the stateless chat path the
+    plugin defaults ``task_id`` to ``session_id``, so BOTH halves equal the value the Bridge sent
+    in the ``X-Hermes-Session-Id`` header — call it ``H`` — and the seed collapses to ``f"{H}::{H}"``.
+
+    To re-derive the plugin's trace id on the scorer side, the Bridge sets ``H = seed_for(run_id,
+    work_id)`` (so the plugin's two halves are byte-identical to our join key). This function
+    reproduces the plugin's doubling so :func:`derive_plugin_trace_id` lands on the SAME id the
+    plugin already minted — pure string math, no langfuse needed (the doubling is the plugin's,
+    not ours, so it lives beside :func:`seed_for` and is exercised by the same property tests).
+    """
+    return f"{h}::{h}"
+
+
+def derive_plugin_trace_id(
+    run_id: str,
+    gen_id: object,
+    *,
+    create_fn: Callable[..., str] | None = None,
+) -> str | None:
+    """Re-derive the trace id the Hermes Langfuse **plugin** mints for ``(run_id, gen_id)`` (Option D).
+
+    Pattern D: with the plugin ON, the root trace is seeded by the plugin from the request's
+    session/task ids, which the Bridge pins to ``H = seed_for(run_id, gen_id)`` via the
+    ``X-Hermes-Session-Id`` header. The plugin then hashes ``plugin_seed(H) == f"{H}::{H}"`` with
+    the same pure ``create_trace_id`` (sha256 of the seed, 32-hex). So the scorer re-derives the
+    identical id by feeding :func:`plugin_seed` of :func:`seed_for` to :func:`derive_trace_id` —
+    no extra coupling, same fail-open contract (``None`` when the SDK is absent / the call fails).
+
+    This is the plugin-ON sibling of the Pattern-A path (Bridge-owned trace) that hashes
+    ``seed_for(run_id, gen_id)`` directly; the ONLY difference is the plugin's ``H::H`` doubling.
+    """
+    return derive_trace_id(plugin_seed(seed_for(run_id, gen_id)), create_fn=create_fn)
+
+
 def resolve_run_id(env_run_id: str | None, fallback: str) -> str:
     """The ``run_id`` half of the seed: ``env_run_id`` if set, else ``fallback`` (#108, doc21 §8).
 
