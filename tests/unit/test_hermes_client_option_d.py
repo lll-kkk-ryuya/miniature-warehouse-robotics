@@ -20,14 +20,24 @@ an OBS join — it never changes the dispatched command and never raises into th
 
 These tests fake the ``AsyncOpenAI`` client (openai SDK is installed in the .venv but no network
 is touched) so the request shape + header + fail-open behaviour are pinned without a live Hermes.
+
+``openai`` and ``langfuse`` are LAZY pip extras (the production code imports them inside
+``decide``; they are NOT in the default CI dep set ``ruff pytest pydantic pyyaml``). These tests
+exercise the SDK-wired path itself (the fake patches ``openai.AsyncOpenAI`` /
+``langfuse.openai.AsyncOpenAI``), so they require the extras and ``importorskip`` out of the
+pure-CI env — exactly like the launch tests skip without ``launch_ros``. The .venv (and the live
+human gate) have both, so they run there; the SDK-free parser path is covered by
+``test_hermes_client_parse.py``.
 """
 
 import asyncio
 
-import openai
 import pytest
-from eval_sdk.seed import seed_for
-from warehouse_llm_bridge.hermes_client import (
+
+openai = pytest.importorskip("openai")  # lazy pip extra — skip in the SDK-free CI env
+pytest.importorskip("langfuse.openai")  # Pattern-A wrapper path patches langfuse.openai too
+from eval_sdk.seed import seed_for  # noqa: E402 (after importorskip guards)
+from warehouse_llm_bridge.hermes_client import (  # noqa: E402 (after importorskip guards)
     HERMES_SESSION_HEADER,
     LANGFUSE_OWNER_BRIDGE,
     LANGFUSE_OWNER_HERMES_PLUGIN,
