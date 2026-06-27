@@ -123,8 +123,8 @@
     <div class="h">① 数式（core）<span class="badge b-core">再利用</span></div>
     <div class="sub">eval_sdk.stats（純関数・Phase 1 実装済）</div>
     <ul>
-      <li><code>rate</code>（pass/total の割り算）</li>
-      <li><code>percentile</code> / <code>path_lengths</code> / <code>distance_traveled</code></li>
+      <li><code>percentile</code> / <code>path_lengths</code> / <code>distance_traveled</code>（既存純関数）</li>
+      <li>pass/total は単純な割り算（<code>rate</code> は doc21 §6 の汎用 helper 案・<b>現状 stats 未実装</b>＝domain が合成）<span class="dref">21:178</span></li>
       <li>emit = <code>eval_sdk.sink</code>（fail-open）</li>
       <li>join-key = <code>eval_sdk.seed</code>（決定的 trace_id）</li>
     </ul>
@@ -156,18 +156,18 @@
 <h2>2. 製造での core / plugin（03 の stage 表を図示）<span class="dref">03:224-235</span></h2>
 <p class="lead"><code>03:224-235</code> は L3 の各 stage を「<b>再利用する core</b>」と「<b>差し替える plugin</b>」に literal に割っている（倉庫 Mode X-ER ↔ 製造 assembly/machine tending/palletize）。発明ではなく既存表の図示。</p>
 <h3>Validator stage</h3>
-<div class="ex core"><div class="tag">core<br>再利用</div><div class="body"><b>JSON parse・<code>schema_version</code> check・required field・stable error code・report shape・audit</b>（どの業界でも同じ検証骨格）<span class="dref">03:224</span></div></div>
-<div class="ex plugin"><div class="tag">plugin<br>差替</div><div class="body"><b>設備 registry（どのアーム/AGV/PLC）・工程 allowlist（pick/place/insert/fasten…）・参照 rule・confidence policy・interlock policy・emergency policy</b>（現場の意味づけ）<span class="dref">03:224</span></div></div>
+<div class="ex core"><div class="tag">core<br>再利用</div><div class="body"><b>JSON parse・<code>schema_version</code> check・required field・stable error code・report shape・audit</b>（どの業界でも同じ検証骨格）<span class="dref">03:225</span></div></div>
+<div class="ex plugin"><div class="tag">plugin<br>差替</div><div class="body"><b>設備 registry（どのアーム/AGV/PLC）・工程 allowlist（pick/place/insert/fasten…）・参照 rule・confidence policy・interlock policy・emergency policy</b>（現場の意味づけ）<span class="dref">03:225</span></div></div>
 <h3>Visual Resolver stage</h3>
-<div class="ex core"><div class="tag">core<br>再利用</div><div class="body">calibration loader IF・transform・valid polygon check・confidence 合成・replay runner<span class="dref">03:225</span></div></div>
-<div class="ex plugin"><div class="tag">plugin<br>差替</div><div class="body">camera intrinsics/extrinsics・hand-eye 行列・work envelope polygon・公称 pose・snap threshold<span class="dref">03:225</span></div></div>
+<div class="ex core"><div class="tag">core<br>再利用</div><div class="body">calibration loader IF・transform・valid polygon check・confidence 合成・replay runner<span class="dref">03:226</span></div></div>
+<div class="ex plugin"><div class="tag">plugin<br>差替</div><div class="body">camera intrinsics/extrinsics・hand-eye 行列・work envelope polygon・公称 pose・snap threshold<span class="dref">03:226</span></div></div>
 
 <!-- ===================== 3. 増やす手順 ===================== -->
 <h2>3. 「指標を 1 個増やす」手順（new producer ＋ score 名 ＋ 既存再利用）</h2>
 <div class="steps">
   <div class="step plugin"><b>① success を定義</b>（plugin）<div class="s">「何を pass とするか」の述語・しきい値を現場仕様として決める。<span class="dref">05:145-153 / 21:386</span></div></div>
   <div class="step plugin"><b>② producer を書く</b>（plugin）<div class="s">その pass/fail（または生信号）を出すドメインノード。観測専用レーン（enforcement と混ぜない）。<span class="dref">21:189,193</span></div></div>
-  <div class="step core"><b>③ 既存 stats で数値化</b>（core・書かない）<div class="s"><code>eval_sdk.stats.rate</code>（pass/total）等をそのまま呼ぶ＝新数式を書かない。<span class="dref">eval_sdk/stats.py</span></div></div>
+  <div class="step core"><b>③ 既存 stats で数値化</b>（core・書かない）<div class="s">既存純関数（<code>percentile</code> / <code>path_lengths</code> / <code>distance_traveled</code>）をそのまま呼ぶ＝新数式を書かない。pass/total は単純な割り算（<code>rate</code> helper は doc21 §6 案・現状 stats 未実装）。<span class="dref">eval_sdk/stats.py / 21:178</span></div></div>
   <div class="step core"><b>④ sink で emit</b>（core・書かない）<div class="s"><code>eval_sdk.sink.score(trace_id, name, value, …)</code> を fail-open 送信。同じ trace_id で他指標と束ねる。<span class="dref">eval_sdk/sink.py:99-136</span></div></div>
   <div class="step"><b>⑤ score 名を manifest 登録</b>（Phase 2・contract）<div class="s">dashboard 列見出しを固定（改名は履歴孤児化＝<code>contract</code> ＋全レーン予告）。<span class="dref">21:238</span></div></div>
 </div>
@@ -203,7 +203,7 @@
 <table>
   <thead><tr><th>要素</th><th>区分</th><th>docs（正本）</th><th>注記</th></tr></thead>
   <tbody>
-    <tr><td>① 数式 <code>eval_sdk.stats</code>（rate/percentile/distance）</td><td class="impl-yes">Phase 1 実装済</td><td><span class="dref">21:123-135 / eval_sdk/stats.py</span></td><td>core＝倉庫が再利用・産業非依存</td></tr>
+    <tr><td>① 数式 <code>eval_sdk.stats</code>（percentile/path_lengths/distance_traveled）</td><td class="impl-yes">Phase 1 実装済</td><td><span class="dref">21:123-135 / eval_sdk/stats.py</span></td><td>core＝倉庫が再利用・産業非依存（<code>rate</code> helper は doc21 §6 案・未実装）</td></tr>
     <tr><td>① emit/join <code>eval_sdk.sink</code> / <code>seed</code></td><td class="impl-yes">Phase 1 実装済</td><td><span class="dref">eval_sdk/sink.py,seed.py</span></td><td>fail-open / 決定的 trace_id</td></tr>
     <tr><td>② 指標定義・producer（success 述語・pass/fail 源）</td><td class="impl-plugin">ドメイン永続</td><td><span class="dref">21:75 / 03:224-235</span></td><td>現場ごとに差し替え＝eval_sdk に入れない</td></tr>
     <tr><td>③ score 名 registry（<code>ScoreSpec</code> manifest）</td><td class="impl-no">Phase 2 contract（未凍結）</td><td><span class="dref">21:238</span></td><td>改名は履歴孤児化＝<code>contract</code>＋全レーン予告</td></tr>
