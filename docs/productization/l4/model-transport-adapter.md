@@ -6,7 +6,7 @@
 > 内部の sub-box であり、model provider / runtime / modality の差を吸収する。
 > 現行 commander LLM の Hermes transport は実装済みだが、ER / VLA / STT registry は
 > proposal である。新しい config key、ROS topic、REST API、`warehouse_interfaces`
-> frozen contract は追加しない。
+> frozen contract は追加しない。本 doc の `F1`〜`F6` 記号定義は [`productization/02`](../02-l4-robotics-bridge-box.md) 末尾補足「Findings 凡例」が正本＝[`jetson/01`](../../jetson/01-fidelity-and-validation.md):52-57 の fidelity tier `F1–F6` とは別体系。
 
 ## 結論
 

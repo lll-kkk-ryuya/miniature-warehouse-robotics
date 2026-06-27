@@ -244,7 +244,7 @@ L4 transport の再利用判断では、Nous Research の Hermes Agent 公式 do
 
 ## 2026-06-27 補足 — transport default と audio fork（末尾追記＝行参照非破壊）
 
-> 「## L4 transport selection」の補足。上の表/本文の行参照を動かさないため末尾に置く（#165 末尾追記原則）。
+> 「## L4 transport selection」の補足。上の表/本文の行参照を動かさないため末尾に置く（#165 末尾追記原則）。以下で使う `F5` 等の記号定義は [`productization/02`](../productization/02-l4-robotics-bridge-box.md) 末尾補足「Findings 凡例」が正本＝[`jetson/01`](../jetson/01-fidelity-and-validation.md):52-57 の fidelity tier `F1–F6` とは別体系。
 
 - **provider 選択（F5）**: Hermes は**単一の server-side active model**を持ち per-request の provider 選択を行わない。Mode A/B/C の 4-provider 比較は request field でなく **per-provider gateway**（config + restart）で切替える。
 - **audio modality の CURRENT vs TARGET（過大宣言しない）**: **CURRENT（稼働中）= ER audio leg は `direct` ER**（unforked Hermes v0.15.1 の `input_audio` は HTTP 400 `unsupported_content_type`＝透過不可・2026-06-27 PROBE-2 実測）。**TARGET = audio を含む全 modality を default `hermes`**。2026-06-27 に hermes-agent v0.15.1 の **2-file fork**（`gateway/platforms/api_server.py` の `input_audio` 受理＋`agent/gemini_native_adapter.py` の `input_audio → Gemini inlineData{mimeType:audio/wav}`）で **native audio が Hermes を通ること**を live 実証（HTTP 200・ER が音声中にのみ存在する語の transcript を返却＝native 理解・lean latency 中央値 3.69s vs direct 4.24s〔n=4〕・+~408 prompt tok/call）。この fork は **demonstrated だが未 ship**＝audio が Hermes default になるのは fork 配備後で、それまで direct が CURRENT・かつ fork 後も恒久 fallback。正本は [`06`](06-unfrozen-contract-resolutions.md) §5 補遺。

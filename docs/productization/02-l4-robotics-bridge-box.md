@@ -278,7 +278,7 @@ robotics_bridge/
 
 ## 未凍結事項
 
-- Hermes が Gemini Robotics-ER の audio / image API を扱えるか。
+- Hermes が Gemini Robotics-ER の audio / image API を扱えるか（→ 末尾「2026-06-27 補足」の「解決状況」で解決済: image/text=200・audio=unforked 400＋2-file fork 200 実証だが未 ship）。
 - OpenVLA runtime を Bridge process 内に置くか、別 process / GPU worker にするか。
 - `RoboticsPlan draft` を `warehouse_interfaces` に昇格するか。
 - Langfuse trace taxonomy に Mode X-ER / Mode X-ER-VLA 固有 tag を追加するか。
@@ -303,6 +303,8 @@ Nous Research / Hermes Agent 公式 docs。参照日: 2026-06-23。
 ## 2026-06-27 補足 — Hermes transport=default / audio fork / Langfuse Opt C（末尾追記・行参照非破壊）
 
 > 上の各節（§Hermes-first transport 方針・§Hermes Langfuse plugin の再評価 gate〔HLF-G0〜G5＝`02:177-199`〕・§未凍結事項）の行参照を動かさないため末尾に追記する（#165）。
+
+**Findings 凡例（F1–F6・この L4 transport doc 群に閉じたローカル記号）**: **F1**=transport 既定（`provider_type ∈ {llm,er,vla,stt}` → `hermes` default・`direct`/`worker` は explicit fallback）／**F2**=PROBE 実測（unforked Hermes audio=`400`・image/text=`200`）／**F3**=2-file fork demonstration（audio `200`・demonstrated だが未 ship）／**F4**=CURRENT（audio=direct）と TARGET（fork ship 後に Hermes 既定）の切り分け／**F5**=provider routing（Hermes は server-side 単一 active model → per-provider gateway）／**F6**=Langfuse Opt C（CURRENT=Bridge-owned trace・FUTURE=Hermes-owned は HLF-G0〜G5 後）。**[`docs/jetson/01-fidelity-and-validation.md`](../jetson/01-fidelity-and-validation.md):52-57 の fidelity tier `F1–F6`（ROS 論理／config overlay／2台 Gazebo E2E／GPU・CUDA／実時間性 jitter／micro-ROS WiFi UDP）とは別体系**＝記号は重なるが意味は無関係。
 
 **transport（F1）**: `provider_type ∈ {llm, er, vla, stt}` の既定（default）= `hermes`。`direct`/`worker` は Hermes が modality/runtime/response/latency を満たせない（または下記 audio fork 未デプロイ）時の **explicit fallback**。
 
