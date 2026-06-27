@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>観測・eval 未解決問題 ボード — gate待ち / 未実装 / 要spike / process</title>
+<style>
+  :root{
+    color-scheme: dark;
+    --bg:#1a1a1a; --bg2:#141414; --card:#222222; --card2:#262626; --surface:#2d2d2d;
+    --ink:#ededed; --muted:#c4c4c4; --faint:#8f8f8f; --line:#3a3a3a; --code:#141414;
+    --badge-ink:#1a1a1a; --head:#dcdcdc;
+    --box:#7aa2f7;     --box-bg:rgba(122,162,247,.13);
+    --sub:#9ece6a;     --sub-bg:rgba(158,206,106,.12);
+    --seam:#e0af68;    --seam-bg:rgba(224,175,104,.12);
+    --plugin:#bb9af7;  --plugin-bg:rgba(187,154,247,.12);
+    --demoted:#9a9a9a; --demoted-bg:rgba(154,154,154,.10);
+    --teal:#7dcfff; --red:#f7768e;
+    /* status axis (single colored dimension): gate待ち / 未実装(計画) / 要spike・未決 / process */
+    --gate:#e0af68; --todo:#7aa2f7; --spike:#bb9af7; --proc:#9a9a9a;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Noto Sans JP",Meiryo,sans-serif;
+    line-height:1.7;font-size:15px;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1080px;margin:0 auto;padding:32px 20px 80px}
+  header.top{border-bottom:3px solid var(--seam);padding-bottom:18px;margin-bottom:8px}
+  h1{font-size:23px;margin:0 0 6px} h2{font-size:20px;margin:40px 0 12px;padding-left:10px;border-left:5px solid var(--seam)}
+  p{margin:10px 0} .lead{color:var(--muted);font-size:14px}
+  a{color:var(--box);text-decoration:none} a:hover{text-decoration:underline}
+  code{background:var(--code);padding:1px 6px;border-radius:4px;font-size:.88em;font-family:"SF Mono",Menlo,Consolas,monospace;color:var(--ink)}
+  .dref{color:var(--teal);font-size:.82em;font-family:"SF Mono",Menlo,monospace;white-space:nowrap}
+  .meta{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 16px;font-size:13px;color:var(--muted);margin:14px 0}
+  .note{background:var(--seam-bg);border:1px solid rgba(224,175,104,.4);border-radius:8px;padding:12px 16px;margin:16px 0;font-size:13.5px}
+  .nav{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0}
+  .nav a{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:7px 13px;font-size:13px;font-weight:600}
+  .nav a:hover{border-color:var(--seam);text-decoration:none}
+  .st{display:inline-block;font-size:10.5px;font-weight:800;padding:1px 8px;border-radius:999px;color:var(--badge-ink);letter-spacing:.3px;vertical-align:middle}
+  .st-gate{background:var(--gate)} .st-todo{background:var(--todo)} .st-spike{background:var(--spike)} .st-proc{background:var(--proc);color:var(--ink)}
+  .legend{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
+  .legend .item{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:6px 11px;font-size:11.5px;color:var(--muted)}
+  .legend .sw{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:6px;vertical-align:middle}
+  .pb{border:1px solid var(--line);border-left:5px solid var(--line);border-radius:9px;padding:10px 13px;margin:8px 0;background:var(--card)}
+  .pb.gate{border-left-color:var(--gate)} .pb.todo{border-left-color:var(--todo)} .pb.spike{border-left-color:var(--spike)} .pb.proc{border-left-color:var(--proc)}
+  .pb .nm{font-weight:700;color:var(--ink)} .pb .ds{color:var(--muted);font-size:12.5px;margin-top:3px}
+  .pb .src{color:var(--faint);font-size:11.5px;margin-top:3px}
+  table{border-collapse:collapse;width:100%;margin:12px 0;font-size:13px;background:var(--card)}
+  th,td{border:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top}
+  th{background:var(--surface);font-size:12.5px;color:var(--head)}
+  tr:nth-child(even) td{background:rgba(255,255,255,.02)}
+  footer{margin-top:50px;padding-top:18px;border-top:1px solid var(--line);color:var(--muted);font-size:12.5px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <h1>観測・eval 未解決問題 ボード</h1>
+  <p class="lead">観測 / eval 周りの<b>未解決・defer・gate 待ち</b>を 1 枚に集約した索引。<b>新規問題を発明せず</b>、各々が既存正本（doc21 §7/§11・productization/02 HLF gate・doc06 §5・doc07 §追加候補・doc22）に紐付く。<b>色＝開いている理由（状態）</b>のみ。正本: <a href="05-decision-observability-and-tooling.md">05 §未解決問題</a>。</p>
+</header>
+
+<div class="nav">
+  <a href="observability-tiering-detail.html">観測ログ 格納先 階層分離</a>
+  <a href="tool-catalog-detail.html">tool カタログ</a>
+  <a href="eval-sdk-detail.html">eval-sdk 詳細</a>
+  <a href="eval-sdk-plugin-core-detail.html">eval_sdk 拡張</a>
+  <a href="05-decision-observability-and-tooling.md">05 §未解決問題</a>
+  <a href="../architecture/21-eval-sdk-extraction.md">doc21 §7/§11</a>
+  <a href="box-taxonomy.html">box-taxonomy</a>
+</div>
+
+<div class="meta">
+  これは<b>集約索引</b>であり、各問題の詳細・判断は各正本にある（重複させない）: eval_sdk defer=<a href="../architecture/21-eval-sdk-extraction.md">doc21 §7/§10/§11</a>／ Hermes-Langfuse gate=<a href="02-l4-robotics-bridge-box.md">productization/02 §HLF</a> <span class="dref">02:177-199</span>／ audio-direct=<a href="../mode-x-er/06-unfrozen-contract-resolutions.md">mode-x-er/06 §5</a> <span class="dref">06:135-148</span>／ tool 候補=<a href="07-layer-tool-decision-matrix.md">doc07 §観測 tool 追加候補</a>／ retention=<a href="../architecture/22-web-observability.md">doc22</a>。<b>状態が変わったら正本を先に直し、本ボードを追従</b>（docs-first）。
+</div>
+
+<h2>0. 凡例 — 色＝「なぜ開いているか」</h2>
+<div class="legend">
+  <div class="item"><span class="sw" style="background:var(--gate)"></span><b>gate 待ち</b>（外部条件: 利用者#2 / OTLP spike / HLF / #88 human gate）</div>
+  <div class="item"><span class="sw" style="background:var(--todo)"></span><b>未実装(計画)</b>（設計済・コード待ち）</div>
+  <div class="item"><span class="sw" style="background:var(--spike)"></span><b>要 spike・未決 design</b>（決める/検証する）</div>
+  <div class="item"><span class="sw" style="background:var(--proc)"></span><b>process</b>（運用・承認）</div>
+</div>
+
+<!-- ===================== 1. gate 待ち ===================== -->
+<h2>1. gate 待ち（外部条件が解錠条件）</h2>
+<div class="pb gate"><span class="nm">decision↔outcome correlator ＋ embodied OTel <code>*.nav.*</code> namespace</span> <span class="st st-gate">gate待ち</span>
+  <div class="ds">判断↔結果を trace_id 超えで相関する唯一の真に新規な価値。OTLP が custom 属性を保持するか未証明。</div>
+  <div class="src">解錠: 利用者#2 ∧ OTLP 30分 spike green。<span class="dref">doc21:200,215,240</span></div></div>
+<div class="pb gate"><span class="nm">STT transcript の Langfuse 配線（<code>LangfuseTranscriptTracer</code>）</span> <span class="st st-gate">gate待ち</span>
+  <div class="ds">音声/transcript leg を ①Langfuse へ trace する seam は<b>雛形のみ（未配線）</b>。fail-open no-op。</div>
+  <div class="src">解錠: HLF spike。<span class="dref">robotics/observability.py:8-15,56-80 / productization/02:177-199</span></div></div>
+<div class="pb gate"><span class="nm">audio leg の Langfuse owner（音声は Hermes バイパス）</span> <span class="st st-gate">gate待ち</span>
+  <div class="ds">音声は Hermes が <code>input_audio</code> を 400 で拒否（PROBE-2 実測）→ direct ER。Hermes Langfuse が観測不可ゆえ <b>Bridge-side tracer が唯一の owner</b>。その live 検証が未。</div>
+  <div class="src">解錠: HLF-G0〜G5 ∧ #88 系 live。<span class="dref">mode-x-er/06 §5:135-148 / productization/02:177-199 / #88</span></div></div>
+<div class="pb gate"><span class="nm">Langfuse Phase-3 live 検証（trace 集約 / cost / managed-prompt）</span> <span class="st st-gate">gate待ち</span>
+  <div class="ds">実 Langfuse 4.9.x での 1-trace 集約・Grok cost・prompt 連携は human gate。offline は実装済。</div>
+  <div class="src">解錠: #88 live credentials ∧ 専用 Hermes。<span class="dref">doc21:246 / doc20 §8.4 / #88</span></div></div>
+
+<!-- ===================== 2. 未実装(計画) ===================== -->
+<h2>2. 未実装（計画済・コード待ち）</h2>
+<div class="pb todo"><span class="nm">Tier2 観測ノード（collision / deadlock subscriber）</span> <span class="st st-todo">未実装</span>
+  <div class="ds">★新 producer。Guardian の near_collision を count 化＋inter-robot 距離をログ／deadlock detector。<b>enforcement と別ノード</b>（観測専用レーン）。</div>
+  <div class="src">設計済・名前/topic は未凍結。<span class="dref">doc21:189,190,193</span></div></div>
+<div class="pb todo"><span class="nm">SR / SPL / SoftSPL / jerk（純関数）</span> <span class="st st-todo">未実装(Phase1.5)</span>
+  <div class="ds"><code>eval_sdk.stats</code> に SR/SPL は未抽出（現状は percentile / distance / path_length のみ）。式は doc21 §13.1 で確定済。</div>
+  <div class="src">Phase 1.5（AllenAct コピー / Habitat 写経）。<span class="dref">doc21:293-300 / stats.py:7</span></div></div>
+<div class="pb todo"><span class="nm">XER2-5（Validator / Visual Resolver / Task Graph Executor / Command Compiler）</span> <span class="st st-todo">未実装</span>
+  <div class="ds">L3 の 4 stage。XER1/G0 で Handoff seam ＋ L4 ER adapter は着地したが、<b>意味判定（red_box→unknown_target 等）と audit 1:1 は未配線</b>。</div>
+  <div class="src">design-deferred（昇格は doc06 §1 ゲート後）。<span class="dref">mode-x-er/02:78 / doc06 / warehouse_llm_bridge/CLAUDE.md</span></div></div>
+
+<!-- ===================== 3. 要spike・未決design ===================== -->
+<h2>3. 要 spike・未決 design（決める / 検証する）</h2>
+<div class="pb spike"><span class="nm">③集計 tier の metrics backend（Prometheus / Grafana / TSDB）</span> <span class="st st-spike">要 spike</span>
+  <div class="ds">counter/histogram を保持・可視化する backend が未決。当面は <code>audit.jsonl</code>→DuckDB で代替。</div>
+  <div class="src">doc07 に候補登録済。<span class="dref">doc07 §観測 tool 追加候補 / doc21:213</span></div></div>
+<div class="pb spike"><span class="nm">④生 tier の rosbag2 保存 format（mcap ↔ sqlite3）</span> <span class="st st-spike">要 spike</span>
+  <div class="ds">既定 sqlite3 ↔ mcap。容量・読出・tool 互換を検証してから採用。</div>
+  <div class="src">doc07 に候補登録済。<span class="dref">doc07 §観測 tool 追加候補</span></div></div>
+<div class="pb spike"><span class="nm">retention / rotation 数値・sample rate</span> <span class="st st-spike">要 spike(実測)</span>
+  <div class="ds">「N runs / M MB」や sample rate は実測で決める（数値を発明しない）。</div>
+  <div class="src"><span class="dref">doc22:208-223（S6 実測 defer）</span></div></div>
+<div class="pb spike"><span class="nm">eval_sdk API ／ decision_event schema の凍結</span> <span class="st st-spike">未決 design</span>
+  <div class="ds">eval_sdk API は <code>ScoreSpec</code> 名のみ Phase 2 で contract 化。decision_event は <code>schema_version="proposal"</code>。製品 contract 昇格は未決。</div>
+  <div class="src"><span class="dref">doc21:238 / 05:46,63</span></div></div>
+
+<!-- ===================== 4. process ===================== -->
+<h2>4. process（運用・承認）</h2>
+<div class="pb proc"><span class="nm">本観測 docs ブランチの push / PR</span> <span class="st st-proc">process</span>
+  <div class="ds">外向きアクション＝ユーザー承認後。push 前に最新 main を merge（実施済）。</div>
+  <div class="src">①PR 提出 → ②CI 緑 → ③別ステップ merge（self-merge 禁止）</div></div>
+<div class="pb proc"><span class="nm">STATUS.md の sha refresh</span> <span class="st st-proc">process</span>
+  <div class="ds">C1-status-sha WARN は round 境界 batch で orchestrator が refresh（私の所有外）。</div>
+  <div class="src"><span class="dref">.claude/rules/status-maintenance.md</span></div></div>
+
+<!-- ===================== 5. 正本マップ ===================== -->
+<h2>5. 正本マップ（各問題 → どの doc を直すか）</h2>
+<table>
+  <thead><tr><th>領域</th><th>正本（ここを先に直す）</th><th>問題</th></tr></thead>
+  <tbody>
+    <tr><td>eval_sdk 抽出・defer</td><td><a href="../architecture/21-eval-sdk-extraction.md">doc21</a> §7 非目標 / §10 ロードマップ / §11 リスク</td><td>correlator・Tier2 ノード・SR/SPL・API 凍結</td></tr>
+    <tr><td>Hermes-Langfuse 採用 gate</td><td><a href="02-l4-robotics-bridge-box.md">productization/02</a> §HLF <span class="dref">02:177-199</span></td><td>transcript 配線・audio leg owner・二重 generation</td></tr>
+    <tr><td>音声/画像 transport</td><td><a href="../mode-x-er/06-unfrozen-contract-resolutions.md">mode-x-er/06</a> §5 <span class="dref">06:135-148</span></td><td>audio-direct（実測 RESOLVED）・残 live 検証</td></tr>
+    <tr><td>観測 tool 候補</td><td><a href="07-layer-tool-decision-matrix.md">doc07</a> §観測 tool 追加候補</td><td>metrics backend・mcap・PlotJuggler・Foxglove</td></tr>
+    <tr><td>web 永続化・retention</td><td><a href="../architecture/22-web-observability.md">doc22</a> <span class="dref">22:208-223</span></td><td>retention/rotation 数値・coalesce</td></tr>
+    <tr><td>L3 4 stage 実装</td><td><a href="../mode-x-er/06-unfrozen-contract-resolutions.md">mode-x-er/06</a> §1 ／ <a href="03-l3-planning-core-box.md">productization/03</a></td><td>XER2-5（Validator/Resolver/…）</td></tr>
+    <tr><td>観測 open 問題 索引</td><td><a href="05-decision-observability-and-tooling.md">05</a> §未解決問題</td><td>本ボードの markdown 正本</td></tr>
+  </tbody>
+</table>
+
+<footer>
+  <p>このページは <code>docs/productization/observability-open-problems-detail.html</code>（補足図解・ダーク）。markdown 正本: <a href="05-decision-observability-and-tooling.md">05 §未解決問題（観測・eval・横断）</a>。<b>集約索引であり新規問題を発明しない</b>＝各々が既存正本に紐付く。状態が変わったら正本を先に直し本ボードを追従（docs-first）。</p>
+  <p>← <a href="observability-tiering-detail.html">観測ログ 格納先</a> ／ <a href="tool-catalog-detail.html">tool カタログ</a> ／ <a href="eval-sdk-detail.html">eval-sdk 詳細</a> ／ <a href="eval-sdk-plugin-core-detail.html">eval_sdk 拡張</a> ／ <a href="box-taxonomy.html">box-taxonomy</a></p>
+</footer>
+
+</div>
+</body>
+</html>
