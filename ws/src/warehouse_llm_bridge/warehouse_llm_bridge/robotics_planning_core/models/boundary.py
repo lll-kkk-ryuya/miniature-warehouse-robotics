@@ -1,10 +1,10 @@
 """L3 input boundary contract (provider-agnostic).
 
 ``RawModelOutput`` is the typed contract at the HEAD of the L3 Planning Core: the L3
-Handoff seam consumes it and normalizes it into a ``RoboticsPlanDraft``
-(docs/productization/03-l3-planning-core-box.md:146,156-157). It is owned by L3 (the
-consumer that defines what it accepts); the L4 ER adapter is the *producer* that
-conforms to it. It is deliberately provider-agnostic — ``transport`` / ``provider`` /
+Handoff seam consumes it and normalizes it into a ``RoboticsPlan draft`` — the first two
+stages of the pipeline (docs/productization/03-l3-planning-core-box.md:12-13, block 11-19).
+It is owned by L3 (the consumer that defines what it accepts); the L4 ER adapter is the
+*producer* that conforms to it. It is deliberately provider-agnostic — ``transport`` / ``provider`` /
 ``source_model`` are observation/audit tags only, NEVER execution-branch keys
 (docs/mode-x-er/03-er-adapter-skeleton.md:75,
 docs/mode-x-er/06-unfrozen-contract-resolutions.md §2) — so this L3 core stays reusable

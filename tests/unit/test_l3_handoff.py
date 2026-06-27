@@ -142,6 +142,49 @@ def test_valid_plan_passes_all_gates():
     assert draft.plan_id == "plan_demo_red_blue"
 
 
+# --- gate scope: KEY-name only, VALUE-side validation is XER2's job (02:78) --------
+
+
+def test_forbidden_token_in_a_value_currently_passes():
+    # SCOPE DOC: L3H-G0/G1 is a KEY-name structural gate. A dangerous intent placed in a
+    # VALUE on a benign key — here a raw coordinate ("0.4,0.2") and a low-level verb under the
+    # benign "target"/"interpreted_intent" keys — is NOT caught here and currently builds a
+    # valid draft. Value-side semantic validation (target must resolve to detections[].id or a
+    # known location) is the XER2 L3 Validator's job, not this seam's
+    # (docs/mode-x-er/02-l3-planning-core.md:78). This test pins that documented scope so a
+    # future change that adds value-side checking is a conscious decision, not a silent one.
+    plan = dict(INNER_PLAN)
+    plan["task_graph"] = [
+        {"id": "t1", "robot": "bot1", "action": "set_velocity", "target": "0.4,0.2"},
+    ]
+    plan["interpreted_intent"] = "drive cmd_vel toward goal 0.4,0.2"
+    draft = to_robotics_plan_draft(RawModelOutput(payload=plan))
+    # action is a free str at the draft stage (XER2 rejects UNKNOWN_ACTION later, doc02:77).
+    assert draft.task_graph[0].action == "set_velocity"
+    assert draft.task_graph[0].target == "0.4,0.2"
+
+
+def test_forbidden_key_nested_in_task_graph_element_is_rejected():
+    # Pin the RECURSIVE key scan: a forbidden key inside a task_graph[] element (not at the
+    # top level) is still rejected (L3H-G1 low_level_action_present).
+    plan = dict(INNER_PLAN)
+    plan["task_graph"] = [
+        {"id": "t1", "robot": "bot1", "action": "navigate", "target": "red_box", "cmd_vel": 0.2},
+    ]
+    with pytest.raises(ValueError, match="low_level_action_present"):
+        to_robotics_plan_draft(RawModelOutput(payload=plan))
+
+
+def test_forbidden_key_nested_in_detections_element_is_rejected():
+    # Same recursive scan over detections[] elements (L3H-G0 forbidden_endpoint).
+    plan = dict(INNER_PLAN)
+    plan["detections"] = [
+        {"id": "red_box", "pixel": [420, 310], "confidence": 0.92, "nav2_url": "http://x"},
+    ]
+    with pytest.raises(ValueError, match="forbidden_endpoint"):
+        to_robotics_plan_draft(RawModelOutput(payload=plan))
+
+
 # --- markdown code-fence tolerance (real agent/Hermes output, verified live) -------
 
 

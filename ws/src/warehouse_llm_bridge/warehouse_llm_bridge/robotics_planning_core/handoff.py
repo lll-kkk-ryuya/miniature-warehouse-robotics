@@ -25,6 +25,16 @@ codes. The two envelope shapes are external API specs, not invented (doc06 §5:1
 An unrecognized envelope raises ``ValueError`` (the G0 parse-gate failure mode, doc03:92);
 semantic rejection of a *well-formed but unsafe* plan (unknown robot, low confidence, ...) is
 the Validator's job in XER2, not this seam's (06:162-164).
+
+**Scope: this is a KEY-NAME structural gate, not a value-semantic one.** L3H-G0/G1 match the
+dict *key* names recursively (``_scan_forbidden``); a dangerous intent placed in a *value* on
+a benign key (e.g. ``target="0.4,0.2"``, ``action="set_velocity"``, a Nav2 URL inside a
+free-text key) is NOT caught here and currently passes. That value-side semantic check —
+``target`` must resolve to a ``detections[].id`` or a known location — is the XER2 L3
+Validator's job (docs/mode-x-er/02-l3-planning-core.md:78), which is design-deferred and not
+yet implemented. This is safe: there is zero execution path downstream of the Handoff until
+the Validator/Compiler stages land, so a value-embedded intent has nothing to actuate. We do
+NOT build value-side validation ahead of the frozen XER2 design (docs-first).
 """
 
 import json
@@ -38,9 +48,17 @@ from warehouse_llm_bridge.robotics_planning_core.models import (
 )
 
 # Forbidden key substrings (checked against lowercased dict keys, recursively, fail-closed).
-# Categories + reason literals are doc-grounded (06:155,158,160 / doc03:53 "Nav2 URL / ROS
-# topic / Jetson service / MCP tool name は渡さない"); the specific substrings implement those
-# categories. No legitimate RoboticsPlanDraft field name contains any of these.
+# Categories + reason literals are doc-grounded (productization/06:155 "禁止 field の削除 /
+# 未凍結 coordinate goal の遮断", 06:158 reason_code row, 06:160 L3H-G0/G1; the Compiler
+# forbidden items at productization/03:155-157 list the same velocity / low-level-action /
+# coordinate-goal categories); the specific substrings implement those categories. No
+# legitimate RoboticsPlanDraft field name contains any of these.
+#
+# The match is INTENTIONALLY conservative (plain substring, not word-boundary): a benign
+# extra="ignore" key that merely *contains* a forbidden token (e.g. goal_object, service_area,
+# topic_summary, url_safe_id, velocity_note) may also be rejected. For a safety gate that is
+# acceptable — over-rejecting fails closed, and a benign field is recoverable via a rename,
+# whereas a missed forbidden token is not. Do NOT relax this to word-boundary matching.
 _FORBIDDEN_KEY_RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
     (
         "forbidden_endpoint",
@@ -48,14 +66,36 @@ _FORBIDDEN_KEY_RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ),
     (
         "low_level_action_present",
-        ("velocity", "cmd_vel", "motor", "pwm", "duty", "joint", "torque", "wheel"),
+        # geometry_msgs/Twist component spellings (linear/angular/twist) included so a model
+        # that emits Twist parts under their bare names is rejected, not silently dropped via
+        # extra="ignore". No legitimate RoboticsPlanDraft field name contains these substrings.
+        (
+            "velocity",
+            "cmd_vel",
+            "motor",
+            "pwm",
+            "duty",
+            "joint",
+            "torque",
+            "wheel",
+            "linear",
+            "angular",
+            "twist",
+        ),
     ),
     ("coordinate_goal_unfrozen", ("goal", "waypoint", "coordinate")),
 )
 
 
 def extract_plan_content(payload: Mapping[str, Any]) -> dict:
-    """Pull the plan JSON object out of a transport envelope (or a pre-parsed plan)."""
+    """Pull the plan JSON object out of a transport envelope (or a pre-parsed plan).
+
+    WARNING: this is envelope-unwrap ONLY. It does NOT run the L3H-G0/G1 version and
+    forbidden-field acceptance gates — only :func:`to_robotics_plan_draft` does. Callers that
+    need the fail-closed path (XER2 and anything that may actuate downstream) MUST call
+    :func:`to_robotics_plan_draft`, never this function, or forbidden / unsafe content will
+    pass through unchecked.
+    """
     if "choices" in payload:  # OpenAI / Hermes chat completion (doc06 §5:140)
         content = _first_choice_content(payload)
     elif "candidates" in payload:  # Gemini generateContent, direct transport (doc06 §5:145)
@@ -160,10 +200,14 @@ def _coerce_plan_dict(content: Any) -> dict:
 def _strip_code_fence(text: str) -> str:
     """Strip a leading/trailing Markdown code fence (```json ... ```).
 
-    Models and agent gateways (verified live with ER via the Hermes Agent gateway, 2026-06-26)
-    routinely wrap JSON in a ```json fence, even when asked for raw JSON. This mirrors the
-    leniency the commander parser already applies (doc08:293). Only an outer fence is removed;
-    non-fenced content is returned unchanged.
+    This is a NEW leniency for the ER seam, not a continuation of existing behavior. The
+    commander parser ``parse_command_content`` (hermes_client.py:228) calls ``json.loads``
+    directly (hermes_client.py:240) and REJECTS a fenced string with ``ValueError``
+    (hermes_client.py:242); doc08:293 likewise treats a ``json.loads`` failure as a malformed
+    response to ignore, not to leniently parse. This fence tolerance was added from a
+    2026-06-26 live observation that the ER-via-Hermes Agent gateway returns ```json-fenced
+    JSON even when asked for raw JSON. Only an outer fence is removed; non-fenced content is
+    returned unchanged.
     """
     t = text.strip()
     if not t.startswith("```"):

@@ -10,7 +10,10 @@ from pydantic import ValidationError
 from warehouse_interfaces.locations import KNOWN_LOCATIONS
 from warehouse_interfaces.schemas import CommandAction
 from warehouse_llm_bridge.robotics import ErTaskRequest
-from warehouse_llm_bridge.robotics_planning_core import ROBOTICS_PLAN_DRAFT_VERSION
+from warehouse_llm_bridge.robotics_planning_core import (
+    ROBOTICS_PLAN_DRAFT_VERSION,
+    SUPPORTED_PLAN_VERSIONS,
+)
 
 
 def test_defaults():
@@ -50,4 +53,9 @@ def test_rejects_unknown_output_contract():
 
 
 def test_default_output_contract_is_supported():
-    assert ErTaskRequest(request_id="t").output_contract == ROBOTICS_PLAN_DRAFT_VERSION
+    # Distinct from test_defaults (which only compares against ROBOTICS_PLAN_DRAFT_VERSION):
+    # pin the literal AND that the default is in the set the L3 Handoff can normalize, so we
+    # never default-request a contract the gate (test_rejects_unknown_output_contract) rejects.
+    default_contract = ErTaskRequest(request_id="t").output_contract
+    assert default_contract == "robotics_plan_draft.v0"
+    assert default_contract in SUPPORTED_PLAN_VERSIONS

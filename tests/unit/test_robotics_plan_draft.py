@@ -10,6 +10,7 @@ import pytest
 from pydantic import ValidationError
 from warehouse_llm_bridge.robotics_planning_core import (
     ROBOTICS_PLAN_DRAFT_VERSION,
+    SUPPORTED_PLAN_VERSIONS,
     Detection,
     RoboticsPlanDraft,
     TaskNode,
@@ -70,4 +71,10 @@ def test_draft_rejects_unknown_schema_version():
 
 
 def test_draft_default_version_is_supported():
-    assert RoboticsPlanDraft(plan_id="p").schema_version in {ROBOTICS_PLAN_DRAFT_VERSION}
+    # Literal pin (not the `X in {X}` tautology that passes even if the gate is deleted):
+    # the default must be exactly "robotics_plan_draft.v0" AND be in the supported set the
+    # Handoff normalizes (productization/06:158).
+    default_version = RoboticsPlanDraft(plan_id="p").schema_version
+    assert default_version == "robotics_plan_draft.v0"
+    assert ROBOTICS_PLAN_DRAFT_VERSION == "robotics_plan_draft.v0"
+    assert default_version in SUPPORTED_PLAN_VERSIONS
