@@ -17,7 +17,7 @@
 >    本表は `run-hlf-g0.sh` の live 結果を **人が転記**する先（main session が `HERMES_LANGFUSE_*` creds 投入後）。
 >
 > **secret 値・trace 内容は転記しない**（PASS/FAIL と短い note のみ。trace id を載せるなら #360 が公開済みの
-> `d1477eef…` のように **既に PR で開示済みのもの**に限る）。
+> `be368c26…` のように **既に PR で開示済みのもの**に限る）。
 
 - run date:        _____________
 - gateway:         lean ER Hermes gateway（run-er-gateway.sh）port _____
