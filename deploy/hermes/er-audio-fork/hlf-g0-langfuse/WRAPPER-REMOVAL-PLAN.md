@@ -5,11 +5,22 @@
 > - Hermes plugin 無効化 / 二重計上回避 — `docs/architecture/13-hermes-setup.md:517`, `:551-570`（§7.7.1 再評価条件 1〜6）
 > - Phase 3 live 検証項目（①inbound `metadata.trace_id` を Hermes が尊重するか 他） — `docs/architecture/13-hermes-setup.md:520`
 > - cross-lane join = 決定的 seed（`trace_id` は契約フィールドでなく seed） — `ws/src/eval_sdk/eval_sdk/seed.py:33-42`, `:88-96`；doc参照 `docs/architecture/13-hermes-setup.md:516`
-> - HLF-G0〜G5 gate（観測ゲート・L4/L3 凍結経路から独立） — `docs/mode-x-er/06-unfrozen-contract-resolutions.md:9`（→ `docs/mode-x-er/productization/02-l4-robotics-bridge-box.md:177-199` を前方参照。**この productization/02 doc は現状 main/worktree に未着地**＝本書は doc13:558-570 §7.7.1 の 6 条件を権威 gate 定義として使う）
+> - HLF-G0〜G5 gate（観測ゲート・L4/L3 凍結経路から独立） — `docs/mode-x-er/06-unfrozen-contract-resolutions.md:9`（→ `docs/productization/02-l4-robotics-bridge-box.md:177-199` を前方参照。**正本の gate 表は doc02:190-195**＝`docs/architecture/13-hermes-setup.md:561-566` §7.7.1 条件 1〜6 と 1:1 対応。本書はこの doc02 gate 表を権威定義として使う。**注意**: 旧版は実体パス `docs/productization/02-…` を誤って `docs/mode-x-er/productization/02-…` と書き「未着地」と誤断定していた＝両 doc とも merged main に着地済み）
 >
 > **本書の性格**: これは **design-only PLAN**。Bridge コードは **1 行も書かない**。本書が記述する変更はすべて
 > **live HLF-G0 probe が PASS した後にのみ**着手できる（§7 / §8）。HLF-G0 が FAIL なら Pattern B は不採用で、
 > 現行の Bridge-owned wrapper（Pattern A）を**そのまま正**とする。
+>
+> ⚠️ **「plugin を観測有効化する」≠「Bridge wrapper を除去する」を区別**: 本 package の
+> `config.lean.yaml` が `plugins.enabled: [observability/langfuse]` を持ち、`run-er-gateway-langfuse.sh`
+> が plugin を ON にするのは **HLF-G0/Option-D を probe するための opt-in scaffolding**であって、
+> **Bridge の `langfuse.openai` wrapper 除去（Pattern B）ではない**。後者のみが本書の HLF-G0/G5 PASS gate に
+> 縛られる。probe 中の「plugin ON」状態でも **shipped default の trace owner は Bridge-owned のまま**
+> （doc06:9 / doc02:179）＝二重計上回避のため、比較 run では plugin を OFF にする（doc13:568-570）。
+> **#360 spike で Option D（predict-seed）= live PASS（trace `d1477eef…`）**＝「plugin-owned trace が
+> 実体として観測でき、seed 一致で score-join できる」ことは実証済みだが、それは「inbound trace_id を
+> honor する literal HLF-G0」とは別解（§6 OPTION B）であり、#6 scorer 脚まで通した end-to-end join は
+> 依然 human-gate（§9）。
 
 ---
 
@@ -216,15 +227,17 @@ Pattern B は **A/B/C 全モードの commander-cycle 観測**に触れる（wra
     plugin の imports を読んで確定）＋ **PYTHONPATH 前置**で供給。Hermes venv に install しない。
   - `HERMES_HOME` は **隔離 home**（既定 `~/.hermes-mwr-er-lean`・**`~/.hermes` 禁止**）。
   - secrets（`HERMES_LANGFUSE_*`）は **`HERMES_HOME/.env` を source するのみ**・**値を echo/print しない**。
-- **probe が判定する軸（§2/§3/§4 に対応・PASS/FAIL を 1 行で出す）**:
-  - **HLF-G0**: inbound `trace_id`（request metadata）→ 同 trace に generation が載るか。
-  - **HLF-G2**: Bridge から同 trace に tags/metadata（session_id・provider・mode・env）を足せるか（doc13:520②）。
-  - **HLF-G3**: MCP tool span（Bridge in-process）を同 trace の子に入れられるか（§7.7.1 条件4）。
-  - **HLF-G4**: managed-prompt link を plugin 経路で維持できるか（doc13:520④）。
-  - **HLF-G5**: wrapper drop ＋ plugin ON で **generation が 1 本だけ**（二重計上ゼロ・§7.7.1 条件6）。
+- **probe が判定する軸（gate ID は doc02:190-195 正本＝doc13:561-566 §7.7.1 条件 1〜6 と 1:1・PASS/FAIL を 1 行で出す）**:
+  - **HLF-G0**（doc02:190 / cond.1）: inbound `trace_id`（または同等 correlation id）→ 同 trace に generation が載るか。
+  - **HLF-G1**（doc02:191 / cond.2）: Bridge から同 trace に tags/metadata（gen_id・run_id・provider・mode・env・prompt）を足せるか。
+  - **HLF-G2**（doc02:192 / cond.3）: Bridge 外の Warehouse Orchestrator が同 trace に `create_score` できるか（score join）。
+  - **HLF-G3**（doc02:193 / cond.4）: MCP tool span（Bridge in-process）と model generation が同じ trace に入るか。
+  - **HLF-G4**（doc02:194 / cond.5）: plugin / Langfuse 障害時も robot 制御が 0-dispatch / fail-open を破らないか。
+  - **HLF-G5**（doc02:195 / cond.6）: wrapper drop ＋ plugin ON で **generation が 1 本だけ**（二重計上ゼロ）。
+  （managed-prompt link は doc02 の独立 gate ではなく HLF-G1 metadata / Pattern-A edge＝§4 / `README-hlf-g0.md` の caveat で扱う。）
 - **出力**: probe は **PASS/FAIL の判定行のみ**を `RESULT.md`（人が転記）に残す形を想定。**creds 値や trace 内容は出さない**。
-- **不在の前提**: `productization/02-l4-robotics-bridge-box.md`（HLF-G0〜G5 の正式 gate 表）は **未着地**。
-  本 probe は doc13:558-570 §7.7.1 の 6 条件を権威定義として使い、productization/02 が着地したら gate id を pin し直す。
+- **正本の gate 表**: `docs/productization/02-l4-robotics-bridge-box.md`:190-195（HLF-G0〜G5・**merged main に着地済み**）。
+  本 probe はこれを権威定義に使い、`docs/architecture/13-hermes-setup.md`:561-566 §7.7.1 条件 1〜6 と対応させる。
 
 ---
 
@@ -261,14 +274,20 @@ Pattern B は **A/B/C 全モードの commander-cycle 観測**に触れる（wra
 
 ## 9. Honest "not-yet" / unverified list
 
-- **HLF-G0〜G5 はすべて未検証（human-gated live）**: Hermes Langfuse plugin の inbound-trace_id honor 挙動は
-  **本セッションで実測していない**。本 PLAN は「PASS した場合の設計」と「FAIL 時の分岐」を両方記述する設計文書であり、
-  **probe 結果が出るまで Pattern B 採用は宣言しない**（doc13:568-570）。
+- **literal HLF-G0〜G5（plugin が *inbound* trace_id を honor するか 他）はすべて未検証（human-gated live）**:
+  Hermes Langfuse plugin の inbound-trace_id honor 挙動は **本 package の probe では実測していない**
+  （静的予測 = stock FAIL・`PLUGIN-TRACEID-ANALYSIS.md`）。**ただし Option D（predict-seed・§6 OPTION B）は
+  #360 spike で live-observed PASS**（`run-er-gateway-langfuse.sh` 経由・観測 trace `d1477eef…`・
+  `spike/langfuse-plugin-d/verify_d_audio.py`）＝「plugin-owned trace が seed 一致で score-join できる」は実証済み。
+  **未だ human-gate なのは #6 scorer 脚まで通した end-to-end join の live 実証**（#360 review 参照）。
+  本 PLAN は「PASS した場合の設計」と「FAIL 時の分岐」を両方記述する設計文書であり、
+  **end-to-end join の probe 結果が出るまで Pattern B（wrapper 除去）採用は宣言しない**（doc13:568-570）。
 - **metadata channel（trace_id を載せるキー名）未確定**: `extra_body` / `metadata` / header のどれを plugin が読むかは
   HLF-G0 probe で確定する（plugin source の `metadata` 参照を読んで pin）。
 - **`langfuse` package の必要バージョン未確定**: plugin の imports を読んで `>=2,<3` か別レンジかを確定（GROUNDED FACTS 準拠）。
-- **productization/02-l4-robotics-bridge-box.md（HLF gate 正本表）未着地**: 本 PLAN は doc13:558-570 §7.7.1 を権威に使う。
-  着地したら gate id を file:line で pin し直す。
+- **HLF gate 正本表 = `docs/productization/02-l4-robotics-bridge-box.md`:190-195（merged main に着地済み）**:
+  本 PLAN はこれを権威 gate 表に使い、`docs/architecture/13-hermes-setup.md`:561-566 §7.7.1 条件 1〜6 と 1:1 対応させる。
+  （旧版は実体パスを `docs/mode-x-er/productization/02-…` と誤記して「未着地」と書いていた＝訂正済み。）
 - **managed-prompt link の劣化可能性**: §4 の通り Pattern B では generation-level prompt link が失われうる（HLF-G4 次第）。
   これは Pattern A（wrapper）の優位点として honest に残す。
 - 本 PLAN は **Bridge code を 1 行も含まない**（design only）。実装は §8.2 の gate を満たした後の別 PR。

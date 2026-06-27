@@ -10,10 +10,14 @@
 > `[worktree: mwr-hermes-er-fork | branch: feat/hermes-er-audio-fork | track: #356]`
 >
 > **設計正本（docs-first source of truth):**
-> - `docs/mode-x-er/06-unfrozen-contract-resolutions.md` §5 + §5 補遺（実測結果 2026-06-26）
->   — PR #355 (docs). Read on `origin/feat/mode-x-er`.
+> - `docs/mode-x-er/06-unfrozen-contract-resolutions.md` §5（:135-164）+ §5 補遺（:263-271・`input_audio`
+>   fork demonstration）— **PR #355 が main に land 済み（`3002fd8`）**＝補遺は merged main の doc06 にある。
 > - issue #356 (productionize the forked input_audio gateway).
 > - `docs/mode-x-er/04-er-input-modalities-and-stt.md` (audio modality / STT out-of-band).
+>
+> 注: 下記 §1 / §References の `git show origin/feat/mode-x-er:<path>` 引用は 2026-06-27 時点で adapter
+> コードを読んだ記録。設計正本（doc06 §5 補遺）自体は #355 land で **main 上で解決**する。permanent-fallback /
+> 観測本線外の根拠行は **補遺:269**（旧版が引いていた `:162` は §5 内 STT 行＝補遺ではない・訂正済み）。
 
 ---
 
@@ -25,8 +29,9 @@ Hermes v0.15.1 returns `400 unsupported_content_type` for `input_audio` content 
 this directory (`0001-input_audio-passthrough.patch`) makes a **forked** Hermes gateway accept
 OpenAI `input_audio` parts and map them to Gemini `inlineData{mimeType:audio/wav}`. **This plan
 flips the ER audio leg's default transport to `hermes` *only when* a forked input_audio gateway
-is configured, and keeps `direct` as the permanent fallback** (per PR #355 / doc06 §5 補遺:162
-"音声 = direct ER … or direct … transport 非依存"). The flip is a *transport/input-layer* change
+is configured, and keeps `direct` as the permanent fallback** (per PR #355 / doc06 §5 補遺:269
+"CURRENT（shipped reality）= 音声は direct のまま … direct は恒久 fallback"; transport 非依存 = §5:162).
+The flip is a *transport/input-layer* change
 only — it never touches orchestration, the Policy Gate, `action_map` idempotency mint,
 0-dispatch-on-timeout, or `eval_sdk` outcome scores.
 
@@ -76,7 +81,7 @@ Proposed resolver (pseudocode — **design only, not committed**):
 ```
 # L4 transport selection (robotics/__init__.py:3 — "L4 owns transport selection")
 def resolve_audio_transport(cfg: ErGatewayConfig) -> Transport:
-    # default = DIRECT (gemini_er.py:53 audit default; doc06 §5 補遺:162 permanent fallback)
+    # default = DIRECT (gemini_er.py:53 audit default; doc06 §5 補遺:269 permanent fallback)
     if cfg.forked_audio_gateway_configured:   # base_url set AND fork capability declared (§3)
         return Transport.HERMES               # TARGET (doc06 §5:148 "凍結方針(probe 後・additive)")
     return Transport.DIRECT                    # permanent fallback (PR #355)
@@ -104,7 +109,7 @@ Rules the resolver must obey (all docs-grounded, nothing invented):
 ### 2.2 What does NOT change (load-bearing invariants — assert in tests, never edit)
 
 - `action_map` idempotency mint, Policy Gate, 0-dispatch-on-timeout — untouched (fork is
-  transport/input only; `apply-fork.sh` WHAT/WHY header; `06` §5 補遺:162 "観測は本線外・fail-open").
+  transport/input only; `apply-fork.sh` WHAT/WHY header; `06` §5 補遺:270 "Langfuse … outcome score は eval_sdk 所有"; §5:162 "観測は本線外・fail-open").
 - `eval_sdk` outcome scores (result / SR / SPL / collision / deadlock) — untouched.
 - `warehouse_interfaces` — **not touched** (`06`:51,70 ErTaskRequest/Transport stay bridge-local;
   `06`:64 "warehouse_interfaces に入れない"). No `contract` label is required for the audio-flip
@@ -232,13 +237,14 @@ no new mechanism):
    `audio_input_audio_supported: true`.
 
 A **deployment runbook script** (`run-er-gateway.sh`, referenced by `.env.example`) is the
-parameterized, idempotent entrypoint for steps 1–3. **Honesty marker:** as of this plan the dir
-contains `apply-fork.sh` / patch / `.env.example` / `UPSTREAM-PR.md`; a
-single end-to-end `run-er-gateway.sh` that creates the worktree, applies, and launches with the
-lean config is the **remaining deploy artifact** to ship in this package (mark NOT-yet-shipped).
-It must: `set -euo pipefail`; be idempotent; be parameterized via env (`HERMES_SRC`,
-`HERMES_HOME`, `API_SERVER_PORT` with sane defaults); **refuse to touch `~/.hermes/hermes-agent`
-in place**; **source** (never print) `$HERMES_HOME/.env`; and carry a usage header.
+parameterized, idempotent entrypoint for steps 1–3. **Status:** this single end-to-end
+`run-er-gateway.sh` — which creates the isolated worktree, applies the patch, and launches the lean
+gateway (`--probe`/`--stop`) — is **SHIPPED in this package** (alongside `apply-fork.sh` / patch /
+`.env.example` / `UPSTREAM-PR.md`). It: uses `set -euo pipefail`; is idempotent; is parameterized
+via env (`HERMES_SRC`, `HERMES_HOME`, `PORT`/`API_SERVER_PORT` with sane defaults);
+**refuses to touch `~/.hermes/hermes-agent` in place**; **sources** (never prints)
+`$HERMES_HOME/.env`; and carries a usage header. (The lean home's `config.yaml` is NOT auto-seeded —
+initialize it once per README "一気通貫 > 初期化".)
 
 Note (4-provider comparison): Hermes is a **single server-side active model** (no per-request
 provider routing, GROUNDED FACTS / `06`:160a). The ER forked gateway is therefore a *dedicated*
@@ -266,10 +272,10 @@ A PR built from this plan is "done" only when **all** hold (docs-first close-gat
 4. **Forked gateway deployable** (§5): `apply-fork.sh --check` clean against an isolated worktree;
    the deploy runbook reuses PYTHONPATH-override + personal venv and refuses the personal clone.
 5. **docs-first close-gate**:
-   - Update `docs/mode-x-er/06 §5 補遺` so the "音声 = direct ER (Hermes 不可)" line records the
-     productionized exception: *forked* gateway carries audio (`hermes`), unforked stays `400`
-     (`06`:159 stays true for *unforked*). Keep "transport 非依存 → 同一 RoboticsPlanDraft"
-     (`06`:162). Cite this package.
+   - doc06 §5 補遺（:263-271）が #355 で land 済み＝「forked gateway carries audio (`hermes`),
+     unforked stays `400`（`06`:159 は *unforked* で不変）／ CURRENT = direct（補遺:269）」を既に記録。
+     **実装 PR は補遺の "demonstrated・未 ship" を "shipped" に更新**し（deploy 後）、"transport 非依存 →
+     同一 RoboticsPlanDraft"（`06`:162）を維持して this package を cite する。
    - Record produce/consume in `ws/src/warehouse_llm_bridge/CLAUDE.md` (new `robotics.er_gateway`
      config consume; audio transport selection produce).
    - `python3 scripts/check_consistency.py` → **0 ERROR**.
@@ -289,7 +295,7 @@ A PR built from this plan is "done" only when **all** hold (docs-first close-gat
 | Forked-Hermes audio path captured as committed pytest | NOT yet (manually verified only — §4 honesty marker) |
 | `robotics.er_gateway.*` config block | Net-new, NOT on `feat/mode-x-er` (§1 grep); key names `(発明/要確定)` |
 | Live ER transport seam in `gemini_er.propose_plan` | NOT yet — deferred to `#344` (`gemini_er.py:60`); the flip co-lands with / after it |
-| One-shot `run-er-gateway.sh` deploy entrypoint | NOT yet shipped in this dir (§5) — only `apply-fork.sh` / patch / `.env.example` / `UPSTREAM-PR.md` present |
+| One-shot `run-er-gateway.sh` deploy entrypoint | **SHIPPED** in this dir (§5) — worktree create + patch apply + lean gateway launch (`--probe`/`--stop`), alongside `apply-fork.sh` / patch / `.env.example` / `UPSTREAM-PR.md` |
 | Runtime failover `hermes → direct` on health failure | NOT frozen by this plan (§2.1 rule 2) `(発明/要確定)` |
 | Latency hard threshold | Report-only for now; confound noted (GROUNDED FACTS) |
 | `transport` enum promotion to a contract | Separate later contract PR, not this one (`06`:152 step 3, `06`:208 roadmap) |

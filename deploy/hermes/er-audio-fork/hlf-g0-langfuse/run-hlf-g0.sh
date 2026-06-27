@@ -75,8 +75,12 @@ rp_personal="$(cd "$PERSONAL_HOME" 2>/dev/null && pwd || echo "$PERSONAL_HOME")"
   die "HERMES_HOME ($rp_home) is the personal daily-driver. Use an isolated home (e.g. ~/.hermes-mwr-er-lean)."
 
 rp_libs="$LANGFUSE_LIBS"; [ -d "$rp_libs" ] && rp_libs="$(cd "$rp_libs" && pwd)"
-case "$rp_libs" in
-  "$PERSONAL_VENV"*|"$rp_personal"*)
+# Compare with a trailing "/" on BOTH sides so a sibling path like
+# ~/.hermes-mwr-er-lean is NOT falsely matched as inside ~/.hermes (the bare
+# "$rp_personal"* prefix would over-match the "-mwr-er-lean" suffix). Match only
+# the exact dir or a true subpath (".../<personal>/...").
+case "$rp_libs/" in
+  "$PERSONAL_VENV/"*|"$rp_personal/"*)
     die "LANGFUSE_LIBS ($rp_libs) is inside the personal venv/home. Refusing." ;;
 esac
 
@@ -92,7 +96,7 @@ fi
 rp_py="$(command -v "$PY" || true)"
 [ -n "$rp_py" ] || die "python interpreter not found: $PY"
 case "$rp_py" in
-  "$PERSONAL_VENV"*) die "PY ($rp_py) is the personal venv python. Use an isolated interpreter." ;;
+  "$PERSONAL_VENV"|"$PERSONAL_VENV"/*) die "PY ($rp_py) is the personal venv python. Use an isolated interpreter." ;;
 esac
 # Refuse Python < 3.8 (urllib f-strings / typing). The macOS system python3 may
 # be 3.7 — fail loudly rather than emit confusing tracebacks.

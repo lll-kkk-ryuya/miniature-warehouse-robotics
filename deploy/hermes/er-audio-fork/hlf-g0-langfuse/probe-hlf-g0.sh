@@ -11,12 +11,15 @@
 #    SAME deterministic-seed trace?" (doc13:561 §7.7.1 cond.1 / doc13:520 ①).
 #   See WRAPPER-REMOVAL-PLAN.md §2/§6.
 #
-# STATUS: this is a SCAFFOLD. The live POST/Langfuse-read steps are intentionally
-#   left as TODO blocks — the LIVE RUN is sequential and done by the MAIN SESSION
-#   after the user supplies HERMES_LANGFUSE_* creds. This script must NOT be the
-#   thing that first hits Langfuse from an agent context. It refuses unsafe paths,
-#   sets up isolation, and prints the gate checklist; the actual probe calls are
-#   gated behind RUN_LIVE=1 and remain unimplemented placeholders here (design only).
+# STATUS: this is a SCAFFOLD (design-only). The live POST/Langfuse-read steps are
+#   intentionally left as TODO blocks (RUN_LIVE=1 -> die placeholder).
+#
+#   ⚠️ THE REAL PROBE IS THE SIBLING `run-hlf-g0.sh` + `hlf_g0_probe.py` IN THIS DIR.
+#   For an actual HLF-G0 PASS/FAIL/INCONCLUSIVE verdict, run `./run-hlf-g0.sh`
+#   against a running plugin-ON gateway — NOT this file. This scaffold only refuses
+#   unsafe paths, sets up isolation, and prints the canonical gate checklist
+#   (doc02:190-195). It exists as the early design stub; the working harness
+#   superseded it. (Kept for the gate checklist; do not extend the placeholder.)
 #
 # SAFETY (mirrors deploy/hermes/er-audio-fork/README.md:65-71,123-127):
 #   - NEVER touch personal ~/.hermes or its venv. Refuse if paths point there.
@@ -31,7 +34,7 @@ set -euo pipefail
 PERSONAL_HOME="${HOME}/.hermes"
 HERMES_HOME="${HERMES_HOME:-${HOME}/.hermes-mwr-er-lean}"
 ISOLATED_DIR="${ISOLATED_DIR:-/tmp/mwr-hlf-g0-langfuse}"     # pip --target sink (gitignored)
-LANGFUSE_SPEC="${LANGFUSE_SPEC:-langfuse>=2,<3}"             # pin from plugin imports before live run
+LANGFUSE_SPEC="${LANGFUSE_SPEC:-langfuse>=4.9,<5}"          # match the sibling real probe (run-hlf-g0.sh) — plugin uses the v4 surface (create_trace_id / propagate_attributes)
 GATEWAY_BASE_URL="${GATEWAY_BASE_URL:-http://127.0.0.1:8644/v1}"  # lean ER gateway (README:122)
 RUN_LIVE="${RUN_LIVE:-0}"                                    # 1 = attempt live probe (MAIN SESSION only)
 
@@ -73,16 +76,19 @@ load_secrets() {
   note "HERMES_LANGFUSE_{PUBLIC,SECRET}_KEY + _BASE_URL present (values not shown)."
 }
 
-# ---- gate checklist (always printed; the authoritative gate is doc13:558-570) -
+# ---- gate checklist (always printed; authoritative gate = doc02:190-195) ------
 print_gate_checklist() {
   cat >&2 <<'EOF'
-HLF gate checklist (doc13:558-570 §7.7.1; pin to productization/02 when it lands):
-  [ ] HLF-G0  inbound trace_id (request metadata) -> generation lands on SAME trace
-  [ ] HLF-G2  Bridge can add session_id/provider/mode/env tags+metadata to that trace
-  [ ] HLF-G3  MCP tool span (Bridge in-process) joins the SAME trace as the generation
-  [ ] HLF-G4  managed-prompt link survives the plugin path (else Pattern A keeps the edge)
-  [ ] HLF-G5  wrapper dropped + plugin ON => generation recorded EXACTLY ONCE (no double-count)
+HLF gate checklist (canonical = docs/productization/02-l4-robotics-bridge-box.md:190-195
+                    = docs/architecture/13-hermes-setup.md:561-566 §7.7.1 conditions 1-6):
+  [ ] HLF-G0  trace id passthrough: inbound trace_id (or equiv correlation id) honored -> same trace
+  [ ] HLF-G1  metadata: gen_id/run_id/provider/mode/env/prompt land in trace metadata/tags
+  [ ] HLF-G2  score join: the (Bridge-external) Warehouse Orchestrator can create_score on that trace
+  [ ] HLF-G3  span shape: MCP tool span + model generation join the SAME trace
+  [ ] HLF-G4  fail-open: plugin/Langfuse failure does not break 0-dispatch / fail-open robot control
+  [ ] HLF-G5  no double generation: wrapper dropped + plugin ON => generation recorded EXACTLY ONCE
 Record PASS/FAIL into RESULT.md. HLF-G0 PASS (+G5) is the gate to start the Bridge-code PR.
+(managed-prompt link is NOT a separate doc02 gate; it is an HLF-G1 / Pattern-A edge — see README-hlf-g0.md.)
 EOF
 }
 

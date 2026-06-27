@@ -87,7 +87,12 @@ The full diff is in [`0001-input_audio-passthrough.patch`](./0001-input_audio-pa
   the OpenAI-compatible surface for requests routed to the Gemini-native adapter.
 - **Non-goals:**
   - No other provider/transport is touched. Adapters that do not implement audio passthrough are
-    unaffected; their behavior for `input_audio` is unchanged by the adapter-side hunk.
+    unaffected; their behavior for `input_audio` is unchanged by the adapter-side hunk. In
+    particular, the **Gemini cloudcode** path (`agent/gemini_cloudcode_adapter.py`) is **not**
+    extended here — it continues to **silently drop** `input_audio` parts. Only the Gemini
+    **native** adapter (`agent/gemini_native_adapter.py`) gains the audio passthrough, so audio is
+    available only when the request is routed to the native Gemini provider. (A follow-up could
+    mirror the hunk into the cloudcode adapter if that path needs audio.)
   - No orchestration, routing, or safety logic is changed. This is strictly the
     transport/input layer.
   - No new request/response schema is invented; both `input_audio` and `inlineData` are

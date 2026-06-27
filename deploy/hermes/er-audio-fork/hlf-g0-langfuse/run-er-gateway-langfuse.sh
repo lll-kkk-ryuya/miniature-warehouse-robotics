@@ -461,7 +461,9 @@ do_probe_langfuse() {
   # Build a tiny WAV via say + afconvert (macOS). If unavailable -> SKIP audio.
   local tmpdir wav_b64 have_audio=0
   tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/er-lf-probe.XXXXXX")"
-  trap 'rm -rf "$tmpdir"' RETURN
+  # EXIT (not RETURN): the non-200 path below calls die->exit, which would skip a
+  # RETURN trap and leak $tmpdir. EXIT fires on every path (return, exit, die).
+  trap 'rm -rf "$tmpdir"' EXIT
   if command -v say >/dev/null 2>&1 && command -v afconvert >/dev/null 2>&1; then
     if say -o "$tmpdir/say.aiff" "Move the red box to the loading dock." >/dev/null 2>&1 \
        && afconvert -f WAVE -d LEI16@16000 -c 1 "$tmpdir/say.aiff" "$tmpdir/probe.wav" >/dev/null 2>&1; then

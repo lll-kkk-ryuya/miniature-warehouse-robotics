@@ -85,7 +85,11 @@ case "${1:-}" in
   --probe) MODE="probe" ;;
   --stop)  MODE="stop" ;;
   --help|-h)
-    sed -n '2,77p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    # Print the header banner (line 2 .. the LAST "# ===…===" closer), stripping
+    # the leading "# ". Using the dynamically-found closer (not a hardcoded line
+    # number) so edits to the header never spill raw source into --help output.
+    _hdr_end="$(grep -nE '^# ={70,}$' "${BASH_SOURCE[0]}" | tail -1 | cut -d: -f1)"
+    sed -n "2,${_hdr_end:-67}p" "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
     exit 0
     ;;
   "" ) MODE="run" ;;
@@ -113,6 +117,11 @@ guard_paths() {
     die "WORKTREE_DIR ($rp_wt) is the personal clone. The worktree MUST be a separate path."
   [ "$rp_wt" = "$rp_personal" ] && \
     die "WORKTREE_DIR ($rp_wt) is the personal home. Refusing."
+  # Defense in depth: the gateway HOME must not be the patched source tree.
+  [ "$rp_home" = "$rp_src" ] && \
+    die "HERMES_HOME ($rp_home) equals HERMES_SRC. The gateway home and the patched source MUST be separate paths."
+  [ "$rp_home" = "$rp_wt" ] && \
+    die "HERMES_HOME ($rp_home) equals WORKTREE_DIR. The gateway home and the worktree MUST be separate paths."
   return 0
 }
 
@@ -145,6 +154,24 @@ pid_on_port() {
   lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null | head -1 || true
 }
 
+# True iff $WORKTREE_DIR is a REGISTERED worktree of $HERMES_SRC. Compares the
+# `worktree <path>` porcelain lines by exact, PHYSICAL-path equality (pwd -P, so
+# the /tmp -> /private/tmp symlink macOS uses resolves the SAME on both sides) —
+# NOT a substring grep, which would false-match a path that is merely a prefix
+# of (or contained in) another registered worktree's path (e.g. /tmp/x vs
+# /private/tmp/x or /tmp/x-suffix).
+worktree_registered() {
+  local want reg
+  want="$WORKTREE_DIR"; [ -d "$want" ] && want="$(cd "$want" && pwd -P)"
+  while IFS= read -r reg; do
+    [ "$reg" = "${reg#worktree }" ] && continue   # only `worktree <path>` lines
+    reg="${reg#worktree }"
+    [ -d "$reg" ] && reg="$(cd "$reg" && pwd -P)"
+    [ "$reg" = "$want" ] && return 0
+  done < <(git -C "$HERMES_SRC" worktree list --porcelain 2>/dev/null)
+  return 1
+}
+
 # ----------------------------- stop ------------------------------------------
 do_stop() {
   guard_paths
@@ -170,7 +197,7 @@ do_stop() {
 
   # Remove the isolated worktree (idempotent).
   if git -C "$HERMES_SRC" rev-parse --git-dir >/dev/null 2>&1; then
-    if git -C "$HERMES_SRC" worktree list --porcelain 2>/dev/null | grep -qF "$WORKTREE_DIR"; then
+    if worktree_registered; then
       log "removing isolated worktree $WORKTREE_DIR"
       git -C "$HERMES_SRC" worktree remove --force "$WORKTREE_DIR" 2>/dev/null \
         || log "worktree remove reported an issue (continuing)"
@@ -193,7 +220,7 @@ prepare_worktree() {
     || die "HERMES_SRC is not a git repo: $HERMES_SRC"
 
   # Create the worktree if absent (idempotent). Pin to HEAD of the personal clone.
-  if git -C "$HERMES_SRC" worktree list --porcelain 2>/dev/null | grep -qF "$WORKTREE_DIR"; then
+  if worktree_registered; then
     log "reusing existing isolated worktree: $WORKTREE_DIR"
   else
     [ -e "$WORKTREE_DIR" ] && die "WORKTREE_DIR exists but is not a registered worktree: $WORKTREE_DIR"
@@ -226,8 +253,13 @@ prepare_worktree() {
 launch_gateway() {
   source_env
   # Ensure the lean ER home actually carries the lean config (fail loud if not).
+  # This package does NOT auto-seed config.yaml; initialize the lean home once
+  # (README "一気通貫 > 初期化"):  mkdir -p "$HERMES_HOME";
+  #   cp <repo>/deploy/dev/hermes-er/config.lean.yaml "$HERMES_HOME/config.yaml"
+  #   cp "$SCRIPT_DIR/.env.example" "$HERMES_HOME/.env"   # then fill it in
+  # (or run the existing deploy/dev/run-er-hermes.sh once, which seeds the same home).
   [ -f "$HERMES_HOME/config.yaml" ] || \
-    die "missing $HERMES_HOME/config.yaml — the lean ER home is not initialized (provider google, ER model, api_server: [] zero tools)."
+    die "missing $HERMES_HOME/config.yaml — initialize the lean ER home first: cp <repo>/deploy/dev/hermes-er/config.lean.yaml $HERMES_HOME/config.yaml (provider google, ER model, api_server: [] zero tools). See README '一気通貫 > 初期化'."
 
   # Explicit PORT overrides; otherwise .env is the source of truth.
   if [ -n "${PORT:-}" ]; then export API_SERVER_PORT="$PORT"; fi
@@ -296,7 +328,9 @@ do_probe() {
   # Build a tiny WAV via say + afconvert (macOS). If unavailable -> SKIP audio probe.
   local tmpdir wav_b64 have_audio=0
   tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/er-probe.XXXXXX")"
-  trap 'rm -rf "$tmpdir"' RETURN
+  # EXIT (not RETURN): the non-200 path below calls die->exit, which would skip a
+  # RETURN trap and leak $tmpdir. EXIT fires on every path (return, exit, die).
+  trap 'rm -rf "$tmpdir"' EXIT
   if command -v say >/dev/null 2>&1 && command -v afconvert >/dev/null 2>&1; then
     if say -o "$tmpdir/say.aiff" "Move the red box to the loading dock." >/dev/null 2>&1 \
        && afconvert -f WAVE -d LEI16@16000 -c 1 "$tmpdir/say.aiff" "$tmpdir/probe.wav" >/dev/null 2>&1; then
