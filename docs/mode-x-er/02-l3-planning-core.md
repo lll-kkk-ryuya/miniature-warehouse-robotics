@@ -276,3 +276,55 @@ class CommandCompiler:
 - NetworkX graph object を audit / wire schema として保存する。
 - customer site 固有の camera calibration をコード定数に埋め込む。
 - `RoboticsPlan` schema を最初から `warehouse_interfaces` に凍結する。
+
+## ValidationReport 語彙確定（XER2/G1）
+
+> 本節は §1 の `status` / `code` / `severity` / `dispatch_effect` の許容値を XER2 着手前に確定し、[`06-unfrozen-contract-resolutions.md`](06-unfrozen-contract-resolutions.md) §1 の「要確定」を解消する。値は新規発明ではなく、既存の確定語彙—decision 固定語彙（[`productization/05-decision-observability-and-tooling.md`](../productization/05-decision-observability-and-tooling.md):69）・§1:96 の stable code・ER 出力 field（[`03-er-adapter-skeleton.md`](03-er-adapter-skeleton.md):71）—へ接地する。これは内部案であり `warehouse_interfaces` 凍結契約ではない（`:5`）。昇格は doc06 §1 のゲート（XER1→XER2 後）に従う。
+
+### 役割分離（核心）
+
+`code`（何が失敗したか）と consequence を分ける。1 つの `code` は `dispatch_effect`（帰結）次第で reject にも clarification にもなりうる（§1:79「confidence … reject or needs_clarification」が根拠）。これにより reject code ごとに対の clarification code を増やさない。
+
+- `code` = 何が失敗したか（意味固定・安定）
+- `dispatch_effect` = その rule result の帰結（dispatch にどう効くか）
+- `severity` = error / warning
+- `status` = report 全体の集約判定（rule result の最も重い `dispatch_effect` で決まる）
+
+### status（report 全体の判定）
+
+decision 固定語彙（`productization/05`:69 `accepted/rejected/warning/needs_clarification/emergency_stop`）のうち、Validator が出す終端判定に絞る。`warning` は report の status ではなく rule result の `severity`（非ブロッキング・§1:63 `warnings`）に置く。
+
+| `status` | 意味 | dispatch | 出所 |
+|---|---|---|---|
+| `accepted` | 全 check 通過 | 通す | §1:61 |
+| `rejected` | ≥1 件の blocking error | **0 dispatch** | `productization/05`:69,57,244 |
+| `needs_clarification` | operator clarification 要 | **0 dispatch**（人へ確認） | §1:79,84 |
+| `emergency_stop` | emergency active | **0 dispatch** | `productization/05`:69 |
+
+集約の優先順位（重い帰結が勝つ）: `emergency_stop` > `rejected` > `needs_clarification` > `accepted`。`status != accepted` は §1:68 のとおり 0 dispatch。reject 系 status は `rejected` と `emergency_stop`。
+
+### RuleResult.severity / dispatch_effect
+
+| field | 許容値 | 意味 |
+|---|---|---|
+| `severity` | `error` / `warning` | error は `errors[]`（§1:62・ブロッキング）、warning は `warnings[]`（§1:63・非ブロッキング） |
+| `dispatch_effect` | `block` / `needs_clarification` / `emergency_stop` / `none` | `block`→status `rejected`、`needs_clarification`→`needs_clarification`、`emergency_stop`→`emergency_stop`、`none`→非ブロッキング |
+
+blocking な rule result（`block` / `needs_clarification` / `emergency_stop`）は `errors[]` に入れ（severity=error）、report の `status` は `dispatch_effect` の優先順位で決める。`none` のみ `warnings[]`（severity=warning）。report の shape（`status` / `errors[]` / `warnings[]` / `normalized_plan`）は §1:60-66 のまま拡張しない。なお `dispatch_effect=block` は内部 effect ラベルで docs literal は無く（status `rejected` に対応）、他の effect 値（`needs_clarification`/`emergency_stop`/`none`）は status と同綴りに揃える。
+
+> `OperatorNotice`（#7・[`05-operator-feedback-and-voice-response.md`](05-operator-feedback-and-voice-response.md):279）も `severity` を持つが別 box の別 contract（未凍結・doc06 §7）で、ValidationReport の `severity` とは別物として扱う。
+
+### code 語彙（stable・全9）
+
+reject 系は §1:96 の 8 code をそのまま使う: `UNKNOWN_ROBOT` / `UNKNOWN_ACTION` / `UNKNOWN_TARGET` / `LOW_CONFIDENCE_TARGET` / `INVALID_AFTER_REFERENCE` / `TASK_GRAPH_CYCLE` / `CYCLE_STATE_STALE` / `EMERGENCY_ACTIVE`。
+
+clarification 系は専用 code を増やさず、次の 2 経路で表す:
+
+1. **model が明示要求** → `OPERATOR_CLARIFICATION_REQUESTED`（ER 出力 `operator_clarification_required=true`・`03`:71 / §1:84 の clarification check）。`dispatch_effect=needs_clarification`。
+2. **低 confidence の clarification 化** → 既存 `LOW_CONFIDENCE_TARGET` を `dispatch_effect=needs_clarification` で出す（reject か clarification かは `PlanPolicy`・§1:79,97）。新 code を作らない。
+
+よって stable code は 8（reject）＋ `OPERATOR_CLARIFICATION_REQUESTED`（clarification origin）＝ 9。`EMERGENCY_ACTIVE` は `dispatch_effect=emergency_stop`。
+
+### Detection / TaskNode
+
+独立した nested model にする（inline dict にしない）。形は doc06 §1（昇格下書き）の `Detection={id, pixel, confidence}` / `TaskNode={id, robot, action, target, after}`。慣習は `schemas.py`（`BaseModel, extra="ignore"` / `StrEnum`）に倣う（doc06 §1）。新 location / action は定義せず `KNOWN_LOCATIONS` / `CommandAction` を再利用する。
