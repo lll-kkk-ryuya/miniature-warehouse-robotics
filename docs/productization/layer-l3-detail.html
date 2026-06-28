@@ -536,12 +536,12 @@ class CommandCompiler:
 
 <div class="node n-box"><div class="t">⑤ fixture / replay（更新後の命綱）</div><div class="s">
   <div class="optline">calibration / model を更新 → <b>全 fixture を replay</b> → 1つでも落ちたら <b>戻さない</b></div>
-  fixture = 入力＋期待結果（<code>red_blue_sequence / invalid_robot / low_confidence / stale_state</code>）。製造は更新後に必ず再検証してから戻すのが鉄則。stable code + gate と一体で<b>合否が機械判定</b>→目視確認から自動回帰へ格上げ。<span class="dref">03:87,185-190,237 / mode-x-er/02:157 / 04:115-131</span>
+  fixture = 入力＋期待結果（<code>red_blue_sequence / invalid_robot / low_confidence / stale_state</code>）。製造は更新後に必ず再検証してから戻すのが鉄則。stable code + gate と一体で<b>合否が機械判定</b>→目視確認から自動回帰へ格上げ。<span class="dref">03:87,185-190,237 / mode-x-er/02:157 / 04:131-147</span>
 </div></div>
 
 <div class="node n-box"><div class="t">⑥ site profile（案件差分を1か所に）</div><div class="s">
   <div class="optline">site_profiles/customer_a/<b>line_weld/cell_03/</b>{ locations・robots・cameras・calibration・safety・traffic・nav2/・eval }</div>
-  <b>置く</b>=座標 / robot id / camera calibration / safety threshold / map / KPI。　<b>置かない</b>=secret・.env / 生出力の長期保存 / 契約を勝手に拡張する schema。入れ物の規約は<b>工場/ライン/セルどの粒度でも共通</b>→隣のセルは <code>cell_04/</code> を1個足すだけ（Core も上位 profile も触らない）。「置かないもの」が明確なので配布・版管理しても漏えい/契約破壊なし。<span class="dref">04:78-113 / 03:238</span>
+  <b>置く</b>=座標 / robot id / camera calibration / safety threshold / map / KPI。　<b>置かない</b>=secret・.env / 生出力の長期保存 / 契約を勝手に拡張する schema。入れ物の規約は<b>工場/ライン/セルどの粒度でも共通</b>→隣のセルは <code>cell_04/</code> を1個足すだけ（Core も上位 profile も触らない）。「置かないもの」が明確なので配布・版管理しても漏えい/契約破壊なし。<span class="dref">04:83-122 / 03:238</span>
 </div></div>
 
 <h3>6.3 製造で特に価値が上がる点 <span class="dref">03:240-243</span></h3>

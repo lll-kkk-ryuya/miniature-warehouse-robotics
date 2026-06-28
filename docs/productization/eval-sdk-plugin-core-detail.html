@@ -103,8 +103,8 @@
 </div>
 
 <div class="meta">
-  正本: <a href="../architecture/21-eval-sdk-extraction.md"><code>21</code></a>（指標定義はドメイン <span class="dref">21:75</span>・5 モジュール <span class="dref">21:123-135</span>・name registry は Phase 2 contract <span class="dref">21:238</span>・Mode A 指標 判定者 <span class="dref">21:312-322</span>）／ <a href="03-l3-planning-core-box.md"><code>03</code></a>（stage ごと 再利用 core / 差し替え plugin <span class="dref">03:224-235</span>）／ <a href="05-decision-observability-and-tooling.md"><code>05</code></a>（L3 Validator の core/案件/既存 tool <span class="dref">05:124-165</span>）。
-  <b>区分</b>: <code>eval_sdk.stats</code>（数式 core）は <b>Phase 1 実装済</b>（<span class="dref">eval_sdk/stats.py</span>）／ <code>ScoreSpec</code> 名 registry は <b>Phase 2 contract</b>（未凍結・<span class="dref">21:238</span>）／ 指標定義・producer は <b>ドメイン永続</b>。<b>新 frozen 契約 / 指標 / しきい値を発明しない</b>。製造例は <code>03</code>/<code>05</code> の literal を図示。
+  正本: <a href="../architecture/21-eval-sdk-extraction.md"><code>21</code></a>（指標定義はドメイン <span class="dref">21:75</span>・5 モジュール <span class="dref">21:129-139</span>・name registry は Phase 2 contract <span class="dref">21:244</span>・Mode A 指標 判定者 <span class="dref">21:318-326</span>）／ <a href="03-l3-planning-core-box.md"><code>03</code></a>（stage ごと 再利用 core / 差し替え plugin <span class="dref">03:224-235</span>）／ <a href="05-decision-observability-and-tooling.md"><code>05</code></a>（L3 Validator の core/案件/既存 tool <span class="dref">05:128-169</span>）。
+  <b>区分</b>: <code>eval_sdk.stats</code>（数式 core）は <b>Phase 1 実装済</b>（<span class="dref">eval_sdk/stats.py</span>）／ <code>ScoreSpec</code> 名 registry は <b>Phase 2 contract</b>（未凍結・<span class="dref">21:244</span>）／ 指標定義・producer は <b>ドメイン永続</b>。<b>新 frozen 契約 / 指標 / しきい値を発明しない</b>。製造例は <code>03</code>/<code>05</code> の literal を図示。
 </div>
 
 <!-- ===================== 0. なぜ ===================== -->
@@ -117,7 +117,7 @@
 </div>
 
 <!-- ===================== 1. 3分割 ===================== -->
-<h2>1. 核心 — 何が core / plugin / manifest か<span class="dref">21:75,123-135,238</span></h2>
+<h2>1. 核心 — 何が core / plugin / manifest か<span class="dref">21:75,129-139,244</span></h2>
 <div class="split">
   <div class="col c-core">
     <div class="h">① 数式（core）<span class="badge b-core">再利用</span></div>
@@ -146,11 +146,11 @@
       <li>score 名 = <code>insertion_torque_pass_rate</code> 等</li>
       <li>nav 標準名（<code>success_rate</code>/<code>spl</code> …）は <code>plugin="nav"</code> 登録</li>
       <li><b>改名は履歴孤児化</b>＝<code>contract</code> ラベル＋予告</li>
-      <li>現状は <code>SCORE_*</code> 予約（inert）<span class="dref">21:238</span></li>
+      <li>現状は <code>SCORE_*</code> 予約（inert）<span class="dref">21:244</span></li>
     </ul>
   </div>
 </div>
-<div class="note"><b>増やすとき書くのは ② と ③ だけ</b>。① の数式は書き換えない（既存 <code>sink</code> ＋ 純関数 <code>percentile</code>/<code>path_lengths</code>/<code>distance_traveled</code> を再利用。pass/total の <code>rate</code> は doc21 §6 helper 案・現状 stats 未実装＝domain が合成）。＝「製造現場が要件ごとに指標を増やす」とは <b>新 producer ＋ 新 score 名</b>を足すこと。これが eval_sdk が <b>産業非依存のまま再利用</b>できる正体。<span class="dref">21:75,117</span></div>
+<div class="note"><b>増やすとき書くのは ② と ③ だけ</b>。① の数式は書き換えない（既存 <code>sink</code> ＋ 純関数 <code>percentile</code>/<code>path_lengths</code>/<code>distance_traveled</code> を再利用。pass/total の <code>rate</code> は doc21 §6 helper 案・現状 stats 未実装＝domain が合成）。＝「製造現場が要件ごとに指標を増やす」とは <b>新 producer ＋ 新 score 名</b>を足すこと。これが eval_sdk が <b>産業非依存のまま再利用</b>できる正体。<span class="dref">21:75,118</span></div>
 
 <!-- ===================== 2. 製造例 ===================== -->
 <h2>2. 製造での core / plugin（03 の stage 表を図示）<span class="dref">03:224-235</span></h2>
@@ -165,26 +165,26 @@
 <!-- ===================== 3. 増やす手順 ===================== -->
 <h2>3. 「指標を 1 個増やす」手順（new producer ＋ score 名 ＋ 既存再利用）</h2>
 <div class="steps">
-  <div class="step plugin"><b>① success を定義</b>（plugin）<div class="s">「何を pass とするか」の述語・しきい値を現場仕様として決める。<span class="dref">05:145-153 / 21:386</span></div></div>
-  <div class="step plugin"><b>② producer を書く</b>（plugin）<div class="s">その pass/fail（または生信号）を出すドメインノード。観測専用レーン（enforcement と混ぜない）。<span class="dref">21:189,193</span></div></div>
+  <div class="step plugin"><b>① success を定義</b>（plugin）<div class="s">「何を pass とするか」の述語・しきい値を現場仕様として決める。<span class="dref">05:149-157 / 21:390-392</span></div></div>
+  <div class="step plugin"><b>② producer を書く</b>（plugin）<div class="s">その pass/fail（または生信号）を出すドメインノード。観測専用レーン（enforcement と混ぜない）。<span class="dref">21:195</span></div></div>
   <div class="step core"><b>③ 既存 stats で数値化</b>（core・書かない）<div class="s">既存純関数（<code>percentile</code> / <code>path_lengths</code> / <code>distance_traveled</code>）をそのまま呼ぶ＝新数式を書かない。pass/total は単純な割り算（<code>rate</code> helper は doc21 §6 案・現状 stats 未実装）。<span class="dref">eval_sdk/stats.py / 21:178</span></div></div>
   <div class="step core"><b>④ sink で emit</b>（core・書かない）<div class="s"><code>eval_sdk.sink.score(trace_id, name, value, …)</code> を fail-open 送信。同じ trace_id で他指標と束ねる。<span class="dref">eval_sdk/sink.py:99-136</span></div></div>
-  <div class="step"><b>⑤ score 名を manifest 登録</b>（Phase 2・contract）<div class="s">dashboard 列見出しを固定（改名は履歴孤児化＝<code>contract</code> ＋全レーン予告）。<span class="dref">21:238</span></div></div>
+  <div class="step"><b>⑤ score 名を manifest 登録</b>（Phase 2・contract）<div class="s">dashboard 列見出しを固定（改名は履歴孤児化＝<code>contract</code> ＋全レーン予告）。<span class="dref">21:244</span></div></div>
 </div>
 <div class="note">手で書くのは <b>① success 定義</b>と <b>② producer</b> だけ。<b>③④ は既存 core をそのまま使う</b>。⑤ は Phase 2 の name contract。＝「stats 数式の追加」は基本不要。</div>
 
 <!-- ===================== 4. L3 Validator 具体 ===================== -->
-<h2>4. L3 Validator の core / 案件 / 既存 tool（05 を図示）<span class="dref">05:124-165</span></h2>
+<h2>4. L3 Validator の core / 案件 / 既存 tool（05 を図示）<span class="dref">05:128-169</span></h2>
 <p class="lead">L3 Validator は最も案件固有の作り込みが大きい box。<code>05</code> は「再利用 core / 案件ごとに作る / 既存 tool で済む」を明示している。</p>
 <div class="grid3">
-  <div class="node n-core"><div class="t">再利用 core<span class="badge b-core">汎用</span></div><div class="s">JSON parse・schema/required field validation・stable error code・validation report 生成・DAG/task graph 検証・fixture replay runner・audit event 生成。<span class="dref">05:135-143</span></div></div>
-  <div class="node n-plugin"><div class="t">案件ごとに作る<span class="badge b-plugin">差替</span></div><div class="s">known target/robot rule・allowed action・confidence threshold・camera calibration/homography/snap rule・operator clarification rule・task graph policy・unsafe output catalog。<span class="dref">05:145-153</span></div></div>
-  <div class="node n-box"><div class="t">既存 tool で済む<span class="badge b-box">乗る</span></div><div class="s">Pydantic/JSON Schema（schema validation）・NetworkX（task graph）・BehaviorTree.CPP/Nav2 BT（task logic 参考）・OpenCV（visual geometry）・pytest/golden fixture（replay/regression）。<span class="dref">05:155-164</span></div></div>
+  <div class="node n-core"><div class="t">再利用 core<span class="badge b-core">汎用</span></div><div class="s">JSON parse・schema/required field validation・stable error code・validation report 生成・DAG/task graph 検証・fixture replay runner・audit event 生成。<span class="dref">05:139-147</span></div></div>
+  <div class="node n-plugin"><div class="t">案件ごとに作る<span class="badge b-plugin">差替</span></div><div class="s">known target/robot rule・allowed action・confidence threshold・camera calibration/homography/snap rule・operator clarification rule・task graph policy・unsafe output catalog。<span class="dref">05:149-157</span></div></div>
+  <div class="node n-box"><div class="t">既存 tool で済む<span class="badge b-box">乗る</span></div><div class="s">Pydantic/JSON Schema（schema validation）・NetworkX（task graph）・BehaviorTree.CPP/Nav2 BT（task logic 参考）・OpenCV（visual geometry）・pytest/golden fixture（replay/regression）。<span class="dref">05:159-168</span></div></div>
 </div>
-<div class="note"><b>境界</b>: 「この顧客現場で赤箱を shelf_A に snap してよいか」「低 confidence で operator に聞くか reject するか」は<b>既存 tool に無い＝商用案件の大枠 rule 設計</b>＝plugin の核。<span class="dref">05:165</span></div>
+<div class="note"><b>境界</b>: 「この顧客現場で赤箱を shelf_A に snap してよいか」「低 confidence で operator に聞くか reject するか」は<b>既存 tool に無い＝商用案件の大枠 rule 設計</b>＝plugin の核。<span class="dref">05:169</span></div>
 
 <!-- ===================== 5. Mode A 例 ===================== -->
-<h2>5. 同じ思想が貫かれている例 — Mode A 会話指標の「判定者」割り<span class="dref">21:312-322</span></h2>
+<h2>5. 同じ思想が貫かれている例 — Mode A 会話指標の「判定者」割り<span class="dref">21:318-326</span></h2>
 <p class="lead">Mode A の会話評価カタログも、各指標の <b>判定者</b>が <b>deterministic producer / structured verdict / domain metric / stats function</b> に割れていて、3 分割と同じ。LLM を主審にしない（決定的 producer が出す）。</p>
 <table>
   <thead><tr><th>metric</th><th>primary data source（producer = plugin）</th><th>判定者</th></tr></thead>
@@ -196,18 +196,18 @@
     <tr><td><code>communication_efficiency</code></td><td>transcript metadata・episode outcome・token usage</td><td class="impl-no">domain metric</td></tr>
   </tbody>
 </table>
-<div class="note"><b>読み方</b>: <code>stats function</code> = ③ core（eval_sdk.stats で計算）／ <code>deterministic producer</code> / <code>structured verdict</code> / <code>domain metric</code> = ② plugin（ドメインが出す）。＝指標カタログ全体が core/plugin に割れている。<span class="dref">21:310,312-322</span></div>
+<div class="note"><b>読み方</b>: <code>stats function</code> = ③ core（eval_sdk.stats で計算）／ <code>deterministic producer</code> / <code>structured verdict</code> / <code>domain metric</code> = ② plugin（ドメインが出す）。＝指標カタログ全体が core/plugin に割れている。<span class="dref">21:310,318-326</span></div>
 
 <!-- ===================== 6. 凍結/proposal ===================== -->
 <h2>6. 凍結 / proposal 区分</h2>
 <table>
   <thead><tr><th>要素</th><th>区分</th><th>docs（正本）</th><th>注記</th></tr></thead>
   <tbody>
-    <tr><td>① 数式 <code>eval_sdk.stats</code>（percentile/path_lengths/distance_traveled）</td><td class="impl-yes">Phase 1 実装済</td><td><span class="dref">21:123-135 / eval_sdk/stats.py</span></td><td>core＝倉庫が再利用・産業非依存（<code>rate</code> helper は doc21 §6 案・未実装）</td></tr>
+    <tr><td>① 数式 <code>eval_sdk.stats</code>（percentile/path_lengths/distance_traveled）</td><td class="impl-yes">Phase 1 実装済</td><td><span class="dref">21:129-139 / eval_sdk/stats.py</span></td><td>core＝倉庫が再利用・産業非依存（<code>rate</code> helper は doc21 §6 案・未実装）</td></tr>
     <tr><td>① emit/join <code>eval_sdk.sink</code> / <code>seed</code></td><td class="impl-yes">Phase 1 実装済</td><td><span class="dref">eval_sdk/sink.py,seed.py</span></td><td>fail-open / 決定的 trace_id</td></tr>
     <tr><td>② 指標定義・producer（success 述語・pass/fail 源）</td><td class="impl-plugin">ドメイン永続</td><td><span class="dref">21:75 / 03:224-235</span></td><td>現場ごとに差し替え＝eval_sdk に入れない</td></tr>
-    <tr><td>③ score 名 registry（<code>ScoreSpec</code> manifest）</td><td class="impl-no">Phase 2 contract（未凍結）</td><td><span class="dref">21:238</span></td><td>改名は履歴孤児化＝<code>contract</code>＋全レーン予告</td></tr>
-    <tr><td>観測専用 producer ノード（collision/deadlock 等）</td><td class="impl-no">Tier2 未実装（★新 producer）</td><td><span class="dref">21:189,190,193</span></td><td>enforcement と別ノード・名前/topic 未凍結</td></tr>
+    <tr><td>③ score 名 registry（<code>ScoreSpec</code> manifest）</td><td class="impl-no">Phase 2 contract（未凍結）</td><td><span class="dref">21:244</span></td><td>改名は履歴孤児化＝<code>contract</code>＋全レーン予告</td></tr>
+    <tr><td>観測専用 producer ノード（collision/deadlock 等）</td><td class="impl-no">Tier2 未実装（★新 producer）</td><td><span class="dref">21:191-199</span></td><td>enforcement と別ノード・名前/topic 未凍結</td></tr>
   </tbody>
 </table>
 
@@ -218,14 +218,14 @@
   <tbody>
     <tr><td>core/plugin/manifest 3分割</td><td>拡張原則</td><td><span class="dref">21:75</span> / <a href="03-l3-planning-core-box.md">03</a> <span class="dref">03:224-235</span></td><td class="impl-yes">設計決定済（本図で統合）</td></tr>
     <tr><td>① stats/sink/seed（数式 core）</td><td>5 モジュール</td><td><a href="eval-sdk-detail.html">eval-sdk 詳細</a></td><td class="impl-yes">eval_sdk 実装済（Phase 1）</td></tr>
-    <tr><td>② producer（pass/fail 源）</td><td>ドメイン plugin</td><td>03:224-235 / 05:145-153</td><td class="impl-plugin">現場ごと（観測ノードは Tier2 未実装）</td></tr>
-    <tr><td>③ score 名 manifest</td><td>name registry</td><td>21:238</td><td class="impl-no">Phase 2 contract（未凍結）</td></tr>
-    <tr><td>Mode A 会話指標カタログ</td><td>判定者割り例</td><td>21:308-322</td><td>設計（producer 実装は Mode A レーン）</td></tr>
+    <tr><td>② producer（pass/fail 源）</td><td>ドメイン plugin</td><td>03:224-235 / 05:149-157</td><td class="impl-plugin">現場ごと（観測ノードは Tier2 未実装）</td></tr>
+    <tr><td>③ score 名 manifest</td><td>name registry</td><td>21:244</td><td class="impl-no">Phase 2 contract（未凍結）</td></tr>
+    <tr><td>Mode A 会話指標カタログ</td><td>判定者割り例</td><td>21:308-326</td><td>設計（producer 実装は Mode A レーン）</td></tr>
   </tbody>
 </table>
 
 <footer>
-  <p>このページは <code>docs/productization/eval-sdk-plugin-core-detail.html</code>（補足図解・ダーク）。一次ソース: <a href="../architecture/21-eval-sdk-extraction.md">architecture/21 §3/§4/§13.3</a>（<span class="dref">21:75,123-135,238,312-322</span>）/ <a href="03-l3-planning-core-box.md">03 §stage 表</a>（<span class="dref">03:224-235</span>）/ <a href="05-decision-observability-and-tooling.md">05 §L3 Validator</a>（<span class="dref">05:124-165</span>）。<b>数式 core は実装済・name registry は Phase 2 未凍結・指標定義はドメイン。新 frozen 契約 / 指標 / しきい値を追加しない</b>。</p>
+  <p>このページは <code>docs/productization/eval-sdk-plugin-core-detail.html</code>（補足図解・ダーク）。一次ソース: <a href="../architecture/21-eval-sdk-extraction.md">architecture/21 §3/§4/§13.3</a>（<span class="dref">21:75,129-139,244,318-326</span>）/ <a href="03-l3-planning-core-box.md">03 §stage 表</a>（<span class="dref">03:224-235</span>）/ <a href="05-decision-observability-and-tooling.md">05 §L3 Validator</a>（<span class="dref">05:128-169</span>）。<b>数式 core は実装済・name registry は Phase 2 未凍結・指標定義はドメイン。新 frozen 契約 / 指標 / しきい値を追加しない</b>。</p>
   <p>← <a href="eval-sdk-detail.html">eval-sdk 詳細</a> ／ <a href="observability-tiering-detail.html">観測ログ 格納先 階層分離</a> ／ <a href="03-l3-planning-core-box.md">03 L3 core</a> ／ <a href="box-taxonomy.html">box-taxonomy</a></p>
 </footer>
 

@@ -64,6 +64,11 @@ manifest の必須・規約:
 - **`transport`** は box interface 裏の実装選択。安全 gate（motion dispatch・0 dispatch・clamp）を持つ box（Governance / Safety / Hardware）は `n/a`（`hermes` と書くと motion gate が Hermes 線で貫かれる category error）。
 - **`acceptance_gates`** に gate family（L4C/L4A/L4F/L3H/N-G/H-G/E-G）を box ごとに帰属させる。`box=` decision_event literal は集計軸であり、sub-box/seam へ降格しても据え置く。
 
+box manifest は保管単位の静的説明である。実際の run でどの box / plugin を
+有効化したか、どの emitter と score を期待するかは
+[09-run-manifest-and-plugin-composition.md](09-run-manifest-and-plugin-composition.md)
+の run manifest / plugin manifest に分けて記録する。
+
 ## 成熟度
 
 | Level | 意味 | 条件 |
@@ -93,6 +98,8 @@ site_profiles/
         map.yaml
         nav2_params.yaml
       eval.yaml
+      plugin_profiles/
+        l3_zone_policy.yaml
 ```
 
 site profile に置くもの:
@@ -104,6 +111,8 @@ site profile に置くもの:
 - traffic mode
 - map / Nav2 profile
 - KPI vocabulary / report target
+- run manifest へ渡す profile 名（実行 run そのものは `out/runs/<run_id>/manifest.yaml` へ保存）
+- `plugin_profiles/*.yaml` に置く plugin parameter set（例: `l3.zone_policy` が読む zone polygon / target rule）
 
 site profile に置かないもの:
 
@@ -111,6 +120,13 @@ site profile に置かないもの:
 - `.env`
 - model raw output の長期保存データ
 - frozen contract を勝手に拡張する schema
+
+plugin 本体は再利用可能な rule / adapter / resolver として repo 内 `plugins/` または
+別 package に置き、現場ごとの値は `plugin_profiles/*.yaml` に置く。例えば
+`l3.zone_policy` plugin は「target が許可 zone 外なら reject」という実装だけを持ち、
+`red_box` を `zone_a` 内に限定するかどうかは site profile の parameter set で決める。
+run manifest には、どの plugin をどの profile 名で使ったかだけを残す
+（詳細は [09-run-manifest-and-plugin-composition](09-run-manifest-and-plugin-composition.md)）。
 
 ## Fixture Strategy
 
