@@ -303,6 +303,8 @@ decision 固定語彙（`productization/05`:69 `accepted/rejected/warning/needs_
 
 集約の優先順位（重い帰結が勝つ）: `emergency_stop` > `rejected` > `needs_clarification` > `accepted`。`status != accepted` は §1:68 のとおり 0 dispatch。reject 系 status は `rejected` と `emergency_stop`。
 
+> 出所注記: reject 系 status（`rejected` / `needs_clarification` / `emergency_stop`）の同一 Mode X-ER 文脈での literal は [`README`](README.md):67（gate が `rejected / needs_clarification / emergency_stop` になったときの拒否通知）。`productization/05`:69 は別 box の `decision` field の**例示**（「…`emergency_stop` **など**」＝非網羅・cross-contract 借用）で、`warning` を status から severity へ re-home する判断の anchor でもあるため出所として残す。`accepted` は §1:61 が出所。
+
 ### RuleResult.severity / dispatch_effect
 
 | field | 許容値 | 意味 |
@@ -310,7 +312,7 @@ decision 固定語彙（`productization/05`:69 `accepted/rejected/warning/needs_
 | `severity` | `error` / `warning` | error は `errors[]`（§1:62・ブロッキング）、warning は `warnings[]`（§1:63・非ブロッキング） |
 | `dispatch_effect` | `block` / `needs_clarification` / `emergency_stop` / `none` | `block`→status `rejected`、`needs_clarification`→`needs_clarification`、`emergency_stop`→`emergency_stop`、`none`→非ブロッキング |
 
-blocking な rule result（`block` / `needs_clarification` / `emergency_stop`）は `errors[]` に入れ（severity=error）、report の `status` は `dispatch_effect` の優先順位で決める。`none` のみ `warnings[]`（severity=warning）。report の shape（`status` / `errors[]` / `warnings[]` / `normalized_plan`）は §1:60-66 のまま拡張しない。なお `dispatch_effect=block` は内部 effect ラベルで docs literal は無く（status `rejected` に対応）、他の effect 値（`needs_clarification`/`emergency_stop`/`none`）は status と同綴りに揃える。
+blocking な rule result（`block` / `needs_clarification` / `emergency_stop`）は `errors[]` に入れ（severity=error）、report の `status` は `dispatch_effect` の優先順位で決める。`none` のみ `warnings[]`（severity=warning）。report の shape（`status` / `errors[]` / `warnings[]` / `normalized_plan`）は §1:60-66 のまま拡張しない。なお `dispatch_effect` の値集合に docs literal は無い: `needs_clarification` / `emergency_stop` は同名 status と同綴り（status へ接地）、`block`（status `rejected` へ写像）と `none`（status に対応する綴りを持たず、非ブロッキングな `warnings[]` を表す）は status と同綴りの語を持たない effect-only の内部派生ラベルである。
 
 > `OperatorNotice`（#7・[`05-operator-feedback-and-voice-response.md`](05-operator-feedback-and-voice-response.md):279）も `severity` を持つが別 box の別 contract（未凍結・doc06 §7）で、ValidationReport の `severity` とは別物として扱う。
 
@@ -328,3 +330,17 @@ clarification 系は専用 code を増やさず、次の 2 経路で表す:
 ### Detection / TaskNode
 
 独立した nested model にする（inline dict にしない）。形は doc06 §1（昇格下書き）の `Detection={id, pixel, confidence}` / `TaskNode={id, robot, action, target, after}`。慣習は `schemas.py`（`BaseModel, extra="ignore"` / `StrEnum`）に倣う（doc06 §1）。新 location / action は定義せず `KNOWN_LOCATIONS` / `CommandAction` を再利用する。
+
+### XER2 実装メモ（ergonomics・任意）
+
+9 code → `dispatch_effect` → `status` の対応（推論ゼロ用の早見表。新規語彙ではなく §1:74-84,96 と本節の内部派生整理）:
+
+| `code` | `dispatch_effect` | `status` |
+|---|---|---|
+| `UNKNOWN_ROBOT` / `UNKNOWN_ACTION` / `UNKNOWN_TARGET` / `INVALID_AFTER_REFERENCE` / `TASK_GRAPH_CYCLE` / `CYCLE_STATE_STALE` | `block` | `rejected` |
+| `EMERGENCY_ACTIVE` | `emergency_stop` | `emergency_stop` |
+| `LOW_CONFIDENCE_TARGET` | `block` または `needs_clarification`（`PlanPolicy` 依存・§1:79,97） | `rejected` または `needs_clarification` |
+| `OPERATOR_CLARIFICATION_REQUESTED` | `needs_clarification` | `needs_clarification` |
+
+- 現状 9 code は全て blocking 経路（`errors[]`・severity=error）。`dispatch_effect=none` / severity=warning（`warnings[]`）を出す code は XER2 には無く、`warnings[]` は将来の非ブロッキング rule 用に reserved（XER2 では常に空）。
+- `normalized_plan`（accepted 時の中身）は下流（Visual Resolver / Task Graph Executor）が未確定ゆえ `dict` のまま意図的に DEFER する（型を確定しない＝見落としではない・§1:64 の shape を維持）。
