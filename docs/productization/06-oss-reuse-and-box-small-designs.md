@@ -237,6 +237,8 @@ Hardware Box は独立に stop / clamp / reject できる。
 Eval / Observability Box は、各 box の decision event、ROS event、Langfuse trace、
 KPI を join し、商用 report へ変換する。`eval_sdk` の domain-free core と
 warehouse-specific producer / KPI manifest を分ける。
+box / plugin の有効化、expected emitter、score spec、WO と `eval_sdk` の接続は
+[09-run-manifest-and-plugin-composition.md](09-run-manifest-and-plugin-composition.md) に分ける。
 
 | 項目 | 設計案 |
 |---|---|

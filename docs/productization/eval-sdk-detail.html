@@ -123,12 +123,12 @@
 
 <div class="meta">
   正本: <a href="../architecture/21-eval-sdk-extraction.md"><code>docs/architecture/21-eval-sdk-extraction.md</code></a>（eval_sdk 抽出・<b>Phase 1 実装済 / API 未凍結</b> <span class="dref">16:196（抽出 PR#273）/ 21:7</span>）／ <a href="05-decision-observability-and-tooling.md"><code>05</code></a>（decision_event・funnel・join）。
-  <b>eval_sdk パッケージは実在</b>（<code>ws/src/eval_sdk/</code>・doc21 Phase 1 抽出済・PR #273）<b>。ただし API/スキーマは凍結契約ではない</b>（Phase 2 で <code>ScoreSpec</code> 名のみ・<span class="dref">21:7,238</span>）＝引用は docs の exact line（<span class="dref">21:NN</span> / <span class="dref">05:NN</span>）。<b>新 frozen 契約 / topic / しきい値を発明しない</b>。reject 理由を人へ音声で返す <b>L4 Operator Feedback Box</b> は同じ decision_event バスを読む<b>兄弟</b>（別責務・<a href="../mode-x-er/operator-feedback-flow.html">operator-feedback-flow.html</a>）。
+  <b>eval_sdk パッケージは実在</b>（<code>ws/src/eval_sdk/</code>・doc21 Phase 1 抽出済・PR #273）<b>。ただし API/スキーマは凍結契約ではない</b>（Phase 2 で <code>ScoreSpec</code> 名のみ・<span class="dref">21:7,244</span>）＝引用は docs の exact line（<span class="dref">21:NN</span> / <span class="dref">05:NN</span>）。<b>新 frozen 契約 / topic / しきい値を発明しない</b>。reject 理由を人へ音声で返す <b>L4 Operator Feedback Box</b> は同じ decision_event バスを読む<b>兄弟</b>（別責務・<a href="../mode-x-er/operator-feedback-flow.html">operator-feedback-flow.html</a>）。
 </div>
 
 <!-- ===================== 0. 位置づけ ===================== -->
 <h2>0. 位置づけ — box ではなく「横断 observe-only サイドカー」</h2>
-<p class="lead">L3/L4 のような<b>縦のパイプライン box</b>（入力→処理→出力で実行に効く）とは違い、eval_sdk は<b>全層の decision_event / trace を読んで集計・保管するだけ</b>の横断層。所有は観測層、各層に producer が散らばる。<b>故障しても走行は無傷（fail-open）</b>。<span class="dref">21:43-119,138</span></p>
+<p class="lead">L3/L4 のような<b>縦のパイプライン box</b>（入力→処理→出力で実行に効く）とは違い、eval_sdk は<b>全層の decision_event / trace を読んで集計・保管するだけ</b>の横断層。所有は観測層、各層に producer が散らばる。<b>故障しても走行は無傷（fail-open）</b>。<span class="dref">21:43-125,144</span></p>
 <div class="legend">
   <div class="item"><span class="sw" style="background:var(--plugin)"></span>① producer（ドメイン＝倉庫固有・差し替える）</div>
   <div class="item"><span class="sw" style="background:var(--box)"></span>② eval_sdk（汎用＝一度作れば再利用・★これを作る）</div>
@@ -136,18 +136,18 @@
 </div>
 
 <!-- ===================== 1. 3層アーキ ===================== -->
-<h2>1. 3 層アーキテクチャ（producer → eval_sdk → Langfuse）<span class="dref">21:43-119</span></h2>
+<h2>1. 3 層アーキテクチャ（producer → eval_sdk → Langfuse）<span class="dref">21:43-125</span></h2>
 <div class="seam-out" style="flex-direction:column;align-items:stretch">
   <div class="node n-plugin"><div class="t">① producer（ドメイン＝倉庫・各 sim/研究で差し替える）<span class="badge b-plugin">差替</span></div><div class="s">
-    生信号を出すだけ（判断 / pose / event / tokens）。LLM Bridge の judgment、Nav2 の odom、MCP audit、Emergency Guardian の near_collision（観測タップ）、deadlock detector など。<b>「何が起きたか」を出す</b>。<span class="dref">21:82-86,104,113</span>
+    生信号を出すだけ（判断 / pose / event / tokens）。LLM Bridge の judgment、Nav2 の odom、MCP audit、Emergency Guardian の near_collision（観測タップ）、deadlock detector など。<b>「何が起きたか」を出す</b>。<span class="dref">21:82-86,105-107,114</span>
   </div></div>
   <div class="nest-arrow">▼ 生信号（raw events / pose / tokens）</div>
   <div class="node n-box"><div class="t">② eval_sdk（汎用・産業非依存・★作る）<span class="badge b-box">再利用</span></div><div class="s">
-    生信号を<b>指標へ変換・join-key 付与・emit</b>。<code>seed</code> が判断と結果を同じ trace_id に結合、<code>stats</code> が指標化（SR/SPL/介入率/percentile…）、<code>sink</code> が fail-open 送信。<b>倉庫を知らない</b>＝製造でもそのまま再利用。<span class="dref">21:89-95,114,117</span>
+    生信号を<b>指標へ変換・join-key 付与・emit</b>。<code>seed</code> が判断と結果を同じ trace_id に結合、<code>stats</code> が指標化（SR/SPL/介入率/percentile…）、<code>sink</code> が fail-open 送信。<b>倉庫を知らない</b>＝製造でもそのまま再利用。<span class="dref">21:90-95,115,118</span>
   </div></div>
   <div class="nest-arrow">▼ trace + score（すべて同じ trace_id でひも付く）</div>
   <div class="node n-sub"><div class="t">③ Langfuse（既製 SaaS＝乗るだけ）<span class="badge b-sub">保管</span></div><div class="s">
-    保管 + 可視化 + 比較。1 trace = 【判断】generation(input/output/latency/cost) + 【結果】score(SR/SPL/efficiency/deadlock/collision_free…)。4 provider × 3 mode 比較ダッシュボード / Metrics API / 可搬 export。<span class="dref">21:98-101,115</span>
+    保管 + 可視化 + 比較。1 trace = 【判断】generation(input/output/latency/cost) + 【結果】score(SR/SPL/efficiency/deadlock/collision_free…)。4 provider × 3 mode 比較ダッシュボード / Metrics API / 可搬 export。<span class="dref">21:99-102,116</span>
   </div></div>
 </div>
 <table>
@@ -158,11 +158,11 @@
     <tr><td>③ Langfuse</td><td>保管・可視化・比較</td><td>既製 SaaS</td><td>乗るだけ（差し替え不要）</td></tr>
   </tbody>
 </table>
-<p class="lead"><span class="dref">三者の役割・所有: 21:109-117</span></p>
+<p class="lead"><span class="dref">三者の役割・所有: 21:110-118</span></p>
 
 <!-- ===================== 2. 5 モジュール ===================== -->
-<h2>2. v0.1 = 5 モジュール（既存コードの抽出＝リネーム＋重複解消・<b>抽出済</b> <code>ws/src/eval_sdk/</code>）<span class="dref">21:123-135</span></h2>
-<p class="lead">巨大プラットフォームでなく、<b>既にテスト済・脱ROS・fail-open のコードを near-verbatim で lift</b> した 5 つの薄いモジュール。発明ではない。<b>doc21 Phase 1 で抽出済</b>（<code>seed/tracer/sink/stats/cost.py</code>・PR #273・倉庫が <code>from eval_sdk import …</code> で配線済）。<span class="dref">21:15,125,237</span></p>
+<h2>2. v0.1 = 5 モジュール（既存コードの抽出＝リネーム＋重複解消・<b>抽出済</b> <code>ws/src/eval_sdk/</code>）<span class="dref">21:129-139</span></h2>
+<p class="lead">巨大プラットフォームでなく、<b>既にテスト済・脱ROS・fail-open のコードを near-verbatim で lift</b> した 5 つの薄いモジュール。発明ではない。<b>doc21 Phase 1 で抽出済</b>（<code>seed/tracer/sink/stats/cost.py</code>・PR #273・倉庫が <code>from eval_sdk import …</code> で配線済）。<span class="dref">21:15,129-141,243</span></p>
 <div class="flow">
   <div class="node n-box"><div class="t" style="font-size:12.5px">seed</div><div class="s"><code>derive_trace_id(seed)</code>＝決定的 join key</div></div>
   <div class="node n-box"><div class="t" style="font-size:12.5px">tracer</div><div class="s">Tracer / NoopTracer / LangfuseTracer</div></div>
@@ -170,36 +170,36 @@
   <div class="node n-box"><div class="t" style="font-size:12.5px">stats</div><div class="s">percentile / path_length / completion 等（純関数）</div></div>
   <div class="node n-box"><div class="t" style="font-size:12.5px">cost</div><div class="s">token-cost（価格表は注入）</div></div>
 </div>
-<div class="note"><b>核心 = deterministic join key</b>: <code>derive_trace_id(seed="run:work")</code>。あらゆる emitter（判断・結果・sim・scorer・Langfuse sink）が<b>同じデータから同じ trace_id を再導出</b>する → 「判断 ↔ 動作」が同じ 1 本の trace に結合する。これが「リコール調査は 1 クエリ」「provider 比較」を成立させる土台で、L3 ③ audit 1:1 を<b>横断で実現する機械</b>側。<b>2 階層のまま</b>（emitter が出さない episode 階層に拡張しない）。<span class="dref">21:74（derive_trace_id 署名・2階層）,90,117,143 / 03:235（L3 側の要件）</span></div>
+<div class="note"><b>核心 = deterministic join key</b>: <code>derive_trace_id(seed="run:work")</code>。あらゆる emitter（判断・結果・sim・scorer・Langfuse sink）が<b>同じデータから同じ trace_id を再導出</b>する → 「判断 ↔ 動作」が同じ 1 本の trace に結合する。これが「リコール調査は 1 クエリ」「provider 比較」を成立させる土台で、L3 ③ audit 1:1 を<b>横断で実現する機械</b>側。<b>2 階層のまま</b>（emitter が出さない episode 階層に拡張しない）。<span class="dref">21:74（derive_trace_id 署名・2階層）,90,118,149 / 03:235（L3 側の要件）</span></div>
 
 <!-- ===================== 3. 背骨 ===================== -->
-<h2>3. 背骨（不変条件・verbatim 維持）<span class="dref">21:137-143</span></h2>
+<h2>3. 背骨（不変条件・verbatim 維持）<span class="dref">21:143-149</span></h2>
 <div class="grid3">
-  <div class="node n-box"><div class="t">fail-open</div><div class="s">creds 無・SDK 未導入・通信障害は<b>静かに no-op</b>（raise しない）。観測が落ちても走行は無傷。<span class="dref">21:138</span></div></div>
-  <div class="node n-box"><div class="t">lazy-import</div><div class="s"><code>langfuse</code> は任意 extra。未導入でも build/test 可（ハード依存を入れない）。<span class="dref">21:139</span></div></div>
-  <div class="node n-box"><div class="t">依存注入</div><div class="s"><code>create_fn</code>（trace_id 生成）・価格表を引数注入 → <b>SDK 無しで単体テスト可能</b>。<span class="dref">21:140</span></div></div>
+  <div class="node n-box"><div class="t">fail-open</div><div class="s">creds 無・SDK 未導入・通信障害は<b>静かに no-op</b>（raise しない）。観測が落ちても走行は無傷。<span class="dref">21:144</span></div></div>
+  <div class="node n-box"><div class="t">lazy-import</div><div class="s"><code>langfuse</code> は任意 extra。未導入でも build/test 可（ハード依存を入れない）。<span class="dref">21:145</span></div></div>
+  <div class="node n-box"><div class="t">依存注入</div><div class="s"><code>create_fn</code>（trace_id 生成）・価格表を引数注入 → <b>SDK 無しで単体テスト可能</b>。<span class="dref">21:146</span></div></div>
 </div>
-<div class="note"><b>死守する 1 不変条件</b>: 「プロセス A で導出した <code>trace_id</code> == プロセス B で同 seed から導出した <code>trace_id</code>」の <b>property test</b>（join バグ #115 の修正を一般化・assert する）。これが全設計の土台。<span class="dref">21:142-143</span></div>
+<div class="note"><b>死守する 1 不変条件</b>: 「プロセス A で導出した <code>trace_id</code> == プロセス B で同 seed から導出した <code>trace_id</code>」の <b>property test</b>（join バグ #115 の修正を一般化・assert する）。これが全設計の土台。<span class="dref">21:148-149</span></div>
 
 <!-- ===================== 4. L4〜L0 producer マップ ===================== -->
-<h2>4. L4〜L0 のどこと関わるか（producer マップ）<span class="dref">21:104-119 / 05:75-105</span></h2>
+<h2>4. L4〜L0 のどこと関わるか（producer マップ）<span class="dref">21:105-125 / 05:75-110</span></h2>
 <p class="lead">eval_sdk は<b>全層の box が出す decision_event / trace を読む</b>。各層に producer があり、<code>run_id / gen_id / robot / timestamp</code> で join して Langfuse へ（決定的 <code>trace_id</code> は <code>run_id:gen_id</code> から導出＝判断↔結果の同一トレース結合キー）。<span class="dref">05:88（join キー） / 21:74,90（trace_id 導出）</span><br><span style="color:var(--faint);font-size:12.5px">※ 下表の <b>L4〜L0 レイヤ付与は本図の overlay</b>。<a href="05-decision-observability-and-tooling.md">05</a> の「Box ごとの取得 data」表は <b>box 名で構成</b>（L4/L3/L2/L1/L0 ラベルは持たない）。<span class="dref">05:75-86</span></span></p>
 <table>
   <thead><tr><th>層</th><th>producer（生信号を出す側）</th><th>eval_sdk が読むもの</th><th>正本</th></tr></thead>
   <tbody>
-    <tr><td><span class="lyr" style="background:var(--box)">L4</span></td><td>LLM Bridge（判断/generation）・Input Context・Model Adapter・Fusion</td><td>trace（input/output/latency/cost）＋ decision_event</td><td><span class="dref">21:104 / 05:75-105</span></td></tr>
+    <tr><td><span class="lyr" style="background:var(--box)">L4</span></td><td>LLM Bridge（判断/generation）・Input Context・Model Adapter・Fusion</td><td>trace（input/output/latency/cost）＋ decision_event</td><td><span class="dref">21:105-107 / 05:75-110</span></td></tr>
     <tr><td><span class="lyr" style="background:var(--sub)">L3</span></td><td>Validator / Visual Resolver / Task Graph Executor / Command Compiler</td><td>validation decision_event ＋ audit 1:1（raw↔normalized↔command）</td><td><span class="dref">05:79（Validator のみ）/ 03:224-235（4 stage 表）</span></td></tr>
     <tr><td><span class="lyr" style="background:var(--seam)">L2</span></td><td>Governance / Policy Gate・Traffic</td><td>accept/reject decision_event・MCP audit（gen_id/idempotency_key）</td><td><span class="dref">05:81-82</span></td></tr>
-    <tr><td><span class="lyr" style="background:var(--plugin)">L1</span></td><td>Navigation（Nav2 result / odom）・Safety</td><td>goal result・recovery・<b>near_collision（観測タップの複製）</b></td><td><span class="dref">05:83-84 / 21:83（odom）,119</span></td></tr>
+    <tr><td><span class="lyr" style="background:var(--plugin)">L1</span></td><td>Navigation（Nav2 result / odom）・Safety</td><td>goal result・recovery・<b>near_collision（観測タップの複製）</b></td><td><span class="dref">05:83-84 / 21:84（odom）,125</span></td></tr>
     <tr><td><span class="lyr" style="background:var(--demoted);color:var(--ink)">L0</span></td><td>Hardware（firmware / driver）</td><td>clamp report・heartbeat・nonfinite stop event</td><td><span class="dref">05:85</span></td></tr>
   </tbody>
 </table>
-<p class="lead"><b>集計の出口</b>: 全層を join して funnel（<code>raw_model_outputs_total → … → success_total</code>）と reason top-N を作る。これは <a href="05-decision-observability-and-tooling.md">05</a> の funnel と同じ（eval_sdk はそれを横断で結合・スコア化する基盤）。<span class="dref">05:88-105,306-355</span></p>
+<p class="lead"><b>集計の出口</b>: 全層を join して funnel（<code>raw_model_outputs_total → … → success_total</code>）と reason top-N を作る。これは <a href="05-decision-observability-and-tooling.md">05</a> の funnel と同じ（eval_sdk はそれを横断で結合・スコア化する基盤）。<span class="dref">05:88-110,310-359</span></p>
 
 <!-- ===================== 5. enforcement 非接触 ===================== -->
-<h2>5. enforcement 非接触の境界（最重要・安全）<span class="dref">21:119</span></h2>
+<h2>5. enforcement 非接触の境界（最重要・安全）<span class="dref">21:125</span></h2>
 <div class="safe">
-  <b>eval_sdk は enforcement 経路に絶対に触れない</b>。<b>Emergency Guardian / collision_monitor / 0.3 m/s クランプ</b>は <b>fail-closed の能動制御</b>であって ① の「観測 producer」ではない。eval が読むのは<b>その観測専用の複製イベント</b>（near_collision の count 等）だけで、<b>enforcement 経路には触れない</b>。producer 図中の Guardian は「観測タップ」を指す。<b>eval_sdk の故障（creds 無・通信断）は走行を一切止めない（fail-open・§3）</b>。<span class="dref">21:119,138</span>
+  <b>eval_sdk は enforcement 経路に絶対に触れない</b>。<b>Emergency Guardian / collision_monitor / 0.3 m/s クランプ</b>は <b>fail-closed の能動制御</b>であって ① の「観測 producer」ではない。eval が読むのは<b>その観測専用の複製イベント</b>（near_collision の count 等）だけで、<b>enforcement 経路には触れない</b>。producer 図中の Guardian は「観測タップ」を指す。<b>eval_sdk の故障（creds 無・通信断）は走行を一切止めない（fail-open・§3）</b>。<span class="dref">21:125,144</span>
 </div>
 <div class="note"><b>兄弟関係</b>: reject 理由を人へ<b>音声で返す</b> <a href="../mode-x-er/operator-feedback-flow.html">L4 Operator Feedback Box</a> は、eval_sdk と<b>同じ横断 decision_event バス</b>を読む兄弟。違いは責務 — eval_sdk は <b>observe-only の集計/KPI/report sink</b>、Operator Feedback は <b>リアルタイムに人へ出す一次チャネル</b>。どちらも実行許可を持たず fail-open。<span class="dref">05 §observe / mode-x-er/05 §2.1</span></div>
 
@@ -209,12 +209,12 @@
   <thead><tr><th>要素</th><th>区分</th><th>docs（正本）</th><th>注記</th></tr></thead>
   <tbody>
     <tr><td><code>eval_sdk</code> API / スキーマ（seed/tracer/sink/stats/cost）</td><td class="impl-no">未凍結 contract（API は Phase 2 まで）</td><td><span class="dref">21:5,7,238</span></td><td><b>パッケージは実在・配線済</b>（PR #273）。凍結されるのは Phase 2 の <code>ScoreSpec</code> 名のみ</td></tr>
-    <tr><td>deterministic <code>trace_id</code>（join key）</td><td class="impl-yes">死守する 1 不変条件</td><td><span class="dref">21:142-143</span></td><td>property test で固定（仮定しない）</td></tr>
-    <tr><td>背骨（fail-open / lazy-import / 依存注入）</td><td class="impl-yes">不変条件（verbatim 維持）</td><td><span class="dref">21:137-140</span></td><td>「SDK 無しでテスト可能」を成立させる核</td></tr>
+    <tr><td>deterministic <code>trace_id</code>（join key）</td><td class="impl-yes">死守する 1 不変条件</td><td><span class="dref">21:148-149</span></td><td>property test で固定（仮定しない）</td></tr>
+    <tr><td>背骨（fail-open / lazy-import / 依存注入）</td><td class="impl-yes">不変条件（verbatim 維持）</td><td><span class="dref">21:143-146</span></td><td>「SDK 無しでテスト可能」を成立させる核</td></tr>
     <tr><td><code>decision_event</code> schema</td><td class="impl-no">proposal</td><td><span class="dref">05:46,63</span></td><td><code>schema_version="proposal"</code>・product contract 昇格は未決</td></tr>
-    <tr><td>KPI / report 出力契約</td><td class="impl-no">未凍結</td><td><span class="dref">05:306-355 / 04:95,106</span></td><td>案件 KPI/report target は site profile <code>eval.yaml</code> へ</td></tr>
-    <tr><td>Langfuse（保管・dashboard）</td><td>既製 SaaS（乗るだけ）</td><td><span class="dref">21:98-101,115</span></td><td>再発明しない</td></tr>
-    <tr><td>Emergency Guardian / collision_monitor / 0.3 m/s</td><td class="impl-yes">frozen（fail-closed 能動制御）</td><td><span class="dref">21:119</span></td><td>producer ではない・eval は観測タップのみ・enforcement 非接触</td></tr>
+    <tr><td>KPI / report 出力契約</td><td class="impl-no">未凍結</td><td><span class="dref">05:310-359 / 04:100,113</span></td><td>案件 KPI/report target は site profile <code>eval.yaml</code> へ</td></tr>
+    <tr><td>Langfuse（保管・dashboard）</td><td>既製 SaaS（乗るだけ）</td><td><span class="dref">21:99-102,116</span></td><td>再発明しない</td></tr>
+    <tr><td>Emergency Guardian / collision_monitor / 0.3 m/s</td><td class="impl-yes">frozen（fail-closed 能動制御）</td><td><span class="dref">21:125</span></td><td>producer ではない・eval は観測タップのみ・enforcement 非接触</td></tr>
   </tbody>
 </table>
 
@@ -224,9 +224,9 @@
   <thead><tr><th>要素</th><th>種別</th><th>docs（正本）</th><th>実体</th></tr></thead>
   <tbody>
     <tr><td>eval_sdk（横断 観測・評価 基盤）</td><td><span class="badge b-box">box（横断）</span></td><td><a href="../architecture/21-eval-sdk-extraction.md">architecture/21</a> 全体</td><td class="impl-yes">実装済（<code>ws/src/eval_sdk/</code>・doc21 Phase 1・倉庫が re-export 配線。API は Phase 2 まで未凍結契約）</td></tr>
-    <tr><td>seed / tracer / sink / stats / cost</td><td>5 モジュール</td><td>21:123-135</td><td class="impl-yes">抽出済（<code>seed/tracer/sink/stats/cost.py</code>・near-verbatim lift・PR #273）</td></tr>
+    <tr><td>seed / tracer / sink / stats / cost</td><td>5 モジュール</td><td>21:129-139</td><td class="impl-yes">抽出済（<code>seed/tracer/sink/stats/cost.py</code>・near-verbatim lift・PR #273）</td></tr>
     <tr><td>decision_event → funnel / report</td><td>観測 taxonomy</td><td><a href="05-decision-observability-and-tooling.md">05</a> §Decision Event / Aggregation</td><td>—</td></tr>
-    <tr><td>L4〜L0 producer</td><td>ドメイン（差替）</td><td>05:75-105 / 21:104-119</td><td>各層 box に実在（観測タップ）</td></tr>
+    <tr><td>L4〜L0 producer</td><td>ドメイン（差替）</td><td>05:75-110 / 21:105-125</td><td>各層 box に実在（観測タップ）</td></tr>
     <tr><td>L3 audit 1:1（eval の入力要件）</td><td>L3 produce</td><td><a href="layer-l3-reuse-detail.html">L3 再利用詳細 §1③/§4</a> / 03:235</td><td class="impl-no">L3 Handoff/ER seam 着地（XER1/G0・#350）／ Validator・Visual Resolver は design（XER2-5・audit 1:1 未配線）</td></tr>
     <tr><td>兄弟: L4 Operator Feedback（音声）</td><td>横断 consumer</td><td><a href="../mode-x-er/operator-feedback-flow.html">operator-feedback-flow</a></td><td class="impl-no">proposal</td></tr>
   </tbody>

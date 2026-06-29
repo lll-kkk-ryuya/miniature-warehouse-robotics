@@ -73,6 +73,7 @@
 
 - **核心** = 決定的・内容非依存の join key。あらゆる emitter（sim・scorer・Langfuse sink）が**データから同じ id を再導出**する `derive_trace_id(seed="run:work")`。これは live-join バグ（#108/#109→#115 で修正）を直した性質そのもの。**2階層のまま**（emitter が出さない `episode` 階層に拡張しない）。
 - **eval_sdk は「数学・emit・join-key の素材」だけを提供**し、「intervention_rate」「deadlock」等の**指標定義・データ producer はドメイン（c）に残す**。eval_sdk は倉庫を知らない。
+- box / plugin の有効化、expected emitter、score spec、WO が読む `audit` / `event` / `odom` / `result` の整理は domain 側 manifest で扱う。詳細は [productization/09](../productization/09-run-manifest-and-plugin-composition.md)。
 
 ### 3.1 データフロー（producer → eval_sdk → Langfuse）— 三者の関係
 
@@ -115,6 +116,11 @@
 | ③ Langfuse | **保管・可視化・比較** | 既製 SaaS | **乗るだけ**（差し替え不要） |
 
 **核心**: ① は「**何が起きたか**」を出すだけ。「SR は 0.87」「介入が3回」のような**指標化は ② eval_sdk の `stats` が担い**、`seed` が**判断(#4)と結果(#6)を同じ trace_id に結合**し、`sink` が ③ へ送る。だから**新しい Physical-AI プロジェクトは「① producer を自分のスタックで用意して ② に繋ぐ」だけ**で、③ のダッシュボードと標準指標がそのまま得られる（= 「接続するだけ」の正体）。
+
+run ごとの producer 構成は `eval_sdk` core に持たせない。どの box / plugin が
+有効で、どの emitter と score が期待されるかは
+[productization/09](../productization/09-run-manifest-and-plugin-composition.md)
+の run manifest / plugin manifest が持つ。
 
 > **安全の例外（§11 再掲）**: Emergency Guardian / collision_monitor / 0.3m/s は **fail-closed の能動制御**であって ① の「観測 producer」ではない。eval が読むのは**その観測専用の複製イベント**（near_collision の count 等）であり、**enforcement 経路には触れない**。①の producer 図中の Guardian は「観測タップ」を指す。
 
