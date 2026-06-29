@@ -87,9 +87,16 @@ comparison demo.
   `docs/productization/10-llm-assisted-rule-authoring.md` together with
   `docs/productization/03-l3-planning-core-box.md`,
   `docs/productization/04-box-storage-and-reuse-guidelines.md`, and
-  `docs/productization/09-run-manifest-and-plugin-composition.md`.
+  `docs/productization/09-run-manifest-and-plugin-composition.md`. The HTML
+  companion is `docs/productization/l3-rule-authoring-detail.html`.
 - Treat customer-readable warehouse rules as source material for productized
   site profiles, Validator plugin profiles, fixtures, and simulation runs.
+- Treat `zones/*.geojson` as geometry artifacts only. Put allow/deny behavior,
+  `reason_code`, profile composition, and customer-specific policy in plugin
+  profiles and fixtures, not inside GeoJSON.
+- Classify any drafted rule into the documented Validator catalog
+  (robot/target/action/workflow/freshness/emergency/confidence/graph) before
+  proposing YAML, JSON fixtures, or code.
 - Keep Handoff as the core orchestration contract; do not replace it with
   customer/site-specific rule logic.
 - Site-specific rules belong in Validator plugins and their fixtures, not in
@@ -99,6 +106,9 @@ comparison demo.
   emergency stop, or other lower-layer safety mechanisms.
 - Authoring LLM output is a draft only. It needs human review, fixture replay,
   simulation/eval gates, and docs-first approval before run manifest enablement.
+- Hermes skill/plugin/MCP surfaces may help draft, lint, and report offline
+  rule artifacts only. Re-check official Hermes docs before implementation, and
+  do not let Hermes tools enable runtime policy or motion dispatch.
 
 ## Testing
 
