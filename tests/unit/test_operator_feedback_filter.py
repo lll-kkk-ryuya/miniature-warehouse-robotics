@@ -72,13 +72,35 @@ def test_milestone_is_suppressed_as_non_speakable() -> None:
 
 
 def test_duplicate_reject_is_suppressed_second_time() -> None:
-    """Repeated identical (gen_id, box, reason_code) is collapsed (doc05:100)."""
+    """Repeated identical event (same run_id/gen_id/robot/box/reason_code) is collapsed.
+
+    Dedup itself still works: same robot, repeated -> 2nd suppressed (doc05:100).
+    """
     flt = ScopeFilter(live_command_gen_ids={GEN_BOT1})
-    first = flt.classify(_event("graph_cycle"))
-    second = flt.classify(_event("graph_cycle"))
+    first = flt.classify(_event("graph_cycle"))  # robot=bot1
+    second = flt.classify(_event("graph_cycle"))  # identical incl. robot=bot1
     assert first.speak is True
     assert second.speak is False
     assert second.reason == REASON_DUPLICATE
+
+
+def test_same_cycle_two_robots_both_speak() -> None:
+    """REGRESSION: one commander cycle shares a single gen_id across bot1+bot2
+    (doc08:183-184 "同一 gen_id の tool call が複数正当に発火"・"世代単位のキーは正当な2台分を
+    誤って弾く"). Two rejects with the SAME gen_id + SAME (box, reason_code) but DIFFERENT
+    robot must BOTH speak — the dedup key includes ``robot`` (full correlation tuple
+    gen_id/run_id/robot, doc05:202). A gen-only key would wrongly drop bot2.
+    """
+    flt = ScopeFilter(live_command_gen_ids={GEN_BOT1})
+    bot1 = _event("navigation_no_path", gen_id=GEN_BOT1, robot="bot1")
+    bot2 = _event("navigation_no_path", gen_id=GEN_BOT1, robot="bot2")
+    assert flt.classify(bot1).speak is True
+    # Same gen_id + same (box, reason_code), different robot -> NOT a duplicate.
+    assert flt.classify(bot2).speak is True
+    # And dedup still fires for a true repeat of bot1 (identical incl. robot).
+    repeat = flt.classify(_event("navigation_no_path", gen_id=GEN_BOT1, robot="bot1"))
+    assert repeat.speak is False
+    assert repeat.reason == REASON_DUPLICATE
 
 
 def test_add_live_command_unlocks_speaking() -> None:

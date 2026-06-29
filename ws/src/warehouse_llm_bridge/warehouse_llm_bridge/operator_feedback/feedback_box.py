@@ -91,7 +91,12 @@ class OperatorFeedbackBox:
         primary_sink: object | None = None,
         fallback_sink: object | None = None,
     ) -> NotifyResult:
-        """Filter, render and deliver one decision_event. NEVER raises on sink failure.
+        """Filter, render and deliver one decision_event.
+
+        Fail-open scope: this NEVER raises on **sink/TTS failure** — a raising sink is caught
+        and the run continues (L4OF-G2, doc05:270). It does NOT swallow **malformed input**:
+        a payload missing ``decision`` (or with a non-hashable correlation field) raises
+        during decode — that is a producer bug, surfaced rather than silently dropped.
 
         Returns a :class:`NotifyResult`; also appends the matching :class:`AuditRecord` to
         ``self.audit_log`` (including for suppressed events — doc05:227).
