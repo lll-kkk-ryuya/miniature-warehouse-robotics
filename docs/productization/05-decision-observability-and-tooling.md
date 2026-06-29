@@ -108,6 +108,13 @@ plugin reason_code の増減は
 - `min_separation`
 - `near_collision_count`
 
+LLM 支援 rule authoring では、この集計結果を次の rule draft へ戻す。
+たとえば `target_out_of_zone` が増えた場合、authoring LLM は zone polygon、target 名、
+許容例外、fixture 不足を質問として返す。ただし LLM の提案は runtime policy ではなく、
+人間 review と simulation / eval gate を通った profile / plugin / fixture だけが
+有効化される。詳細は
+[10-llm-assisted-rule-authoring.md](10-llm-assisted-rule-authoring.md)。
+
 ## 呼び出し頻度と記録粒度
 
 低い layer ほど呼び出し頻度は増える。ただし Contract Box は独立 service というより共通 rule / library なので、複数 box から何度も呼ばれる。

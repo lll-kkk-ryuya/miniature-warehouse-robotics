@@ -173,6 +173,13 @@ site profile の値だけを差し替えられる。Eval / Observability は run
 `plugin id + version + profile` を見れば、「どの実装を、どの案件設定で、
 どの run に使ったか」を後から再現できる。
 
+LLM 支援 rule authoring で作られた artifact も同じ分離に従う。LLM が自然言語 rule から
+plugin profile や fixture の draft を生成しても、run manifest に入れて runtime 有効化
+できるのは `approved` 以上の version だけである。`draft` / `proposed` / `simulated`
+の artifact は offline replay と review 用に保管し、motion dispatch path へ直接入れない。
+authoring loop の詳細は
+[10-llm-assisted-rule-authoring.md](10-llm-assisted-rule-authoring.md) を参照する。
+
 ## Plugin Manifest
 
 plugin は box の interface を変えず、中身の案件差分を吸収する差替点である。

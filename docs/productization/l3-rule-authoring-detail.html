@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LLM支援 Rule Authoring 図解 — Productization</title>
+<style>
+  :root{
+    color-scheme: dark;
+    --bg:#1a1a1a; --bg2:#141414; --card:#222222; --card2:#262626; --surface:#2d2d2d;
+    --ink:#ededed; --muted:#c4c4c4; --faint:#8f8f8f; --line:#3a3a3a; --code:#141414;
+    --badge-ink:#1a1a1a; --head:#dcdcdc;
+    --box:#7aa2f7; --box-bg:rgba(122,162,247,.13);
+    --sub:#9ece6a; --sub-bg:rgba(158,206,106,.12);
+    --seam:#e0af68; --seam-bg:rgba(224,175,104,.12);
+    --plugin:#bb9af7; --plugin-bg:rgba(187,154,247,.12);
+    --demoted:#9a9a9a; --demoted-bg:rgba(154,154,154,.10);
+    --red:#f7768e; --yellow:#e0c07a; --teal:#7dcfff;
+    --Lt1:rgba(122,162,247,.05); --Lt2:rgba(158,206,106,.05); --Lt3:rgba(224,175,104,.05);
+    --Lt4:rgba(187,154,247,.06); --Lt5:rgba(125,207,255,.05);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Noto Sans JP",Meiryo,sans-serif;
+    line-height:1.7;font-size:15px;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1120px;margin:0 auto;padding:32px 20px 80px}
+  header.top{border-bottom:3px solid var(--box);padding-bottom:18px;margin-bottom:8px}
+  h1{font-size:26px;margin:0 0 6px}
+  h2{font-size:21px;margin:46px 0 14px;padding-left:10px;border-left:5px solid var(--box)}
+  h3{font-size:16px;margin:26px 0 10px;color:var(--head)}
+  p{margin:10px 0}
+  .lead{color:var(--muted);font-size:14px}
+  a{color:var(--box);text-decoration:none} a:hover{text-decoration:underline}
+  code{background:var(--code);padding:1px 6px;border-radius:4px;font-size:.9em;
+    font-family:"SF Mono",Menlo,Consolas,monospace;color:var(--ink)}
+  pre{background:var(--code);border:1px solid var(--line);border-radius:8px;padding:12px 14px;overflow-x:auto;font-size:12.5px;line-height:1.6;margin:10px 0}
+  pre code{background:none;padding:0;font-size:1em}
+  .dref{color:var(--teal);font-size:.82em;font-family:"SF Mono",Menlo,monospace;white-space:nowrap}
+  .note{background:var(--seam-bg);border:1px solid rgba(224,175,104,.4);border-radius:8px;padding:12px 16px;margin:16px 0;font-size:14px}
+  .safe{background:rgba(247,118,142,.08);border:1px solid rgba(247,118,142,.4);border-radius:8px;padding:12px 16px;margin:16px 0;font-size:14px}
+  .meta{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 16px;font-size:13px;color:var(--muted);margin:14px 0}
+  .nav{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0}
+  .nav a{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:7px 13px;font-size:13px;font-weight:600}
+  .nav a:hover{border-color:var(--box);text-decoration:none}
+  .badge{display:inline-block;font-size:11px;font-weight:700;padding:2px 9px;border-radius:999px;color:var(--badge-ink);letter-spacing:.3px;vertical-align:middle}
+  .b-box{background:var(--box)} .b-sub{background:var(--sub)} .b-seam{background:var(--seam)} .b-plugin{background:var(--plugin)} .b-demoted{background:var(--demoted);color:var(--ink)}
+  .legend{display:flex;flex-wrap:wrap;gap:10px;margin:16px 0}
+  .legend .item{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 14px;flex:1 1 180px;min-width:180px}
+  .legend .item b{display:block;margin-bottom:3px}.legend .item small{color:var(--muted);font-size:12.5px}
+  .node{border-radius:10px;padding:10px 12px;border:2px solid;background:var(--card);font-size:13.5px}
+  .node .t{font-weight:700;font-size:14px}.node .s{color:var(--muted);font-size:12px;margin-top:2px}
+  .n-box{border-color:var(--box);background:var(--box-bg)}
+  .n-sub{border-color:var(--sub);background:var(--sub-bg)}
+  .n-seam{border-color:var(--seam);background:var(--seam-bg);border-style:dashed}
+  .n-plugin{border-color:var(--plugin);background:var(--plugin-bg)}
+  .n-demoted{border-color:var(--demoted);background:var(--demoted-bg);color:var(--muted)}
+  .flow{display:flex;flex-wrap:wrap;align-items:stretch;gap:6px;margin:14px 0}
+  .flow .node{flex:1 1 130px;min-width:118px;display:flex;flex-direction:column;justify-content:center}
+  .flow .arr{display:flex;align-items:center;color:var(--faint);font-weight:700;font-size:18px;padding:0 1px}
+  .lane{border:1.5px dashed var(--plugin);background:var(--plugin-bg);border-radius:10px;padding:8px 12px;margin:8px 0 0;font-size:12.5px;color:var(--muted)}
+  .layer{border-radius:12px;padding:12px 14px;margin:10px 0;border:1px solid var(--line)}
+  .layer .lh{font-size:12px;font-weight:700;color:var(--head);letter-spacing:.5px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center}
+  .layer .lh .rt{font-weight:500;color:var(--muted);font-size:11px}
+  .row{display:flex;flex-wrap:wrap;gap:10px}.row .node{flex:1 1 180px}
+  .Lt1{background:var(--Lt1)}.Lt2{background:var(--Lt2)}.Lt3{background:var(--Lt3)}.Lt4{background:var(--Lt4)}.Lt5{background:var(--Lt5)}
+  .steps{counter-reset:st;margin:14px 0}
+  .step{position:relative;border:1px solid var(--line);background:var(--card);border-radius:10px;padding:11px 14px 11px 46px;margin:8px 0;font-size:13.5px}
+  .step::before{counter-increment:st;content:counter(st);position:absolute;left:12px;top:11px;width:24px;height:24px;border-radius:50%;background:var(--box);color:var(--badge-ink);font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:center}
+  .step .s{color:var(--muted);font-size:12.5px;margin-top:2px}
+  .step.seam{border-color:var(--seam);border-left:4px solid var(--seam)}.step.seam::before{background:var(--seam)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  table{border-collapse:collapse;width:100%;margin:14px 0;font-size:13px;background:var(--card)}
+  th,td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
+  th{background:var(--surface);font-size:12.5px;color:var(--head)}tr:nth-child(even) td{background:rgba(255,255,255,.02)}
+  td code{font-size:.85em}.impl-yes{color:var(--sub);font-weight:700}.impl-no{color:var(--yellow);font-weight:700}
+  ul.tight{margin:8px 0;padding-left:22px}ul.tight li{margin:5px 0}
+  footer{margin-top:50px;padding-top:18px;border-top:1px solid var(--line);color:var(--muted);font-size:12.5px}
+  @media(max-width:760px){.grid2{grid-template-columns:1fr}.flow .arr{display:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <h1>LLM支援 Rule Authoring 図解 — Productization</h1>
+  <p class="lead">顧客が自然言語で出す現場 rule を、LLM が draft し、人間 review・fixture・simulation / eval gate を通して、site profile / plugin profile / run manifest へ昇格する流れを図解する。runtime enforcement は L3 / L2 / L1-L0 の deterministic box が担当する。</p>
+</header>
+
+<div class="nav">
+  <a href="10-llm-assisted-rule-authoring.md">正本: 10 rule authoring</a>
+  <a href="03-l3-planning-core-box.md">03 L3 Planning Core</a>
+  <a href="04-box-storage-and-reuse-guidelines.md">04 site profile</a>
+  <a href="09-run-manifest-and-plugin-composition.md">09 manifest/plugin</a>
+  <a href="layer-l3-detail.html">L3 詳細図</a>
+  <a href="layer-l3-reuse-detail.html">L3 再利用図</a>
+</div>
+
+<div class="meta">
+  正本: <a href="10-llm-assisted-rule-authoring.md"><code>10-llm-assisted-rule-authoring.md</code></a>
+  <span class="dref">10:5-8</span>。本ページは補助図解であり、新しい config key、topic、REST API、
+  <code>warehouse_interfaces</code> frozen contract を追加しない。Runtime L3 の core/plugin 境界は
+  <a href="03-l3-planning-core-box.md"><code>03-l3-planning-core-box.md</code></a>
+  <span class="dref">03:23-33</span> を正本にする。
+</div>
+
+<h2>0. 凡例</h2>
+<div class="legend">
+  <div class="item"><b><span class="badge b-box">core</span></b><small>Handoff / L3 core / 下位安全層。顧客別 rule で置換しない。<span class="dref">10:50-62</span></small></div>
+  <div class="item"><b><span class="badge b-plugin">plugin</span></b><small>Validator / Visual / Governance / Eval の差替点。site profile から値を読む。<span class="dref">03:23-33</span></small></div>
+  <div class="item"><b><span class="badge b-seam">draft</span></b><small>LLM が作る候補。人間 review と simulation 前は runtime に入れない。<span class="dref">10:125-153</span></small></div>
+  <div class="item"><b><span class="badge b-sub">artifact</span></b><small>site profile、plugin profile、fixture、run manifest。<span class="dref">10:17-27</span></small></div>
+</div>
+<div class="note"><b>核心:</b> LLM は rule drafting assistant であり runtime enforcement authority ではない。最終的に有効化されるのは、人間 review と simulation / eval gate を通った versioned artifact だけ。<span class="dref">10:17-27</span></div>
+
+<h2>1. Authoring Flow: 顧客の言葉から有効化まで</h2>
+<div class="flow">
+  <div class="node n-sub"><div class="t">Customer / SI</div><div class="s">自然言語 rule、業務 flow、危険 area、KPI を説明 <span class="dref">10:12-24</span></div></div>
+  <div class="arr">▶</div>
+  <div class="node n-seam"><div class="t">Authoring LLM</div><div class="s">質問生成、曖昧さ解消、artifact draft <span class="dref">10:31-42</span></div></div>
+  <div class="arr">▶</div>
+  <div class="node n-seam"><div class="t">Rule Proposal</div><div class="s">profile / fixture / manifest の候補。まだ runtime ではない <span class="dref">10:139-145</span></div></div>
+  <div class="arr">▶</div>
+  <div class="node n-sub"><div class="t">Human Review</div><div class="s">顧客・SI・開発者・safety owner が確認 <span class="dref">10:143-145</span></div></div>
+  <div class="arr">▶</div>
+  <div class="node n-box"><div class="t">Simulation / Eval</div><div class="s">fixture、counterfactual、report regression <span class="dref">10:147-169</span></div></div>
+  <div class="arr">▶</div>
+  <div class="node n-plugin"><div class="t">Approved Artifact</div><div class="s">approved 以上だけ run manifest で有効化 <span class="dref">10:151-153</span></div></div>
+</div>
+<div class="safe"><b>遮断線:</b> authoring LLM は runtime で <code>Command</code>、<code>gen_id</code>、<code>idempotency_key</code> を作らず、Nav2 / Open-RMF / ROS topic / <code>/cmd_vel</code> / firmware / emergency stop を直接操作しない。<span class="dref">10:44-48</span></div>
+
+<h2>2. Layer Classification: どこへ置く rule か</h2>
+<div class="layer Lt4">
+  <div class="lh"><span>L3 Validator / Visual / Task Graph</span><span class="rt">Non-RT rule gate</span></div>
+  <div class="row">
+    <div class="node n-plugin"><div class="t">Zone / target rule</div><div class="s"><code>red_box</code> は <code>zone_a</code> 内だけ。<span class="dref">10:64-104</span></div></div>
+    <div class="node n-plugin"><div class="t">Confidence / clarification</div><div class="s">低 confidence は reject または聞き返し。<span class="dref">10:116</span></div></div>
+    <div class="node n-plugin"><div class="t">Workflow dependency</div><div class="s">工程順序や DAG fixture。<span class="dref">10:117</span></div></div>
+  </div>
+</div>
+<div class="layer Lt3">
+  <div class="lh"><span>L2 Governance / Traffic</span><span class="rt">policy / route / authority</span></div>
+  <div class="row">
+    <div class="node n-plugin"><div class="t">Role / time / allowed action</div><div class="s">権限、時間帯、site policy。<span class="dref">10:118</span></div></div>
+    <div class="node n-plugin"><div class="t">Area route constraint</div><div class="s">特定 robot の route / area 制約は Traffic と合わせて分類。<span class="dref">10:113</span></div></div>
+  </div>
+</div>
+<div class="layer Lt2">
+  <div class="lh"><span>L1 / L0 Safety / Hardware</span><span class="rt">safety-rated enforcement</span></div>
+  <div class="row">
+    <div class="node n-box"><div class="t">Distance / stop topology</div><div class="s">人から 3m 以内など safety-rated rule は下位安全層が主。<span class="dref">10:114,121-123</span></div></div>
+    <div class="node n-box"><div class="t">Firmware clamp / emergency</div><div class="s">Validator plugin で置換しない。<span class="dref">10:207-214</span></div></div>
+  </div>
+</div>
+<div class="layer Lt5">
+  <div class="lh"><span>Eval / Observability</span><span class="rt">report only</span></div>
+  <div class="row">
+    <div class="node n-box"><div class="t">Reason top-N / KPI</div><div class="s">rule 変更前後の reject rate、customer report。<span class="dref">10:179-194</span></div></div>
+    <div class="node n-box"><div class="t">Eval-only rule</div><div class="s">停止判断ではなく report / regression として見る。<span class="dref">10:119</span></div></div>
+  </div>
+</div>
+
+<h2>3. Zone Policy の具体例</h2>
+<div class="grid2">
+  <div class="node n-seam">
+    <div class="t">顧客の言葉</div>
+    <div class="s">「赤箱は zone_a 内にある時だけ搬送してよい」「bot2 は人作業エリアへ入れない」。<span class="dref">10:69-75</span></div>
+  </div>
+  <div class="node n-plugin">
+    <div class="t">実装の分離</div>
+    <div class="s">reusable logic は <code>l3.zone_policy</code> plugin、zone polygon / target rule は site profile。<span class="dref">10:102-104</span></div>
+  </div>
+</div>
+<pre><code>profiles:
+  customer_a:
+    zone_artifacts:
+      zone_a: zones/zone_a.geojson
+      human_work_area: zones/human_work_area.geojson
+    target_rules:
+      red_box:
+        must_be_inside: zone_a
+        reason_code: target_out_of_zone
+    robot_rules:
+      bot2:
+        forbidden_zones: [human_work_area]
+        reason_code: robot_forbidden_zone</code></pre>
+<p class="lead">この YAML は提案例であり frozen schema ではない。plugin profile の置き場所と分離方針は site profile docs と run manifest docs に従う。<span class="dref">10:81-104 / 04:124-136 / 09:157-181</span></p>
+
+<h2>4. Promotion Gate: draft から enabled へ</h2>
+<div class="steps">
+  <div class="step"><b>draft</b><div class="s">LLM が質問、profile、fixture、manifest 候補を生成する。runtime には入れない。<span class="dref">10:131-141</span></div></div>
+  <div class="step"><b>proposed</b><div class="s">自然言語 rule と artifact の対応を人間が確認する。<span class="dref">10:143-145</span></div></div>
+  <div class="step seam"><b>simulated</b><div class="s">positive / negative / boundary / stale / emergency / multi-robot fixture を通す。<span class="dref">10:147-169</span></div></div>
+  <div class="step"><b>approved</b><div class="s">安全 owner を含む review と gate を通った versioned artifact。<span class="dref">10:151-153</span></div></div>
+  <div class="step"><b>enabled</b><div class="s">run manifest で有効化。`draft` / `proposed` / `simulated` は motion dispatch path に入れない。<span class="dref">09:176-181</span></div></div>
+</div>
+
+<h2>5. Simulation / Eval Suite</h2>
+<table>
+  <thead><tr><th>Suite</th><th>見ること</th><th>例</th><th>正本</th></tr></thead>
+  <tbody>
+    <tr><td>Positive / Negative</td><td>通るべき task と弾くべき task の両方</td><td><code>red_box</code> in / out of <code>zone_a</code></td><td><span class="dref">10:160-164</span></td></tr>
+    <tr><td>Boundary</td><td>距離・時間・zone 境界の端</td><td>3m、2.9m、3.1m</td><td><span class="dref">10:164</span></td></tr>
+    <tr><td>Stale / emergency injection</td><td>freshness と emergency policy の分離</td><td>pose stale、emergency active</td><td><span class="dref">10:165</span></td></tr>
+    <tr><td>Multi-robot conflict</td><td>route / zone / traffic の干渉</td><td>aisle 共有、charging area 競合</td><td><span class="dref">10:166</span></td></tr>
+    <tr><td>Workflow interlock</td><td>工程順序と依存関係</td><td>clamp before weld</td><td><span class="dref">10:167</span></td></tr>
+    <tr><td>Report regression</td><td>顧客説明の安定性</td><td>reason top-N、profile version、artifact ref</td><td><span class="dref">10:168-169</span></td></tr>
+  </tbody>
+</table>
+
+<h2>6. Artifact Mapping</h2>
+<table>
+  <thead><tr><th>Artifact</th><th>役割</th><th>保存・参照</th><th>Runtime に入る条件</th></tr></thead>
+  <tbody>
+    <tr><td>site profile</td><td>現場 layout、robot、camera、safety、KPI、plugin parameter set</td><td><code>site_profiles/&lt;customer&gt;/&lt;site&gt;/</code> <span class="dref">04:83-136</span></td><td>docs-first review と secret 境界確認後</td></tr>
+    <tr><td>plugin profile</td><td>zone polygon、target rule、confidence policy などの案件値</td><td><code>plugin_profiles/*.yaml</code> <span class="dref">04:100-115</span></td><td>fixture と simulation gate 通過後</td></tr>
+    <tr><td>plugin manifest</td><td>hook point、reason_code、artifact 要件、安全境界</td><td><code>plugins/&lt;id&gt;/plugin.yaml</code> proposal <span class="dref">09:183-235</span></td><td>box interface を変えない場合だけ</td></tr>
+    <tr><td>run manifest</td><td>今回の run でどの box/plugin/profile を有効化したか</td><td><code>out/runs/&lt;run_id&gt;/manifest.yaml</code> <span class="dref">09:42-127</span></td><td><code>approved</code> 以上の artifact のみ</td></tr>
+    <tr><td>decision_event / report</td><td>reject rate、reason top-N、顧客説明、次の質問生成</td><td>JSONL / DuckDB / report <span class="dref">10:179-194</span></td><td>Eval は observation only</td></tr>
+  </tbody>
+</table>
+
+<h2>7. Non-Goals / Safety Boundary</h2>
+<div class="safe">
+  <ul class="tight">
+    <li>LLM が runtime policy を直接実行する仕組みは作らない。<span class="dref">10:207-210</span></li>
+    <li>Handoff に顧客別 rule を混ぜない。<span class="dref">10:209-210</span></li>
+    <li>L2/L1/L0 safety enforcement を Validator plugin で置換しない。<span class="dref">10:211</span></li>
+    <li>未凍結の coordinate goal、3D collision check、safety-rated distance を product contract として扱わない。<span class="dref">10:212-213</span></li>
+    <li>Command Compiler は <code>gen_id</code>、<code>idempotency_key</code>、velocity、low-level action、未凍結 coordinate goal を作らない。<span class="dref">03:167-172</span></li>
+  </ul>
+</div>
+
+<footer>
+  <p>このページは <code>docs/productization/l3-rule-authoring-detail.html</code>（補足図解・ダーク）。一次ソースは
+  <code>10-llm-assisted-rule-authoring.md</code>、<code>03-l3-planning-core-box.md</code>、
+  <code>04-box-storage-and-reuse-guidelines.md</code>、<code>09-run-manifest-and-plugin-composition.md</code>。</p>
+  <p>検証対象: HTML tag balance、body 内 hex color なし、<code>python3 scripts/check_consistency.py</code>。</p>
+</footer>
+
+</div>
+</body>
+</html>

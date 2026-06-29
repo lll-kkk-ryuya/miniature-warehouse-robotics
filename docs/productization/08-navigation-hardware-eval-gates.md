@@ -135,6 +135,13 @@ OSS / 標準 tool の使い分け:
 - ros2_tracing: high-rate timing、executor、DDS / callback 解析。
 - DuckDB / JSONL: offline aggregation と customer report export の候補。
 
+LLM 支援 rule authoring で生成した profile / plugin profile / fixture は、
+customer-facing に有効化する前に E-G0 / E-G4 / E-G5 を中心に replay する。
+rule あり / なしの counterfactual run、positive / negative / boundary fixture、
+stale / emergency injection を通し、`join_gap` や `artifact_missing` を残したまま
+`approved` にしない。authoring loop は
+[10-llm-assisted-rule-authoring.md](10-llm-assisted-rule-authoring.md) を参照する。
+
 ### Eval acceptance gates
 
 | Gate | 目的 | source / fixture | pass criteria | 代表 reason_code | tool / owner |

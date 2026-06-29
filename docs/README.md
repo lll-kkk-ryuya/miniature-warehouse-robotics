@@ -67,6 +67,8 @@ docs/
 | [07-layer-tool-decision-matrix](productization/07-layer-tool-decision-matrix.md) | layer / box ごとの OSS / tool 採用・候補・不採用・要 spike・採用条件 |
 | [08-navigation-hardware-eval-gates](productization/08-navigation-hardware-eval-gates.md) | Navigation / Hardware / Eval の acceptance gate と reason_code catalog |
 | [09-run-manifest-and-plugin-composition](productization/09-run-manifest-and-plugin-composition.md) | box / plugin の run manifest、plugin manifest、pluggy / DuckDB 等の使いどころ、WO と eval_sdk の関係 |
+| [10-llm-assisted-rule-authoring](productization/10-llm-assisted-rule-authoring.md) | 顧客 rule を LLM 支援で site profile / plugin profile / fixture / simulation へ落とす設計 |
+| [l3-rule-authoring-detail](productization/l3-rule-authoring-detail.html) | LLM 支援 rule authoring の HTML 図解 |
 | [productization/l4](productization/l4/README.md) | L4 内部 sub-box の layer skeleton。Model Transport / Adapter の詳細設計 |
 
 ## mode-a/ — LLM単独交通管理

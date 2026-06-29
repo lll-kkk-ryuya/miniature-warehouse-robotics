@@ -81,6 +81,25 @@ comparison demo.
 - Do not create or merge Issue/PR content without docs links and the required
   worktree tag. Simple one-line Issues/PRs are prohibited.
 
+## LLM-Assisted Rule Authoring
+
+- For customer-readable rule authoring and productization work, read
+  `docs/productization/10-llm-assisted-rule-authoring.md` together with
+  `docs/productization/03-l3-planning-core-box.md`,
+  `docs/productization/04-box-storage-and-reuse-guidelines.md`, and
+  `docs/productization/09-run-manifest-and-plugin-composition.md`.
+- Treat customer-readable warehouse rules as source material for productized
+  site profiles, Validator plugin profiles, fixtures, and simulation runs.
+- Keep Handoff as the core orchestration contract; do not replace it with
+  customer/site-specific rule logic.
+- Site-specific rules belong in Validator plugins and their fixtures, not in
+  LLM prompts, Handoff internals, or lower-layer safety code.
+- Safety enforcement remains layered through L2/L1/L0. Validator plugins may
+  reject or shape candidate tasks, but must not bypass Nav2/Open-RMF, firmware,
+  emergency stop, or other lower-layer safety mechanisms.
+- Authoring LLM output is a draft only. It needs human review, fixture replay,
+  simulation/eval gates, and docs-first approval before run manifest enablement.
+
 ## Testing
 
 Python tests run on the host **without ROS 2 or colcon** — `conftest.py` puts

@@ -281,7 +281,7 @@ transport は box interface 裏の `transport: hermes|direct` 選択であって
 - **TTS provider（speaker の中身）は LLM ではなく専用 TTS エンジン**（text→audio）。経路は2つ: **(a) Hermes 経由**（`transport: hermes`）— Hermes が TTS エンジンを proxy し、**Google Gemini TTS / OpenAI TTS / Edge / Piper(ローカル) など 10 provider をネイティブ対応**（config `tts.provider` / `tts.<provider>.voice`）。**(b) direct adapter**（`transport: direct`）— Gemini API TTS（`gemini-2.5-flash-preview-tts` / `gemini-2.5-pro-preview-tts`・text→audio・日本語対応）や Google Cloud TTS（Chirp 3 HD・SSML）。**Mode X-ER は司令塔が Gemini Robotics-ER ゆえ TTS も Gemini 系で揃えるのが自然**（Hermes ネイティブなので `transport:hermes` でそのまま使える）。preview model のため実装時に再確認。出典（確認 2026-06-24）: `https://ai.google.dev/gemini-api/docs/speech-generation`・`https://hermes-agent.nousresearch.com/docs/user-guide/features/tts`。
 - **発話スコープの確定値**: speakable な `decision` 集合（`rejected`/`needs_clarification`/`emergency_stop` に加え `arrived`/`completed` を喋るか）、milestone（右折・到着）を喋る範囲、同一 reason の抑制間隔は現場依存（§5.3）。実装時に config 化する。
 - taxonomy 正本 `docs/productization/01-commercial-box-map.md` の Box 一覧 / 観測 funnel への登録（owner = box-map / Eval-Obs トラックと調整・§2.4）。
-- 現場言語テンプレート・locale・抑制 policy・emergency 割り込み policy の値（現場依存。`docs/productization/05-decision-observability-and-tooling.md:169` の「既存 tool に含まれない自作領域」）。
+- 現場言語テンプレート・locale・抑制 policy・emergency 割り込み policy の値（現場依存。`docs/productization/05-decision-observability-and-tooling.md:176` の「既存 tool に含まれない自作領域」）。
 - Hermes Voice/TTS が日本語・低 latency・割り込みを満たすかの offline probe（満たさなければ direct TTS adapter）。STT 入力（`04`）と同じく**実証前は併走**で持つ。
 - ER/LLM 整形層（§4 layer 2）を実装するか、deterministic のみで足りるかの判断。
 
