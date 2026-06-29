@@ -94,9 +94,11 @@ class OperatorFeedbackBox:
         """Filter, render and deliver one decision_event.
 
         Fail-open scope: this NEVER raises on **sink/TTS failure** — a raising sink is caught
-        and the run continues (L4OF-G2, doc05:270). It does NOT swallow **malformed input**:
-        a payload missing ``decision`` (or with a non-hashable correlation field) raises
-        during decode — that is a producer bug, surfaced rather than silently dropped.
+        and the run continues (L4OF-G2, doc05:270). It does NOT swallow **malformed input**,
+        which surfaces (a producer bug, not silently dropped): a payload missing ``decision``
+        raises during decode (``DecisionEvent.from_payload``); a non-hashable correlation field
+        (e.g. a list ``box`` / ``reason_code``) raises later when ``ScopeFilter.classify``
+        builds the dedup key, not at decode.
 
         Returns a :class:`NotifyResult`; also appends the matching :class:`AuditRecord` to
         ``self.audit_log`` (including for suppressed events — doc05:227).

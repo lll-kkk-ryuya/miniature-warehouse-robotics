@@ -86,7 +86,7 @@ def test_duplicate_reject_is_suppressed_second_time() -> None:
 
 def test_same_cycle_two_robots_both_speak() -> None:
     """REGRESSION: one commander cycle shares a single gen_id across bot1+bot2
-    (doc08:183-184 "同一 gen_id の tool call が複数正当に発火"・"世代単位のキーは正当な2台分を
+    (doc08:183 "同一 gen_id の tool call が複数正当に発火"・"世代単位のキーは正当な2台分を
     誤って弾く"). Two rejects with the SAME gen_id + SAME (box, reason_code) but DIFFERENT
     robot must BOTH speak — the dedup key includes ``robot`` (full correlation tuple
     gen_id/run_id/robot, doc05:202). A gen-only key would wrongly drop bot2.

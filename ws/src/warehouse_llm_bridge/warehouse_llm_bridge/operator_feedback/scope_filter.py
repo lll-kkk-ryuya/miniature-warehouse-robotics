@@ -15,7 +15,7 @@ Suppression precedence (deterministic, checked in order):
   3. duplicate_suppressed — same (run_id, gen_id, robot, box, reason_code) already spoken
      this session: collapses high-freq tick / repeated reject ("同一 reason の連投を間引く",
      doc05:100). The key MUST include ``robot`` (and ``run_id``): one commander cycle shares
-     a single ``gen_id`` across bot1+bot2 (doc08:183-184 — "同一 gen_id の tool call が複数
+     a single ``gen_id`` across bot1+bot2 (doc08:183 — "同一 gen_id の tool call が複数
      正当に発火"・"世代単位のキーは正当な2台分を誤って弾く"), so a gen-only key would wrongly
      drop the 2nd robot's distinct reject. Full correlation tuple = gen_id/run_id/robot
      (doc05:202).
@@ -90,7 +90,7 @@ class ScopeFilter:
         No side effects on SUPPRESS; on SPEAK the full correlation key
         ``(run_id, gen_id, robot, box, reason_code)`` is remembered for dedup. ``robot`` and
         ``run_id`` are part of the key because one commander cycle shares a single ``gen_id``
-        across bot1+bot2 (doc08:183-184) — a gen-only key would wrongly drop the 2nd robot's
+        across bot1+bot2 (doc08:183) — a gen-only key would wrongly drop the 2nd robot's
         distinct reject. The correlation tuple is gen_id/run_id/robot (doc05:202).
         """
         if event.decision not in SPEAKABLE_DECISIONS:
