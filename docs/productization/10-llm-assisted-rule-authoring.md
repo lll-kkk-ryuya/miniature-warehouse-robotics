@@ -212,3 +212,403 @@ decision_event / audit / odom / result
 - 未凍結の coordinate goal、3D collision check、safety-rated distance を
   product contract として扱わない。
 - 顧客 secret、API key、raw production data を site profile に保存しない。
+
+## Appendix A: Zone Artifact Model
+
+`zones/zone_a.geojson` のような file は、rule そのものではなく **map frame 上の
+幾何 artifact** である。`red_box` を `zone_a` 内に限定する、`bot2` を
+`human_work_area` へ入れない、といった rule は GeoJSON ではなく plugin profile に置く。
+
+最小例:
+
+```json
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "id": "zone_a",
+      "properties": {
+        "zone_id": "zone_a",
+        "name": "Zone A",
+        "frame_id": "map",
+        "unit": "meter",
+        "version": "2026-06-29",
+        "kind": "storage_area"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [0.10, 0.10],
+            [0.80, 0.10],
+            [0.80, 0.45],
+            [0.10, 0.45],
+            [0.10, 0.10]
+          ]
+        ]
+      }
+    }
+  ]
+}
+```
+
+扱い方:
+
+- `geometry.coordinates` は原則 `map` frame の meter 座標とする。屋内倉庫や製造
+  cell では緯度経度ではなく、SLAM / CAD / calibration で合意した local map 座標を使う。
+- Polygon は closed ring とし、最後の点を最初の点と同じにする。
+- `properties.frame_id` / `unit` / `version` を残し、calibration や map version と
+  join できるようにする。
+- zone の意味づけは `kind` に留める。実際の許可 / 禁止 / reject reason は plugin profile に置く。
+- 1 file に複数 `Feature` を入れてもよいが、初期実装は 1 zone / 1 file の方が
+  fixture と差分 review が読みやすい。
+
+GeoJSON と rule profile の分離:
+
+```yaml
+# site_profiles/customer_a/site_01/plugin_profiles/l3_zone_policy.yaml
+profiles:
+  customer_a:
+    zone_artifacts:
+      zone_a: zones/zone_a.geojson
+      human_work_area: zones/human_work_area.geojson
+    target_rules:
+      red_box:
+        must_be_inside: zone_a
+        on_violation: reject
+        reason_code: target_out_of_zone
+    robot_rules:
+      bot2:
+        forbidden_zones:
+          - human_work_area
+        on_violation: reject
+        reason_code: robot_forbidden_zone
+```
+
+この分離により、同じ `zone_a.geojson` を L3 Validator、Traffic、Eval report で
+再利用できる。逆に、顧客 rule を GeoJSON に直接埋め込むと、幾何更新と policy 更新が
+混ざり、review / rollback / fixture の責務が崩れる。
+
+## Appendix B: Validator Rule Catalog
+
+LLM が rule を draft する場合でも、最終的には次の catalog のどれかに分類し、
+`reason_code`、`field_path`、`dispatch_effect`、fixture を持たせる。
+
+| Category | 代表 rule | Input context | 代表 reason_code | Owner |
+|---|---|---|---|---|
+| robot rule | known robot か、robot ごとの禁止 zone、allowed action、battery 状態 | `task_graph[].robot`, robot registry, battery snapshot, zone refs | `unknown_robot`, `robot_forbidden_zone`, `robot_action_not_allowed`, `battery_policy_reject` | L3 Validator / L2 Governance |
+| target rule | target が存在するか、許可 zone 内か、target class が許可されるか | `detections[]`, known locations, zone polygon, target catalog | `unknown_target`, `target_out_of_zone`, `target_class_forbidden` | L3 Validator / Visual Resolver |
+| action rule | `navigate/wait/stop/yield/charge` allowlist、zone / 時間帯ごとの禁止 action | `task_graph[].action`, allowed actions, shift calendar, zone refs | `unknown_action`, `action_not_allowed_in_zone`, `action_not_allowed_at_time` | L3 Validator / L2 Governance |
+| workflow rule | inspection 前に shipping しない、clamp 前に weld しない、door open 前に arm を入れない | work order state, machine state, task dependencies | `workflow_precondition_failed`, `inspection_not_passed`, `machine_not_safe_for_pick` | L3 Task Graph / domain plugin |
+| freshness rule | state / camera frame / robot pose が古すぎないか | state timestamp, frame timestamp, pose age, freshness policy | `cycle_state_stale`, `stale_camera_frame`, `pose_stale` | L3 Validator / Safety |
+| emergency rule | emergency active 中は motion 0 dispatch、bumper stop 中は recovery 以外 reject | emergency event, stop source, recovery mode | `emergency_active`, `recovery_only_mode`, `bumper_stop_active` | L3 Validator / L1-L0 Safety |
+| confidence rule | 低 confidence は reject、中 confidence は clarification、高 confidence のみ accept | detection confidence, resolver confidence, policy thresholds | `low_confidence_target`, `needs_clarification`, `confidence_gap` | L3 Validator / L4 Feedback |
+| graph rule | `after` が存在するか、DAG cycle がないか、ready task を制御する | `task_graph`, task store, lifecycle state | `invalid_after_reference`, `task_graph_cycle`, `no_ready_task` | L3 Task Graph Executor |
+
+Rule result の目標形:
+
+```json
+{
+  "code": "target_out_of_zone",
+  "severity": "error",
+  "field_path": "task_graph[0].target",
+  "message_for_operator": "red_box is outside zone_a",
+  "debug_detail": {
+    "target": "red_box",
+    "zone": "zone_a",
+    "target_map_xy": [0.92, 0.38],
+    "zone_artifact": "zones/zone_a.geojson"
+  },
+  "dispatch_effect": "zero_dispatch"
+}
+```
+
+この catalog は product contract ではない。初期実装では proposal catalog として扱い、
+実装 package、owner docs、contract PR がそろったものだけを frozen に昇格する。
+
+## Appendix C: Profile Composition And Conflict Handling
+
+A 社と B 社の rule を組み合わせることはできる。ただし単純な YAML merge ではなく、
+layering、precedence、conflict detection を明示する。
+
+```yaml
+profile_composition:
+  base:
+    - common.warehouse_default
+  overlays:
+    - customer_a.zone_policy
+    - customer_b.confidence_policy
+    - site_01.calibration
+  precedence:
+    - site_01
+    - customer_a
+    - customer_b
+    - common
+```
+
+合成後の rule set は、起動時または offline authoring 時に lint する。
+
+許容される合成例:
+
+```yaml
+merged_rules:
+  common:
+    unknown_robot: reject
+    emergency_active: reject
+  customer_a:
+    red_box_outside_zone_a: reject
+    bot2_in_human_work_area: reject
+  customer_b:
+    confidence_below_0_85: needs_clarification
+    inspection_not_passed: reject
+```
+
+衝突例:
+
+```yaml
+conflict:
+  rule: target_confidence_policy
+  customer_a:
+    if_below: 0.80
+    action: reject
+  customer_b:
+    if_below: 0.90
+    action: needs_clarification
+```
+
+この場合は silent override せず、authoring lint が `profile_conflict` を返す。
+
+```json
+{
+  "decision": "rejected",
+  "reason_code": "profile_conflict",
+  "reason_detail": "target_confidence_policy defines incompatible threshold/action pairs",
+  "dispatch_effect": "no_profile_enablement"
+}
+```
+
+原則:
+
+- `emergency` / lower-layer safety は常に最優先で、顧客 overlay で弱めない。
+- `reject` と `needs_clarification` が同じ条件に重なった場合、初期方針は fail-closed
+  とし、人間 review へ戻す。
+- 同じ `reason_code` を複数 plugin が emit する場合は、`box` / `stage` / `plugin_id`
+  で区別する。
+- approved profile だけ run manifest に入れる。draft / proposed は offline replay 用に残す。
+
+## Appendix D: Manufacturing Rule Simulations
+
+### Assembly Line
+
+顧客 intent:
+
+```text
+検査前の部品を次工程へ流してはいけない。
+治具Aが occupied の時は robot が部品を置いてはいけない。
+```
+
+Profile draft:
+
+```yaml
+l3.workflow_policy:
+  part_rules:
+    part_x:
+      required_state_before_shipping: inspection_passed
+      on_violation: reject
+      reason_code: inspection_not_passed
+  fixture_rules:
+    jig_a:
+      must_be_free_before_place: true
+      on_violation: reject
+      reason_code: fixture_occupied
+```
+
+Fixture:
+
+```json
+{
+  "input": {
+    "task": {"action": "place", "target": "jig_a", "part": "part_x"},
+    "context": {"part_x": {"inspection_passed": false}, "jig_a": {"occupied": true}}
+  },
+  "expected": {
+    "decision": "rejected",
+    "reason_code": "inspection_not_passed",
+    "dispatch_effect": "zero_dispatch"
+  }
+}
+```
+
+### Machine Tending
+
+顧客 intent:
+
+```text
+CNC door が closed の時は robot arm を入れない。
+spindle が回転中なら取り出し禁止。
+```
+
+Profile draft:
+
+```yaml
+l3.machine_tending_policy:
+  machine_state_rules:
+    cnc_01:
+      require_before_pick:
+        door_open: true
+        spindle_stopped: true
+        chuck_released: true
+      on_violation: reject
+      reason_code: machine_not_safe_for_pick
+```
+
+Simulation:
+
+```text
+door_open=false, spindle_stopped=true  -> reject(machine_not_safe_for_pick)
+door_open=true, spindle_stopped=false  -> reject(machine_not_safe_for_pick)
+door_open=true, spindle_stopped=true, chuck_released=true -> accepted candidate
+```
+
+### Palletizing
+
+顧客 intent:
+
+```text
+重い箱を上に積まない。
+壊れやすい箱は pallet corner に置かない。
+```
+
+Profile draft:
+
+```yaml
+l3.pallet_policy:
+  stacking_rules:
+    heavy_items_must_be_bottom: true
+    max_stack_height_by_class:
+      fragile: 2
+  placement_rules:
+    fragile_forbidden_zones:
+      - pallet_corner
+```
+
+Expected rejects:
+
+```json
+[
+  {"reason_code": "invalid_stack_order", "case": "heavy item above light item"},
+  {"reason_code": "fragile_forbidden_zone", "case": "fragile item in pallet_corner"}
+]
+```
+
+### Human-Collaboration Area
+
+顧客 intent:
+
+```text
+人作業エリアに robot は入らない。
+人が作業台にいる場合は搬送 task を作らない。
+```
+
+Profile draft:
+
+```yaml
+l3.human_area_policy:
+  forbidden_zones:
+    bot1:
+      - human_work_area
+    bot2:
+      - human_work_area
+  human_detection:
+    if_human_in_zone: human_work_area
+    action: reject
+    reason_code: human_in_work_area
+```
+
+注意: 人との safety-rated distance や emergency stop は L1/L0 safety が主である。
+L3 は task 候補を早めに reject して説明可能にする補助 gate であり、認証済み safety
+hardware / firmware clamp / emergency stop を置換しない。
+
+## Appendix E: Hermes Authoring Integration Boundary
+
+Hermes / Nous Research 側は、authoring assistant の tool host として使う候補である。
+ただし本 repo の採用境界では、Hermes は provider transport、STT/TTS、vision-capable model
+input、MCP 接続、plugin / skill の候補であり、robotics の実行許可、安全判断、L3 Handoff、
+Audit / Eval join は Warehouse / Robotics Bridge 側に残す。これは
+`docs/architecture/13-hermes-setup.md` と `docs/architecture/15-mcp-platform.md` の
+Robotics Bridge Super-Box 境界に従う。
+
+公式 Hermes docs は実装前に再確認する。特に plugin / skill / MCP の API 名、project-local
+plugin の有効化条件、tool registration の exact surface は、公式 docs と実装 version に
+合わせる。ここでは productization 上の責務境界だけを定める。
+
+本プロジェクトでの分担:
+
+| Surface | 使うこと | 使わないこと |
+|---|---|---|
+| Hermes skill | rule authoring の手順、読む docs、draft する artifact、禁止事項を教える | runtime 判定、safety ground truth |
+| Hermes plugin tool | `draft_zone_policy`, `lint_rule_profile`, `generate_fixtures`, `render_report` のような offline authoring helper | Nav2 / Open-RMF / firmware への dispatch |
+| MCP server | repo-local validator / fixture runner / report generator を tool として呼ぶ | motion tool、`cmd_vel`、emergency override |
+| Repository code | deterministic lint、schema validation、fixture replay、simulation report | LLM の自然文をそのまま approved にする |
+
+推奨する最小 tool schema:
+
+```json
+{
+  "name": "draft_validator_rule_profile",
+  "description": "Draft a proposed Validator plugin profile from a customer rule. Does not enable runtime policy.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "customer_rule": {"type": "string"},
+      "site_profile_ref": {"type": "string"},
+      "rule_category": {
+        "type": "string",
+        "enum": [
+          "robot_rule",
+          "target_rule",
+          "action_rule",
+          "workflow_rule",
+          "freshness_rule",
+          "emergency_rule",
+          "confidence_rule",
+          "graph_rule"
+        ]
+      }
+    },
+    "required": ["customer_rule", "site_profile_ref", "rule_category"]
+  }
+}
+```
+
+Tool output は `status: "draft"` の artifact ref だけにする。
+
+```json
+{
+  "status": "draft",
+  "profile_ref": "site_profiles/customer_a/site_01/plugin_profiles/l3_zone_policy.draft.yaml",
+  "fixtures": [
+    "fixtures/customer_a/red_box_in_zone.input.json",
+    "fixtures/customer_a/red_box_out_of_zone.input.json"
+  ],
+  "required_review": ["site_owner", "safety_owner"],
+  "may_enable_runtime": false
+}
+```
+
+Hermes integration の実装順:
+
+1. repo 側に YAML / JSON schema、lint、fixture replay を先に置く。
+2. Hermes skill は、その schema と docs を読んで draft 手順を案内するだけにする。
+3. Hermes plugin / MCP tool は offline helper として追加する。project-local plugin は
+   trusted repo でのみ enable する。
+4. `approved` 以上への昇格は Git PR、人間 review、simulation / eval gate を必須にする。
+5. runtime run manifest への enablement は Hermes tool では行わない。
+
+参照すべき公式情報（実装時に再確認する）:
+
+- Hermes Agent Plugins: <https://hermes-agent.nousresearch.com/docs/user-guide/features/plugins>
+- Hermes Agent MCP: <https://hermes-agent.nousresearch.com/docs/user-guide/features/mcp>
+- Hermes Agent Skills System / Creating Skills:
+  <https://hermes-agent.nousresearch.com/docs/user-guide/features/skills>

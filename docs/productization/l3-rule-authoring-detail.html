@@ -219,7 +219,95 @@
   </tbody>
 </table>
 
-<h2>7. Non-Goals / Safety Boundary</h2>
+<h2>7. Zone Artifact: GeoJSON は rule ではなく形</h2>
+<div class="grid2">
+  <div class="node n-box">
+    <div class="t">GeoJSON artifact</div>
+    <div class="s"><code>zones/zone_a.geojson</code> は map frame 上の polygon。座標は屋内 map の meter を想定し、<code>frame_id</code> / <code>unit</code> / <code>version</code> を持つ。<span class="dref">10:216-265</span></div>
+  </div>
+  <div class="node n-plugin">
+    <div class="t">Plugin profile</div>
+    <div class="s">どの target / robot / action に zone を適用するかは YAML profile に置く。GeoJSON に reject rule を混ぜない。<span class="dref">10:267-291</span></div>
+  </div>
+</div>
+<pre><code>{
+  "type": "FeatureCollection",
+  "features": [{
+    "type": "Feature",
+    "id": "zone_a",
+    "properties": {
+      "zone_id": "zone_a",
+      "frame_id": "map",
+      "unit": "meter",
+      "version": "2026-06-29",
+      "kind": "storage_area"
+    },
+    "geometry": {
+      "type": "Polygon",
+      "coordinates": [[[0.10,0.10],[0.80,0.10],[0.80,0.45],[0.10,0.45],[0.10,0.10]]]
+    }
+  }]
+}</code></pre>
+
+<h2>8. Validator Rule Catalog</h2>
+<table>
+  <thead><tr><th>Category</th><th>代表 rule</th><th>Input context</th><th>reason_code</th></tr></thead>
+  <tbody>
+    <tr><td>robot</td><td>known robot、禁止 zone、allowed action、battery 状態</td><td><code>task_graph[].robot</code>, registry, battery, zone refs</td><td><code>unknown_robot</code>, <code>robot_forbidden_zone</code></td></tr>
+    <tr><td>target</td><td>target 存在、許可 zone、target class</td><td><code>detections[]</code>, known locations, zone polygon</td><td><code>unknown_target</code>, <code>target_out_of_zone</code></td></tr>
+    <tr><td>action</td><td>action allowlist、zone / 時間帯ごとの禁止 action</td><td><code>task_graph[].action</code>, shift calendar, zone refs</td><td><code>unknown_action</code>, <code>action_not_allowed_in_zone</code></td></tr>
+    <tr><td>workflow</td><td>inspection 前 shipping 禁止、clamp 前 weld 禁止</td><td>work order, machine state, task dependencies</td><td><code>workflow_precondition_failed</code></td></tr>
+    <tr><td>freshness</td><td>state / camera / pose が古すぎないか</td><td>timestamps, pose age, freshness policy</td><td><code>cycle_state_stale</code>, <code>stale_camera_frame</code></td></tr>
+    <tr><td>emergency</td><td>emergency active 中は motion 0 dispatch</td><td>emergency event, stop source, recovery mode</td><td><code>emergency_active</code>, <code>recovery_only_mode</code></td></tr>
+    <tr><td>confidence</td><td>低 confidence は reject / clarification</td><td>detection confidence, resolver confidence</td><td><code>low_confidence_target</code>, <code>needs_clarification</code></td></tr>
+    <tr><td>graph</td><td><code>after</code> 参照、DAG cycle、ready task 制御</td><td><code>task_graph</code>, task store, lifecycle state</td><td><code>invalid_after_reference</code>, <code>task_graph_cycle</code></td></tr>
+  </tbody>
+</table>
+<p class="lead">LLM が draft する rule も、この catalog のどれかに分類し、<code>reason_code</code>、<code>field_path</code>、<code>dispatch_effect</code>、fixture を持たせる。<span class="dref">10:293-328</span></p>
+
+<h2>9. Profile Composition: A社 + B社を混ぜる時</h2>
+<div class="grid2">
+  <div class="node n-plugin">
+    <div class="t">Layered profiles</div>
+    <div class="s"><code>common</code>、<code>customer_a</code>、<code>customer_b</code>、<code>site_01</code> を precedence 付きで合成する。単純 YAML merge ではない。<span class="dref">10:330-350</span></div>
+  </div>
+  <div class="node n-seam">
+    <div class="t">Conflict lint</div>
+    <div class="s">同じ条件に <code>reject</code> と <code>needs_clarification</code> が重なる場合は silent override せず <code>profile_conflict</code>。<span class="dref">10:367-398</span></div>
+  </div>
+</div>
+<pre><code>profile_composition:
+  base: [common.warehouse_default]
+  overlays:
+    - customer_a.zone_policy
+    - customer_b.confidence_policy
+    - site_01.calibration
+  precedence: [site_01, customer_a, customer_b, common]</code></pre>
+
+<h2>10. Manufacturing Simulations</h2>
+<table>
+  <thead><tr><th>現場</th><th>顧客 intent</th><th>追加 rule</th><th>reject 例</th></tr></thead>
+  <tbody>
+    <tr><td>Assembly</td><td>検査前の部品を次工程へ流さない。治具 occupied 時は置かない。</td><td><code>l3.workflow_policy</code></td><td><code>inspection_not_passed</code>, <code>fixture_occupied</code></td></tr>
+    <tr><td>Machine tending</td><td>CNC door closed / spindle moving なら robot arm を入れない。</td><td><code>l3.machine_tending_policy</code></td><td><code>machine_not_safe_for_pick</code></td></tr>
+    <tr><td>Palletizing</td><td>重い箱を上に積まない。壊れやすい箱を corner に置かない。</td><td><code>l3.pallet_policy</code></td><td><code>invalid_stack_order</code>, <code>fragile_forbidden_zone</code></td></tr>
+    <tr><td>Human area</td><td>人作業エリアに入らない。人がいる場合は task を作らない。</td><td><code>l3.human_area_policy</code></td><td><code>human_in_work_area</code></td></tr>
+  </tbody>
+</table>
+<div class="safe">人協働 area の safety-rated distance や emergency stop は L1/L0 safety が主。L3 は task 候補を早めに reject して説明可能にする補助 gate であり、safety hardware / firmware clamp / emergency stop を置換しない。<span class="dref">10:400-531</span></div>
+
+<h2>11. Hermes Authoring Boundary</h2>
+<div class="layer Lt4">
+  <div class="lh"><span>Hermes / authoring assistant</span><span class="rt">offline helper</span></div>
+  <div class="row">
+    <div class="node n-plugin"><div class="t">Skill</div><div class="s">読む docs、draft 手順、禁止事項を案内。runtime 判定はしない。</div></div>
+    <div class="node n-plugin"><div class="t">Plugin / MCP tool</div><div class="s"><code>draft_rule_profile</code>、<code>lint_rule_profile</code>、<code>generate_fixtures</code> のような offline helper。</div></div>
+    <div class="node n-box"><div class="t">Repository code</div><div class="s">deterministic lint、schema validation、fixture replay、simulation report。</div></div>
+  </div>
+</div>
+<p class="lead">Hermes は provider transport / STT / TTS / MCP / plugin の候補だが、robotics の実行許可、安全判断、L3 Handoff、Audit / Eval join は Warehouse / Robotics Bridge 側に残す。公式 Hermes docs は実装時に API 名と plugin / skill surface を再確認する。<span class="dref">10:533-614</span></p>
+
+<h2>12. Non-Goals / Safety Boundary</h2>
 <div class="safe">
   <ul class="tight">
     <li>LLM が runtime policy を直接実行する仕組みは作らない。<span class="dref">10:207-210</span></li>
