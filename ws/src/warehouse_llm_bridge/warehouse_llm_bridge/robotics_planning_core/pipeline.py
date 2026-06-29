@@ -6,7 +6,7 @@ exposes today:
     RawModelOutput          (models/boundary.py:33 — provider-agnostic transport envelope)
       -> to_robotics_plan_draft   (handoff.py:114 — XER1: envelope-unwrap + fail-closed
                                     structural gate -> RoboticsPlanDraft)
-      -> PlanValidator.validate   (validator/validator.py:81 — XER2: semantic/site rules ->
+      -> PlanValidator.validate   (validator/validator.py:90 — XER2: semantic/site rules ->
                                     ValidationReport, status != accepted => 0 dispatch)
 
 So a raw model output becomes a ``ValidationReport`` (accept / reject / needs_clarification /
@@ -59,10 +59,14 @@ def validate_raw_output(
         (the R-26 0-dispatch invariant, enforced structurally in the Validator).
 
     Raises:
-        ValueError: the Handoff rejected a forbidden / unreadable envelope (fail-closed).
-        PlanValidationError: the Validator hit a parse / schema failure (fail-closed).
+        ValueError: the Handoff rejected a forbidden / unreadable / unknown-schema envelope
+            (fail-closed, handoff.py:25,142). This is the only raise reachable via this seam.
+            The Validator's own parse/schema fail-closed mode (``PlanValidationError``,
+            validator.py:45) is NOT reached here — the Handoff has already produced a
+            schema-valid ``RoboticsPlanDraft``, so re-validating ``draft.model_dump()`` cannot
+            fail that gate; that layer is exercised directly in test_plan_validator.py.
     """
     draft = to_robotics_plan_draft(raw)
     ctx = context if context is not None else PlanningContext(policy=warehouse_reference_policy())
-    # validate() takes the draft's dict form (its contract is a raw plan dict, validator.py:81).
+    # validate() takes the draft's dict form (its contract is a raw plan dict, validator.py:90).
     return PlanValidator().validate(draft.model_dump(), ctx)

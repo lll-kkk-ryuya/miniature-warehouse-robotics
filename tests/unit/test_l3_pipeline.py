@@ -38,6 +38,12 @@ def _hermes_raw(plan: dict) -> RawModelOutput:
     )
 
 
+def _direct_raw(plan: dict) -> RawModelOutput:
+    """Wrap a plan dict in a Gemini generateContent envelope (doc06 §5:145)."""
+    text = json.dumps(plan, ensure_ascii=False)
+    return RawModelOutput(payload={"candidates": [{"content": {"parts": [{"text": text}]}}]})
+
+
 def _codes(report):
     return {r.code for r in report.errors}
 
@@ -105,3 +111,28 @@ def test_needs_clarification_via_context_zero_dispatch():
     assert report.status is ValidationStatus.NEEDS_CLARIFICATION
     assert ValidationCode.OPERATOR_CLARIFICATION_REQUESTED in _codes(report)
     assert report.command_candidates == []
+
+
+# --- transport is audit-only (doc03:75): rejects reach the validator via either envelope, and
+# --- both transports yield the SAME verdict (README:86 transport-equivalence) ---------------
+
+
+def test_validator_reject_via_direct_transport():
+    # The same UNKNOWN_ROBOT reject reaches the validator through the Gemini (direct) envelope
+    # too -- transport must not be an execution branch (doc03:75).
+    plan = copy.deepcopy(INNER_PLAN)
+    plan["task_graph"][0]["robot"] = "bot3"
+    report = validate_raw_output(_direct_raw(plan))
+    assert report.status is ValidationStatus.REJECTED
+    assert ValidationCode.UNKNOWN_ROBOT in _codes(report)
+    assert report.command_candidates == []
+
+
+def test_transport_equivalence_same_verdict():
+    # Gemini (direct) and Hermes (OpenAI-compat) envelopes wrap the SAME plan -> identical L3
+    # verdict (transport is audit-only, doc03:75; README:86 transport-equivalence).
+    g = validate_raw_output(RawModelOutput(payload=direct_envelope()))
+    h = validate_raw_output(RawModelOutput(payload=hermes_envelope()))
+    assert g.status is h.status is ValidationStatus.ACCEPTED
+    assert g.normalized_plan == h.normalized_plan
+    assert list(g.command_candidates) == list(h.command_candidates)

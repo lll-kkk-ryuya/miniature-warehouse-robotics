@@ -345,3 +345,75 @@ def test_deep_acyclic_chain_accepted_without_crash():
     report = PlanValidator().validate(_deep_chain(2000, cyclic=False), _ctx())
     assert report.status is ValidationStatus.ACCEPTED
     assert ValidationCode.TASK_GRAPH_CYCLE not in _codes(report)
+
+
+# --- M1: Kahn correctness on non-chain shapes (regression-lock the verified behavior) ------
+
+
+def test_branching_acyclic_graph_no_false_positive_cycle():
+    # Fan-out (t1,t2 both depend on t0; t3 depends on t1): acyclic, must NOT be flagged a cycle.
+    plan = _plan(
+        detections=[],
+        task_graph=[
+            {"id": "t0", "robot": "bot1", "action": "navigate", "target": "shelf_1"},
+            {
+                "id": "t1",
+                "robot": "bot1",
+                "action": "navigate",
+                "target": "shelf_1",
+                "after": "t0.completed",
+            },
+            {
+                "id": "t2",
+                "robot": "bot2",
+                "action": "navigate",
+                "target": "shelf_1",
+                "after": "t0.completed",
+            },
+            {
+                "id": "t3",
+                "robot": "bot1",
+                "action": "navigate",
+                "target": "shelf_1",
+                "after": "t1.completed",
+            },
+        ],
+    )
+    report = PlanValidator().validate(plan, _ctx())
+    assert report.status is ValidationStatus.ACCEPTED
+    assert ValidationCode.TASK_GRAPH_CYCLE not in _codes(report)
+
+
+def test_multi_component_cycle_in_one_component_rejected():
+    # Disjoint components: an acyclic chain (t0<-t1) + a 2-node cycle (t2<->t3). Kahn must
+    # detect the cycle across all components, not just a single chain.
+    plan = _plan(
+        detections=[],
+        task_graph=[
+            {"id": "t0", "robot": "bot1", "action": "navigate", "target": "shelf_1"},
+            {
+                "id": "t1",
+                "robot": "bot1",
+                "action": "navigate",
+                "target": "shelf_1",
+                "after": "t0.completed",
+            },
+            {
+                "id": "t2",
+                "robot": "bot2",
+                "action": "navigate",
+                "target": "shelf_1",
+                "after": "t3.completed",
+            },
+            {
+                "id": "t3",
+                "robot": "bot2",
+                "action": "navigate",
+                "target": "shelf_1",
+                "after": "t2.completed",
+            },
+        ],
+    )
+    report = PlanValidator().validate(plan, _ctx())
+    assert report.status is ValidationStatus.REJECTED
+    assert ValidationCode.TASK_GRAPH_CYCLE in _codes(report)
