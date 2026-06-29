@@ -3,7 +3,7 @@
 Pins: (1) the Validator NEVER branches on source_model / transport (doc03:75) — verified both
 structurally (source grep) and behaviourally (varying source_model does not change the report);
 (2) the deferred-stage seams (Calibration loader / TaskGraphStore, brief step 6) are
-interface-only with working in-memory defaults; (3) runtime state is injected via the StateStore
+interface-only with working in-memory defaults; (3) runtime state is injected via the RuntimeStateSource
 IF (brief step 7), not read from State Cache files. Offline.
 """
 
@@ -15,12 +15,12 @@ from warehouse_llm_bridge.robotics_planning_core.validator import (
     Calibration,
     CalibrationLoader,
     InMemoryCalibrationLoader,
-    InMemoryStateStore,
+    InMemoryRuntimeStateSource,
     InMemoryTaskGraphStore,
     PlanningContext,
     PlanValidator,
     RuntimeSafetyState,
-    StateStore,
+    RuntimeStateSource,
     TaskGraphStore,
     ValidationCode,
     ValidationStatus,
@@ -69,11 +69,11 @@ def test_source_model_does_not_change_the_verdict():
     assert report_a.command_candidates == report_b.command_candidates
 
 
-# --- runtime state injected via StateStore IF (brief step 7) ----------------------------
+# --- runtime state injected via RuntimeStateSource IF (brief step 7) ----------------------------
 
 
 def test_context_from_store_injects_emergency():
-    store = InMemoryStateStore(RuntimeSafetyState(emergency_active=True))
+    store = InMemoryRuntimeStateSource(RuntimeSafetyState(emergency_active=True))
     context = PlanningContext.from_store(warehouse_reference_policy(), store)
     report = PlanValidator().validate(copy.deepcopy(INNER_PLAN), context)
     assert report.status is ValidationStatus.EMERGENCY_STOP
@@ -81,7 +81,7 @@ def test_context_from_store_injects_emergency():
 
 
 def test_context_from_store_injects_stale_state():
-    store = InMemoryStateStore(RuntimeSafetyState(state_age_s=99.0))
+    store = InMemoryRuntimeStateSource(RuntimeSafetyState(state_age_s=99.0))
     policy = warehouse_reference_policy(max_state_age_s=2.0)
     context = PlanningContext.from_store(policy, store)
     report = PlanValidator().validate(copy.deepcopy(INNER_PLAN), context)
@@ -91,7 +91,7 @@ def test_context_from_store_injects_stale_state():
 
 def test_context_exposes_profile_and_version():
     policy = warehouse_reference_policy(profile_id="site_a", policy_version="3")
-    context = PlanningContext.from_store(policy, InMemoryStateStore())
+    context = PlanningContext.from_store(policy, InMemoryRuntimeStateSource())
     assert context.profile_id == "site_a"
     assert context.policy_version == "3"
 
@@ -127,5 +127,5 @@ def test_in_memory_task_graph_store_roundtrip():
     assert store.get("plan_x") == {"t1": "ready"}
 
 
-def test_in_memory_state_store_is_a_state_store():
-    assert isinstance(InMemoryStateStore(), StateStore)
+def test_in_memory_runtime_state_source_is_a_runtime_state_source():
+    assert isinstance(InMemoryRuntimeStateSource(), RuntimeStateSource)

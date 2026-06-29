@@ -5,10 +5,13 @@ deferred ``CommandCompiler.compile(..., profile: str)`` (doc02:264) takes only a
 This module resolves that asymmetry: the context carries the merged :class:`PlanPolicy`, the
 runtime safety/emergency snapshot, and the profile id / policy version (brief step 7).
 
-Runtime safety state is obtained through a :class:`StateStore`-style interface, NOT by reading
-State Cache files directly (brief step 7 — avoid coupling the L3 core to the State Cache file
-layout). The default in-memory store is enough for offline tests; a ROS/durable-backed store
-can replace it without touching the Validator.
+Runtime safety state is obtained through a :class:`RuntimeStateSource`-style interface, NOT by
+reading State Cache files directly (brief step 7 — avoid coupling the L3 core to the State Cache
+file layout). The interface is named ``RuntimeStateSource`` (NOT ``StateStore``) on purpose:
+``warehouse_interfaces.stores.StateStore`` is a different FROZEN contract (``read()``/``write()``)
+imported across all tracks, so re-using that name here would shadow it. The default in-memory
+source is enough for offline tests; a ROS/durable-backed source can replace it without touching
+the Validator.
 """
 
 from __future__ import annotations
@@ -36,18 +39,20 @@ class RuntimeSafetyState(_BridgeModel):
 
 
 @runtime_checkable
-class StateStore(Protocol):
+class RuntimeStateSource(Protocol):
     """Read-only source of the current :class:`RuntimeSafetyState`.
 
     Decouples the Validator from the State Cache file layout (brief step 7). Any object with a
-    ``current_state()`` method satisfies it; the default is :class:`InMemoryStateStore`.
+    ``current_state()`` method satisfies it; the default is :class:`InMemoryRuntimeStateSource`.
+    Named ``RuntimeStateSource`` (not ``StateStore``) to avoid shadowing the frozen
+    ``warehouse_interfaces.stores.StateStore`` contract.
     """
 
     def current_state(self) -> RuntimeSafetyState: ...
 
 
-class InMemoryStateStore:
-    """Default in-memory :class:`StateStore` holding a single snapshot (offline tests / fakes)."""
+class InMemoryRuntimeStateSource:
+    """Default in-memory :class:`RuntimeStateSource` holding one snapshot (offline tests/fakes)."""
 
     def __init__(self, state: RuntimeSafetyState | None = None) -> None:
         self._state = state if state is not None else RuntimeSafetyState()
@@ -75,6 +80,6 @@ class PlanningContext(_BridgeModel):
         return self.policy.policy_version
 
     @classmethod
-    def from_store(cls, policy: PlanPolicy, store: StateStore) -> PlanningContext:
-        """Resolve the runtime snapshot once (per-cycle) from a :class:`StateStore`."""
+    def from_store(cls, policy: PlanPolicy, store: RuntimeStateSource) -> PlanningContext:
+        """Resolve the runtime snapshot once (per-cycle) from a :class:`RuntimeStateSource`."""
         return cls(policy=policy, runtime=store.current_state())

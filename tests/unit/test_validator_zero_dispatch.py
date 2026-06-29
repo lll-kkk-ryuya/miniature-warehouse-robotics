@@ -9,6 +9,7 @@ Offline.
 import copy
 
 import pytest
+from pydantic import ValidationError
 from warehouse_llm_bridge.robotics_planning_core.fixtures.red_blue_sequence import INNER_PLAN
 from warehouse_llm_bridge.robotics_planning_core.validator import (
     PlanningContext,
@@ -82,6 +83,17 @@ def test_command_candidates_double_guard_against_stuffed_plan():
         status=ValidationStatus.REJECTED,
         normalized_plan={"task_graph": [{"id": "t1", "robot": "bot1", "action": "navigate"}]},
     )
+    assert report.permits_dispatch is False
+    assert report.command_candidates == []
+
+
+def test_report_is_frozen_status_cannot_be_reopened():
+    # N1 defense-in-depth: a rejected report's status cannot be re-assigned to ACCEPTED to
+    # re-open dispatch (ValidationReport is frozen).
+    report = _rejected_report()
+    assert report.status is ValidationStatus.REJECTED
+    with pytest.raises(ValidationError):
+        report.status = ValidationStatus.ACCEPTED
     assert report.permits_dispatch is False
     assert report.command_candidates == []
 

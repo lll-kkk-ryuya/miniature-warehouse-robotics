@@ -53,26 +53,35 @@ class PlanValidationError(ValueError):
 
 
 def _has_cycle(deps: dict[str, set[str]]) -> bool:
-    """Return True if the dependency graph has a cycle (DFS 3-colouring, stdlib only).
+    """Return True if the dependency graph has a cycle (Kahn topological sort, stdlib only).
 
-    Stdlib is used deliberately — NetworkX is only a *candidate* for the XER4 Task Graph
-    Executor (doc02:196), and the Validator's DAG check does not justify a new dependency.
+    ITERATIVE on purpose: a recursive DFS would raise ``RecursionError`` on a deep (~1000+)
+    dependency chain — and a genuine deep cycle is exactly what ``TASK_GRAPH_CYCLE`` must
+    *reject*, not crash on (``RecursionError`` would be an undocumented 3rd failure mode beside
+    the documented ``PlanValidationError``). No max-length cap is imposed (that would invent an
+    undocumented threshold — docs-first). NetworkX is only a *candidate* for the XER4 Task Graph
+    Executor (doc02:196), so the DAG check stays stdlib.
+
+    ``deps[node]`` = the set of task ids ``node`` depends on (must complete first). Kahn's
+    algorithm peels off nodes whose dependencies are all satisfied; if a cycle exists, some
+    nodes never reach in-degree 0 and stay unprocessed.
     """
-    white, gray, black = 0, 1, 2
-    color = dict.fromkeys(deps, white)
-
-    def visit(node: str) -> bool:
-        color[node] = gray
-        for nxt in deps.get(node, ()):
-            state = color.get(nxt, black)
-            if state == gray:
-                return True
-            if state == white and visit(nxt):
-                return True
-        color[node] = black
-        return False
-
-    return any(color[node] == white and visit(node) for node in deps)
+    in_degree = {node: len(refs) for node, refs in deps.items()}
+    dependents: dict[str, list[str]] = {node: [] for node in deps}
+    for node, refs in deps.items():
+        for ref in refs:
+            if ref in dependents:  # only resolvable refs were added by _check_cycle
+                dependents[ref].append(node)
+    ready = [node for node, degree in in_degree.items() if degree == 0]
+    processed = 0
+    while ready:
+        current = ready.pop()
+        processed += 1
+        for dependent in dependents[current]:
+            in_degree[dependent] -= 1
+            if in_degree[dependent] == 0:
+                ready.append(dependent)
+    return processed < len(deps)
 
 
 class PlanValidator:
@@ -262,7 +271,7 @@ class PlanValidator:
     def _check_after_reference(node, task_ids: set[str], base: str) -> list[RuleResult]:
         if node.after is None:
             return []
-        # "<task_id>.completed" -> the referenced task id (doc02:147,171-173).
+        # "<task_id>.completed" -> the referenced task id (doc02:171).
         ref_id = node.after.split(".", 1)[0]
         if ref_id and ref_id in task_ids and ref_id != node.id:
             return []

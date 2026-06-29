@@ -24,7 +24,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from enum import StrEnum
 
-from pydantic import Field
+from pydantic import ConfigDict, Field
 
 from warehouse_llm_bridge.robotics_planning_core.models.base import _BridgeModel
 
@@ -110,7 +110,13 @@ class RuleResult(_BridgeModel):
 
     ``code`` (what failed) is decoupled from ``dispatch_effect`` (the consequence) so a single
     code can block or ask for clarification depending on policy (doc02:286).
+
+    Frozen (immutable after construction) as defense-in-depth on the safety invariant — a
+    finding cannot be mutated downstream to soften its effect (N1). ``extra="ignore"`` is kept
+    from the bridge convention (schemas.py:24-25).
     """
+
+    model_config = ConfigDict(extra="ignore", frozen=True)
 
     code: ValidationCode
     severity: Severity
@@ -139,7 +145,15 @@ class ValidationReport(_BridgeModel):
     downstream Visual Resolver / Task Graph Executor, which are not yet defined, so it stays a
     plain ``dict`` (doc02:346). The 0-dispatch invariant (doc02:68) is enforced structurally:
     when ``status != accepted`` the report carries no forward plan and no command candidates.
+
+    Frozen (immutable after construction) as defense-in-depth on the 0-dispatch invariant (N1):
+    a buggy downstream caller cannot re-assign ``report.status = ACCEPTED`` to re-open dispatch.
+    (List/dict field *contents* remain mutable in place — pydantic frozen blocks attribute
+    re-assignment — but ``command_candidates`` keys on ``status`` and returns a copy, so the
+    safety gate holds regardless.) ``extra="ignore"`` is kept from the bridge convention.
     """
+
+    model_config = ConfigDict(extra="ignore", frozen=True)
 
     status: ValidationStatus
     errors: list[RuleResult] = Field(default_factory=list)

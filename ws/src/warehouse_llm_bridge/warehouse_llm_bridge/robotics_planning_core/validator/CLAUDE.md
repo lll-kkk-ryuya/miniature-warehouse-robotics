@@ -13,7 +13,7 @@ ER の `RoboticsPlanDraft` が「実行候補か」を actuation 前に決定論
 - `RuleResult{code, severity, field_path, message_for_operator, dispatch_effect, debug_detail}`（doc02:95,310-315）。
 - 凍結語彙 enum（doc02:280-346）: `ValidationStatus`{accepted,rejected,needs_clarification,emergency_stop} / `Severity`{error,warning} / `DispatchEffect`{block,needs_clarification,emergency_stop,none} / `ValidationCode`（全9: 8 reject + `OPERATOR_CLARIFICATION_REQUESTED`）。
 - `PlanPolicy` / `PlanPolicyOverlay` / `merge_policy(base, *overlays)` / `warehouse_reference_policy(**overrides)`（doc02:94,97,98）。threshold は注入（hardcode せず）。
-- `PlanningContext{policy, runtime}` + `profile_id`/`policy_version` プロパティ・`from_store(policy, store)`。`RuntimeSafetyState{emergency_active, state_age_s}`。`StateStore`(Protocol)/`InMemoryStateStore`（State Cache 直読み回避・brief step 7）。
+- `PlanningContext{policy, runtime}` + `profile_id`/`policy_version` プロパティ・`from_store(policy, store)`。`RuntimeSafetyState{emergency_active, state_age_s}`。`RuntimeStateSource`(Protocol)/`InMemoryRuntimeStateSource`（State Cache 直読み回避・brief step 7・凍結 `warehouse_interfaces.stores.StateStore` 名と衝突回避＝別名）。
 - seam（IF のみ・default in-memory・XER3/XER4 で消費）: `Calibration`(doc02:149 5 field)/`CalibrationLoader`/`InMemoryCalibrationLoader`（XER3）・`TaskGraphStore`/`InMemoryTaskGraphStore`（doc02:198・XER4）。
 
 ## 消費 (consume)
@@ -33,7 +33,7 @@ ER の `RoboticsPlanDraft` が「実行候補か」を actuation 前に決定論
 - `tests/unit/test_validation_report_vocab.py`（語彙 literal・code↔effect↔status 表・集約優先）
 - `tests/unit/test_plan_policy.py`（注入・overlay・warehouse reference・同一 raw×policy 差→判定差）
 - `tests/unit/test_validator_zero_dispatch.py`（**R-26 safety**: 0-dispatch 不変条件）
-- `tests/unit/test_validator_seams.py`（provider 非依存 grep+挙動・seam in-memory・StateStore 注入）
+- `tests/unit/test_validator_seams.py`（provider 非依存 grep+挙動・seam in-memory・RuntimeStateSource 注入）
 
 ## 設計ドキュメント
 - docs/mode-x-er/02-l3-planning-core.md:39-107,248,280-346（§1 Validator・IF skeleton・凍結語彙）
