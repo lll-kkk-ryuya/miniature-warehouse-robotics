@@ -18,10 +18,15 @@ What is NOT here (it is L4, in the sibling ``robotics`` package): the Gemini-ER 
 ``ErTaskRequest`` input bundle, and the transport/provider observation enums — L4 owns input
 context / transport / the model call (docs/mode-x-er/01-architecture-and-flow.md:99).
 
-What is STILL AHEAD (XER2-XER5): the 4 L3 *stages* — ``Validator`` (the site-specific,
-plugin-based safety gate that judges whether the model OUTPUT is an executable candidate and
-emits ``ValidationReport``), ``Visual Resolver``, ``Task Graph Executor``, ``Command Compiler``
-(docs/mode-x-er/README.md:87-91, productization/06:160 L3H-G2 hands valid drafts to them).
+What is NOW HERE (XER2): the ``Validator`` stage — the policy-driven, provider-agnostic safety
+gate that judges whether the model OUTPUT is an executable candidate and emits a coded
+``ValidationReport`` (``validator`` subpackage; docs/mode-x-er/02-l3-planning-core.md:39-107,
+248,280-346). ``status != accepted`` => 0 command candidates (02:68, 03:93 G1).
+
+What is STILL AHEAD (XER3-XER5): ``Visual Resolver``, ``Task Graph Executor``, ``Command
+Compiler`` (docs/mode-x-er/README.md:88-91; the ``validator.seams`` module declares their
+interface-only extension points — Calibration loader / TaskGraphStore — without implementing
+the stages).
 """
 
 from warehouse_llm_bridge.robotics_planning_core.handoff import (
@@ -37,15 +42,49 @@ from warehouse_llm_bridge.robotics_planning_core.models import (
     RoboticsPlanDraft,
     TaskNode,
 )
+from warehouse_llm_bridge.robotics_planning_core.validator import (
+    DispatchEffect,
+    PlanningContext,
+    PlanPolicy,
+    PlanPolicyOverlay,
+    PlanValidationError,
+    PlanValidator,
+    RuleResult,
+    RuntimeSafetyState,
+    Severity,
+    StateStore,
+    ValidationCode,
+    ValidationReport,
+    ValidationResult,
+    ValidationStatus,
+    merge_policy,
+    warehouse_reference_policy,
+)
 
 __all__ = [
     "ROBOTICS_PLAN_DRAFT_VERSION",
     "SUPPORTED_PLAN_VERSIONS",
     "Detection",
+    "DispatchEffect",
     "InputRefs",
+    "PlanPolicy",
+    "PlanPolicyOverlay",
+    "PlanValidationError",
+    "PlanValidator",
+    "PlanningContext",
     "RawModelOutput",
     "RoboticsPlanDraft",
+    "RuleResult",
+    "RuntimeSafetyState",
+    "Severity",
+    "StateStore",
     "TaskNode",
+    "ValidationCode",
+    "ValidationReport",
+    "ValidationResult",
+    "ValidationStatus",
     "extract_plan_content",
+    "merge_policy",
     "to_robotics_plan_draft",
+    "warehouse_reference_policy",
 ]
