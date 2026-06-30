@@ -23,6 +23,7 @@
 | [04-consistency-system](04-consistency-system.md) | docs↔code 整合システム（`scripts/check_consistency.py` を pre-commit/CI/hook で／意味的矛盾は `/consistency-audit` skill） |
 | [05-session-handoff](05-session-handoff.md) | コンテキスト消失後の再開用 handoff（直近の実行状態・検証結果・次の操作） |
 | [06-parallel-discipline](06-parallel-discipline.md) | 並列セッションの実装規律（気をつけること洗い出し。着手前＋毎サイクル参照） |
+| [07-mode-x-er-live-e2e-runbook](07-mode-x-er-live-e2e-runbook.md) | Mode X-ER live ER→L3 e2e operator runbook（音声/画像→ER→L3→Langfuse の turnkey 起動手順・3-tier reality・gate map・scoped 承認文言） |
 | [vla-access-and-runtime-spike](vla-access-and-runtime-spike.md) | Gemini Robotics-ER / OpenVLA / Isaac GR00T のアクセス・実行要件スパイク |
 
 ## 関連正本
