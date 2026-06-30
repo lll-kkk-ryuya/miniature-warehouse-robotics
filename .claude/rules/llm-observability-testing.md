@@ -37,6 +37,7 @@ LLM Bridge、Hermes Gateway、Langfuse tracing/score、provider call、Grok cost
 - credential file は読まない。必要な値はユーザーが実行環境へ export した env var を使う。
 - `API_SERVER_KEY`、`LANGFUSE_*`、provider key はログ・pytest failure・PR コメントに出さない。
 - live test は skip-first にする。credential 不在や gateway 未起動は、通常 CI failure ではなく opt-in 実行時の明示 skip/fail とする。
+- live ER の provider key が operator により恒久 env（`~/.zshenv` 等）にプロビジョン済なら **api-key 再入力は不要**（agent は `.env` を読まず・鍵値を出力/log/PR に出さない）。ただし env-gated live test（`WAREHOUSE_LIVE_ER=1`）は**有料 provider call**ゆえ、agent は実行前に**その batch/task の cost を operator に確認**してから走らせる（standing の無承認自走はしない・上の :37-39 と整合）。手順正本は `docs/dev/07-mode-x-er-live-e2e-runbook.md` §4.5。
 
 ## PR に残すこと
 
