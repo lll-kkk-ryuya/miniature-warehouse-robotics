@@ -161,7 +161,7 @@ MWR_HERMES_ENV_FILE=/nonexistent deploy/dev/check-hermes-live.sh \
 
 ## 4.5. Agent-autonomous live ER（permanent setup）
 
-通常 live ER probe は human-gate（§3）だが、**オペレーターが provider key を恒久 env プロビジョン済**なら、agent は session / worktree ごとの再 setup や api-key 再入力なしに **自走で live ER を回せる**。前提と手順を以下に固定する。
+通常 live ER probe は human-gate（§3）だが、**オペレーターが provider key を恒久 env プロビジョン済**なら、agent は session / worktree ごとの再 setup や **api-key 再入力なし**に live ER を回せる。ただし live ER は**有料 provider call**ゆえ **standing の無承認自走はしない**＝agent は実行前にその **batch / task の cost をオペレーターに確認**してから走らせる（恒久化が解くのは「鍵の再入力」だけで、「課金判断」は都度のまま）。前提と手順を以下に固定する。
 
 ### 前提（オペレーターが一度だけ行う）
 
@@ -179,7 +179,7 @@ WAREHOUSE_LIVE_ER=1 python3.12 -m pytest tests/live/test_er_handoff_live.py -s
 
 - これで **live ER → handoff（`RoboticsPlanDraft`）**まで到達する（live chain の終端は handoff のまま。§5-1）。さらに、その出力を **offline で `validate_raw_output` に流せば `ValidationReport` まで**到達でき（§T-OFFLINE・`pipeline.py:43`、network 不要）、下流の **offline Visual Resolver（forerunner、`visual_resolver/resolver.py:137`）も単体到達可能**。＝恒久 setup 後は「live ER → handoff」＋「offline → Validator/Resolver」を agent が一気通貫で検証できる（ただし live で Validator まで通す一本線は依然 XER6 の仕事。§5-1）。
 - **Hermes-routed leg は任意**（`generateContent` direct では不要）。Hermes 経由も確認したい場合のみ §Step A の専用 gateway（`run-er-hermes.sh`、port 8643）を立て、§Step C の `HERMES_BASE_URL=http://127.0.0.1:8643` ＋ `HERMES_API_KEY=<gateway の API_SERVER_KEY>` を渡す（`test_er_handoff_live.py:185-199`）。
-- **境界**: 恒久プロビジョンは **provider call を課金する点は変わらない**。CI（autonomous tier、§3 表 1 行目）には `WAREHOUSE_LIVE_ER` を**入れない**（offline `test_l3_pipeline.py` のみが CI 必須）。恒久 setup が解くのは「agent が毎回 key を再入力する手間」であって「課金 call を CI 常設にしてよい」ではない。
+- **境界**: 恒久プロビジョンは **provider call を課金する点は変わらない**。CI（autonomous tier、§3 表 1 行目）には `WAREHOUSE_LIVE_ER` を**入れない**（offline `test_l3_pipeline.py` のみが CI 必須）。恒久 setup が解くのは「agent が毎回 key を再入力する手間」だけで、**「課金判断」は別**＝agent は有料 live run の前に **batch / task 単位で cost go をオペレーターに確認**する（standing の無承認 spend はしない・課金 call を CI 常設にもしない）。
 
 ---
 
