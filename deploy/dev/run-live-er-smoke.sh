@@ -48,17 +48,29 @@ else
   PYTEST_ARGS=("${DEFAULT_TEST}")
 fi
 
+# Always run with -s (per-test summary: token counts / plan ids). Append it only if the caller did
+# not already pass -s, so the previewed and executed commands are identical and never show `-s -s`.
+HAS_S=0
+for arg in "${PYTEST_ARGS[@]}"; do
+  if [ "${arg}" = "-s" ]; then
+    HAS_S=1
+    break
+  fi
+done
+if [ "${HAS_S}" -eq 0 ]; then
+  PYTEST_ARGS+=("-s")
+fi
+
 GATE_BANNER='[gate] paid Gemini Robotics-ER call (operator-authorized)'
 
 if [ "${CHECK_ONLY}" -eq 1 ]; then
   echo "PASS   Gemini key present in env (value hidden)"
   echo "${GATE_BANNER}"
   echo "Would run (NOT executed under --check):"
-  echo "  WAREHOUSE_LIVE_ER=1 ${PYTHON} -m pytest ${PYTEST_ARGS[*]} -s"
+  echo "  WAREHOUSE_LIVE_ER=1 ${PYTHON} -m pytest ${PYTEST_ARGS[*]}"
   exit 0
 fi
 
-# 3) Default mode: announce the paid call, then run the live tests. -s lets the per-test summary
-#    print (token counts / plan ids); the tests never print the key.
+# 3) Default mode: announce the paid call, then run the live tests (PYTEST_ARGS already carries -s).
 echo "${GATE_BANNER}"
-exec env WAREHOUSE_LIVE_ER=1 "${PYTHON}" -m pytest "${PYTEST_ARGS[@]}" -s
+exec env WAREHOUSE_LIVE_ER=1 "${PYTHON}" -m pytest "${PYTEST_ARGS[@]}"
