@@ -159,7 +159,7 @@
 <div class="note"><b>②③⑤⑥ には拡張余地がある</b>。②③は <b>観測/評価層</b>（§2 decision_event → report・§3 データ保管・§4 eval-sdk）へデータを流し込む入口、⑤⑥は <b>site profile 運用</b>（§5）で資産化する。以降はその拡張機構を正本で裏取りして深掘りする。</div>
 
 <!-- ===================== 2. 拡張機構 ===================== -->
-<h2>2. 拡張機構: decision_event → funnel / report<span class="dref">05:44-110,310-359</span></h2>
+<h2>2. 拡張機構: decision_event → funnel / report<span class="dref">05:44-110,317-366</span></h2>
 <p class="lead">②（ValidationReport）と③（audit）は単独で完結せず、<b>各 box の decision_event を集計する観測層</b>（<a href="05-decision-observability-and-tooling.md">05</a>）へ流れ込む。拡張は<b>既存の形に「品番」と「指標」を足すだけ（additive）</b>で、契約を壊さない。<span class="dref">05:44-73</span></p>
 
 <h3>2.1 decision_event の基本形（audit artifact の目標形）<span class="dref">05:44-73</span></h3>
@@ -178,7 +178,7 @@
 <b>拡張の作法</b>: <code>decision</code> は固定語彙 <code>accepted/rejected/warning/needs_clarification/emergency_stop</code>（<span class="dref">05:69</span>）。新しい reject 理由は <b>box ごとの reason_code catalog に「品番」を 1 つ足す</b>（自由文にしない・<span class="dref">05:70</span>）。<code>profile/schema_version/policy_version</code> で案件差分と migration を追える（<span class="dref">05:73</span>）。
 </div></div>
 
-<h3>2.2 funnel と reason top-N（商用 report の骨格）<span class="dref">05:310-359</span></h3>
+<h3>2.2 funnel と reason top-N（商用 report の骨格）<span class="dref">05:317-366</span></h3>
 <div class="grid2">
   <div class="node n-box"><div class="t">funnel（box 別カウント）</div><div class="s">
 <pre><code>raw_model_outputs_total: 100
@@ -187,7 +187,7 @@ l3_validator_rejected_total: 18
 contract_rejected_total:   4
 governance_rejected_total: 7
 ... executed_total: 62 / success_total: 54</code></pre>
-「どこで落ちているか」を切り分ける共通レンズ。<span class="dref">05:310-327</span>
+「どこで落ちているか」を切り分ける共通レンズ。<span class="dref">05:317-334</span>
   </div></div>
   <div class="node n-box"><div class="t">reason top-N（box 別）</div><div class="s">
 <pre><code>l3_validator.reject_reason:
@@ -196,13 +196,13 @@ governance_rejected_total: 7
   task_graph_cycle: 3
 governance.reject_reason:
   duplicate_command: 3 ...</code></pre>
-②の stable code がそのまま集計軸になる。<span class="dref">05:333-359</span>
+②の stable code がそのまま集計軸になる。<span class="dref">05:340-366</span>
   </div></div>
 </div>
-<div class="note"><b>report は企業・案件で変わる</b>: funnel と reason top-N の<b>骨格は共通（固定）</b>。一方<b>「何を合格とみなすか・どんな report を出すか」は site profile の <code>eval.yaml</code> / KPI vocabulary / report target に寄せる</b>（<span class="dref">04:100,113</span>・案件開始時に「Eval Box で acceptance KPI と report を決める」<span class="dref">04:171</span>）。つまり <b>集計エンジン＝Core（再利用）・KPI 語彙/report target＝Plugin（profile 差替）</b>で、①の Core+Plugin 分離の observability 版。</div>
+<div class="note"><b>report は企業・案件で変わる</b>: funnel と reason top-N の<b>骨格は共通（固定）</b>。一方<b>「何を合格とみなすか・どんな report を出すか」は site profile の <code>eval.yaml</code> / KPI vocabulary / report target に寄せる</b>（<span class="dref">04:100,113</span>・案件開始時に「Eval Box で acceptance KPI と report を決める」<span class="dref">04:180</span>）。つまり <b>集計エンジン＝Core（再利用）・KPI 語彙/report target＝Plugin（profile 差替）</b>で、①の Core+Plugin 分離の observability 版。</div>
 
 <!-- ===================== 3. データ保管 ===================== -->
-<h2>3. データの保管（どこに・どう貯めるか）<span class="dref">05:72,111-126 / 03:33</span></h2>
+<h2>3. データの保管（どこに・どう貯めるか）<span class="dref">05:72,111-133 / 03:33</span></h2>
 <p class="lead">「軽い伝票 ＋ 別ストアに本体 ＋ 粒度で間引く」の 3 段で設計する。</p>
 <div class="steps">
   <div class="step"><b>軽い伝票（decision_event）に raw を埋めない</b>
@@ -215,7 +215,7 @@ governance.reject_reason:
     <div class="s">trace / observation / score の保管（dashboard 付き）。decision_event の <code>trace_id</code> がそこを指す。<span class="dref">21:38 / 05:52</span></div></div>
   <div class="step-down">▼</div>
   <div class="step"><b>記録粒度ポリシーで量を制御</b>
-    <div class="s">全保存ではなく層ごとに方針を変える: L3 Validator=全 decision 保存（<span class="dref">05:117</span>）／ Safety 50ms tick=通常 metrics・状態変化と emergency だけ event（<span class="dref">05:122,126</span>）。高頻度を全ログにしない。<span class="dref">05:111-126</span></div></div>
+    <div class="s">全保存ではなく層ごとに方針を変える: L3 Validator=全 decision 保存（<span class="dref">05:124</span>）／ Safety 50ms tick=通常 metrics・状態変化と emergency だけ event（<span class="dref">05:129,133</span>）。高頻度を全ログにしない。<span class="dref">05:111-133</span></div></div>
 </div>
 <div class="note"><b>proposal 注記</b>: decision_event の形は <code>schema_version="proposal"</code>＝<b>product contract への昇格は未決</b>（<span class="dref">05:46,63</span>）。生モデル出力を audit/wire に直接保存しない（正規化形で残す）<span class="dref">mode-x-er/02:274,276</span>。</div>
 
@@ -289,7 +289,7 @@ known location 座標・robot id・camera calibration・safety threshold・map/N
     <tr><td><code>ValidationReport</code> 形 + stable code</td><td class="impl-no">proposal（未凍結）</td><td><span class="dref">mode-x-er/02:5,95-96</span></td><td>内部案。product contract 昇格は未決</td></tr>
     <tr><td><code>decision_event</code> schema</td><td class="impl-no">proposal</td><td><span class="dref">05:46,63</span></td><td><code>schema_version="proposal"</code></td></tr>
     <tr><td>reason_code catalog</td><td>観測軸（additive）</td><td><span class="dref">05:70</span></td><td>box ごと catalog・自由文にしない</td></tr>
-    <tr><td>funnel / reason top-N</td><td>観測 taxonomy</td><td><span class="dref">05:310-359</span></td><td>骨格は共通。KPI/report target は site profile <code>eval.yaml</code> <span class="dref">04:100,113</span></td></tr>
+    <tr><td>funnel / reason top-N</td><td>観測 taxonomy</td><td><span class="dref">05:317-366</span></td><td>骨格は共通。KPI/report target は site profile <code>eval.yaml</code> <span class="dref">04:100,113</span></td></tr>
     <tr><td>audit 1:1（追跡の鎖）</td><td>設計要件</td><td><span class="dref">03:235 / mode-x-er/02:242</span></td><td>L3-G6 で検証 <span class="dref">03:202</span></td></tr>
     <tr><td><code>eval_sdk</code>（seed/tracer/sink/stats/cost）</td><td class="impl-no">proposal（PROPOSAL）</td><td><span class="dref">21:5,7,54-60</span></td><td>API/スキーマ未凍結。抽出＝既存コードのリネーム</td></tr>
     <tr><td>Store plugin（in-memory/file/Redis/DB）</td><td><span class="badge b-plugin">plugin</span></td><td><span class="dref">03:33</span></td><td>運用規模ごと差替</td></tr>

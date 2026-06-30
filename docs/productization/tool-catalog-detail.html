@@ -93,7 +93,7 @@
   <div class="item"><span class="sw" style="background:var(--spike)"></span><b>要 spike</b>（検証してから）</div>
   <div class="item"><span class="sw" style="background:var(--no)"></span><b>不採用</b>（この用途では使わない）</div>
 </div>
-<div class="note"><b>2 種類の tool を分ける</b>: <b>① 観測ストア tool</b>（§1）＝4 tier そのものを構成する（Langfuse / audit.jsonl / metrics / rosbag2…）。<b>② producer tool</b>（§2）＝機能 box が信号を出す側で、<b>tool そのものは tier ではなく、その出力が ②event / ④生 に記録される</b>（Nav2 / Open-RMF / micro-ROS…）。4 tier の正本は <a href="observability-tiering-detail.html">観測ログ 格納先 階層分離</a>（<span class="dref">05:107-122</span>）。</div>
+<div class="note"><b>2 種類の tool を分ける</b>: <b>① 観測ストア tool</b>（§1）＝4 tier そのものを構成する（Langfuse / audit.jsonl / metrics / rosbag2…）。<b>② producer tool</b>（§2）＝機能 box が信号を出す側で、<b>tool そのものは tier ではなく、その出力が ②event / ④生 に記録される</b>（Nav2 / Open-RMF / micro-ROS…）。4 tier の正本は <a href="observability-tiering-detail.html">観測ログ 格納先 階層分離</a>（<span class="dref">05:118-133</span>）。</div>
 
 <!-- ===================== 1. 観測ストア tool → 4 tier ===================== -->
 <h2>1. 観測ストア tool → 4 tier マッピング<span class="dref">07:27-42,59 / 06:44-50</span></h2>
@@ -124,7 +124,7 @@
 <div class="tier-grp">
   <div class="gh">④ 生 tier <span class="st st-adopt">採用(rosbag2)</span></div>
   <div class="gs">odom / scan / cmd_vel 生波形（sub-second）</div>
-  <div class="tool adopt"><span class="nm">rosbag2</span> <span class="st st-adopt">採用</span><div class="ds">ROS message の record/playback・incident replay。生 tier の正解（最小構成に採用）。<span class="dref">05:111-126 / 07:107 / 06:45</span></div></div>
+  <div class="tool adopt"><span class="nm">rosbag2</span> <span class="st st-adopt">採用</span><div class="ds">ROS message の record/playback・incident replay。生 tier の正解（最小構成に採用）。<span class="dref">05:118-133 / 07:107 / 06:45</span></div></div>
   <div class="tool cand"><span class="nm">ros2_tracing</span> <span class="st st-cand">候補</span><div class="ds">high-rate timing / executor / DDS・callback 解析。<span class="dref">07:39,59 / 06:46</span></div></div>
   <div class="tool spike"><span class="nm">mcap</span> <span class="st st-spike">要 spike</span><div class="ds">rosbag2 の保存 format（既定 sqlite3 ↔ mcap）。容量/読出/互換を検証。<b>docs 未登録だった→追記済</b>。<span class="dref">07:§追加候補</span></div></div>
   <div class="tool cand"><span class="nm">PlotJuggler</span> <span class="st st-cand">候補</span><div class="ds">odom/cmd_vel/imu の時系列 plot（解析補助・常設保存ではない）。<b>追記済</b>。<span class="dref">07:§追加候補</span></div></div>
@@ -174,7 +174,7 @@
   <tbody>
     <tr><td>OSS 一覧 ＋ 採用/候補/要spike/不採用</td><td><a href="07-layer-tool-decision-matrix.md">07</a> <span class="dref">07:27-59</span></td><td>決定済（本図で図示）</td></tr>
     <tr><td>OSS 再利用テーブル（URL 付き）</td><td><a href="06-oss-reuse-and-box-small-designs.md">06</a> <span class="dref">06:44-50</span></td><td>決定済</td></tr>
-    <tr><td>4 tier 格納先（観測 tool の落ち先）</td><td><a href="observability-tiering-detail.html">観測ログ 格納先 階層分離</a> <span class="dref">05:107-122</span></td><td>決定済</td></tr>
+    <tr><td>4 tier 格納先（観測 tool の落ち先）</td><td><a href="observability-tiering-detail.html">観測ログ 格納先 階層分離</a> <span class="dref">05:118-133</span></td><td>決定済</td></tr>
     <tr><td>追加候補（mcap/PlotJuggler/Foxglove/Prometheus）</td><td><a href="07-layer-tool-decision-matrix.md">07 §観測 tool 追加候補</a></td><td>候補/要 spike（本セッション追記）</td></tr>
     <tr><td>eval 数式 OSS（AllenAct/Habitat/numpy）</td><td><a href="eval-sdk-plugin-core-detail.html">eval_sdk 拡張</a> <span class="dref">21:264-278</span></td><td>コピー/写経（stats 側・本図対象外）</td></tr>
   </tbody>

@@ -59,7 +59,7 @@ Fusion box は「ER / VLA / STT / WMS input が**食い違ったとき**の arbi
 
 | 検査 | ER 単体での要否 | 置き場所（box） | 根拠 |
 |---|---|---|---|
-| task graph の矛盾 / cycle / 依存検出（NetworkX） | 必要 | **L3 Validator / L3 Handoff** | `docs/productization/05-decision-observability-and-tooling.md:164`・`docs/productization/06-oss-reuse-and-box-small-designs.md:148` |
+| task graph の矛盾 / cycle / 依存検出（NetworkX） | 必要 | **L3 Validator / L3 Handoff** | `docs/productization/05-decision-observability-and-tooling.md:171`・`docs/productization/06-oss-reuse-and-box-small-designs.md:148` |
 | 低 confidence -> operator clarification / reject | 必要 | **L3 Validator** | ER output の `operator_clarification_required` / `detections[].confidence`（`docs/mode-x-er/01-architecture-and-flow.md:140-147`）、Validator の confidence 検査（`docs/mode-x-er/01-architecture-and-flow.md:41`） |
 | 危険 / 低レベル出力の遮断 | 必要 | **L3 Handoff / Governance** | `forbidden_endpoint` / `low_level_action_present`（`docs/productization/06-oss-reuse-and-box-small-designs.md:152`） |
 
