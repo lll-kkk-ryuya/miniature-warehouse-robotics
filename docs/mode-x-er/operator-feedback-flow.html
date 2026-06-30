@@ -180,7 +180,7 @@
 <div class="sub-nest" style="border-color:var(--seam);background:var(--seam-bg)">
   <div class="nh" style="color:var(--seam)"><span class="lyr" style="background:var(--seam)">L2</span>実行許可・交通（Governance / Policy Gate・Traffic）</div>
   <div><span class="rc">battery_low</span><span class="rc">emergency_active</span><span class="rc">stale_generation</span><span class="rc">duplicate_command</span><span class="rc">unknown_location</span><span class="rc">route_conflict</span><span class="rc">rmf_unavailable</span></div>
-  <div class="s" style="margin-top:5px"><span class="dref">05:258-264 / 06:177</span></div>
+  <div class="s" style="margin-top:5px"><span class="dref">05:265-271 / 06:177</span></div>
 </div>
 <div class="sub-nest" style="border-color:var(--red);background:var(--red-bg)">
   <div class="nh" style="color:var(--red)"><span class="lyr" style="background:var(--red)">L1</span>自律走行・安全（Navigation / Safety）</div>
@@ -223,7 +223,7 @@
   <b>安全（なぜ文面は deterministic か）:</b> 拒否文面を fallible な LLM に作文させると、安全 reject の理由を hallucinate しうる。文面は固定テンプレートで作り、LLM 整形は<b>安全に無関係な言い回しのみ</b> optional（reason_code を ground truth として必ず添付）。emergency / battery / collision は整形層を通さない。<span class="dref">05 §4 / 思想 01:53</span>
 </div>
 <div class="note">
-  <b>叩き方（速度の肝）:</b> gate は emit のみ・<b>TTS を待たない</b>。<b>L4 内 reject は直接 in-process で ★ を render</b>（hub 経由なし＝「直接叩く」直感どおり）。<b>L2/L1/L0 reject は別ノード</b>なので event 経由（§3）——<b>Safety → L4 の同期呼び出しは上位依存で禁止</b><span class="dref">01:89 / 05:308</span>。遅延の支配項は <b>TTS 合成（数百ms〜秒）</b>で emit/transport は無視できる。直接<b>同期</b>呼び出しは速くならず、TTS 秒を安全 critical path に乗せて危険。<span class="dref">05 §5.2</span>
+  <b>叩き方（速度の肝）:</b> gate は emit のみ・<b>TTS を待たない</b>。<b>L4 内 reject は直接 in-process で ★ を render</b>（hub 経由なし＝「直接叩く」直感どおり）。<b>L2/L1/L0 reject は別ノード</b>なので event 経由（§3）——<b>Safety → L4 の同期呼び出しは上位依存で禁止</b><span class="dref">01:89 / 05:315</span>。遅延の支配項は <b>TTS 合成（数百ms〜秒）</b>で emit/transport は無視できる。直接<b>同期</b>呼び出しは速くならず、TTS 秒を安全 critical path に乗せて危険。<span class="dref">05 §5.2</span>
 </div>
 
 <div class="note">
@@ -258,7 +258,7 @@
   <thead><tr><th>観点</th><th>案A 専用 topic（採用）</th><th>案B 相乗り（不採用・将来簡略化オプション）</th></tr></thead>
   <tbody>
     <tr><td>新しく作るもの</td><td class="impl-no">新トピック＝<b>新 frozen 契約</b>（doc03＋contract PR＋全トラック予告）</td><td class="impl-yes"><b>何も作らない</b>（監査用 event を読むだけ・最速）</td></tr>
-    <tr><td>取りこぼし</td><td><b>lossless・順序保証</b>（離散イベント向き）</td><td>event stream なら可。ただし観測経路は <b>fail-open＝負荷時 drop すると音声も静かに落ちる</b> <span class="dref">05:283</span></td></tr>
+    <tr><td>取りこぼし</td><td><b>lossless・順序保証</b>（離散イベント向き）</td><td>event stream なら可。ただし観測経路は <b>fail-open＝負荷時 drop すると音声も静かに落ちる</b> <span class="dref">05:290</span></td></tr>
     <tr><td>結合</td><td>明確な1チャネル（各箱は topic schema だけに依存）</td><td>観測（observe-only）経路に相乗り＝粒度/latency が観測都合に依存</td></tr>
     <tr><td>向く場面</td><td><b>別ノード reject が多い / lossless 必須 / 2件目 site で安定契約 ← 採用理由</b></td><td>MVP・2台 PoC・大半が L4-local（将来の簡略化時のみ）</td></tr>
   </tbody>
@@ -294,7 +294,7 @@
     <tr><td>Model Adapter</td><td><span class="lyr" style="background:var(--plugin)">L4</span><span class="badge b-sub">sub</span></td><td><code>timeout</code></td><td><code>06:117</code></td><td>モデルの応答が時間内に返らなかったので、指示を実行できません</td></tr>
     <tr><td>L3 Validator</td><td><span class="lyr" style="background:var(--teal)">L3</span><span class="badge b-box">box</span></td><td><code>UNKNOWN_TARGET</code></td><td><code>02-l3:96 / 95</code></td><td>『赤い箱』が地図上の登録位置に見つからないので、bot1 を動かせません</td></tr>
     <tr><td>L3 Visual Resolver</td><td><span class="lyr" style="background:var(--teal)">L3</span><span class="badge b-box">box</span></td><td><code>unresolved</code></td><td><code>02-l3:151</code></td><td>見えた箱を地図の位置に対応づけられないので、移動先を決められません</td></tr>
-    <tr><td>L2 Governance</td><td><span class="lyr" style="background:var(--seam)">L2</span><span class="badge b-box">box</span></td><td><code>battery_low</code></td><td><code>05:263</code></td><td>bot2 のバッテリーが不足しているので、この指示は実行できません</td></tr>
+    <tr><td>L2 Governance</td><td><span class="lyr" style="background:var(--seam)">L2</span><span class="badge b-box">box</span></td><td><code>battery_low</code></td><td><code>05:270</code></td><td>bot2 のバッテリーが不足しているので、この指示は実行できません</td></tr>
     <tr><td>L1 Safety</td><td><span class="lyr" style="background:var(--red)">L1</span><span class="badge b-box">box</span></td><td><code>emergency</code>(near_collision)</td><td><code>05:84</code></td><td>衝突の危険を検知して止めました（割り込み・整形なし）</td></tr>
     <tr><td>L0 Hardware</td><td><span class="lyr" style="background:var(--box)">L0</span><span class="badge b-box">box</span></td><td><code>nonfinite_cmd</code></td><td><code>06:228</code></td><td>不正な速度指令を検知したので安全のため停止しました（整形なし）</td></tr>
     <tr><td>★ Operator Feedback 自身</td><td><span class="lyr" style="background:var(--sub)">L4</span><span class="badge b-new">新 sub</span></td><td><code>tts_failed</code></td><td class="impl-no"><code>05 §3</code> proposal</td><td>（音声不可時は web/overlay に fallback・run は止めない＝fail-open）</td></tr>

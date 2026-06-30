@@ -42,6 +42,32 @@
 - 新規ドキュメントは既存の番号体系に従う（00-xx, 01-xx, ...）
 - 短期 handoff / local memory は [local-memory.md](local-memory.md) を参照する（設計正本ではなく、再開用の実行状態メモ）。
 
+## LLM支援ルール作成 / プロダクト化構想
+
+- 顧客向け rule authoring / productization 作業では
+  `docs/productization/10-llm-assisted-rule-authoring.md` を読み、
+  `docs/productization/03-l3-planning-core-box.md`、
+  `docs/productization/04-box-storage-and-reuse-guidelines.md`、
+  `docs/productization/09-run-manifest-and-plugin-composition.md` と合わせて扱う。
+  HTML companion は `docs/productization/l3-rule-authoring-detail.html`。
+- 顧客が読める倉庫ルールは、プロダクト化された site profile、Validator plugin profile、
+  fixture、simulation run へ変換する入力として扱う。
+- `zones/*.geojson` は geometry artifact として扱う。allow/deny behavior、
+  `reason_code`、profile composition、顧客固有 policy は GeoJSON ではなく
+  plugin profile / fixture に置く。
+- rule draft は YAML、JSON fixture、code を提案する前に、文書化された Validator catalog
+  (robot/target/action/workflow/freshness/emergency/confidence/graph) のどれに属するか分類する。
+- Handoff は中核の orchestration contract として維持し、顧客別・拠点別 rule で置き換えない。
+- 拠点固有 rule は Validator plugin と fixture に閉じ込める。LLM prompt、Handoff 内部、
+  低レイヤ safety code へ直接混入させない。
+- 安全制約の強制は L2/L1/L0 に残す。Validator plugin は候補 task の拒否・整形を行えるが、
+  Nav2/Open-RMF、firmware、非常停止などの低レイヤ safety mechanism を迂回してはならない。
+- authoring LLM の出力は draft 扱いとし、人間 review、fixture replay、simulation/eval gate、
+  docs-first approval を通るまで run manifest で有効化しない。
+- Hermes skill/plugin/MCP surface は offline の rule artifact draft、lint、report 補助に限定する。
+  実装前に公式 Hermes docs を再確認し、runtime policy enablement や motion dispatch を
+  Hermes tool から直接行わせない。
+
 ## Issue / PR 作成
 - **作成前に必ず `docs/` を確認**（`docs/README.md` で設計正本を特定）。Issue / PR 本文に**設計正本へのリンクを必須**とする。
 - 必須セクション・テンプレ・ラベル規約・簡素 issue 禁止は `.claude/rules/issue-and-pr-authoring.md`。GitHub フォームは `.github/ISSUE_TEMPLATE/`・`.github/PULL_REQUEST_TEMPLATE.md`。

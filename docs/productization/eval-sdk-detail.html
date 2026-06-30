@@ -194,7 +194,7 @@
     <tr><td><span class="lyr" style="background:var(--demoted);color:var(--ink)">L0</span></td><td>Hardware（firmware / driver）</td><td>clamp report・heartbeat・nonfinite stop event</td><td><span class="dref">05:85</span></td></tr>
   </tbody>
 </table>
-<p class="lead"><b>集計の出口</b>: 全層を join して funnel（<code>raw_model_outputs_total → … → success_total</code>）と reason top-N を作る。これは <a href="05-decision-observability-and-tooling.md">05</a> の funnel と同じ（eval_sdk はそれを横断で結合・スコア化する基盤）。<span class="dref">05:88-110,310-359</span></p>
+<p class="lead"><b>集計の出口</b>: 全層を join して funnel（<code>raw_model_outputs_total → … → success_total</code>）と reason top-N を作る。これは <a href="05-decision-observability-and-tooling.md">05</a> の funnel と同じ（eval_sdk はそれを横断で結合・スコア化する基盤）。<span class="dref">05:88-110,317-366</span></p>
 
 <!-- ===================== 5. enforcement 非接触 ===================== -->
 <h2>5. enforcement 非接触の境界（最重要・安全）<span class="dref">21:125</span></h2>
@@ -212,7 +212,7 @@
     <tr><td>deterministic <code>trace_id</code>（join key）</td><td class="impl-yes">死守する 1 不変条件</td><td><span class="dref">21:148-149</span></td><td>property test で固定（仮定しない）</td></tr>
     <tr><td>背骨（fail-open / lazy-import / 依存注入）</td><td class="impl-yes">不変条件（verbatim 維持）</td><td><span class="dref">21:143-146</span></td><td>「SDK 無しでテスト可能」を成立させる核</td></tr>
     <tr><td><code>decision_event</code> schema</td><td class="impl-no">proposal</td><td><span class="dref">05:46,63</span></td><td><code>schema_version="proposal"</code>・product contract 昇格は未決</td></tr>
-    <tr><td>KPI / report 出力契約</td><td class="impl-no">未凍結</td><td><span class="dref">05:310-359 / 04:100,113</span></td><td>案件 KPI/report target は site profile <code>eval.yaml</code> へ</td></tr>
+    <tr><td>KPI / report 出力契約</td><td class="impl-no">未凍結</td><td><span class="dref">05:317-366 / 04:100,113</span></td><td>案件 KPI/report target は site profile <code>eval.yaml</code> へ</td></tr>
     <tr><td>Langfuse（保管・dashboard）</td><td>既製 SaaS（乗るだけ）</td><td><span class="dref">21:99-102,116</span></td><td>再発明しない</td></tr>
     <tr><td>Emergency Guardian / collision_monitor / 0.3 m/s</td><td class="impl-yes">frozen（fail-closed 能動制御）</td><td><span class="dref">21:125</span></td><td>producer ではない・eval は観測タップのみ・enforcement 非接触</td></tr>
   </tbody>

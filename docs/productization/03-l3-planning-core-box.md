@@ -65,6 +65,21 @@ site ごとに差し替える plugin:
 
 Decision / reject 集計と既存 tool の使い分けは [05-decision-observability-and-tooling.md](05-decision-observability-and-tooling.md) を参照する。
 
+### LLM 支援 rule authoring との関係
+
+顧客が自然言語で説明する zone policy、confidence policy、業務順序 rule は、
+L3 Handoff や core に直接混ぜない。authoring LLM は rule 案、確認質問、
+site profile / plugin profile / fixture の draft を作るだけであり、runtime の
+実行許可は持たない。
+
+L3 側で受けるのは、人間 review と simulation / eval gate を通った
+Validator plugin profile、Visual plugin artifact、Task Graph fixture である。
+たとえば `red_box` を `zone_a` 内だけで扱う rule は、`l3.zone_policy` の
+再利用可能な plugin logic と、site profile の zone polygon / target rule に分ける。
+
+詳細は [10-llm-assisted-rule-authoring.md](10-llm-assisted-rule-authoring.md) と
+[l3-rule-authoring-detail.html](l3-rule-authoring-detail.html) を参照する。
+
 ## Visual Resolver Box
 
 Visual Resolver は、画像上の object target を map target へ変換する box である。

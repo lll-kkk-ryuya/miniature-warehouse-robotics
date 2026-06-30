@@ -42,6 +42,8 @@
 | [07-layer-tool-decision-matrix.md](07-layer-tool-decision-matrix.md) | layer / box ごとの OSS / tool 採用・候補・不採用・要 spike・採用条件 |
 | [08-navigation-hardware-eval-gates.md](08-navigation-hardware-eval-gates.md) | Navigation / Hardware / Eval の acceptance gate と reason_code catalog |
 | [09-run-manifest-and-plugin-composition.md](09-run-manifest-and-plugin-composition.md) | box / plugin の run manifest、plugin manifest、pluggy / DuckDB 等の使いどころ、WO と eval_sdk の関係 |
+| [10-llm-assisted-rule-authoring.md](10-llm-assisted-rule-authoring.md) | 顧客 rule を LLM 支援で site profile / plugin profile / fixture / simulation へ落とす設計 |
+| [l3-rule-authoring-detail.html](l3-rule-authoring-detail.html) | 10 の HTML 図解。authoring loop、layer classification、promotion gate を可視化 |
 | [l4/README.md](l4/README.md) | L4 内部 sub-box の layer skeleton。Model Transport / Adapter の詳細設計と図式化 |
 
 ## 読み方
@@ -57,7 +59,10 @@ layer ごとの採用判断は [07](07-layer-tool-decision-matrix.md)、
 Navigation / Hardware / Eval の下位 gate は
 [08](08-navigation-hardware-eval-gates.md) を見る。box / plugin の有効化、
 expected emitter、score spec、WO と `eval_sdk` の接続は
-[09](09-run-manifest-and-plugin-composition.md) を見る。
+[09](09-run-manifest-and-plugin-composition.md) を見る。顧客が自然言語で出す
+現場 rule を、LLM 支援で site profile / plugin profile / fixture / simulation に
+変換する設計は [10](10-llm-assisted-rule-authoring.md) と
+[l3-rule-authoring-detail.html](l3-rule-authoring-detail.html) を見る。
 
 `reason_code` や acceptance gate は現時点では proposal catalog であり、
 product contract ではない。実装や顧客案件へ昇格する場合は、owner doc、
