@@ -195,11 +195,7 @@ class VisualTaskResolver:
         # Fail closed on a non-finite snap radius (NaN/inf): "dist > NaN" and "dist > inf" are
         # both False, so an arbitrarily-far point would otherwise snap with full confidence.
         name, dist = _nearest_known_location(x, y, dict(policy.location_coords))
-        if (
-            not name
-            or not math.isfinite(policy.snap_radius_m)
-            or dist > policy.snap_radius_m
-        ):
+        if not name or not math.isfinite(policy.snap_radius_m) or dist > policy.snap_radius_m:
             return self._unresolved(detection.id, UnresolvedReason.BEYOND_SNAP_RADIUS)
 
         # Snap. snap_quality in [0,1] (1 = dead-on, 0 = at the radius boundary). Confidence is

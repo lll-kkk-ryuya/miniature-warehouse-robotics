@@ -320,9 +320,9 @@ def test_non_finite_snap_radius_fails_closed():
     # confidence. red_box maps onto shelf_1 but every coord here is far; the radius must NOT save it.
     for bad_radius in (math.nan, math.inf):
         policy = _policy(snap_radius_m=bad_radius)
-        target = _by_id(
-            VisualTaskResolver(policy).resolve(_plan(RED_BOX), _calibration())
-        )["red_box"]
+        target = _by_id(VisualTaskResolver(policy).resolve(_plan(RED_BOX), _calibration()))[
+            "red_box"
+        ]
         assert target.resolution is Resolution.UNRESOLVED, f"radius={bad_radius!r}"
         assert target.reason == UnresolvedReason.BEYOND_SNAP_RADIUS.value
         assert target.destination is None
