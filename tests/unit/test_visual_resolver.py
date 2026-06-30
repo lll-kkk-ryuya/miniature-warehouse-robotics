@@ -281,3 +281,100 @@ def test_resolved_target_model_enforces_value_types():
     )
     assert target.resolution is Resolution.KNOWN_LOCATION
     assert math.isclose(target.confidence, 0.88)
+
+
+# --- XER3 hardening regressions: fail-closed gates that previously 0-dispatch-leaked ------
+#
+# Each of these reproduced a hole at origin/main e920829 where a target that should be
+# UNRESOLVED instead snapped to a real KNOWN_LOCATION (or crashed). They pin the fail-closed
+# behaviour: the PoC now yields Resolution.UNRESOLVED with destination is None.
+
+
+def test_w_behind_horizon_is_offmap_not_snapped():
+    # FIX #1: w < 0 (behind the projective horizon / cheirality) previously divided to a
+    # FINITE, plausible map point that passed math.isfinite and snapped to a real location.
+    # H = [[-1,0,0],[0,-1,0],[1,0,-100]] is non-degenerate (det = -100, abs(det) > 1e-12 so
+    # _is_valid_homography True). Pixel (50, 50) -> xp=-50, yp=-50, w = 1*50 + 0*50 - 100 = -50
+    # (< 0). The old guard
+    # only caught abs(w) < 1e-12, so it returned (-50/-50, -50/-50) = (1.0, 1.0) — finite, inside
+    # the polygon, and snapping to a known location placed exactly at (1.0, 1.0). Must be OFF_MAP.
+    behind = [[-1.0, 0.0, 0.0], [0.0, -1.0, 0.0], [1.0, 0.0, -100.0]]
+    calib = _calibration(
+        homography=behind,
+        valid_polygon=[[0.0, 0.0], [2.0, 0.0], [2.0, 2.0], [0.0, 2.0]],
+        reprojection_error=None,
+    )
+    # A known location placed exactly where the spurious finite point (1.0, 1.0) would land,
+    # with a generous snap radius so ONLY the off-map guard can stop the leak.
+    policy = _policy(location_coords={"shelf_1": (1.0, 1.0)}, snap_radius_m=5.0)
+    det = Detection(id="behind_box", pixel=[50, 50], confidence=0.9)
+    target = _by_id(VisualTaskResolver(policy).resolve(_plan(det), calib))["behind_box"]
+    assert target.resolution is Resolution.UNRESOLVED
+    assert target.reason == UnresolvedReason.OFF_MAP.value
+    assert target.destination is None
+
+
+def test_non_finite_snap_radius_fails_closed():
+    # FIX #2: a non-finite snap_radius_m (NaN/inf) previously bypassed the distance gate because
+    # "dist > NaN" and "dist > inf" are both False, snapping an arbitrarily-far point with full
+    # confidence. red_box maps onto shelf_1 but every coord here is far; the radius must NOT save it.
+    for bad_radius in (math.nan, math.inf):
+        policy = _policy(snap_radius_m=bad_radius)
+        target = _by_id(
+            VisualTaskResolver(policy).resolve(_plan(RED_BOX), _calibration())
+        )["red_box"]
+        assert target.resolution is Resolution.UNRESOLVED, f"radius={bad_radius!r}"
+        assert target.reason == UnresolvedReason.BEYOND_SNAP_RADIUS.value
+        assert target.destination is None
+
+
+def test_non_finite_reprojection_error_fails_closed():
+    # FIX #3: reprojection_error = NaN previously passed the ceiling because "NaN > ceiling" is
+    # False, letting an untrustworthy calibration through. Both NaN and +inf must fail closed.
+    for bad_err in (math.nan, math.inf):
+        calib = _calibration(reprojection_error=bad_err)
+        target = _by_id(
+            VisualTaskResolver(_policy(max_reprojection_error=5.0)).resolve(_plan(RED_BOX), calib)
+        )["red_box"]
+        assert target.resolution is Resolution.UNRESOLVED, f"reproj={bad_err!r}"
+        assert target.reason == UnresolvedReason.REPROJECTION_ERROR_TOO_LARGE.value
+        assert target.destination is None
+
+
+def test_malformed_polygon_row_is_unresolved_not_indexerror():
+    # FIX #4: Calibration.valid_polygon is only typed list[list[float]], so a row with < 2
+    # elements is structurally accepted; polygon[i][1] then raised IndexError, crashing resolve()
+    # instead of yielding unresolved. Must route to OUTSIDE_VALID_POLYGON with no exception.
+    malformed = _calibration(valid_polygon=[[0.0, 0.0], [2.0], [2.0, 2.0], [0.0, 2.0]])
+    result = None
+    try:
+        result = VisualTaskResolver(_policy()).resolve(_plan(RED_BOX), malformed)
+    except Exception as exc:  # noqa: BLE001 — the whole point is that NOTHING is raised
+        pytest.fail(f"malformed polygon row raised instead of failing closed: {exc!r}")
+    target = _by_id(result)["red_box"]
+    assert target.resolution is Resolution.UNRESOLVED
+    assert target.reason == UnresolvedReason.OUTSIDE_VALID_POLYGON.value
+    assert target.destination is None
+
+
+def test_unresolved_model_rejects_destination():
+    # OPTIONAL defense-in-depth: the ResolvedTarget model itself now type-enforces the 0-dispatch
+    # invariant (doc02:151,68) — an unresolved target carrying a destination is a construction
+    # error, regardless of call site.
+    with pytest.raises(ValueError, match="destination=None"):
+        ResolvedTarget(
+            target_id="bad",
+            resolution=Resolution.UNRESOLVED,
+            destination="shelf_1",
+            confidence=0.0,
+            reason="off_map",
+        )
+    # And an unresolved target with destination=None is still accepted (invariant satisfied).
+    ok = ResolvedTarget(
+        target_id="ok",
+        resolution=Resolution.UNRESOLVED,
+        destination=None,
+        confidence=0.0,
+        reason="off_map",
+    )
+    assert ok.destination is None

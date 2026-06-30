@@ -65,9 +65,11 @@ def _apply_homography(homography: list[list[float]], u: float, v: float) -> tupl
     xp = row0[0] * u + row0[1] * v + row0[2]
     yp = row1[0] * u + row1[1] * v + row1[2]
     w = row2[0] * u + row2[1] * v + row2[2]
-    if abs(w) < 1e-12:
-        # Point on the line at infinity for this homography => treat as off-map (caller maps to
-        # OFF_MAP via valid-polygon failure; return a sentinel far point so no snap can match).
+    if w <= 1e-12:
+        # On or behind the projective horizon (w <= 0) => off-map sentinel. w ~ 0 is the line at
+        # infinity; w < 0 (cheirality) is "behind" the camera/horizon and would otherwise divide
+        # to a FINITE but spurious map point that could snap to a real location (a 0-dispatch
+        # hole). Both => far sentinel so the off-map gate fires and no snap can match (doc02:151).
         return (math.inf, math.inf)
     return (xp / w, yp / w)
 
@@ -76,10 +78,16 @@ def _point_in_polygon(x: float, y: float, polygon: list[list[float]]) -> bool:
     """Ray-casting point-in-polygon (stdlib only, doc02:151 valid-polygon check).
 
     Returns True iff (x, y) is inside the closed polygon given as an ordered list of [px, py]
-    vertices. A polygon with fewer than 3 vertices bounds no area => always False. Crossing-
-    number algorithm; boundary points may count either way (acceptable for a snap gate).
+    vertices. A polygon with fewer than 3 vertices bounds no area => always False. A malformed
+    vertex row (fewer than 2 elements) means the polygon is structurally unusable => False
+    (point-not-inside), so resolve() routes to OUTSIDE_VALID_POLYGON rather than raising an
+    IndexError (Calibration.valid_polygon is only typed list[list[float]], so a short row is
+    structurally accepted; fail closed, doc02:151). Crossing-number algorithm; boundary points
+    may count either way (acceptable for a snap gate).
     """
     if len(polygon) < 3:
+        return False
+    if any(len(row) < 2 for row in polygon):
         return False
     inside = False
     n = len(polygon)
@@ -159,9 +167,11 @@ class VisualTaskResolver:
             return self._unresolved(detection.id, UnresolvedReason.NO_CALIBRATION)
 
         # Gate 2: reprojection-error ceiling (doc02:151). Injected threshold, never hardcoded.
-        if (
-            calibration.reprojection_error is not None
-            and calibration.reprojection_error > policy.max_reprojection_error
+        # Fail closed on a non-finite error (NaN/inf): "NaN > ceiling" is False, so a raw NaN
+        # would otherwise pass an untrustworthy calibration straight through the gate.
+        if calibration.reprojection_error is not None and (
+            not math.isfinite(calibration.reprojection_error)
+            or calibration.reprojection_error > policy.max_reprojection_error
         ):
             return self._unresolved(detection.id, UnresolvedReason.REPROJECTION_ERROR_TOO_LARGE)
 
@@ -182,8 +192,14 @@ class VisualTaskResolver:
         # TODO(object-class, doc02:150): doc02:150 snaps by "距離 と object class"; this MVP slice
         # implements the distance clause ONLY and DEFERS object-class matching (Detection.color is
         # available as a proxy). Recorded as a deferral, not full :150 grounding (docs-first).
+        # Fail closed on a non-finite snap radius (NaN/inf): "dist > NaN" and "dist > inf" are
+        # both False, so an arbitrarily-far point would otherwise snap with full confidence.
         name, dist = _nearest_known_location(x, y, dict(policy.location_coords))
-        if not name or dist > policy.snap_radius_m:
+        if (
+            not name
+            or not math.isfinite(policy.snap_radius_m)
+            or dist > policy.snap_radius_m
+        ):
             return self._unresolved(detection.id, UnresolvedReason.BEYOND_SNAP_RADIUS)
 
         # Snap. snap_quality in [0,1] (1 = dead-on, 0 = at the radius boundary). Confidence is
