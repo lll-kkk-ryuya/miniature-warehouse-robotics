@@ -25,8 +25,9 @@ uses ``resolution``; reconciling the ``"kind"`` spellings is a docs-reconcile fo
 from __future__ import annotations
 
 from enum import StrEnum
+from typing import Self
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from warehouse_llm_bridge.robotics_planning_core.models.base import _BridgeModel
 
@@ -76,6 +77,21 @@ class ResolvedTarget(_BridgeModel):
     destination: str | None = None
     confidence: float
     reason: str
+
+    @model_validator(mode="after")
+    def _unresolved_has_no_destination(self) -> Self:
+        """Type-enforce the 0-dispatch invariant (doc02:151,68).
+
+        Defense-in-depth: the resolver already only ever sets ``destination`` on the
+        known-location path, but pinning the invariant on the model itself means an
+        ``unresolved`` target can NEVER carry a destination regardless of construction site —
+        the contract is enforced, not merely conventional.
+        """
+        if self.resolution is Resolution.UNRESOLVED and self.destination is not None:
+            raise ValueError(
+                "unresolved ResolvedTarget must have destination=None (0-dispatch, doc02:151,68)"
+            )
+        return self
 
 
 class ResolutionResult(_BridgeModel):
