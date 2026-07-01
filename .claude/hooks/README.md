@@ -103,6 +103,23 @@ echo '{"tool_input":{"command":"deploy/dev/run-er-hermes.sh"}}' | .claude/hooks/
 echo '{"tool_input":{"command":"ls -la"}}' | .claude/hooks/remind-er-live-runbook.sh
 ```
 
+## guard-dangerous-git.py — 破壊的 git 操作の注意喚起（非ブロッキング advisory）
+
+`PreToolUse(Bash)` で発火し、コマンドが**復元不能**な git 操作（`reset --hard`〔remote ref 以外〕/ `clean -f` / 全体 `checkout .`・`restore .` / lease 無し `push --force`）に該当する場合に注意文を `additionalContext` として注入する。docs-first 源は [merge-and-communication.md §5](../rules/merge-and-communication.md)。
+
+- **非ブロッキング**: `additionalContext` のみ＝**止めない**（false-deny 回避）。本 repo の sanctioned op（`reset --hard origin/<ref>` / `--force-with-lease` / `branch -d/-D` / `push origin --delete`）には**発火しない**。
+- **fail-open**: JSON parse 失敗・非 git コマンドは無出力で `exit 0`。Python（guard-boundaries.py と同じ規約）。
+- 有効化は `PreToolUse` 配列に `Bash` matcher エントリとして併記（**人間が settings.json に配線**・エージェント自己改変禁止）。
+
+### テスト
+
+```bash
+# 危険（reset --hard HEAD~1）→ 注意喚起 JSON
+echo '{"tool_input":{"command":"git reset --hard HEAD~1"}}' | python3 .claude/hooks/guard-dangerous-git.py
+# sanctioned（reset --hard origin/main）→ 出力なし・exit 0
+echo '{"tool_input":{"command":"git reset --hard origin/main"}}' | python3 .claude/hooks/guard-dangerous-git.py
+```
+
 ## consistency-posttooluse.py — 編集後の docs↔code 整合チェック（PostToolUse, block）
 
 Edit/Write/MultiEdit 直後に `scripts/check_consistency.py` を走らせ、**ERROR レベルの doc↔契約ドリフト**があれば `decision:"block"` + `additionalContext` を返してループを止め、Claude に自己修正させる（WARN は CI/レポート任せ）。設計は [docs/dev/04-consistency-system.md](../../docs/dev/04-consistency-system.md) §4。
@@ -136,6 +153,7 @@ echo '{"cwd":"<repo>","tool_input":{"file_path":"docs/x.md"}}' | python3 .claude
 | **PreToolUse hook**（block） | `guard-boundaries.py` | main worktree の直接編集（**未配線**・有効化は人間。§「有効化」参照） |
 | **PreToolUse hook**（advisory） | `remind-gh-authoring.sh` | gh issue/pr 作成時の docs-first・テンプレ注意喚起（非ブロッキング・**未配線**） |
 | **PreToolUse hook**（advisory） | `remind-er-live-runbook.sh` | ER live 実行時の runbook / cost・scoped 承認ゲート注意喚起（非ブロッキング・**未配線**） |
+| **PreToolUse hook**（advisory） | `guard-dangerous-git.py` | 破壊的 git（reset --hard/clean -f/checkout ./force-push）注意喚起・sanctioned op は非発火（非ブロッキング・**未配線**） |
 | **PostToolUse hook**（block, local） | `consistency-posttooluse.py` | 編集後の docs↔code **ERROR** ドリフト（`settings.local.json` 配線・ERROR のみ block） |
 | CI ジョブ | `.github/workflows/ci.yml` governance + `consistency` | `contract` ラベル必須・他トラック import 禁止・docs↔code 整合 |
 | pre-commit | `.pre-commit-config.yaml` | lint / format / 秘密鍵検知 + docs↔code 整合 |

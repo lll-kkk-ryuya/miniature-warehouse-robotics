@@ -221,6 +221,11 @@ firmware/.pio/
 - 安全機構（Emergency Guardian / Policy Gate、および firmware の Layer-0 速度クランプ）は**ユニットテスト必須**（doc07 R-26）。距離・バッテリー・stale・重複の各拒否ケースを偽入力で検証する（Layer-0 クランプは非有限 `cmd_vel`→stop・上限超過→クランプを host R-26 unit `firmware/test/test_clamp` で固定。R-26 の本来の対象は Guardian/Policy Gate だが、Layer-0 firmware クランプも同規律の拡張）。
 - LLM Bridge / MCP Server は Gazebo・実機なしで E2E テストできる形に設計する（偽トピック・偽 State Cache JSON で先行検証）。
 - 周期保証（50ms/100ms）は非RT Linux でベストエフォート。Mac Docker では「ロジックの正しさ」のみ検証し、周期実測は Jetson 実機（Phase 0.5 段階2）へ送る。
+- **testability heuristics（fake-first の明文化）**: 「契約 seam で fake、実体無しで独立検証」（本節上・[parallel-workflow.md §2.1](../../.claude/rules/parallel-workflow.md)）を設計規準にする:
+  - **deletion test**: そのモジュールを消してみて、複雑さが複数 caller に再出現するなら存在価値あり（しないなら畳む）。
+  - **interface is the test surface**: seam を**通して**テストする（`StateStore` 越し）。seam を**迂回**して内部状態（生 `state.json`）を直接読まない。
+  - **one adapter = 仮の seam / two = 本物**: adapter が 1 つしか無い抽象は早すぎる port。≥2 実装（実 prod と fake、`nav2_router` の RMF/直結）が正当化するまで port を足さない。
+  - **seam を先に名指す**: テスト前に凍結契約の境界（`warehouse_interfaces` の IF）を名指して確認する。**正しい seam が無いこと自体が finding**＝浅い実装結合テストで埋めず flag する（[implementation-and-dependencies.md](../../.claude/rules/implementation-and-dependencies.md)）。
 
 ---
 
