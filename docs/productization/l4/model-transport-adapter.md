@@ -100,7 +100,10 @@ native audio を Hermes に載せるには `hermes-agent` v0.15.1 への 2-file 
 `gateway/platforms/api_server.py` (`_normalize_multimodal_content` /
 `_content_has_visible_payload` / 新 `_AUDIO_PART_TYPES` で `input_audio` を受理) と
 `agent/gemini_native_adapter.py` (`_extract_multimodal_parts` の `input_audio` を Gemini
-`inlineData{mimeType: audio/wav}` へ写像)。**2026-06-27 に live で実証済み**: HTTP 200、
+`inlineData{mimeType: audio/wav}` へ写像)。この fork の runnable 配備パッケージ
+(`apply-fork.sh` / `run-er-gateway.sh` / patch) は
+[`deploy/hermes/er-audio-fork/`](../../../deploy/hermes/er-audio-fork/) (#357 + Langfuse
+Option-D #360)。**2026-06-27 に live で実証済み**: HTTP 200、
 ER が native audio を理解 (音声にしか無い語の transcript を返した)、latency は direct と
 comparable (lean Hermes median 3.69s vs direct 4.24s, n=4, ER-thinking confound あり)、
 prompt token は +~408/call。
