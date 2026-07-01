@@ -11,6 +11,13 @@ import copy
 import json
 
 import pytest
+from warehouse_interfaces.locations import KNOWN_LOCATIONS
+from warehouse_interfaces.schemas import Command, CommandAction
+from warehouse_llm_bridge.robotics_planning_core.command_compiler import (
+    CommandCompiler,
+    ExecutionProfile,
+    WarehouseNavCompiler,
+)
 from warehouse_llm_bridge.robotics_planning_core.fixtures.red_blue_sequence import (
     INNER_PLAN,
     coordinate_goal_plan,
@@ -21,14 +28,19 @@ from warehouse_llm_bridge.robotics_planning_core.fixtures.red_blue_sequence impo
     unknown_schema_plan,
 )
 from warehouse_llm_bridge.robotics_planning_core.models import RawModelOutput
-from warehouse_llm_bridge.robotics_planning_core.pipeline import validate_raw_output
+from warehouse_llm_bridge.robotics_planning_core.pipeline import (
+    compile_raw_output,
+    validate_raw_output,
+)
 from warehouse_llm_bridge.robotics_planning_core.validator import (
+    Calibration,
     PlanningContext,
     RuntimeSafetyState,
     ValidationCode,
     ValidationStatus,
     warehouse_reference_policy,
 )
+from warehouse_llm_bridge.robotics_planning_core.visual_resolver import VisualPolicy
 
 
 def _hermes_raw(plan: dict) -> RawModelOutput:
@@ -136,3 +148,170 @@ def test_transport_equivalence_same_verdict():
     assert g.status is h.status is ValidationStatus.ACCEPTED
     assert g.normalized_plan == h.normalized_plan
     assert list(g.command_candidates) == list(h.command_candidates)
+
+
+# ==========================================================================================
+# XER6 offline pipeline wiring: compile_raw_output (RawModelOutput -> ... -> frozen Command)
+# ==========================================================================================
+# Resolver geometry LIFTED VERBATIM from tests/unit/test_l3_chain.py (itself from
+# test_visual_resolver.py) — byte-identical so this test cannot drift from the resolver unit.
+
+LOCATION_COORDS: dict[str, tuple[float, float]] = {
+    "shelf_1": (0.2, 0.3),
+    "shelf_2": (0.7, 0.3),
+    "shelf_3": (1.2, 0.3),
+}
+_A = 0.5 / 390.0
+_C = 0.2 - 420 * _A
+_E = (0.30 - 0.28) / (310 - 280)
+_F = 0.30 - 310 * _E
+HOMOGRAPHY = [[_A, 0.0, _C], [0.0, _E, _F], [0.0, 0.0, 1.0]]
+VALID_POLYGON = [[-0.5, -0.5], [2.0, -0.5], [2.0, 1.5], [-0.5, 1.5]]
+
+
+def _calibration() -> Calibration:
+    return Calibration(
+        camera_id="cam0",
+        map_frame="map",
+        homography=HOMOGRAPHY,
+        reprojection_error=1.0,
+        valid_polygon=VALID_POLYGON,
+    )
+
+
+def _degenerate_calibration() -> Calibration:
+    """Zero (degenerate) homography -> the resolver can never snap (no_calibration)."""
+    return Calibration(
+        camera_id="cam0",
+        map_frame="map",
+        homography=[[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+        reprojection_error=1.0,
+        valid_polygon=VALID_POLYGON,
+    )
+
+
+def _policy() -> VisualPolicy:
+    return VisualPolicy(location_coords=LOCATION_COORDS, snap_radius_m=0.25)
+
+
+def test_compile_accept_first_ready_navigate_command():
+    cmd = compile_raw_output(
+        RawModelOutput(payload=direct_envelope()),
+        calibration=_calibration(),
+        resolver_policy=_policy(),
+    )
+    assert isinstance(cmd, Command)
+    # one-shot: only t1 (bot1 -> red_box -> shelf_1) is ready; t2 is `after t1`.
+    assert len(cmd.commands) == 1
+    item = cmd.commands[0]
+    assert (item.bot, item.action, item.destination) == ("bot1", CommandAction.NAVIGATE, "shelf_1")
+    assert item.destination in KNOWN_LOCATIONS
+
+
+def test_compile_both_transports_same_command():
+    a = compile_raw_output(
+        RawModelOutput(payload=direct_envelope()),
+        calibration=_calibration(),
+        resolver_policy=_policy(),
+    )
+    b = compile_raw_output(
+        RawModelOutput(payload=hermes_envelope()),
+        calibration=_calibration(),
+        resolver_policy=_policy(),
+    )
+    assert a.model_dump() == b.model_dump()
+
+
+def test_compile_default_context_and_compiler_match_explicit():
+    default = compile_raw_output(
+        RawModelOutput(payload=direct_envelope()),
+        calibration=_calibration(),
+        resolver_policy=_policy(),
+    )
+    explicit = compile_raw_output(
+        RawModelOutput(payload=direct_envelope()),
+        calibration=_calibration(),
+        resolver_policy=_policy(),
+        context=PlanningContext(policy=warehouse_reference_policy()),
+        compiler=WarehouseNavCompiler(),
+        profile=ExecutionProfile.X_LITE,
+    )
+    assert default.model_dump() == explicit.model_dump()
+
+
+def test_compile_one_shot_second_task_gated_not_compiled():
+    cmd = compile_raw_output(
+        RawModelOutput(payload=direct_envelope()),
+        calibration=_calibration(),
+        resolver_policy=_policy(),
+    )
+    # bot2 / t2 is `after t1.completed` -> not ready this cycle -> absent from the Command.
+    assert [c.bot for c in cmd.commands] == ["bot1"]
+
+
+def test_compile_rejected_plan_zero_dispatch_end_to_end():
+    # A non-accepted ValidationReport (emergency runtime) -> EMPTY Command; no resolve/compile.
+    ctx = PlanningContext(
+        policy=warehouse_reference_policy(),
+        runtime=RuntimeSafetyState(emergency_active=True),
+    )
+    cmd = compile_raw_output(
+        RawModelOutput(payload=direct_envelope()),
+        calibration=_calibration(),
+        resolver_policy=_policy(),
+        context=ctx,
+    )
+    assert cmd.commands == []
+    assert "status=" in cmd.reasoning  # reject status surfaced in the audit reasoning
+
+
+def test_compile_rejected_plan_never_reaches_the_compiler():
+    """Directly pin the R-26 short-circuit: on a non-accepted plan the injected compiler is
+    NEVER called (deleting the gate would flow to resolve -> compile and trip this raiser),
+    so the gate is protected by its own RED test, not only via the leaked-command assertion."""
+
+    class _RaisingCompiler(CommandCompiler):
+        def compile_with_audit(self, tasks, targets, profile=ExecutionProfile.X_LITE):
+            raise AssertionError("compiler must not run on a non-accepted plan (0-dispatch)")
+
+    ctx = PlanningContext(
+        policy=warehouse_reference_policy(),
+        runtime=RuntimeSafetyState(emergency_active=True),
+    )
+    cmd = compile_raw_output(
+        RawModelOutput(payload=direct_envelope()),
+        calibration=_calibration(),
+        resolver_policy=_policy(),
+        context=ctx,
+        compiler=_RaisingCompiler(),
+    )
+    assert cmd.commands == []
+
+
+def test_compile_unresolvable_calibration_zero_dispatch():
+    # Accepted plan, but a degenerate calibration -> nothing snaps -> Compiler skips all.
+    cmd = compile_raw_output(
+        RawModelOutput(payload=direct_envelope()),
+        calibration=_degenerate_calibration(),
+        resolver_policy=_policy(),
+    )
+    assert cmd.commands == []
+
+
+def test_compile_forbidden_envelope_propagates_valueerror():
+    with pytest.raises(ValueError):
+        compile_raw_output(
+            _hermes_raw(forbidden_endpoint_plan()),
+            calibration=_calibration(),
+            resolver_policy=_policy(),
+        )
+
+
+def test_compile_x_rmf_profile_not_implemented():
+    with pytest.raises(NotImplementedError):
+        compile_raw_output(
+            RawModelOutput(payload=direct_envelope()),
+            calibration=_calibration(),
+            resolver_policy=_policy(),
+            profile=ExecutionProfile.X_RMF,
+        )
