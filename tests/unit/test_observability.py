@@ -109,9 +109,13 @@ def test_enabled_with_fake_client_enters_span_with_fields(
     assert record["span_exited"] is True
     expected_tid = derive_trace_id(
         seed_for("run-42", "transcript"),
-        create_fn=_FakeClient(record).create_trace_id,
+        # re-derive into a THROWAWAY record dict so it does not clobber the production
+        # `record["seed"]` below — otherwise the line-`assert record["seed"] == ...` is a
+        # tautology and the work_id join-key (_TRANSCRIPT_WORK_ID) is never actually verified.
+        create_fn=_FakeClient({}).create_trace_id,
     )
     assert expected_tid == _FAKE_TRACE_ID  # sanity: our re-derivation matches the fake
+    # non-vacuous: this is the seed PRODUCTION wrote via seed_for(run_id, _TRANSCRIPT_WORK_ID).
     assert record["seed"] == seed_for("run-42", "transcript")
     assert record["span_kwargs"]["name"] == "transcript"
     assert record["span_kwargs"]["as_type"] == "span"
