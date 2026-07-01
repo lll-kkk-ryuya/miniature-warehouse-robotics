@@ -163,12 +163,17 @@ def test_both_transports_produce_the_same_chained_destinations():
 
 
 def test_rejected_plan_skips_resolver_zero_dispatch_across_chain():
-    """R-26 across the FULL chain: a Validator-rejected plan never reaches the resolver.
+    """The Validator rejects an unknown-robot plan; this test's OWN dispatch gate then withholds
+    the resolver.
 
-    A single forbidden mutation (unknown robot ``bot3``) flips the Validator to REJECTED.
-    The resolver step is guarded on ``report.permits_dispatch``; the guard is False, so the
-    resolver is SKIPPED entirely (it is never constructed, never called). The chain hands
-    nothing forward — 0 dispatch (doc02:68, 03:93 G1).
+    A single forbidden mutation (unknown robot ``bot3``) flips the Validator to REJECTED — this is
+    the invariant this test OWNS (neutering the validator's UNKNOWN_ROBOT rule fails the assertion
+    below). The resolver call is then guarded on ``report.permits_dispatch`` HERE in the test body;
+    with the guard False the call is skipped, illustrating the intended 0-dispatch wiring. NOTE:
+    that ``if`` is this test's OWN inline control flow, NOT a production guard — ``validate_raw_output``
+    deliberately terminates at ValidationReport (pipeline.py:69-72), and wiring the resolver behind
+    the dispatch gate is XER5's deferred job. The UNCONDITIONAL 0-dispatch invariant is anchored
+    OFFLINE in tests/unit/test_validator_zero_dispatch.py (doc02:68, 03:93 G1).
     """
     draft = to_robotics_plan_draft(_direct_raw())
 
