@@ -66,6 +66,20 @@ hermes:
       mode_ab: warehouse-commander-mode-ab
       mode_c: warehouse-commander-mode-c
 
+# Mode X-ER L4 Robotics Bridge（bridge-local・warehouse_interfaces に入れない・doc06 §5 補遺:269）。
+# ER 音声レグの transport 選択（direct ⇔ hermes）を config から解決する（robotics/transport.py
+# resolve_audio_transport）。既定は両キー OFF＝音声は direct（恒久 fallback・PR #355 / doc06 §5 補遺:269）。
+# base_url 空 or audio_input_audio_supported:false のいずれかで DIRECT に fail-safe。両方満たすときだけ
+# HERMES（forked input_audio gateway 経由）。TRANSPORT-FLIP-PLAN §2.1 / §3.1。実 live transport（#344）は
+# 別・未実装で本サブツリーは選択のみ（Transport は observation-only 監査タグ・doc03:75）。
+# base_url / capability flag は環境側 overlay（config/<env>/warehouse.yaml）で設定・base は env 非依存で OFF。
+# gateway bearer は secrets（config/<env>/.env・~/.hermes-mwr-er-lean/.env の API_SERVER_KEY）＝never commit。
+robotics:
+  er_gateway:
+    base_url: ""                        # forked lean ER gateway（例 http://127.0.0.1:8644）。空=direct
+    audio_input_audio_supported: false  # fork capability flag: 0001-input_audio-passthrough.patch 適用
+                                        # gateway でのみ true。unforked Hermes=false（400・doc06 §5:159）
+
 # Nav2 Bridge（Mode A/B 実行先。ポートは doc13/12a と一致）
 nav2_bridge:
   base_url: "http://localhost:8645"
