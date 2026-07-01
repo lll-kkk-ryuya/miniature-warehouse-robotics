@@ -24,6 +24,7 @@
 | [05-session-handoff](05-session-handoff.md) | コンテキスト消失後の再開用 handoff（直近の実行状態・検証結果・次の操作） |
 | [06-parallel-discipline](06-parallel-discipline.md) | 並列セッションの実装規律（気をつけること洗い出し。着手前＋毎サイクル参照） |
 | [07-mode-x-er-live-e2e-runbook](07-mode-x-er-live-e2e-runbook.md) | Mode X-ER live ER→L3 e2e operator runbook（音声/画像→ER→L3→Langfuse の turnkey 起動手順・3-tier reality・gate map・scoped 承認文言） |
+| [08-xer6-live-sim-x-lite-runbook](08-xer6-live-sim-x-lite-runbook.md) | XER6 X-lite live sim operator runbook（frozen `Command`→action_map→MCP→Policy Gate→Nav2 Bridge REST→Nav2 の赤箱/青箱順序デモ・安全境界 GO/No-Go・転記表。doc07 の下流 sim tail） |
 | [vla-access-and-runtime-spike](vla-access-and-runtime-spike.md) | Gemini Robotics-ER / OpenVLA / Isaac GR00T のアクセス・実行要件スパイク |
 
 ## 関連正本
