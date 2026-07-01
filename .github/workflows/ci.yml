@@ -65,11 +65,16 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install bridge Option-D deps (SDK extras + contract runtime)
-        # ruff pytest "pydantic>=2" pyyaml: same runtime as python-quality (the
+        # pytest "pydantic>=2" pyyaml: same runtime as python-quality (the
         # bridge imports warehouse_interfaces contract schemas + config loader).
-        # openai + "langfuse>=4.9,<5": the lazy SDK extras the production decide()
-        # path imports — pinned to the same langfuse range as langfuse-api-contract.
-        run: pip install ruff pytest "pydantic>=2" pyyaml openai "langfuse>=4.9,<5"
+        # "openai>=1.50,<2" + "langfuse>=4.9,<5": the lazy SDK extras the production
+        # decide() path imports. openai is bounded <2 because langfuse.openai wraps
+        # openai v1 (langfuse min_version 1.50.0) and its top-level
+        # `from openai._types import NotGiven` breaks under a future openai 2.x;
+        # importorskip only catches ModuleNotFoundError, so an unbounded major would
+        # surface as a red collection ERROR (not a skip). langfuse pinned to the same
+        # range as langfuse-api-contract. (ruff dropped — this job runs pytest only.)
+        run: pip install pytest "pydantic>=2" pyyaml "openai>=1.50,<2" "langfuse>=4.9,<5"
       - name: Pytest (bridge Option-D path — openai/langfuse must collect, not skip)
         run: pytest tests/unit/test_hermes_client_option_d.py
 
