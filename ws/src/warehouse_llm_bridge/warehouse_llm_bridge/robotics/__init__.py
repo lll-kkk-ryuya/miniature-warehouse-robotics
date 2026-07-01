@@ -42,6 +42,7 @@ from warehouse_llm_bridge.robotics.transcription import (
     Transcriber,
     TranscriptResult,
 )
+from warehouse_llm_bridge.robotics.transport import resolve_audio_transport
 
 __all__ = [
     "CallableTranscriber",
@@ -58,5 +59,6 @@ __all__ = [
     "TranscriptResult",
     "TranscriptSink",
     "Transport",
+    "resolve_audio_transport",
     "run_perception_lanes",
 ]

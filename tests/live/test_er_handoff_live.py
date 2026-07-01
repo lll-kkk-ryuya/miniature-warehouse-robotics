@@ -373,6 +373,112 @@ def test_live_er_audio_direct_flows_through_l3_handoff(capsys):
         )
 
 
+def test_live_er_audio_via_forked_hermes_gateway(capsys):
+    """FORKED-Hermes audio path: send SPOKEN ``input_audio`` through a forked gateway -> handoff.
+
+    This is the productionization probe for the ER audio transport flip
+    (deploy/hermes/er-audio-fork/TRANSPORT-FLIP-PLAN.md §4). Vanilla Hermes rejects ``input_audio``
+    with HTTP 400 (``test_live_hermes_rejects_input_audio_probe2`` above; doc06 §5:159). A gateway
+    that applied ``0001-input_audio-passthrough.patch`` accepts it and maps it to Gemini
+    ``inlineData{mimeType:audio/wav}`` — this test proves that accepted path lands a valid draft.
+
+    SKELETON (env-gated): this function SKIPS unless BOTH the module gate (``WAREHOUSE_LIVE_ER=1``)
+    AND the forked-gateway envs are present, so it never runs in CI/unit and skips cleanly at
+    collection. It is written but NOT yet run/verified (TRANSPORT-FLIP-PLAN §4 honesty marker).
+
+    Operator flow (never printed secrets; .env access needs explicit scope, environments.md):
+      1. Deploy the forked lean ER gateway (isolated worktree + patch + launch on :8644):
+           deploy/hermes/er-audio-fork/run-er-gateway.sh          # creates worktree, applies patch
+         (lean HERMES_HOME=~/.hermes-mwr-er-lean: provider google, model
+         gemini-robotics-er-1.6-preview, api_server :8644, memory off).
+      2. Point the bridge config at it: robotics.er_gateway.base_url=http://127.0.0.1:8644 +
+         audio_input_audio_supported: true (config/<env>/warehouse.yaml overlay), so
+         ``resolve_audio_transport`` returns ``Transport.HERMES`` for the audio leg.
+      3. Run:
+           WAREHOUSE_LIVE_ER=1 MWR_ER_FORK_GATEWAY_URL=http://127.0.0.1:8644 \
+           MWR_ER_FORK_GATEWAY_KEY=<gateway API_SERVER_KEY> MWR_ER_AUDIO=/tmp/i.wav \
+           python3.12 -m pytest tests/live/test_er_handoff_live.py -s -k forked_hermes
+    """
+    import base64
+    from pathlib import Path
+
+    base = os.getenv("MWR_ER_FORK_GATEWAY_URL")
+    gw_key = (
+        os.getenv("MWR_ER_FORK_GATEWAY_KEY")
+        or os.getenv("HERMES_API_KEY")
+        or os.getenv("API_SERVER_KEY")
+    )
+    audio_path = os.getenv("MWR_ER_AUDIO")
+    if not base or not gw_key:
+        pytest.skip(
+            "set MWR_ER_FORK_GATEWAY_URL + MWR_ER_FORK_GATEWAY_KEY (a FORKED input_audio ER "
+            "gateway, e.g. deploy/hermes/er-audio-fork/run-er-gateway.sh on :8644) for the "
+            "forked-Hermes audio path"
+        )
+    if not audio_path or not Path(audio_path).is_file():
+        pytest.skip(
+            "set MWR_ER_AUDIO to a spoken-instruction audio file for the forked-audio probe"
+        )
+
+    fmt = "wav" if audio_path.lower().endswith(".wav") else "aiff"
+    audio_b64 = base64.b64encode(Path(audio_path).read_bytes()).decode("ascii")
+    # OpenAI ``input_audio`` content part — the exact shape the fork's ``_AUDIO_PART_TYPES`` parses
+    # and that PROBE-2 proved unforked Hermes rejects with 400 (doc06 §5:146,159).
+    body = json.dumps(
+        {
+            "model": "hermes-agent",  # cosmetic; the gateway uses its server-side active model (ER)
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": _SCHEMA_INSTRUCTION
+                            + "\nThe operator instruction is the attached AUDIO.",
+                        },
+                        {"type": "input_audio", "input_audio": {"data": audio_b64, "format": fmt}},
+                    ],
+                }
+            ],
+        }
+    ).encode("utf-8")
+    req = urllib.request.Request(
+        base.rstrip("/") + "/v1/chat/completions",
+        data=body,
+        headers={"Content-Type": "application/json", "Authorization": f"Bearer {gw_key}"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=150) as resp:
+            status, raw = resp.status, resp.read().decode("utf-8", "replace")
+    except urllib.error.HTTPError as exc:
+        pytest.fail(
+            f"forked Hermes input_audio call failed HTTP {exc.code} (an UNFORKED gateway returns "
+            f"400 unsupported_content_type — apply 0001-input_audio-passthrough.patch): "
+            f"{exc.read().decode('utf-8', 'replace')[:300]}"
+        )
+    assert status == 200, f"expected HTTP 200 (forked gateway accepts input_audio), got {status}"
+    response = json.loads(raw)
+
+    # transport="hermes" tag mirrors resolve_audio_transport's HERMES selection; the handoff is
+    # transport-agnostic (envelope-driven), so a forked-audio 'choices' response lands the same
+    # RoboticsPlanDraft shape as the audio-direct path (doc06 §5:162; handoff.py:6-8).
+    draft = to_robotics_plan_draft(
+        RawModelOutput(transport="hermes", provider="er", source_model=MODEL, payload=response)
+    )
+    assert isinstance(draft, RoboticsPlanDraft)
+    assert draft.schema_version == "robotics_plan_draft.v0"
+    assert draft.task_graph, "expected the spoken instruction to yield at least one task"
+
+    with capsys.disabled():
+        usage = response.get("usage", {})
+        print(
+            f"\n[live ER->handoff FORKED-HERMES AUDIO] base={base} "
+            f"tokens={usage.get('total_tokens')} transcript={(draft.transcript or '')[:70]!r} -> "
+            f"tasks={[t.id + ':' + t.robot + '->' + (t.target or '') for t in draft.task_graph]}"
+        )
+
+
 def test_live_two_lane_er_and_hermes_stt(capsys):
     """Audio triggers BOTH lanes in parallel: ER (critical) ∥ Hermes-side STT (out-of-band).
 
