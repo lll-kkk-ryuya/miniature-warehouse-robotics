@@ -4,17 +4,30 @@ The adapter takes an ``ErTaskRequest`` (audio / transcript / overhead image / st
 calibration) and proposes a ``RawModelOutput``; the proposal is NEVER executed directly — it is
 normalized and handed to the L3 Planning Core (docs/mode-x-er/03-er-adapter-skeleton.md:11,24-33).
 
-XER1/G0 wires the **offline** seam only. The live transport (``direct`` Gemini REST for audio,
-``hermes`` OpenAI-compatible for image) is deferred until the transport probe and freeze (#344
-PROBE-1/2/3, doc06 §5): calling ``propose_plan`` without an injected offline payload raises
-``NotImplementedError`` rather than guessing an unfrozen request shape.
+Two ways to produce the ``RawModelOutput``:
 
-Whatever transport is used later, the shape handed to L3 is the same — proved by the L3 Handoff
-+ the transport-equivalence test, not by this class (docs/mode-x-er/README.md:86, 01:167).
+- ``offline_payload`` — replay a recorded/synthetic transport envelope with NO network call
+  (the fake used by unit tests, analogous to ``RecordingToolExecutor`` / ``ScriptedPersona``).
+- ``sender`` (:class:`ErTransportSender`) — do a LIVE send, built to the FROZEN per-transport
+  request assembly (docs/mode-x-er/03-er-adapter-skeleton.md "## ER request assembly", closed
+  probes #344 / doc06 §5). The transport is selected upstream (``resolve_audio_transport``, #388)
+  and passed as ``transport``; a ``hermes`` send that fails falls back to ``direct`` (fail-safe;
+  the shipped default audio transport is ``direct``, doc06:269). ``build_provider_request`` is a
+  pure function so the frozen request SHAPE is unit-testable without any network.
+
+With neither ``offline_payload`` nor ``sender``, ``propose_plan`` raises ``NotImplementedError``.
+
+Whatever transport is used, the shape handed to L3 is the same — proved by the L3 Handoff + the
+transport-equivalence test, not by this class (docs/mode-x-er/README.md:86, 01:167).
 ``RawModelOutput`` is the L3 input boundary contract: this L4 adapter is the *producer* that
-conforms to it (one-way L4 -> L3 dependency).
+conforms to it (one-way L4 -> L3 dependency). This module performs NO actuation and imports no
+HTTP client at module scope (the live sender lazy-imports urllib).
 """
 
+from __future__ import annotations
+
+import base64
+import logging
 from collections.abc import Callable, Mapping
 from typing import Protocol, runtime_checkable
 
@@ -22,9 +35,119 @@ from warehouse_llm_bridge.robotics.adapters.enums import ProviderType, Transport
 from warehouse_llm_bridge.robotics.er_task import ErTaskRequest
 from warehouse_llm_bridge.robotics_planning_core.models import RawModelOutput
 
+log = logging.getLogger(__name__)
+
 # An offline payload source: either a fixed transport envelope (dict) or a callable that builds
 # one from the request (so fixtures can vary the response by request).
 OfflinePayload = Mapping[str, object] | Callable[[ErTaskRequest], Mapping[str, object]]
+
+# Resolve an opaque blob ref (instruction_audio_ref / overhead_image_ref) to raw bytes. Injected
+# so the request BUILD (and its frozen shape) is testable with a fake loader, no filesystem/network.
+BlobLoader = Callable[[str], bytes]
+
+_DEFAULT_AUDIO_MIME = "audio/wav"  # PROBE-1/2 froze wav (doc06 §5:11-12)
+_DEFAULT_IMAGE_MIME = "image/png"  # PROBE-3 used a data:image/png url (doc06 §5:13)
+
+# Instruction schema constraints handed to ER (mirrors tests/live/_er_live_client.py so the live
+# request shape is identical). Robots/actions/target are constrained; no URL/topic/velocity/coord.
+_SCHEMA = (
+    "You are Gemini Robotics-ER, the visual task commander. Return ONLY JSON matching "
+    "robotics_plan_draft.v0 (plan_id, detections[], task_graph[]). Robots are only the known "
+    "robots; action is one of the allowed actions; target is a detection id. Do NOT include any "
+    "URL, ROS topic, endpoint, velocity, motor or coordinate goal field."
+)
+
+
+def _instruction_text(request: ErTaskRequest) -> str:
+    """Build the text part from the request (schema + transcript + known vocab). Pure."""
+    parts = [
+        _SCHEMA,
+        f"known_robots: {', '.join(request.known_robots)}",
+        f"known_locations: {', '.join(request.known_locations)}",
+        f"allowed_actions: {', '.join(request.allowed_actions)}",
+        f"output_contract: {request.output_contract}",
+    ]
+    if request.transcript:
+        parts.append(f"Instruction: {request.transcript}")
+    return "\n".join(parts)
+
+
+def _b64(data: bytes) -> str:
+    return base64.b64encode(data).decode("ascii")
+
+
+def build_provider_request(
+    transport: Transport,
+    request: ErTaskRequest,
+    *,
+    load_blob: BlobLoader | None = None,
+) -> dict[str, object]:
+    """Build the provider request for ``transport`` per the FROZEN assembly (doc03 "## ER request
+    assembly"; content-part shapes are external API spec, not invented — doc06 §5:14).
+
+    Audio/image refs are included only when the ref is present AND a ``load_blob`` resolver is
+    given (the ref -> bytes resolution is the caller's; the SHAPE is frozen here).
+    """
+    text = _instruction_text(request)
+    if transport is Transport.DIRECT:
+        # Gemini REST generateContent (PROBE-1, doc06 §5:11).
+        parts: list[dict[str, object]] = [{"text": text}]
+        if request.instruction_audio_ref and load_blob is not None:
+            parts.append(
+                {
+                    "inline_data": {
+                        "mime_type": _DEFAULT_AUDIO_MIME,
+                        "data": _b64(load_blob(request.instruction_audio_ref)),
+                    }
+                }
+            )
+        if request.overhead_image_ref and load_blob is not None:
+            parts.append(
+                {
+                    "inline_data": {
+                        "mime_type": _DEFAULT_IMAGE_MIME,
+                        "data": _b64(load_blob(request.overhead_image_ref)),
+                    }
+                }
+            )
+        return {
+            "contents": [{"role": "user", "parts": parts}],
+            "generationConfig": {"temperature": 0.2, "responseMimeType": "application/json"},
+        }
+    # Hermes OpenAI-compatible /v1/chat/completions (PROBE-3 image / PROBE-2 input_audio needs the
+    # fork; doc06 §5:12-13).
+    content: list[dict[str, object]] = [{"type": "text", "text": text}]
+    if request.overhead_image_ref and load_blob is not None:
+        img = _b64(load_blob(request.overhead_image_ref))
+        content.append(
+            {"type": "image_url", "image_url": {"url": f"data:{_DEFAULT_IMAGE_MIME};base64,{img}"}}
+        )
+    if request.instruction_audio_ref and load_blob is not None:
+        content.append(
+            {
+                "type": "input_audio",
+                "input_audio": {
+                    "data": _b64(load_blob(request.instruction_audio_ref)),
+                    "format": "wav",
+                },
+            }
+        )
+    return {"messages": [{"role": "user", "content": content}]}
+
+
+@runtime_checkable
+class ErTransportSender(Protocol):
+    """Send an already-built provider request over ``transport`` and return the raw envelope dict.
+
+    The envelope is the shape the L3 Handoff parses: ``candidates[...]`` for ``direct`` (Gemini),
+    ``choices[...]`` for ``hermes`` (OpenAI-compatible). Implementations do the network; the fake
+    used by tests records the request and returns a canned envelope. A ``direct`` failure raises;
+    a ``hermes`` failure is caught by the adapter and retried on ``direct`` (fail-safe).
+    """
+
+    def send(
+        self, *, transport: Transport, provider_request: Mapping[str, object]
+    ) -> Mapping[str, object]: ...
 
 
 @runtime_checkable
@@ -37,12 +160,12 @@ class ErAdapter(Protocol):
 
 
 class GeminiErAdapter:
-    """Gemini Robotics-ER adapter (offline seam for XER1/G0).
+    """Gemini Robotics-ER adapter.
 
-    Construct with ``offline_payload`` to replay a recorded/synthetic transport envelope without
-    any network call (the fake used by unit tests, analogous to ``RecordingToolExecutor`` /
-    ``ScriptedPersona``). Without it, ``propose_plan`` raises ``NotImplementedError`` because the
-    live request shape is still unfrozen (#344).
+    Construct with ``offline_payload`` (replay a recorded envelope, no network) OR with ``sender``
+    (live send to the frozen per-transport assembly). Without either, ``propose_plan`` raises
+    ``NotImplementedError``. A ``hermes`` live send that fails falls back to ``direct`` (fail-safe;
+    shipped default audio is ``direct``, doc06:269).
     """
 
     name = "gemini-robotics-er"
@@ -52,24 +175,121 @@ class GeminiErAdapter:
         *,
         transport: Transport = Transport.DIRECT,
         offline_payload: OfflinePayload | None = None,
+        sender: ErTransportSender | None = None,
+        load_blob: BlobLoader | None = None,
     ) -> None:
         self._transport = transport
         self._offline_payload = offline_payload
+        self._sender = sender
+        self._load_blob = load_blob
 
     async def propose_plan(self, request: ErTaskRequest) -> RawModelOutput:
-        if self._offline_payload is None:
-            raise NotImplementedError(
-                "live Gemini Robotics-ER transport is deferred to #344 (PROBE-1/2/3) / "
-                "transport freeze (doc06 §5); XER1/G0 wires the offline seam only — construct "
-                "with offline_payload"
+        if self._offline_payload is not None:
+            payload = (
+                self._offline_payload(request)
+                if callable(self._offline_payload)
+                else self._offline_payload
             )
-        if callable(self._offline_payload):
-            payload = self._offline_payload(request)
-        else:
-            payload = self._offline_payload
+            return RawModelOutput(
+                transport=self._transport.value,
+                provider=ProviderType.ER.value,
+                source_model=self.name,
+                payload=dict(payload),
+            )
+        if self._sender is not None:
+            return await self._live_send(request)
+        raise NotImplementedError(
+            "GeminiErAdapter has neither offline_payload nor sender — construct with "
+            "offline_payload for a replay, or with an ErTransportSender for a live send "
+            "(frozen assembly, doc03)."
+        )
+
+    async def _live_send(self, request: ErTaskRequest) -> RawModelOutput:
+        """Live send on the selected transport; a hermes failure falls back to direct (fail-safe)."""
+        assert self._sender is not None
+        transport = self._transport
+        try:
+            envelope = self._sender.send(
+                transport=transport,
+                provider_request=build_provider_request(
+                    transport, request, load_blob=self._load_blob
+                ),
+            )
+        except Exception as exc:  # noqa: BLE001 — hermes failure -> direct fail-safe (doc03 fallback)
+            if transport is Transport.DIRECT:
+                raise  # direct is the last resort; nothing to fall back to
+            log.warning(
+                "ER hermes transport failed (%s); falling back to direct (fail-safe, doc03 / doc06:269)",
+                exc,
+            )
+            transport = Transport.DIRECT
+            envelope = self._sender.send(
+                transport=transport,
+                provider_request=build_provider_request(
+                    transport, request, load_blob=self._load_blob
+                ),
+            )
         return RawModelOutput(
-            transport=self._transport.value,
+            transport=transport.value,
             provider=ProviderType.ER.value,
             source_model=self.name,
-            payload=dict(payload),
+            payload=dict(envelope),
         )
+
+
+class HttpErTransportSender:
+    """Real HTTP :class:`ErTransportSender`. Makes a REAL, BILLED provider call — use ONLY behind an
+    env gate (``WAREHOUSE_LIVE_ER=1``) + a present key.
+
+    - ``direct`` -> Gemini REST ``.../models/<model>:generateContent`` (``x-goog-api-key``).
+    - ``hermes`` -> the ER Hermes gateway ``<base_url>/v1/chat/completions`` (``Authorization: Bearer``
+      = the gateway key; a ``model`` field is added). audio needs the FORKED gateway
+      (deploy/hermes/er-audio-fork/run-er-gateway.sh); unforked returns HTTP 400 and the adapter
+      falls back to ``direct``. ``urllib`` is imported lazily so importing this module stays offline.
+    """
+
+    def __init__(
+        self,
+        *,
+        gemini_key: str,
+        direct_model: str = "gemini-robotics-er-1.6-preview",
+        hermes_base_url: str | None = None,
+        hermes_key: str | None = None,
+        hermes_model: str = "hermes-agent",
+        timeout: float = 60.0,
+    ) -> None:
+        self._gemini_key = gemini_key
+        self._direct_model = direct_model
+        self._hermes_base_url = hermes_base_url
+        self._hermes_key = hermes_key
+        self._hermes_model = hermes_model
+        self._timeout = timeout
+
+    def send(
+        self, *, transport: Transport, provider_request: Mapping[str, object]
+    ) -> Mapping[str, object]:
+        import json
+        import urllib.request
+
+        if transport is Transport.DIRECT:
+            url = (
+                "https://generativelanguage.googleapis.com/v1beta/models/"
+                f"{self._direct_model}:generateContent"
+            )
+            headers = {"Content-Type": "application/json", "x-goog-api-key": self._gemini_key}
+            body: dict[str, object] = dict(provider_request)
+        else:
+            if not self._hermes_base_url:
+                raise RuntimeError(
+                    "hermes transport requires hermes_base_url (deploy/hermes/er-audio-fork/run-er-gateway.sh)"
+                )
+            url = self._hermes_base_url.rstrip("/") + "/v1/chat/completions"
+            headers = {"Content-Type": "application/json"}
+            if self._hermes_key:
+                headers["Authorization"] = f"Bearer {self._hermes_key}"
+            body = {"model": self._hermes_model, **provider_request}
+        req = urllib.request.Request(
+            url, data=json.dumps(body).encode("utf-8"), headers=headers, method="POST"
+        )
+        with urllib.request.urlopen(req, timeout=self._timeout) as resp:  # noqa: S310 — fixed gateway URL
+            return json.loads(resp.read().decode("utf-8"))
