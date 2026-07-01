@@ -112,11 +112,13 @@ def compile_raw_output(
 
     Args:
         raw: the provider transport envelope (audit-only ``transport``/``provider``, doc03:75).
-        calibration: REQUIRED site calibration for the Visual Resolver (homography / valid
-            polygon / reprojection error). Never hardcoded (doc02:98,148).
-        resolver_policy: REQUIRED :class:`VisualPolicy` — injected snap thresholds + the
-            known-location coordinates (``location_coords``); its defaults are illustrative, the
-            coords are site-specific and never read from config (doc02:150).
+        calibration: REQUIRED site calibration for the Visual Resolver (camera_id / map_frame /
+            homography / reprojection_error / valid_polygon, doc02:148); site-specific and never
+            embedded as code constants (doc02:277).
+        resolver_policy: REQUIRED :class:`VisualPolicy` — injected snap thresholds (doc02:98:
+            thresholds are not hardcoded) + the known-location coordinates (``location_coords``);
+            its defaults are illustrative (doc02:5) and the coords are site-specific, never
+            embedded as code constants (doc02:277).
         context: per-cycle :class:`PlanningContext`; defaults to the warehouse reference policy
             with a clean runtime snapshot (matches :func:`validate_raw_output`).
         compiler: the :class:`CommandCompiler` plugin; defaults to :class:`WarehouseNavCompiler`

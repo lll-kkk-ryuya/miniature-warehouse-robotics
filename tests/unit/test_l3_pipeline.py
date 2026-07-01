@@ -14,6 +14,7 @@ import pytest
 from warehouse_interfaces.locations import KNOWN_LOCATIONS
 from warehouse_interfaces.schemas import Command, CommandAction
 from warehouse_llm_bridge.robotics_planning_core.command_compiler import (
+    CommandCompiler,
     ExecutionProfile,
     WarehouseNavCompiler,
 )
@@ -262,6 +263,29 @@ def test_compile_rejected_plan_zero_dispatch_end_to_end():
     )
     assert cmd.commands == []
     assert "status=" in cmd.reasoning  # reject status surfaced in the audit reasoning
+
+
+def test_compile_rejected_plan_never_reaches_the_compiler():
+    """Directly pin the R-26 short-circuit: on a non-accepted plan the injected compiler is
+    NEVER called (deleting the gate would flow to resolve -> compile and trip this raiser),
+    so the gate is protected by its own RED test, not only via the leaked-command assertion."""
+
+    class _RaisingCompiler(CommandCompiler):
+        def compile_with_audit(self, tasks, targets, profile=ExecutionProfile.X_LITE):
+            raise AssertionError("compiler must not run on a non-accepted plan (0-dispatch)")
+
+    ctx = PlanningContext(
+        policy=warehouse_reference_policy(),
+        runtime=RuntimeSafetyState(emergency_active=True),
+    )
+    cmd = compile_raw_output(
+        RawModelOutput(payload=direct_envelope()),
+        calibration=_calibration(),
+        resolver_policy=_policy(),
+        context=ctx,
+        compiler=_RaisingCompiler(),
+    )
+    assert cmd.commands == []
 
 
 def test_compile_unresolvable_calibration_zero_dispatch():
