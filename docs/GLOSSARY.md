@@ -1,0 +1,87 @@
+# GLOSSARY — プロジェクト単語帳（canonical vocabulary）
+
+> **これは docs-authoring 向けの参照辞書**（[docs-authoring skill](../.claude/skills/) と併用する「単語帳」）。doc / Issue / PR を書くとき、用語のブレを防ぎ、各語の**正本（source of truth）へ即座に飛べる**ようにする。
+>
+> **読み方**: 各項は `**用語**` — 1行の日本語定義 — 検証済みの canonical anchor（`path:§ or :line`）。anchor は grep/Read で実ファイルを開いて裏取りしてある（[docs-first.md §引用](../.claude/rules/docs-first.md)）。
+>
+> **凍結契約が優先**: docs の「例示（illustrative）」JSON/しきい値と、凍結契約（`warehouse_interfaces` の pydantic / `warehouse_description` / `config`）がズレたら、**凍結契約が正本**（[docs-first.md](../.claude/rules/docs-first.md)）。本辞書では両者を持つ語に**（凍結）**と**（例示）**の anchor を併記する。
+>
+> **メンテ**: 新しい正本 doc/契約ができたら本辞書に追記する。**anchor は必ず実ファイルで検証**してから足す（記憶で書かない）。行参照される下流 doc を壊さないよう追記は末尾/自節へ（[#165 教訓](dev/03-retrospectives.md)）。
+
+---
+
+## 1. モード（mode）
+
+- **Mode A（`traffic_mode: none`）** — 交通管理なし・LLM（司令官）が全判断を担う YouTube メイン回。 — [mode-a/README.md:7](mode-a/README.md)
+- **Mode B（`traffic_mode: simple`）** — 自作ルールベースの通路排他制御（`SimpleTrafficManager`）＋ LLM。 — [mode-a/README.md:8](mode-a/README.md)
+- **Mode C（`traffic_mode: open-rmf`）** — 交通管理を Open-RMF が即時処理し、LLM はタスク割当・優先順位・バッテリーの戦略判断のみ。**技術主方針**。 — [mode-c/README.md:5](mode-c/README.md)
+- **Mode X-ER** — Gemini Robotics-ER を「音声・画像・状態から倉庫タスクを理解する司令塔」として使う Mode X 系の最初の具体案（設計提案・contract 未追加）。 — [mode-x-er/README.md:1,9](mode-x-er/README.md)
+- **Mode X-ER-VLA** — Gemini Robotics-ER ＋ VLA（OpenVLA 等）を統合する別モード。ER=意味理解、VLA=視覚 grounding / action candidate。 — [mode-x-er-vla/README.md:1,9](mode-x-er-vla/README.md)
+- **X-lite / X-rmf** — Mode X-ER の 2 profile。X-lite=MVP（ER→L3→既存 MCP/Nav2）、X-rmf=Open-RMF を足す optional profile。 — [mode-x-er/01-architecture-and-flow.md:199-206](mode-x-er/01-architecture-and-flow.md)
+
+## 2. モデル・provider（model / provider）
+
+- **ER（Gemini Robotics-ER）** — Google の Robotics 埋め込み推論モデル。「見る・理解する・計画する」層に閉じ、Nav2/ROS/`/cmd_vel` を直接叩かない。 — [mode-x-er/README.md:9,17](mode-x-er/README.md)
+- **ProviderType `{llm, er, vla, stt}`** — L4 Model Adapter の provider 種別（`provider_type: llm | er | vla | stt`）レジストリ。ER/VLA/STT/LLM を transport に対応付ける差替点。 — [productization/02-l4-robotics-bridge-box.md:111](productization/02-l4-robotics-bridge-box.md)
+- **transport `{hermes, direct, worker}`** — L4→model の呼び出し経路。`hermes`=既定（default）Gateway 経由、`direct`=Bridge 直 adapter（現状 audio leg）、`worker`=GPU/VLA runtime。`direct`/`worker` は明示 fallback。 — [mode-x-er/01-architecture-and-flow.md:159-167](mode-x-er/01-architecture-and-flow.md)（transport 表）/ [productization/02-l4-robotics-bridge-box.md:309](productization/02-l4-robotics-bridge-box.md)（既定＝hermes・`direct`/`worker`＝explicit fallback）
+
+## 3. レイヤ（L0–L4・RT クラス）
+
+> 正本レジェンド＝[mode-x-er/01-architecture-and-flow.md:22-78](mode-x-er/01-architecture-and-flow.md) のレイヤ図。box×レイヤの割付表＝[productization/01-commercial-box-map.md:60-70](productization/01-commercial-box-map.md)。
+
+- **L4 入力・知覚 / オーケストレーション** — Non-RT / external API。audio/camera/state を束ねる Robotics Bridge Super-Box（model 判断は所有しない）。 — [productization/01-commercial-box-map.md:11-12,61](productization/01-commercial-box-map.md)
+- **L3 司令・検証（Planning Core）** — Non-RT / Python。ER 提案を既存実行契約が理解できる command 候補へ変換する（Validator/Visual Resolver/Task Graph Executor/Command Compiler）。 — [productization/01-commercial-box-map.md:23-24,64](productization/01-commercial-box-map.md)
+- **L2 実行許可・交通管理** — Soft-RT / Python + optional RMF。Governance（MCP/Policy Gate）と Traffic（X-lite/X-rmf）。 — [productization/01-commercial-box-map.md:25,66-67](productization/01-commercial-box-map.md)
+- **L1 自律走行・安全** — Hard-RT。Navigation（Nav2）と Safety（collision_monitor/twist_mux/Emergency Guardian）。 — [productization/01-commercial-box-map.md:29,68-69](productization/01-commercial-box-map.md)
+- **L0 物理安全** — MCU / 即時。firmware の速度クランプ・近接停止（micro-ROS）。 — [productization/01-commercial-box-map.md:32,70](productization/01-commercial-box-map.md) / [architecture/12-infrastructure-common.md:72](architecture/12-infrastructure-common.md)（安全レイヤー4層）
+
+## 4. L3 Planning Core の seam（データ変換段）
+
+> データフロー正本＝[mode-x-er/01-architecture-and-flow.md:174-181](mode-x-er/01-architecture-and-flow.md)（`RawModelOutput → RoboticsPlan draft → ValidationReport + NormalizedPlan → ResolvedTarget → ReadyTask → Command candidate`）。各段の設計正本＝[mode-x-er/02-l3-planning-core.md](mode-x-er/02-l3-planning-core.md)、offline core 実装＝`ws/src/warehouse_llm_bridge/.../robotics_planning_core/`。
+
+- **Handoff** — L4 の ER raw output を L3 の `RoboticsPlanDraft` に正規化する seam（実行経路ゼロ・fail-closed で schema/禁止 field を先に弾く）。 — [robotics_planning_core/handoff.py:1,114](../ws/src/warehouse_llm_bridge/warehouse_llm_bridge/robotics_planning_core/handoff.py)（凍結 seam）/ [mode-x-er/01-architecture-and-flow.md:106](mode-x-er/01-architecture-and-flow.md)（例示）
+- **RawModelOutput** — L3 が受け取る model の生出力（まだ実行不可＝画像座標・曖昧 target・古い state を含みうる）。 — [robotics_planning_core/models/boundary.py:33](../ws/src/warehouse_llm_bridge/warehouse_llm_bridge/robotics_planning_core/models/boundary.py)（凍結）/ [mode-x-er/01-architecture-and-flow.md:174](mode-x-er/01-architecture-and-flow.md)
+- **RoboticsPlanDraft** — Handoff 後の正規化済み plan draft（`schema_version: robotics_plan_draft.v0`）。`warehouse_interfaces` 昇格は XER1-2 後に DEFER。 — [robotics_planning_core/models/robotics_plan_draft.py:80](../ws/src/warehouse_llm_bridge/warehouse_llm_bridge/robotics_planning_core/models/robotics_plan_draft.py)（凍結）/ [mode-x-er/03-er-adapter-skeleton.md:55](mode-x-er/03-er-adapter-skeleton.md)（例示）
+- **Validator** — ER raw output が「実行候補として扱えるか」を actuation 前に構造化判定する L3 第1段（`PlanValidator`）。invalid は 0 dispatch。 — [robotics_planning_core/validator/validator.py:87](../ws/src/warehouse_llm_bridge/warehouse_llm_bridge/robotics_planning_core/validator/validator.py)（凍結）/ [mode-x-er/02-l3-planning-core.md:39-41](mode-x-er/02-l3-planning-core.md)
+- **ValidationReport** — Validator の終端判定を運ぶ report。`status`∈`accepted/rejected/needs_clarification/emergency_stop`、`severity`∈`error/warning`、stable `code` 全9（XER2/G1 で語彙確定・#366）。 — [robotics_planning_core/validator/report.py:141](../ws/src/warehouse_llm_bridge/warehouse_llm_bridge/robotics_planning_core/validator/report.py)（凍結）/ [mode-x-er/02-l3-planning-core.md:280-330](mode-x-er/02-l3-planning-core.md)（語彙正本）
+- **Visual Resolver** — 画像上の object target（pixel）を homography→map→known location に snap して robot が使える map target へ変換する L3 第2段。 — [robotics_planning_core/visual_resolver/resolver.py](../ws/src/warehouse_llm_bridge/warehouse_llm_bridge/robotics_planning_core/visual_resolver/resolver.py)（凍結）/ [mode-x-er/02-l3-planning-core.md:109-111](mode-x-er/02-l3-planning-core.md)
+- **Task Graph Executor** — ER の `task_graph` を一度に全 dispatch せず、`after` 依存を守って ready task だけを出す L3 第3段（ready/running/succeeded/failed）。 — [robotics_planning_core/task_graph_executor/executor.py](../ws/src/warehouse_llm_bridge/warehouse_llm_bridge/robotics_planning_core/task_graph_executor/executor.py)（凍結）/ [mode-x-er/02-l3-planning-core.md:161-163](mode-x-er/02-l3-planning-core.md)
+- **Command Compiler** — ready task を既存の安全な実行契約（`Command → action_map → MCP → Policy Gate → Nav2/RMF`）へ落とす L3 最終段。coordinate goal は未凍結ゆえ compile しない。 — [robotics_planning_core/command_compiler/compiler.py](../ws/src/warehouse_llm_bridge/warehouse_llm_bridge/robotics_planning_core/command_compiler/compiler.py)（凍結）/ [mode-x-er/02-l3-planning-core.md:200-202,236](mode-x-er/02-l3-planning-core.md)
+
+## 5. 凍結契約・インフラ・安全（`warehouse_interfaces` / infra / safety）
+
+- **`warehouse_interfaces`（frozen contract）** — 全トラックが依存する凍結契約ハブ（pydantic schemas / stores IF / paths / locations）。真実は docs、code は検証側。 — [ws/src/warehouse_interfaces/warehouse_interfaces/schemas.py:1-10](../ws/src/warehouse_interfaces/warehouse_interfaces/schemas.py)（凍結）/ [architecture/16-repository-and-conventions.md:113-119](architecture/16-repository-and-conventions.md)
+- **Command（凍結）** — 司令官 LLM が出す実行指示（`commands: list[CommandItem]` ＋ optional `start_negotiation`）。`CommandAction` は StrEnum。 — [schemas.py:187](../ws/src/warehouse_interfaces/warehouse_interfaces/schemas.py)（凍結）/ [mode-a/08a-llm-bridge-mode-a.md](mode-a/08a-llm-bridge-mode-a.md)
+- **situation JSON / Situation（凍結）** — State Cache + LLM Bridge が組み立て commander LLM に渡す入力。docs の JSON は**形の例示**、凍結形は `Situation`。 — [schemas.py:125](../ws/src/warehouse_interfaces/warehouse_interfaces/schemas.py)（凍結）/ [mode-a/08a-llm-bridge-mode-a.md:283,464](mode-a/08a-llm-bridge-mode-a.md)（例示）
+- **StateSnapshot（凍結）** — State Cache Node が書き出す集約状態。LLM Bridge はこれを読み `Situation` を組む。 — [schemas.py:95](../ws/src/warehouse_interfaces/warehouse_interfaces/schemas.py)（凍結）/ [architecture/12-infrastructure-common.md:258-297](architecture/12-infrastructure-common.md)
+- **StateStore / GenStore（凍結 IF）** — 状態/世代の抽象ストア IF（file 実装＝`FileStateStore`/`FileGenStore`）。実体（file/Redis）を Phase で差替可能に。 — [ws/src/warehouse_interfaces/warehouse_interfaces/stores.py:26,38](../ws/src/warehouse_interfaces/warehouse_interfaces/stores.py)（凍結）
+- **gen_id** — 世代 ID。全 MCP tool の required 引数で、同一世代外の stale 呼出しを弾く B-3 安全機構。LLM は situation の `gen_id` をそのまま渡す。 — [schemas.py:9-10,128](../ws/src/warehouse_interfaces/warehouse_interfaces/schemas.py)（凍結）/ [architecture/15-mcp-platform.md:135](architecture/15-mcp-platform.md)
+- **KNOWN_LOCATIONS（凍結）** — 既知 location 名の frozenset。未登録名は Command Compiler / nav 側が raise（fail-closed）。 — [ws/src/warehouse_interfaces/warehouse_interfaces/locations.py:23](../ws/src/warehouse_interfaces/warehouse_interfaces/locations.py)（凍結）
+- **Policy Gate** — LLM のコマンドを直接実行せず、known_location / バッテリー / stale / 重複を検査して accept/reject する L2 Governance の関門。安全 unit 必須。 — [architecture/15-mcp-platform.md:263](architecture/15-mcp-platform.md) / [architecture/12-infrastructure-common.md:349](architecture/12-infrastructure-common.md)（code: `warehouse_mcp_server/policy_gate.py`）
+- **Emergency Guardian** — 距離・バッテリー・blocked を独立監視し Nav2 cancel 等で介入する Hard-RT 安全ネット（deadlock 10s、`/amcl_pose` 直購読で State Cache 非依存）。 — [architecture/12-infrastructure-common.md:181](architecture/12-infrastructure-common.md)
+- **twist_mux** — `/bot{n}/cmd_vel` の多重 publisher を優先度制御で1本化する ROS 2 公式ノード（emergency prio 最上位）。 — [architecture/15-mcp-platform.md:379-404](architecture/15-mcp-platform.md)
+- **collision_monitor** — Nav2 の `nav2_collision_monitor`。twist_mux 上流に挿入し breach で PolygonStop（近接停止トポロジ）。 — [architecture/12-infrastructure-common.md:522](architecture/12-infrastructure-common.md) / [productization/01-commercial-box-map.md:69](productization/01-commercial-box-map.md)
+- **R-26** — 「テスト戦略の欠如」リスク。Emergency Guardian / Policy Gate / firmware Layer-0 クランプは**ユニットテスト必須**とする規律。 — [shared/07-research-notes.md:159](shared/07-research-notes.md) / [architecture/16-repository-and-conventions.md:221](architecture/16-repository-and-conventions.md)
+
+## 6. 交通・走行（traffic / navigation）
+
+- **Open-RMF（RMF）** — Mode C の交通管理。Traffic Schedule と Conflict Negotiation で経路ベース衝突予測を担い、LLM を戦略判断に専念させる。 — [mode-c/11c-traffic-mode-c.md:59-61](mode-c/11c-traffic-mode-c.md)
+- **Nav2** — ROS 2 ナビゲーションスタック。map をコストマップ化し「最も安全で効率的な経路」で走行制御する L1 の中核。 — [shared/09-navigation-internals.md:129-159](shared/09-navigation-internals.md)
+
+## 7. transport・観測（Hermes / Langfuse）
+
+- **Hermes Agent** — LLM↔ROS を仲介する MCP プラットフォーム基盤（NousResearch）。provider / tool transport の実装差を吸収する候補で、実行許可・安全判断は所有しない。 — [architecture/15-mcp-platform.md:16,550](architecture/15-mcp-platform.md) / [architecture/13-hermes-setup.md](architecture/13-hermes-setup.md)
+- **Hermes Gateway** — Hermes Agent の**本番運用モード**（`hermes gateway`・ヘッドレス daemon・OpenAI 互換 HTTP API、port 8642）。 — [architecture/15-mcp-platform.md:20-28](architecture/15-mcp-platform.md)
+- **Langfuse** — LLM オブザーバビリティ基盤。Hermes のビルトインプラグインとして環境変数設定のみで全 LLM 呼出しを自動トレースし Phase 4 比較検証に使う。 — [architecture/08-llm-bridge-common.md:301-320](architecture/08-llm-bridge-common.md)
+
+## 8. 契約・プロセス（contract / process）
+
+- **XER0–XER7（integration gates）** — Mode X-ER の実装スライス/受入ゲート列。XER0=docs 設計 / XER1=offline fixture(RoboticsPlan draft) / XER2=Validator+ValidationReport(0 dispatch) / XER3=Visual Resolver / XER4=Task Graph Executor / XER5=Command Compiler / XER6=X-lite E2E / XER7=X-rmf eval。 — [mode-x-er/README.md:85-92](mode-x-er/README.md)
+- **docs-first（docs 中心主義）** — plan/実装/レビューは常に docs を正本とし、docs に無い契約/トピック/スキーマ/しきい値を発明しない規約。引用は「たどれる file:line」で。 — [.claude/rules/docs-first.md:1,8](../.claude/rules/docs-first.md)
+- **worktree** — 1セッション=1 worktree=1ブランチ=1トラックの並列開発単位（`.git` 共有、同一マシンは clone せず worktree）。 — [.claude/rules/parallel-workflow.md:11](../.claude/rules/parallel-workflow.md)
+- **track（トラック）** — 担当領域を示すラベル体系（`track:skeleton` `track:llm-bridge` `track:safety-state` `track:sim` `track:nav-traffic` `track:wo` `track:jetson` `track:firmware` `track:web` `track:docs`）。1トラック=1 epic Issue。 — [.claude/rules/parallel-workflow.md:99](../.claude/rules/parallel-workflow.md)
+- **contract PR** — 凍結契約 `warehouse_interfaces` に触れる PR。`contract` ラベル必須＋マージ前に依存全トラックへ予告し合意を得る（最小・後方互換優先）。 — [.claude/rules/parallel-workflow.md:140](../.claude/rules/parallel-workflow.md)（§4 契約変更プロトコル）
+
+---
+
+> 未登録の canonical anchor（正本 doc がまだ無い語）を見つけたら、**発明せず**に code file:line を暫定 anchor にし、正本 doc 化を doc PR で提案する（[docs-first.md](../.claude/rules/docs-first.md)）。
