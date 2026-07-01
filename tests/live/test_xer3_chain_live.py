@@ -13,10 +13,14 @@ This is a FORERUNNER, NOT closure (Refs #342). The runbook reserves a live e2e t
 Validator on the live ER path for XER6 / X-lite (docs/dev/07-mode-x-er-live-e2e-runbook.md:163:
 "live で Validator まで通す e2e は XER6 の仕事"). This test exercises the chain early to surface
 seam breakage, but does NOT assert acceptance or a specific snap — the live ER pixels are
-model-chosen and there is no live calibration source. It asserts the structural INVARIANTS only:
-a ValidationReport is produced, a ResolutionResult is produced, and the R-26 0-dispatch invariant
-holds (every unresolved target has ``destination is None``; if the report is not accepted,
-``command_candidates == []``).
+model-chosen and there is no live calibration source. It asserts the chain RUNS without raising
+(typed ValidationReport / RoboticsPlanDraft / ResolutionResult come back = a live seam-breakage
+tripwire), plus two best-effort R-26 tripwires: an unresolved target has ``destination is None``
+and a non-accepted report has ``command_candidates == []``. NOTE: on the steered happy path both
+tripwires are often vacuous — no target is unresolved, and ``command_candidates`` is ``[]`` by
+construction when a report is not accepted (report.py:178-179). They are a LIVE tripwire, NOT the
+R-26 source of truth; unconditional R-26 is anchored OFFLINE in
+tests/unit/test_validator_zero_dispatch.py.
 
 A fixture Calibration + location_coords are INJECTED (lifted from tests/unit/test_visual_resolver.py)
 because the live ER call yields no calibration; the resolver thresholds/coords are bridge-local
