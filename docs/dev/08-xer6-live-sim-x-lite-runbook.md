@@ -17,7 +17,7 @@
 | **B. frozen `Command` → Nav2（live sim）** | `Command` を action_map → MCP → Policy Gate → Nav2 Bridge REST に流して sim の bot1/bot2 が動く（`docs/mode-x-er/01-architecture-and-flow.md:188-197`） | **EXISTS**（Mode-A live スタックが同経路を回す。`run-mode-a-live.sh:288`） | human-gate（オペレーターの Docker/Nav2） |
 | **C. live ER → plan（課金）** | 実 `gemini-robotics-er` を呼んで raw plan を得る | **EXISTS・env-gated**。§7 で任意接続 | human-gate（課金 provider call・doc07 §3） |
 
-> **一本線（音声 → ER → Langfuse → Nav2）はまだ繋がっていない**。本書は「B（frozen `Command` → Nav2）」を主線化し、A は offline で組み、C は任意で前置きする。ER leg を Langfuse に乗せる配線は未実装（doc07 §5 honest limit 2 = `docs/dev/07-mode-x-er-live-e2e-runbook.md:189`、`observability.py:77-79` no-op）——観測は本 runbook の scope 外。
+> **一本線（音声 → ER → Langfuse → Nav2）はまだ一本に繋がっていない**。本書は「B（frozen `Command` → Nav2）」を主線化し、A は offline で組み、C は任意で前置きする。ER leg の Bridge-side tracer（`observability.py` `LangfuseTranscriptTracer.record_transcript`）は fail-open span を発火する配線が入った（Lane A / PR #382）が、**live 実 trace の着地検証は human gate #88** のまま（doc07 §5 honest limit 2 = `docs/dev/07-mode-x-er-live-e2e-runbook.md:189`）——観測の live 検証は本 runbook の scope 外。
 
 ---
 
@@ -187,7 +187,7 @@ deploy/dev/run-live-er-smoke.sh           # 課金: tests/live/test_er_handoff_l
 
 1. **`compile_raw_output` は actuation しない**。frozen `Command` を返すだけで、Nav2 dispatch は L2（action_map → MCP → Policy Gate → Nav2 Bridge）の仕事（`pipeline.py:102-103`）。本 runbook はその L2 投入を **オペレーター手順**として記述する——production の自動ループ（cycle 間 state 進行）は未配線（`pipeline.py:110-111`）。
 2. **順序（赤→青）は2 cycle の手動投入**で実現する。`compile_raw_output` は one-shot（ready task のみ）ゆえ、bot1 到達後に再度呼ぶ必要がある（§3 末尾）。連続自動化は caller ループの責務で本 runbook の scope 外。
-3. **観測（Langfuse）は繋がっていない**。ER leg を trace に乗せる配線は no-op 雛形（doc07 §5 honest limit 2 = `docs/dev/07-mode-x-er-live-e2e-runbook.md:189`、`observability.py:77-79`）。デモの観測は本 runbook では扱わない。
+3. **観測（Langfuse）の live 着地は human gate**。ER leg の Bridge-side tracer は fail-open span を発火する配線済（Lane A / PR #382、`observability.py` `LangfuseTranscriptTracer.record_transcript`）だが、**live 実 trace の着地検証は #88 gate**（doc07 §5 honest limit 2 = `docs/dev/07-mode-x-er-live-e2e-runbook.md:189`）。デモの観測 live 検証は本 runbook では扱わない。
 4. **座標 goal / velocity / RMF は対象外**。`compile_raw_output` は KNOWN_LOCATION named destination のみを出し（`pipeline.py:22-24`）、`x_rmf` は `NotImplementedError`（`pipeline.py:126-127`）。座標 variant は Nav2 Bridge 側にあるが（`core.py:168-175`）、XER6 X-lite では使わない。
 5. **これは dev sim**。実機 prod は別ゲート（Emergency Guardian / 0.3 m/s テスト通過後、`.claude/rules/environments.md` §「prod の扱い」）。sim GREEN は実機 GO を意味しない。
 
