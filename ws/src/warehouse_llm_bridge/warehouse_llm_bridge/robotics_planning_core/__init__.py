@@ -23,10 +23,12 @@ gate that judges whether the model OUTPUT is an executable candidate and emits a
 ``ValidationReport`` (``validator`` subpackage; docs/mode-x-er/02-l3-planning-core.md:39-107,
 248,280-346). ``status != accepted`` => 0 command candidates (02:68, 03:93 G1).
 
-What is STILL AHEAD (XER3-XER5): ``Visual Resolver``, ``Task Graph Executor``, ``Command
-Compiler`` (docs/mode-x-er/README.md:88-91; the ``validator.seams`` module declares their
-interface-only extension points — Calibration loader / TaskGraphStore — without implementing
-the stages).
+What is NOW ALSO HERE (XER3-XER5): the ``Visual Resolver`` (pixel -> map -> known-location
+snap), the ``Task Graph Executor`` (``after``-ordered ready tasks), and the ``Command
+Compiler`` (ready tasks + resolved targets -> frozen ``Command``; ``command_compiler``
+subpackage, docs/mode-x-er/02:200-242). STILL AHEAD (XER6): wiring these four stages into
+``pipeline.py`` + live sim (docs/mode-x-er/README.md:88-91; the ``validator.seams`` module
+declares the Calibration loader / TaskGraphStore extension points).
 """
 
 from warehouse_llm_bridge.robotics_planning_core.handoff import (
