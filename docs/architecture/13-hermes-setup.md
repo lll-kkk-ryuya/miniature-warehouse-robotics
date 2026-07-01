@@ -684,3 +684,4 @@ Requires=warehouse-state-cache.service
 - [08-llm-bridge-common](08-llm-bridge-common.md) — system prompt・situation JSON
 - [Mode A/B README](../mode-a/README.md) / [Mode C README](../mode-c/README.md)
 - [06-implementation-phases](06-implementation-phases.md) — Phase 別計画
+- [dev/07-mode-x-er-live-e2e-runbook](../dev/07-mode-x-er-live-e2e-runbook.md) — Mode X-ER live ER → L3 e2e オペレータ runbook。ER 専用 lean gateway は本書の汎用 Gateway とは別に `deploy/dev/run-er-hermes.sh`（port 8643・memory off・隔離 `HERMES_HOME`）で立て、音声は `input_audio` fork `deploy/hermes/er-audio-fork/run-er-gateway.sh` を使う
