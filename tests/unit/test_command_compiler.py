@@ -102,6 +102,11 @@ def test_unresolved_target_skipped_zero_dispatch():
     assert result.command.commands == []
     assert result.compiled == ()
     assert [s.task_id for s in result.skipped] == ["t1"]
+    # Pin the UNRESOLVED gate as individually load-bearing (review finding): assert the skip
+    # REASON, so deleting the compiler's unresolved gate — which would let the None-destination
+    # task fall through to the KNOWN_LOCATIONS gate and be re-caught — turns THIS test red
+    # rather than silently green.
+    assert "unresolved" in result.skipped[0].reason
 
 
 def test_target_absent_from_resolution_skipped():
@@ -123,6 +128,7 @@ def test_mixed_only_resolved_compiles():
     )
     assert result.compiled == ("t1",)
     assert [s.task_id for s in result.skipped] == ["t2"]
+    assert "unresolved" in result.skipped[0].reason  # unresolved gate is load-bearing here too
     assert len(result.command.commands) == 1
     assert result.command.commands[0].destination == KNOWN_A
 
