@@ -50,7 +50,7 @@ class GeminiErAdapter:
 }
 ```
 
-この request は Gemini Robotics-ER へ送る情報の上限である。Nav2 Bridge URL、ROS topic、Jetson service、MCP internal tool name は渡さない。
+この request は Gemini Robotics-ER へ送る情報の上限である。Nav2 Bridge URL、ROS topic、Jetson service、MCP internal tool name は渡さない。ER request assembly（transport 別の凍結形）は本書末尾「## ER request assembly（transport 別・凍結）」を参照。
 
 ## RoboticsPlan Draft 最小形
 
@@ -96,3 +96,18 @@ class GeminiErAdapter:
 | G4 command compile | ready task が既存 `Command` validation を通る | compiler 修正 |
 | G5 X-lite sim | MCP / Policy Gate / Nav2 Bridge まで sim で通る | L2 接続修正 |
 | G6 X-rmf eval | X-rmf が X-lite より有利なタスクで価値を示す | X-rmf defer |
+
+## ER request assembly（transport 別・凍結）
+
+`ErTaskRequest` → provider request の組み立てを **transport 別に凍結**する。transport 選択は `robotics/transport.py` `resolve_audio_transport`（`direct` 既定・恒久 fallback / forked gateway 設定時のみ `hermes`。#388・[README「Transport (index)」](README.md)）。content part の形（`inline_data` / `input_audio` / `image_url`）は **外部 API 仕様であって当方の発明ではない**（doc06 §5:14）。実測根拠は **closed probe #344**（[`06-unfrozen-contract-resolutions.md` §5:11-14](06-unfrozen-contract-resolutions.md)・[`04`:28-29](04-er-input-modalities-and-stt.md)）。既存 direct-image 経路を壊さない **additive**（新 transport は enum 追加・doc06 §5:16）。
+
+**共通**: instruction text = schema 制約（robots ∈ `known_robots`・action ∈ `allowed_actions`・target = detection id・URL/topic/velocity/coordinate 禁止）＋ `transcript`（あれば）。`instruction_audio_ref` / `overhead_image_ref` は **base64 化された bytes の参照**（値は request 組み立て時に解決）。
+
+- **`direct`**（Gemini REST `POST .../models/<er-model>:generateContent`・PROBE-1 実測 HTTP 200・§5:11）:
+  `contents:[{"role":"user","parts":[ {"text": <instruction>}, {"inline_data":{"mime_type":"audio/wav","data":"<base64 ≤20MB>"}}?（audio_ref 時）, {"inline_data":{"mime_type":"image/<fmt>","data":"<base64>"}}?（image_ref 時） ]}]` ＋ `generationConfig:{responseMimeType:"application/json", ...}`。**応答 = direct envelope**（`candidates[].content.parts[].text` の JSON）→ `RawModelOutput(transport="direct")`。
+- **`hermes`**（Hermes OpenAI 互換 `POST /v1/chat/completions`・vision provider 必須）:
+  `messages:[{"role":"user","content":[ {"type":"text","text": <instruction>}, {"type":"image_url","image_url":{"url":"data:image/<fmt>;base64,<...>"}}?（image_ref 時・PROBE-3 実測 200・§5:13）, {"type":"input_audio","input_audio":{"data":"<base64>","format":"wav"}}?（audio_ref 時） ]}]`。**応答 = hermes envelope**（`choices[].message.content` の JSON）→ `RawModelOutput(transport="hermes")`。
+  - **audio-via-Hermes は fork 必須**: unforked Hermes は `input_audio` を **HTTP 400 `unsupported_content_type`**（PROBE-2・§5:12）で弾く。fork（[`deploy/hermes/er-audio-fork/`](../../deploy/hermes/er-audio-fork/)・#357）配備時のみ 200。
+- **fallback（凍結）**: `hermes` を選択したが transport が失敗（audio で unforked 400 / gateway 不通 / 非 200）した場合、**`direct` に fail-safe fallback**（audio/image とも direct は一次経路・§5:8,14）。**shipped default の audio は依然 `direct`**（恒久 fallback・doc06:269）。両 transport は同一 `RoboticsPlanDraft` に正規化される（README:86・L3 Handoff の transport 等価性で担保）。
+
+> 実装: `robotics/adapters/gemini_er.py` `propose_plan` が本節の凍結形で live 送信する（別 PR）。**robotics-grade command 品質 eval と実 gateway 配備・有料 live verify は human gate**（doc04:28 / environments.md `.env` 承認）。
