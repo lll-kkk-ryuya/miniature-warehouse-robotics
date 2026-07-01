@@ -149,13 +149,19 @@ def test_both_transports_produce_the_same_chained_destinations():
     """Transport-equivalence ACROSS the full chain (README:86): direct and hermes raw
     outputs flow to identical resolver destinations, not just an identical draft."""
     dests = []
+    drafts = []
     for raw in (_direct_raw(), _hermes_raw()):
         draft = to_robotics_plan_draft(raw)
+        drafts.append(draft)
         report = PlanValidator().validate(draft.model_dump(), _ctx())
         assert report.permits_dispatch
         result = VisualTaskResolver(_policy()).resolve(draft, _calibration())
         dests.append({t.target_id: t.destination for t in result.targets})
 
+    # Guard: the transport difference is normalized AWAY at the handoff — both raw
+    # envelopes must yield an IDENTICAL draft, so the equal destinations below are not a
+    # coincidence of two different plans happening to map onto the same shelves.
+    assert drafts[0].model_dump() == drafts[1].model_dump()
     assert dests[0] == dests[1] == {"red_box": "shelf_1", "blue_box": "shelf_2"}
 
 

@@ -120,6 +120,13 @@ def test_live_er_chain_handoff_validator_visual_resolver(capsys):
         "expected a ResolutionResult from the Visual Resolver"
     )
 
+    # Non-vacuity tripwire: the resolver maps every detection 1:1 to a target
+    # (resolver.py:158), so a chain that silently drops targets is a live seam breakage.
+    assert len(result.targets) == len(draft.detections), (
+        f"resolver returned {len(result.targets)} targets for {len(draft.detections)} "
+        "detections (expected 1:1 detection->target; seam breakage)"
+    )
+
     # R-26 0-dispatch invariant #1 (Visual Resolver): every unresolved target has NO destination.
     for target in result.targets:
         if target.resolution is Resolution.UNRESOLVED:
