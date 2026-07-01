@@ -42,6 +42,7 @@
 - docs/ 配下にMarkdownで管理
 - 新規ドキュメントは既存の番号体系に従う（00-xx, 01-xx, ...）
 - 短期 handoff / local memory は [local-memory.md](local-memory.md) を参照する（設計正本ではなく、再開用の実行状態メモ）。
+- **docs を追加・追記するとき**: 正本ルート特定 → **双方向リンク**（forward＋backlink）→ `docs/GLOSSARY.md` の正準用語を参照/追補 → `origin/main` で裏取り → #165 行ズレ回避 → 整合ゲート。手順は skill [.claude/skills/docs-authoring/SKILL.md](skills/docs-authoring/SKILL.md)、規約は [.claude/rules/docs-authoring-and-glossary.md](rules/docs-authoring-and-glossary.md)。設計を対話で詰めながら glossary/ADR を書き起こす入口は `/grill-with-docs`（[skills/grill-with-docs/SKILL.md](skills/grill-with-docs/SKILL.md) = [grilling](skills/grilling/SKILL.md)＋[domain-modeling](skills/domain-modeling/SKILL.md)）。skill 自体を書く語彙は [.claude/skills/writing-great-skills/SKILL.md](skills/writing-great-skills/SKILL.md)。用語集の正準は [docs/GLOSSARY.md](../docs/GLOSSARY.md)。
 
 ## LLM支援ルール作成 / プロダクト化構想
 
@@ -84,3 +85,9 @@
 - `docs/mode-a/` - Mode A/B設計（LLM単独交通管理）
 - `docs/mode-c/` - Mode C設計（LLM + Open-RMF、主方針）
 - `.claude/local-memory.md` - Claude Code向けの短期 handoff / 再開メモ
+- `docs/mode-x-er/` - Mode X-ER 設計（Gemini Robotics-ER 視覚タスク司令官）
+- `docs/dev/07-mode-x-er-live-e2e-runbook.md` - ER 専用 Hermes 起動→ER→L3→Langfuse の turnkey live runbook（gateway 8643 / audio fork 8644）
+- `deploy/hermes/er-audio-fork/` - ER 音声 leg 用 fork gateway（`input_audio`・#357。標準 Mode A の 8642 とは別）
+- `docs/GLOSSARY.md` - 正準用語集（単語帳）。`docs/README.md` から索引
+- `docs/adr/` - Architectural Decision Records（hard-to-reverse な決定記録）
+- `.claude/skills/docs-authoring/` + `.claude/rules/docs-authoring-and-glossary.md` - doc 追加・追記の規律（双方向リンク・用語集・裏取り・整合ゲート）

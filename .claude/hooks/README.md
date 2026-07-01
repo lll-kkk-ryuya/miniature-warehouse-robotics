@@ -86,6 +86,23 @@ echo '{"tool_input":{"command":"gh issue create --title x --body short"}}' | .cl
 echo '{"tool_input":{"command":"ls -la"}}' | .claude/hooks/remind-gh-authoring.sh
 ```
 
+## remind-er-live-runbook.sh — Mode X-ER live 実行時の runbook 注意喚起（非ブロッキング）
+
+`PreToolUse(Bash)` で発火し、コマンドが ER live path（`run-er-hermes.sh` / `er-audio-fork` / `run-er-gateway.sh` / `WAREHOUSE_LIVE_ER` / port `8643`・`8644`）に触れる場合に、turnkey runbook [docs/dev/07-mode-x-er-live-e2e-runbook.md](../../docs/dev/07-mode-x-er-live-e2e-runbook.md) と cost / scoped 承認ゲート（[environments.md](../rules/environments.md)）を `additionalContext` として注入する。手作業で Hermes env をつながず runbook に従わせるための advisory。
+
+- **非ブロッキング**: `exit 0` + `additionalContext` のみ＝**実行は止めない**。並列セッションに安全。
+- **fail-open**: `jq` 不在 / JSON parse 失敗 / 非 ER コマンドは無出力で `exit 0`。
+- 有効化は remind-gh-authoring と同様 `PreToolUse` 配列に `Bash` matcher エントリとして併記（**人間が settings.json に配線**・エージェント自己改変禁止）。
+
+### テスト
+
+```bash
+# ER live コマンド → 注意喚起 JSON（additionalContext）を出力
+echo '{"tool_input":{"command":"deploy/dev/run-er-hermes.sh"}}' | .claude/hooks/remind-er-live-runbook.sh
+# 非 ER コマンド → 出力なし・exit 0
+echo '{"tool_input":{"command":"ls -la"}}' | .claude/hooks/remind-er-live-runbook.sh
+```
+
 ## consistency-posttooluse.py — 編集後の docs↔code 整合チェック（PostToolUse, block）
 
 Edit/Write/MultiEdit 直後に `scripts/check_consistency.py` を走らせ、**ERROR レベルの doc↔契約ドリフト**があれば `decision:"block"` + `additionalContext` を返してループを止め、Claude に自己修正させる（WARN は CI/レポート任せ）。設計は [docs/dev/04-consistency-system.md](../../docs/dev/04-consistency-system.md) §4。
@@ -118,6 +135,7 @@ echo '{"cwd":"<repo>","tool_input":{"file_path":"docs/x.md"}}' | python3 .claude
 | permission deny | `.claude/settings.json` permissions | パス単位の read/edit 禁止 |
 | **PreToolUse hook**（block） | `guard-boundaries.py` | main worktree の直接編集（**未配線**・有効化は人間。§「有効化」参照） |
 | **PreToolUse hook**（advisory） | `remind-gh-authoring.sh` | gh issue/pr 作成時の docs-first・テンプレ注意喚起（非ブロッキング・**未配線**） |
+| **PreToolUse hook**（advisory） | `remind-er-live-runbook.sh` | ER live 実行時の runbook / cost・scoped 承認ゲート注意喚起（非ブロッキング・**未配線**） |
 | **PostToolUse hook**（block, local） | `consistency-posttooluse.py` | 編集後の docs↔code **ERROR** ドリフト（`settings.local.json` 配線・ERROR のみ block） |
 | CI ジョブ | `.github/workflows/ci.yml` governance + `consistency` | `contract` ラベル必須・他トラック import 禁止・docs↔code 整合 |
 | pre-commit | `.pre-commit-config.yaml` | lint / format / 秘密鍵検知 + docs↔code 整合 |
