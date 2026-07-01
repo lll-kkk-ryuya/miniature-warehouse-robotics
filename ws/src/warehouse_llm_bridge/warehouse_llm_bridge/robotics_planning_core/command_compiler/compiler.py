@@ -10,7 +10,7 @@ NOT compiled (doc02:37,152,231-233): coordinate goals (unfrozen while the coordi
 contract is), velocity (structurally absent from ``Command``), and ER route / low-level actions.
 ``gen_id`` / ``idempotency_key`` are minted DOWNSTREAM by the Bridge / action_map, never here
 (doc02:230). This module performs NO actuation — it is a pure data transform; dispatch is the
-Bridge -> MCP -> Policy Gate path (XER6 wiring, doc02:20).
+Bridge -> MCP -> Policy Gate path (XER6 wiring; doc02:19).
 """
 
 from __future__ import annotations
