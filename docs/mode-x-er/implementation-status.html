@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Mode X-ER 実装状況 — 想定(planned) vs 現状(main b6c15d3)</title>
+<title>Mode X-ER 実装状況 — 想定(planned) vs 現状(main ad563de)</title>
 <style>
   :root{
     color-scheme: dark;
@@ -123,8 +123,8 @@
 <div class="wrap">
 
 <header class="top">
-  <h1>Mode X-ER 実装状況 — 想定(planned) vs 現状(current on main <code>b6c15d3</code>)</h1>
-  <p class="lead">ER → L3 パイプラインの各 node を、<b>想定(planned)</b> と <b>現状(main <code>b6c15d3</code> に載っているもの)</b>で対比する。結論から言うと、<b>凍結 <code>Command</code> まで到達する offline L3 チェーンは DONE</b>（envelope → handoff → validator → resolver → executor → compiler → <code>pipeline.compile_raw_output</code>）だが、<b>LIVE send（#389）と L2/L1/L0 の actuation（XER6）はまだ main に載っていない</b>。ER の <b>text / image は lean Hermes gateway（8643）経由</b>で通り、<b>audio は Hermes を経由せず DIRECT</b> に行く（下の紫バンド）。本ページは図解（補足資料）で、設計の正本は <code>01</code>〜<code>07</code> / README の .md。</p>
+  <h1>Mode X-ER 実装状況 — 想定(planned) vs 現状(current on main <code>ad563de</code>)</h1>
+  <p class="lead">ER → L3 パイプラインの各 node を、<b>想定(planned)</b> と <b>現状(main <code>ad563de</code> に載っているもの)</b>で対比する。結論から言うと、<b>凍結 <code>Command</code> まで到達する offline L3 チェーンは DONE</b>（envelope → handoff → validator → resolver → executor → compiler → <code>pipeline.compile_raw_output</code>）だが、<b>LIVE send 機構（#389）は main 着地（稼働 cycle からの呼び出し配線は未）／ L2/L1/L0 の actuation（XER6）はまだ main に無い</b>。ER の <b>text / image は lean Hermes gateway（8643）経由</b>で通り、<b>audio は Hermes を経由せず DIRECT</b> に行く（下の紫バンド）。本ページは図解（補足資料）で、設計の正本は <code>01</code>〜<code>07</code> / README の .md。</p>
 </header>
 
 <div class="nav">
@@ -237,12 +237,12 @@
   <div class="p-arrow">▼</div>
 
   <!-- node 7 -->
-  <div class="pnode st-pending">
+  <div class="pnode st-done">
     <div class="phead">
       <div class="t"><span class="lyr" style="background:var(--box)">L4-adapter</span>⑦ LIVE ER send <span style="font-weight:400;color:var(--muted);font-size:11.5px">build_provider_request + HttpErTransportSender + HERMES→DIRECT fallback</span></div>
-      <span class="badge b-pending">pending</span>
+      <span class="badge b-done">done</span>
     </div>
-    <div class="s"><b>NOT ON MAIN</b>: <code>gemini_er.py</code> live path raises <code>NotImplementedError</code> (deferred #344). Real machinery only in OPEN PR #389.</div>
+    <div class="s"><b>ON MAIN（#389・2026-07-02）</b>: <code>gemini_er.py</code> に <code>build_provider_request</code> + <code>HttpErTransportSender</code> + <code>_live_send</code> + HERMES→DIRECT fallback + <code>WAREHOUSE_LIVE_ER</code> gate（未設定で RuntimeError）。offline HTTP unit 済。ただし実 HTTP は gate 越し（有料）で、<b>稼働 Bridge cycle からの呼び出しは未接続</b>（XER6/wiring）。</div>
   </div>
 </div>
 
@@ -365,23 +365,23 @@
 <h2>要旨（DONE / partial / pending の切り分け）</h2>
 <div class="grid2">
   <div class="node st-done"><div class="t">DONE（main・offline 検証済み）<span class="badge b-done">done</span></div><div class="s">
-    ① input lane・② lean Hermes ER gateway(8643)・③ audio DIRECT fail-safe・⑤ transport 選択・⑥ adapter offline seam・⑧ handoff・⑨ validator(R-26)・⑪ task graph executor・⑬ <code>pipeline.compile_raw_output</code>（full L3 chain → 凍結 <code>Command</code>）。<b>offline で Command まで連続して通る。</b>
+    ① input lane・② lean Hermes ER gateway(8643)・③ audio DIRECT fail-safe・⑤ transport 選択・⑥ adapter offline seam・⑦ LIVE ER send 機構(#389・gated)・⑧ handoff・⑨ validator(R-26)・⑪ task graph executor・⑬ <code>pipeline.compile_raw_output</code>（full L3 chain → 凍結 <code>Command</code>）。<b>offline で Command まで連続して通る。</b>
   </div></div>
   <div class="node st-partial"><div class="t">partial（一部 main・残り DEFER/TODO）<span class="badge b-partial">partial</span></div><div class="s">
     ④ audio fork gateway(8644)＝TARGET のみ・⑩ Visual Resolver（object-class clause DEFER）・⑫ Command Compiler（<code>x_rmf</code> half DEFER #346）。
   </div></div>
 </div>
 <div class="node st-pending"><div class="t">pending / not-on-main<span class="badge b-pending">pending</span></div><div class="s">
-  ⑦ LIVE ER send（<code>NotImplementedError</code>・deferred #344・実体は OPEN PR #389 のみ）・⑭ L2 MCP/Policy Gate（X-ER が Command を運ばない・XER6）・⑮ L1 Nav2/RMF goal dispatch・⑯ L0 actuation。<b>live-send と L2/L1/L0 の actuation は main に無い。</b>
+  ⑭ L2 MCP/Policy Gate（X-ER が Command を運ばない・XER6）・⑮ L1 Nav2/RMF goal dispatch・⑯ L0 actuation。<b>live-send 機構は #389 で main 着地（呼び出し配線は未接続）／ L2/L1/L0 の actuation は main に無い。</b>
 </div></div>
 
 <div class="safe">
-  <b>結論</b>: 想定パイプラインのうち <b>「見る・理解する・計画する → 凍結 Command」までの offline L3 チェーンは main で DONE</b>。しかし <b>実際にロボットを動かす経路（LIVE send #389 + L2 Policy Gate + L1 Nav2 + L0 actuation = XER6）は main に載っていない</b>。現状の X-ER は <b>1 発の offline pipeline</b>であり、running Bridge cycle からの呼び出し・実 actuation はまだ無い。<span class="dref">dev/07:188 / 06 §5</span>
+  <b>結論</b>: 想定パイプラインのうち <b>「見る・理解する・計画する → 凍結 Command」までの offline L3 チェーンは main で DONE</b>。<b>LIVE send 機構（#389）は main 着地</b>。しかし <b>実際にロボットを動かす経路（それを呼ぶ稼働 cycle + L2 Policy Gate + L1 Nav2 + L0 actuation = XER6）はまだ main に無い</b>。現状の X-ER は <b>1 発の offline pipeline</b>であり、running Bridge cycle からの呼び出し・実 actuation はまだ無い。<span class="dref">dev/07:188 / 06 §5</span>
 </div>
 
 <footer>
   <p>このページは <code>docs/mode-x-er/implementation-status.html</code>（自己完結ダークモード図解・補足資料）。設計の正本は <a href="07-implementation-status.md">07 implementation-status</a> ＋ <a href="01-architecture-and-flow.md">01</a> / <a href="02-l3-planning-core.md">02</a> / <a href="03-er-adapter-skeleton.md">03</a> / <a href="06-unfrozen-contract-resolutions.md">06</a> / <a href="README.md">README</a>。関連図解: <a href="mode-x-er-explainer.html">mode-x-er-explainer.html</a>。外部 CDN / JS / 画像に依存しない単一 HTML。</p>
-  <p>生成 2026-07-02・対象 origin/main b6c15d3・出典は各 node の file:line（実コードで裏取り済）。</p>
+  <p>生成 2026-07-02・対象 origin/main ad563de・出典は各 node の file:line（実コードで裏取り済）。</p>
 </footer>
 
 </div>
