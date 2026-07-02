@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import base64
 import logging
+import os
 from collections.abc import Callable, Mapping
 from typing import Protocol, runtime_checkable
 
@@ -46,7 +47,14 @@ OfflinePayload = Mapping[str, object] | Callable[[ErTaskRequest], Mapping[str, o
 BlobLoader = Callable[[str], bytes]
 
 _DEFAULT_AUDIO_MIME = "audio/wav"  # PROBE-1/2 froze wav (doc06 §5:11-12)
-_DEFAULT_IMAGE_MIME = "image/png"  # PROBE-3 used a data:image/png url (doc06 §5:13)
+# doc03:107/109 freeze the image mime as ``image/<fmt>`` (format-dependent), but ``ErTaskRequest``
+# carries NO format hint (``er_task.py:38`` ``overhead_image_ref`` is an opaque ref — no mime/ext).
+# Only ``image/png`` is measurement-backed (PROBE-3 data:image/png, doc06 §5:13,147; and the direct
+# single-image spike, vla-access-and-runtime-spike.md:26), so png is the sole probed value here.
+# HONEST GAP: deriving ``<fmt>`` from a real format hint (the live harness does this from the file
+# extension, tests/live/test_er_handoff_live.py:77) is a follow-up; do NOT silently relabel a
+# non-png frame as png beyond this measured default.
+_DEFAULT_IMAGE_MIME = "image/png"
 
 # Instruction schema constraints handed to ER (mirrors tests/live/_er_live_client.py so the live
 # request shape is identical). Robots/actions/target are constrained; no URL/topic/velocity/coord.
@@ -87,6 +95,13 @@ def build_provider_request(
 
     Audio/image refs are included only when the ref is present AND a ``load_blob`` resolver is
     given (the ref -> bytes resolution is the caller's; the SHAPE is frozen here).
+
+    RECONCILE: ``transport`` DOES key request assembly here (and the L4 fail-safe fallback in
+    ``_live_send``) — that is an L4 wire/implementation choice (the same box picks ``hermes|direct|
+    worker`` behind one interface, productization/01:52). The "NEVER an execution-branch key" rule
+    on :class:`Transport` (``enums.py`` / ``transport.py``, doc03:75) scopes to DOWNSTREAM L3
+    policy / L2 safety gating (a safety-gate box's transport is ``n/a``, productization/01:53), NOT
+    to L4 request assembly. So keying on ``transport`` here is consistent with that prohibition.
     """
     text = _instruction_text(request)
     if transport is Transport.DIRECT:
@@ -208,14 +223,14 @@ class GeminiErAdapter:
         """Live send on the selected transport; a hermes failure falls back to direct (fail-safe)."""
         assert self._sender is not None
         transport = self._transport
+        # Build the request OUTSIDE the try: a build/load_blob/base64/assembly error is a bug in our
+        # request construction and MUST propagate — it must never be masked as a "transport failure"
+        # and turned into a silent direct fallback + a second billed call. Only the network send()
+        # is guarded for the hermes -> direct fail-safe.
+        provider_request = build_provider_request(transport, request, load_blob=self._load_blob)
         try:
-            envelope = self._sender.send(
-                transport=transport,
-                provider_request=build_provider_request(
-                    transport, request, load_blob=self._load_blob
-                ),
-            )
-        except Exception as exc:  # noqa: BLE001 — hermes failure -> direct fail-safe (doc03 fallback)
+            envelope = self._sender.send(transport=transport, provider_request=provider_request)
+        except Exception as exc:  # noqa: BLE001 — hermes SEND failure -> direct fail-safe (doc03)
             if transport is Transport.DIRECT:
                 raise  # direct is the last resort; nothing to fall back to
             log.warning(
@@ -223,12 +238,9 @@ class GeminiErAdapter:
                 exc,
             )
             transport = Transport.DIRECT
-            envelope = self._sender.send(
-                transport=transport,
-                provider_request=build_provider_request(
-                    transport, request, load_blob=self._load_blob
-                ),
-            )
+            # Rebuild for direct outside a try -> a direct build error also propagates (no masking).
+            direct_request = build_provider_request(transport, request, load_blob=self._load_blob)
+            envelope = self._sender.send(transport=transport, provider_request=direct_request)
         return RawModelOutput(
             transport=transport.value,
             provider=ProviderType.ER.value,
@@ -238,8 +250,10 @@ class GeminiErAdapter:
 
 
 class HttpErTransportSender:
-    """Real HTTP :class:`ErTransportSender`. Makes a REAL, BILLED provider call — use ONLY behind an
-    env gate (``WAREHOUSE_LIVE_ER=1``) + a present key.
+    """Real HTTP :class:`ErTransportSender`. Makes a REAL, BILLED provider call, so ``send()``
+    ENFORCES an operator/cost gate: it raises ``RuntimeError`` unless ``WAREHOUSE_LIVE_ER=1`` is set
+    in the environment (the gate is checked before any request is built or sent — a stray ``.send()``
+    cannot fire a billed call). A present provider key is also required.
 
     - ``direct`` -> Gemini REST ``.../models/<model>:generateContent`` (``x-goog-api-key``).
     - ``hermes`` -> the ER Hermes gateway ``<base_url>/v1/chat/completions`` (``Authorization: Bearer``
@@ -268,6 +282,13 @@ class HttpErTransportSender:
     def send(
         self, *, transport: Transport, provider_request: Mapping[str, object]
     ) -> Mapping[str, object]:
+        # Operator/cost gate (checked first: no request is built or sent unless armed). This is the
+        # enforcement the docstring promises — a stray .send() must not fire a billed provider call.
+        if os.getenv("WAREHOUSE_LIVE_ER") != "1":
+            raise RuntimeError(
+                "HttpErTransportSender.send() makes a REAL, BILLED provider call; set "
+                "WAREHOUSE_LIVE_ER=1 to arm the live ER path (operator/cost gate, environments.md)."
+            )
         import json
         import urllib.request
 
