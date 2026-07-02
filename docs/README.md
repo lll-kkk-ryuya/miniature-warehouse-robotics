@@ -1,6 +1,7 @@
 # ドキュメントマップ
 
 > 📍 **プロジェクト現況**は [STATUS.md](STATUS.md)（随時更新の living doc）。
+> 📖 **用語の正本**は [GLOSSARY.md](GLOSSARY.md)（docs-authoring 単語帳：各語の 1 行定義＋検証済み canonical anchor。doc/Issue/PR を書く前に参照）。
 
 ## 構成
 

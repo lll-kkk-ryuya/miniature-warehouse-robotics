@@ -5,6 +5,8 @@ description: Interview the user relentlessly, one question at a time, to stress-
 
 Interview me relentlessly about every aspect of this plan until we reach a shared understanding. Walk down each branch of the design tree, resolving dependencies between decisions one-by-one. For each question, give your **recommended** answer — a grilling proposes, it does not merely quiz.
 
+Adapted from Matt Pocock's `grilling` (<https://github.com/mattpocock/skills>) to this repo's docs-first conventions.
+
 Ask **one question at a time**, waiting for my answer before the next. Asking several at once is bewildering.
 
 If a question can be answered by reading the codebase or docs, read them instead of asking. In this repo the answer usually lives in `docs/` (the source of truth): verify it against `origin/main` (`git show origin/main:<path>`), never a stale branch or memory ([docs-first.md](../../rules/docs-first.md) — 引用は必ずたどれる実ファイル:行で).
