@@ -152,3 +152,12 @@ cycle:
 > **キャラLLM パラメータ**（`enabled` / `model: opus` / `max_tokens: 60` / `negotiation_timeout_sec` / `max_turns_per_bot`）は doc14 の設計パラメータで、現状どの config にも未定義（Mode A メイン回の実装時に config 化）。
 
 > **位置づけ補足**: 動画的には **Mode A がメイン回**（LLMがminicarを動かしてみたの主役）、Mode C は**実用検証回**（Open-RMFというチートを使うとこんなに上手く動く）。技術主方針としては Mode C を採用。
+
+## adr/ — 決定記録（Architectural Decision Records）
+
+hard-to-reverse な設計判断とその理由を `NNNN-slug.md` で記録する（設計 doc の `NN-xx` とは別クラス）。索引・フォーマット・判定は [adr/README](adr/README.md) と [ADR-FORMAT](../.claude/skills/domain-modeling/ADR-FORMAT.md)。決定を対話で詰めながら書き起こす入口は `/grill-with-docs`。
+
+| ファイル | 内容 |
+|---------|------|
+| [adr/README](adr/README.md) | ADR 一覧・命名・いつ起こすか（3条件）・retrospectives との違い |
+| [0001-adopt-grill-with-docs-and-canonical-glossary](adr/0001-adopt-grill-with-docs-and-canonical-glossary.md) | docs authoring 規律として grill-with-docs skill 群＋単一正準 `docs/GLOSSARY.md`＋ADR 実践を採用 |
