@@ -537,7 +537,7 @@ rclpy
 
 ### ER audio/transcript leg の観測（Mode X-ER・別トレーサ・既定 OFF）
 
-> 本節までの Langfuse 設計は**司令官ターン**の trace（Mode A/C）である。**Mode X-ER の ER audio/transcript leg** はこれとは別の fail-open トレーサ `LangfuseTranscriptTracer`（[`../../ws/src/warehouse_llm_bridge/warehouse_llm_bridge/robotics/observability.py`](../../ws/src/warehouse_llm_bridge/warehouse_llm_bridge/robotics/observability.py):68）が担う。skeleton ではなく**実装済みの fail-open トレーサ**だが、**既定 `enabled=False` が純 no-op**（langfuse に一切触れない・`observability.py:85-107`）＝配線は明示 opt-in。ER leg を Langfuse に載せる end-to-end はまだ配線されておらず **human-gate**（operator runbook [`../dev/07-mode-x-er-live-e2e-runbook.md`](../dev/07-mode-x-er-live-e2e-runbook.md) §0 の Tier「T-LIVE ER→Langfuse」）。ER の live 送信自体（`gemini_er.propose_plan` の live path）は #344 で defer 中で **pending #344/#389（main 未マージ）**。
+> 本節までの Langfuse 設計は**司令官ターン**の trace（Mode A/C）である。**Mode X-ER の ER audio/transcript leg** はこれとは別の fail-open トレーサ `LangfuseTranscriptTracer`（[`../../ws/src/warehouse_llm_bridge/warehouse_llm_bridge/robotics/observability.py`](../../ws/src/warehouse_llm_bridge/warehouse_llm_bridge/robotics/observability.py):68）が担う。skeleton ではなく**実装済みの fail-open トレーサ**だが、**既定 `enabled=False` が純 no-op**（langfuse に一切触れない・`observability.py:85-107`）＝配線は明示 opt-in。ER leg を Langfuse に載せる end-to-end はまだ配線されておらず **human-gate**（operator runbook [`../dev/07-mode-x-er-live-e2e-runbook.md`](../dev/07-mode-x-er-live-e2e-runbook.md) §0 の Tier「T-LIVE ER→Langfuse」）。ER の live 送信自体（`gemini_er.propose_plan` の live path）は **#344 = probe CLOSED / live-send は #389 が pending（main 未マージ）**。
 
 ## References
 
