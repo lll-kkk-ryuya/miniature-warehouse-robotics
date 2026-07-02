@@ -32,7 +32,7 @@ description: Diagnose a runtime bug by building a tight, red-capable, determinis
 
 ## Phase 5: 正しい seam に回帰テスト
 
-根因を**凍結契約の正しい seam**で固定する回帰 unit を書く。浅い実装結合テスト・tautological test にしない（[doc20 §2 test anti-pattern](../../../docs/architecture/20-dev-quality-and-testing.md) / doc16 §11）。**正しい seam が無いこと自体が finding**＝浅いテストで埋めず flag する。
+根因を**凍結契約の正しい seam**で固定する回帰 unit を書く。浅い実装結合テスト・tautological test にしない（[doc20 §9 test anti-pattern](../../../docs/architecture/20-dev-quality-and-testing.md) / doc16 §11）。**正しい seam が無いこと自体が finding**＝浅いテストで埋めず flag する。
 
 ## Phase 6: 掃除 + post-mortem
 
@@ -41,4 +41,4 @@ description: Diagnose a runtime bug by building a tight, red-capable, determinis
 ## 完了ゲート（PR に貼る）
 
 - **red→green の 1 コマンドとその出力**を PR 本文に貼る（docs-first traceable）。
-- 回帰 unit が root cause を捉える（**mutation で確認**＝doc20 §2）。
+- 回帰 unit が root cause を捉える（**mutation で確認**＝doc20 §9）。

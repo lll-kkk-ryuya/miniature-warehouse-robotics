@@ -32,7 +32,7 @@ diff を次に照らす。**hard violation（マージブロッカー）**は太
 ## 軸2: Spec（Issue の DoD を忠実に満たすか）
 
 - 対象 Issue の **受け入れ条件 (DoD)** を [issue-and-pr-authoring.md §2](../../rules/issue-and-pr-authoring.md) の形で取り出し、diff が各項を満たすか**一つずつ**確認する。
-- **設計正本**（docs リンク）と diff が一致するか。DoD にある安全 unit（R-26）が実在し、mutation で赤くなるか（doc20 §2）。
+- **設計正本**（docs リンク）と diff が一致するか。DoD にある安全 unit（R-26）が実在し、mutation で赤くなるか（doc20 §9）。
 
 ## 集約（再ランクしない）
 
