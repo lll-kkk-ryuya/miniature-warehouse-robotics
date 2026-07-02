@@ -47,3 +47,12 @@
 | dev / stg / prod を切替 | `WAREHOUSE_ENV` + `config/<env>/`（ブランチではない） |
 | 他セッションへ連絡 | GitHub Issue / PR コメント（先頭に worktree タグ） |
 | 環境を昇格 | 同一 main コミットを対象環境 config でデプロイ |
+
+## 5. 破壊的 git 操作の境界（advisory hook の docs-first 源）
+
+cleanup（[parallel-workflow.md §7.3](parallel-workflow.md)）で**正当な**破壊的 git を使う一方、**復元不能**な操作は避ける。sanctioned と危険を分ける:
+- **sanctioned（対象外）**: `git reset --hard origin/<ref>`（worktree の remote 再同期）・`--force-with-lease`（feature ブランチの安全 force）・`git branch -d/-D`（merged 掃除）・`git push origin --delete <branch>`。
+- **危険（避ける／意図確認）**: `git reset --hard`（remote ref 以外＝作業/ローカルコミット喪失）・`git clean -f`（未追跡を git 復元不能に削除）・`git checkout .` / `git restore .`（作業ツリー全体破棄）・`git push --force`（lease 無し＝他者の push 上書き）。
+- **main 直**: `main` への直 push / 直編集は禁止（統合専用＝§1 / `.claude/hooks/guard-boundaries.py`）。
+
+この境界を機械が助言するのが非ブロッキング advisory hook **`.claude/hooks/guard-dangerous-git.py`**（[hooks/README](../hooks/README.md)）。本節がその docs-first 源（rule→advisory→CI/branch-protection の多層防御）。
