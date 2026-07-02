@@ -101,6 +101,7 @@ docs/
 | [04-er-input-modalities-and-stt](mode-x-er/04-er-input-modalities-and-stt.md) | ER の入力モダリティ（audio 直受け）・STT の要否・ER 単体時の Fusion 必要性 |
 | [05-operator-feedback-and-voice-response](mode-x-er/05-operator-feedback-and-voice-response.md) | 拒否/要確認/緊急を「どの箱の・どの理由か」音声で人へ返す **L4 Operator Feedback Box**（新 sub-box・出力）＋図解 |
 | [06-unfrozen-contract-resolutions](mode-x-er/06-unfrozen-contract-resolutions.md) | 未凍結7ブロッカーの凍結/延期判定（FREEZE-NOW / DEFER / NEEDS-PROBE）＋ contract PR ロードマップ。**transport 判定（§5＋補遺）＝音声/画像/text の Hermes vs direct 実測結果**の正本 |
+| [07-implementation-status](mode-x-er/07-implementation-status.md) | **ER→L3 実装ステータス（想定 vs 現状 on main）**＋図解 [implementation-status.html](mode-x-er/implementation-status.html)。offline チェーンは frozen Command まで完成・live-send(#389)/L2-L1-L0 作動(XER6) 未着地。全 file:line 裏取り |
 | [dev/07 live runbook](dev/07-mode-x-er-live-e2e-runbook.md) | Mode X-ER live ER→L3→Langfuse 実走 operator runbook（gateway 起動・preflight・課金 gate・scoped 承認文言・honest limits。設計は本 mode-x-er/、live 手順は dev/ 側） |
 | [deploy/hermes/er-audio-fork/](../deploy/hermes/er-audio-fork/) | **ER audio-via-Hermes `input_audio` fork パッケージ**（#357）＋ `hlf-g0-langfuse` Option-D（#360）の配備成果物。`apply-fork.sh` / `run-er-gateway.sh` / patch。**TARGET=default-Hermes**（fork 経由で audio も Hermes）／ **CURRENT（shipped）=audio は direct**（fork は未 productionize・direct は恒久 fallback。doc `mode-x-er/06` §5 補遺:263-271） |
 

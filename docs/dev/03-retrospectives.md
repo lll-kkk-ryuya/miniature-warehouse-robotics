@@ -31,3 +31,14 @@
 - **#4 の中核未実装**: LLM Bridge 本体（司令官サイクル）+ Hermes クライアント + nav2_bridge は stub。「AI が運転」ループは未接続。次の最優先スライス＝司令官サイクル接続（[doc08 §同時発火制御](../architecture/08-llm-bridge-common.md) / [STATUS 次の山](../STATUS.md)）。
 - **Langfuse スコア**（#6 wo）/ **character LLM**（doc14、新規 epic）。
 - **共有所有者表・additive-first・hand-off 予告**のルール明文化（本サイクルで `.claude/rules/` に反映）。
+
+## サイクル（2026-07-02）: Matt-skills 導入 + docs authoring 規律 + 一括マージ
+
+**この回の成果**: Matt Pocock skills を適応した docs authoring 規律（grill-with-docs / domain-modeling / writing-great-skills / code-review / diagnosing-bugs / implement / session-handoff）＋ `docs/GLOSSARY.md` ＋ `docs/adr/` ＋ advisory hook 群を #391/#393/#395 で main へ。ER→L3 実装状況の可視化（[mode-x-er/07 implementation-status](../mode-x-er/07-implementation-status.md)）に着手。
+
+### 教訓と反映先
+
+| # | 観測（実際に起きたこと） | 対策 | 反映先 |
+|---|---|---|---|
+| L8 | 新規 `.claude/hooks/*.py`（`guard-dangerous-git.py`）が **ruff format 未適用**で CI `Ruff + pytest`（`ruff format --check`）を落とした。ruff の format スコープは `ws/src` だけでなく **`.claude/hooks/*.py` も含む**（~302 files 対象）。`ruff check`（lint）は緑でも format ずれは別途落ちる。 | `.claude/hooks/` に Python を足したら push 前に **`ruff format`** を必ずかけ、CI と同じ **`ruff format --check`** をローカルで通す。 | 本 doc / [doc20 §3 Lint/Format](../architecture/20-dev-quality-and-testing.md) / [hooks/README](../../.claude/hooks/README.md) |
+| L9 | stacked PR の親（#393）を **`gh pr merge --delete-branch`** で merge したら、子 PR（#394・base=親ブランチ）が GitHub に**自動 CLOSE**され（base ブランチ削除で close 扱い・**reopen 不可・retarget 不可**）、作り直しになった。 | stacked PR は **①子を先に merge**、または **②親 merge 後に子ブランチへ `git merge origin/main` で reconcile（衝突解決）→ main 宛の新 PR を作り直す**。親を `--delete-branch` で消す前に子の扱いを決める。squash 故に子は親 squash commit を ancestor に持たない（[§7.3 squash 掃除](../../.claude/rules/parallel-workflow.md)と同根の落とし穴）。 | 本 doc / [parallel-workflow.md §7.3](../../.claude/rules/parallel-workflow.md) / [merge-and-communication.md §3](../../.claude/rules/merge-and-communication.md) |

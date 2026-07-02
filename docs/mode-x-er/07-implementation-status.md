@@ -1,0 +1,55 @@
+# 07 Mode X-ER 実装ステータス（想定 vs 現状・ER→L3）
+
+> **目的**: Mode X-ER の「ER（Gemini Robotics-ER）→ L3 → frozen Command → L2/L1/L0」パイプラインが、**設計 docs が想定する完成形**に対して **`origin/main`（`b6c15d3`）で今どこまで実装・検証されているか**を、実コードの file:line で裏取りして可視化する。図解版は [implementation-status.html](implementation-status.html)（[mode-x-er-explainer.html](mode-x-er-explainer.html) と同スタイル）。
+> **正本の切り分け**: 「想定」= 設計 docs（[01](01-architecture-and-flow.md)/[02](02-l3-planning-core.md)/[03](03-er-adapter-skeleton.md)/[04](04-er-input-modalities-and-stt.md)/[06](06-unfrozen-contract-resolutions.md)）。「現状」= main の実コード＋テスト。両者がズレたら**コードが真**（本 doc は現状の記録であり、設計正本を上書きしない）。
+> 生成 2026-07-02・対象 `origin/main b6c15d3`。live 手順は [dev/07 runbook](../dev/07-mode-x-er-live-e2e-runbook.md)。
+
+## 総括（どこまで終えているか）
+
+- **offline の ER→L3 チェーンは「frozen Command まで」完成・テスト済**。手組みの `RawModelOutput` が Handoff → Validator（R-26 0-dispatch）→ Visual Resolver → Task Graph Executor → Command Compiler を通り、**本物の `warehouse_interfaces.schemas.Command`** に着地する（`pipeline.compile_raw_output`＝[pipeline.py:89-150](../../ws/src/warehouse_llm_bridge/warehouse_llm_bridge/robotics_planning_core/pipeline.py)）。ステージ unit 計 **~63 本が緑**（python3.12。host `python3`=3.7 は `frozenset[str]` で落ちる）。
+- **本来の完成形（実 ER inside/beside Hermes → live Command → L2 MCP/Policy Gate → Nav2/RMF 作動）は未達**。L4 アダプタの **live-send は main で `NotImplementedError`**（`#344` に defer・実体は未マージ PR #389 のみ）。frozen Command を L2 以降へ運ぶ X-ER テストは存在しない（＝XER6 が PENDING）。
+- 要するに: **transport の「選択」＋ offline L3 全チェーン＝実装済み**、**transport の「実行」（live send）と L2/L1/L0 作動＝設計のみ / main 未着地 / 未実走**。
+
+## 想定 vs 現状マトリクス（file:line 裏取り）
+
+| ステージ | 想定（設計 doc） | 現状 | 主な根拠（file:line） | ギャップ |
+|---|---|---|---|---|
+| **L4 ER-in-Hermes 境界**（text/image=8643, audio=direct） | text+image は専用 lean Hermes（8643, OpenAI互換）経由、audio は direct（vanilla Hermes は input_audio に 400）。audio-through-Hermes fork(8644) は将来 target（doc06 §5） | **PARTIAL** | `deploy/dev/run-er-hermes.sh:2-8,15,23`・`config.lean.yaml:1-7`（gemini-robotics-er-1.6-preview）・`deploy/hermes/er-audio-fork/`・PROBE-2 400=`doc06:159` | text/image は inside-Hermes で完了。**audio は direct が shipped**（fork 8644 は probe target のみ）＝「ER inside Hermes」は text/image で真・audio で偽 |
+| **L4 adapter: transport 選択 + offline seam** | `propose_plan(ErTaskRequest)→RawModelOutput`、`resolve_audio_transport`（fail-safe DIRECT）、observation-only enums | **DONE** | `transport.py:29-58`・`adapters/enums.py:23-40`・`er_task.py:31-73`・`gemini_er.py:39-75`（offline seam）。25 offline tests | なし（選択面のみ。実行ではない） |
+| **L4 adapter: LIVE-SEND 実行** | frozen per-transport 組立 + HTTP sender + HERMES→DIRECT fail-safe（doc06 §5 tail:277-279） | **NOT-ON-MAIN** | main に `build_provider_request`/`ErTransportSender`/`HttpErTransportSender`/`_live_send` は **0 hit**。live path は `NotImplementedError`。実体は PR **#389**（OPEN・MERGEABLE・commit `2f72f45` は HEAD の ancestor でない） | main 上に実 live-send の**カバレッジゼロ**。live path は NotImplementedError を返すのみ |
+| **知覚レーン + STT + observability** | ER critical lane ∥ out-of-band STT（レイテンシ非追加・fail-open）、Bridge 所有 Langfuse trace（deterministic seed） | **DONE** | `perception_lanes.py:48-125`・`observability.py:88-147`（`LangfuseTranscriptTracer` は実 fail-open span・既定 `enabled=False` no-op＝#382/`75f6af3` で旧 no-op を置換）。11 offline tests | `HermesTranscriber` の実 HTTP path・`JsonlTranscriptSink` の書込 path は offline unit なし（live-gated のみ）。実 Langfuse 着地は #88 human gate |
+| **L3 Validator（0-dispatch + ValidationReport 語彙）** | `validate(raw,ctx)→ValidationReport`、status≠accepted→0 dispatch、正確に 9 code、注入式 PlanPolicy、反復サイクル検出 | **DONE** | `validator.py:90`・`report.py:69-87`（**厳密に 9 code**）・`report.py:163-181`（3層 0-dispatch double-guard・frozen）・`validator.py:55-84`（反復 Kahn）。53 tests | `normalized_plan` は意図的 defer stub（doc02:346）＝下流の責務 |
+| **L3 Visual Resolver（pixel→map→snap）** | `resolve(plan,calibration)→ResolutionResult`、3×3 homography・valid-polygon・最近傍 KNOWN_LOCATION snap（注入半径）・座標ゴール禁止 | **PARTIAL** | `resolver.py:58-74`(homography・w≤0 fail-closed)・`:77-102`(polygon)・`:105-127`(snap)・`models.py:81-94`(unresolved→None)。19 tests・`pipeline.py:147` で wire | doc02:150 の「距離 **かつ** object class」で snap のうち **object-class 節が defer**（`# TODO` `resolver.py:192-194`・`Detection.color` 未使用） |
+| **L3 Task Graph Executor** | 6-state・自作 runtime state（NetworkX なし）・after 順 ready_tasks・二重/重複/サイクル guard・swappable store・zero actuation | **DONE** | `states.py:30-38`・`executor.py:84-146`(ready_tasks)・`:115-127`(dedup)。17 tests・`pipeline.py:148-149` で wire | doc-drift のみ（`executor.py:9-11` の「pipeline に wire しない」注記が XER6 後 stale） |
+| **L3 Command Compiler（XER5）** | `WarehouseNavCompiler` が resolved task を frozen `Command` へ・0-dispatch skip・1:1 audit・gen_id/速度/座標なし・`ExecutionProfile` x_lite/x_rmf | **PARTIAL** | `compiler.py:95-134`（実 `warehouse_interfaces.schemas.Command/CommandItem` を構築）・`:113-130`(0-dispatch skip)・`:79-83`(x_rmf は NotImplementedError)。`pipeline.py:150` で wire。42+ tests | **x_rmf 半分が defer**（#346・`RmfTaskCompiler` は設計/stub のみ）。doc-drift（`__init__.py:6`/`CLAUDE.md:6` の「wire しない」注記が stale） |
+| **L3 pipeline/handoff 配線** | 常在 Handoff seam が L4 raw を決定論的 Validator 入力へ正規化（fail-closed KEY-NAME gate）・full L3 chain to frozen Command・transport 非依存 | **DONE** | `handoff.py:114-164`（endpoints/velocity/coords/unknown を reject）・`pipeline.py:57-86`(validate_raw_output)・`pipeline.py:89-150`(compile_raw_output・R-26 short-circuit)。41 tests・transport 等価性検証 | 配線は **offline のみ**＝`gemini_er.py` は `RawModelOutput` を作るが**それを pipeline に渡す稼働 Bridge サイクルが無い**（live path は #344 defer） |
+| **テスト + live インフラ** | offline XER1-5 suite・env-gated live 前駆 probe・lean gateway + safe `--check`・XER6 sanctioned live e2e（sim） | **PARTIAL** | offline: `test_l3_pipeline.py:197-317`（full chain to frozen Command）・~63 tests。live: `tests/live/{test_er_handoff_live,test_xer3_chain_live,test_xer_full_chain_live}.py`（`WAREHOUSE_LIVE_ER=1`+key で module-skip 解除）・`run-live-er-{smoke,chain}.sh`(`--check` 安全)・`run-er-hermes.sh`(8643) | live probe は**前駆（forerunner）**＝Command で終端・作動なし。**XER6（Command を L2/Nav2 へ運ぶ sim e2e）は PENDING**（該当テストなし・`tests/e2e/*` は Mode A nav） |
+
+## 一気通貫（e2e）の現状 — 2 tier・どちらも作動には届かない
+
+- **OFFLINE（無料・通常 CI/`pytest`・network/provider/ROS 不要）**: 手組み `RawModelOutput` が L3 全チェーンを通り frozen Command に着地。正確な範囲=[`tests/unit/test_l3_pipeline.py:197-317`](../../tests/unit/test_l3_pipeline.py) が `compile_raw_output`（handoff→validator→visual_resolver→task_graph_executor→command_compiler）を両 transport で駆動し、R-26 0-dispatch short-circuit を `RaisingCompiler` で保護。**~63 stage unit が緑**（要 python3.12。host `python3`=3.7 は `frozenset[str]` で失敗）。
+- **LIVE（有料 Gemini Robotics-ER・human gate・`WAREHOUSE_LIVE_ER=1`+`GEMINI_API_KEY`/`GOOGLE_API_KEY`）**: [`tests/live/test_xer_full_chain_live.py`](../../tests/live/test_xer_full_chain_live.py) が**実課金 generateContent**（`_er_live_client.py:call_er_direct`）→ `RawModelOutput(direct)` → `compile_raw_output` → `Command` かつ全 item.destination が frozen KNOWN_LOCATIONS ∧ action==NAVIGATE を assert。runner=[`deploy/dev/run-live-er-chain.sh`](../../deploy/dev/run-live-er-chain.sh)（安全 `--check` あり）。text/image は lean Hermes gateway(8643)経由も可、audio は direct。**これらは forerunner（不変条件の assert であり acceptance ではない）で、チェーンは Command で終端＝L2 MCP/Policy Gate/L1/L0 へ続かない**。
+- **どの run もカバーしないもの**: (1) `gemini_er.propose_plan` の実 live-send（main で NotImplementedError・実体は未マージ #389）、(2) Command を L3 の先（MCP/Policy Gate/Nav2/RMF 作動）へ sim で運ぶ **XER6 closure**（[dev/07:188](../dev/07-mode-x-er-live-e2e-runbook.md)・[README:91](README.md)）＝main に該当テストなし。
+
+## ER inside Hermes（図の要）
+
+「ER が Hermes 内にいる」は **text/image では真**（専用 lean Hermes 8643 の OpenAI 互換 `/v1/chat/completions` 経由。`run-er-hermes.sh`＋`config.lean.yaml`）。**audio では偽**（vanilla Hermes が input_audio に 400＝PROBE-2 `doc06:159`。shipped は **direct**＝恒久 fail-safe）。audio-through-Hermes は fork gateway **8644**（`deploy/hermes/er-audio-fork/`）だが**現状は productization target（probe）**であり shipped wire ではない。個人 `~/.hermes` は触らない（`HERMES_HOME` 隔離）。
+
+## 残作業（完成形へ）
+
+- **PR #389 を merge**＝main に実 live-send（build_provider_request + HttpErTransportSender + HERMES→DIRECT fallback）を載せる（owner: [doc06:277-279](06-unfrozen-contract-resolutions.md) / [dev/07:189,202](../dev/07-mode-x-er-live-e2e-runbook.md)・#344/#389）。
+- **L4 アダプタ出力を稼働 Bridge サイクルへ配線**＝`RawModelOutput` が実際に `pipeline.compile_raw_output` に届くようにする（offline テスト以外に caller が無い。owner: [01:169-182,245-251](01-architecture-and-flow.md)）。
+- **XER6 sanctioned live e2e**＝frozen Command を L2 MCP/Policy Gate/L1 Nav2 Bridge へ sim（X-lite）で運ぶ（owner: [README:91](README.md) / [dev/07:188](../dev/07-mode-x-er-live-e2e-runbook.md)・main に該当なし）。
+- **audio-through-Hermes fork(8644) の本採用**（audio 観測統合が要る場合。それまで audio=direct。owner: [doc06 §5 補遺:269](06-unfrozen-contract-resolutions.md) / [environments.md:26](../../.claude/rules/environments.md)・#357）。
+- **Visual Resolver の object-class snap**（doc02:150「距離 かつ object class」の defer 分。`Detection.color` proxy 未使用。owner: [02:150](02-l3-planning-core.md)・`# TODO resolver.py:192-194`）。
+- **x_rmf ExecutionProfile**＝`RmfTaskCompiler` plugin 実装（Mode X-rmf backend。owner: [02:234,240](02-l3-planning-core.md)・#346）。
+- **実 Langfuse trace の着地**（ER/STT 観測レッグ・既定 OFF・main に未着地。human gate #88/HLF-G0..G5。owner: [productization/02:177-199](../productization/02-l4-robotics-bridge-box.md) / `observability.py:16`）。
+- **offline カバレッジ追補**: `HermesTranscriber` 実 HTTP/fail-soft・`JsonlTranscriptSink` 書込 path（現状 live-gated のみ。owner: [04](04-er-input-modalities-and-stt.md) / doc06:164）。
+- **doc-hygiene**: XER6 で wire 済みなのに「pipeline に wire しない」と残る stale 注記（`visual_resolver/resolver.py:9-10`・`__init__.py`・`task_graph_executor/executor.py:9-11`・`command_compiler/__init__.py:6`・`CLAUDE.md:6`）を [docs-first](../../.claude/rules/docs-first.md) 同期で是正。
+
+## References
+
+- 図解: [implementation-status.html](implementation-status.html)（本 doc の視覚版）/ [mode-x-er-explainer.html](mode-x-er-explainer.html)（全体像）
+- 設計正本: [01-architecture-and-flow](01-architecture-and-flow.md) / [02-l3-planning-core](02-l3-planning-core.md) / [03-er-adapter-skeleton](03-er-adapter-skeleton.md) / [04-er-input-modalities-and-stt](04-er-input-modalities-and-stt.md) / [06-unfrozen-contract-resolutions](06-unfrozen-contract-resolutions.md)
+- live 手順: [dev/07-mode-x-er-live-e2e-runbook](../dev/07-mode-x-er-live-e2e-runbook.md) / gateway: `deploy/dev/run-er-hermes.sh`(8643) / `deploy/hermes/er-audio-fork/`(8644)
+- 実装: `ws/src/warehouse_llm_bridge/warehouse_llm_bridge/{robotics,robotics_planning_core}/` / tests: `tests/unit/test_l3_*` `tests/live/test_xer_*`
