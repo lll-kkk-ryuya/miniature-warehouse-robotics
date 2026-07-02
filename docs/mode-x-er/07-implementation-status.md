@@ -4,6 +4,9 @@
 > **正本の切り分け**: 「想定」= 設計 docs（[01](01-architecture-and-flow.md)/[02](02-l3-planning-core.md)/[03](03-er-adapter-skeleton.md)/[04](04-er-input-modalities-and-stt.md)/[06](06-unfrozen-contract-resolutions.md)）。「現状」= main の実コード＋テスト。両者がズレたら**コードが真**（本 doc は現状の記録であり、設計正本を上書きしない）。
 > 生成 2026-07-02・対象 `origin/main b6c15d3`。live 手順は [dev/07 runbook](../dev/07-mode-x-er-live-e2e-runbook.md)。
 
+<!-- impl-status-pin: b6c15d3 -->
+<!-- 鮮度ゲート: `python3 scripts/check_impl_status.py`（開発が進んで pin より main が動いたら drift を報告）。更新規律は末尾「鮮度と更新」節。 -->
+
 ## 総括（どこまで終えているか）
 
 - **offline の ER→L3 チェーンは「frozen Command まで」完成・テスト済**。手組みの `RawModelOutput` が Handoff → Validator（R-26 0-dispatch）→ Visual Resolver → Task Graph Executor → Command Compiler を通り、**本物の `warehouse_interfaces.schemas.Command`** に着地する（`pipeline.compile_raw_output`＝[pipeline.py:89-150](../../ws/src/warehouse_llm_bridge/warehouse_llm_bridge/robotics_planning_core/pipeline.py)）。core chain（validator/pipeline/handoff/adapter/transport の 5 file）の offline unit **63 本が緑**（L3 各 stage の個別 suite はさらに多数＝下記マトリクスの per-stage 本数参照。要 python3.12。host `python3`=3.7 は `frozenset[str]` で落ちる）。
@@ -47,6 +50,14 @@
 - **実 Langfuse trace の着地**（ER/STT 観測レッグ・既定 OFF・main に未着地。human gate #88/HLF-G0..G5。owner: [productization/02:177-199](../productization/02-l4-robotics-bridge-box.md) / `observability.py:16`）。
 - **offline カバレッジ追補**: `HermesTranscriber` 実 HTTP/fail-soft・`JsonlTranscriptSink` 書込 path（現状 live-gated のみ。owner: [04](04-er-input-modalities-and-stt.md) / doc06:164）。
 - **doc-hygiene**: XER6 で wire 済みなのに「pipeline に wire しない」と残る stale 注記（`visual_resolver/resolver.py:9-10`・`__init__.py`・`task_graph_executor/executor.py:9-11`・`command_compiler/__init__.py:6`・`CLAUDE.md:6`）を [docs-first](../../.claude/rules/docs-first.md) 同期で是正。
+
+## 鮮度と更新（freshness・開発が進んだら更新する仕組み）
+
+本 doc + [図](implementation-status.html) は **main の 1 時点スナップショット**（pin=`b6c15d3`）。`STATUS.md` と同じく放置すると開発で腐るので、鮮度ゲートを持つ:
+
+- **pin**: 冒頭の `<!-- impl-status-pin: SHA -->` が assess 対象の main。
+- **checker**: **`python3 scripts/check_impl_status.py`**（read-only・stdlib）が (1) pin vs `origin/main` の staleness、(2) pin 以降で **ER/L3 パイプラインを触った commit 数**（0 なら snapshot はほぼ有効／>0 なら要再確認）、(3) tripwire（例: `build_provider_request` が main に載れば live-send 行を DONE へ）を報告し、drift/stale で exit 1。
+- **更新規律**: XER ステージが land した／checker が drift を出したら **該当行 + 図 + pin を更新**する（大きく変われば 9-stage assessment を再実行）。`STATUS.md` と同じ **round 境界 refresh**（[status-maintenance.md](../../.claude/rules/status-maintenance.md)）。checker の CI 配線は governance follow-up（人間が `.github`/pre-commit に）。
 
 ## References
 
