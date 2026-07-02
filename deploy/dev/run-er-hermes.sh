@@ -57,3 +57,8 @@ echo "Dedicated LEAN ER Hermes: HERMES_HOME=$HERMES_HOME  port=$PORT  (personal 
 echo "Bridge auth token: grep API_SERVER_KEY \"$HERMES_HOME/.env\"   (value not printed)"
 echo "Starting 'hermes gateway run' ..."
 exec env HERMES_HOME="$HERMES_HOME" hermes gateway run
+
+# Operator runbook (turnkey live steps): docs/dev/07-mode-x-er-live-e2e-runbook.md
+#   §Step A uses this script; §1 turnkey steps; §3 cost/scoped-approval gate.
+#   Kept at EOF (not the header) so the line numbers other docs cite into this script
+#   (run-er-hermes.sh:15,17,23,26 …; deploy/dev/run-live-er-smoke.sh:27) stay stable — #165.
