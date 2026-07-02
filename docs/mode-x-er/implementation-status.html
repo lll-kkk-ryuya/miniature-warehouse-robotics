@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mode X-ER 実装状況 — 想定(planned) vs 現状(main b6c15d3)</title>
+<style>
+  :root{
+    color-scheme: dark;
+    /* 落ち着いた Cursor 風ニュートラル・ダーク（背景=黒に近い無彩色 / 文字=はっきりした白） */
+    --bg:#1a1a1a; --bg2:#141414; --card:#222222; --card2:#262626; --surface:#2d2d2d;
+    --ink:#ededed; --muted:#c4c4c4; --faint:#8f8f8f; --line:#3a3a3a; --code:#141414;
+    --badge-ink:#1a1a1a; --head:#dcdcdc;
+    --box:#7aa2f7;     --box-bg:rgba(122,162,247,.13);
+    --sub:#9ece6a;     --sub-bg:rgba(158,206,106,.12);
+    --seam:#e0af68;    --seam-bg:rgba(224,175,104,.12);
+    --plugin:#bb9af7;  --plugin-bg:rgba(187,154,247,.12);
+    --demoted:#9a9a9a; --demoted-bg:rgba(154,154,154,.10);
+    --red:#f7768e; --yellow:#e0c07a; --teal:#7dcfff; --pink:#f7a8d8;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Noto Sans JP",Meiryo,sans-serif;
+    line-height:1.7;font-size:15px;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1080px;margin:0 auto;padding:32px 20px 80px}
+  header.top{border-bottom:3px solid var(--box);padding-bottom:18px;margin-bottom:8px}
+  h1{font-size:25px;margin:0 0 6px} h2{font-size:20px;margin:44px 0 12px;padding-left:10px;border-left:5px solid var(--box)}
+  h3{font-size:15.5px;margin:24px 0 9px;color:var(--head)}
+  p{margin:10px 0} .lead{color:var(--muted);font-size:14px}
+  a{color:var(--box);text-decoration:none} a:hover{text-decoration:underline}
+  code{background:var(--code);padding:1px 6px;border-radius:4px;font-size:.88em;font-family:"SF Mono",Menlo,Consolas,monospace;color:var(--ink)}
+  .dref{color:var(--teal);font-size:.82em;font-family:"SF Mono",Menlo,monospace;white-space:nowrap}
+  .note{background:var(--seam-bg);border:1px solid rgba(250,179,135,.4);border-radius:8px;padding:12px 16px;margin:16px 0;font-size:14px}
+  .safe{background:rgba(243,139,168,.08);border:1px solid rgba(243,139,168,.4);border-radius:8px;padding:12px 16px;margin:16px 0;font-size:14px}
+  .meta{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 16px;font-size:13px;color:var(--muted);margin:14px 0}
+  .nav{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0}
+  .nav a{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:7px 13px;font-size:13px;font-weight:600}
+  .nav a:hover{border-color:var(--box);text-decoration:none}
+
+  .badge{display:inline-block;font-size:11px;font-weight:700;padding:2px 9px;border-radius:999px;color:var(--badge-ink);letter-spacing:.3px;vertical-align:middle}
+  .b-box{background:var(--box)} .b-sub{background:var(--sub)} .b-seam{background:var(--seam)} .b-plugin{background:var(--plugin)} .b-demoted{background:var(--demoted);color:var(--ink)}
+
+  .node{border-radius:10px;padding:11px 13px;border:2px solid;background:var(--card);font-size:13.5px;margin:8px 0}
+  .node .t{font-weight:700;font-size:14px} .node .s{color:var(--muted);font-size:12.5px;margin-top:3px}
+  .n-box{border-color:var(--box);background:var(--box-bg)} .n-sub{border-color:var(--sub);background:var(--sub-bg)}
+  .n-seam{border-color:var(--seam);background:var(--seam-bg);border-style:dashed} .n-plugin{border-color:var(--plugin);background:var(--plugin-bg)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+
+  /* layered structure / nesting */
+  .legend{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
+  .legend .item{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:6px 11px;font-size:11.5px;color:var(--muted)}
+  .legend .sw{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:6px;vertical-align:middle}
+  .n-demoted{border-color:var(--demoted);background:var(--demoted-bg);color:var(--muted)}
+  .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+  .sub-nest{border:1.5px dashed var(--box);border-radius:12px;padding:13px;margin-top:12px;background:rgba(122,162,247,.05)}
+  .sub-nest > .nh{font-size:11px;font-weight:700;color:var(--box);letter-spacing:.5px;margin-bottom:9px}
+  .nest-arrow{text-align:center;color:var(--faint);font-size:16px;line-height:1;margin:5px 0}
+  .role{display:inline-block;font-size:10.5px;font-weight:700;color:var(--faint);border:1px solid var(--line);border-radius:5px;padding:1px 6px;margin-left:6px;vertical-align:middle}
+  .transport-band{margin-top:9px;border:1.5px dashed var(--plugin);background:var(--plugin-bg);border-radius:8px;padding:7px 10px;font-size:12px;color:#d8c8f2}
+  .transport-band b{color:var(--plugin)}
+  .seam-out{display:flex;flex-wrap:wrap;align-items:stretch;gap:8px;margin:12px 0 2px}
+  .seam-out .arrow{color:var(--seam);font-weight:700;font-size:18px;display:flex;align-items:center}
+  .gov-chip{border:2px solid var(--box);background:var(--box-bg);border-radius:10px;padding:8px 12px;font-size:12.5px;font-weight:700;white-space:nowrap;display:flex;flex-direction:column;justify-content:center;text-align:center}
+
+  /* superbox container */
+  .superbox{border:2px solid var(--box);background:var(--box-bg);border-radius:14px;padding:16px;margin:14px 0}
+  .sbh{font-weight:700;color:var(--box);font-size:16px;margin-bottom:2px} .sbs{font-size:12px;color:var(--muted);margin-bottom:12px}
+
+  /* numbered steps */
+  .steps{counter-reset:st;margin:14px 0}
+  .step{position:relative;border:1px solid var(--line);background:var(--card);border-radius:10px;padding:11px 14px 11px 46px;margin:8px 0;font-size:13.5px}
+  .step::before{counter-increment:st;content:counter(st);position:absolute;left:12px;top:11px;width:24px;height:24px;border-radius:50%;
+    background:var(--box);color:var(--badge-ink);font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:center}
+  .step b{color:var(--ink)} .step .s{color:var(--muted);font-size:12.5px;margin-top:2px}
+  .step.seam{border-color:var(--seam);border-left:4px solid var(--seam)} .step.seam::before{background:var(--seam)}
+  .step-down{text-align:left;padding-left:22px;color:var(--faint);font-size:15px;line-height:1;margin:-3px 0}
+
+  table{border-collapse:collapse;width:100%;margin:12px 0;font-size:13px;background:var(--card)}
+  th,td{border:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top}
+  th{background:var(--surface);font-size:12.5px;color:var(--head)} td code{font-size:.85em}
+  tr:nth-child(even) td{background:rgba(255,255,255,.02)}
+  .impl-yes{color:var(--sub);font-weight:700} .impl-no{color:var(--yellow);font-weight:700}
+  ul.tight{margin:8px 0;padding-left:22px} ul.tight li{margin:5px 0}
+  footer{margin-top:50px;padding-top:18px;border-top:1px solid var(--line);color:var(--muted);font-size:12.5px}
+
+  /* flow helpers */
+  .flow{display:flex;flex-wrap:wrap;align-items:stretch;gap:6px;margin:10px 0}
+  .flow .node{flex:1 1 130px;min-width:112px;margin:0;display:flex;flex-direction:column;justify-content:center}
+  .flow .arr{display:flex;align-items:center;color:var(--faint);font-weight:700;font-size:16px}
+  .lyr{display:inline-block;font-size:10px;font-weight:800;padding:1px 7px;border-radius:5px;color:var(--badge-ink);margin-right:7px;vertical-align:middle}
+  .optline{font-family:"SF Mono",Menlo,Consolas,monospace;font-size:12px;color:var(--muted);background:var(--code);border-radius:6px;padding:8px 11px;margin:8px 0;line-height:1.7;overflow-x:auto}
+  .optline b{color:var(--ink)}
+  /* implementation-scope: unused = dimmed + center strike line */
+  .unused{position:relative;opacity:.5;filter:grayscale(.65)}
+  .unused::after{content:"";position:absolute;left:8px;right:8px;top:50%;height:2px;background:var(--faint);transform:translateY(-1px);border-radius:2px}
+
+  /* ===== implementation-status additions (new badge classes reuse root colors) ===== */
+  .b-done{background:var(--sub)}                 /* green  = done */
+  .b-partial{background:var(--seam)}             /* amber  = partial */
+  .b-pending{background:var(--red)}              /* red    = pending / not-on-main */
+  /* per-status node borders */
+  .st-done{border-color:var(--sub);background:var(--sub-bg)}
+  .st-partial{border-color:var(--seam);background:var(--seam-bg)}
+  .st-pending{border-color:var(--red);background:rgba(247,118,142,.10)}
+  /* pipeline stack node = full-width, badge on right */
+  .pnode{border-radius:10px;padding:11px 14px;border:2px solid;background:var(--card);margin:0}
+  .pnode .phead{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+  .pnode .t{font-weight:700;font-size:14px}
+  .pnode .s{color:var(--muted);font-size:12.5px;margin-top:4px}
+  .pnode .lyr{margin-right:0}
+  .p-arrow{text-align:center;color:var(--faint);font-size:15px;line-height:1;margin:3px 0}
+  /* ER-inside-Hermes emphasis band */
+  .er-band{border:2px solid var(--plugin);background:rgba(187,154,247,.08);border-radius:14px;padding:14px;margin:6px 0}
+  .er-band > .ebh{font-size:12px;font-weight:800;color:var(--plugin);letter-spacing:.5px;margin-bottom:4px;display:flex;align-items:center;gap:8px}
+  .er-band > .ebs{font-size:12px;color:#d8c8f2;margin-bottom:10px}
+  .er-band .pnode + .pnode{margin-top:8px}
+  .port{display:inline-block;font-size:10.5px;font-weight:800;font-family:"SF Mono",Menlo,monospace;color:var(--badge-ink);background:var(--plugin);border-radius:5px;padding:1px 6px;vertical-align:middle}
+  .port.direct{background:var(--seam)}
+  @media(max-width:720px){.grid2,.grid3{grid-template-columns:1fr}.pnode .phead{flex-direction:column;gap:4px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <h1>Mode X-ER 実装状況 — 想定(planned) vs 現状(current on main <code>b6c15d3</code>)</h1>
+  <p class="lead">ER → L3 パイプラインの各 node を、<b>想定(planned)</b> と <b>現状(main <code>b6c15d3</code> に載っているもの)</b>で対比する。結論から言うと、<b>凍結 <code>Command</code> まで到達する offline L3 チェーンは DONE</b>（envelope → handoff → validator → resolver → executor → compiler → <code>pipeline.compile_raw_output</code>）だが、<b>LIVE send（#389）と L2/L1/L0 の actuation（XER6）はまだ main に載っていない</b>。ER の <b>text / image は lean Hermes gateway（8643）経由</b>で通り、<b>audio は Hermes を経由せず DIRECT</b> に行く（下の紫バンド）。本ページは図解（補足資料）で、設計の正本は <code>01</code>〜<code>07</code> / README の .md。</p>
+</header>
+
+<div class="nav">
+  <a href="07-implementation-status.md">正本: 07 implementation-status</a>
+  <a href="mode-x-er-explainer.html">mode-x-er-explainer.html</a>
+  <a href="01-architecture-and-flow.md">01 architecture-and-flow</a>
+  <a href="02-l3-planning-core.md">02 l3-planning-core</a>
+  <a href="03-er-adapter-skeleton.md">03 er-adapter-skeleton</a>
+  <a href="06-unfrozen-contract-resolutions.md">06 unfrozen-contract-resolutions</a>
+  <a href="README.md">README</a>
+</div>
+
+<div class="meta">
+  <b>読み方</b>: 各 node に <b>STATUS badge</b>（<span class="badge b-done">done</span> / <span class="badge b-partial">partial</span> / <span class="badge b-pending">pending</span>）とレイヤ帯（L4 ER-in-Hermes → L4 adapter → L3 → L2 → L1/L0）を付す。one-line note の <span class="dref">file:line</span> は <b>実コードで裏取り済み</b>の出所（例 <span class="dref">pipeline.py:89-150</span>）。想定の設計正本は <code>01</code>〜<code>03</code> / <code>06</code> / <code>07</code>。
+  <b>状態の要旨</b>: offline L3 → 凍結 <code>Command</code> は<b>配線済み(DONE)</b>／ <b>LIVE send（#389）は main 未載</b>／ <b>L2/L1/L0 の実 actuation（XER6）は未達</b>。
+</div>
+
+<div class="legend">
+  <div class="item"><span class="sw" style="background:var(--sub)"></span><b>done</b>：main に載っており offline で検証済み</div>
+  <div class="item"><span class="sw" style="background:var(--seam)"></span><b>partial</b>：一部のみ main（残りは DEFER / TODO）</div>
+  <div class="item"><span class="sw" style="background:var(--red)"></span><b>pending / not-on-main</b>：未実装 or OPEN PR のみ（main に無い）</div>
+</div>
+<div class="legend">
+  <div class="item"><span class="sw" style="background:var(--plugin)"></span>L4 ER-in-Hermes（入力・ゲートウェイ）</div>
+  <div class="item"><span class="sw" style="background:var(--box)"></span>L4 adapter（transport 選択・送出 seam）</div>
+  <div class="item"><span class="sw" style="background:var(--teal)"></span>L3 司令・検証（deterministic）</div>
+  <div class="item"><span class="sw" style="background:var(--seam)"></span>L2 実行許可</div>
+  <div class="item"><span class="sw" style="background:var(--red)"></span>L1/L0 自律走行・物理安全</div>
+</div>
+
+<div class="note">
+  <b>ER は Hermes の中（text/image）／ audio は直</b>: ER の <b>text + image</b> は <b>lean Hermes ER gateway（<span class="port">8643</span> / OpenAI-compat <code>/v1/chat/completions</code>）の内側</b>を通る（下の紫バンド）。一方 <b>audio は Hermes を経由せず ER へ DIRECT</b>（<span class="port direct">direct</span>・shipped default かつ恒久 fail-safe）。fork gateway（<span class="port">8644</span>・input_audio passthrough）は<b>productization TARGET のみ</b>で、今出荷している配線ではない。<span class="dref">06 §5 / doc06:159,269 / dev/07:188</span>
+</div>
+
+<!-- ================= PIPELINE (top-to-bottom, layer bands) ================= -->
+<h2>ER → L3 パイプライン（上から下・レイヤ帯ごと）</h2>
+<p class="lead">operator 入力から motor まで。各 node の badge が「main に載っているか」を示す。<b>L3 の凍結 <code>Command</code> までは緑（DONE）で連続する</b>が、<b>LIVE send と L2 以降は赤（pending）で途切れる</b>のが現状。</p>
+
+<div class="optline">指示:「bot1 は赤い箱へ。到達したら bot2 は青い箱へ」<span style="color:var(--faint)"> → ER が intent + detections + task_graph を提案 → L3 が offline で正規化・検証・順序化・compile → 凍結 Command（<b>ここまで DONE</b>）→ …LIVE send / L2 / L1 / L0（<b>pending</b>）</span></div>
+
+<!-- ===== L4 ER-in-Hermes band ===== -->
+<div class="er-band">
+  <div class="ebh"><span class="lyr" style="background:var(--plugin)">L4 ER-in-Hermes</span>ER は Hermes の中（text/image）／ audio は直</div>
+  <div class="ebs">この帯の中＝「ER inside Hermes」。<b>text/image は 8643 gateway 経由</b>、<b>audio は帯の外＝DIRECT</b>（fork 8644 は TARGET のみ）。</div>
+
+  <!-- node 1 -->
+  <div class="pnode st-done">
+    <div class="phead">
+      <div class="t"><span class="lyr" style="background:var(--plugin)">L4-ER-in-Hermes</span>① Voice / text / image operator input</div>
+      <span class="badge b-done">done</span>
+    </div>
+    <div class="s">One input drives an ER critical lane + optional out-of-band STT. <span class="dref">perception_lanes.py:48-125</span></div>
+  </div>
+  <div class="p-arrow">▼</div>
+
+  <!-- node 2 -->
+  <div class="pnode st-done">
+    <div class="phead">
+      <div class="t"><span class="lyr" style="background:var(--plugin)">L4-ER-in-Hermes</span>② Text + image → lean Hermes ER gateway <span class="port">8643</span> <span style="font-weight:400;color:var(--muted);font-size:11.5px">OpenAI-compat <code>/v1/chat/completions</code></span></div>
+      <span class="badge b-done">done</span>
+    </div>
+    <div class="s"><code>run-er-hermes.sh</code> + <code>config.lean.yaml</code>: isolated <code>HERMES_HOME</code>, provider google, model <code>gemini-robotics-er-1.6-preview</code>, zero tools. <b>ER INSIDE Hermes for text/image.</b></div>
+  </div>
+  <div class="p-arrow">▼</div>
+
+  <!-- node 3 -->
+  <div class="pnode st-done">
+    <div class="phead">
+      <div class="t"><span class="lyr" style="background:var(--plugin)">L4-ER-in-Hermes</span>③ Audio → DIRECT to ER <span class="port direct">bypasses Hermes</span> <span style="font-weight:400;color:var(--muted);font-size:11.5px">shipped default + permanent fail-safe</span></div>
+      <span class="badge b-done">done</span>
+    </div>
+    <div class="s">Vanilla Hermes 400s <code>input_audio</code> (PROBE-2, <span class="dref">doc06:159</span>). Bridge-owned Langfuse observes (fail-open).</div>
+  </div>
+  <div class="p-arrow">▼</div>
+
+  <!-- node 4 -->
+  <div class="pnode st-partial">
+    <div class="phead">
+      <div class="t"><span class="lyr" style="background:var(--plugin)">L4-ER-in-Hermes</span>④ Audio-through-Hermes fork gateway <span class="port">8644</span> <span style="font-weight:400;color:var(--muted);font-size:11.5px">input_audio passthrough</span></div>
+      <span class="badge b-partial">partial</span>
+    </div>
+    <div class="s"><code>er-audio-fork/</code> is a productionization <b>TARGET only</b> (<code>0001-input_audio</code> patch). NOT the shipped wire; audio today = direct.</div>
+  </div>
+</div>
+
+<div class="nest-arrow">▼</div>
+
+<!-- ===== L4 adapter band ===== -->
+<div class="sub-nest">
+  <div class="nh"><span class="lyr" style="background:var(--box)">L4 adapter</span>transport 選択・ER 送出 seam</div>
+
+  <!-- node 5 -->
+  <div class="pnode st-done">
+    <div class="phead">
+      <div class="t"><span class="lyr" style="background:var(--box)">L4-adapter</span>⑤ resolve_audio_transport <span style="font-weight:400;color:var(--muted);font-size:11.5px">wire SELECTION, fail-safe DIRECT</span></div>
+      <span class="badge b-done">done</span>
+    </div>
+    <div class="s"><span class="dref">transport.py:29-58</span>. Observation-only tag, never an execution branch. Offline-tested.</div>
+  </div>
+  <div class="p-arrow">▼</div>
+
+  <!-- node 6 -->
+  <div class="pnode st-done">
+    <div class="phead">
+      <div class="t"><span class="lyr" style="background:var(--box)">L4-adapter</span>⑥ GeminiErAdapter.propose_plan → RawModelOutput <span style="font-weight:400;color:var(--muted);font-size:11.5px">offline seam</span></div>
+      <span class="badge b-done">done</span>
+    </div>
+    <div class="s"><span class="dref">gemini_er.py:39-75</span> offline replay seam; audit-only transport/provider tags.</div>
+  </div>
+  <div class="p-arrow">▼</div>
+
+  <!-- node 7 -->
+  <div class="pnode st-pending">
+    <div class="phead">
+      <div class="t"><span class="lyr" style="background:var(--box)">L4-adapter</span>⑦ LIVE ER send <span style="font-weight:400;color:var(--muted);font-size:11.5px">build_provider_request + HttpErTransportSender + HERMES→DIRECT fallback</span></div>
+      <span class="badge b-pending">pending</span>
+    </div>
+    <div class="s"><b>NOT ON MAIN</b>: <code>gemini_er.py</code> live path raises <code>NotImplementedError</code> (deferred #344). Real machinery only in OPEN PR #389.</div>
+  </div>
+</div>
+
+<div class="nest-arrow">▼ Handoff seam（envelope-unwrap）</div>
+
+<!-- ===== L3 band ===== -->
+<div class="sub-nest" style="border-color:var(--teal);background:rgba(125,207,255,.05)">
+  <div class="nh" style="color:var(--teal)"><span class="lyr" style="background:var(--teal)">L3</span>Robotics Planning Core — deterministic（offline で凍結 Command まで DONE）</div>
+
+  <!-- node 8 -->
+  <div class="pnode st-done">
+    <div class="phead">
+      <div class="t"><span class="lyr" style="background:var(--teal)">L3</span>⑧ Handoff seam: to_robotics_plan_draft <span style="font-weight:400;color:var(--muted);font-size:11.5px">envelope-unwrap + fail-closed KEY-NAME gate</span></div>
+      <span class="badge b-done">done</span>
+    </div>
+    <div class="s"><span class="dref">handoff.py:114-164</span> rejects endpoints/velocity/coords; transport-agnostic (<code>hermes==direct</code>).</div>
+  </div>
+  <div class="p-arrow">▼</div>
+
+  <!-- node 9 -->
+  <div class="pnode st-done">
+    <div class="phead">
+      <div class="t"><span class="lyr" style="background:var(--teal)">L3</span>⑨ Validator: validate(raw,ctx) → ValidationReport <span style="font-weight:400;color:var(--muted);font-size:11.5px">R-26 0-dispatch</span></div>
+      <span class="badge b-done">done</span>
+    </div>
+    <div class="s"><span class="dref">validator.py:90</span> + <span class="dref">report.py:69-181</span>: exactly 9 codes, 3-layer 0-dispatch double-guard, iterative cycle detection.</div>
+  </div>
+  <div class="p-arrow">▼</div>
+
+  <!-- node 10 -->
+  <div class="pnode st-partial">
+    <div class="phead">
+      <div class="t"><span class="lyr" style="background:var(--teal)">L3</span>⑩ Visual Resolver: pixel → homography → KNOWN_LOCATION snap</div>
+      <span class="badge b-partial">partial</span>
+    </div>
+    <div class="s"><code>resolver.py</code> distance snap + fail-closed guards done. <b>GAP</b>: <span class="dref">doc02:150</span> object-class clause DEFERRED (<code># TODO</code> <span class="dref">resolver.py:192-194</span>).</div>
+  </div>
+  <div class="p-arrow">▼</div>
+
+  <!-- node 11 -->
+  <div class="pnode st-done">
+    <div class="phead">
+      <div class="t"><span class="lyr" style="background:var(--teal)">L3</span>⑪ Task Graph Executor: after-ordered ready_tasks <span style="font-weight:400;color:var(--muted);font-size:11.5px">no NetworkX, cycle-safe</span></div>
+      <span class="badge b-done">done</span>
+    </div>
+    <div class="s"><span class="dref">executor.py:84-146</span>: 6-state machine, dedup + cycle guards, swappable store. Zero actuation.</div>
+  </div>
+  <div class="p-arrow">▼</div>
+
+  <!-- node 12 -->
+  <div class="pnode st-partial">
+    <div class="phead">
+      <div class="t"><span class="lyr" style="background:var(--teal)">L3</span>⑫ Command Compiler: WarehouseNavCompiler → frozen warehouse_interfaces.Command</div>
+      <span class="badge b-partial">partial</span>
+    </div>
+    <div class="s"><span class="dref">compiler.py:95-134</span> builds genuine frozen <code>Command</code> + audit + 0-dispatch skip. <code>x_rmf</code> half DEFERRED (#346).</div>
+  </div>
+  <div class="p-arrow">▼</div>
+
+  <!-- node 13 -->
+  <div class="pnode st-done">
+    <div class="phead">
+      <div class="t"><span class="lyr" style="background:var(--teal)">L3</span>⑬ pipeline.compile_raw_output → frozen Command <span style="font-weight:400;color:var(--muted);font-size:11.5px">WIRED full L3 chain</span></div>
+      <span class="badge b-done">done</span>
+    </div>
+    <div class="s"><span class="dref">pipeline.py:89-150</span> on main: full chain, R-26 short-circuit to empty <code>Command</code>. <b>Offline-only; no running Bridge cycle calls it yet.</b></div>
+  </div>
+</div>
+
+<div class="seam-out">
+  <span class="arrow">└▶</span>
+  <div class="node st-pending" style="flex:1 1 320px;margin:0;border-style:dashed"><div class="t">凍結 Command → L2 seam（未到達）<span class="badge b-pending">pending</span></div><div class="s">
+    offline で作られた <code>Command</code> を MCP / Policy Gate へ運ぶ X-ER 経路がまだ無い（下記 ⑭）。
+  </div></div>
+  <span class="arrow">▶</span>
+  <div class="gov-chip">L2 実行許可<span style="font-weight:400;color:var(--muted);font-size:11px">（別プロセス）</span></div>
+</div>
+
+<!-- ===== L2 band ===== -->
+<div class="sub-nest" style="border-color:var(--seam);background:var(--seam-bg)">
+  <div class="nh" style="color:var(--seam)"><span class="lyr" style="background:var(--seam)">L2</span>実行許可・交通管理（X-ER e2e 未到達）</div>
+
+  <!-- node 14 -->
+  <div class="pnode st-pending">
+    <div class="phead">
+      <div class="t"><span class="lyr" style="background:var(--seam)">L2</span>⑭ MCP tool → Policy Gate <span style="font-weight:400;color:var(--muted);font-size:11.5px">final actuation permission</span></div>
+      <span class="badge b-pending">pending</span>
+    </div>
+    <div class="s">No X-ER test carries a <code>Command</code> into MCP/Policy Gate. Sanctioned XER6 closure (<span class="dref">dev/07:188</span>). <b>Not on main.</b></div>
+  </div>
+</div>
+
+<div class="nest-arrow">▼</div>
+
+<!-- ===== L1/L0 band ===== -->
+<div class="sub-nest" style="border-color:var(--red);background:rgba(247,118,142,.06)">
+  <div class="nh" style="color:var(--red)"><span class="lyr" style="background:var(--red)">L1 / L0</span>自律走行・物理安全（X-ER live run 未実施）</div>
+
+  <!-- node 15 -->
+  <div class="pnode st-pending">
+    <div class="phead">
+      <div class="t"><span class="lyr" style="background:var(--red)">L1</span>⑮ Nav2 Bridge / RMF <span style="font-weight:400;color:var(--muted);font-size:11.5px">goal dispatch</span></div>
+      <span class="badge b-pending">pending</span>
+    </div>
+    <div class="s">Existing <code>Command</code>→action_map→MCP→Nav2/RMF path; no Mode X-ER e2e reaches it (tests/e2e are Mode A).</div>
+  </div>
+  <div class="p-arrow">▼</div>
+
+  <!-- node 16 -->
+  <div class="pnode st-pending">
+    <div class="phead">
+      <div class="t"><span class="lyr" style="background:var(--red)">L0</span>⑯ firmware velocity clamp / actuation <span style="font-weight:400;color:var(--muted);font-size:11.5px">≤0.3 m/s</span></div>
+      <span class="badge b-pending">pending</span>
+    </div>
+    <div class="s">Project-wide safety floor exists; no Mode X-ER live run drives motion. XER6 sim closure <b>PENDING</b>.</div>
+  </div>
+</div>
+
+<!-- ================= SUMMARY ================= -->
+<h2>要旨（DONE / partial / pending の切り分け）</h2>
+<div class="grid2">
+  <div class="node st-done"><div class="t">DONE（main・offline 検証済み）<span class="badge b-done">done</span></div><div class="s">
+    ① input lane・② lean Hermes ER gateway(8643)・③ audio DIRECT fail-safe・⑤ transport 選択・⑥ adapter offline seam・⑧ handoff・⑨ validator(R-26)・⑪ task graph executor・⑬ <code>pipeline.compile_raw_output</code>（full L3 chain → 凍結 <code>Command</code>）。<b>offline で Command まで連続して通る。</b>
+  </div></div>
+  <div class="node st-partial"><div class="t">partial（一部 main・残り DEFER/TODO）<span class="badge b-partial">partial</span></div><div class="s">
+    ④ audio fork gateway(8644)＝TARGET のみ・⑩ Visual Resolver（object-class clause DEFER）・⑫ Command Compiler（<code>x_rmf</code> half DEFER #346）。
+  </div></div>
+</div>
+<div class="node st-pending"><div class="t">pending / not-on-main<span class="badge b-pending">pending</span></div><div class="s">
+  ⑦ LIVE ER send（<code>NotImplementedError</code>・deferred #344・実体は OPEN PR #389 のみ）・⑭ L2 MCP/Policy Gate（X-ER が Command を運ばない・XER6）・⑮ L1 Nav2/RMF goal dispatch・⑯ L0 actuation。<b>live-send と L2/L1/L0 の actuation は main に無い。</b>
+</div></div>
+
+<div class="safe">
+  <b>結論</b>: 想定パイプラインのうち <b>「見る・理解する・計画する → 凍結 Command」までの offline L3 チェーンは main で DONE</b>。しかし <b>実際にロボットを動かす経路（LIVE send #389 + L2 Policy Gate + L1 Nav2 + L0 actuation = XER6）は main に載っていない</b>。現状の X-ER は <b>1 発の offline pipeline</b>であり、running Bridge cycle からの呼び出し・実 actuation はまだ無い。<span class="dref">dev/07:188 / 06 §5</span>
+</div>
+
+<footer>
+  <p>このページは <code>docs/mode-x-er/implementation-status.html</code>（自己完結ダークモード図解・補足資料）。設計の正本は <a href="07-implementation-status.md">07 implementation-status</a> ＋ <a href="01-architecture-and-flow.md">01</a> / <a href="02-l3-planning-core.md">02</a> / <a href="03-er-adapter-skeleton.md">03</a> / <a href="06-unfrozen-contract-resolutions.md">06</a> / <a href="README.md">README</a>。関連図解: <a href="mode-x-er-explainer.html">mode-x-er-explainer.html</a>。外部 CDN / JS / 画像に依存しない単一 HTML。</p>
+  <p>生成 2026-07-02・対象 origin/main b6c15d3・出典は各 node の file:line（実コードで裏取り済）。</p>
+</footer>
+
+</div>
+</body>
+</html>
