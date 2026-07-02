@@ -535,6 +535,10 @@ rclpy
 - **config**: `hermes.prompts`（`source: langfuse|code` / `label` / `cache_ttl_seconds` / `names.{mode_ab,mode_c}`）。**実体は `config/warehouse.base.yaml`**（hermes config schema の正本は [doc13 §3.3](13-hermes-setup.md)。同節の例 YAML には未掲載＝additive 追加）。`source: code` は完全に従来の直書き合成のみ（Langfuse 不使用＝CI/完全 offline 用）。
 - **live 検証は Phase 3 #88**: 実 Langfuse 4.9.x への seed・取得・`langfuse_prompt=` 紐付けは [doc13 §7.5](13-hermes-setup.md) ④ の live 確認項目（人間ゲート）。offline（fallback 経路・seed `--dry-run`・unit）は本実装で緑。
 
+### ER audio/transcript leg の観測（Mode X-ER・別トレーサ・既定 OFF）
+
+> 本節までの Langfuse 設計は**司令官ターン**の trace（Mode A/C）である。**Mode X-ER の ER audio/transcript leg** はこれとは別の fail-open トレーサ `LangfuseTranscriptTracer`（[`../../ws/src/warehouse_llm_bridge/warehouse_llm_bridge/robotics/observability.py`](../../ws/src/warehouse_llm_bridge/warehouse_llm_bridge/robotics/observability.py):68）が担う。skeleton ではなく**実装済みの fail-open トレーサ**だが、**既定 `enabled=False` が純 no-op**（langfuse に一切触れない・`observability.py:85-107`）＝配線は明示 opt-in。ER leg を Langfuse に載せる end-to-end はまだ配線されておらず **human-gate**（operator runbook [`../dev/07-mode-x-er-live-e2e-runbook.md`](../dev/07-mode-x-er-live-e2e-runbook.md) §0 の Tier「T-LIVE ER→Langfuse」）。ER の live 送信自体（`gemini_er.propose_plan` の live path）は **#344 = probe CLOSED / live-send は #389 が pending（main 未マージ）**。
+
 ## References
 
 - [Anthropic API Documentation](https://docs.anthropic.com/) -- 参照日: 2026-05-21
