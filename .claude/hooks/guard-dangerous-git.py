@@ -47,12 +47,16 @@ def main():
             break
 
     if re.search(r"git\s+clean\s+[^\n|;&]*-\w*f", cmd):
-        warns.append("`git clean -f`＝未追跡ファイルを git 復元不能に削除。まず `-n`（dry-run）で確認を。")
+        warns.append(
+            "`git clean -f`＝未追跡ファイルを git 復元不能に削除。まず `-n`（dry-run）で確認を。"
+        )
 
     if re.search(r"git\s+checkout\s+(--\s+)?\.(\s|$)", cmd) or re.search(
         r"git\s+restore\s+(--\s+)?\.(\s|$)", cmd
     ):
-        warns.append("`git checkout .` / `git restore .`＝作業ツリー全体の変更を破棄。対象を限定するか意図確認を。")
+        warns.append(
+            "`git checkout .` / `git restore .`＝作業ツリー全体の変更を破棄。対象を限定するか意図確認を。"
+        )
 
     if (
         re.search(r"git\s+push\b", cmd)
