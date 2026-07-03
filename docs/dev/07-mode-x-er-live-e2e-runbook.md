@@ -49,8 +49,8 @@ deploy/hermes/er-audio-fork/run-er-gateway.sh   # 隔離 worktree→patch→lean
 ```
 
 - **標準 = 8644 fork gateway（全 modality: text+image+input_audio）**: 既定 port **8644**（`run-er-gateway.sh:56`）、active model **`gemini-robotics-er-1.6-preview`** / provider `google`（`deploy/dev/hermes-er/config.lean.yaml:26-27`）、tools=[]・memory off の **lean transport**（`config.lean.yaml:30-35`）。text/image に加え `input_audio` を native 受理（`deploy/hermes/er-audio-fork/0001-input_audio-passthrough.patch`・`_AUDIO_PART_TYPES`。**wav-only first**。unforked Hermes は 400＝§5-4）。
-- **隔離**: 隔離 worktree ＋ `HERMES_HOME=~/.hermes-mwr-er-lean`（`run-er-gateway.sh:38-43,57`）。個人 `~/.hermes`（openai-codex daily driver、memory ON）も GCP prod（`gemini-2.5-flash` 本番司令塔・`deploy/hermes/gcp/config.yaml`）も ER でないため**転用しない**＝Hermes は server-side 単一 active model ゆえ ER 専用 gateway が要る（`test_er_handoff_live.py:13-17`、`config.lean.yaml:12-18`）。
-- **fork-free fallback**（audio 不要・text/image のみ）: `deploy/dev/run-er-hermes.sh`（port **8643**・非 fork・deprecated＝同 launcher EOF banner）。以降 §Step B/C が挙げる `8643` は **fallback 経路の port**で、標準 fork 経路では **8644** に読み替える。
+- **隔離（専用 home）**: 隔離 worktree ＋ **`HERMES_HOME=~/.hermes-mwr-er-fork`**（`run-er-gateway.sh:57`・unforked の `~/.hermes-mwr-er-lean` と別 home＝fork は unforked の 8643 .env を継承しない・`ensure_env_port()` が起動時 8644 に再固定）。個人 `~/.hermes` も GCP prod（`gemini-2.5-flash` 司令塔）も ER でないため**転用しない**＝Hermes は server-side 単一 active model ゆえ ER 専用 gateway が要る（`run-er-gateway.sh:38-43`、`test_er_handoff_live.py:13-17`）。
+- **fork-free fallback**（audio 不要・text/image のみ）: `deploy/dev/run-er-hermes.sh`（port **8643**・非 fork・**別 home `~/.hermes-mwr-er-lean`**・deprecated＝同 launcher EOF banner）。以降 §Step B/C が挙げる `8643` は **fallback 経路の port**で、標準 fork 経路では **8644** に読み替える。
 - Bridge 側は標準で `http://127.0.0.1:8644/v1` に gateway の `API_SERVER_KEY` で繋ぐ（token 値は表示されない。fallback 経路なら 8643）。
 
 ### Step B. 起動前 preflight（full stack 前に必ず）

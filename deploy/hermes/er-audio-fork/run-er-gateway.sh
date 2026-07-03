@@ -16,7 +16,7 @@
 #        $HERMES_SRC/venv/bin/python -m hermes_cli.main gateway run --accept-hooks
 #                                   (reuses the personal venv's deps WITHOUT
 #                                    touching personal source)
-#        HERMES_HOME=$HERMES_HOME  (ISOLATED home, default ~/.hermes-mwr-er-lean —
+#        HERMES_HOME=$HERMES_HOME  (ISOLATED home, default ~/.hermes-mwr-er-fork —
 #                                   NEVER ~/.hermes, the personal daily driver)
 #
 # WHY (design正本 — verified live 2026-06-27):
@@ -54,7 +54,7 @@
 #
 # PARAMETERS (env vars; sane defaults)
 #   PORT          API server port               (default 8644)
-#   HERMES_HOME   ISOLATED gateway home         (default ~/.hermes-mwr-er-lean)
+#   HERMES_HOME   ISOLATED gateway home         (default ~/.hermes-mwr-er-fork)
 #   HERMES_SRC    personal Hermes clone         (default ~/.hermes/hermes-agent)
 #   WORKTREE_DIR  isolated patched source tree  (default /tmp/mwr-er-fork-worktree)
 #   BRANCH        worktree branch name          (default mwr-er-audio-prod)
@@ -69,7 +69,11 @@ set -euo pipefail
 
 # ----------------------------- parameters ------------------------------------
 HERMES_SRC="${HERMES_SRC:-$HOME/.hermes/hermes-agent}"
-HERMES_HOME="${HERMES_HOME:-$HOME/.hermes-mwr-er-lean}"
+# Fork gateway's OWN isolated home — DISTINCT from the unforked run-er-hermes.sh home
+# (~/.hermes-mwr-er-lean). Keeping them separate means the fork never inherits the
+# unforked's .env (which pins API_SERVER_PORT=8643) and the two can run without the
+# same-home --replace kill. See ensure_env_port() below.
+HERMES_HOME="${HERMES_HOME:-$HOME/.hermes-mwr-er-fork}"
 WORKTREE_DIR="${WORKTREE_DIR:-/tmp/mwr-er-fork-worktree}"
 BRANCH="${BRANCH:-mwr-er-audio-prod}"
 
@@ -112,7 +116,7 @@ guard_paths() {
   rp_wt="$WORKTREE_DIR";  [ -d "$rp_wt" ]   && rp_wt="$(cd "$rp_wt" && pwd)"
 
   [ "$rp_home" = "$rp_personal" ] && \
-    die "HERMES_HOME ($rp_home) is the personal daily-driver. Use an isolated home (e.g. ~/.hermes-mwr-er-lean)."
+    die "HERMES_HOME ($rp_home) is the personal daily-driver. Use an isolated home (e.g. ~/.hermes-mwr-er-fork)."
   [ "$rp_wt" = "$rp_src" ] && \
     die "WORKTREE_DIR ($rp_wt) is the personal clone. The worktree MUST be a separate path."
   [ "$rp_wt" = "$rp_personal" ] && \
@@ -249,8 +253,36 @@ prepare_worktree() {
   log "worktree ready (patched, isolated)."
 }
 
+# -------------- ensure THIS fork gateway's own .env pins its port ------------
+# The gateway auto-loads $HERMES_HOME/.env (gateway/run.py:851-852) and that .env
+# value WINS over the launcher default. So if a stale API_SERVER_PORT is present —
+# e.g. 8643 written by the unforked deploy/dev/run-er-hermes.sh into a SHARED home —
+# the fork would bind the wrong port and collide (observed live 2026-07-03). The fork
+# now defaults to its OWN isolated home (~/.hermes-mwr-er-fork, distinct from the
+# unforked ~/.hermes-mwr-er-lean); this is the belt-and-suspenders that self-heals a
+# stale/wrong port in that home so the fork reliably binds its intended port (8644).
+# Targeted single-key rewrite: preserves API_SERVER_KEY / GOOGLE_API_KEY /
+# HERMES_LANGFUSE_* and every other line; NEVER prints any value (port is not secret).
+# Runs only AFTER guard_paths() (via prepare_worktree) has proven HERMES_HOME is not
+# the personal daily-driver.
+ensure_env_port() {
+  local envf="$HERMES_HOME/.env" want cur tmp
+  [ -f "$envf" ] || return 0                    # nothing to normalize yet (source_env dies helpfully)
+  want="${PORT:-8644}"                          # fork intent: explicit PORT override, else 8644 (NOT the .env)
+  cur="$(grep -E '^[[:space:]]*API_SERVER_PORT=' "$envf" 2>/dev/null | tail -1 \
+          | sed -E 's/^[[:space:]]*API_SERVER_PORT=//; s/[[:space:]]*$//' || true)"
+  [ "$cur" = "$want" ] && return 0              # already correct — no write
+  log "pinning API_SERVER_PORT=$want in \$HERMES_HOME/.env (was '${cur:-unset}'; fork vs unforked isolation)"
+  tmp="$(mktemp "${TMPDIR:-/tmp}/er-env.XXXXXX")"
+  grep -vE '^[[:space:]]*API_SERVER_PORT=' "$envf" > "$tmp" || true   # keep every other key
+  printf 'API_SERVER_PORT=%s\n' "$want" >> "$tmp"
+  chmod 600 "$tmp"
+  mv "$tmp" "$envf"
+}
+
 # ----------------------------- launch ----------------------------------------
 launch_gateway() {
+  ensure_env_port          # pin our OWN 8644 in this home's .env BEFORE the gateway auto-loads it
   source_env
   # Ensure the lean ER home actually carries the lean config (fail loud if not).
   # This package does NOT auto-seed config.yaml; initialize the lean home once
@@ -281,6 +313,7 @@ launch_gateway() {
 # ---------------------- probe (run + assert input_audio 200) -----------------
 do_probe() {
   prepare_worktree
+  ensure_env_port          # pin our OWN 8644 in this home's .env BEFORE the gateway auto-loads it
   source_env
 
   local host port base auth_hdr

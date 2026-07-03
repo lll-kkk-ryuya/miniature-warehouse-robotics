@@ -72,8 +72,9 @@ exec env HERMES_HOME="$HERMES_HOME" hermes gateway run
 #   input_audio content part with HTTP 400 unsupported_content_type (PROBE-2, 2026-06-27;
 #   docs/mode-x-er/06-unfrozen-contract-resolutions.md §5). Prefer run-er-gateway.sh (:8644)
 #   unless you deliberately want a fork-free, text/image-only gateway.
-#   Both seed the SAME isolated HERMES_HOME (~/.hermes-mwr-er-lean); never run both at once
-#   (same-home bind conflict). Standard-vs-fallback framing:
+#   This unforked fallback uses HERMES_HOME=~/.hermes-mwr-er-lean (port 8643); the fork gateway
+#   uses a SEPARATE home ~/.hermes-mwr-er-fork (port 8644), so they never share a .env or collide
+#   (a shared home previously let the fork inherit this .env's 8643 — fixed 2026-07-03). Framing:
 #     docs/dev/07-mode-x-er-live-e2e-runbook.md §Step A / er-audio-fork/README.md.
 #   (This banner is appended at EOF, not the header, to keep the line numbers other docs
 #    cite into this script stable — #165, same reason as the note above.)

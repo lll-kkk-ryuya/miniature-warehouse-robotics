@@ -389,7 +389,7 @@ def test_live_er_audio_via_forked_hermes_gateway(capsys):
     Operator flow (never printed secrets; .env access needs explicit scope, environments.md):
       1. Deploy the forked lean ER gateway (isolated worktree + patch + launch on :8644):
            deploy/hermes/er-audio-fork/run-er-gateway.sh          # creates worktree, applies patch
-         (lean HERMES_HOME=~/.hermes-mwr-er-lean: provider google, model
+         (lean HERMES_HOME=~/.hermes-mwr-er-fork: provider google, model
          gemini-robotics-er-1.6-preview, api_server :8644, memory off).
       2. Point the bridge config at it: robotics.er_gateway.base_url=http://127.0.0.1:8644 +
          audio_input_audio_supported: true (config/<env>/warehouse.yaml overlay), so
