@@ -48,15 +48,16 @@ PIPELINE_PATHS = [
     "docs/mode-x-er",
 ]
 
-# (label, git-grep pattern, pathspec, doc-says-absent). If a pattern is FOUND on origin/main
-# but the doc still records it as absent, that specific claim has drifted.
+# (label, git-grep pattern, pathspec, hint). A tripwire fires when the pattern's PRESENCE
+# on origin/main DIFFERS from its presence at the pinned SHA — i.e. the claim the doc was
+# assessed against has flipped since. This self-clears on re-pin (pin-state == main-state).
 TRIPWIRES = [
     (
-        "live-send on main (build_provider_request)",
+        "live-send (build_provider_request)",
         r"def build_provider_request",
         "ws/src/warehouse_llm_bridge",
-        "the doc records live-send as NOT-ON-MAIN (#389). If this is now present, "
-        "flip the L4 live-send row to DONE and note whether a non-empty live Command is demonstrated.",
+        "live-send presence changed since the pinned assessment (#389) — update the L4 "
+        "live-send row (NOT-ON-MAIN↔DONE) and note whether a non-empty live Command is demonstrated.",
     ),
 ]
 
@@ -67,6 +68,12 @@ def _git(*args: str) -> tuple[int, str]:
         return p.returncode, (p.stdout or "").strip()
     except Exception as exc:  # fail-safe: never crash the caller
         return 1, f"(git error: {exc})"
+
+
+def _grep_present(rev: str, pattern: str, pathspec: str) -> bool:
+    """True if `pattern` matches at least one tracked file at `rev` under `pathspec`."""
+    rc, out = _git("grep", "-l", "-e", pattern, rev, "--", pathspec)
+    return rc == 0 and bool(out)
 
 
 def main() -> int:
@@ -129,13 +136,17 @@ def main() -> int:
 
     drift = False
     for label, pattern, pathspec, hint in TRIPWIRES:
-        rc, out = _git("grep", "-l", "-e", pattern, "origin/main", "--", pathspec)
-        present = rc == 0 and bool(out)
-        if present:
-            print(f"🔴 tripwire flipped — {label}: now PRESENT on origin/main.\n   → {hint}")
+        at_pin = _grep_present(pin, pattern, pathspec)
+        at_main = _grep_present("origin/main", pattern, pathspec)
+        if at_pin != at_main:
+            direction = "now PRESENT" if at_main else "now ABSENT"
+            print(
+                f"🔴 tripwire flipped — {label}: {direction} on origin/main (differs from pin).\n   → {hint}"
+            )
             drift = True
         else:
-            print(f"   tripwire ok — {label}: still absent (matches doc).")
+            state = "present" if at_main else "absent"
+            print(f"   tripwire ok — {label}: unchanged since pin ({state}).")
 
     if not stale and not drift:
         print("impl-status is current — no refresh needed.")
