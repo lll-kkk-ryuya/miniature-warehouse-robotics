@@ -23,7 +23,7 @@
 - `.env` 変更後、起動済み `llm_bridge` は新しい値を拾わない。launcher は既存 `warehouse_bringup` を再起動するため、401 のまま残る古い Bridge を避けられる。
 - Claude/Codex が `config/<env>/.env` や `~/.hermes/.env` を読む必要がある live 検証では、ユーザーから **対象 path と目的を含む明示スコープ承認**を得る。値は表示しない。承認がない場合は `.env.example` と docs のみ参照する。
 - worktree ごとに `config/dev/.env` が無い場合は `--env-file /path/to/config/dev/.env` または `MWR_HERMES_ENV_FILE=/path/to/config/dev/.env` を使う。Agent の secret guard が `.env` 読み取りを止める場合は、ユーザーの shell 側で `API_SERVER_KEY` / `HERMES_API_KEY` を export し、`MWR_HERMES_ENV_FILE=/nonexistent` で起動する。
-- **Mode X-ER（ER 視覚司令官）の live は専用 gateway を使い、標準 Mode A の 8642 とは分ける**: 素 gateway（text/image leg）は `deploy/dev/run-er-hermes.sh`（**8643**）、音声 leg は fork gateway `deploy/hermes/er-audio-fork/run-er-gateway.sh`（**8644**・`input_audio`・#357）。個人 `~/.hermes` は触らない（`HERMES_HOME` で隔離）。shipped default 音声は direct ER（恒久 fallback）。turnkey 手順・cost/scoped 承認ゲートは [docs/dev/07-mode-x-er-live-e2e-runbook.md](../../docs/dev/07-mode-x-er-live-e2e-runbook.md)。
+- **Mode X-ER（ER 視覚司令官）の live は専用 gateway を使い、標準 Mode A の 8642 とは分ける**: **標準（TARGET）= fork gateway `deploy/hermes/er-audio-fork/run-er-gateway.sh`（**8644**・`input_audio`・#357）1 本で全 modality（text/image/audio）を Hermes 経由**にする方針（fork は input_audio を足すだけで text/image を保持。[ADR 0002](../../docs/adr/0002-er-in-hermes-standard.md)）。素 gateway `deploy/dev/run-er-hermes.sh`（**8643**・text/image leg）は 8644 に統合・retire していく CURRENT 実体。個人 `~/.hermes` は触らない（`HERMES_HOME` で隔離）。**`direct` は緊急 fail-safe / 恒久 fallback へ格下げ**（CURRENT〔shipped〕音声は wire 着地まで依然 direct ER）。turnkey 手順・cost/scoped 承認ゲートは [docs/dev/07-mode-x-er-live-e2e-runbook.md](../../docs/dev/07-mode-x-er-live-e2e-runbook.md)。
 
 ## prod の扱い（実機・本番）
 

@@ -161,4 +161,5 @@ hard-to-reverse な設計判断とその理由を `NNNN-slug.md` で記録する
 | ファイル | 内容 |
 |---------|------|
 | [adr/README](adr/README.md) | ADR 一覧・命名・いつ起こすか（3条件）・retrospectives との違い |
+| [0002-er-in-hermes-standard](adr/0002-er-in-hermes-standard.md) | ER-in-Hermes を標準 transport に採用（fork gateway 8644 一本で全 modality／`direct`=緊急 fallback／Langfuse Pattern A 現行・Pattern B は HLF gate 後）。実装は TARGET |
 | [0001-adopt-grill-with-docs-and-canonical-glossary](adr/0001-adopt-grill-with-docs-and-canonical-glossary.md) | docs authoring 規律として grill-with-docs skill 群＋単一正準 `docs/GLOSSARY.md`＋ADR 実践を採用 |
