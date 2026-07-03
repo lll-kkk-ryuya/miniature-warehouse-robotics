@@ -13,5 +13,5 @@ hard-to-reverse な設計判断と**その理由**を記録する場所。フォ
 
 | ADR | 決定 | 状態 |
 |---|---|---|
-| [0002](0002-er-in-hermes-standard.md) | ER-in-Hermes を標準 transport に採用（fork gateway 8644 一本で全 modality／`direct`=緊急 fallback／Langfuse Pattern A 現行・Pattern B は HLF gate 後）。実装は TARGET（wire 未着地） | accepted |
+| [0002](0002-er-in-hermes-standard.md) | ER-in-Hermes を標準 transport に採用（fork gateway 8644 一本で全 modality／`direct`=緊急 fallback／Langfuse Pattern A 現行・Pattern B は HLF gate 後）。実装は TARGET（#389 の live-send seam は main 着地済・残は wiring〔XER6〕と 8644 fork 配備） | accepted |
 | [0001](0001-adopt-grill-with-docs-and-canonical-glossary.md) | docs authoring 規律として grill-with-docs skill 群＋単一正準 `docs/GLOSSARY.md`＋ADR 実践を採用 | accepted |

@@ -1,6 +1,6 @@
 # ER-in-Hermes を標準 transport として採用する（fork gateway 8644 一本で全 modality / direct=緊急 fallback / Langfuse Pattern A 現行・Pattern B は gate 後）
 
-**Status**: accepted（**決定**）／実装は **TARGET**（下記「状態（TARGET / CURRENT）」参照＝wire・fork ship 未着地）
+**Status**: accepted（**決定**）／実装は **TARGET**（下記「状態（TARGET / CURRENT）」参照＝#389 の live-send 機構は main 着地済〔ad563de〕・残るは稼働 Bridge cycle の wiring〔XER6〕と 8644 fork の default 配備）
 
 Mode X-ER（Gemini Robotics-ER 司令塔）の L4 transport を、**ER-in-Hermes（全 modality を 1 本の fork gateway で Hermes 経由に運ぶ）を標準**とし、`direct` を緊急 fail-safe に格下げし、Langfuse は Bridge 所有 trace（Pattern A）を現行標準・Hermes plugin 所有（Pattern B）は gate 後 follow-up とする、という設計方針（DESIGN）を決めた。**本 ADR は方針＝TARGET であって現稼働ではない**（audio の shipped reality は依然 `direct`。wire=#389 と fork ship が main 着地するまで CURRENT のまま）。
 
@@ -18,7 +18,7 @@ Mode X-ER（Gemini Robotics-ER 司令塔）の L4 transport を、**ER-in-Hermes
 - **latency（n=1・同一音声）**: fork-Hermes **5.49s** vs direct **4.61s**＝comparable。ER 推論（~4-5s・thoughts-token 支配）が支配的で transport overhead は小。先行 docs の n=4（fork 3.69s / direct 4.24s。[`../../deploy/hermes/er-audio-fork/run-er-gateway.sh`](../../deploy/hermes/er-audio-fork/run-er-gateway.sh):30-31）とは**順序が逆＝noise 内**（どちらが速いかは確定しない）。
 - **決定への含意**: audio-in-Hermes は **fork 必須 かつ 実測で稼働** → **fork を維持して標準に採用する**（「fork をやめる／drop する」方向ではない。Decision #1・#5 と一致）。
 - **運用 finding（Lane C #401 で解消予定）**: fork / unforked launcher が現状 `HERMES_HOME` / `.env` / port を共有し**衝突**する（同時起動不可）＝分離が必要。修正は #401。
-- **honest scope**: この live は**手動 probe**であって shipped pipeline ではない。CURRENT（shipped）audio は依然 `direct`（wire=#389・fork ship 未着地）＝本 ADR は **TARGET** のまま。
+- **honest scope**: この live は**手動 probe**であって shipped pipeline ではない。CURRENT（shipped）audio が依然 `direct` なのは config `er_gateway` 既定 OFF（[`../../config/warehouse.base.yaml`](../../config/warehouse.base.yaml):79-80 → `resolve_audio_transport`→`DIRECT`）かつ 8644 fork が deployed default でないため＝本 ADR は **TARGET** のまま（#389 の live-send seam 自体は main 着地済〔ad563de〕）。
 
 ## Decision / 決定（5点）
 
@@ -40,7 +40,7 @@ Mode X-ER（Gemini Robotics-ER 司令塔）の L4 transport を、**ER-in-Hermes
 - **単一 server-side active model**：Hermes は per-request の provider routing をしない。Mode A/B/C の 4-provider 比較は request field ではなく **per-provider gateway**（config + restart）で切替える（F5。[`../../deploy/hermes/er-audio-fork/run-er-gateway.sh`](../../deploy/hermes/er-audio-fork/run-er-gateway.sh):32-34）。
 - **native-google-provider 限定**：ER 用 gateway は Gemini native provider のみ（`model.provider:"google"`）。
 - **Pattern B は managed-prompt link を失いうる**：Bridge `langfuse.openai` wrapper を除去すると、Bridge 側で結合していた model generation / MCP span / Orchestrator score の単一 trace 化を Hermes plugin 側で満たす必要がある（HLF-G0〜G3 が確認軸。gate 未通過なら Pattern A 維持）。
-- **TARGET までは CURRENT が shipped**：wire（live-send seam＝#389・main 未マージ）と fork ship（8644 を default 配備）が main 着地するまで、**audio は `direct` が shipped**（fork は demonstrated だが未 productionize）。本 ADR は「そこへ向かう標準方針」であり現稼働の記述ではない。
+- **TARGET までは CURRENT が shipped**：#389 の live-send 機構（`build_provider_request`/`ErTransportSender`/`_live_send`＝[`gemini_er.py`](../../ws/src/warehouse_llm_bridge/warehouse_llm_bridge/robotics/adapters/gemini_er.py):87/154/222）は **main 着地済**（ad563de）。それでも **audio は `direct` が shipped** なのは、config `er_gateway` が既定 OFF（`base_url:""`／`audio_input_audio_supported:false`）で `resolve_audio_transport`→`DIRECT`（[`transport.py`](../../ws/src/warehouse_llm_bridge/warehouse_llm_bridge/robotics/transport.py):56-58）かつ 8644 fork が deployed default でないため。残る TARGET = (a) 稼働 Bridge cycle が `propose_plan` を呼ぶ wiring（XER6）(b) 8644 fork の default 配備。**shipped audio=direct の安全主張自体は真**（config OFF ゆえ）。fork は demonstrated だが未 productionize。本 ADR は「そこへ向かう標準方針」であり現稼働の記述ではない。
 
 ## Considered Options / 却下・保留した案
 
@@ -49,7 +49,7 @@ Mode X-ER（Gemini Robotics-ER 司令塔）の L4 transport を、**ER-in-Hermes
 
 ## 状態（TARGET / CURRENT）と帰結 / Consequences
 
-- **CURRENT（shipped reality・2026-07-03）**：ER audio leg = `direct`（unforked Hermes は input_audio に 400）。text/image は lean Hermes(8643) 経由も可。transport の「選択」＋ offline L3 全チェーンは実装済み、「実行」（live-send）は #389（main 未着地）＝ live path は `NotImplementedError`（[`../mode-x-er/07-implementation-status.md`](../mode-x-er/07-implementation-status.md):14,22）。
+- **CURRENT（shipped reality・2026-07-03）**：ER audio leg = `direct`（unforked Hermes は input_audio に 400）。text/image は lean Hermes(8643) 経由も可。transport の「選択」＋ offline L3 全チェーン＋ **#389 の live-send 機構（`build_provider_request`/`ErTransportSender`/`_live_send`＝`gemini_er.py:87/154/222`・`propose_plan` は sender があれば `_live_send` を呼ぶ）は main 着地済**（ad563de）。audio が依然 `direct` なのは config `er_gateway` 既定 OFF（`transport.py:56-58`→`DIRECT`）＋ 8644 fork 非配備ゆえで、残るは稼働 Bridge cycle の wiring（XER6）と 8644 fork の default 配備。
 - **TARGET（本 ADR の標準）**：fork gateway 8644 一本で全 modality／`direct`=緊急 fallback／Langfuse Pattern A 現行・Pattern B は HLF gate 後。
 - wire（Lane B）と fork ship（Lane C）が main 着地したら、CURRENT→standard の移行を [`../mode-x-er/07-implementation-status.md`](../mode-x-er/07-implementation-status.md) / [`STATUS`](../STATUS.md) に反映し、本 ADR の TARGET を解消する。
 - 本 ADR は transport 正本索引（[`../mode-x-er/README.md`](../mode-x-er/README.md) Transport index）・[`GLOSSARY`](../GLOSSARY.md) §7・[`06 §5 補遺`](../mode-x-er/06-unfrozen-contract-resolutions.md)・[`01`](../mode-x-er/01-architecture-and-flow.md) 末尾補足・[`environments.md`](../../.claude/rules/environments.md):26 から back-link される。
