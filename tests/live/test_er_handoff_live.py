@@ -389,7 +389,7 @@ def test_live_er_audio_via_forked_hermes_gateway(capsys):
     Operator flow (never printed secrets; .env access needs explicit scope, environments.md):
       1. Deploy the forked lean ER gateway (isolated worktree + patch + launch on :8644):
            deploy/hermes/er-audio-fork/run-er-gateway.sh          # creates worktree, applies patch
-         (lean HERMES_HOME=~/.hermes-mwr-er-lean: provider google, model
+         (lean HERMES_HOME=~/.hermes-mwr-er-fork: provider google, model
          gemini-robotics-er-1.6-preview, api_server :8644, memory off).
       2. Point the bridge config at it: robotics.er_gateway.base_url=http://127.0.0.1:8644 +
          audio_input_audio_supported: true (config/<env>/warehouse.yaml overlay), so
@@ -415,12 +415,12 @@ def test_live_er_audio_via_forked_hermes_gateway(capsys):
             "gateway, e.g. deploy/hermes/er-audio-fork/run-er-gateway.sh on :8644) for the "
             "forked-Hermes audio path"
         )
-    if not audio_path or not Path(audio_path).is_file():
+    if not audio_path or not Path(audio_path).is_file() or not audio_path.lower().endswith(".wav"):
         pytest.skip(
-            "set MWR_ER_AUDIO to a spoken-instruction audio file for the forked-audio probe"
+            "set MWR_ER_AUDIO to a spoken-instruction .wav (forked gateway allowlist is wav-only) probe"
         )
 
-    fmt = "wav" if audio_path.lower().endswith(".wav") else "aiff"
+    fmt = "wav"  # forked gateway allowlist is wav-only (wav-first); non-wav is skipped above
     audio_b64 = base64.b64encode(Path(audio_path).read_bytes()).decode("ascii")
     # OpenAI ``input_audio`` content part — the exact shape the fork's ``_AUDIO_PART_TYPES`` parses
     # and that PROBE-2 proved unforked Hermes rejects with 400 (doc06 §5:146,159).

@@ -62,3 +62,20 @@ exec env HERMES_HOME="$HERMES_HOME" hermes gateway run
 #   §Step A uses this script; §1 turnkey steps; §3 cost/scoped-approval gate.
 #   Kept at EOF (not the header) so the line numbers other docs cite into this script
 #   (run-er-hermes.sh:15,17,23,26 …; deploy/dev/run-live-er-smoke.sh:27) stay stable — #165.
+#
+# -----------------------------------------------------------------------------
+# DEPRECATED / FORK-FREE FALLBACK (2026-07-03).
+#   The SHIPPED STANDARD ER gateway is now the ALL-MODALITY fork launcher on port 8644:
+#     deploy/hermes/er-audio-fork/run-er-gateway.sh   (text + image_url + input_audio).
+#   THIS script (run-er-hermes.sh, port 8643) is the FORK-FREE FALLBACK: a lean ER gateway
+#   for TEXT + IMAGE only. It does NOT carry audio — /v1/chat/completions rejects an
+#   input_audio content part with HTTP 400 unsupported_content_type (PROBE-2, 2026-06-27;
+#   docs/mode-x-er/06-unfrozen-contract-resolutions.md §5). Prefer run-er-gateway.sh (:8644)
+#   unless you deliberately want a fork-free, text/image-only gateway.
+#   This unforked fallback uses HERMES_HOME=~/.hermes-mwr-er-lean (port 8643); the fork gateway
+#   uses a SEPARATE home ~/.hermes-mwr-er-fork (port 8644), so they never share a .env or collide
+#   (a shared home previously let the fork inherit this .env's 8643 — fixed 2026-07-03). Framing:
+#     docs/dev/07-mode-x-er-live-e2e-runbook.md §Step A / er-audio-fork/README.md.
+#   (This banner is appended at EOF, not the header, to keep the line numbers other docs
+#    cite into this script stable — #165, same reason as the note above.)
+# -----------------------------------------------------------------------------

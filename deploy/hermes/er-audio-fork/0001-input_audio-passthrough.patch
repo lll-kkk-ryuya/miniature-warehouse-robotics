@@ -24,9 +24,9 @@ index 22bf199b3..c14743870 100644
  _IMAGE_PART_TYPES = frozenset({"image_url", "input_image"})
  _FILE_PART_TYPES = frozenset({"file", "input_file"})
 +_AUDIO_PART_TYPES = frozenset({"input_audio"})  # MWR ER fork
-+# MWR ER hardening (#356): conservative container/codec allowlist. NOT yet confirmed
-+# against Gemini audio mime-type docs — see README "deferred productionization".
-+_AUDIO_FORMAT_ALLOWLIST = frozenset({"wav", "mp3", "m4a", "aac", "ogg", "flac"})  # MWR ER fork
++# MWR ER hardening (#356): WAV-ONLY FIRST (conservative). Expanding to a fuller Gemini
++# audio mime allowlist (mp3/m4a/aac/ogg/flac) is a follow-up — confirm vs Gemini docs.
++_AUDIO_FORMAT_ALLOWLIST = frozenset({"wav"})  # MWR ER fork — wav-only first (#356 follow-up: expand)
  
  
  def _normalize_multimodal_content(content: Any) -> Any:
@@ -43,8 +43,8 @@ index 22bf199b3..c14743870 100644
 +            if not isinstance(audio_data, str) or not audio_data.strip():
 +                raise ValueError("invalid_content_part:input_audio parts must include non-empty base64 data.")
 +            audio_data = audio_data.strip()
-+            # MWR ER hardening (#356): conservative format allowlist. The exact set MUST
-+            # be confirmed against Gemini audio mime-type docs before production reliance.
++            # MWR ER hardening (#356): WAV-ONLY first (conservative). Expanding beyond wav
++            # (mp3/m4a/aac/ogg/flac) is a follow-up — confirm vs Gemini audio mime docs.
 +            if audio_fmt not in _AUDIO_FORMAT_ALLOWLIST:
 +                raise ValueError(
 +                    "invalid_content_part:input_audio 'format' must be one of "

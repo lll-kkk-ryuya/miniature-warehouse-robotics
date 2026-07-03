@@ -157,6 +157,14 @@ BASE_DIR="$(cd -- "$(dirname -- "$BASE_LAUNCHER")" >/dev/null 2>&1 && pwd 2>/dev
 # extracted temp file when sourced — so we must pin it here.)
 export PATCH_FILE="${PATCH_FILE:-$BASE_DIR/0001-input_audio-passthrough.patch}"
 
+# HERMES_HOME: this Option-D spike keeps its ESTABLISHED lean home (~/.hermes-mwr-er-lean),
+# NOT the base launcher's new default fork home (~/.hermes-mwr-er-fork, 2026-07-03). Pin it
+# BEFORE sourcing the base so the base's `${HERMES_HOME:-…}` respects this value. This keeps the
+# whole hlf-g0-langfuse + spike/ toolchain (whose scripts + docs all reference the lean home)
+# internally coherent and SEPARATE from the shipped fork gateway on ~/.hermes-mwr-er-fork.
+# (Override with HERMES_HOME=… as before.)
+export HERMES_HOME="${HERMES_HOME:-$HOME/.hermes-mwr-er-lean}"
+
 # ----------------------------- our parameters --------------------------------
 # Default isolated install dir is SHARED with the sibling probe (run-hlf-g0.sh /
 # hlf_g0_probe.py use the same /tmp/mwr-hlf-g0-langfuse-libs), so the gateway and
