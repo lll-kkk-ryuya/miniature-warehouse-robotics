@@ -40,3 +40,14 @@ web_bridge:
   # dev は next dev(:3000) で配信する（prod は CI build の out/ を static_dir に指す）。
   allowed_origins:
     - "http://localhost:3000"
+
+# Mode X-ER L4: dev は forked lean ER gateway（:8644）を指し、音声レグを HERMES に解決する
+# （robotics/transport.py resolve_audio_transport → adapter_factory.build_er_adapter）。base は
+# env 非依存で OFF（config/warehouse.base.yaml:77-81）＝この overlay が deep-merge で dev のみ ON。
+# base_url + capability flag の両方が満たされて初めて HERMES（TRANSPORT-FLIP-PLAN §2.1）。gateway
+# bearer は config/dev/.env（API_SERVER_KEY・never commit・safety.md）。実 live send は
+# WAREHOUSE_LIVE_ER=1 ゲート越しのみ（別の human-gated step）。
+robotics:
+  er_gateway:
+    base_url: "http://127.0.0.1:8644"     # forked input_audio gateway（deploy/hermes/er-audio-fork）
+    audio_input_audio_supported: true     # 0001-input_audio-passthrough.patch 適用済 gateway

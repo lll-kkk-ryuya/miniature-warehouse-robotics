@@ -19,6 +19,7 @@ boundary contracts (``RawModelOutput``, ``_BridgeModel``); the dependency is one
 so the L3 core stays independently reusable.
 """
 
+from warehouse_llm_bridge.robotics.adapter_factory import build_er_adapter
 from warehouse_llm_bridge.robotics.adapters import (
     ErAdapter,
     GeminiErAdapter,
@@ -59,6 +60,7 @@ __all__ = [
     "TranscriptResult",
     "TranscriptSink",
     "Transport",
+    "build_er_adapter",
     "resolve_audio_transport",
     "run_perception_lanes",
 ]
