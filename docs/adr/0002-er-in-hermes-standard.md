@@ -9,6 +9,17 @@ Mode X-ER（Gemini Robotics-ER 司令塔）の L4 transport を、**ER-in-Hermes
 - unforked Hermes の OpenAI 互換 API server は `input_audio` content part を透過せず **HTTP 400 `unsupported_content_type`** を返す（PROBE-2 実測。[`../mode-x-er/06-unfrozen-contract-resolutions.md`](../mode-x-er/06-unfrozen-contract-resolutions.md):159）。このため ER の audio leg は `direct` ER に固定され、text/image は lean Hermes(8643) 経由・audio は direct と、**observation が経路分断**していた（audio direct leg は Hermes plugin が観測できない。[`../mode-x-er/07-implementation-status.md`](../mode-x-er/07-implementation-status.md):20）。
 - 2026-06-27、hermes-agent v0.15.1 の **2-file transport-only fork**（`input_audio` を受理し Gemini native `inlineData{mimeType:"audio/wav"}` に map）で **native audio が Hermes を通ること**を live 実証（`/v1/chat/completions` に `input_audio` POST → **HTTP 200**・ER が音声中にのみ存在する語の transcript を返却＝STT 経由でなく native）。fork は input_audio を**足すだけ**で orchestration / safety / text / image は不変（[`../../deploy/hermes/er-audio-fork/run-er-gateway.sh`](../../deploy/hermes/er-audio-fork/run-er-gateway.sh):3-4,23-34 / [`../mode-x-er/06-unfrozen-contract-resolutions.md`](../mode-x-er/06-unfrozen-contract-resolutions.md):267-269）。fork productionization = issue #357、plugin 所有 Langfuse trace（Option-D）scaffolding = #360。
 
+## Evidence（2026-07-03 live 実測・operator 承認・課金）
+
+2026-07-03 に audio-in-Hermes を live 計測し、本決定を裏づけた（同一 TTS 音声で unforked / forked / direct を比較）:
+
+- **unforked Hermes + `input_audio` → HTTP 400 `unsupported_content_type`**（**0.003s**・ER 到達前に reject＝無課金）。→ **audio-through-Hermes には fork が必須**であることを live 再確認（PROBE-2 と一致。[`../mode-x-er/06-unfrozen-contract-resolutions.md`](../mode-x-er/06-unfrozen-contract-resolutions.md):159 は不変）。
+- **forked gateway + `input_audio` → HTTP 200**: ER が音声指示を理解し**正しい 2-task plan**（「bot1→赤箱／bot1 退出後 bot2→青箱」・**611 tok**）を返却。→ **audio-in-Hermes（fork 経由）は ER 呼び出しまで end-to-end で実働**する（demonstrated が確定）。
+- **latency（n=1・同一音声）**: fork-Hermes **5.49s** vs direct **4.61s**＝comparable。ER 推論（~4-5s・thoughts-token 支配）が支配的で transport overhead は小。先行 docs の n=4（fork 3.69s / direct 4.24s。[`../../deploy/hermes/er-audio-fork/run-er-gateway.sh`](../../deploy/hermes/er-audio-fork/run-er-gateway.sh):30-31）とは**順序が逆＝noise 内**（どちらが速いかは確定しない）。
+- **決定への含意**: audio-in-Hermes は **fork 必須 かつ 実測で稼働** → **fork を維持して標準に採用する**（「fork をやめる／drop する」方向ではない。Decision #1・#5 と一致）。
+- **運用 finding（Lane C #401 で解消予定）**: fork / unforked launcher が現状 `HERMES_HOME` / `.env` / port を共有し**衝突**する（同時起動不可）＝分離が必要。修正は #401。
+- **honest scope**: この live は**手動 probe**であって shipped pipeline ではない。CURRENT（shipped）audio は依然 `direct`（wire=#389・fork ship 未着地）＝本 ADR は **TARGET** のまま。
+
 ## Decision / 決定（5点）
 
 1. **ER-in-Hermes を標準 transport とする**。**1 本の fork gateway（port 8644）が全 modality（text + image_url + input_audio）を担う**。fork は `input_audio` を追加するだけで text/image を保持するため、従来の lean text/image gateway（8643）は 8644 に**統合し retire** する。
