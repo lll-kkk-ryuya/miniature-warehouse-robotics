@@ -36,6 +36,23 @@
   - **2026-07-02 live 実走（operator 承認・課金）**: `test_xer_full_chain_live.py` **PASS**。実 `gemini-robotics-er-1.6-preview` 呼び出し（**607 tokens**）→ `compile_raw_output` → **valid frozen Command（`command_items=0`・`destinations=[]`）**。この fixture では live ER 出力が KNOWN_LOCATIONS へ解決せず **R-26 0-dispatch**（安全に空 Command）＝**チェーンが live で end-to-end 動作し安全に終端すること**は実証。ただし**非空 live Command（ER 出力が KNOWN_LOCATIONS に解決するケース）は未実証**。この test は adapter の `propose_plan` live-send（**#389 で main 着地したが本 test は経由しない**）ではなく `_er_live_client.call_er_direct`（test 側直呼び）を使う。gateway は `run-er-hermes.sh`(8643) を起動済で health OK（`/v1/models`=`hermes-agent`）。
 - **どの run もカバーしないもの**: (1) `gemini_er.propose_plan` の実 live-send を**稼働 Bridge サイクルが呼ぶ**経路（#389 で機構は main 着地したが、それを呼ぶ cycle が未接続＝主線で自動発火しない）、(2) Command を L3 の先（MCP/Policy Gate/Nav2/RMF 作動）へ sim で運ぶ **XER6 closure**（[dev/07:188](../dev/07-mode-x-er-live-e2e-runbook.md)・[README:91](README.md)）＝main に該当テストなし。
 
+## トップダウン連結（running で上から届くか）
+
+STATUS（実装済みか）とは**直交する第 2 軸＝CONNECTIVITY**（稼働している rclpy node から、上＝operator 入力 → 下＝motor へ各 seam に到達できるか）。file:line で裏取りした結論: **上から running で走る pipeline はゼロ hop**（部品は揃うが背骨＝X-ER commander node が無い）。全 seam は constructible/offline だが、**稼働 node から呼ばれるものは一つも無い**。唯一稼働している commander node（Mode A の `llm_bridge`）には **ER 参照がゼロ**（`llm_bridge.py`/`scheduler.py` に `robotics_planning_core`/`propose_plan`/`gemini_er` の import・呼び出しなし）。図解版は [implementation-status.html](implementation-status.html) の「つながり(connectivity)」帯（node の**枠＝ring**で表現。塗り＝STATUS とは別軸）。
+
+| hop | seam | 到達状態（connectivity） | 根拠（file:line） |
+|---|---|---|---|
+| ⓪ | mic → audio capture / operator input lane を driving | **NOT-IMPLEMENTED**（呼び出し元 node なし） | `perception_lanes.py:48-125`（lane はあるが caller なし） |
+| ① | text/image → lean Hermes ER gateway(8643) の「200 OK」 | **CONSTRUCTIBLE-NOT-CALLED**（curl / pytest test-client のみ・稼働 adapter は未呼び出し） | `run-er-hermes.sh:2-8`・live probe は `tests/live/*` の human gate のみ |
+| ② | adapter LIVE-SEND（`propose_plan`/`HttpErTransportSender`） | **CONSTRUCTIBLE-NOT-CALLED**（#389 で機構は main・唯一の caller は pytest） | `gemini_er.py:39-75`・`build_provider_request`/`_live_send`（`WAREHOUSE_LIVE_ER` gate） |
+| ③ | adapter → `pipeline.compile_raw_output`（RawModelOutput 受け渡し） | **OFFLINE-ONLY**（稼働 Bridge cycle が渡さない・pytest 内でのみ） | `pipeline.py:89-150`・`tests/unit/test_l3_pipeline.py:197-317` |
+| ④ | full L3 chain → 凍結 `Command`（handoff→validator→resolver→executor→compiler） | **OFFLINE-ONLY**（実装済み done だが running から不達） | `handoff.py:114-164`・`validator.py:90`・`compiler.py:95-134`・`pipeline.py:150` |
+| ⑤ | 凍結 `Command` → L2 action_map/MCP/Policy Gate → L1 Nav2 → L0 | **NOT-IMPLEMENTED**（X-ER 経路は main に無い＝XER6）／ **RUNNING-WIRED-for-ModeA**（同型 seam は Mode A で稼働） | Mode A: `scheduler.py:368-374`(`_dispatch_command`)・`bringup.launch.py:240-243`(`llm_bridge` Node) |
+
+**verdict**: 上から running で走る pipeline は**ゼロ hop**（部品は揃うが背骨＝X-ER commander node が無い）。同型の seam が Mode A では稼働 node から連結して届く（`llm_bridge.py:308` main → `scheduler.py:368-374` dispatch → Nav2 `bringup.launch.py:240-243`）ので、**X-ER に欠けているのは配線であって部品ではない**。
+
+**next_wire（背骨を 1 本通す）**: 新規 `warehouse_llm_bridge/x_er_bridge.py`（`main()` + `rclpy.Node`）を作り、`setup.py` の `console_scripts`（`setup.py:29-30` の `llm_bridge` と同型）に登録、`bringup.launch.py`（`:240-243` と同型）に `traffic_mode=='x-er'` 条件で追加。その cycle が `build_er_adapter` → `propose_plan` → `compile_raw_output` → dispatch を鎖にすれば、**hops ⓪③④⑤ を一括で閉じる**（L3 帯の OFFLINE-ONLY が RUNNING-WIRED へ変わる）。
+
 ## ER inside Hermes（図の要）
 
 「ER が Hermes 内にいる」は **text/image では真**（専用 lean Hermes 8643 の OpenAI 互換 `/v1/chat/completions` 経由。`run-er-hermes.sh`＋`config.lean.yaml`）。**audio では偽**（vanilla Hermes が input_audio に 400＝PROBE-2 `doc06:159`。shipped は **direct**＝恒久 fail-safe）。audio-through-Hermes は fork gateway **8644**（`deploy/hermes/er-audio-fork/`）だが**現状は productization target（probe）**であり shipped wire ではない。個人 `~/.hermes` は触らない（`HERMES_HOME` 隔離）。
