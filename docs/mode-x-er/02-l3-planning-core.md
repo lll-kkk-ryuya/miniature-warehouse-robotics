@@ -344,3 +344,7 @@ clarification 系は専用 code を増やさず、次の 2 経路で表す:
 
 - 現状 9 code は全て blocking 経路（`errors[]`・severity=error）。`dispatch_effect=none` / severity=warning（`warnings[]`）を出す code は XER2 には無く、`warnings[]` は将来の非ブロッキング rule 用に reserved（XER2 では常に空）。
 - `normalized_plan`（accepted 時の中身）は下流（Visual Resolver / Task Graph Executor）が未確定ゆえ `dict` のまま意図的に DEFER する（型を確定しない＝見落としではない・§1:64 の shape を維持）。
+
+### Plugin 由来 reason_code（namespaced・9-enum とは別空間）
+
+商用 plugin（[productization/09](../productization/09-run-manifest-and-plugin-composition.md)）が出す reason_code は、この 9 個の frozen `ValidationCode` enum（owner は `warehouse_llm_bridge` の `report.py`:69-88・本節 `### code 語彙（stable・全9）` が Mode X-ER 文脈の語彙正本）とは **別の namespaced 空間**（`<plugin_id>:<reason_code>`・lowercase ＋ 必須 `:`）に住み、**enum を編集しない**（Variant B: `plugin_id` / `reason_code` は別 field で保持し、tag 用に導出 full code を作る）。plugin finding は sibling typed model（`StructuredPluginRuleResult` 等）で運ばれ、frozen `DispatchEffect` / `severity` 語彙（本節 §RuleResult.severity / dispatch_effect）を**再利用**して同じ most-severe-wins lattice（:304 の集約優先）で core finding と均一に集約される。詳細は [productization/09](../productization/09-run-manifest-and-plugin-composition.md) の typed hookspec / `ComposedValidationReport` 節。

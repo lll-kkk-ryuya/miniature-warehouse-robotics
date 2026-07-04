@@ -165,3 +165,8 @@ L4 ER Adapter
 - site profile のファイル形式。
 - commercial report の KPI schema。
 - ER/VLA adapter を Hermes 経由に固定するか、Bridge-managed direct adapter を許可するか。
+- **Mode A manifest 表現で判明した taxonomy gap（run_manifest.v1 で実測・[productization/09](09-run-manifest-and-plugin-composition.md)）**:
+  - **character_llm の box home 不在（F1）**: negotiation 層（persona / negotiation / character_node・[architecture/14](../architecture/14-character-llm-negotiation.md)）は L4 Super-Box 実装だが doc01 sub-box でも doc09 catalog plugin でもない（free-form L4 plugin id で表現は可・plugin manifest 未整備）。
+  - **profile ↔ traffic_mode 翻訳 owner 未定義（F2）**: box profile 文字列が `traffic_mode`（`none|simple`）を命名規約で運ぶが、それを config key へ翻訳する component が未定義（manifest は現状 record であって config source ではない・[doc09:44](09-run-manifest-and-plugin-composition.md)）。
+  - **State Cache の box 帰属（F3）**: `warehouse_state/state_cache`（稼働 Mode A node）が doc01 の box 行に無い（暫定 `safety` box に subsume＝taxonomy 判断は未確定）。
+  - **mode 自体が first-class でない（F4）**: 「これは Mode A」が profile 命名にしか encode されない。first-class な `mode`/`scenario` field は v2 議論（now-scope では blocker でない）。

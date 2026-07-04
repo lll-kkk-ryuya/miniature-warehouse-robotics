@@ -2,7 +2,7 @@
 
 作成日: 2026-06-27
 
-> **状態**: 設計提案。ここでは box / plugin を案件ごとに組み替えても
+> **状態**: 標準（standard）。fail-closed composition 層を今すぐ標準として建てる。ここでは box / plugin を案件ごとに組み替えても
 > Eval / Observability が同じ join / funnel / score を維持できるように、
 > run manifest、plugin manifest、OSS 利用方針、WO と `eval_sdk` の関係を整理する。
 > 新しい config key、ROS topic、REST API、`warehouse_interfaces` frozen contract は追加しない。
@@ -52,10 +52,22 @@ box が外れているのか、出るはずの event が欠落したのかを区
 `config/eval/profiles/*.yaml` のような runtime config 配置は候補だが、
 実装時に config owner docs と contract PR で別途扱う。
 
+### 実効構成レコード（effective-composition record）
+
+manifest が「有効化したい構成」の宣言であるのに対し、**実際に構築された構成**を
+別 artifact に残す。run ごとに `out/runs/<run_id>/` へ (1) `manifest.yaml` の逐語コピー
+＋ (2) `effective_composition.json`（`effective_composition.v1`）を書き、後者は
+**構築済みオブジェクト自身**（`type(obj)` の `class_name` / `module`）＋ merge 後 policy
+の dump から起票する。これが「recorded == ran」の witness であり、manifest 記載と
+構築実体が食い違えば `CompositionError` で起票を拒否する（嘘レコードを書かない）。
+`out/runs/` は repo-relative で **gitignore 対象**（設計意図。root `.gitignore` への
+`out/runs/` 追加は follow-up＝open flag）。書くのは preflight 通過後の稼働 node /
+launch harness が run ごとに一度だけ（→ [startup fail-closed composition preflight](#startup-fail-closed-composition-preflight)・[ADR-0003](../adr/0003-bridge-local-manifest-composition.md)）。
+
 例:
 
 ```yaml
-schema_version: run_manifest.proposal
+schema_version: run_manifest.v1
 run_id: demo_001
 
 boxes:
@@ -72,6 +84,8 @@ boxes:
       - id: l3.zone_policy
         version: 0.1.0
         profile: customer_a
+        profile_version: 2026-06-01
+        profile_content_hash: sha256:...
       - id: l3.visual_resolver.warehouse
         version: 0.2.0
         profile: customer_a
@@ -94,6 +108,8 @@ boxes:
   safety:
     enabled: true
     profile: mini_warehouse_default
+    profile_version: 2026-06-01
+    profile_content_hash: sha256:...
 
   hardware:
     enabled: true
@@ -125,6 +141,21 @@ score_specs:
 `enabled: true` の emitting box が `expected_emitters` に無い場合は manifest 不整合、
 `expected_emitters` にある producer の event が欠ける場合は
 `eval_observability` の `join_gap` / `artifact_missing` として扱う。
+
+### run_manifest.v1 schema（fail-closed）
+
+run manifest は **bridge-local な pydantic model**（`RunManifest`）として検証する。
+これは `warehouse_interfaces` frozen contract **ではない**（:8 のとおり frozen contract は
+追加しない・run artifact schema にとどめる）。fail-closed 規則:
+
+- `schema_version` は `run_manifest.v1` 固定＝**unknown な `schema_version`（`run_manifest.proposal` を含む）は fail-closed reject**。将来の破壊的変更は新 version を切る。
+- `extra=forbid`（typo を fail-open drift させず reject する。frozen 契約の `extra=ignore` とは**意図的に逆**＝run artifact は宣言の正確さを優先）。
+- `boxes` は非空。`expected_emitters` は非空・unique・**declared かつ enabled な box のみ**（`enabled: false` は使わない＝:140）。
+- plugin id は box 内・box 跨ぎとも一意（plugin は 1 box に束縛される）。
+- `run_id` は `out/runs/<run_id>/` の dir 名になるため filesystem-safe token に限る。
+- `profile_version` / `profile_content_hash` は site profile identity slot（optional・`None` = profile content 未証明）。安全に効く profile の hash 検証は下記 §[Profile の責務分離](#profile-の責務分離) と [Trust model と fail-closed granularity](#trust-model-と-fail-closed-granularity)、上流 gate は [04 §Site Profile](04-box-storage-and-reuse-guidelines.md#site-profile) を参照する。
+
+決定の背景と trade-off は [ADR-0003](../adr/0003-bridge-local-manifest-composition.md)。
 
 ## Profile の責務分離
 
@@ -193,7 +224,7 @@ plugin_id: l3.zone_policy
 box: l3_validator
 kind: plugin
 version: 0.1.0
-status: proposal
+status: standard
 
 hook_points:
   - validate_plan
@@ -233,6 +264,23 @@ plugins/
 
 利用者が 2 件以上になり、site profile だけで差し替えられることが確認できたら、
 `04` の分離基準に従って別 repo / package registry へ切り出す。
+
+### Trust model と fail-closed granularity
+
+`safety_boundary`（:216-217 の `may_dispatch_motion: false` / `may_write_cmd_vel: false`）
+は plugin が安全経路を持たないことの**宣言**だが、trust model は **ADVISORY** である。
+in-proc の hookimpl は `object.__setattr__` で `frozen=True` の finding すら書き換えられる
+ため、plugin 層での**真の強制は原理的に不可能**。防御は (1) 明文化した trust model
+(2) review gate (3) fail-closed の 3 段で、**真の強制は L2 / L1 / L0** に残す
+（安全経路を plugin の自由差し替えにしない＝:290-298）。
+
+plugin-exception granularity の既定は **ISOLATE_PLUGIN**：crash した plugin の寄与を
+blocking reject（reserved code `plugin_crash`）にし、`plugin_id` ＋ exception repr を
+毎サイクル attribute し、他 plugin は継続する。全 plugin を止める **ABORT_ALL**
+（`refuse_run`）も選択できる。crash 側 plan も 0-dispatch ゆえ両 mode は
+safety-equivalent（どちらも motion を出さない）。decision の背景は
+[ADR-0003](../adr/0003-bridge-local-manifest-composition.md)、この宣言が守る L3 の
+非実行原則は [03 §横展開](03-l3-planning-core-box.md#横展開の核心-core-は産業非依存plugin-が産業差を吸収する) と同じ「L3 は実行許可を持たない」に連なる。
 
 ## Pluggy と Entry Points
 
@@ -296,6 +344,52 @@ results = plugin_manager.hook.validate_plan(plan=plan, context=context)
 
 安全経路は plugin の自由差し替えにしない。plugin は主に Non-RT の検証、
 案件 policy、観測、report 拡張に使う。
+
+### startup fail-closed composition preflight
+
+pluggy の hook を **0 個の impl** で呼ぶと空 list が返り、これは「全 plugin が
+approve した」結果と**観測上区別できない**＝plugin の未 load は **fail-open** になる。
+これが最大の急所である。防御は、run manifest を intent の明示 witness に使い、起動時に
+**`manifest.plugins ⊆ registered hookimpls` を検査**し、満たさなければ **起動を拒否**する
+（`CompositionError`）。silent pass 経路は存在させない＝raise するか、集合等価を証明する
+preflight report を返すかの**二択**にする。registered-but-undeclared（宣言に無い plugin
+が登録済み）は明示 `allow_unlisted=True` の opt-in 時のみ許容し、report に残す。
+この preflight を通った構成だけが上記 [実効構成レコード](#実効構成レコードeffective-composition-record)
+を書ける（→ [ADR-0003](../adr/0003-bridge-local-manifest-composition.md)）。
+
+### typed hookspec と namespaced plugin code
+
+hookspec は `validate_plan(plan, context) -> Sequence[PluginFinding]` の**1 種のみ**
+（引数名 `plan` / `context` は凍結・additive-first）。`plan` は構造検証済みの
+**raw draft dict** を渡す（unfrozen な内部 plan draft を customer plugin に直接曝さない）。
+
+plugin の結果は、frozen な **9-code `ValidationCode` enum**（`report.py`:69-88・core が
+凍結して持つ 9 コード）には**絶対に入れない** sibling の typed model にする。
+**Variant B を採用**：`plugin_id` と `reason_code` を**別フィールド**に持ち（`id:code`
+連結文字列ではない）、full_code はそれらから派生する（`decision_event` の
+`box` / `stage` / `plugin_id` 区別＝[05](05-decision-observability-and-tooling.md):55-58,79,
+[10](10-llm-assisted-rule-authoring.md):396 と同形）。namespaced code は
+`<plugin_id>:<reason_code>`（lowercase ＋ 必須 `:`）で、frozen 9 コード（UPPERCASE・`:` 無し）
+とは構造的に **disjoint**（衝突・spoof を静的に弾ける）。
+
+fail-closed 語彙：undeclared な `reason_code`・spoofed `plugin_id`・malformed な
+raw-dict return・reserved-code の spoofing は **`needs_clarification`（human review）へ変換**
+する（silent pass も auto-emergency もしない）。dispatch への影響は clamp する＝plugin は
+`dispatch_effect` を **requested** するだけで、policy が **下方向のみ clamp** する
+（ceiling 既定 = `block`・`emergency_stop` は allowlist のみ・`clamped_from` を記録・
+fail-closed 変換と crash 結果は clamp 免除）。`emergency_stop_allowlist` は project BASE
+`PlanPolicy`（Core ceiling）に居り、site profile / run manifest は **narrow（除去）のみ・
+追加は不可**。設計正本は [ADR-0003](../adr/0003-bridge-local-manifest-composition.md)。
+
+### ComposedValidationReport（集約）
+
+frozen な `ValidationReport.from_rules`（`report.py`:184）は **一切編集しない**。core rule
+はそれ経由で集約し、plugin finding は sibling の `ComposedValidationReport` が同じ
+most-severe-wins lattice（`report.py`:100-105・`emergency_stop > rejected >
+needs_clarification > accepted`＝[mode-x-er/02](../mode-x-er/02-l3-planning-core.md):304）を
+**read-only import** して均一適用する。混在 conflict（`rejected` vs `needs_clarification`）
+は決定的・順序非依存に解決し、両 finding を operator に残す。`permits_dispatch` /
+command candidates は composed status で gate する（double-guard）。
 
 ## OSS の使いどころ
 
@@ -370,8 +464,8 @@ join key、score sink、汎用算術を安定提供し、どの box が有効か
 2. `out/runs/<run_id>/manifest.yaml` の最小 generator を WO または launch harness に追加する。
 3. `decision_events.jsonl` の envelope を Pydantic / JSON Schema で検証する。
 4. DuckDB で `audit.jsonl` / `decision_events.jsonl` / result export を join する offline report を作る。
-5. L3 Validator に `pluggy` hook を入れる spike を行い、`l3.zone_policy` fixture を 1 件作る。
-6. entry points discovery は plugin package が 2 件以上になってから導入する。
+5. fail-closed composition 層（`run_manifest.v1` ＋ startup preflight ＋ 実効構成レコード ＋ typed `validate_plan` hookspec ＋ namespaced plugin code ＋ policy clamp）を **今すぐ標準として建てる**（spike ではなく本実装。[ADR-0003](../adr/0003-bridge-local-manifest-composition.md)）。`l3.zone_policy` fixture を 1 件添える。
+6. `entry_points` 自動 discovery は **explicit-registry-first の後回し最適化**であり、composition 層を建てない理由にはしない。plugin package が 2 件以上になってから足す。
 7. OpenTelemetry Collector は Langfuse 以外の sink が必要になった時点で spike する。
 
 この順序なら、box / plugin の動的な追加・取り外しに備えつつ、初期実装は
