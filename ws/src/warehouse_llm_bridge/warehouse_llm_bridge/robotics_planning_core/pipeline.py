@@ -45,6 +45,7 @@ from warehouse_llm_bridge.robotics_planning_core.validator import (
     Calibration,
     PlanningContext,
     PlanValidator,
+    TaskGraphStore,
     ValidationReport,
     warehouse_reference_policy,
 )
@@ -94,6 +95,8 @@ def compile_raw_output(
     context: PlanningContext | None = None,
     compiler: CommandCompiler | None = None,
     profile: ExecutionProfile = ExecutionProfile.X_LITE,
+    executor: TaskGraphExecutor | None = None,
+    store: TaskGraphStore | None = None,
 ) -> Command:
     """Full L3 offline chain: ``RawModelOutput -> ... -> frozen Command`` (XER6, doc02:200-269).
 
@@ -106,9 +109,18 @@ def compile_raw_output(
     WITHOUT resolving / executing / compiling; an unresolved (or out-of-vocabulary) target is
     skipped by the Compiler. This function therefore never produces a command for an unsafe plan.
 
-    One-shot: it compiles the tasks that are READY this cycle — an ``after``-gated task waits for
-    its predecessor (doc02:171-173,184). Stateful progression across cycles (mark running /
-    completed, re-compile) is the caller's loop / the live path, not this offline entry.
+    One-shot BY DEFAULT: with no injection it compiles the tasks that are READY this cycle
+    against a FRESH in-memory store — an ``after``-gated task waits for its predecessor
+    (doc02:171-173,184) and no state survives the call. Injecting ``executor=`` (a long-lived
+    :class:`TaskGraphExecutor`) or ``store=`` (a durable :class:`TaskGraphStore` — the Store
+    Plugin, docs/productization/03-l3-planning-core-box.md:132,135) extends the ``after``
+    progression and the duplicate-dispatch guard ACROSS calls: ``ready_tasks`` persists READY
+    marks through the store, and the CALLER's loop advances the lifecycle between calls
+    (``mark_running`` / ``mark_succeeded`` — the commit-point contract, executor.py:94-99).
+    Ownership stays split three ways: the STORE owns cross-cycle state (doc02:198 source of
+    truth), the executor is a stateless lifecycle driver over it, and the caller loop owns
+    PROGRESSION — so "stateful progression is the caller's loop" still holds; injection only
+    lets that loop span multiple ``compile_raw_output`` calls instead of bypassing this entry.
 
     Args:
         raw: the provider transport envelope (audit-only ``transport``/``provider``, doc03:75).
@@ -125,26 +137,51 @@ def compile_raw_output(
             (X-lite). A future ``RmfTaskCompiler`` handles ``x_rmf`` (doc02:240).
         profile: :class:`ExecutionProfile`; ``x_rmf`` raises ``NotImplementedError`` in the
             default compiler (doc02:234).
+        executor: OPTIONAL long-lived :class:`TaskGraphExecutor` — the XER4 stage plugin,
+            mirroring ``compiler=``. Inject it when the caller (e.g. a future ``x_er_bridge``
+            node) holds ONE executor across cycles; its internal store then carries the
+            ``after`` progression / duplicate-dispatch state between calls. Future executor
+            construction knobs (completion source / timeout / retry policy,
+            docs/productization/03-l3-planning-core-box.md:127-133) belong to the executor's
+            constructor at the caller, NOT to this signature. Mutually exclusive with ``store=``.
+        store: OPTIONAL durable :class:`TaskGraphStore` (file / Redis / DB — the Store Plugin
+            seam, docs/productization/03-l3-planning-core-box.md:132,135; doc02:198).
+            Convenience for callers that own only the store: equivalent to
+            ``executor=TaskGraphExecutor(store)``. Mutually exclusive with ``executor=``.
 
     Returns:
         a frozen :class:`~warehouse_interfaces.schemas.Command`; ``commands == []`` whenever the
         plan was not accepted or no target resolved to a known location (0-dispatch).
 
     Raises:
-        ValueError: forbidden / unreadable envelope at the Handoff (handoff.py:25,142).
+        ValueError: forbidden / unreadable envelope at the Handoff (handoff.py:25,142); OR both
+            ``executor=`` and ``store=`` were passed (ambiguous — an executor already owns a
+            store, so silent precedence would hide a wiring bug).
         NotImplementedError: ``profile`` is a backend the ``compiler`` does not implement
             (e.g. ``x_rmf`` on :class:`WarehouseNavCompiler`, doc02:234,240).
     """
+    if executor is not None and store is not None:
+        raise ValueError(
+            "compile_raw_output: pass either executor= or store=, not both — a "
+            "TaskGraphExecutor already owns its store (executor.py:78-80), so a second "
+            "store would be silently ignored"
+        )
     draft = to_robotics_plan_draft(raw)
     ctx = context if context is not None else PlanningContext(policy=warehouse_reference_policy())
     report = PlanValidator().validate(draft.model_dump(), ctx)
     if not report.permits_dispatch:
         # R-26 end-to-end: never resolve / execute / compile a non-accepted plan (0 dispatch).
+        # The injected executor/store is NEVER touched on this path (no load, no persist), so a
+        # rejected plan can neither read nor dirty durable cross-cycle state.
         return Command(
             reasoning=f"Mode X-ER: plan not dispatched (validation status={report.status})",
             commands=[],
         )
     resolution = VisualTaskResolver(resolver_policy).resolve(draft, calibration)
-    executor = TaskGraphExecutor()
-    ready = executor.ready_tasks(draft, executor.load_state(draft.plan_id))
+    # Store-seam pierce: default = a FRESH in-memory store per call (TaskGraphExecutor(None)
+    # is TaskGraphExecutor(), so the non-injected path is behaviour-identical to the
+    # pre-injection entry point); an injected executor/store carries state across calls
+    # (doc02:198 — the store, not this function, owns cross-cycle state).
+    task_executor = executor if executor is not None else TaskGraphExecutor(store)
+    ready = task_executor.ready_tasks(draft, task_executor.load_state(draft.plan_id))
     return (compiler or WarehouseNavCompiler()).compile(ready, resolution, profile)
