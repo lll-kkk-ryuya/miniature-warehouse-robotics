@@ -142,6 +142,14 @@ score_specs:
 `expected_emitters` にある producer の event が欠ける場合は
 `eval_observability` の `join_gap` / `artifact_missing` として扱う。
 
+`effective_composition.v1` は **任意の埋め込みブロック**も運べる: `site_profile`（version +
+content-hash・S3 由来）と `calibration_governance`（S3 の gate 判定）である。`EffectiveComposition`
+schema（`extra='forbid'`）はこの 2 slot を予約する必要がある。**RESIDUAL（未配線）**: S3↔S2 の
+埋め込みは現状未配線＝S3 は独立した `calibration_governance` ブロック（および
+`schema_version: effective_composition.site_profile.s3-proposal` 形の別提案）を出すが、S2 の
+`extra='forbid'` schema にはその slot が無い。S3 を run path に配線する slice で reconcile する
+（決定背景は [ADR-0003](../adr/0003-bridge-local-manifest-composition.md) の Consequences）。
+
 ### run_manifest.v1 schema（fail-closed）
 
 run manifest は **bridge-local な pydantic model**（`RunManifest`）として検証する。
@@ -267,12 +275,12 @@ plugins/
 
 ### Trust model と fail-closed granularity
 
-`safety_boundary`（:216-217 の `may_dispatch_motion: false` / `may_write_cmd_vel: false`）
+`safety_boundary`（:256-257 の `may_dispatch_motion: false` / `may_write_cmd_vel: false`）
 は plugin が安全経路を持たないことの**宣言**だが、trust model は **ADVISORY** である。
 in-proc の hookimpl は `object.__setattr__` で `frozen=True` の finding すら書き換えられる
 ため、plugin 層での**真の強制は原理的に不可能**。防御は (1) 明文化した trust model
 (2) review gate (3) fail-closed の 3 段で、**真の強制は L2 / L1 / L0** に残す
-（安全経路を plugin の自由差し替えにしない＝:290-298）。
+（安全経路を plugin の自由差し替えにしない＝:298-306）。
 
 plugin-exception granularity の既定は **ISOLATE_PLUGIN**：crash した plugin の寄与を
 blocking reject（reserved code `plugin_crash`）にし、`plugin_id` ＋ exception repr を
@@ -390,6 +398,22 @@ needs_clarification > accepted`＝[mode-x-er/02](../mode-x-er/02-l3-planning-cor
 **read-only import** して均一適用する。混在 conflict（`rejected` vs `needs_clarification`）
 は決定的・順序非依存に解決し、両 finding を operator に残す。`permits_dispatch` /
 command candidates は composed status で gate する（double-guard）。
+
+### 2 種の manifest 取り込み（RESIDUAL・未配線）
+
+composition が消費する manifest は **2 種類**に分かれる。**run manifest**（run ごとに何を
+有効化するか＝`id` + `version` + `profile`・emits は持たない・上記 [run_manifest.v1 schema](#run_manifestv1-schemafail-closed)）と、
+**per-plugin plugin manifest**（`emits.reason_codes` + `safety_boundary` を宣言＝上記
+[Plugin Manifest](#plugin-manifest) の例）である。loader は `RunManifest` + `[PluginManifest]` を
+取り込み、`PluginCodeRegistry.from_manifest_dicts`（`plugin_id` + `emits.reason_codes` のみ読む）で
+declared-emits registry を建てる。run manifest の plugin `id` は plugin manifest の `plugin_id` と
+突き合わせ（reconcile）、preflight が **run-declared == 登録済み hookimpls == plugin-manifest-present** を
+交差検査する。
+
+> **RESIDUAL（未配線）**: 現状のどの slice も per-plugin plugin manifest を **load しない**
+> （`PluginCodeRegistry.from_manifest_dicts` は seam として在るが呼ばれていない）。取り込み loader は
+> 将来 slice（S5 `x_er_bridge` か専用 loader lane）で配線する。決定背景は
+> [ADR-0003](../adr/0003-bridge-local-manifest-composition.md)（Consequences）。
 
 ## OSS の使いどころ
 
