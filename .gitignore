@@ -52,3 +52,7 @@ web/e2e/test-results/
 
 # PlatformIO (ESP32 firmware)
 firmware/.pio/
+
+# Run artifacts: out/runs/<run_id>/{manifest.yaml,effective_composition.json}
+# (docs/productization/09-run-manifest-and-plugin-composition.md:48 — run outputs, never committed)
+out/runs/
