@@ -242,6 +242,15 @@ class PluginDispatchPolicy(_BridgeModel):
     it requires per-plugin allowlisting (``emergency_stop_allowlist``), mirroring the
     principle that emergency/lower-layer safety is not weakened or delegated casually
     (doc10:393; plugins must not become a safety path, doc09:290-298).
+
+    Allowlist authority (ADR-0003 item 6 / doc09:388-390): the AUTHORITATIVE emergency_stop
+    allowlist is the project BASE ``PlanPolicy`` (the Core ceiling, policy.py). A site profile
+    or run manifest may only NARROW it (remove ids), never ADD an emergency-capable plugin the
+    base did not grant. Construct a per-run policy from the base ceiling with
+    :meth:`derive_from_base`, which enforces that narrow-only invariant. Direct construction
+    (passing ``emergency_stop_allowlist`` in) remains supported for tests/callers that already
+    hold the authoritative set — it is an unchecked path, so production wiring goes through
+    ``derive_from_base``.
     """
 
     model_config = ConfigDict(extra="ignore", frozen=True)
@@ -258,6 +267,41 @@ class PluginDispatchPolicy(_BridgeModel):
                 "emergency_stop_allowlist"
             )
         return value
+
+    @classmethod
+    def derive_from_base(
+        cls,
+        base_allowlist: frozenset[str],
+        *,
+        requested_allowlist: frozenset[str] | None = None,
+        max_effect: DispatchEffect = DispatchEffect.BLOCK,
+    ) -> PluginDispatchPolicy:
+        """Derive a run policy from the project BASE ceiling, NARROW-ONLY (ADR-0003 item 6).
+
+        ``base_allowlist`` is the authoritative project ``PlanPolicy.emergency_stop_allowlist``
+        (the Core ceiling, doc09:388-390). ``requested_allowlist`` is what a site profile / run
+        manifest asks for; ``None`` means "inherit the base unchanged".
+
+        Fail-closed narrow-only invariant: the request may only be a SUBSET of the base
+        (``requested ⊆ base``). A request that adds an id the base did not grant is REJECTED
+        (``ValueError``) — a site/run can revoke emergency authority but can never manufacture
+        it. The resulting policy's allowlist is exactly the (validated) request, or the base
+        when no request is given.
+        """
+        if requested_allowlist is None:
+            resolved = frozenset(base_allowlist)
+        else:
+            requested = frozenset(requested_allowlist)
+            added = requested - frozenset(base_allowlist)
+            if added:
+                raise ValueError(
+                    "emergency_stop_allowlist may only NARROW the base ceiling "
+                    "(ADR-0003 item 6 / doc09:388-390); a site profile / run manifest cannot "
+                    f"ADD emergency-capable plugins the base did not grant: {sorted(added)} "
+                    f"(base={sorted(base_allowlist)})"
+                )
+            resolved = requested
+        return cls(max_effect=max_effect, emergency_stop_allowlist=resolved)
 
     def ceiling_for(self, plugin_id: str) -> DispatchEffect:
         if plugin_id in self.emergency_stop_allowlist:

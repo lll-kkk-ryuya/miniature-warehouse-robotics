@@ -61,10 +61,17 @@ union; S3's `profile` / `calibration_gate` are imported directly (not re-exporte
 
 ### 提供 (produce)
 - `PluginComposition`（pluggy wrap）: `register` / `run_validate_plan` / `registered_plugin_ids()` /
-  `missing_declared()` / `preflight()`。typed hookspec `validate_plan(plan, context)`（引数名 literal・canary）。
+  `missing_declared()` / `surplus_registered()` / `preflight(*, allow_unlisted=False)`。typed hookspec
+  `validate_plan(plan, context)`（引数名 literal・canary）。**preflight は S2 `preflight_composition` と同じ
+  `==`（declared == registered）**＝`missing_declared`（宣言済み未登録）は常に refuse、`surplus_registered`
+  （登録済み未宣言）は `allow_unlisted=True` 明示 opt-in 時のみ許容（それでも registered に残す＝witness が嘘を
+  つかない・doc09:361-364 / ADR-0003 item 3）。0-declared+0-registered は明示 vacuous pass。
 - `StructuredPluginRuleResult`（**変種B 推奨**: `plugin_id`+`reason_code` 分離）/ `NamespacedPluginRuleResult`（変種A）。
 - `PluginDispatchPolicy` + `clamp_finding`（effect は下方向 clamp・`emergency_stop` は allowlist のみ・
-  `clamped_from` 記録・fail-closed/crash は clamp 対象外）。`PluginCodeRegistry.from_manifest_dicts`
+  `clamped_from` 記録・fail-closed/crash は clamp 対象外）。`PluginDispatchPolicy.derive_from_base(base_allowlist,
+  *, requested_allowlist=None, max_effect=...)`＝**narrow-only 導出**（`requested ⊆ base` でなければ `ValueError`。
+  site profile / run manifest は base ceiling から**除去のみ・追加不可**・ADR-0003 item 6 / doc09:388-390）。既存の
+  直接構築（`emergency_stop_allowlist=` を渡す）は後方互換維持＝additive。`PluginCodeRegistry.from_manifest_dicts`
   （plugin manifest `emits.reason_codes` 由来＝S2 との統合点）。
 - `ComposedValidationReport` + `compose_report`（凍結 `from_rules` 無編集の兄弟集約・most-severe-wins）。
 ### 消費 (consume)
@@ -73,8 +80,12 @@ union; S3's `profile` / `calibration_gate` are imported directly (not re-exporte
 ### 設計判断（docs 接地）
 - plugin code は凍結 9 code と構造的に非交差（小文字+`:` vs 大文字コロン無し・doc09:204 / report.py:79-87）。
 - trust model: in-proc enforce は幻想（test 実証）→ advisory（manifest 自己申告 + human review +
-  registry preflight + 例外 fail-closed）。emergency_stop_allowlist の base-policy 化・preflight `==`
-  整合は residual slice（docs PR #403 pin）。
+  registry preflight + 例外 fail-closed）。
+- **(済) S4 residual（#409 Lane A・docs PR #403 pin）= 解決**: ① `emergency_stop_allowlist` の権威は
+  project BASE `PlanPolicy`（Core ceiling・policy.py・既定 empty=fail-closed）へ移し、`PluginDispatchPolicy`
+  は base から `derive_from_base`（narrow-only・追加不可）で導出（ADR-0003 item 6 / doc09:388-390）。
+  ② `preflight` を `⊆`（missing のみ）から `==`（missing ∪ surplus・`allow_unlisted` opt-in）へ是正し
+  S2 `preflight_composition` と整合（doc09:361-364 / ADR-0003 item 3）。両ガードは mutation で赤くなることを確認。
 
 ## テスト
 - `tests/unit/test_{run_manifest,composition_preflight,composition_record,mode_a_composition_fixture,
