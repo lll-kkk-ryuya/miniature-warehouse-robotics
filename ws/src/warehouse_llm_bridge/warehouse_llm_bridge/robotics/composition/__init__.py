@@ -14,6 +14,9 @@ motion or performs network I/O (doc09:8 — no frozen contract is added). Lanes:
   gate (imported directly, not re-exported).
 - :mod:`plugin_results` / :mod:`plugins` — typed ``validate_plan`` hookspec + namespaced plugin
   codes + downward clamp + fail-closed registry (frozen ValidationReport vocabulary NOT edited).
+- :mod:`plugin_manifest` — per-plugin ``plugin manifest`` schema + two-manifest ingestion loader
+  (reconcile run ``id`` ⟷ plugin ``plugin_id`` -> declared-emits registry; doc09:402-416). WIRING
+  into a running node is XER6 (#342); this lane provides the constructible offline ingestion.
 """
 
 from warehouse_llm_bridge.robotics.composition.loader import (
@@ -25,6 +28,18 @@ from warehouse_llm_bridge.robotics.composition.manifest import (
     BoxSpec,
     PluginSpec,
     RunManifest,
+)
+from warehouse_llm_bridge.robotics.composition.plugin_manifest import (
+    ManifestReconciliationError,
+    PluginEmits,
+    PluginManifest,
+    PluginRequires,
+    ReconciliationReport,
+    SafetyBoundary,
+    build_plugin_code_registry,
+    load_plugin_manifest_text,
+    load_plugin_manifests,
+    reconcile_manifests,
 )
 from warehouse_llm_bridge.robotics.composition.plugin_results import (
     EFFECT_ORDER,
@@ -114,4 +129,14 @@ __all__ = [
     "hookimpl",
     "hookspec",
     "validate_with_plugins",
+    "ManifestReconciliationError",
+    "PluginEmits",
+    "PluginManifest",
+    "PluginRequires",
+    "ReconciliationReport",
+    "SafetyBoundary",
+    "build_plugin_code_registry",
+    "load_plugin_manifest_text",
+    "load_plugin_manifests",
+    "reconcile_manifests",
 ]
