@@ -12,11 +12,19 @@ from pathlib import Path
 
 import pytest
 import yaml
+from pydantic import ValidationError
+from warehouse_llm_bridge.robotics.composition.calibration_gate import build_calibration_loader
 from warehouse_llm_bridge.robotics.composition.loader import load_run_manifest
 from warehouse_llm_bridge.robotics.composition.manifest import RunManifest
 from warehouse_llm_bridge.robotics.composition.preflight import (
     CompositionError,
     PreflightReport,
+)
+from warehouse_llm_bridge.robotics.composition.profile import (
+    SiteProfile,
+    composition_record,
+    compute_content_hash,
+    verify_against_approved,
 )
 from warehouse_llm_bridge.robotics.composition.record import (
     DEFAULT_RUNS_ROOT,
@@ -214,3 +222,132 @@ class TestWriteArtifacts:
         data = yaml.safe_load((run_dir / "manifest.yaml").read_text(encoding="utf-8"))
         assert isinstance(data, dict)
         assert data["schema_version"] == "run_manifest.v1"
+
+
+# --- S3 governance embedding (#409 residual Lane C: S2 <- S3 site_profile + calibration) -------
+
+_CAMERA = "cam_overhead"
+_CEILING = 3.0
+_HOMOGRAPHY = [[0.01, 0.0, 0.0], [0.0, 0.01, 0.0], [0.0, 0.0, 1.0]]
+_VALID_POLYGON = [[0.0, 0.0], [2.0, 0.0], [2.0, 1.0], [0.0, 1.0]]
+
+
+def _s3_profile() -> SiteProfile:
+    """A real S3 site-profile bundle (calibration.json + safety.yaml ceiling)."""
+    return SiteProfile(
+        customer="customer_a",
+        site="site_01",
+        version="1.0.0",
+        files={
+            "calibration.json": json.dumps(
+                {
+                    "camera_id": _CAMERA,
+                    "map_frame": "map",
+                    "homography": _HOMOGRAPHY,
+                    "reprojection_error": 1.2,
+                    "valid_polygon": _VALID_POLYGON,
+                }
+            ),
+            "safety.yaml": f"calibration:\n  max_reprojection_error: {_CEILING}\n",
+        },
+    )
+
+
+def _s3_blocks() -> tuple[dict, dict]:
+    """Build the two S3 governance blocks by CALLING the real S3 functions.
+
+    Returns ``(site_profile_block, calibration_governance_block)`` in the exact shapes S3 emits:
+    ``profile.composition_record(...)["site_profile"]`` and ``report().as_composition_block()``.
+    """
+    profile = _s3_profile()
+    content = compute_content_hash(profile)
+    verification = verify_against_approved(profile, content, None)
+    site_profile_block = composition_record(profile, content, verification)["site_profile"]
+    calibration_block = build_calibration_loader(profile).report().as_composition_block()
+    return site_profile_block, calibration_block
+
+
+class TestS3GovernanceEmbedding:
+    def test_embeds_and_round_trips_real_s3_blocks(self) -> None:
+        site_profile_block, calibration_block = _s3_blocks()
+        record = build_effective_composition(
+            _manifest(),
+            _preflight(),
+            _constructed(),
+            site_profile=site_profile_block,
+            calibration_governance=calibration_block,
+        )
+        # The blocks live UNDER effective_composition.v1, not as a competing schema_version.
+        assert record.schema_version == EFFECTIVE_COMPOSITION_SCHEMA_VERSION
+        assert record.site_profile == site_profile_block
+        assert record.calibration_governance == calibration_block
+        # The embedded site_profile carries the S3 identity + content hash + verification.
+        assert record.site_profile["customer"] == "customer_a"
+        assert record.site_profile["content_hash"]["merged_canonical"]
+        # The calibration block carries the gate verdicts.
+        (camera,) = record.calibration_governance["cameras"]
+        assert camera["camera_id"] == _CAMERA
+        assert camera["decision"] == "accepted"
+
+        # Full JSON round-trip through the frozen extra="forbid" schema is lossless.
+        dumped = record.model_dump(mode="json")
+        assert EffectiveComposition.model_validate(dumped) == record
+        # The nested S3 top-level marker is NOT promoted to a competing schema_version.
+        assert "effective_composition.site_profile.s3-proposal" not in json.dumps(dumped)
+
+    def test_extra_forbid_still_rejects_unknown_top_level_key(self) -> None:
+        site_profile_block, _ = _s3_blocks()
+        base = build_effective_composition(
+            _manifest(), _preflight(), _constructed(), site_profile=site_profile_block
+        ).model_dump(mode="json")
+        base["governance_typo"] = {"anything": True}
+        with pytest.raises(ValidationError):
+            EffectiveComposition.model_validate(base)
+
+    def test_default_none_omits_blocks_from_written_artifact(self, tmp_path) -> None:
+        record = build_effective_composition(
+            _manifest(),
+            _preflight(),
+            _constructed(),
+            now=datetime(2026, 7, 4, 12, 0, 0, tzinfo=UTC),
+        )
+        assert record.site_profile is None
+        assert record.calibration_governance is None
+        run_dir = write_run_artifacts(_manifest(), record, runs_root=tmp_path)
+        raw = json.loads((run_dir / "effective_composition.json").read_text(encoding="utf-8"))
+        # Omitted entirely (not written as null) so an S3-unwired run is byte-identical to before.
+        assert "site_profile" not in raw
+        assert "calibration_governance" not in raw
+        # And it still re-validates to the same record (default None).
+        assert EffectiveComposition.model_validate(raw) == record
+
+    def test_written_artifact_embeds_present_blocks(self, tmp_path) -> None:
+        site_profile_block, calibration_block = _s3_blocks()
+        record = build_effective_composition(
+            _manifest(),
+            _preflight(),
+            _constructed(),
+            now=datetime(2026, 7, 4, 12, 0, 0, tzinfo=UTC),
+            site_profile=site_profile_block,
+            calibration_governance=calibration_block,
+        )
+        run_dir = write_run_artifacts(_manifest(), record, runs_root=tmp_path)
+        raw = json.loads((run_dir / "effective_composition.json").read_text(encoding="utf-8"))
+        assert raw["schema_version"] == EFFECTIVE_COMPOSITION_SCHEMA_VERSION
+        assert raw["site_profile"] == site_profile_block
+        assert raw["calibration_governance"] == calibration_block
+        assert EffectiveComposition.model_validate(raw) == record
+
+    def test_recorded_ran_mismatch_still_raises_with_blocks_present(self) -> None:
+        """Embedding S3 blocks must not weaken the recorded==ran witness guard."""
+        site_profile_block, calibration_block = _s3_blocks()
+        constructed = _constructed()
+        del constructed["eval_observability"]  # an enabled box that was never constructed
+        with pytest.raises(CompositionError, match="never constructed"):
+            build_effective_composition(
+                _manifest(),
+                _preflight(),
+                constructed,
+                site_profile=site_profile_block,
+                calibration_governance=calibration_block,
+            )
