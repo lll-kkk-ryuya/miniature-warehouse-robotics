@@ -408,3 +408,12 @@ hardware.event_reason:
 | eval_sdk API ／ decision_event schema の凍結 | 未決 design | [doc21](../architecture/21-eval-sdk-extraction.md):238 / 本書:46,63（`schema_version="proposal"`） |
 | 本観測 docs ブランチの push / PR | process（要承認） | ①PR → ②CI 緑 → ③別ステップ merge |
 | STATUS.md の sha refresh | process（orchestrator batch） | [.claude/rules/status-maintenance.md](../../.claude/rules/status-maintenance.md) |
+
+## Plugin 由来 finding と plugin_id 属性（additive）
+
+[decision_event の基本形](#decision-event-の基本形)（:49-64）に、L3 Validator の plugin hook（`validate_plan`）由来 finding を出すときの **`plugin_id`（additive・optional）** field を足す。この field 追加は既存 event を壊さない純追加であり、[doc10:394-396](10-llm-assisted-rule-authoring.md) の「同じ `reason_code` を複数 plugin が emit する場合は `box` / `stage` / `plugin_id` で区別する」要求を満たす。
+
+- `box=l3_validator` / `stage=validate_plan` は既存 field。`reason_code` は plugin manifest の `emits.reason_codes` から選ぶ **namespaced code**（[09 §namespaced plugin code](09-run-manifest-and-plugin-composition.md) / [mode-x-er/02 §Plugin 由来 reason_code](../mode-x-er/02-l3-planning-core.md)）。
+- `plugin_id` はどの plugin が emit したかの **attribution**（同じ `reason_code` を複数 plugin が出すとき `box` / `stage` / `plugin_id` で区別）。**core validator finding には `plugin_id` を付けない**（省略＝core 由来）。`plugin_id` は open string（plugin manifest 形 `l3.zone_policy`・[09 §Plugin Manifest](09-run-manifest-and-plugin-composition.md)）。
+- fail-closed 変換（undeclared / spoofed / malformed / crash）は **reserved composition code**（`undeclared_reason_code` / `spoofed_plugin_id` / `malformed_finding` / `plugin_crash`）で emit され、plugin は宣言できない（[09 §fail-closed vocab](09-run-manifest-and-plugin-composition.md)）。aggregation は sibling `ComposedValidationReport`（frozen 9-code lattice を read-only import）で行い、frozen enum を編集しない。
+- `schema_version` は既存どおり `proposal` のまま（凍結は未決＝[§未解決問題](#未解決問題観測eval横断)の「eval_sdk API ／ decision_event schema の凍結」）。

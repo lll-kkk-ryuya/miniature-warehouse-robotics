@@ -344,3 +344,19 @@ clarification 系は専用 code を増やさず、次の 2 経路で表す:
 
 - 現状 9 code は全て blocking 経路（`errors[]`・severity=error）。`dispatch_effect=none` / severity=warning（`warnings[]`）を出す code は XER2 には無く、`warnings[]` は将来の非ブロッキング rule 用に reserved（XER2 では常に空）。
 - `normalized_plan`（accepted 時の中身）は下流（Visual Resolver / Task Graph Executor）が未確定ゆえ `dict` のまま意図的に DEFER する（型を確定しない＝見落としではない・§1:64 の shape を維持）。
+
+### Plugin 由来 reason_code（namespaced・9-enum とは別空間）
+
+商用 plugin（[productization/09](../productization/09-run-manifest-and-plugin-composition.md)）が出す reason_code は、この 9 個の frozen `ValidationCode` enum（owner は `warehouse_llm_bridge` の `report.py`:69-88・本節 `### code 語彙（stable・全9）` が Mode X-ER 文脈の語彙正本）とは **別の namespaced 空間**（`<plugin_id>:<reason_code>`・lowercase ＋ 必須 `:`）に住み、**enum を編集しない**（Variant B: `plugin_id` / `reason_code` は別 field で保持し、tag 用に導出 full code を作る）。plugin finding は sibling typed model（`StructuredPluginRuleResult` 等）で運ばれ、frozen `DispatchEffect` / `severity` 語彙（本節 §RuleResult.severity / dispatch_effect）を**再利用**して同じ most-severe-wins lattice（:304 の集約優先）で core finding と均一に集約される。詳細は [productization/09](../productization/09-run-manifest-and-plugin-composition.md) の typed hookspec / `ComposedValidationReport` 節。
+
+## Pipeline entry point の store/executor 注入 seam（XER5/S1）
+
+> **実装ステータス**: 本 seam は S1 spike（`feat/l3-comp-s1-store-pierce`・PR #404）で実装され、**`origin/main` には未着地**（配線 = XER5/S1）。現 `origin/main` の `compile_raw_output` は下記 2 引数を持たない（[ADR-0003](../adr/0003-bridge-local-manifest-composition.md) の未着地 residual と同じ扱い）。
+
+full L3 chain entry point `compile_raw_output`（`RawModelOutput -> ... -> frozen Command`・§4 の Command Compiler で終端）は、S1 spike で long-lived executor / durable store を注入するための **keyword-only・相互排他・default-None** な 2 引数を得る。durable-store 差替の設計正本は [productization/03 §Task Graph Executor Box](../productization/03-l3-planning-core-box.md)（site 差替点 `:127-133`・durable store `:132`・`TaskGraphStore` を file/Redis/DB へ差替 `:135`）。
+
+- **2 引数（相互排他）**: `executor=`（PRIMARY・`compiler=` と同形＝S5 の `x_er_bridge` long-lived executor の shape）と `store=`（利便形・`executor=TaskGraphExecutor(store)` と等価）。両方渡すと `ValueError('...not both')`（executor は既に自分の store を所有するため silent precedence で wiring bug を隠さない）。将来の executor 構築 knob（completion source / task timeout / retry policy＝[productization/03](../productization/03-l3-planning-core-box.md)`:127-133`）は **caller 側 executor の CTOR** に置き、`compile_raw_output` の signature を膨らませない（signature を爆発させない）。
+- **三分割の所有権**: **STORE が cross-cycle state（source of truth）を所有**・**executor は state を持たない lifecycle driver**・**caller loop が progression（`mark_running` → `mark_succeeded`）を所有**。注入は caller loop が複数の `compile_raw_output` 呼び出しに跨れるようにするだけで、progression を entry point に移さない（「stateful progression は caller の loop」は不変）。
+- **R-26 は END-TO-END**: 非 accepted な `ValidationReport` は **空の `Command`** を返し、注入された executor/store には **一切触れない**（zero get / zero put）＝reject された cycle は durable state を読むことも汚すこともできない。
+- **STALE-HANDLE ハザード（実測・pin）**: `mark_running` は store ではなく caller が保持する state を検査するため、最初の commit 前に load された 2 handle は raise せずに **double-commit** する。XER5 の caller は **plan ごと・cycle ごとに live handle を 1 つだけ**保つ contract を守る（single-live-handle-per-plan-per-cycle）。将来の store 再読 commit guard が意図する fix。
+- **DEFAULT-PATH 等価（後方互換）**: 非注入 path は注入前と挙動が同一（呼び出しごとに fresh in-memory store・stateless one-shot・cross-call leakage なし）。store payload は JSON/Redis-serializable（plain `str`→`str` の status）＝durable-store 差替 readiness。
