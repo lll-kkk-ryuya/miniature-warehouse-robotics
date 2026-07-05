@@ -3,7 +3,7 @@
 Where ``tests/unit/test_l3_pipeline.py`` asserts the WIRED entry point
 (:func:`compile_raw_output`) end-to-end as a black box, this test opens the box: it runs the
 LANDED red/blue fixture through every L3 stage BY HAND, in the exact order
-``pipeline.compile_raw_output`` wires them (pipeline.py:138-150), asserting each intermediate
+``pipeline.compile_raw_output`` wires them (pipeline.py:169-187), asserting each intermediate
 artifact — and THEN asserts the wired entry point produces a byte-identical final ``Command``.
 That pins the equivalence "the sum of the hand-driven seams == the one-call pipeline", so a
 future refactor that silently drops or reorders a stage inside ``compile_raw_output`` is caught
@@ -130,7 +130,7 @@ def test_each_l3_seam_explicitly_then_wired_equals_manual():
     assert len(report.command_candidates) == 2  # t1 (bot1->red_box), t2 (bot2->blue_box)
 
     # --- Seam 3: Visual Resolver — pixel -> map -> KNOWN_LOCATION snap (XER3). -------------
-    # Reached ONLY because the plan permits dispatch (0-dispatch gate, pipeline.py:141).
+    # Reached ONLY because the plan permits dispatch (0-dispatch gate, pipeline.py:172).
     assert report.permits_dispatch  # explicit gate guarding the resolver step
     resolution = VisualTaskResolver(_policy()).resolve(draft, _calibration())
     assert isinstance(resolution, ResolutionResult)
@@ -162,7 +162,7 @@ def test_each_l3_seam_explicitly_then_wired_equals_manual():
     assert item.destination in KNOWN_LOCATIONS
 
     # --- Equivalence: the WIRED pipeline entry point produces the SAME final Command. ------
-    # compile_raw_output wires exactly these five seams (pipeline.py:138-150); the hand-driven
+    # compile_raw_output wires exactly these five seams (pipeline.py:169-187); the hand-driven
     # chain above must reproduce its output byte-for-byte, or a stage was dropped/reordered.
     wired = compile_raw_output(
         RawModelOutput(transport="direct", payload=direct_envelope()),
