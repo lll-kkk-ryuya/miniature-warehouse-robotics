@@ -351,7 +351,9 @@ clarification 系は専用 code を増やさず、次の 2 経路で表す:
 
 ## Pipeline entry point の store/executor 注入 seam（XER5/S1）
 
-full L3 chain entry point `compile_raw_output`（`RawModelOutput -> ... -> frozen Command`・§4 の Command Compiler で終端）は、long-lived executor / durable store を注入するための **keyword-only・相互排他・default-None** な 2 引数を持つ。durable-store 差替の設計正本は [productization/03 §Task Graph Executor Box](../productization/03-l3-planning-core-box.md)（site 差替点 `:127-133`・durable store `:132`・`TaskGraphStore` を file/Redis/DB へ差替 `:135`）。
+> **実装ステータス**: 本 seam は S1 spike（`feat/l3-comp-s1-store-pierce`・PR #404）で実装され、**`origin/main` には未着地**（配線 = XER5/S1）。現 `origin/main` の `compile_raw_output` は下記 2 引数を持たない（[ADR-0003](../adr/0003-bridge-local-manifest-composition.md) の未着地 residual と同じ扱い）。
+
+full L3 chain entry point `compile_raw_output`（`RawModelOutput -> ... -> frozen Command`・§4 の Command Compiler で終端）は、S1 spike で long-lived executor / durable store を注入するための **keyword-only・相互排他・default-None** な 2 引数を得る。durable-store 差替の設計正本は [productization/03 §Task Graph Executor Box](../productization/03-l3-planning-core-box.md)（site 差替点 `:127-133`・durable store `:132`・`TaskGraphStore` を file/Redis/DB へ差替 `:135`）。
 
 - **2 引数（相互排他）**: `executor=`（PRIMARY・`compiler=` と同形＝S5 の `x_er_bridge` long-lived executor の shape）と `store=`（利便形・`executor=TaskGraphExecutor(store)` と等価）。両方渡すと `ValueError('...not both')`（executor は既に自分の store を所有するため silent precedence で wiring bug を隠さない）。将来の executor 構築 knob（completion source / task timeout / retry policy＝[productization/03](../productization/03-l3-planning-core-box.md)`:127-133`）は **caller 側 executor の CTOR** に置き、`compile_raw_output` の signature を膨らませない（signature を爆発させない）。
 - **三分割の所有権**: **STORE が cross-cycle state（source of truth）を所有**・**executor は state を持たない lifecycle driver**・**caller loop が progression（`mark_running` → `mark_succeeded`）を所有**。注入は caller loop が複数の `compile_raw_output` 呼び出しに跨れるようにするだけで、progression を entry point に移さない（「stateful progression は caller の loop」は不変）。

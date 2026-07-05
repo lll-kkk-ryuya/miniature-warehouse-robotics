@@ -358,7 +358,7 @@ results = plugin_manager.hook.validate_plan(plan=plan, context=context)
 pluggy の hook を **0 個の impl** で呼ぶと空 list が返り、これは「全 plugin が
 approve した」結果と**観測上区別できない**＝plugin の未 load は **fail-open** になる。
 これが最大の急所である。防御は、run manifest を intent の明示 witness に使い、起動時に
-**`manifest.plugins ⊆ registered hookimpls` を検査**し、満たさなければ **起動を拒否**する
+**`manifest.plugins == registered hookimpls`（集合等価）を検査**し、満たさなければ **起動を拒否**する
 （`CompositionError`）。silent pass 経路は存在させない＝raise するか、集合等価を証明する
 preflight report を返すかの**二択**にする。registered-but-undeclared（宣言に無い plugin
 が登録済み）は明示 `allow_unlisted=True` の opt-in 時のみ許容し、report に残す。
@@ -375,7 +375,7 @@ plugin の結果は、frozen な **9-code `ValidationCode` enum**（`report.py`:
 凍結して持つ 9 コード）には**絶対に入れない** sibling の typed model にする。
 **Variant B を採用**：`plugin_id` と `reason_code` を**別フィールド**に持ち（`id:code`
 連結文字列ではない）、full_code はそれらから派生する（`decision_event` の
-`box` / `stage` / `plugin_id` 区別＝[05](05-decision-observability-and-tooling.md):55-58,79,
+`box` / `stage` / `plugin_id` 区別＝[05](05-decision-observability-and-tooling.md):55-58・:412,
 [10](10-llm-assisted-rule-authoring.md):396 と同形）。namespaced code は
 `<plugin_id>:<reason_code>`（lowercase ＋ 必須 `:`）で、frozen 9 コード（UPPERCASE・`:` 無し）
 とは構造的に **disjoint**（衝突・spoof を静的に弾ける）。
