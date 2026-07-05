@@ -185,16 +185,45 @@ class PluginComposition:
         """Manifest-declared plugin ids with NO registered hookimpl.
 
         pluggy silently returns an empty result list when zero impls are registered, so
-        this preflight (manifest-declared ⊆ registered) is the ONLY defense against a
+        this preflight (manifest-declared ⊆ registered) is one half of the defense against a
         silently-absent plugin — expose it for S2's run-manifest preflight."""
         return frozenset(self._registry.declared_emits) - self.registered_plugin_ids()
 
-    def preflight(self) -> None:
-        """Fail-closed preflight: every manifest-declared plugin must be registered."""
+    def surplus_registered(self) -> frozenset[str]:
+        """Registered hookimpls with NO manifest declaration (registered - declared).
+
+        The other half of the ``==`` preflight: a registered-but-undeclared plugin runs its
+        ``validate_plan`` yet is absent from the recorded composition, so the effective-
+        composition witness would LIE about what actually ran (doc09:361-364). It is refused
+        unless the caller explicitly opts in via ``allow_unlisted=True``."""
+        return self.registered_plugin_ids() - frozenset(self._registry.declared_emits)
+
+    def preflight(self, *, allow_unlisted: bool = False) -> None:
+        """Fail-closed preflight: declared plugin set == registered hookimpl set.
+
+        Mirrors the S2 ``preflight.preflight_composition`` semantics (doc09:361-364,
+        ADR-0003 item 3) at the pluggy layer: there is NO silent pass path.
+
+        - ``missing_declared`` (declared but not registered) ALWAYS raises — a declared
+          plugin that never registered is the fail-open absence this seam closes.
+        - ``surplus_registered`` (registered but not declared) raises UNLESS
+          ``allow_unlisted=True``; the tolerated ids are still real (they ran), so opting in
+          is a loud, explicit choice — never a silent tolerance.
+        - the empty declared set with an empty registry is an EXPLICIT vacuous pass (a
+          plugin-less run whose witness is that it intends zero plugins).
+        """
         missing = self.missing_declared()
         if missing:
             raise PluginCompositionError(
-                f"declared plugins not registered (fail-closed preflight): {sorted(missing)}"
+                f"declared plugins not registered (fail-closed preflight): {sorted(missing)}; "
+                f"registered={sorted(self.registered_plugin_ids())}"
+            )
+        surplus = self.surplus_registered()
+        if surplus and not allow_unlisted:
+            raise PluginCompositionError(
+                f"plugins registered that the manifest does not declare: {sorted(surplus)}; "
+                "they would run unrecorded (the effective-composition witness would lie). "
+                "Declare them in the manifest or pass allow_unlisted=True explicitly."
             )
 
     # --- attributed execution --------------------------------------------------------------

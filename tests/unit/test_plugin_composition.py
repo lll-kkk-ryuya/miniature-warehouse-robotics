@@ -807,3 +807,177 @@ def test_composed_report_type_annotations_accept_both_variants():
             plugin_errors=(make_finding(result_type),),
         )
         assert composed.plugin_errors[0].full_code == "l3.zone_policy:target_out_of_zone"
+
+
+# --- S4-residual FIX #1: emergency_stop_allowlist is BASE-owned, narrow-only ------------------
+# ADR-0003 item 6 / doc09:388-390: the authoritative emergency_stop allowlist is the project
+# BASE PlanPolicy (the Core ceiling); a site profile / run manifest may only NARROW (remove),
+# never ADD an emergency-capable plugin the base did not grant.
+
+_BASE_ALLOWLIST = frozenset({ESTOP_GUARD, "l3.fire_estop"})
+
+
+@pytest.mark.unit
+def test_base_planpolicy_owns_emergency_stop_allowlist_default_empty():
+    """The base PlanPolicy is the ceiling and defaults to NO emergency-capable plugin."""
+    from warehouse_llm_bridge.robotics_planning_core.validator.policy import PlanPolicy
+
+    assert PlanPolicy().emergency_stop_allowlist == frozenset()  # fail-closed default
+    grant = PlanPolicy(emergency_stop_allowlist=frozenset({ESTOP_GUARD}))
+    assert grant.emergency_stop_allowlist == frozenset({ESTOP_GUARD})
+
+
+@pytest.mark.unit
+def test_derive_from_base_inherits_base_when_no_request():
+    """None request => the derived allowlist IS the base ceiling, unchanged."""
+    policy = PluginDispatchPolicy.derive_from_base(_BASE_ALLOWLIST)
+    assert policy.emergency_stop_allowlist == _BASE_ALLOWLIST
+    assert policy.ceiling_for(ESTOP_GUARD) is DispatchEffect.EMERGENCY_STOP
+
+
+@pytest.mark.safety
+def test_derive_from_base_allows_narrowing_site_removes_ids():
+    """A site/run may REMOVE ids from the base (revoke emergency authority) — subset passes."""
+    narrowed = PluginDispatchPolicy.derive_from_base(
+        _BASE_ALLOWLIST, requested_allowlist=frozenset({ESTOP_GUARD})
+    )
+    assert narrowed.emergency_stop_allowlist == frozenset({ESTOP_GUARD})
+    # the removed id is now clamped down — it lost emergency authority
+    assert narrowed.ceiling_for("l3.fire_estop") is DispatchEffect.BLOCK
+    assert narrowed.ceiling_for(ESTOP_GUARD) is DispatchEffect.EMERGENCY_STOP
+    # narrowing to empty is allowed (revoke all)
+    empty = PluginDispatchPolicy.derive_from_base(_BASE_ALLOWLIST, requested_allowlist=frozenset())
+    assert empty.emergency_stop_allowlist == frozenset()
+
+
+@pytest.mark.safety
+def test_derive_from_base_rejects_adding_beyond_base_ceiling():
+    """A site/run CANNOT ADD an emergency-capable plugin the base did not grant (fail-closed).
+
+    This is the whole point of the ceiling: requested ⊄ base must raise. Independent oracle:
+    the added id is computed here as ``requested - base`` and asserted to appear in the error."""
+    requested = frozenset({ESTOP_GUARD, "l3.rogue_estop"})
+    added = requested - _BASE_ALLOWLIST  # {"l3.rogue_estop"} — beyond the base ceiling
+    assert added == frozenset({"l3.rogue_estop"})
+    with pytest.raises(ValueError) as exc:
+        PluginDispatchPolicy.derive_from_base(_BASE_ALLOWLIST, requested_allowlist=requested)
+    assert "l3.rogue_estop" in str(exc.value)
+
+
+@pytest.mark.safety
+def test_derive_from_base_rejects_add_even_from_empty_base():
+    """The most dangerous case: base grants NOTHING, a run tries to grant emergency to itself."""
+    with pytest.raises(ValueError):
+        PluginDispatchPolicy.derive_from_base(
+            frozenset(), requested_allowlist=frozenset({"l3.self_grant"})
+        )
+
+
+@pytest.mark.safety
+def test_derive_from_base_narrow_only_guard_is_load_bearing():
+    """Mutation check: a superset request must raise. If the ⊆ guard is reverted to accept
+    the request verbatim, this asserts the escalation would silently succeed — proving the
+    guard is what stops it (not an incidental equality)."""
+    requested = _BASE_ALLOWLIST | {"l3.extra_estop"}
+    with pytest.raises(ValueError):
+        PluginDispatchPolicy.derive_from_base(_BASE_ALLOWLIST, requested_allowlist=requested)
+    # sanity: had the guard let it through, this rogue id would have gained emergency authority
+    escalated_if_unguarded = PluginDispatchPolicy(emergency_stop_allowlist=requested)
+    assert escalated_if_unguarded.ceiling_for("l3.extra_estop") is DispatchEffect.EMERGENCY_STOP
+
+
+@pytest.mark.unit
+def test_direct_construction_still_backward_compatible():
+    """FIX #1 is ADDITIVE: the pre-existing direct-construction path is untouched."""
+    policy = PluginDispatchPolicy(emergency_stop_allowlist=frozenset({ESTOP_GUARD}))
+    assert policy.ceiling_for(ESTOP_GUARD) is DispatchEffect.EMERGENCY_STOP
+    # and the blanket-emergency guard on max_effect is still intact
+    with pytest.raises(ValidationError):
+        PluginDispatchPolicy(max_effect=DispatchEffect.EMERGENCY_STOP)
+
+
+# --- S4-residual FIX #2: preflight enforces == (declared == registered), not just ⊆ -----------
+# doc09:361-364 / ADR-0003 item 3: a registered-but-undeclared plugin must ALSO refuse (unless
+# explicit allow_unlisted=True), because an unrecorded active plugin makes the witness lie.
+
+
+def _register_undeclared(comp: PluginComposition, plugin_id: str) -> None:
+    """Simulate the exact hole: a hookimpl present in pluggy but ABSENT from the declared
+    registry (register() gates on the registry, so we drive the underlying PM directly — this
+    is the 'plugin got loaded without a manifest declaration' hazard the == guard closes)."""
+
+    class _Undeclared:
+        @hookimpl
+        def validate_plan(self, plan, context):
+            return []
+
+    comp._pm.register(_Undeclared(), name=plugin_id)
+
+
+@pytest.mark.safety
+def test_preflight_rejects_registered_but_undeclared_plugin():
+    """Surplus (registered - declared) with allow_unlisted=False must raise, even though every
+    DECLARED plugin is registered (missing_declared is empty)."""
+    comp = make_composition()  # declares ZONE, OTHER, ESTOP_GUARD
+    comp.register(StaticPlugin([]), ZONE)
+    comp.register(StaticPlugin([]), OTHER)
+    comp.register(StaticPlugin([]), ESTOP_GUARD)
+    assert comp.missing_declared() == frozenset()  # nothing declared is missing
+    _register_undeclared(comp, "l3.rogue")
+    assert comp.surplus_registered() == frozenset({"l3.rogue"})
+    with pytest.raises(PluginCompositionError, match="does not declare"):
+        comp.preflight()  # ⊆ would have passed; == refuses the surplus
+
+
+@pytest.mark.safety
+def test_preflight_allow_unlisted_tolerates_surplus_but_still_records_it():
+    """allow_unlisted=True is a loud opt-in: it passes, but the surplus plugin is STILL a real
+    registered plugin (it ran) — never silently dropped from the observable set."""
+    comp = make_composition()
+    comp.register(StaticPlugin([]), ZONE)
+    comp.register(StaticPlugin([]), OTHER)
+    comp.register(StaticPlugin([]), ESTOP_GUARD)
+    _register_undeclared(comp, "l3.rogue")
+    comp.preflight(allow_unlisted=True)  # does not raise
+    assert "l3.rogue" in comp.registered_plugin_ids()  # still recorded (would run)
+
+
+@pytest.mark.safety
+def test_preflight_missing_declared_raises_regardless_of_allow_unlisted():
+    """missing_declared (declared but not registered) is the fail-open absence — it ALWAYS
+    raises, even under allow_unlisted=True (that opt-in only tolerates the surplus side)."""
+    comp = make_composition()  # declares ZONE, OTHER, ESTOP_GUARD; none registered yet
+    comp.register(StaticPlugin([]), ZONE)
+    assert comp.missing_declared() == frozenset({OTHER, ESTOP_GUARD})
+    with pytest.raises(PluginCompositionError, match="not registered"):
+        comp.preflight()
+    with pytest.raises(PluginCompositionError, match="not registered"):
+        comp.preflight(allow_unlisted=True)
+
+
+@pytest.mark.unit
+def test_preflight_zero_declared_zero_registered_is_vacuous_pass():
+    """A plugin-less run (empty registry, no registrations) is an EXPLICIT vacuous pass."""
+    comp = make_composition(registry=PluginCodeRegistry(declared_emits={}))
+    assert comp.registered_plugin_ids() == frozenset()
+    assert comp.missing_declared() == frozenset()
+    assert comp.surplus_registered() == frozenset()
+    comp.preflight()  # does not raise
+    comp.preflight(allow_unlisted=True)  # does not raise either
+
+
+@pytest.mark.safety
+def test_preflight_surplus_guard_is_load_bearing():
+    """Mutation check: with a surplus present and allow_unlisted=False, preflight MUST raise.
+    If the surplus branch is removed (reverting to ⊆-only), this test goes red."""
+    comp = make_composition()
+    comp.register(StaticPlugin([]), ZONE)
+    comp.register(StaticPlugin([]), OTHER)
+    comp.register(StaticPlugin([]), ESTOP_GUARD)
+    _register_undeclared(comp, "l3.rogue")
+    raised = False
+    try:
+        comp.preflight()
+    except PluginCompositionError:
+        raised = True
+    assert raised, "== preflight must refuse a registered-but-undeclared plugin"

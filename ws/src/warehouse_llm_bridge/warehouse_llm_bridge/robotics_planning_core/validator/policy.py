@@ -48,6 +48,13 @@ class PlanPolicy(_BridgeModel):
     known_robots: frozenset[str] = _DEFAULT_KNOWN_ROBOTS
     known_locations: frozenset[str] = KNOWN_LOCATIONS
     allowed_actions: frozenset[str] = _DEFAULT_ALLOWED_ACTIONS
+    # Plugin ids the PROJECT grants emergency_stop authority to — the Core CEILING
+    # (ADR-0003 item 6 / doc09:388-390). This is the authoritative allowlist: a site profile
+    # or run manifest may only NARROW it (remove ids), never ADD an emergency-capable plugin
+    # the base did not grant. The narrow-only derivation is enforced by
+    # ``PluginDispatchPolicy.derive_from_base`` (plugin_results.py). Defaults to empty: by
+    # default NO plugin may escalate to emergency_stop (fail-closed).
+    emergency_stop_allowlist: frozenset[str] = frozenset()
     # Minimum detection confidence (doc02:79). None => confidence check disabled (doc02:98).
     min_detection_confidence: float | None = None
     # Whether a low-confidence target blocks (rejected) or asks the operator
