@@ -1,18 +1,31 @@
-"""L3 plugin composition seam (S4) — typed validate_plan hookspec + namespaced plugin codes.
+"""L3/L4 composition seam (bridge-local) — run-manifest, site-profile, plugin composition.
 
-Grounding (docs-first):
-- pluggy hook composition + plugin manifest ``emits``:
-  docs/productization/09-run-manifest-and-plugin-composition.md:183-219,237-298
-- fail-closed principle + plugin_id distinction:
-  docs/productization/10-llm-assisted-rule-authoring.md:391-397
-- decision_event target shape: docs/productization/05-decision-observability-and-tooling.md:44-73
-- frozen ValidationReport vocabulary (NOT edited here):
-  warehouse_llm_bridge/robotics_planning_core/validator/report.py:69-88,121-127,183-205
+Turns the *documented* composition artifacts (docs/productization/09-run-manifest-and-plugin-
+composition.md, 04:83-136) into typed, verifiable, offline objects. Nothing here dispatches
+motion or performs network I/O (doc09:8 — no frozen contract is added). Lanes:
 
-This package is bridge-local (no ``warehouse_interfaces`` change) and depends one-way on the
-L3 ``robotics_planning_core`` (allowed: L4 robotics/ -> L3, see pkg CLAUDE.md).
+- :mod:`manifest`  — bridge-local ``run_manifest.v1`` pydantic schema (doc09:42-135).
+- :mod:`loader`    — YAML -> :class:`RunManifest` (validation errors always raise).
+- :mod:`preflight` — fail-closed check that the declared plugin set == the registered hookimpl
+  set (closes the "plugin absence is fail-open" hole).
+- :mod:`record`    — effective-composition witness under ``out/runs/<run_id>/`` (recorded==ran).
+- :mod:`fixtures`  — Mode A expressibility fixture (open-question Q4 probe).
+- :mod:`profile` / :mod:`calibration_gate` — site-profile content-hash + calibration governance
+  gate (imported directly, not re-exported).
+- :mod:`plugin_results` / :mod:`plugins` — typed ``validate_plan`` hookspec + namespaced plugin
+  codes + downward clamp + fail-closed registry (frozen ValidationReport vocabulary NOT edited).
 """
 
+from warehouse_llm_bridge.robotics.composition.loader import (
+    load_run_manifest,
+    load_run_manifest_text,
+)
+from warehouse_llm_bridge.robotics.composition.manifest import (
+    RUN_MANIFEST_SCHEMA_VERSION,
+    BoxSpec,
+    PluginSpec,
+    RunManifest,
+)
 from warehouse_llm_bridge.robotics.composition.plugin_results import (
     EFFECT_ORDER,
     MALFORMED_FINDING_REASON_CODE,
@@ -41,8 +54,42 @@ from warehouse_llm_bridge.robotics.composition.plugins import (
     hookspec,
     validate_with_plugins,
 )
+from warehouse_llm_bridge.robotics.composition.preflight import (
+    CompositionError,
+    PluginRegistryView,
+    PreflightReport,
+    preflight_composition,
+)
+from warehouse_llm_bridge.robotics.composition.record import (
+    DEFAULT_RUNS_ROOT,
+    EFFECTIVE_COMPOSITION_SCHEMA_VERSION,
+    ConstructedBox,
+    EffectiveBox,
+    EffectiveComposition,
+    EffectivePlugin,
+    build_effective_composition,
+    write_run_artifacts,
+)
 
 __all__ = [
+    "RUN_MANIFEST_SCHEMA_VERSION",
+    "BoxSpec",
+    "PluginSpec",
+    "RunManifest",
+    "load_run_manifest",
+    "load_run_manifest_text",
+    "CompositionError",
+    "PluginRegistryView",
+    "PreflightReport",
+    "preflight_composition",
+    "DEFAULT_RUNS_ROOT",
+    "EFFECTIVE_COMPOSITION_SCHEMA_VERSION",
+    "ConstructedBox",
+    "EffectiveBox",
+    "EffectiveComposition",
+    "EffectivePlugin",
+    "build_effective_composition",
+    "write_run_artifacts",
     "EFFECT_ORDER",
     "HOOK_NAMESPACE",
     "MALFORMED_FINDING_REASON_CODE",
