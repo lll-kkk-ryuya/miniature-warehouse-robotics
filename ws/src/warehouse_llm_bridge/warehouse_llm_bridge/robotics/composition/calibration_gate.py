@@ -1,4 +1,4 @@
-"""Calibration governance gate + production ``CalibrationLoader`` wiring (S3 spike).
+"""Calibration governance gate + the (XER6-pending) production ``CalibrationLoader`` wiring (S3 spike).
 
 Closes self-certification gap ②: the Visual Resolver's Gate 2 is driven by the reprojection
 error the calibration artifact declares about ITSELF, and skips entirely when that field is
@@ -6,8 +6,11 @@ error the calibration artifact declares about ITSELF, and skips entirely when th
 None and ...``). A plausible-but-wrong homography that simply omits its error self-passes the
 gate and can snap a detection to a wrong known location => real motion to the wrong place.
 
-This module plugs the hole UPSTREAM, without editing the resolver: the production build path
-obtains calibrations only through a :class:`GovernedCalibrationLoader`, which refuses to hand
+This module plugs the hole UPSTREAM, without editing the resolver. STATUS: this loader is NOT
+yet on the production dispatch path — on ``origin/main`` ``pipeline.py`` still receives a
+``Calibration`` directly (:88,:147) and ``build_calibration_loader`` is called nowhere outside
+``composition/`` (wiring = XER6-pending). ONCE WIRED, the production build path will obtain
+calibrations only through a :class:`GovernedCalibrationLoader`, which refuses to hand
 out any calibration that
 
 - declares no ``reprojection_error`` at all (self-cert skip => reject),
