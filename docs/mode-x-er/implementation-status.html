@@ -160,7 +160,7 @@
 </div>
 
 <div class="meta">
-  <b>読み方</b>: 各 node に <b>STATUS badge</b>（<span class="badge b-done">done</span> / <span class="badge b-partial">partial</span> / <span class="badge b-pending">pending</span>）とレイヤ帯（L4 ER-in-Hermes → L4 adapter → L3 → L2 → L1/L0）を付す。one-line note の <span class="dref">file:line</span> は <b>実コードで裏取り済み</b>の出所（例 <span class="dref">pipeline.py:89-150</span>）。想定の設計正本は <code>01</code>〜<code>03</code> / <code>06</code> / <code>07</code>。
+  <b>読み方</b>: 各 node に <b>STATUS badge</b>（<span class="badge b-done">done</span> / <span class="badge b-partial">partial</span> / <span class="badge b-pending">pending</span>）とレイヤ帯（L4 ER-in-Hermes → L4 adapter → L3 → L2 → L1/L0）を付す。one-line note の <span class="dref">file:line</span> は <b>実コードで裏取り済み</b>の出所（例 <span class="dref">pipeline.py:90-187</span>）。想定の設計正本は <code>01</code>〜<code>03</code> / <code>06</code> / <code>07</code>。
   <b>状態の要旨</b>: offline L3 → 凍結 <code>Command</code> は<b>配線済み(DONE)</b>／ <b>LIVE send（#389）は main 未載</b>／ <b>L2/L1/L0 の実 actuation（XER6）は未達</b>。
 </div>
 
@@ -339,7 +339,7 @@
       <div class="t"><span class="lyr" style="background:var(--teal)">L3</span>⑬ pipeline.compile_raw_output → frozen Command <span style="font-weight:400;color:var(--muted);font-size:11.5px">WIRED full L3 chain（pytest 内でのみ）</span> <span class="role">offline-only</span></div>
       <span class="badge b-done">done</span>
     </div>
-    <div class="s"><span class="dref">pipeline.py:89-150</span> on main: full chain, R-26 short-circuit to empty <code>Command</code>. <b>Offline-only; no running Bridge cycle calls it yet.</b> ＝<b>塗り done ＋ 枠 offline-only</b> の代表例（実装済みだが running から不達）。</div>
+    <div class="s"><span class="dref">pipeline.py:90-187</span> on main: full chain, R-26 short-circuit to empty <code>Command</code>. <b>Offline-only; no running Bridge cycle calls it yet.</b> ＝<b>塗り done ＋ 枠 offline-only</b> の代表例（実装済みだが running から不達）。</div>
   </div>
 </div>
 
