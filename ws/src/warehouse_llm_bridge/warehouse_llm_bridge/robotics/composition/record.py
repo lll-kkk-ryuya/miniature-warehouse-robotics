@@ -97,7 +97,19 @@ class PreflightSnapshot(_RecordModel):
 
 
 class EffectiveComposition(_RecordModel):
-    """The full ``effective_composition.v1`` witness written next to the manifest copy."""
+    """The full ``effective_composition.v1`` witness written next to the manifest copy.
+
+    ``site_profile`` and ``calibration_governance`` are the two OPTIONAL S3 governance blocks
+    the ``effective_composition.v1`` schema reserves (doc09:145-151). They are carried as
+    NESTED blocks under this one ``schema_version`` — the S3 lane's separate
+    ``effective_composition.site_profile.s3-proposal`` top-level marker is NOT a competing
+    schema_version here; only S3's inner ``site_profile`` value is embedded (the reconcile the
+    doc's RESIDUAL note asks for). Both are plain JSON-safe mappings (S3 owns their shape:
+    ``profile.composition_record(...)["site_profile"]`` / ``as_composition_block()``); this
+    module only reserves the slots, it never invents their internal keys. ``None`` => the block
+    is elided from the written witness (:func:`write_run_artifacts`), keeping runs that never
+    wired S3 byte-identical to before.
+    """
 
     schema_version: str = Field(default=EFFECTIVE_COMPOSITION_SCHEMA_VERSION)
     run_id: str
@@ -105,6 +117,9 @@ class EffectiveComposition(_RecordModel):
     created_at: str  # ISO-8601 UTC timestamp of record creation.
     preflight: PreflightSnapshot
     boxes: tuple[EffectiveBox, ...]
+    # Optional S3 governance blocks (doc09:145-151). JSON-safe mappings, shape owned by S3.
+    site_profile: Mapping[str, Any] | None = None
+    calibration_governance: Mapping[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -127,6 +142,8 @@ def build_effective_composition(
     constructed: Mapping[str, ConstructedBox],
     *,
     now: datetime | None = None,
+    site_profile: Mapping[str, Any] | None = None,
+    calibration_governance: Mapping[str, Any] | None = None,
 ) -> EffectiveComposition:
     """Cross-check manifest vs constructed objects and build the witness record.
 
@@ -140,6 +157,12 @@ def build_effective_composition(
 
     Class/module names are taken from ``type()`` of the constructed objects — the record is
     derived from the instances that run, not from a second reading of config.
+
+    ``site_profile`` / ``calibration_governance`` are the OPTIONAL S3 governance blocks
+    (doc09:145-151). Pass ``profile.composition_record(...)["site_profile"]`` and
+    ``report.as_composition_block()`` to embed them under this ``effective_composition.v1``
+    record; both default to ``None`` => the block is omitted. This module does not compute or
+    reshape them — S3 owns their content.
     """
     declared_boxes = set(manifest.boxes)
     enabled_boxes = set(manifest.enabled_boxes())
@@ -211,6 +234,8 @@ def build_effective_composition(
             unlisted_plugin_ids=tuple(sorted(preflight.unlisted_plugin_ids)),
         ),
         boxes=tuple(boxes),
+        site_profile=site_profile,
+        calibration_governance=calibration_governance,
     )
 
 
@@ -243,6 +268,13 @@ def write_run_artifacts(
     )
     (run_dir / _MANIFEST_FILENAME).write_text(manifest_yaml, encoding="utf-8")
 
-    effective_json = json.dumps(effective.model_dump(mode="json"), indent=2, ensure_ascii=False)
+    payload = effective.model_dump(mode="json")
+    # Omit the OPTIONAL S3 governance blocks when unset (default None) so a run that never wired
+    # S3 writes byte-identically to before. Other None-defaulting fields (box class_name, policy,
+    # …) are kept as-is — only these two reserved top-level slots are elided (doc09:145-151).
+    for optional_block in ("site_profile", "calibration_governance"):
+        if payload.get(optional_block) is None:
+            payload.pop(optional_block, None)
+    effective_json = json.dumps(payload, indent=2, ensure_ascii=False)
     (run_dir / _EFFECTIVE_FILENAME).write_text(effective_json + "\n", encoding="utf-8")
     return run_dir

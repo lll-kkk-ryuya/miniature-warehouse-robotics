@@ -19,7 +19,12 @@ union; S3's `profile` / `calibration_gate` are imported directly (not re-exporte
   不在が「全 approve」と観測的に同一になる fail-open を閉じる。
 - `record.build_effective_composition` / `write_run_artifacts` — `out/runs/<run_id>/` に構築済み
   object（`type()`）＋ merge 後 policy から `effective_composition.v1` witness を起票（recorded==ran・
-  mismatch は `CompositionError`・gitignored）。
+  mismatch は `CompositionError`・gitignored）。**任意 S3 governance ブロック（doc09:145-151）**:
+  `EffectiveComposition` は `site_profile` / `calibration_governance`（JSON-safe mapping・shape は
+  S3 所有 = `profile.composition_record(...)["site_profile"]` / `report().as_composition_block()`）
+  を **`effective_composition.v1` 配下の nested block** として運ぶ optional slot を予約（`extra='forbid'`
+  維持・S3 の別 `effective_composition.site_profile.s3-proposal` top-level marker は競合 schema_version
+  として持ち込まない）。既定 `None` は書出時に elide＝S3 未配線 run は従来と byte 一致（#409 residual Lane C）。
 ### 消費 (consume)
 - stdlib + pydantic + `yaml`。frozen 契約無編集（doc09:8）。config/ROS/network を読まない。
 
