@@ -48,6 +48,7 @@ _NODE_EXECUTABLES = {
     "nav2_bridge",
     "llm_bridge",
     "character_llm",
+    "x_er_bridge",
 }
 
 
@@ -174,10 +175,11 @@ def test_sim_include_forwards_recording_knobs_passthrough_and_defaults() -> None
 
 
 @pytest.mark.unit
-def test_full_stack_nodes_are_exactly_the_five_launchless_executables() -> None:
-    # state/safety/nav2_bridge/llm_bridge/character_llm are composed as Node()s; the Warehouse MCP
-    # Server is NOT here (in-process / Hermes stdio child, doc15:50,80-94) — assert the exact set
-    # so a stray mcp_server Node (or a missing node) is caught.
+def test_full_stack_nodes_are_exactly_the_six_launchless_executables() -> None:
+    # state/safety/nav2_bridge/llm_bridge/character_llm plus the mode_x_er.enabled-gated
+    # x_er_bridge (doc08 §2) are composed as Node()s; the Warehouse MCP Server is NOT here
+    # (in-process / Hermes stdio child, doc15:50,80-94) — assert the exact set so a stray
+    # mcp_server Node (or a missing node) is caught.
     execs = {_node_executable(n) for n in _nodes(_load_ld())}
     assert execs == _NODE_EXECUTABLES
 
