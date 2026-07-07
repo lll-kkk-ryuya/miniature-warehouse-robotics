@@ -31,7 +31,7 @@ union; S3's `profile` / `calibration_gate` are imported directly (not re-exporte
 ## S3 — site profile identity/hash + calibration governance (`profile.py`, `calibration_gate.py`)
 
 - **担当**: S3 spike lane（site-profile resolver + version/content-hash + calibration governance）
-- **編集境界**: `profile.py` / `calibration_gate.py` / この節 / `tests/unit/test_site_profile_hashing.py` / `tests/unit/test_calibration_governance.py`
+- **編集境界**: `profile.py` / `calibration_gate.py` / `calibration_source.py` / この節 / `tests/unit/test_site_profile_hashing.py` / `tests/unit/test_calibration_governance.py` / `tests/unit/test_calibration_source.py`
 
 ### 提供 (produce)
 - `profile.load_site_profile(base_dir, customer, site) -> SiteProfile` — doc04:87-103 bundle
@@ -45,6 +45,15 @@ union; S3's `profile` / `calibration_gate` are imported directly (not re-exporte
   — `validator/seams.py:39` の宣言のみだった `CalibrationLoader` seam を（**XER6-pending**で）
   production 経路へ配線する提案。`reprojection_error` None/非有限/閾値超/閾値未設定は reject、
   明示 waiver だけが例外 → resolver.py:172 self-cert スキップを上流で遮断（resolver 不変更）。
+- `calibration_source.resolve_governed_calibration(profile, camera_id, *, policy=None) -> Calibration`
+  （＋ `resolve_governed_calibration_with_loader(...) -> (Calibration, GovernedCalibrationLoader)`）
+  — **XER6-pending DRAFT の production-input seam**。`build_calibration_loader` の
+  `GovernedCalibrationLoader.load`（reject→`None`）を、`compile_raw_output(*, calibration: Calibration)`
+  （pipeline.py:90-93＝`| None` 無し）が要求する具体 artifact 形へ橋渡しする composition-root adapter。
+  gate reject / 該当 camera 不在は **fail-closed で `GovernedCalibrationUnavailableError` を raise**（`None`
+  を返さない）＝self-cert hole（reprojection_error=None）を production 入力境界でも遮断。**稼働 caller
+  (`x_er_bridge` / #342) は origin/main に不在**＝constructible seam + offline unit のみ（ROS/network/config/
+  actuation なし・`adapter_factory.build_er_adapter` パターン）。`__init__.py` へは re-export しない（S3 慣行）。
 ### 消費 (consume)
 - `robotics_planning_core.validator.seams.Calibration/CalibrationLoader`（landed seam・再定義しない）/
   `models.base._BridgeModel`（L4→L3 一方向）。stdlib + `yaml` + pydantic。
