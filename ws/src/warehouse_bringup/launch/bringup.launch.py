@@ -117,7 +117,15 @@ def generate_launch_description() -> LaunchDescription:
     # environments.md "config から読む") so the Nav2 / Nav2-Bridge gating here agrees with the
     # LLM Bridge, which reads traffic_mode from the same config (llm_bridge.py:79-80) — they
     # must not disagree on Mode A/B vs Mode C.
-    config_traffic_mode = str(load_config().get("traffic_mode", "none"))
+    config = load_config()
+    config_traffic_mode = str(config.get("traffic_mode", "none"))
+    # Mode X-ER gate (docs/mode-x-er/08 §2): x_er_bridge is composed IFF the merged config
+    # sets mode_x_er.enabled true (base ships false = safe default OFF; traffic_mode-
+    # orthogonal, docs/mode-x-er/08 §3). Boolean-strict: only a YAML `true` enables — any
+    # other type/typo stays OFF (fail-closed). Read at generate time from config like
+    # config_traffic_mode above (no launch arg invented — the gate value comes from config).
+    mode_x_er_cfg = config.get("mode_x_er")
+    mode_x_er_enabled = isinstance(mode_x_er_cfg, dict) and mode_x_er_cfg.get("enabled") is True
 
     args = [
         DeclareLaunchArgument("use_sim_time", default_value="true"),
@@ -236,13 +244,18 @@ def generate_launch_description() -> LaunchDescription:
     )
 
     # 6. LLM Bridge — the commander cycle (last to start, doc12a:411). In-process MCP dispatch;
-    # degrades to Nav2-only if Hermes is unreachable (doc08:291).
+    # degrades to Nav2-only if Hermes is unreachable (doc08:291). MUTUAL EXCLUSION
+    # (docs/mode-x-er/08 §2): when mode_x_er.enabled, the Mode A commander is NOT launched —
+    # exactly one gen-minting commander node runs per bringup (B-3 unique owner,
+    # mode-x-er/01:184-197); x_er_bridge (item 8 below) replaces it.
     llm_bridge = Node(
         package="warehouse_llm_bridge",
         executable="llm_bridge",
         name="llm_bridge",
         output="screen",
-        condition=IfCondition(llm_enabled),
+        condition=IfCondition(
+            PythonExpression(["'", llm_enabled, "' == 'true' and ", str(not mode_x_er_enabled)])
+        ),
     )
 
     # 7. Character LLM — the bot1/bot2 negotiation layer (doc14, Slice 2). Mode A/B ONLY via the
@@ -252,6 +265,11 @@ def generate_launch_description() -> LaunchDescription:
     # Phase 4 (doc14:255) and an unknown/typo mode fails closed (no character node), mirroring the
     # nav2_bridge gate. Also gated by llm:=true (meaningless without the commander). Advisory only
     # — publish-only, never actuates (稟議制, doc14:38), so it is safe alongside the motion stack.
+    # KNOWN residual: with mode_x_er.enabled=true (item 8) the Mode A commander is suppressed
+    # (item 6) but this condition still composes character_llm, which then idles forever (no
+    # commander ever fires start_negotiation). Harmless (advisory, 0 actuation); tightening the
+    # gate with `not mode_x_er_enabled` is a follow-up decision (doc mode-x-er/08 §2 mandates
+    # only the llm_bridge exclusion).
     character_llm = Node(
         package="warehouse_llm_bridge",
         executable="character_llm",
@@ -264,6 +282,25 @@ def generate_launch_description() -> LaunchDescription:
         ),
     )
 
+    # 8. X-ER Bridge — the Mode X-ER visual-task commander (docs/mode-x-er/08 §2, XER6).
+    # Composed IFF mode_x_er.enabled in the merged config (generate-time gate above; safe
+    # default OFF). Replaces the Mode A commander when enabled (mutual exclusion on the
+    # llm_bridge condition, item 6). The node itself performs 0 actuation — motion stays
+    # on the existing MCP tool -> Policy Gate -> Nav2 Bridge REST path (docs/mode-x-er/08
+    # §2 actuation row); L1/L0 safety layers are untouched.
+    # KNOWN residual: the `llm` launch arg does NOT gate this node — doc mode-x-er/08 §2
+    # pins mode_x_er.enabled as the SOLE gate, so `llm:=false` (nav2-only bring-up, see the
+    # llm arg above) does not suppress x_er_bridge on an overlay that enables it. Extending
+    # the operator kill-switch semantics to cover this commander needs a doc08 amendment
+    # before the condition is changed here.
+    x_er_bridge = Node(
+        package="warehouse_llm_bridge",
+        executable="x_er_bridge",
+        name="x_er_bridge",
+        output="screen",
+        condition=IfCondition(str(mode_x_er_enabled).lower()),
+    )
+
     ld = LaunchDescription(args)
     # Add in dependency order (documents intent; runtime is self-sequencing — see docstring).
     for action in (
@@ -274,6 +311,7 @@ def generate_launch_description() -> LaunchDescription:
         nav2_bridge,
         llm_bridge,
         character_llm,
+        x_er_bridge,
     ):
         ld.add_action(action)
     return ld

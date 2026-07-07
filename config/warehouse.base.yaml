@@ -94,3 +94,22 @@ rmf:
 web_bridge:
   port: 8646          # §17 port registry（Hermes 8642 / Nav2 8645 / rmf-web 8000 と非衝突）
   snapshot_hz: 2      # /state_cache/snapshot 10Hz → coalesce 配信（doc22 §8:206）
+
+# Mode X-ER visual-task commander（x_er_bridge・docs/mode-x-er/08 §3 の凍結 key 形）。
+# base は全て安全側 OFF/空: enabled false で bringup は x_er_bridge を起動せず、run_manifest
+# 空は composition 起動拒否（fail-closed・doc mode-x-er/08 §4）。traffic_mode と直交・完全
+# additive（load_config は未知 top-level key を deep-merge 素通し）。実値は env overlay
+# （config/<env>/warehouse.yaml）で供給。location_coords は上の locations block から導出
+# （新規座標 key は発明しない・doc mode-x-er/08 §3）。
+mode_x_er:
+  enabled: false                 # bringup が x_er_bridge を起動するか（既定 OFF・llm_bridge と相互排他）
+  execution_profile: x_lite      # x_lite | x_rmf（mode-x-er/01:203-204。x_rmf は NotImplementedError）
+  calibration_id: ""             # config/<env>/calibration/<id>.yaml の stem（camera_id と同一・#416）
+  visual:                        # Visual Resolver 閾値（コード定数禁止＝mode-x-er/02:98）
+    snap_radius_m: 0.25          # 例示値（既存 offline fixture と同値）。env overlay で確定
+  run_manifest: ""               # run_manifest.v1 YAML への path（空＝composition 起動拒否＝fail-closed）
+  plugin_manifests: []           # plugin.yaml path の list（run manifest 宣言と全一致要・doc mode-x-er/08 §4）
+  site_profile:                  # 安全クリティカル profile gate（doc mode-x-er/08 §4 step6）の解決子
+    base_dir: ""                 # site_profiles/ ルート（productization/04 §Site Profile）
+    customer: ""
+    site: ""

@@ -1,7 +1,7 @@
 """Mode X-ER L3 **Visual Resolver** (XER3) — pixel -> map -> known-location snap.
 
-Standalone, bridge-local OFFLINE core consumed LATER by XER5. It does NOT compile a
-``Command``, does NOT wire into ``pipeline.py``, and does NOT read ``config`` (scope). Every
+Standalone, bridge-local OFFLINE core consumed by XER5. It does NOT compile a ``Command`` and
+does NOT read ``config``; wired at ``pipeline.py:180`` (running caller: x_er_bridge, XER6). Every
 class/threshold here is bridge-local (発明), NOT a frozen ``warehouse_interfaces`` contract
 (doc02:5 declares all of doc02 internal/illustrative).
 
