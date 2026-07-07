@@ -18,7 +18,7 @@
 - **Mode X-ER** — Gemini Robotics-ER を「音声・画像・状態から倉庫タスクを理解する司令塔」として使う Mode X 系の最初の具体案（設計提案・contract 未追加）。 — [mode-x-er/README.md:1,9](mode-x-er/README.md)
 - **Mode X-ER-VLA** — Gemini Robotics-ER ＋ VLA（OpenVLA 等）を統合する別モード。ER=意味理解、VLA=視覚 grounding / action candidate。 — [mode-x-er-vla/README.md:1,9](mode-x-er-vla/README.md)
 - **X-lite / X-rmf** — Mode X-ER の 2 profile。X-lite=MVP（ER→L3→既存 MCP/Nav2）、X-rmf=Open-RMF を足す optional profile。 — [mode-x-er/01-architecture-and-flow.md:199-206](mode-x-er/01-architecture-and-flow.md)
-- **`mode_x_er:`（config key）** — Mode X-ER の config ブロック（`enabled`/`execution_profile`/`calibration_id`/`run_manifest`/`plugin_manifests`/`site_profile`）。**`traffic_mode` と直交**・additive（`x-er` という traffic_mode 値は存在しない）。 — 凍結形: [mode-x-er/08-x-er-bridge-node-spec.md §3](mode-x-er/08-x-er-bridge-node-spec.md) / 判定履歴: [mode-x-er/06-unfrozen-contract-resolutions.md §3＋追補](mode-x-er/06-unfrozen-contract-resolutions.md)
+- **`mode_x_er:`（config key）** — Mode X-ER の config ブロック（`enabled`/`execution_profile`/`calibration_id`/`visual`/`run_manifest`/`plugin_manifests`/`site_profile`／Slice B: `dispatch.forward_to_nav2`・`request_fixture`）。**`traffic_mode` と直交**・additive（`x-er` という traffic_mode 値は存在しない）。 — 凍結形: [mode-x-er/08-x-er-bridge-node-spec.md §3](mode-x-er/08-x-er-bridge-node-spec.md) / 判定履歴: [mode-x-er/06-unfrozen-contract-resolutions.md §3＋追補](mode-x-er/06-unfrozen-contract-resolutions.md)
 
 ## 2. モデル・provider（model / provider）
 
@@ -90,7 +90,7 @@
 - **worktree** — 1セッション=1 worktree=1ブランチ=1トラックの並列開発単位（`.git` 共有、同一マシンは clone せず worktree）。 — [.claude/rules/parallel-workflow.md:11](../.claude/rules/parallel-workflow.md)
 - **track（トラック）** — 担当領域を示すラベル体系（`track:skeleton` `track:llm-bridge` `track:safety-state` `track:sim` `track:nav-traffic` `track:wo` `track:jetson` `track:firmware` `track:web` `track:docs`）。1トラック=1 epic Issue。 — [.claude/rules/parallel-workflow.md:99](../.claude/rules/parallel-workflow.md)
 - **contract PR** — 凍結契約 `warehouse_interfaces` に触れる PR。`contract` ラベル必須＋マージ前に依存全トラックへ予告し合意を得る（最小・後方互換優先）。 — [.claude/rules/parallel-workflow.md:140](../.claude/rules/parallel-workflow.md)（§4 契約変更プロトコル）
-- **x_er_bridge（X-ER commander node）** — XER6 の背骨となる Mode X-ER 司令 rclpy node（`warehouse_llm_bridge/x_er_bridge.py`・2026-07-07 時点 greenfield）。ER adapter → L3 → dispatch を稼働 cycle で鎖にし connectivity hops ⓪③④⑤ を閉じる。起動 gate＝`mode_x_er.enabled`・Mode A commander と相互排他。 — [mode-x-er/08-x-er-bridge-node-spec.md](mode-x-er/08-x-er-bridge-node-spec.md)（node 契約正本）
+- **x_er_bridge（X-ER commander node）** — XER6 の背骨となる Mode X-ER 司令 rclpy node（`warehouse_llm_bridge/x_er_bridge.py`・#419 で offline Slice A land 済）。ER adapter → L3 → dispatch を稼働 cycle で鎖にし connectivity hops ⓪③④⑤ を閉じる。起動 gate＝`llm:=true`∧`mode_x_er.enabled`（Slice B・`llm:=false`＝commander 一切なし）・Mode A commander と相互排他。 — [mode-x-er/08-x-er-bridge-node-spec.md](mode-x-er/08-x-er-bridge-node-spec.md)（node 契約正本）
 
 ## 9. run manifest・plugin composition（bridge-local）
 
