@@ -28,6 +28,8 @@ mode_x_er:                       # 新規 top-level（base は全て安全側 OF
   enabled: false                 # bringup が x_er_bridge を起動するか（既定 OFF・本 PR で凍結）
   execution_profile: x_lite      # x_lite | x_rmf（値は 01:203-204 由来。x_rmf は NotImplementedError）
   calibration_id: ""             # config/<env>/calibration/<id>.yaml の stem（06:105 の 5 field YAML）
+  visual:                        # Visual Resolver 閾値（コード定数禁止＝02:98。値は env overlay で確定）
+    snap_radius_m: 0.25          # 例示値（既存 offline fixture と同値）。location_coords は config `locations`（doc13 §3.3・base.yaml 既存 block）から導出＝新規座標 key は発明しない
   run_manifest: ""               # run_manifest.v1 YAML への path（空＝composition 起動拒否＝fail-closed）
   plugin_manifests: []           # plugin.yaml path の list（run manifest 宣言と全一致要・§4）
   site_profile:                  # 安全クリティカル profile gate（§4 step6）の解決子
@@ -39,7 +41,7 @@ mode_x_er:                       # 新規 top-level（base は全て安全側 OF
 - `enabled` / `run_manifest` / `plugin_manifests` / `site_profile.*` は本 PR での追加凍結（06 提案形は `execution_profile`/`calibration_id` の 2 key。manifest ingestion の**取得元未定義**＝[productization/09](../productization/09-run-manifest-and-plugin-composition.md):402-416 RESIDUAL をここで解消する）。
 - calibration artifact は 06:105 のとおり **`config/<env>/calibration/<id>.yaml`**（`camera_id / map_frame / homography(3x3) / reprojection_error / valid_polygon`＝`02:149` 逐語 5 field・コード定数埋込禁止 `02:277`）。
 - **base.yaml への実追加は本 PR ではしない**: `config/warehouse.base.yaml` は bringup/skeleton 所有 → XER6 実装レーンが**所有 Issue へ予告 → 合意 → 末尾追記**の additive PR で行う（[06:110](06-unfrozen-contract-resolutions.md) contract PR 手順どおり）。
-- 未決（実装時に 1 行追記で確定）: governed 経路（§5）の `resolve_governed_calibration(profile, camera_id)` に渡す `camera_id` と `calibration_id` の突合 semantics（#416 merge 後に確定）。
+- 確定（2026-07-07・#416 merge 済＝main `eda2513`）: governed 経路（§4 step6→§5 step4）は **`mode_x_er.calibration_id` をそのまま `camera_id`** として `resolve_governed_calibration(profile, camera_id=<calibration_id>)` に渡す（識別子は 1 本＝artifact file stem と同一。二重 ID を発明しない）。
 
 ## 4. composition 起動シーケンス（fail-closed・起動時 1 回）
 
@@ -90,7 +92,7 @@ async 境界: `propose_plan` は async・L3/composition は sync のため、Mod
 
 ## 9. 残件（本 doc の未決・隠さない）
 
-- `camera_id`↔`calibration_id` 突合 semantics（#416 merge 後に §3 へ 1 行追記）。
+- ~~`camera_id`↔`calibration_id` 突合 semantics~~ → §3 で確定済（calibration_id ≡ camera_id・2026-07-07）。
 - enabled box 集合（§4 step7 の `ConstructedBox` 列挙）＝X-ER run manifest fixture 作成時に確定。
 - `out/runs/` の root `.gitignore` entry（[ADR-0003](../adr/0003-bridge-local-manifest-composition.md):63 follow-up・XER6 実装 PR に同梱可）。
 - doc16 §9 ブランチ表に Mode X-ER 行が無い（現行は precedent＝`mwr-mode-x-er`/`feat/mode-x-er-*`。表追記は governance follow-up）。
