@@ -12,7 +12,7 @@
 
 | 項目 | 契約 | 根拠 |
 |---|---|---|
-| module | `warehouse_llm_bridge/x_er_bridge.py`（`main()` + `rclpy.Node`） | [07:55](07-implementation-status.md)・greenfield（`origin/main` に不存在） |
+| module | `warehouse_llm_bridge/x_er_bridge.py`（`main()` + `rclpy.Node`） | [07:55](07-implementation-status.md)・landed（#419・offline Slice A・main `949ae7f`） |
 | console_scripts | `x_er_bridge = warehouse_llm_bridge.x_er_bridge:main`（`llm_bridge` と同型） | `setup.py` 既存形 |
 | 起動 gate | `bringup.launch.py` が **`llm:=true` かつ `mode_x_er.enabled==true` のときのみ** x_er_bridge を追加（`traffic_mode=='x-er'` 値は**発明しない**＝[06 §3 追補](06-unfrozen-contract-resolutions.md)）。`llm` 既定 true ゆえ通常の overlay opt-in（`mode_x_er.enabled`）挙動は不変。**Slice B で `llm` を「司令 node 一切なし」の operator kill-switch へ一般化**（§2.1） | [06:29](06-unfrozen-contract-resolutions.md) RESOLVED・§2.1 |
 | 相互排他 | `mode_x_er.enabled == true` の bringup は **Mode A commander（`llm_bridge`）を起動しない**（司令 node は常に 1 本＝gen 発番・排他制御 B-3 の一意 owner を保つ。どちらの commander かは `mode_x_er.enabled` が決める） | [01:184-197](01-architecture-and-flow.md)（gen_id は Bridge 発番）・[#342] DoD「#4 と mode 分岐を調整」 |
@@ -65,7 +65,7 @@ mode_x_er:                       # 新規 top-level（base は全て安全側 OF
 3. `PluginDispatchPolicy.derive_from_base(base=PlanPolicy の emergency_stop allowlist, requested=...)` — [plugin_results.py:272](../../ws/src/warehouse_llm_bridge/warehouse_llm_bridge/robotics/composition/plugin_results.py)（narrow-only・base ceiling は #410）。
 4. `PluginComposition(...)` を構築し、各 hookimpl を **manifest の `plugin_id` 名で** `register(impl, plugin_id)` — [plugins.py:123,150](../../ws/src/warehouse_llm_bridge/warehouse_llm_bridge/robotics/composition/plugins.py)。
 5. `preflight_composition(manifest, composition)` — [preflight.py:57](../../ws/src/warehouse_llm_bridge/warehouse_llm_bridge/robotics/composition/preflight.py)（`==` 集合等価＝#410）。**reconciliation（step2）と preflight（step5）は別物**であり、`run-declared == registered hookimpls == plugin-manifest-present` の**三重突合を回すのは x_er_bridge の責務**（[plugin_manifest.py:22-27](../../ws/src/warehouse_llm_bridge/warehouse_llm_bridge/robotics/composition/plugin_manifest.py) が XER6 へ明示的に委譲）。
-6. site profile gate: `load_site_profile(base_dir, customer, site)` → `compute_content_hash` → `load_approved_record` → `verify_against_approved(...).assert_verified()` → `build_calibration_loader(profile)` — [profile.py:161,287,197,320,148](../../ws/src/warehouse_llm_bridge/warehouse_llm_bridge/robotics/composition/profile.py)・[calibration_gate.py:291](../../ws/src/warehouse_llm_bridge/warehouse_llm_bridge/robotics/composition/calibration_gate.py)。
+6. site profile gate: `load_site_profile(base_dir, customer, site)` → `compute_content_hash` → `load_approved_record` → `verify_against_approved(...).assert_verified()` → `build_calibration_loader(profile)` — [profile.py:161,287,197,320,148](../../ws/src/warehouse_llm_bridge/warehouse_llm_bridge/robotics/composition/profile.py)・[calibration_gate.py:291](../../ws/src/warehouse_llm_bridge/warehouse_llm_bridge/robotics/composition/calibration_gate.py)。**実 caller は §3:governed 経路の `resolve_governed_calibration_with_loader`（calibration_source.py:116）** を用いる（generic builder ではなく governance witness 埋込のため loader 変種・同一 fail-closed 契約）。
 7. `build_effective_composition(...)` → `write_run_artifacts(...)`（`out/runs/<run_id>/`） — [record.py:139,242](../../ws/src/warehouse_llm_bridge/warehouse_llm_bridge/robotics/composition/record.py)。**enabled な全 box に `ConstructedBox` entry が必須**（in-process で構築しない box は `stage=None` の entry を明示列挙・[record.py:181-183](../../ws/src/warehouse_llm_bridge/warehouse_llm_bridge/robotics/composition/record.py) の missing raise）。
 8. ER adapter 構築: `build_er_adapter(cfg)` — [adapter_factory.py:77](../../ws/src/warehouse_llm_bridge/warehouse_llm_bridge/robotics/adapter_factory.py)（config→transport 解決・shipped 既定 DIRECT fail-safe＝[ADR-0002](../adr/0002-er-in-hermes-standard.md):43）。**offline test は factory を経由せず** `GeminiErAdapter(offline_payload=...)` を注入する（§8）。
 
@@ -93,7 +93,7 @@ async 境界: `propose_plan` は async・L3/composition は sync のため、Mod
 
 1. **#416**（calibration 橋・§4 step6→§5 step4）: ✅ **merge 済**（2026-07-07・main `eda2513`）。実装が消費する実体は `resolve_governed_calibration_with_loader`（governance witness 埋込のため loader 変種を使用・挙動は同一 fail-closed）。
 2. **#342 の ready 化**: ✅ **完了**（2026-07-07・#339/#340/#341 を DoD 監査で close → `blocked`→`ready` 反転済）。
-3. base.yaml additive PR（§3・bringup/skeleton 所有 Issue へ予告）。
+3. base.yaml additive: Slice-A block（`enabled`/`execution_profile`/`calibration_id`/`visual`/`run_manifest`/`plugin_manifests`/`site_profile`）は ✅ **#419 で land 済**（`config/warehouse.base.yaml:104-115`・safe-OFF/空）。**Slice-B keys（`dispatch.forward_to_nav2`/`request_fixture`）の base.yaml 追加は実装レーンで pending**（§3・bringup/skeleton 所有 Issue へ予告 → additive 末尾追記）。
 
 ## 8. テスト（3 層・R-26）
 

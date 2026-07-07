@@ -90,7 +90,7 @@
 - **worktree** — 1セッション=1 worktree=1ブランチ=1トラックの並列開発単位（`.git` 共有、同一マシンは clone せず worktree）。 — [.claude/rules/parallel-workflow.md:11](../.claude/rules/parallel-workflow.md)
 - **track（トラック）** — 担当領域を示すラベル体系（`track:skeleton` `track:llm-bridge` `track:safety-state` `track:sim` `track:nav-traffic` `track:wo` `track:jetson` `track:firmware` `track:web` `track:docs`）。1トラック=1 epic Issue。 — [.claude/rules/parallel-workflow.md:99](../.claude/rules/parallel-workflow.md)
 - **contract PR** — 凍結契約 `warehouse_interfaces` に触れる PR。`contract` ラベル必須＋マージ前に依存全トラックへ予告し合意を得る（最小・後方互換優先）。 — [.claude/rules/parallel-workflow.md:140](../.claude/rules/parallel-workflow.md)（§4 契約変更プロトコル）
-- **x_er_bridge（X-ER commander node）** — XER6 の背骨となる Mode X-ER 司令 rclpy node（`warehouse_llm_bridge/x_er_bridge.py`・2026-07-07 時点 greenfield）。ER adapter → L3 → dispatch を稼働 cycle で鎖にし connectivity hops ⓪③④⑤ を閉じる。起動 gate＝`llm:=true`∧`mode_x_er.enabled`（Slice B・`llm:=false`＝commander 一切なし）・Mode A commander と相互排他。 — [mode-x-er/08-x-er-bridge-node-spec.md](mode-x-er/08-x-er-bridge-node-spec.md)（node 契約正本）
+- **x_er_bridge（X-ER commander node）** — XER6 の背骨となる Mode X-ER 司令 rclpy node（`warehouse_llm_bridge/x_er_bridge.py`・#419 で offline Slice A land 済）。ER adapter → L3 → dispatch を稼働 cycle で鎖にし connectivity hops ⓪③④⑤ を閉じる。起動 gate＝`llm:=true`∧`mode_x_er.enabled`（Slice B・`llm:=false`＝commander 一切なし）・Mode A commander と相互排他。 — [mode-x-er/08-x-er-bridge-node-spec.md](mode-x-er/08-x-er-bridge-node-spec.md)（node 契約正本）
 
 ## 9. run manifest・plugin composition（bridge-local）
 
