@@ -28,7 +28,12 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 from warehouse_llm_bridge.robotics.er_task import ErTaskRequest
-from warehouse_llm_bridge.x_er_bridge import load_request_fixture, resolve_request_fixture_path
+from warehouse_llm_bridge.x_er_bridge import (
+    load_request_fixture,
+    resolve_nav2_forwarder,
+    resolve_request_fixture_path,
+)
+from warehouse_mcp_server.nav2_client import Nav2RestForwarder
 
 # ── resolve_request_fixture_path (mode_x_er.request_fixture, dev-only v0 source) ──────
 
@@ -131,3 +136,57 @@ def test_unknown_action_is_rejected(tmp_path: Path) -> None:
 def test_missing_request_id_is_rejected(tmp_path: Path) -> None:
     with pytest.raises(ValidationError):
         load_request_fixture(_write_fixture(tmp_path, {"transcript": "hi"}))
+
+
+# ── resolve_nav2_forwarder (mode_x_er.dispatch.forward_to_nav2, doc08 §3 / #421) ──────
+#
+# R-26: a motion-enabling flag must be SAFE-OFF unless it is exactly YAML `true`. Expected
+# values are independent (the base ship value is false = 0 actuation; only a literal true
+# flips it). How each goes red: relax `forward is not True` to `if forward` -> the truthy
+# string/int cases return a forwarder -> red; drop the base_url fail-closed raise -> the
+# missing-endpoint case stops raising -> red.
+
+_BASE_URL = "http://localhost:8645"
+
+
+def test_forwarder_off_when_dispatch_block_absent() -> None:
+    # base.yaml ships mode_x_er without any dispatch override on some overlays => safe-OFF.
+    assert resolve_nav2_forwarder({"mode_x_er": {"enabled": False}}) is None
+    assert resolve_nav2_forwarder({}) is None
+
+
+def test_forwarder_off_when_forward_flag_false_or_absent() -> None:
+    assert resolve_nav2_forwarder({"mode_x_er": {"dispatch": {}}}) is None
+    assert resolve_nav2_forwarder({"mode_x_er": {"dispatch": {"forward_to_nav2": False}}}) is None
+
+
+@pytest.mark.safety
+@pytest.mark.parametrize("flag", ["true", "True", 1, "yes"])
+def test_forwarder_off_for_non_boolean_truthy_values(flag: Any) -> None:
+    # STRICT: only the YAML boolean true enables actuation — a truthy string/int typo stays OFF.
+    cfg = {
+        "mode_x_er": {"dispatch": {"forward_to_nav2": flag}},
+        "nav2_bridge": {"base_url": _BASE_URL},
+    }
+    assert resolve_nav2_forwarder(cfg) is None
+
+
+def test_forwarder_on_reuses_nav2_bridge_base_url() -> None:
+    cfg = {
+        "mode_x_er": {"dispatch": {"forward_to_nav2": True}},
+        "nav2_bridge": {"base_url": _BASE_URL},
+    }
+    forwarder = resolve_nav2_forwarder(cfg)
+    assert isinstance(forwarder, Nav2RestForwarder)
+    assert forwarder._base_url == _BASE_URL  # endpoint reused, no new key invented
+
+
+@pytest.mark.safety
+@pytest.mark.parametrize("nav2", [{}, {"base_url": ""}, {"base_url": None}, "oops", None])
+def test_forwarder_true_without_endpoint_is_fail_closed(nav2: Any) -> None:
+    # Requesting actuation with no reachable endpoint must refuse startup, not silently OFF.
+    cfg: dict[str, Any] = {"mode_x_er": {"dispatch": {"forward_to_nav2": True}}}
+    if nav2 is not None:
+        cfg["nav2_bridge"] = nav2
+    with pytest.raises(ValueError, match="base_url"):
+        resolve_nav2_forwarder(cfg)

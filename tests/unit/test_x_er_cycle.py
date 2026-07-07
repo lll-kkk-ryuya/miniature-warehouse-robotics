@@ -495,3 +495,37 @@ def test_gen_mint_is_independent_of_er_output() -> None:
     h_direct.run()
     h_hermes.run()
     assert h_direct.gen_store.set_calls == h_hermes.gen_store.set_calls == [1]
+
+
+# ==========================================================================================
+# Slice B correlation surface: committed (robot, node id) + plan_id on the outcome (doc08 §5 step7)
+# ==========================================================================================
+
+
+def test_committed_pairs_and_plan_id_expose_by_robot_correlation() -> None:
+    """A dispatching cycle reports the (robot, node id) it committed and the plan_id — the
+    exact map the node folds into its by-robot completion correlation (x_er_completion)."""
+    h = _harness(plugin=_SilentPlugin())
+    outcome = h.run()
+    assert outcome.skipped_reason is None
+    assert outcome.committed == (("bot1", "t1"),)  # robot from the MCP result, node id from audit
+    assert outcome.plan_id == PLAN_ID
+
+    # Next cycle after t1 completes commits the after-gated t2 for the OTHER robot.
+    state = h.executor.load_state(PLAN_ID)
+    h.executor.mark_succeeded(PLAN_ID, "t1", state)
+    outcome2 = h.run()
+    assert outcome2.committed == (("bot2", "t2"),)
+    assert outcome2.plan_id == PLAN_ID
+
+
+def test_non_dispatching_exits_carry_no_committed_pairs() -> None:
+    """adapter_error has no draft (plan_id None); plugin_rejected knows the plan but commits
+    nothing — neither must ever hand the node a robot->node correlation to act on."""
+    adapter_err = _harness(adapter=_RaisingAdapter()).run()
+    assert adapter_err.committed == ()
+    assert adapter_err.plan_id is None
+
+    rejected = _harness(plugin=_BlockingPlugin()).run()
+    assert rejected.committed == ()
+    assert rejected.plan_id == PLAN_ID  # the draft existed; just nothing was dispatched
