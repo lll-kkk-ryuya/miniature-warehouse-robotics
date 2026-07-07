@@ -104,6 +104,7 @@ docs/
 | [07-implementation-status](mode-x-er/07-implementation-status.md) | **ER→L3 実装ステータス（想定 vs 現状 on main）**＋図解 [implementation-status.html](mode-x-er/implementation-status.html)。offline チェーンは frozen Command まで完成・live-send(#389)/L2-L1-L0 作動(XER6) 未着地。全 file:line 裏取り |
 | [dev/07 live runbook](dev/07-mode-x-er-live-e2e-runbook.md) | Mode X-ER live ER→L3→Langfuse 実走 operator runbook（gateway 起動・preflight・課金 gate・scoped 承認文言・honest limits。設計は本 mode-x-er/、live 手順は dev/ 側） |
 | [deploy/hermes/er-audio-fork/](../deploy/hermes/er-audio-fork/) | **ER audio-via-Hermes `input_audio` fork パッケージ**（#357）＋ `hlf-g0-langfuse` Option-D（#360）の配備成果物。`apply-fork.sh` / `run-er-gateway.sh` / patch。**TARGET=default-Hermes**（fork 経由で audio も Hermes）／ **CURRENT（shipped）=audio は direct**（fork は未 productionize・direct は恒久 fallback。doc `mode-x-er/06` §5 補遺:263-271） |
+| [08-x-er-bridge-node-spec](mode-x-er/08-x-er-bridge-node-spec.md) | **XER6 `x_er_bridge` node 契約（設計正本）**: X-ER commander node の形・`mode_x_er:` config key 凍結（06 §3 RESOLVED と対）・composition 起動シーケンス・plugin gating（二重 validate）・dispatch seam・エラー方針・テスト 3 層 |
 
 ## mode-x-er-vla/ — Gemini Robotics-ER + VLA 統合モード（設計提案）
 
