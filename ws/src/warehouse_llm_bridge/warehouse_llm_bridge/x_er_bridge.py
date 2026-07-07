@@ -26,11 +26,15 @@ closes the Mode X-ER connectivity hops ⓪③④⑤ (docs/mode-x-er/08 §1):
 
 * COMPLETION (Slice B, docs/mode-x-er/08 §5 step7): the node subscribes to
   ``/nav2_bridge/goal_result`` (std_msgs/String ``{robot, task_id, result}``, doc03:110 /
-  doc12a:384-392) and converts each completion into a guarded ``mark_succeeded`` / ``mark_failed``
-  on the long-lived executor, then re-triggers the cycle so the after-gated successor readies
-  next cycle (red -> blue runs node-alone, no manual step). Correlation is BY ROBOT (the nav2
-  task id does not round-trip; x_er_completion module docstring). The pure decision logic lives
-  in ``x_er_completion.apply_goal_result`` (ROS-free); this node only parses + marshals + wakes.
+  doc12a:384-392). The spin-thread callback only ENQUEUES a parsed completion and wakes the
+  loop; the loop DRAINS the queue BETWEEN cycles (``apply_pending_completions``), converting
+  each into a guarded ``mark_succeeded`` / ``mark_failed`` on the long-lived executor and
+  re-driving so the after-gated successor readies next cycle (red -> blue runs node-alone, no
+  manual step). Draining between cycles (never during one) keeps a SINGLE live executor handle
+  per plan (executor.py:157-163) — a completion applied mid-cycle would race the cycle's handle
+  and silently lose a transition. Correlation is BY ROBOT (the nav2 task id does not
+  round-trip; x_er_completion module docstring). All decision logic is ROS-free
+  (``x_er_completion``); this node only subscribes, enqueues, drains, and folds.
 
 v0 request source (dev-only, PROVISIONAL — flagged residual): ``mode_x_er.request_fixture`` is
 a path to a JSON file of ``ErTaskRequest`` fields, ONLY consumed when set. Real request
@@ -48,6 +52,7 @@ import asyncio
 import contextlib
 import json
 import threading
+from collections import deque
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -74,7 +79,11 @@ try:
     from warehouse_llm_bridge.executor import DispatchToolExecutor
     from warehouse_llm_bridge.robotics.adapter_factory import build_er_adapter
     from warehouse_llm_bridge.robotics_planning_core.task_graph_executor import TaskGraphExecutor
-    from warehouse_llm_bridge.x_er_completion import apply_goal_result, parse_goal_result
+    from warehouse_llm_bridge.x_er_completion import (
+        apply_pending_completions,
+        fold_inflight,
+        parse_goal_result,
+    )
     from warehouse_llm_bridge.x_er_composition import XErRuntime, build_x_er_runtime
     from warehouse_llm_bridge.x_er_cycle import run_x_er_cycle
 except ImportError as exc:  # pragma: no cover — only in a rclpy-less (pure pytest) env
@@ -220,14 +229,18 @@ if _NODE_IMPORT_ERROR is None:
             self._cycle_trigger = asyncio.Event()
             self._thread = threading.Thread(target=self._run_loop, daemon=True)
             # §5 step7 progression (Slice B): the caller loop owns lifecycle. ``_plan_id`` is
-            # the single active plan's store key; ``_inflight`` maps ``robot -> dispatched
-            # node id`` so a /nav2_bridge/goal_result is correlated by robot back to the node
-            # it advances (x_er_completion). Both are mutated ONLY on the cycle event loop
-            # (the subscription callback marshals via call_soon_threadsafe), so no lock.
+            # the single active plan's store key; ``_inflight`` maps ``robot -> dispatched node
+            # id`` for by-robot completion correlation (x_er_completion). Both are mutated ONLY
+            # on the cycle-loop thread, BETWEEN cycles — never while run_x_er_cycle holds a live
+            # executor handle (single-live-handle contract, executor.py:157-163).
             self._plan_id: str | None = None
             self._inflight: dict[str, str] = {}
-            # Completion signal subscription (doc08 §5 step7): parse -> marshal onto the cycle
-            # loop -> guarded mark_succeeded/failed -> re-trigger. 0 actuation.
+            # Completions arrive on the rclpy spin thread; the callback only ENQUEUES here
+            # (deque.append is atomic) and wakes the loop. The loop drains + applies them at the
+            # top of each iteration, so a completion never races an in-flight cycle's handle.
+            self._pending_completions: deque = deque()
+            # Completion signal subscription (doc08 §5 step7): parse -> enqueue -> (loop) drain
+            # -> guarded mark_succeeded/failed -> re-trigger. 0 actuation.
             self.create_subscription(String, _GOAL_RESULT_TOPIC, self._on_goal_result_msg, 10)
             request_src = "fixture" if self._request is not None else "none"
             self.get_logger().info(
@@ -245,11 +258,13 @@ if _NODE_IMPORT_ERROR is None:
         async def _run_cycles(self) -> None:
             """Drive ``run_x_er_cycle`` while a request is pending (docs/mode-x-er/08 §5).
 
-            One awaited cycle per wake-up: ``compile_raw_output`` is one-shot
-            ready-tasks-only, so t2 becomes ready only after t1's completion signal
-            marks it ``succeeded`` (``_apply_goal_result_on_loop`` sets ``_cycle_trigger``,
-            Slice B). The loop parks on the trigger between cycles instead of re-offering the
-            same ready set in a busy loop (docs/mode-x-er/08 §5 step7).
+            Per iteration: (1) DRAIN queued completions (apply mark_succeeded/failed BETWEEN
+            cycles, single handle) -> (2) run one cycle -> (3) fold its committed pairs -> (4)
+            park on the trigger. ``compile_raw_output`` is one-shot ready-tasks-only, so t2
+            becomes ready only after t1's completion is applied in step (1) of the next
+            iteration (the completion callback sets ``_cycle_trigger`` to wake the park). The
+            loop parks instead of busy-re-offering the same ready set (docs/mode-x-er/08 §5
+            step7).
             """
             if self._request is None:
                 self.get_logger().info(
@@ -257,6 +272,9 @@ if _NODE_IMPORT_ERROR is None:
                 )
                 return
             while not self._stop_requested.is_set():
+                # (1) Apply completions queued since the last cycle, on THIS loop thread, before
+                # any cycle handle is live — this is the race fix (executor.py:157-163).
+                self._drain_completions()
                 try:
                     outcome = await run_x_er_cycle(
                         request=self._request,
@@ -286,13 +304,30 @@ if _NODE_IMPORT_ERROR is None:
                     )
                 else:
                     # Fold the committed (robot, node id) pairs into the by-robot correlation
-                    # map so a completion for that robot advances the right node (Slice B).
-                    for robot, node_id in outcome.committed:
-                        self._inflight[robot] = node_id
+                    # map; refusals = an unsupported same-robot-concurrent plan shape (logged
+                    # loudly, correlation kept for the earlier task — never silently mis-marked).
+                    for robot, node_id in fold_inflight(self._inflight, outcome.committed):
+                        self.get_logger().error(
+                            f"x_er_bridge: robot {robot!r} already has in-flight task "
+                            f"{self._inflight[robot]!r}; by-robot correlation cannot track a "
+                            f"second concurrent same-robot task {node_id!r} (unsupported plan "
+                            "shape) — its completion will be ignored"
+                        )
                     self.get_logger().info(
                         f"x_er_bridge cycle dispatched {len(outcome.dispatched)} tool call(s)"
                     )
                 await self._wait_for_cycle_trigger()
+
+        def _drain_completions(self) -> None:
+            """Apply all queued completions on the loop thread (BETWEEN cycles). Race fix:
+            single live handle at a time (x_er_completion.apply_pending_completions)."""
+            for outcome in apply_pending_completions(
+                self._pending_completions,
+                plan_id=self._plan_id,
+                inflight=self._inflight,
+                executor=self._task_executor,
+            ):
+                self.get_logger().info(f"x_er_bridge completion applied: {outcome.reason}")
 
         async def _wait_for_cycle_trigger(self) -> None:
             """Park until the completion-signal seam (or shutdown) wakes the loop."""
@@ -310,10 +345,11 @@ if _NODE_IMPORT_ERROR is None:
         def _on_goal_result_msg(self, msg: String) -> None:
             """ROS callback for ``/nav2_bridge/goal_result`` (runs on the rclpy spin thread).
 
-            Parses the ``std_msgs/String`` JSON and marshals a valid completion onto the cycle
-            event loop (``call_soon_threadsafe``) so the store transition happens on the SAME
-            single thread the cycle runs on — no lock, no stale handle (executor.py:150-163).
-            A malformed payload is dropped (fail-closed, doc08 §6).
+            Parses the ``std_msgs/String`` JSON, ENQUEUES a valid completion (``deque.append``
+            is atomic across threads), and wakes the cycle loop. It does NOT touch the executor
+            here — the store transition is applied by ``_drain_completions`` on the loop thread
+            BETWEEN cycles, so it never opens a second live handle racing an in-flight cycle
+            (executor.py:157-163). A malformed payload is dropped (fail-closed, doc08 §6).
             """
             goal_result = parse_goal_result(msg.data)
             if goal_result is None:
@@ -321,30 +357,9 @@ if _NODE_IMPORT_ERROR is None:
                     "x_er_bridge: ignoring malformed /nav2_bridge/goal_result payload"
                 )
                 return
+            self._pending_completions.append(goal_result)
             with contextlib.suppress(RuntimeError):  # loop already stopped (idle node)
-                self._loop.call_soon_threadsafe(self._apply_goal_result_on_loop, goal_result)
-
-        def _apply_goal_result_on_loop(self, goal_result: Any) -> None:
-            """Apply one completion on the cycle loop (doc08 §5 step7): mark_succeeded/failed
-            then re-trigger the loop so the after-gated successor is compiled next cycle.
-
-            All executor/store access stays on the loop thread; correlation + the fail-closed
-            transition live in the pure ``x_er_completion.apply_goal_result``.
-            """
-            if self._plan_id is None:
-                return  # no cycle has dispatched yet — nothing to correlate against.
-            outcome = apply_goal_result(
-                goal_result,
-                plan_id=self._plan_id,
-                inflight=self._inflight,
-                executor=self._task_executor,
-            )
-            self.get_logger().info(
-                f"x_er_bridge goal_result (robot={goal_result.robot}, "
-                f"result={goal_result.result}): {outcome.reason}"
-            )
-            if outcome.retrigger:
-                self._cycle_trigger.set()
+                self._loop.call_soon_threadsafe(self._cycle_trigger.set)
 
         # ── lifecycle (mirrors llm_bridge.py:299-305) ─────────────────────────────────
 

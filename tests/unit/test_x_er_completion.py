@@ -16,6 +16,8 @@ Offline: no ROS, no network, no config read (doc16 §11 fake-first).
 
 from __future__ import annotations
 
+from collections import deque
+
 import pytest
 from warehouse_llm_bridge.robotics_planning_core.models import RoboticsPlanDraft, TaskNode
 from warehouse_llm_bridge.robotics_planning_core.task_graph_executor import TaskGraphExecutor
@@ -25,10 +27,29 @@ from warehouse_llm_bridge.x_er_completion import (
     GOAL_RESULT_SUCCEEDED,
     GoalResult,
     apply_goal_result,
+    apply_pending_completions,
+    fold_inflight,
     parse_goal_result,
 )
 
 PLAN_ID = "plan_completion_ut"
+
+
+def _two_robot_running_executor() -> TaskGraphExecutor:
+    """A real executor with t1 (bot1) and t2 (bot2) both ``running`` (no after between them)."""
+    executor = TaskGraphExecutor(InMemoryTaskGraphStore())
+    draft = RoboticsPlanDraft(
+        plan_id=PLAN_ID,
+        task_graph=[
+            TaskNode(id="t1", robot="bot1", action="navigate", target="red_box"),
+            TaskNode(id="t2", robot="bot2", action="navigate", target="blue_box"),
+        ],
+    )
+    state = executor.load_state(PLAN_ID)
+    executor.ready_tasks(draft, state)  # both ready (independent tasks)
+    executor.mark_running(PLAN_ID, "t1", state)
+    executor.mark_running(PLAN_ID, "t2", state)
+    return executor
 
 
 def _draft() -> RoboticsPlanDraft:
@@ -84,6 +105,7 @@ def test_parse_valid_payload() -> None:
         '{"robot": "", "result": "succeeded"}',  # blank robot
         '{"robot": "bot1", "result": ""}',  # blank result
         '{"robot": 7, "result": "succeeded"}',  # non-string robot
+        '{"robot": "bot1", "result": 5}',  # non-string result (type contract, both halves)
     ],
 )
 def test_parse_malformed_returns_none(data: str) -> None:
@@ -221,3 +243,140 @@ def test_unknown_result_vocabulary_transitions_nothing() -> None:
     assert outcome.transition is None
     assert _status(executor, "t1") == "running"  # unchanged
     assert inflight == {"bot1": "t1"}  # kept: a later well-formed signal can still resolve it
+
+
+def test_unknown_robot_reason_distinguishes_from_not_running_guard() -> None:
+    # Pins the `node_id is None` unknown-robot guard DISTINCTLY from the downstream status
+    # guard: an unknown robot reports "no in-flight task", not the "not running" idempotent
+    # path. Mutating the guard away routes an unknown robot through status_of(None)=PENDING
+    # and changes the reason -> this test goes red (closes the redundant-guard coverage gap).
+    executor, _ = _executor_with_t1_running()
+    outcome = apply_goal_result(
+        GoalResult("botX", "nav_001", GOAL_RESULT_SUCCEEDED),
+        plan_id=PLAN_ID,
+        inflight={"bot1": "t1"},
+        executor=executor,
+    )
+    assert outcome.applied is False
+    assert "no in-flight task" in outcome.reason
+
+
+# --- fold_inflight (by-robot correlation map + same-robot guard) ------------------------------
+
+
+def test_fold_inflight_adds_distinct_robots() -> None:
+    inflight: dict[str, str] = {}
+    refused = fold_inflight(inflight, [("bot1", "t1"), ("bot2", "t2")])
+    assert refused == []
+    assert inflight == {"bot1": "t1", "bot2": "t2"}
+
+
+def test_fold_inflight_refuses_second_same_robot_keeps_first() -> None:
+    # By-robot correlation cannot disambiguate two concurrent same-robot tasks: keep the first,
+    # REFUSE the second (never silently overwrite -> that marks the WRONG node on completion).
+    inflight: dict[str, str] = {}
+    refused = fold_inflight(inflight, [("bot1", "t1"), ("bot1", "t2")])
+    assert refused == [("bot1", "t2")]
+    assert inflight == {"bot1": "t1"}  # earlier correlation preserved, not clobbered
+
+
+def test_fold_inflight_refuses_robot_already_in_flight() -> None:
+    inflight = {"bot1": "t1"}
+    refused = fold_inflight(inflight, [("bot1", "t9")])
+    assert refused == [("bot1", "t9")]
+    assert inflight == {"bot1": "t1"}
+
+
+# --- apply_pending_completions (drain between cycles = the race fix) ---------------------------
+
+
+def test_apply_pending_completions_drains_in_order() -> None:
+    executor = _two_robot_running_executor()
+    pending = deque(
+        [
+            GoalResult("bot1", "n1", GOAL_RESULT_SUCCEEDED),
+            GoalResult("bot2", "n2", GOAL_RESULT_SUCCEEDED),
+        ]
+    )
+    inflight = {"bot1": "t1", "bot2": "t2"}
+    outcomes = apply_pending_completions(
+        pending, plan_id=PLAN_ID, inflight=inflight, executor=executor
+    )
+    assert [o.transition for o in outcomes] == ["succeeded", "succeeded"]
+    assert list(pending) == []  # fully drained
+    assert inflight == {}
+    assert _status(executor, "t1") == "succeeded"
+    assert _status(executor, "t2") == "succeeded"
+
+
+def test_apply_pending_completions_reports_retrigger() -> None:
+    executor = _two_robot_running_executor()
+    pending = deque([GoalResult("bot1", "n1", GOAL_RESULT_SUCCEEDED)])
+    outcomes = apply_pending_completions(
+        pending, plan_id=PLAN_ID, inflight={"bot1": "t1"}, executor=executor
+    )
+    assert any(o.retrigger for o in outcomes)
+
+
+def test_apply_pending_completions_drops_when_no_plan_yet() -> None:
+    # plan_id None = no cycle has dispatched; a queued completion can't be correlated -> drop it
+    # (drain-and-clear) rather than crash apply_goal_result with a None plan_id.
+    executor = _two_robot_running_executor()
+    pending = deque([GoalResult("bot1", "n1", GOAL_RESULT_SUCCEEDED)])
+    outcomes = apply_pending_completions(pending, plan_id=None, inflight={}, executor=executor)
+    assert outcomes == []
+    assert list(pending) == []  # cleared
+    assert _status(executor, "t1") == "running"  # store untouched
+
+
+# --- concurrency: completions applied BETWEEN cycles, never against a live cycle handle -------
+
+
+@pytest.mark.safety
+def test_stale_cycle_handle_would_clobber_a_concurrent_completion_hazard() -> None:
+    """Documents WHY completions are drained BETWEEN cycles (the Slice B race fix). A store
+    handle loaded before a concurrent completion, then persisted after, REVERTS the store
+    (last-write-wins over independent snapshots, seams.py deep-copy). Applying a completion
+    while ``run_x_er_cycle`` holds a live handle would silently lose the transition — so the
+    node enqueues completions and drains them between cycles, never mid-cycle."""
+    executor = _two_robot_running_executor()
+    stale = executor.load_state(PLAN_ID)  # a "cycle" handle: snapshot with t1,t2 running
+    # A concurrent completion applies on a FRESH handle (the racy path the node avoids):
+    apply_goal_result(
+        GoalResult("bot1", "n", GOAL_RESULT_SUCCEEDED),
+        plan_id=PLAN_ID,
+        inflight={"bot1": "t1"},
+        executor=executor,
+    )
+    assert _status(executor, "t1") == "succeeded"
+    # The stale cycle handle now persists its own progression -> clobbers t1 back to running:
+    executor.mark_succeeded(PLAN_ID, "t2", stale)
+    assert _status(executor, "t1") == "running"  # CLOBBERED — exactly what the fix prevents
+
+
+@pytest.mark.safety
+def test_drain_between_cycles_preserves_transition_no_clobber() -> None:
+    """The safe discipline the node implements: the cycle's handle is FULLY released before the
+    drain applies the completion (fresh handle), and the NEXT cycle loads a fresh handle that
+    sees the committed transition — no stale snapshot to clobber it."""
+    executor = _two_robot_running_executor()
+    apply_pending_completions(
+        deque([GoalResult("bot1", "n", GOAL_RESULT_SUCCEEDED)]),
+        plan_id=PLAN_ID,
+        inflight={"bot1": "t1"},
+        executor=executor,
+    )
+    assert _status(executor, "t1") == "succeeded"
+    nxt = executor.load_state(PLAN_ID)  # next cycle's handle: fresh, sees t1 succeeded
+    assert nxt.runtime.status_of("t1").value == "succeeded"
+    executor.mark_succeeded(PLAN_ID, "t2", nxt)  # this cycle's own progression
+    assert _status(executor, "t1") == "succeeded"  # preserved (no clobber)
+
+
+def test_goal_result_topic_matches_documented_contract() -> None:
+    # The consumed topic literal must match the doc03:110 / doc12a:384-392 /
+    # warehouse_nav2_bridge/nav2_bridge.py:42 contract — a typo silently subscribes to a dead
+    # topic with no other offline signal. Importable without ROS (module-level constant).
+    from warehouse_llm_bridge.x_er_bridge import _GOAL_RESULT_TOPIC
+
+    assert _GOAL_RESULT_TOPIC == "/nav2_bridge/goal_result"

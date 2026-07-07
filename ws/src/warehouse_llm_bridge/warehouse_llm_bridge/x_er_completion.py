@@ -38,6 +38,8 @@ from __future__ import annotations
 
 import json
 import logging
+from collections import deque
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 from warehouse_llm_bridge.robotics_planning_core.task_graph_executor import (
@@ -191,3 +193,58 @@ def apply_goal_result(
             f"(vocab: {GOAL_RESULT_SUCCEEDED!r}|{GOAL_RESULT_FAILED!r}); no transition"
         ),
     )
+
+
+def fold_inflight(
+    inflight: dict[str, str], committed: Sequence[tuple[str, str]]
+) -> list[tuple[str, str]]:
+    """Fold a cycle's committed ``(robot, node_id)`` pairs into the by-robot in-flight map.
+
+    Returns the pairs that were REFUSED because that robot already has an in-flight task.
+    By-robot correlation cannot disambiguate two CONCURRENT same-robot tasks (an unsupported
+    plan shape the executor ``after`` gate normally prevents, and the 0.5s Policy-Gate rate
+    limit blocks offline), so rather than silently OVERWRITE the earlier correlation — which
+    would later mark the WRONG node on completion — the earlier one is kept and the new pair
+    refused. The caller logs each refusal loudly (an unsupported plan, not a normal path). A
+    refused task simply gets no completion correlation (its later goal_result is ignored as an
+    unknown robot) — a safe degrade (a stuck task, never a mis-marked one).
+    """
+    refused: list[tuple[str, str]] = []
+    for robot, node_id in committed:
+        if robot in inflight:
+            refused.append((robot, node_id))
+            continue
+        inflight[robot] = node_id
+    return refused
+
+
+def apply_pending_completions(
+    pending: deque[GoalResult],
+    *,
+    plan_id: str | None,
+    inflight: dict[str, str],
+    executor: TaskGraphExecutor,
+) -> list[GoalResultOutcome]:
+    """Drain a queue of parsed completions, applying each in order (Slice B serialization).
+
+    THIS IS THE RACE FIX. Completions are enqueued by the ROS callback (another thread) and
+    applied here on the cycle-loop thread, called ONLY BETWEEN cycles — never while
+    ``run_x_er_cycle`` holds a live ``TaskGraphState`` handle. That preserves the executor's
+    single-live-handle-per-plan contract (executor.py:157-163): applying a completion mid-cycle
+    (a second concurrent handle) would let the cycle's stale handle persist over the transition
+    (or vice-versa), silently losing a ``mark_succeeded`` or double-dispatching a task.
+
+    ``plan_id is None`` means no cycle has dispatched yet, so nothing can be correlated — the
+    queue is drained and dropped (a completion for a plan we have not started is meaningless).
+    Returns the per-completion outcomes; the caller re-drives the cycle if any ``retrigger``.
+    """
+    outcomes: list[GoalResultOutcome] = []
+    if plan_id is None:
+        pending.clear()
+        return outcomes
+    while pending:
+        goal_result = pending.popleft()
+        outcomes.append(
+            apply_goal_result(goal_result, plan_id=plan_id, inflight=inflight, executor=executor)
+        )
+    return outcomes

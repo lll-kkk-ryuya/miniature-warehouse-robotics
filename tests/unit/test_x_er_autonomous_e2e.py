@@ -42,7 +42,11 @@ from warehouse_llm_bridge.robotics_planning_core.fixtures.red_blue_sequence impo
 from warehouse_llm_bridge.robotics_planning_core.task_graph_executor import TaskGraphExecutor
 from warehouse_llm_bridge.robotics_planning_core.validator import PlanningContext
 from warehouse_llm_bridge.robotics_planning_core.validator.seams import InMemoryTaskGraphStore
-from warehouse_llm_bridge.x_er_completion import apply_goal_result, parse_goal_result
+from warehouse_llm_bridge.x_er_completion import (
+    apply_goal_result,
+    fold_inflight,
+    parse_goal_result,
+)
 from warehouse_llm_bridge.x_er_composition import build_x_er_runtime
 from warehouse_llm_bridge.x_er_cycle import run_x_er_cycle
 from warehouse_mcp_server.audit import CommandAuditLog
@@ -139,9 +143,9 @@ class _Fixture:
         outcome = _run_cycle(
             self.runtime, self.adapter, self.executor, self.gen_store, self.tool_executor
         )
-        # Fold committed pairs exactly as XErBridge._run_cycles does.
-        for robot, node_id in outcome.committed:
-            self.inflight[robot] = node_id
+        # Fold committed pairs via the SAME pure function XErBridge._run_cycles calls (not a
+        # replica) — a refusal would mean an unsupported same-robot-concurrent plan.
+        assert fold_inflight(self.inflight, outcome.committed) == []
         return outcome
 
     def status(self, task_id: str) -> str:
