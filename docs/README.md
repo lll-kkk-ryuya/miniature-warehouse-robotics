@@ -71,6 +71,7 @@ docs/
 | [10-llm-assisted-rule-authoring](productization/10-llm-assisted-rule-authoring.md) | 顧客 rule を LLM 支援で site profile / plugin profile / fixture / simulation へ落とす設計 |
 | [l3-rule-authoring-detail](productization/l3-rule-authoring-detail.html) | LLM 支援 rule authoring の HTML 図解 |
 | [productization/l4](productization/l4/README.md) | L4 内部 sub-box の layer skeleton。Model Transport / Adapter の詳細設計 |
+| [11-l2-contract-governance-traffic-box](productization/11-l2-contract-governance-traffic-box.md) | L2（Contract / Governance / Traffic）の商用 box 設計。実行許可 accepted-motion gate・交通 X-lite/X-rmf・レイヤ番号対応 |
 
 ## mode-a/ — LLM単独交通管理
 
