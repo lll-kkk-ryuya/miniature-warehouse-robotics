@@ -351,7 +351,7 @@ clarification 系は専用 code を増やさず、次の 2 経路で表す:
 
 ## Pipeline entry point の store/executor 注入 seam（XER5/S1）
 
-> **実装ステータス**: 本 seam は S1 spike（`feat/l3-comp-s1-store-pierce`・PR #404）で実装され、**`origin/main` には未着地**（配線 = XER5/S1）。現 `origin/main` の `compile_raw_output` は下記 2 引数を持たない（[ADR-0003](../adr/0003-bridge-local-manifest-composition.md) の未着地 residual と同じ扱い）。
+> **実装ステータス（2026-07-07 更新）**: 本 seam は S1（PR #404・squash `1dd2b74`）で **`origin/main` に着地済み**＝`compile_raw_output` が下記 2 引数を持つ（[pipeline.py:98-99](../../ws/src/warehouse_llm_bridge/warehouse_llm_bridge/robotics_planning_core/pipeline.py)）。残る配線＝長命 executor を渡す稼働 caller（XER6 `x_er_bridge`・[08-x-er-bridge-node-spec](08-x-er-bridge-node-spec.md)）。
 
 full L3 chain entry point `compile_raw_output`（`RawModelOutput -> ... -> frozen Command`・§4 の Command Compiler で終端）は、S1 spike で long-lived executor / durable store を注入するための **keyword-only・相互排他・default-None** な 2 引数を得る。durable-store 差替の設計正本は [productization/03 §Task Graph Executor Box](../productization/03-l3-planning-core-box.md)（site 差替点 `:127-133`・durable store `:132`・`TaskGraphStore` を file/Redis/DB へ差替 `:135`）。
 
