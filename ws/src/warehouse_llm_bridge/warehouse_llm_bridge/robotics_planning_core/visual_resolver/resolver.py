@@ -6,8 +6,8 @@ and snaps it to the nearest frozen ``KNOWN_LOCATIONS`` key within the injected s
 target that fails any gate is ``unresolved`` with ``destination=None`` — the 0-dispatch path
 (doc02:151,68): an unresolved target NEVER yields a destination.
 
-bridge-local (発明), standalone offline core. It does NOT compile a ``Command``, does NOT wire
-into ``pipeline.py``, and does NOT read ``config`` — XER5 consumes this later (doc02:5; scope).
+bridge-local (発明), standalone offline core. It does NOT compile a ``Command`` and does NOT
+read ``config``; the L3 chain wires it at ``pipeline.py:180`` (running caller: x_er_bridge, XER6).
 
 Consumes:
 - ``RoboticsPlanDraft`` (models/robotics_plan_draft.py) — its ``detections[].pixel`` (u, v) IS

@@ -3,8 +3,8 @@
 L3's final stage (doc02:200-242): the converter that drops resolved `navigate` tasks into the
 EXISTING frozen `warehouse_interfaces.schemas.Command` so the Gemini Robotics-ER / OpenCV /
 NetworkX world never leaks into the `Command -> action_map -> MCP -> Policy Gate -> Nav2/RMF`
-world (doc02:236). Standalone, **bridge-local offline core**; it does NOT wire into
-`pipeline.py` (that is XER6, doc02:19) and performs **no actuation** (pure data transform).
+world (doc02:236). Standalone, **bridge-local offline core**; the L3 chain wires it at
+`pipeline.py:187` (running caller: x_er_bridge, XER6); it performs **no actuation** (pure data transform).
 
 - **担当トラック / ブランチ**: Mode X-ER / `feat/mode-x-er-xer5`
 - **Phase**: Mode X-ER L3 Planning Core (stage 4 of 4, doc02:14-16).

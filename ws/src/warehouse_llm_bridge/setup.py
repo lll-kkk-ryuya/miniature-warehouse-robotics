@@ -39,6 +39,9 @@ setup(
             # Seed the commander prompts into Langfuse Prompt Management (idempotent upsert;
             # default dry-run). doc08 §Langfuse Prompt Management 方針.
             "seed_prompts = warehouse_llm_bridge.seed_prompts:main",
+            # Mode X-ER visual-task commander node (docs/mode-x-er/08 §2, XER6). Composed by
+            # bringup.launch.py IFF mode_x_er.enabled (mutually exclusive with llm_bridge).
+            "x_er_bridge = warehouse_llm_bridge.x_er_bridge:main",
         ],
     },
 )

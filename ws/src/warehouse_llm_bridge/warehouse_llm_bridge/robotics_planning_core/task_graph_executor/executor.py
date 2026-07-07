@@ -6,9 +6,9 @@ satisfied — the ready set (doc02:163). It is the stage that prevents the failu
 missing executor causes (doc02:188-190): order conditions ignored, simultaneous dispatch of
 dependent tasks, and double-dispatch of the same task.
 
-Scope (XER4): this is a standalone, bridge-local OFFLINE core consumed LATER by XER5. It does
-NOT compile a ``Command``, does NOT wire into the pipeline, does NOT read config, and is NOT
-promoted to ``warehouse_interfaces`` (doc02:5 — the whole L3 doc is illustrative/internal).
+Scope (XER4): a standalone, bridge-local OFFLINE core consumed by XER5. It does NOT compile a
+``Command`` and does NOT read config; the L3 chain wires it at ``pipeline.py:185-186`` (running
+caller: x_er_bridge, XER6). It is NOT promoted to ``warehouse_interfaces`` (doc02:5).
 ``ReadyTask`` and the executor's method surface are bridge-local invented names, each flagged
 ``# bridge-local (発明), not frozen``.
 

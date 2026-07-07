@@ -3,8 +3,8 @@
 L3's final stage (doc02:200-242): the converter that drops resolved ``navigate`` tasks into the
 existing ``warehouse_interfaces.schemas.Command`` -> action_map -> MCP -> Policy Gate ->
 Nav2/RMF path so Gemini Robotics-ER / OpenCV / NetworkX never leak downstream (doc02:236).
-Standalone, bridge-local OFFLINE core: it does NOT wire into ``pipeline.py`` (that is XER6,
-doc02:19), does NOT read ``config``, and does NOT actuate (pure data transform).
+Standalone, bridge-local OFFLINE core: the L3 chain wires it at ``pipeline.py:187`` (running
+caller: x_er_bridge, XER6); it does NOT read ``config`` and does NOT actuate (pure transform).
 
 Public surface:
 - :class:`CommandCompiler` — plugin base (doc02:240); ``compile(tasks, targets, profile) -> Command``.
