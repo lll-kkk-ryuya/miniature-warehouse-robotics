@@ -1,6 +1,6 @@
 # 08 x_er_bridge node 仕様（XER6/G5 の背骨・X-ER commander node 契約）
 
-> **状態**: 設計正本（XER6 実装の前提 doc）。[07-implementation-status](07-implementation-status.md):55 `next_wire` が示す「背骨 1 本」＝新規 `warehouse_llm_bridge/x_er_bridge.py` の **node 契約**をここに確定する（07 は現状記録・本書が設計正本）。生成 2026-07-07・全 file:line は `origin/main cdb34e0` で検証済み。
+> **状態**: 設計正本（XER6 実装の前提 doc）。[07-implementation-status](07-implementation-status.md):55 `next_wire` が示す「背骨 1 本」＝新規 `warehouse_llm_bridge/x_er_bridge.py` の **node 契約**をここに確定する（07 は現状記録・本書が設計正本）。生成 2026-07-07・全 file:line は `origin/main cdb34e0`（現 main `eda2513` の祖先・差分は #416 の追加 2 ファイルのみ）で検証済み。#416 関連（§3 確定・§4 step6）は `eda2513` で追検証。
 > **スコープ**: XER6（X-lite E2E・[#342]・[README](README.md):91）。live 手順は [dev/08-xer6-live-sim-x-lite-runbook](../dev/08-xer6-live-sim-x-lite-runbook.md)（operator 用）・[dev/07 live runbook](../dev/07-mode-x-er-live-e2e-runbook.md)（課金 gate）。X-rmf は対象外（`NotImplementedError` fail-closed・#346）。
 > **凍結契約**: 本書は `warehouse_interfaces` を一切変更しない（bridge-local のみ）。
 
@@ -29,7 +29,7 @@ mode_x_er:                       # 新規 top-level（base は全て安全側 OF
   execution_profile: x_lite      # x_lite | x_rmf（値は 01:203-204 由来。x_rmf は NotImplementedError）
   calibration_id: ""             # config/<env>/calibration/<id>.yaml の stem（06:105 の 5 field YAML）
   visual:                        # Visual Resolver 閾値（コード定数禁止＝02:98。値は env overlay で確定）
-    snap_radius_m: 0.25          # 例示値（既存 offline fixture と同値）。location_coords は config `locations`（doc13 §3.3・base.yaml 既存 block）から導出＝新規座標 key は発明しない
+    snap_radius_m: 0.25          # 例示値（visual_resolver/policy.py:65 の code default と同値）。location_coords は config `locations`（doc13 §3.3・base.yaml 既存 block）から導出＝新規座標 key は発明しない
   run_manifest: ""               # run_manifest.v1 YAML への path（空＝composition 起動拒否＝fail-closed）
   plugin_manifests: []           # plugin.yaml path の list（run manifest 宣言と全一致要・§4）
   site_profile:                  # 安全クリティカル profile gate（§4 step6）の解決子
@@ -41,7 +41,7 @@ mode_x_er:                       # 新規 top-level（base は全て安全側 OF
 - `enabled` / `run_manifest` / `plugin_manifests` / `site_profile.*` は本 PR での追加凍結（06 提案形は `execution_profile`/`calibration_id` の 2 key。manifest ingestion の**取得元未定義**＝[productization/09](../productization/09-run-manifest-and-plugin-composition.md):402-416 RESIDUAL をここで解消する）。
 - calibration artifact は 06:105 のとおり **`config/<env>/calibration/<id>.yaml`**（`camera_id / map_frame / homography(3x3) / reprojection_error / valid_polygon`＝`02:149` 逐語 5 field・コード定数埋込禁止 `02:277`）。
 - **base.yaml への実追加は本 PR ではしない**: `config/warehouse.base.yaml` は bringup/skeleton 所有 → XER6 実装レーンが**所有 Issue へ予告 → 合意 → 末尾追記**の additive PR で行う（[06:110](06-unfrozen-contract-resolutions.md) contract PR 手順どおり）。
-- 確定（2026-07-07・#416 merge 済＝main `eda2513`）: governed 経路（§4 step6→§5 step4）は **`mode_x_er.calibration_id` をそのまま `camera_id`** として `resolve_governed_calibration(profile, camera_id=<calibration_id>)` に渡す（識別子は 1 本＝artifact file stem と同一。二重 ID を発明しない）。
+- 確定（2026-07-07・#416 merge 済＝main `eda2513`）: governed 経路（§4 step6→§5 step4）は **`mode_x_er.calibration_id` をそのまま `camera_id`** として `resolve_governed_calibration(profile, camera_id=<calibration_id>)` に渡す（識別子は 1 本＝artifact file stem と同一。二重 ID を発明しない）。実装は witness 埋込のため loader 変種 `resolve_governed_calibration_with_loader`（calibration_source.py:116）を用いる（同一 fail-closed 契約）。
 
 ## 4. composition 起動シーケンス（fail-closed・起動時 1 回）
 
@@ -67,7 +67,7 @@ async 境界: `propose_plan` は async・L3/composition は sync のため、Mod
 3. **plugin 合成 validate（F1 判断＝二重 validate を採用）**: `validate_with_plugins(PlanValidator(), draft, ctx, composition)` — [plugins.py:409](../../ws/src/warehouse_llm_bridge/warehouse_llm_bridge/robotics/composition/plugins.py) を先に呼び、`ComposedValidationReport.permits_dispatch`（[plugins.py:370](../../ws/src/warehouse_llm_bridge/warehouse_llm_bridge/robotics/composition/plugins.py)）が false なら **その cycle は 0 dispatch・store 無接触で終了**。理由: L3 入口 `compile_raw_output` は `PlanValidator()` を内部構築し plugin composition を受けない（[pipeline.py](../../ws/src/warehouse_llm_bridge/warehouse_llm_bridge/robotics_planning_core/pipeline.py):171 相当・plugin 経路は別関数）＝**この guard 無しでは manifest 宣言 plugin が reject しても Command が出る**。代替案（resolve→execute→compile の tail 再組立）は pipeline 内部の複製＝drift 源として不採用。コスト＝core validator が cycle あたり 2 回走る（offline 決定論・許容）。
 4. **L3**: `cmd: Command = compile_raw_output(raw, calibration=<§4 step6 の governed 経路>, resolver_policy=VisualPolicy(...), executor=<長命 executor>)` — [pipeline.py:90,98-99](../../ws/src/warehouse_llm_bridge/warehouse_llm_bridge/robotics_planning_core/pipeline.py)。executor は node が保持する **長命 `TaskGraphExecutor`**（[executor.py:70](../../ws/src/warehouse_llm_bridge/warehouse_llm_bridge/robotics_planning_core/task_graph_executor/executor.py)）を毎回同一注入（plan ごと・cycle ごと live handle は 1 つ＝[02:361](02-l3-planning-core.md) STALE-HANDLE 契約）。
 5. **gen 発番**: node が `FileGenStore` で mint（[llm_bridge.py:152](../../ws/src/warehouse_llm_bridge/warehouse_llm_bridge/llm_bridge.py) と同型・LLM/ER 由来値は使わない＝[01:184-197](01-architecture-and-flow.md)）。
-6. **dispatch**: `command_to_tool_calls(cmd, gen)`（[action_map.py:92](../../ws/src/warehouse_llm_bridge/warehouse_llm_bridge/action_map.py)）→ `DispatchToolExecutor`（[llm_bridge.py:238](../../ws/src/warehouse_llm_bridge/warehouse_llm_bridge/llm_bridge.py) と同型）→ `WarehouseTools.dispatch`（[tools.py:124](../../ws/src/warehouse_mcp_server/warehouse_mcp_server/tools.py)）。**offline slice は `nav2_forwarder=None`**（[tools.py:92-115](../../ws/src/warehouse_mcp_server/warehouse_mcp_server/tools.py)＝受理・記帳のみ・0 actuation）→ sim では `Nav2RestForwarder`（`/api/v1/{navigate,wait,stop}`＝[nav2_client.py:45](../../ws/src/warehouse_mcp_server/warehouse_mcp_server/nav2_client.py)）へ **config で** flip（コード変更ゼロ）。
+6. **dispatch**: `command_to_tool_calls(cmd, gen)`（[action_map.py:92](../../ws/src/warehouse_llm_bridge/warehouse_llm_bridge/action_map.py)）→ `DispatchToolExecutor`（[llm_bridge.py:238](../../ws/src/warehouse_llm_bridge/warehouse_llm_bridge/llm_bridge.py) と同型）→ `WarehouseTools.dispatch`（[tools.py:124](../../ws/src/warehouse_mcp_server/warehouse_mcp_server/tools.py)）。**offline slice は `nav2_forwarder=None`**（[tools.py:92-115](../../ws/src/warehouse_mcp_server/warehouse_mcp_server/tools.py)＝受理・記帳のみ・0 actuation）→ sim の `Nav2RestForwarder`（`/api/v1/{navigate,wait,stop}`＝[nav2_client.py:45](../../ws/src/warehouse_mcp_server/warehouse_mcp_server/nav2_client.py)）への切替は **Slice B**: §3 凍結 set に forwarder 解決 key が無いため config だけでは flip できない（Slice A 実装は `None` 固定）。**先に本 doc §3 へ key を追記してから配線する**（勝手に key を発明しない・§9 残件）。
 7. **progression**: dispatch 受理後の lifecycle（`mark_running` → 完了確認 → `mark_succeeded`）は **caller loop＝本 node が所有**（[02:359](02-l3-planning-core.md) 三分割所有）。`compile_raw_output` は one-shot ready-tasks-only のため、**red→blue の順序 demo は t1 完了後に次 cycle で再呼び**して t2 を ready 化する（[dev/08](../dev/08-xer6-live-sim-x-lite-runbook.md) §4 手動手順の自動化）。完了信号（`/nav2_bridge/goal_result` 等）→`mark_succeeded` の変換は本 node の実装範囲。
 
 ## 6. エラー方針（すべて安全側）
@@ -78,8 +78,8 @@ async 境界: `propose_plan` は async・L3/composition は sync のため、Mod
 
 ## 7. 依存 PR / issue（実装順序）
 
-1. **#416**（`resolve_governed_calibration`・Draft）: §4 step6→§5 step4 の calibration 橋。**XER6 レーン着手前に merge するのが正順**（未 merge の場合、caller は None→refuse 変換を自前実装することになり同ロジックの二重レビューが発生）。
-2. **#342 の ready 化**: #339/#340/#341 の DoD 監査（XER3-5 offline core land 済）→ close → `blocked` 解除が process 前提（[parallel-workflow.md §1](../../.claude/rules/parallel-workflow.md)）。
+1. **#416**（calibration 橋・§4 step6→§5 step4）: ✅ **merge 済**（2026-07-07・main `eda2513`）。実装が消費する実体は `resolve_governed_calibration_with_loader`（governance witness 埋込のため loader 変種を使用・挙動は同一 fail-closed）。
+2. **#342 の ready 化**: ✅ **完了**（2026-07-07・#339/#340/#341 を DoD 監査で close → `blocked`→`ready` 反転済）。
 3. base.yaml additive PR（§3・bringup/skeleton 所有 Issue へ予告）。
 
 ## 8. テスト（3 層・R-26）
@@ -93,6 +93,8 @@ async 境界: `propose_plan` は async・L3/composition は sync のため、Mod
 ## 9. 残件（本 doc の未決・隠さない）
 
 - ~~`camera_id`↔`calibration_id` 突合 semantics~~ → §3 で確定済（calibration_id ≡ camera_id・2026-07-07）。
+- **forwarder 解決 key**（§5 step6 の sim flip 用）が §3 凍結 set に無い → Slice B で本 doc §3 へ追記してから配線（Mode A の nav2_bridge config 参照 pattern=llm_bridge.py:160 を踏襲・key 発明を先行させない）。
+- **`mode_x_er.request_fixture`**（実装 PR #419 の dev-only 暫定 key・§3 凍結 set 外・base.yaml 非搭載・pkg CLAUDE.md 開示済）→ Slice B で「§3 へ昇格 or 廃止」を確定。
 - enabled box 集合（§4 step7 の `ConstructedBox` 列挙）＝X-ER run manifest fixture 作成時に確定。
 - `out/runs/` の root `.gitignore` entry（[ADR-0003](../adr/0003-bridge-local-manifest-composition.md):63 follow-up・XER6 実装 PR に同梱可）。
 - doc16 §9 ブランチ表に Mode X-ER 行が無い（現行は precedent＝`mwr-mode-x-er`/`feat/mode-x-er-*`。表追記は governance follow-up）。
