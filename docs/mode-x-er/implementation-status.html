@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Mode X-ER 実装状況 — 想定(planned) vs 現状(main ad563de)</title>
+<title>Mode X-ER 実装状況 — 想定(planned) vs 現状(main 9ad7ec9)</title>
 <style>
   :root{
     color-scheme: dark;
@@ -145,8 +145,8 @@
 <div class="wrap">
 
 <header class="top">
-  <h1>Mode X-ER 実装状況 — 想定(planned) vs 現状(current on main <code>ad563de</code>)</h1>
-  <p class="lead">ER → L3 パイプラインの各 node を、<b>想定(planned)</b> と <b>現状(main <code>ad563de</code> に載っているもの)</b>で対比する。結論から言うと、<b>凍結 <code>Command</code> まで到達する offline L3 チェーンは DONE</b>（envelope → handoff → validator → resolver → executor → compiler → <code>pipeline.compile_raw_output</code>）だが、<b>LIVE send 機構（#389）は main 着地（稼働 cycle からの呼び出し配線は未）／ L2/L1/L0 の actuation（XER6）はまだ main に無い</b>。ER の <b>text / image は lean Hermes gateway（8643）経由</b>で通り、<b>audio は Hermes を経由せず DIRECT</b> に行く（下の紫バンド）。本ページは図解（補足資料）で、設計の正本は <code>01</code>〜<code>07</code> / README の .md。</p>
+  <h1>Mode X-ER 実装状況 — 想定(planned) vs 現状(current on main <code>9ad7ec9</code>)</h1>
+  <p class="lead">ER → L3 パイプラインの各 node を、<b>想定(planned)</b> と <b>現状(main <code>9ad7ec9</code> に載っているもの)</b>で対比する。結論から言うと、<b>凍結 <code>Command</code> まで到達する offline L3 チェーンは DONE</b>（envelope → handoff → validator → resolver → executor → compiler → <code>pipeline.compile_raw_output</code>）、<b>LIVE send 機構（#389）も main 着地</b>、さらに <b>それらを鎖化する背骨 <code>x_er_bridge</code>（#419/#423）が land＝<code>goal_result</code> だけで red→blue を offline 完走</b>。ただし <b>実 rclpy node を sim で spin し L2/L1/L0 を実作動させる XER6 sim closure は G5 human gate＝未実走</b>。ER の <b>text / image は lean Hermes gateway（8643）経由</b>、<b>audio は DIRECT</b>（下の紫バンド）。本ページは図解（補足資料）で、設計の正本は <code>01</code>〜<code>07</code> / README の .md。</p>
 </header>
 
 <div class="nav">
@@ -359,10 +359,10 @@
   <!-- node 14 -->
   <div class="pnode st-pending cx-notwired">
     <div class="phead">
-      <div class="t"><span class="lyr" style="background:var(--seam)">L2</span>⑭ action_map / MCP tool → Policy Gate <span style="font-weight:400;color:var(--muted);font-size:11.5px">final actuation permission</span> <span class="role">not-wired (X-ER)</span></div>
-      <span class="badge b-pending">pending</span>
+      <div class="t"><span class="lyr" style="background:var(--seam)">L2</span>⑭ action_map / MCP tool → Policy Gate <span style="font-weight:400;color:var(--muted);font-size:11.5px">final actuation permission</span> <span class="role">offline-wired (X-ER)</span></div>
+      <span class="badge b-pending">gate</span>
     </div>
-    <div class="s">No X-ER test carries a <code>Command</code> into action_map / MCP / Policy Gate. Sanctioned XER6 closure (<span class="dref">dev/07:188</span>). <b>Not on main.</b>（Mode A では稼働だが X-ER からは配線が無い）</div>
+    <div class="s"><code>x_er_cycle</code> が <code>command_to_tool_calls</code>→<code>DispatchToolExecutor</code>→<code>WarehouseTools.dispatch</code> で Command を運ぶ（#419/#423・offline で red→blue 完走）。既定 <code>nav2_forwarder=None</code>=受理・記帳のみ 0 actuation。実 sim/Nav2 作動（<code>forward_to_nav2=true</code>）は sanctioned XER6 closure＝<b>G5 human gate・未実走</b>（<span class="dref">dev/07:188</span>）。</div>
   </div>
 </div>
 
@@ -402,21 +402,21 @@
     ④ audio fork gateway(8644)＝TARGET のみ・⑩ Visual Resolver（object-class clause DEFER）・⑫ Command Compiler（<code>x_rmf</code> half DEFER #346）。
   </div></div>
 </div>
-<div class="node st-pending"><div class="t">pending / not-on-main<span class="badge b-pending">pending</span></div><div class="s">
-  ⑭ L2 MCP/Policy Gate（X-ER が Command を運ばない・XER6）・⑮ L1 Nav2/RMF goal dispatch・⑯ L0 actuation。<b>live-send 機構は #389 で main 着地（呼び出し配線は未接続）／ L2/L1/L0 の actuation は main に無い。</b>
+<div class="node st-pending"><div class="t">offline-wired / sim=G5 gate<span class="badge b-pending">gate</span></div><div class="s">
+  ⑭ L2 MCP/Policy Gate・⑮ L1 Nav2/RMF goal dispatch・⑯ L0 actuation。<b>X-ER が Command を運ぶ配線は land（#419/#423・<code>x_er_cycle</code>→dispatch→<code>goal_result</code>→<code>mark_succeeded</code>）＝offline で red→blue 完走。既定 <code>nav2_forwarder=None</code>=0 actuation、<code>forward_to_nav2=true</code> で Nav2 へ。実 sim 作動は G5 human gate＝未実走。</b>
 </div></div>
 
 <div class="safe">
-  <b>結論</b>: 想定パイプラインのうち <b>「見る・理解する・計画する → 凍結 Command」までの offline L3 チェーンは main で DONE</b>。<b>LIVE send 機構（#389）は main 着地</b>。しかし <b>実際にロボットを動かす経路（それを呼ぶ稼働 cycle + L2 Policy Gate + L1 Nav2 + L0 actuation = XER6）はまだ main に無い</b>。現状の X-ER は <b>1 発の offline pipeline</b>であり、running Bridge cycle からの呼び出し・実 actuation はまだ無い。<span class="dref">dev/07:188 / 06 §5</span>
+  <b>結論</b>: <b>「見る・理解する・計画する → 凍結 Command」までの offline L3 チェーンは DONE</b>、<b>LIVE send 機構（#389）も main 着地</b>、そして <b>それらを鎖化する背骨 <code>x_er_bridge</code>（#419 Slice A + #423 Slice B）が land</b>＝<code>goal_result</code> 完了信号だけで red→blue を node 単独完走（offline 決定論）。<b>ただし実際にロボットを動かす経路（実 rclpy node を sim で spin し L2 Policy Gate + L1 Nav2 + L0 actuation まで＝<code>forward_to_nav2=true</code>・2-bot Gazebo）は G5 human gate＝まだ実走していない</b>。現状の X-ER は <b>OFFLINE-WIRED</b>（node 実装済・sim 実走はこれから）。<span class="dref">dev/07:188 / 06 §5</span>
 </div>
 
 <!-- ================= CONNECTIVITY: top-down verdict + Mode A contrast + next wire ================= -->
 <h2>つながり（connectivity）— 上から running で届くか</h2>
-<p class="lead">STATUS（塗り）とは<b>直交</b>する第 2 軸。「稼働している rclpy node から、上（operator 入力）→下（motor）へ各 seam に到達できるか」。答え: <b>X-ER のどの seam にも running-wired 枠は付かない</b>。全 seam は constructible/offline だが、<b>稼働 node から呼ばれるものは一つも無い</b>。唯一稼働している commander node（Mode A の <code>llm_bridge</code>）には <b>ER 参照がゼロ</b>。欠けている 1 ピース＝<b>X-ER commander node</b>。</p>
+<p class="lead">STATUS（塗り）とは<b>直交</b>する第 2 軸。「稼働している rclpy node から、上（operator 入力）→下（motor）へ各 seam に到達できるか」。答え（2026-07-07・#419/#423 land 後）: <b>欠けていた 1 ピース＝X-ER commander node <code>x_er_bridge</code> が land</b>し、hops ⓪(稼働 cycle 部分)②③④⑤ を鎖化する caller が揃った。ただし正直な区別: <b>OFFLINE-WIRED（node 実装・offline pytest で cycle が走り red→blue 完走）≠ RUNNING（実 rclpy node を sim で spin し L2/Nav2 まで実作動）</b>。後者は <b>G5 human gate＝まだ実走していない</b>（launch は <code>mode_x_er.enabled</code>∧<code>llm</code> gate・base 既定 OFF）。実マイク capture（hop⓪）も未実装。</p>
 
 <div class="modea-strip">
   <div class="mh">Mode A リファレンス（対比用）— すべて running-wired（実線・緑枠）</div>
-  <p class="lead" style="margin:0 0 8px">同型の seam が Mode A では <b>稼働 node から連結して届く</b>。X-ER に欠けているのは配線であって部品ではない、と対比で分かる。</p>
+  <p class="lead" style="margin:0 0 8px">同型の seam が Mode A では <b>稼働 node から連結して sim/実機まで届く</b>。X-ER も #419/#423 で同じ launch 経路（<code>bringup.launch.py</code> の x_er_bridge Node）に載り配線が埋まった＝残る差分は <b>実 rclpy spin での sim 実走（G5 gate）</b>のみ。</p>
   <div class="flow">
     <div class="node st-done cx-running"><div class="t">llm_bridge<br>(rclpy.Node)</div><div class="s">稼働 commander node。<span class="dref">llm_bridge.py:308</span> main()</div></div>
     <div class="arr">▶</div>
@@ -429,19 +429,19 @@
 </div>
 
 <div class="next-box">
-  <div class="nbh">次の一手 — 背骨を 1 本通す（hops ⓪③④⑤ を一括で閉じる）</div>
+  <div class="nbh">背骨＝DONE（#419/#423）／ 残る次の一手 = live rclpy spin + sim 実走</div>
   <ul class="tight">
-    <li>新規 <code>warehouse_llm_bridge/x_er_bridge.py</code>（<code>main()</code> + <code>rclpy.Node</code>）を作る＝X-ER commander node。</li>
-    <li><code>setup.py</code> の <code>console_scripts</code> に登録（<span class="dref">setup.py:29-30</span> の <code>llm_bridge</code> と同型に <code>x_er_bridge = …:main</code>）。</li>
-    <li><code>bringup.launch.py</code> に <code>traffic_mode=='x-er'</code> 条件で node を追加（<span class="dref">bringup.launch.py:240-243</span> の <code>llm_bridge</code> Node と同型）。</li>
-    <li>その cycle が <code>build_er_adapter</code> → <code>propose_plan</code> → <code>compile_raw_output</code> → dispatch を鎖にする＝<b>hops ⓪（mic/input caller）③（adapter→pipeline）④（pipeline→Command）⑤（Command→dispatch）を一括で閉じる</b>。</li>
+    <li>✅ <code>warehouse_llm_bridge/x_er_bridge.py</code>（<code>main()</code> + <code>rclpy.Node</code>）＝X-ER commander node が land（Slice A #419 + Slice B #423）。</li>
+    <li>✅ <code>setup.py</code> <code>console_scripts</code> 登録・<code>bringup.launch.py</code> に x_er_bridge Node 追加（launch gate＝<code>llm=='true' and mode_x_er.enabled</code>＝#423 で <code>llm</code> co-gate。※旧スケッチの <code>traffic_mode=='x-er'</code> は不採用・正本 <span class="dref">08 §2.1 / 06 §3</span>）。</li>
+    <li>✅ cycle が <code>build_er_adapter</code> → <code>propose_plan</code> → <code>compile_raw_output</code> → dispatch →（<code>goal_result</code>）<code>mark_succeeded</code> を鎖化＝<b>hops ⓪(稼働 cycle 部分)②③④⑤ を OFFLINE-WIRED 化</b>（offline で red→blue 完走）。</li>
+    <li>▶ <b>残</b>: 実 rclpy node を sim で spin し <code>forward_to_nav2=true</code> で L2/Nav2 まで実作動（2-bot Gazebo・<b>G5 human gate</b>）＋実マイク capture（hop⓪）。</li>
   </ul>
-  <p class="lead" style="margin:8px 0 0">これで L3 帯の <span class="ring offline" style="margin:0 3px"></span>offline-only 枠が <span class="ring running" style="margin:0 3px"></span>running-wired へ変わる（Mode A と同じ形になる）。</p>
+  <p class="lead" style="margin:8px 0 0">L3 帯の <span class="ring offline" style="margin:0 3px"></span>offline-only 枠は <b>node に配線済（OFFLINE-WIRED）</b>へ前進。<span class="ring running" style="margin:0 3px"></span>running-wired（sim 実走）は G5 gate でこれから。</p>
 </div>
 
 <footer>
   <p>このページは <code>docs/mode-x-er/implementation-status.html</code>（自己完結ダークモード図解・補足資料）。設計の正本は <a href="07-implementation-status.md">07 implementation-status</a> ＋ <a href="01-architecture-and-flow.md">01</a> / <a href="02-l3-planning-core.md">02</a> / <a href="03-er-adapter-skeleton.md">03</a> / <a href="06-unfrozen-contract-resolutions.md">06</a> / <a href="README.md">README</a>。関連図解: <a href="mode-x-er-explainer.html">mode-x-er-explainer.html</a>。外部 CDN / JS / 画像に依存しない単一 HTML。</p>
-  <p>生成 2026-07-02・対象 origin/main ad563de・出典は各 node の file:line（実コードで裏取り済）。</p>
+  <p>生成 2026-07-02（re-pin 2026-07-07・XER6 Slice A/B land 反映）・対象 origin/main 9ad7ec9・出典は各 node の file:line（実コードで裏取り済）。</p>
 </footer>
 
 </div>
