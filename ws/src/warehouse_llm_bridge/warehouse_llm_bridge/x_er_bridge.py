@@ -14,12 +14,12 @@ closes the Mode X-ER connectivity hops ⓪③④⑤ (docs/mode-x-er/08 §1):
   so the cycle runs on a background thread with a dedicated asyncio event loop — the
   llm_bridge.py:254-297 pattern. The per-cycle logic (plugin-composed validate, L3 chain,
   gen minting, dispatch) lives in ``x_er_cycle.run_x_er_cycle`` (ROS-free).
-* ACTUATION: none from this node. Offline Slice A HARD-FIXES ``WarehouseTools`` with
-  ``nav2_forwarder=None`` (tools.py:92-115 — accept + book-keep only, 0 actuation).
-  docs/mode-x-er/08 §5 step6 pins the sim flip to ``Nav2RestForwarder`` as config-driven,
-  but its §3 frozen key set carries no forwarder key, so wiring that flip (llm_bridge.py:160
-  pattern on the existing nav2_bridge config) is a LATER slice — flagged residual; flipping
-  today WOULD require a code change.
+* ACTUATION: none from this node BY DEFAULT. ``WarehouseTools`` is wired with a config-driven
+  forwarder (``resolve_nav2_forwarder``): safe-OFF default ``nav2_forwarder=None`` (tools.py:
+  92-115 — accept + book-keep only, 0 actuation). ``mode_x_er.dispatch.forward_to_nav2: true``
+  (doc08 §3, #421) flips it to ``Nav2RestForwarder`` on the existing ``nav2_bridge.base_url`` —
+  a CONFIG-only sim/real motion enable (no code change). The node itself still originates no
+  motion; L1/L0 safety layers are untouched.
 * MUTUAL EXCLUSION: bringup composes this node IFF ``mode_x_er.enabled`` and then does
   NOT launch the Mode A commander (a single gen-minting commander per run — B-3 unique
   owner, docs/mode-x-er/08 §2 / mode-x-er/01:184-197).
@@ -51,6 +51,10 @@ import threading
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
+
+# ROS-free (httpx is lazily imported inside Nav2RestForwarder.forward), so this stays importable
+# under plain pytest — the forwarder resolver below is a pure, testable helper.
+from warehouse_mcp_server.nav2_client import Nav2Forwarder, Nav2RestForwarder
 
 from warehouse_llm_bridge.robotics.er_task import ErTaskRequest
 
@@ -87,6 +91,42 @@ _REQUEST_FIXTURE_KEY = "request_fixture"
 # std_msgs/String JSON {robot, task_id, result} (doc03:110 / doc12a:384-392 /
 # warehouse_nav2_bridge/nav2_bridge.py:42). Named locally — no cross-package import.
 _GOAL_RESULT_TOPIC = "/nav2_bridge/goal_result"
+# Slice B sim-flip key (doc08 §3, #421): mode_x_er.dispatch.forward_to_nav2 selects whether an
+# accepted motion tool is forwarded to the Nav2 Bridge REST API. Endpoint reuses the existing
+# nav2_bridge.base_url (no new key invented, mirroring llm_bridge.py:160).
+_DISPATCH_KEY = "dispatch"
+_FORWARD_TO_NAV2_KEY = "forward_to_nav2"
+_NAV2_BRIDGE_KEY = "nav2_bridge"
+_BASE_URL_KEY = "base_url"
+
+
+def resolve_nav2_forwarder(cfg: Mapping[str, Any]) -> Nav2Forwarder | None:
+    """Resolve the Nav2 forwarder from ``mode_x_er.dispatch.forward_to_nav2`` (doc08 §3, #421).
+
+    SAFE-OFF by default: returns ``None`` (offline accept + book-keep only, 0 actuation —
+    tools.py:92-115) unless the key is EXACTLY the YAML boolean ``true``. Any other value
+    (absent, ``false``, a truthy string/typo) stays OFF — a motion-enabling flag must never be
+    turned on by an ambiguous value. When enabled, the endpoint reuses the existing
+    ``nav2_bridge.base_url`` (no new key); a missing/blank ``base_url`` with forwarding requested
+    is a fail-closed startup refusal (you asked to actuate but named no endpoint), not a silent
+    fall back to ``None``.
+
+    Pure / offline: constructs but does not call ``Nav2RestForwarder`` (its httpx POST is lazy),
+    so this is unit-testable without ROS or a network.
+    """
+    mode_x_er = cfg.get(_MODE_X_ER_KEY)
+    dispatch = mode_x_er.get(_DISPATCH_KEY) if isinstance(mode_x_er, Mapping) else None
+    forward = dispatch.get(_FORWARD_TO_NAV2_KEY) if isinstance(dispatch, Mapping) else None
+    if forward is not True:
+        return None
+    nav2 = cfg.get(_NAV2_BRIDGE_KEY)
+    base_url = nav2.get(_BASE_URL_KEY) if isinstance(nav2, Mapping) else None
+    if not isinstance(base_url, str) or not base_url:
+        raise ValueError(
+            "mode_x_er.dispatch.forward_to_nav2 is true but nav2_bridge.base_url is missing/blank "
+            "— refusing to start a motion-forwarding node with no endpoint (fail-closed)"
+        )
+    return Nav2RestForwarder(base_url)
 
 
 def resolve_request_fixture_path(cfg: Mapping[str, Any]) -> Path | None:
@@ -158,14 +198,15 @@ if _NODE_IMPORT_ERROR is None:
             # §5 step4: ONE long-lived TaskGraphExecutor for the node's lifetime; every
             # cycle re-injects the SAME instance (STALE-HANDLE contract, doc02:361).
             self._task_executor = TaskGraphExecutor()
-            # §5 step6: offline Slice A is FIXED nav2_forwarder=None (tools.py:92-115 =
-            # accept + book-keep only, 0 actuation). Sim flips to Nav2RestForwarder by
-            # CONFIG in a later slice — no code change here. Store wiring mirrors
+            # §5 step6 (Slice B): the forwarder is config-driven via
+            # mode_x_er.dispatch.forward_to_nav2 (doc08 §3, #421) — safe-OFF default = None
+            # (accept + book-keep only, 0 actuation, tools.py:92-115); true = Nav2RestForwarder
+            # on the existing nav2_bridge.base_url (sim/real motion). Store wiring mirrors
             # llm_bridge.py:160-166 (shared gen_store => B-3 works end-to-end).
             self._tools = WarehouseTools(
                 gen_checker=GenChecker(self._gen_store, FileIdempotencyStore()),
                 state_store=FileStateStore(),
-                nav2_forwarder=None,
+                nav2_forwarder=resolve_nav2_forwarder(cfg),
             )
             self._tool_executor = DispatchToolExecutor(self._tools.dispatch)
             # v0 request source (dev-only, provisional): only consumed when set. A

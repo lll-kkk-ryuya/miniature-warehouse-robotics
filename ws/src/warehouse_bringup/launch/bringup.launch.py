@@ -282,23 +282,24 @@ def generate_launch_description() -> LaunchDescription:
         ),
     )
 
-    # 8. X-ER Bridge — the Mode X-ER visual-task commander (docs/mode-x-er/08 §2, XER6).
-    # Composed IFF mode_x_er.enabled in the merged config (generate-time gate above; safe
-    # default OFF). Replaces the Mode A commander when enabled (mutual exclusion on the
-    # llm_bridge condition, item 6). The node itself performs 0 actuation — motion stays
-    # on the existing MCP tool -> Policy Gate -> Nav2 Bridge REST path (docs/mode-x-er/08
-    # §2 actuation row); L1/L0 safety layers are untouched.
-    # KNOWN residual: the `llm` launch arg does NOT gate this node — doc mode-x-er/08 §2
-    # pins mode_x_er.enabled as the SOLE gate, so `llm:=false` (nav2-only bring-up, see the
-    # llm arg above) does not suppress x_er_bridge on an overlay that enables it. Extending
-    # the operator kill-switch semantics to cover this commander needs a doc08 amendment
-    # before the condition is changed here.
+    # 8. X-ER Bridge — the Mode X-ER visual-task commander (docs/mode-x-er/08 §2/§2.1, XER6).
+    # Composed IFF `llm:=true` AND mode_x_er.enabled in the merged config (doc08 §2.1, #421):
+    # `llm:=false` is the single operator kill-switch for BOTH commanders (Mode A llm_bridge and
+    # X-ER), and x_er_bridge additionally REPLACES the Mode A commander when enabled (mutual
+    # exclusion on the llm_bridge condition, item 6 = `not mode_x_er_enabled`). Symmetric with
+    # item 6's `llm ... and ...` gate. The node performs 0 actuation by default — motion stays on
+    # the existing MCP tool -> Policy Gate -> Nav2 Bridge REST path and is config-gated by
+    # mode_x_er.dispatch.forward_to_nav2 (docs/mode-x-er/08 §3); L1/L0 safety layers untouched.
+    # The Slice-B forwarder depends on the Nav2 Bridge (REST :8645), itself gated by `llm:=true`
+    # + traffic_mode, so co-gating the commander with `llm` keeps commander and endpoint aligned.
     x_er_bridge = Node(
         package="warehouse_llm_bridge",
         executable="x_er_bridge",
         name="x_er_bridge",
         output="screen",
-        condition=IfCondition(str(mode_x_er_enabled).lower()),
+        condition=IfCondition(
+            PythonExpression(["'", llm_enabled, "' == 'true' and ", str(mode_x_er_enabled)])
+        ),
     )
 
     ld = LaunchDescription(args)

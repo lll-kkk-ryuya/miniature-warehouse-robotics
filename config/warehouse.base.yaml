@@ -113,3 +113,6 @@ mode_x_er:
     base_dir: ""                 # site_profiles/ ルート（productization/04 §Site Profile）
     customer: ""
     site: ""
+  dispatch:                      # Slice B 完了後の motion 転送先（doc mode-x-er/08 §3・#421）
+    forward_to_nav2: false       # 既定 safe-OFF=nav2_forwarder=None（受理・記帳のみ 0 actuation）。true=Nav2RestForwarder(nav2_bridge.base_url)＝sim/real motion
+  request_fixture: ""            # v0 dev-only: ErTaskRequest JSON path（空=idle・malformed=起動拒否・doc mode-x-er/08 §3 昇格 #421）
