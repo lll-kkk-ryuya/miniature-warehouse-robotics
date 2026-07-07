@@ -103,12 +103,22 @@ class XErCycleOutcome:
     gate (``None`` only for ``adapter_error``). ``skipped_reason`` is ``None`` on a cycle
     that reached dispatch, else one of ``adapter_error`` / ``plugin_rejected`` /
     ``empty_command``.
+
+    ``committed`` is the ``(robot, task_id)`` pairs this cycle marked ``running`` — the caller
+    (x_er_bridge) folds them into its ``robot -> in-flight node id`` map so a later
+    ``/nav2_bridge/goal_result`` can be correlated by robot back to the node it advances
+    (Slice B, x_er_completion.apply_goal_result). Empty on every non-dispatching exit.
+    ``plan_id`` is the draft's plan id (the store key the caller passes to ``mark_succeeded``);
+    ``None`` only when no draft was built (``adapter_error``). Both are additive, bridge-local
+    (発明) — NOT part of the frozen contract.
     """
 
     command: Command
     dispatched: tuple[dict, ...]
     plugin_report: ComposedValidationReport | None
     skipped_reason: str | None
+    committed: tuple[tuple[str, str], ...] = ()
+    plan_id: str | None = None
 
 
 def _empty_command(reason: str) -> Command:
@@ -212,6 +222,7 @@ async def run_x_er_cycle(
             dispatched=(),
             plugin_report=report,
             skipped_reason=SKIPPED_PLUGIN_REJECTED,
+            plan_id=draft.plan_id,
         )
 
     # 3. Full L3 chain against the caller's long-lived executor (pipeline.py:90,98-99).
@@ -232,6 +243,7 @@ async def run_x_er_cycle(
             dispatched=(),
             plugin_report=report,
             skipped_reason=SKIPPED_EMPTY_COMMAND,
+            plan_id=draft.plan_id,
         )
 
     # 4. gen mint — only now that a non-empty Command exists. Monotonic bump published to
@@ -252,7 +264,8 @@ async def run_x_er_cycle(
     task_ids = _align_task_ids(command, ready, resolution)
     tool_calls = command_to_tool_calls(command, gen)
     dispatched: list[dict] = []
-    for task_id, tool_call in zip(task_ids, tool_calls, strict=True):
+    committed: list[tuple[str, str]] = []
+    for item, task_id, tool_call in zip(command.commands, task_ids, tool_calls, strict=True):
         result = await tool_executor.execute(tool_call)
         if result.get("status") != "ok":
             # Rejected/errored at the MCP layer: no progression commit — the task stays
@@ -261,10 +274,17 @@ async def run_x_er_cycle(
         dispatched.append(result)
         if task_id is not None:
             executor.mark_running(draft.plan_id, task_id, state)
+            # Record (robot, node id) for the caller's by-robot completion correlation
+            # (Slice B). ``robot`` is the compiled Command item's bot — the authoritative
+            # robot that flows to the navigate body and returns as goal_result.robot
+            # (action_map.py:49 -> tools.py:220 -> nav2_client) — never from the ER output.
+            committed.append((item.bot, task_id))
 
     return XErCycleOutcome(
         command=command,
         dispatched=tuple(dispatched),
         plugin_report=report,
         skipped_reason=None,
+        committed=tuple(committed),
+        plan_id=draft.plan_id,
     )

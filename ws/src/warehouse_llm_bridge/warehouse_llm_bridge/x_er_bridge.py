@@ -14,21 +14,31 @@ closes the Mode X-ER connectivity hops ⓪③④⑤ (docs/mode-x-er/08 §1):
   so the cycle runs on a background thread with a dedicated asyncio event loop — the
   llm_bridge.py:254-297 pattern. The per-cycle logic (plugin-composed validate, L3 chain,
   gen minting, dispatch) lives in ``x_er_cycle.run_x_er_cycle`` (ROS-free).
-* ACTUATION: none from this node. Offline Slice A HARD-FIXES ``WarehouseTools`` with
-  ``nav2_forwarder=None`` (tools.py:92-115 — accept + book-keep only, 0 actuation).
-  docs/mode-x-er/08 §5 step6 pins the sim flip to ``Nav2RestForwarder`` as config-driven,
-  but its §3 frozen key set carries no forwarder key, so wiring that flip (llm_bridge.py:160
-  pattern on the existing nav2_bridge config) is a LATER slice — flagged residual; flipping
-  today WOULD require a code change.
+* ACTUATION: none from this node BY DEFAULT. ``WarehouseTools`` is wired with a config-driven
+  forwarder (``resolve_nav2_forwarder``): safe-OFF default ``nav2_forwarder=None`` (tools.py:
+  92-115 — accept + book-keep only, 0 actuation). ``mode_x_er.dispatch.forward_to_nav2: true``
+  (doc08 §3, #421) flips it to ``Nav2RestForwarder`` on the existing ``nav2_bridge.base_url`` —
+  a CONFIG-only sim/real motion enable (no code change). The node itself still originates no
+  motion; L1/L0 safety layers are untouched.
 * MUTUAL EXCLUSION: bringup composes this node IFF ``mode_x_er.enabled`` and then does
   NOT launch the Mode A commander (a single gen-minting commander per run — B-3 unique
   owner, docs/mode-x-er/08 §2 / mode-x-er/01:184-197).
 
-v0 request source (dev-only, PROVISIONAL — flagged residual): ``mode_x_er.request_fixture``
-is a path to a JSON file of ``ErTaskRequest`` fields, ONLY consumed when set. Real request
-producers (mic capture / pre-recorded ref wiring) and the completion signal
-(``/nav2_bridge/goal_result`` -> ``mark_succeeded``) are Slice B (``_on_goal_result`` seam
-below — no topic subscription is invented in this slice).
+* COMPLETION (Slice B, docs/mode-x-er/08 §5 step7): the node subscribes to
+  ``/nav2_bridge/goal_result`` (std_msgs/String ``{robot, task_id, result}``, doc03:110 /
+  doc12a:384-392). The spin-thread callback only ENQUEUES a parsed completion and wakes the
+  loop; the loop DRAINS the queue BETWEEN cycles (``apply_pending_completions``), converting
+  each into a guarded ``mark_succeeded`` / ``mark_failed`` on the long-lived executor and
+  re-driving so the after-gated successor readies next cycle (red -> blue runs node-alone, no
+  manual step). Draining between cycles (never during one) keeps a SINGLE live executor handle
+  per plan (executor.py:157-163) — a completion applied mid-cycle would race the cycle's handle
+  and silently lose a transition. Correlation is BY ROBOT (the nav2 task id does not
+  round-trip; x_er_completion module docstring). All decision logic is ROS-free
+  (``x_er_completion``); this node only subscribes, enqueues, drains, and folds.
+
+v0 request source (dev-only, PROVISIONAL — flagged residual): ``mode_x_er.request_fixture`` is
+a path to a JSON file of ``ErTaskRequest`` fields, ONLY consumed when set. Real request
+producers (mic capture / pre-recorded ref wiring) remain a later slice.
 
 rclpy plus the lane-built ``x_er_composition`` / ``x_er_cycle`` wiring modules are
 import-guarded so plain pytest collection can import the pure helpers below without ROS
@@ -42,9 +52,14 @@ import asyncio
 import contextlib
 import json
 import threading
+from collections import deque
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
+
+# ROS-free (httpx is lazily imported inside Nav2RestForwarder.forward), so this stays importable
+# under plain pytest — the forwarder resolver below is a pure, testable helper.
+from warehouse_mcp_server.nav2_client import Nav2Forwarder, Nav2RestForwarder
 
 from warehouse_llm_bridge.robotics.er_task import ErTaskRequest
 
@@ -55,6 +70,7 @@ try:
     import rclpy
     from rclpy.logging import get_logger
     from rclpy.node import Node
+    from std_msgs.msg import String
     from warehouse_interfaces.config import load_config
     from warehouse_interfaces.stores import FileGenStore, FileIdempotencyStore, FileStateStore
     from warehouse_mcp_server.gen_check import GenChecker
@@ -63,6 +79,11 @@ try:
     from warehouse_llm_bridge.executor import DispatchToolExecutor
     from warehouse_llm_bridge.robotics.adapter_factory import build_er_adapter
     from warehouse_llm_bridge.robotics_planning_core.task_graph_executor import TaskGraphExecutor
+    from warehouse_llm_bridge.x_er_completion import (
+        apply_pending_completions,
+        fold_inflight,
+        parse_goal_result,
+    )
     from warehouse_llm_bridge.x_er_composition import XErRuntime, build_x_er_runtime
     from warehouse_llm_bridge.x_er_cycle import run_x_er_cycle
 except ImportError as exc:  # pragma: no cover — only in a rclpy-less (pure pytest) env
@@ -75,6 +96,46 @@ _MODE_X_ER_KEY = "mode_x_er"
 # v0 dev-only request source (PROVISIONAL, not part of the doc08 §3 frozen shape — see
 # module docstring / CLAUDE.md residual). Only consumed when set to a non-blank string.
 _REQUEST_FIXTURE_KEY = "request_fixture"
+# Completion signal the node consumes to advance the task graph (Slice B, doc08 §5 step7).
+# std_msgs/String JSON {robot, task_id, result} (doc03:110 / doc12a:384-392 /
+# warehouse_nav2_bridge/nav2_bridge.py:42). Named locally — no cross-package import.
+_GOAL_RESULT_TOPIC = "/nav2_bridge/goal_result"
+# Slice B sim-flip key (doc08 §3, #421): mode_x_er.dispatch.forward_to_nav2 selects whether an
+# accepted motion tool is forwarded to the Nav2 Bridge REST API. Endpoint reuses the existing
+# nav2_bridge.base_url (no new key invented, mirroring llm_bridge.py:160).
+_DISPATCH_KEY = "dispatch"
+_FORWARD_TO_NAV2_KEY = "forward_to_nav2"
+_NAV2_BRIDGE_KEY = "nav2_bridge"
+_BASE_URL_KEY = "base_url"
+
+
+def resolve_nav2_forwarder(cfg: Mapping[str, Any]) -> Nav2Forwarder | None:
+    """Resolve the Nav2 forwarder from ``mode_x_er.dispatch.forward_to_nav2`` (doc08 §3, #421).
+
+    SAFE-OFF by default: returns ``None`` (offline accept + book-keep only, 0 actuation —
+    tools.py:92-115) unless the key is EXACTLY the YAML boolean ``true``. Any other value
+    (absent, ``false``, a truthy string/typo) stays OFF — a motion-enabling flag must never be
+    turned on by an ambiguous value. When enabled, the endpoint reuses the existing
+    ``nav2_bridge.base_url`` (no new key); a missing/blank ``base_url`` with forwarding requested
+    is a fail-closed startup refusal (you asked to actuate but named no endpoint), not a silent
+    fall back to ``None``.
+
+    Pure / offline: constructs but does not call ``Nav2RestForwarder`` (its httpx POST is lazy),
+    so this is unit-testable without ROS or a network.
+    """
+    mode_x_er = cfg.get(_MODE_X_ER_KEY)
+    dispatch = mode_x_er.get(_DISPATCH_KEY) if isinstance(mode_x_er, Mapping) else None
+    forward = dispatch.get(_FORWARD_TO_NAV2_KEY) if isinstance(dispatch, Mapping) else None
+    if forward is not True:
+        return None
+    nav2 = cfg.get(_NAV2_BRIDGE_KEY)
+    base_url = nav2.get(_BASE_URL_KEY) if isinstance(nav2, Mapping) else None
+    if not isinstance(base_url, str) or not base_url:
+        raise ValueError(
+            "mode_x_er.dispatch.forward_to_nav2 is true but nav2_bridge.base_url is missing/blank "
+            "— refusing to start a motion-forwarding node with no endpoint (fail-closed)"
+        )
+    return Nav2RestForwarder(base_url)
 
 
 def resolve_request_fixture_path(cfg: Mapping[str, Any]) -> Path | None:
@@ -146,14 +207,15 @@ if _NODE_IMPORT_ERROR is None:
             # §5 step4: ONE long-lived TaskGraphExecutor for the node's lifetime; every
             # cycle re-injects the SAME instance (STALE-HANDLE contract, doc02:361).
             self._task_executor = TaskGraphExecutor()
-            # §5 step6: offline Slice A is FIXED nav2_forwarder=None (tools.py:92-115 =
-            # accept + book-keep only, 0 actuation). Sim flips to Nav2RestForwarder by
-            # CONFIG in a later slice — no code change here. Store wiring mirrors
+            # §5 step6 (Slice B): the forwarder is config-driven via
+            # mode_x_er.dispatch.forward_to_nav2 (doc08 §3, #421) — safe-OFF default = None
+            # (accept + book-keep only, 0 actuation, tools.py:92-115); true = Nav2RestForwarder
+            # on the existing nav2_bridge.base_url (sim/real motion). Store wiring mirrors
             # llm_bridge.py:160-166 (shared gen_store => B-3 works end-to-end).
             self._tools = WarehouseTools(
                 gen_checker=GenChecker(self._gen_store, FileIdempotencyStore()),
                 state_store=FileStateStore(),
-                nav2_forwarder=None,
+                nav2_forwarder=resolve_nav2_forwarder(cfg),
             )
             self._tool_executor = DispatchToolExecutor(self._tools.dispatch)
             # v0 request source (dev-only, provisional): only consumed when set. A
@@ -166,6 +228,20 @@ if _NODE_IMPORT_ERROR is None:
             self._stop_requested = asyncio.Event()
             self._cycle_trigger = asyncio.Event()
             self._thread = threading.Thread(target=self._run_loop, daemon=True)
+            # §5 step7 progression (Slice B): the caller loop owns lifecycle. ``_plan_id`` is
+            # the single active plan's store key; ``_inflight`` maps ``robot -> dispatched node
+            # id`` for by-robot completion correlation (x_er_completion). Both are mutated ONLY
+            # on the cycle-loop thread, BETWEEN cycles — never while run_x_er_cycle holds a live
+            # executor handle (single-live-handle contract, executor.py:157-163).
+            self._plan_id: str | None = None
+            self._inflight: dict[str, str] = {}
+            # Completions arrive on the rclpy spin thread; the callback only ENQUEUES here
+            # (deque.append is atomic) and wakes the loop. The loop drains + applies them at the
+            # top of each iteration, so a completion never races an in-flight cycle's handle.
+            self._pending_completions: deque = deque()
+            # Completion signal subscription (doc08 §5 step7): parse -> enqueue -> (loop) drain
+            # -> guarded mark_succeeded/failed -> re-trigger. 0 actuation.
+            self.create_subscription(String, _GOAL_RESULT_TOPIC, self._on_goal_result_msg, 10)
             request_src = "fixture" if self._request is not None else "none"
             self.get_logger().info(
                 f"x_er_bridge ready (composition preflight passed, request_source="
@@ -182,11 +258,13 @@ if _NODE_IMPORT_ERROR is None:
         async def _run_cycles(self) -> None:
             """Drive ``run_x_er_cycle`` while a request is pending (docs/mode-x-er/08 §5).
 
-            One awaited cycle per wake-up: ``compile_raw_output`` is one-shot
-            ready-tasks-only, so t2 becomes ready only after t1's completion signal
-            (``mark_succeeded``) — which is Slice B (``_on_goal_result`` seam). Until
-            that lands, the loop parks on the trigger instead of re-offering the same
-            ready set in a busy loop (docs/mode-x-er/08 §5 step7).
+            Per iteration: (1) DRAIN queued completions (apply mark_succeeded/failed BETWEEN
+            cycles, single handle) -> (2) run one cycle -> (3) fold its committed pairs -> (4)
+            park on the trigger. ``compile_raw_output`` is one-shot ready-tasks-only, so t2
+            becomes ready only after t1's completion is applied in step (1) of the next
+            iteration (the completion callback sets ``_cycle_trigger`` to wake the park). The
+            loop parks instead of busy-re-offering the same ready set (docs/mode-x-er/08 §5
+            step7).
             """
             if self._request is None:
                 self.get_logger().info(
@@ -194,6 +272,9 @@ if _NODE_IMPORT_ERROR is None:
                 )
                 return
             while not self._stop_requested.is_set():
+                # (1) Apply completions queued since the last cycle, on THIS loop thread, before
+                # any cycle handle is live — this is the race fix (executor.py:157-163).
+                self._drain_completions()
                 try:
                     outcome = await run_x_er_cycle(
                         request=self._request,
@@ -212,6 +293,8 @@ if _NODE_IMPORT_ERROR is None:
                         "(fail-closed, docs/mode-x-er/08 §6)"
                     )
                     raise
+                if outcome.plan_id is not None:
+                    self._plan_id = outcome.plan_id
                 if outcome.skipped_reason is not None:
                     # §6 cycle-level fail-closed outcomes (adapter_error /
                     # plugin_rejected / empty_command): 0 dispatch, store untouched;
@@ -220,10 +303,31 @@ if _NODE_IMPORT_ERROR is None:
                         f"x_er_bridge cycle skipped ({outcome.skipped_reason}): 0 dispatch"
                     )
                 else:
+                    # Fold the committed (robot, node id) pairs into the by-robot correlation
+                    # map; refusals = an unsupported same-robot-concurrent plan shape (logged
+                    # loudly, correlation kept for the earlier task — never silently mis-marked).
+                    for robot, node_id in fold_inflight(self._inflight, outcome.committed):
+                        self.get_logger().error(
+                            f"x_er_bridge: robot {robot!r} already has in-flight task "
+                            f"{self._inflight[robot]!r}; by-robot correlation cannot track a "
+                            f"second concurrent same-robot task {node_id!r} (unsupported plan "
+                            "shape) — its completion will be ignored"
+                        )
                     self.get_logger().info(
                         f"x_er_bridge cycle dispatched {len(outcome.dispatched)} tool call(s)"
                     )
                 await self._wait_for_cycle_trigger()
+
+        def _drain_completions(self) -> None:
+            """Apply all queued completions on the loop thread (BETWEEN cycles). Race fix:
+            single live handle at a time (x_er_completion.apply_pending_completions)."""
+            for outcome in apply_pending_completions(
+                self._pending_completions,
+                plan_id=self._plan_id,
+                inflight=self._inflight,
+                executor=self._task_executor,
+            ):
+                self.get_logger().info(f"x_er_bridge completion applied: {outcome.reason}")
 
         async def _wait_for_cycle_trigger(self) -> None:
             """Park until the completion-signal seam (or shutdown) wakes the loop."""
@@ -238,21 +342,24 @@ if _NODE_IMPORT_ERROR is None:
                     waiter.cancel()
             self._cycle_trigger.clear()
 
-        def _on_goal_result(self, plan_id: str, task_id: str) -> None:
-            """SEAM (Slice B): completion signal -> ``mark_succeeded`` -> next cycle.
+        def _on_goal_result_msg(self, msg: String) -> None:
+            """ROS callback for ``/nav2_bridge/goal_result`` (runs on the rclpy spin thread).
 
-            docs/mode-x-er/08 §5 step7: the caller loop (this node) owns lifecycle
-            progression (``mark_running`` -> completion check -> ``mark_succeeded``,
-            mode-x-er/02:359 three-way ownership). Translating
-            ``/nav2_bridge/goal_result`` into ``mark_succeeded`` on the long-lived
-            executor's store and setting ``self._cycle_trigger`` (t1 done -> next
-            cycle readies t2) is Slice B; NO topic subscription is created in this
-            slice (docs-first — the spec pins the seam here, wiring comes later).
+            Parses the ``std_msgs/String`` JSON, ENQUEUES a valid completion (``deque.append``
+            is atomic across threads), and wakes the cycle loop. It does NOT touch the executor
+            here — the store transition is applied by ``_drain_completions`` on the loop thread
+            BETWEEN cycles, so it never opens a second live handle racing an in-flight cycle
+            (executor.py:157-163). A malformed payload is dropped (fail-closed, doc08 §6).
             """
-            raise NotImplementedError(
-                "Slice B: /nav2_bridge/goal_result -> mark_succeeded wiring "
-                f"(plan_id={plan_id!r}, task_id={task_id!r})"
-            )
+            goal_result = parse_goal_result(msg.data)
+            if goal_result is None:
+                self.get_logger().warning(
+                    "x_er_bridge: ignoring malformed /nav2_bridge/goal_result payload"
+                )
+                return
+            self._pending_completions.append(goal_result)
+            with contextlib.suppress(RuntimeError):  # loop already stopped (idle node)
+                self._loop.call_soon_threadsafe(self._cycle_trigger.set)
 
         # ── lifecycle (mirrors llm_bridge.py:299-305) ─────────────────────────────────
 
