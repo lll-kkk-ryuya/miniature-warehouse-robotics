@@ -81,5 +81,7 @@ if [ "$MODE" = "check" ]; then
 fi
 
 echo "[gate] paid Gemini Robotics-ER matrix (operator-authorized batch, hard cap 12 sends)"
+# --mode/--budget are pinned AFTER "$@" (argparse last-wins), so pass-through args can NOT
+# change them at all; the harness additionally refuses any budget above its APPROVED_CAP.
 exec env WAREHOUSE_LIVE_ER=1 "$PYTHON" "$SCRIPT_DIR/harness.py" \
-  --mode live --budget 12 --gateway "$GATEWAY_URL" "$@"
+  --gateway "$GATEWAY_URL" "$@" --mode live --budget 12

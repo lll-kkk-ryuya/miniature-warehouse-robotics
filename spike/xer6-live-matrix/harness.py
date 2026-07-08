@@ -115,6 +115,9 @@ from tests.unit.x_er_fixtures import CALIBRATION_ID  # noqa: E402
 DEFAULT_GATEWAY = "http://127.0.0.1:8644"
 LIVE_INSTRUCTION = INNER_PLAN["transcript"]  # bot1は赤い箱へ。到達したらbot2は青い箱へ。
 MAX_CONSECUTIVE_LIVE_FAILURES = 2
+# Operator-approved batch ceiling (2026-07-08, doc07 §4.5). --budget can only NARROW this;
+# raising it requires editing this constant in a reviewed commit, not a CLI flag.
+APPROVED_CAP = 12
 
 
 def _request(*, live: bool, request_id: str) -> ErTaskRequest:
@@ -406,6 +409,13 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     live = args.mode == "live"
+    if live and args.budget > APPROVED_CAP:
+        print(
+            f"ERROR: --budget {args.budget} exceeds the operator-approved batch cap "
+            f"{APPROVED_CAP} (doc07 §4.5). A CLI flag cannot raise the cap; refusing.",
+            file=sys.stderr,
+        )
+        return 2
     reps = args.reps if args.reps is not None else (2 if live else 3)
     batch_id = datetime.now().strftime("%Y%m%d-%H%M%S") + ("-live" if live else "-offline")
     out_dir = Path(args.out) / batch_id
@@ -501,11 +511,25 @@ def main(argv: list[str] | None = None) -> int:
                     out_dir=out_dir,
                 )
             except BudgetExceededError as exc:
+                # Belt-and-suspenders: normally unreachable because run_x_er_cycle converts
+                # every adapter exception into an adapter_error outcome (x_er_cycle.py:200-207);
+                # the authoritative exhaustion signal is the ledger flag checked below.
                 print(f"BUDGET ABORT: {exc}", file=sys.stderr)
                 recorder.record("batch_abort", reason=str(exc))
                 aborted = True
                 break
             results.append(result)
+            if budgeted is not None and budgeted.exhausted:
+                # BudgetExceededError raised inside adapter.propose_plan is swallowed into an
+                # adapter_error cycle outcome — the exhausted flag is how the harness sees it.
+                print(
+                    f"BUDGET ABORT: ledger exhausted ({budgeted.spent}/{args.budget}); "
+                    "halting the matrix (partial results kept).",
+                    file=sys.stderr,
+                )
+                recorder.record("batch_abort", reason="budget exhausted (ledger flag)")
+                aborted = True
+                break
             live_failed = live and not result["pass"]
             consecutive_failures = consecutive_failures + 1 if live_failed else 0
             if consecutive_failures >= MAX_CONSECUTIVE_LIVE_FAILURES:
