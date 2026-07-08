@@ -61,8 +61,14 @@ median/min/max のみ主張（p95 は主張しない）。
 
 - witness（`out/<batch>/runs/<variant>/<run_id>/effective_composition.json`）が各バリアントの
   registered_plugin_ids / site_profile を記録 = 「同一コードで manifest だけ差し替え → 構成が変わる」を実証。
-- 既知の witness 盲点: B_in / B_out は同一 manifest（zone polygon は constructor 注入）のため witness は同一。
-  polygon 値を witness に載せるなら plugin profile artifact 化が筋（doc09/doc10 の site profile 側）。
+  preflight は全バリアントで declared == registered・unlisted=[]（未申告 plugin ドリフトなし）。
+- **witness 盲点（監査 teammate 検証済・正直に記録）**:
+  - B_in / B_out は同一 manifest（zone polygon は constructor 注入）のため **witness は byte 同一**
+    （挙動差の証跡は results.jsonl 側のみ）。polygon を witness に載せるなら plugin profile artifact 化が筋。
+  - customer_a / customer_b の site bundle は dev fixture が**同一内容**を書くため merged content-hash も同一。
+    C 変種が証明したのは **site identity + plugin profile binding の差替**であり、site 内容差ではない。
+  - `cycle_summary.plugin_warning_ids` は plugin_id のみ記録（`low_confidence_target` か `confidence_gap` かの
+    具体 code は未証跡）。B_out/D の error codes は 2-robot plan ゆえ各 cycle ×2 件で発火。
 
 ## 4. R-26 / 安全不変条件（live で全保持）
 
