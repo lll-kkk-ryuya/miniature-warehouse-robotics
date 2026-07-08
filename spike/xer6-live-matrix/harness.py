@@ -115,21 +115,34 @@ from tests.unit.x_er_fixtures import CALIBRATION_ID  # noqa: E402
 DEFAULT_GATEWAY = "http://127.0.0.1:8644"
 LIVE_INSTRUCTION = INNER_PLAN["transcript"]  # bot1は赤い箱へ。到達したらbot2は青い箱へ。
 MAX_CONSECUTIVE_LIVE_FAILURES = 2
+# Ground-truth pixel facts for --pixel-hints (stand-in for the camera detection the live text
+# call has no image for; values = the verified red/blue fixture geometry, x_er_fixtures.py:89-98
+# — red (420,310)->shelf_1, blue (810,280)->shelf_2). Without hints the live model invents
+# pixels the resolver cannot snap -> fail-closed empty Command (observed 2026-07-08 batch 1).
+PIXEL_HINTS = (
+    "Camera detections you can rely on: red_box at pixel [420, 310] confidence 0.92; "
+    "blue_box at pixel [810, 280] confidence 0.89. Use exactly these pixel values in the "
+    "detections array."
+)
 # Operator-approved batch ceiling (2026-07-08, doc07 §4.5). --budget can only NARROW this;
 # raising it requires editing this constant in a reviewed commit, not a CLI flag.
 APPROVED_CAP = 12
 
 
-def _request(*, live: bool, request_id: str) -> ErTaskRequest:
+def _request(*, live: bool, request_id: str, pixel_hints: bool = False) -> ErTaskRequest:
     """The L4 input bundle (er_task.py:31-44; offline shape = test_x_er_offline_e2e.py:142-149).
 
     Live embeds the richer schema coaching (tests/live/_er_live_client.py:30-43) in the
     transcript because the adapter's built-in ``_SCHEMA`` (gemini_er.py:61-66) does not spell
     out ``schema_version`` — a missing version is a Handoff reject (red_blue_sequence.py).
+    ``pixel_hints`` additionally supplies the ground-truth detection pixels (camera stand-in)
+    so the Visual Resolver can snap the live plan to KNOWN_LOCATIONS.
     """
-    transcript = (
-        f"{SCHEMA_INSTRUCTION}\n\nInstruction: {LIVE_INSTRUCTION}" if live else LIVE_INSTRUCTION
-    )
+    if live:
+        hints = f"\n{PIXEL_HINTS}" if pixel_hints else ""
+        transcript = f"{SCHEMA_INSTRUCTION}{hints}\n\nInstruction: {LIVE_INSTRUCTION}"
+    else:
+        transcript = LIVE_INSTRUCTION
     return ErTaskRequest(
         request_id=request_id,
         transcript=transcript,
@@ -139,23 +152,39 @@ def _request(*, live: bool, request_id: str) -> ErTaskRequest:
     )
 
 
-def _tools(work_dir: Path, gen_store) -> WarehouseTools:
+_STATE_SNAPSHOT = {"robots": {"bot1": {"battery": 90}, "bot2": {"battery": 90}}}
+
+
+def _tools(work_dir: Path, gen_store) -> tuple[WarehouseTools, FileStateStore]:
     """Real WarehouseTools on file stores, nav2_forwarder=None => structurally 0 actuation
     (wiring lifted from tests/unit/test_x_er_offline_e2e.py:123-139)."""
     state = FileStateStore(work_dir / "state.json")
-    state.write(
-        {
-            "timestamp": datetime.now().isoformat(),
-            "robots": {"bot1": {"battery": 90}, "bot2": {"battery": 90}},
-        }
-    )
-    return WarehouseTools(
+    state.write({"timestamp": datetime.now().isoformat(), **_STATE_SNAPSHOT})
+    tools = WarehouseTools(
         gen_checker=GenChecker(gen_store, FileIdempotencyStore(work_dir / "idempotency_store")),
         policy_gate=PolicyGate(state),
         audit=CommandAuditLog(work_dir / "audit.jsonl"),
         state_store=state,
         nav2_forwarder=None,
     )
+    return tools, state
+
+
+class FreshStateToolExecutor:
+    """Refresh the state snapshot before each dispatch — the harness stand-in for the 10Hz
+    State Cache writer (doc12) it does not run. Without this, live ER latency (4-6s observed)
+    exceeds the Policy Gate freshness ceiling (UNAVAILABLE_AFTER_S=2.0, policy_gate.py:34-35)
+    and every live dispatch is rejected ``robot_unavailable`` (observed 2026-07-08 batch 2) —
+    a REAL integration insight: state must be refreshed concurrently with the ER call, never
+    snapshotted before it."""
+
+    def __init__(self, inner, state_store: FileStateStore) -> None:
+        self._inner = inner
+        self._state = state_store
+
+    async def execute(self, tool_call) -> dict:
+        self._state.write({"timestamp": datetime.now().isoformat(), **_STATE_SNAPSHOT})
+        return await self._inner.execute(tool_call)
 
 
 def _gateway_health(base_url: str, timeout: float = 5.0) -> bool:
@@ -202,6 +231,7 @@ def _run_scenario(
     live: bool,
     cycle2_live: bool,
     l3_substages: bool,
+    pixel_hints: bool,
     out_dir: Path,
 ) -> dict:
     """One variant x rep: composition -> cycle1 -> synthetic completion -> cycle2 -> asserts."""
@@ -222,8 +252,10 @@ def _run_scenario(
     store = InMemoryTaskGraphStore()
     executor = TimingExecutorProxy(TaskGraphExecutor(store), recorder)
     gen_store = FileGenStore(work_dir / "gen_store")
-    tools = _tools(work_dir, gen_store)
-    tool_executor = TimingToolExecutor(DispatchToolExecutor(tools.dispatch), recorder)
+    tools, state_store = _tools(work_dir, gen_store)
+    tool_executor = FreshStateToolExecutor(
+        TimingToolExecutor(DispatchToolExecutor(tools.dispatch), recorder), state_store
+    )
     timed_gen = TimingGenStore(gen_store, recorder)
     inflight: dict[str, str] = {}
 
@@ -236,7 +268,7 @@ def _run_scenario(
             with patched_cycle_boxes(recorder, l3_substages=l3_substages):
                 outcome = asyncio.run(
                     run_x_er_cycle(
-                        request=_request(live=live, request_id=request_id),
+                        request=_request(live=live, request_id=request_id, pixel_hints=pixel_hints),
                         adapter=timed_adapter,
                         runtime=runtime,
                         executor=executor,
@@ -405,6 +437,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", default=str(SPIKE_DIR / "out"))
     parser.add_argument("--l3-substages", action="store_true")
     parser.add_argument("--cycle2-live", action="store_true")
+    parser.add_argument("--pixel-hints", action="store_true")
     parser.add_argument("--selftest-budget", action="store_true")
     args = parser.parse_args(argv)
 
@@ -508,6 +541,7 @@ def main(argv: list[str] | None = None) -> int:
                     live=live,
                     cycle2_live=args.cycle2_live,
                     l3_substages=args.l3_substages,
+                    pixel_hints=args.pixel_hints,
                     out_dir=out_dir,
                 )
             except BudgetExceededError as exc:

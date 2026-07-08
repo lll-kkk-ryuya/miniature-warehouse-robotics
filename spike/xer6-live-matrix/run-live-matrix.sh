@@ -80,8 +80,14 @@ if [ "$MODE" = "check" ]; then
   exit 0
 fi
 
-echo "[gate] paid Gemini Robotics-ER matrix (operator-authorized batch, hard cap 12 sends)"
+# MWR_LIVE_BUDGET may only NARROW the cap (remaining-batch runs); anything above 12 or
+# non-numeric falls back to 12. The harness additionally refuses any budget above APPROVED_CAP.
+BUDGET="${MWR_LIVE_BUDGET:-12}"
+case "$BUDGET" in *[!0-9]*|"") BUDGET=12 ;; esac
+[ "$BUDGET" -gt 12 ] && BUDGET=12
+
+echo "[gate] paid Gemini Robotics-ER matrix (operator-authorized batch, hard cap $BUDGET sends)"
 # --mode/--budget are pinned AFTER "$@" (argparse last-wins), so pass-through args can NOT
-# change them at all; the harness additionally refuses any budget above its APPROVED_CAP.
+# change them at all.
 exec env WAREHOUSE_LIVE_ER=1 "$PYTHON" "$SCRIPT_DIR/harness.py" \
-  --gateway "$GATEWAY_URL" "$@" --mode live --budget 12
+  --gateway "$GATEWAY_URL" "$@" --mode live --budget "$BUDGET"
