@@ -1,0 +1,4 @@
+# Runtime artifacts (site bundles, out/runs witnesses, results JSONL, file stores).
+# The root .gitignore's `out/runs/` pattern is repo-root-anchored (contains a slash),
+# so this spike needs its own ignore for its local out/ tree.
+out/

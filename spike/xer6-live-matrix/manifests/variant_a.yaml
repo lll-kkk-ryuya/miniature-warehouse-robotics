@@ -1,0 +1,20 @@
+# Variant A — zero-plugin baseline (vacuous preflight pass; core 9-code validator only).
+# run_manifest.v1 shape: manifest.py:48-155; box set mirrors tests/unit/x_er_fixtures.py:127-155.
+schema_version: run_manifest.v1
+run_id: xer6_live_matrix_a_baseline
+boxes:
+  l4_bridge:
+    enabled: true
+    profile: x_er_commander
+  l3_validator:
+    enabled: true
+    profile: x_lite_default
+  l2_governance:
+    enabled: true
+    profile: mini_warehouse_default
+expected_emitters:
+  - l4_bridge
+  - l3_validator
+  - l2_governance
+score_specs:
+  - result
