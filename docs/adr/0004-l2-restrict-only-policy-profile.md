@@ -27,7 +27,7 @@ L2 の案件差分 = **data-only restrict-only policy profile**。
 ## Considered Options / 却下
 
 - **自由 code plugin を L2 にも**：却下。trust を enforce できず（[adr/0003](0003-bridge-local-manifest-composition.md):31）、最後の許可境界を advisory に委ねられない。
-- **battery/鮮度を両方向 free knob**：却下（[01](../productization/01-commercial-box-map.md):170 系の F-b）。凍結値が mutable 化＝floor 崩壊。
+- **battery/鮮度を両方向 free knob**：却下。凍結値が mutable 化＝floor 崩壊（`config may lower, never raise` 前例 = [safety.py](../../ws/src/warehouse_interfaces/warehouse_interfaces/safety.py):11-12 に反する）。
 
 ## Consequences / 帰結
 
