@@ -203,3 +203,14 @@ deploy/dev/run-live-er-smoke.sh           # 課金: tests/live/test_er_handoff_l
 - 安全: [`.claude/rules/safety.md`](../../.claude/rules/safety.md):4（≤0.3 m/s）/ [`docs/architecture/16-repository-and-conventions.md`](../architecture/16-repository-and-conventions.md):221（R-26 Layer-0 unit）/ [`docs/architecture/20-dev-quality-and-testing.md`](../architecture/20-dev-quality-and-testing.md):35,48（安全 unit / `firmware-safety` CI）
 - deploy / 環境: [`docs/architecture/17-development-workflow.md`](../architecture/17-development-workflow.md):73-75（§4）/ [`.claude/rules/environments.md`](../../.claude/rules/environments.md)（dev live / prod gate）
 - 上流 live ER: [`docs/dev/07-mode-x-er-live-e2e-runbook.md`](07-mode-x-er-live-e2e-runbook.md) §3〜§4.5 / `deploy/dev/run-live-er-smoke.sh`
+
+---
+
+## 追補 — G5 live 前提条件（live-matrix ラウンド由来・2026-07-08）
+
+live ER を前置きした full G5（#342）には、offline X-lite（§3〜§6）に無い前提が2つある。live-matrix ハーネス（`spike/xer6-live-matrix/run-live-matrix.sh`＋`REPORT.md`＝branch `feat/mode-x-er-live-matrix`）が live で実測した:
+
+1. **State Cache（10Hz）が dispatch と並行して稼働していること**。Policy Gate の鮮度上限は既定 `UNAVAILABLE_AFTER_S = 2.0`（`ws/src/warehouse_mcp_server/warehouse_mcp_server/policy_gate.py`）だが、live ER 1 サイクルは 4–6s（median 4.68s）。ER 呼び出し**前**に取った `StateSnapshot` は dispatch 時点で必ず失効し `robot_unavailable` で reject される（batch2 実測）。G5/本番は `warehouse_state` の 10Hz State Cache writer（[`docs/architecture/12-infrastructure-common.md`](../architecture/12-infrastructure-common.md)）を並行更新し、state が ER 呼び出しを跨がないことが dispatch 成立の前提。
+2. **detection が camera 由来であること**。画像無しの text-only live ER はモデルが pixel を発明し、Visual Resolver の snap（既定 `_DEFAULT_SNAP_RADIUS_M = 0.25`、`ws/src/warehouse_llm_bridge/warehouse_llm_bridge/robotics_planning_core/visual_resolver/policy.py`）にまず解決せず、accepted でも空 `Command`（fail-closed が正しく作動）。実運用は camera detections が前提。ハーネスは暫定 `--pixel-hints` で full-chain を閉じ、image 添付 ER call（`overhead_image_ref`）での自然 resolve は follow-up。
+
+> 本ラウンドは **RUNNING node ではなく harness が node と同一の backbone 関数列を駆動**した結果（OFFLINE-WIRED≠RUNNING）。稼働 rclpy node での G5 sim ゲートは #342 で継続。live 一本線の位置づけは [`docs/dev/07-mode-x-er-live-e2e-runbook.md`](07-mode-x-er-live-e2e-runbook.md) の live-matrix 追補。

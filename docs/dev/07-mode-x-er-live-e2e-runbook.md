@@ -203,3 +203,13 @@ WAREHOUSE_LIVE_ER=1 python3.12 -m pytest tests/live/test_er_handoff_live.py -s
 - gateway / preflight / STT: `deploy/dev/run-er-hermes.sh` / `deploy/dev/check-hermes-live.sh` / `deploy/dev/run-er-stt-http.sh` / `deploy/dev/hermes-er/config.lean.yaml`
 - gate / secrets: [`.claude/rules/environments.md:20-25`](../../.claude/rules/environments.md) / [`.claude/rules/llm-observability-testing.md:30-39`](../../.claude/rules/llm-observability-testing.md)
 - 設計正本: [`docs/mode-x-er/06-unfrozen-contract-resolutions.md`](../mode-x-er/06-unfrozen-contract-resolutions.md) §5 / [`docs/productization/02-l4-robotics-bridge-box.md`](../productization/02-l4-robotics-bridge-box.md):177-199（HLF gate）/ [`docs/dev/02-operator-runbook.md`](02-operator-runbook.md)
+
+---
+
+## 追補 — live-matrix ラウンド（2026-07-08）
+
+§5-1 の honest limit（「live で Validator まで通す e2e = XER6 の仕事」、`docs/dev/07-mode-x-er-live-e2e-runbook.md:188`）は、live-matrix ハーネスで **部分的に解消**した。live ER（8644 fork gateway）→ handoff → plugin composition gate → L3（Validator/Resolver/TaskGraph/Compiler）→ frozen `Command` → Policy Gate → dispatch 記帳（`nav2_forwarder=None`＝0 actuation）→ goal_result → cycle2 の赤→青**順序**まで、**一本の線が閉じた**（12/12 approved sends は live・全 Hermes 経由・ER median 4.68s・L3 sub-ms）。**cycle2 の 2nd ER call は envelope replay**（`--cycle2-live` 未使用＝live 2nd call の非決定性は未計測・REPORT §6）。5 run-manifest variants で plugin composition（zone reject の namespaced code・confidence warning 帰属・emergency clamp・site profile binding 切替）も live 実証。
+
+- **RUNNING node ではない**: 稼働 rclpy node ではなく、harness が node と同一の backbone 関数列を駆動した（OFFLINE-WIRED≠RUNNING）。稼働 node の G5 sim ゲートは **#342** で継続（本追補は §5-1 の限界を置き換えない）。
+- ハーネス: `spike/xer6-live-matrix/run-live-matrix.sh`＋`REPORT.md`（branch `feat/mode-x-er-live-matrix`）。有料 provider call ゆえ **§4.5 の batch 規律**（batch ごとに cost go をオペレーターに確認）に従う。
+- G5 の 2 前提（State Cache 10Hz 並行稼働・camera detections）は [`docs/dev/08-xer6-live-sim-x-lite-runbook.md`](08-xer6-live-sim-x-lite-runbook.md) の「G5 live 前提条件」追補。
