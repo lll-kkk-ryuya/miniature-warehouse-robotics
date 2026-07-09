@@ -151,9 +151,7 @@ def build_variant_cfg(
     """
     cfg = build_x_er_cfg(
         run_manifest_path=MANIFEST_DIR / spec.manifest,
-        plugin_manifest_paths=tuple(
-            PLUGIN_MANIFEST_DIR / name for name in spec.plugin_manifests
-        ),
+        plugin_manifest_paths=tuple(PLUGIN_MANIFEST_DIR / name for name in spec.plugin_manifests),
         site_base_dir=site_base_dir,
         customer=spec.customer,
         site=spec.site,

@@ -55,7 +55,9 @@ def _point_in_polygon(x: float, y: float, polygon: Sequence[Sequence[float]]) ->
     return inside
 
 
-def _pixel_to_map(pixel: Sequence[float], homography: Sequence[Sequence[float]]) -> tuple[float, float]:
+def _pixel_to_map(
+    pixel: Sequence[float], homography: Sequence[Sequence[float]]
+) -> tuple[float, float]:
     """Apply a 3x3 homography to a [u, v] pixel (same math as the Visual Resolver's mapping)."""
     u, v = float(pixel[0]), float(pixel[1])
     h = homography
