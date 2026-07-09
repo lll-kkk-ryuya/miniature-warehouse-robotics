@@ -118,3 +118,21 @@ deploy/hermes/er-audio-fork/run-er-gateway.sh --stop   # teardown
 ```
 
 生データ: `out/20260708-{153643,154840,155104}-live/`（gitignore・results.jsonl / summary.json / witnesses / audit.jsonl）
+
+---
+
+## Tier-2 追記（2026-07-09・合成俯瞰画像バッチ・5/8 sends）
+
+**pixel hints なしで、ER の実画像知覚 → calibration → snap → dispatch の本来設計ルートが live で成立した。**
+
+| leg | 構成 | 結果 |
+|---|---|---|
+| positive ×3 | B_in manifest + `overhead_positive.png`（red@(420,310)/blue@(810,280)） | **rep2/rep3 = 完全な赤→青**（bot1→shelf_1 → bot2→shelf_2 dispatch記帳）。rep1 = c1成功・c2はblue知覚がsnap外れで empty_command（fail-closed・知覚ばらつきの実測） |
+| negative ×2 | A manifest + `overhead_negative.png`（全棚から>0.25m） | **2/2 とも 0 dispatch**（resolver が snap 拒否 = fail-closed 保持） |
+
+- 実測: ER latency **median 17.3s**（min 11.5 / max 19.1・n=5）— text-only の 4.68s から画像処理で約3.7倍。
+  prompt tokens 976-1145（text 838 比 +150-300。事前見積の base64≈4.5k tokens より小さい = provider 側の画像 token 計上方式による）。
+  バッチ総計 6,793 tokens。全 send hermes・fallback 0。
+- 判定の意味: 知覚成功率 2/3 復元 + 部分成功 1/3（cycle1 のみ）・負例 2/2 拒否 —
+  「resolve すべき時に resolve し、すべきでない時に拒否する」の両方向を同一枠組みで実証。
+- batch dirs: `out/20260709-142335-live/`（positive）・`out/20260709-142503-live/`（negative）。
