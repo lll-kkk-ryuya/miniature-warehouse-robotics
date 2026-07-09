@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L2 詳細図 — Contract / Governance / Traffic Box（実行許可・交通管理）</title>
+<style>
+  :root{
+    color-scheme: dark;
+    /* 落ち着いた Cursor 風ニュートラル・ダーク（背景=黒に近い無彩色 / 文字=はっきりした白） */
+    --bg:#1a1a1a; --bg2:#141414; --card:#222222; --card2:#262626; --surface:#2d2d2d;
+    --ink:#ededed; --muted:#c4c4c4; --faint:#8f8f8f; --line:#3a3a3a; --code:#141414;
+    --badge-ink:#1a1a1a; --head:#dcdcdc;
+    --box:#7aa2f7;     --box-bg:rgba(122,162,247,.13);
+    --sub:#9ece6a;     --sub-bg:rgba(158,206,106,.12);
+    --seam:#e0af68;    --seam-bg:rgba(224,175,104,.12);
+    --plugin:#bb9af7;  --plugin-bg:rgba(187,154,247,.12);
+    --demoted:#9a9a9a; --demoted-bg:rgba(154,154,154,.10);
+    --red:#f7768e; --yellow:#e0c07a; --teal:#7dcfff; --pink:#f7a8d8;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Noto Sans JP",Meiryo,sans-serif;
+    line-height:1.7;font-size:15px;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1080px;margin:0 auto;padding:32px 20px 80px}
+  header.top{border-bottom:3px solid var(--box);padding-bottom:18px;margin-bottom:8px}
+  h1{font-size:25px;margin:0 0 6px} h2{font-size:20px;margin:44px 0 12px;padding-left:10px;border-left:5px solid var(--box)}
+  h3{font-size:15.5px;margin:24px 0 9px;color:var(--head)}
+  p{margin:10px 0} .lead{color:var(--muted);font-size:14px}
+  a{color:var(--box);text-decoration:none} a:hover{text-decoration:underline}
+  code{background:var(--code);padding:1px 6px;border-radius:4px;font-size:.88em;font-family:"SF Mono",Menlo,Consolas,monospace;color:var(--ink)}
+  pre{background:var(--code);border:1px solid var(--line);border-radius:8px;padding:12px 14px;overflow-x:auto;font-size:12.5px;line-height:1.6;margin:10px 0}
+  pre code{background:none;padding:0;font-size:1em}
+  .dref{color:var(--teal);font-size:.82em;font-family:"SF Mono",Menlo,monospace;white-space:nowrap}
+  .note{background:var(--seam-bg);border:1px solid rgba(224,175,104,.4);border-radius:8px;padding:12px 16px;margin:16px 0;font-size:14px}
+  .safe{background:rgba(243,139,168,.08);border:1px solid rgba(243,139,168,.4);border-radius:8px;padding:12px 16px;margin:16px 0;font-size:14px}
+  .meta{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 16px;font-size:13px;color:var(--muted);margin:14px 0}
+  .nav{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0}
+  .nav a{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:7px 13px;font-size:13px;font-weight:600}
+  .nav a:hover{border-color:var(--box);text-decoration:none}
+
+  .badge{display:inline-block;font-size:11px;font-weight:700;padding:2px 9px;border-radius:999px;color:var(--badge-ink);letter-spacing:.3px;vertical-align:middle}
+  .b-box{background:var(--box)} .b-sub{background:var(--sub)} .b-seam{background:var(--seam)} .b-plugin{background:var(--plugin)} .b-demoted{background:var(--demoted);color:var(--ink)}
+
+  .node{border-radius:10px;padding:11px 13px;border:2px solid;background:var(--card);font-size:13.5px;margin:8px 0}
+  .node .t{font-weight:700;font-size:14px} .node .s{color:var(--muted);font-size:12.5px;margin-top:3px}
+  .n-box{border-color:var(--box);background:var(--box-bg)} .n-sub{border-color:var(--sub);background:var(--sub-bg)}
+  .n-seam{border-color:var(--seam);background:var(--seam-bg);border-style:dashed} .n-plugin{border-color:var(--plugin);background:var(--plugin-bg)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+
+  /* superbox container */
+  .superbox{border:2px solid var(--box);background:var(--box-bg);border-radius:14px;padding:16px;margin:14px 0}
+  .sbh{font-weight:700;color:var(--box);font-size:16px;margin-bottom:2px} .sbs{font-size:12px;color:var(--muted);margin-bottom:12px}
+
+  /* internal-structure diagram (sub-box / seam / demoted nesting) */
+  .legend{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
+  .legend .item{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:6px 11px;font-size:11.5px;color:var(--muted)}
+  .legend .sw{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:6px;vertical-align:middle}
+  .n-demoted{border-color:var(--demoted);background:var(--demoted-bg);color:var(--muted)}
+  .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+  .sub-nest{border:1.5px dashed var(--box);border-radius:12px;padding:13px;margin-top:12px;background:rgba(122,162,247,.05)}
+  .sub-nest > .nh{font-size:11px;font-weight:700;color:var(--box);letter-spacing:.5px;margin-bottom:9px}
+  .nest-arrow{text-align:center;color:var(--faint);font-size:16px;line-height:1;margin:5px 0}
+  .role{display:inline-block;font-size:10.5px;font-weight:700;color:var(--faint);border:1px solid var(--line);border-radius:5px;padding:1px 6px;margin-left:6px;vertical-align:middle}
+  .cap{display:inline-block;font-size:10.5px;color:var(--faint);font-style:italic;margin-left:6px;vertical-align:middle}
+  .plugin-band{margin-top:9px;border:1.5px dashed var(--plugin);background:var(--plugin-bg);border-radius:8px;padding:7px 10px;font-size:12px;color:#d8c8f2}
+  .plugin-band b{color:var(--plugin)}
+  .seam-out{display:flex;flex-wrap:wrap;align-items:stretch;gap:8px;margin:12px 0 2px}
+  .seam-out .arrow{color:var(--seam);font-weight:700;font-size:18px;display:flex;align-items:center}
+  .gov-chip{border:2px solid var(--box);background:var(--box-bg);border-radius:10px;padding:8px 12px;font-size:12.5px;font-weight:700;white-space:nowrap;display:flex;flex-direction:column;justify-content:center;text-align:center}
+
+  /* numbered steps (pipeline) */
+  .steps{counter-reset:st;margin:14px 0}
+  .step{position:relative;border:1px solid var(--line);background:var(--card);border-radius:10px;padding:11px 14px 11px 46px;margin:8px 0;font-size:13.5px}
+  .step::before{counter-increment:st;content:counter(st);position:absolute;left:12px;top:11px;width:24px;height:24px;border-radius:50%;
+    background:var(--box);color:var(--badge-ink);font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:center}
+  .step b{color:var(--ink)} .step .s{color:var(--muted);font-size:12.5px;margin-top:2px}
+  .step.seam{border-color:var(--seam);border-left:4px solid var(--seam)} .step.seam::before{background:var(--seam)}
+  .step-down{text-align:left;padding-left:22px;color:var(--faint);font-size:15px;line-height:1;margin:-3px 0}
+
+  /* horizontal flow band (stages) */
+  .flow{display:flex;flex-wrap:wrap;align-items:stretch;gap:6px;margin:10px 0}
+  .flow .node{flex:1 1 130px;min-width:112px;margin:0;display:flex;flex-direction:column;justify-content:center}
+  .flow .arr{display:flex;align-items:center;color:var(--faint);font-weight:700;font-size:16px}
+  .lyr{display:inline-block;font-size:10px;font-weight:800;padding:1px 7px;border-radius:5px;color:var(--badge-ink);margin-right:7px;vertical-align:middle}
+  .optline{font-family:"SF Mono",Menlo,Consolas,monospace;font-size:12px;color:var(--muted);background:var(--code);border-radius:6px;padding:8px 11px;margin:8px 0;line-height:1.7;overflow-x:auto}
+  .optline b{color:var(--ink)}
+
+  /* reuse layers A/B/C style chips (for cross-industry mapping) */
+  .ex{display:grid;grid-template-columns:46px 1fr;gap:10px;align-items:start;border:1px solid var(--line);border-radius:10px;padding:11px 13px;margin:8px 0;background:var(--card)}
+  .ex .tag{font-weight:800;font-size:14px;color:var(--badge-ink);background:var(--teal);border-radius:8px;text-align:center;padding:8px 4px;line-height:1.15}
+  .ex.b3 .tag{background:var(--box)} .ex.c .tag{background:var(--seam)} .ex.d .tag{background:var(--plugin)}
+  .ex .body b{color:var(--ink)} .ex .body{font-size:13px;color:var(--muted)}
+
+  table{border-collapse:collapse;width:100%;margin:12px 0;font-size:13px;background:var(--card)}
+  th,td{border:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top}
+  th{background:var(--surface);font-size:12.5px;color:var(--head)} td code{font-size:.85em}
+  tr:nth-child(even) td{background:rgba(255,255,255,.02)}
+  .impl-yes{color:var(--sub);font-weight:700} .impl-no{color:var(--yellow);font-weight:700}
+  ul.tight{margin:8px 0;padding-left:22px} ul.tight li{margin:5px 0}
+  footer{margin-top:50px;padding-top:18px;border-top:1px solid var(--line);color:var(--muted);font-size:12.5px}
+  @media(max-width:720px){.grid2,.grid3{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <h1>L2 詳細図 — Contract / Governance / Traffic Box（実行許可・交通管理）</h1>
+  <p class="lead">L2 = <b>accepted motion だけを下流へ通す実行許可</b>と<b>複数台の交通調整</b>の層（Soft-RT）。3 box とも<b>実装あり</b>（Mode C の RMF 配線のみ gate 待ち）。L3 の command 候補が物理へ進む前の<b>最後の判定境界</b>であり、L2 自身は <code>cmd_vel</code> を一切書かない。各要素に紐づく docs を併記。</p>
+</header>
+
+<div class="nav">
+  <a href="layer-l4-detail.html">◂ L4 詳細図</a>
+  <a href="layer-l3-detail.html">◂ L3 詳細図</a>
+  <a href="box-taxonomy.html">全体（box-taxonomy）</a>
+  <a href="11-l2-contract-governance-traffic-box.md">正本: 11 l2-contract-governance-traffic-box.md</a>
+  <a href="../architecture/15-mcp-platform.md">architecture/15（MCP / Policy Gate）</a>
+  <a href="../mode-a/11a-traffic-mode-a.md">mode-a/11a</a>
+  <a href="../mode-c/11c-traffic-mode-c.md">mode-c/11c</a>
+  <a href="../adr/0004-l2-restrict-only-policy-profile.md">ADR-0004</a>
+</div>
+
+<div class="meta">
+  正本: <a href="11-l2-contract-governance-traffic-box.md"><code>11-l2-contract-governance-traffic-box.md</code></a>（L2 商用 box 設計）／ box 割付は <a href="01-commercial-box-map.md"><code>01-commercial-box-map.md</code></a> §Box 一覧・§境界の原則。
+  L2 は<b>実装済みの層</b>＝<b>コード引用は symbol-anchored</b>（<span class="dref">tools.py _maybe_forward</span> 形）、productization docs は exact line（<span class="dref">01:86</span>）、mode-*/architecture docs は file:line（<span class="dref">11c:63</span>）。
+</div>
+
+<!-- ===================== 0. 全体構造図 ===================== -->
+<h2>0. L2 層の全体構造図（入口 seam・3 box・出口・bypass 不可帯）</h2>
+<p class="lead">L2 は 3 つの <span class="badge b-box">box</span>（Contract † / Governance / Traffic）を持つ。入口は L4 所有の <span class="badge b-seam">seam</span> <code>action_map</code>、出口は <b>position goal のみ</b>を L1 Navigation へ渡す。最下段の赤帯（twist_mux 優先度 → L0 clamp）は <b>L2 が bypass できない</b>。<span class="dref">01:23-27,65-67,86-88</span></p>
+
+<div class="legend">
+  <div class="item"><span class="sw" style="background:var(--box)"></span>box（契約を変えず差替/省略できる再利用単位）</div>
+  <div class="item"><span class="sw" style="background:var(--sub)"></span>variant / 内部段（box 内部・親ごと差替）</div>
+  <div class="item"><span class="sw" style="background:var(--seam)"></span>seam（境界の写像・常時随伴で省略不可）</div>
+  <div class="item"><span class="sw" style="background:var(--demoted)"></span>凍結 artifact（Contract Box が保管する単一ソース）</div>
+</div>
+
+<!-- 入口: L4/L3 → action_map -->
+<div class="seam-out">
+  <div class="gov-chip">L4 / L3<span style="font-weight:400;color:var(--muted);font-size:11px">Command candidate（許可ではない）</span></div>
+  <span class="arrow">▶</span>
+  <div class="node n-seam" style="flex:1 1 340px;margin:0"><div class="t">action_map <span class="badge b-seam">seam</span> <span class="role">L4 所有</span></div><div class="s">
+    <code>Command</code> → MCP tool call へ写像。<b><code>gen_id</code> / <code>idempotency_key</code> は Bridge が mint</b>（LLM / L3 / model 由来不可）。変換は L4 が所有し、検証と accepted-motion gate は Governance が所有（所有分割）。<span class="dref">01:92,110 / action_map.py</span>
+  </div></div>
+</div>
+<div class="nest-arrow">▼</div>
+
+<!-- L2 band -->
+<div class="sub-nest">
+  <div class="nh">▼ L2 — 実行許可・交通管理（Soft-RT / Python + optional RMF）<span class="cap">01:25,76</span></div>
+
+  <div class="superbox" style="margin:8px 0">
+    <div class="sbh">Governance Box <span class="badge b-box">box</span> <span class="role">実装あり = warehouse_mcp_server</span></div>
+    <div class="sbs">7 MCP tool + Policy Gate + gen/idempotency 検証 + JSONL audit。<b>accepted motion だけを下流へ出す motion dispatch gate</b>。pure Python（rclpy / LLM を import しない）。<span class="dref">01:66,86 / 15:133-192</span></div>
+    <div class="steps" style="margin:8px 0">
+      <div class="step"><b>gen check（B-3）</b><div class="s">stale 世代（<code>gen_id &lt; current_gen</code>）→ <code>stale_generation</code> 拒否。<span class="dref">gen_check.py GenChecker.check / 15:407-482</span></div></div>
+      <div class="step-down">▼</div>
+      <div class="step"><b>idempotency check（C）</b><div class="s">同一 <code>idempotency_key</code> の replay → <code>duplicate_command</code> 拒否（8 世代 window）。<span class="dref">gen_check.py / stores.py IDEMPOTENCY_WINDOW_GENS</span></div></div>
+      <div class="step-down">▼</div>
+      <div class="step"><b>Policy Gate（14 reject code）</b><div class="s">location / robot 状態 / battery / rate / 重複 / fail-closed（§1 の catalog）。validate→register は単一 lock で atomic。<span class="dref">policy_gate.py / 15:263-342</span></div></div>
+      <div class="step-down">▼</div>
+      <div class="step"><b>JSONL audit</b><div class="s">executed / rejected / error を <code>gen_id</code> join key 付きで記録（decision event 集計へ）。<span class="dref">audit.py / 05 §Governance Box</span></div></div>
+      <div class="step-down">▼</div>
+      <div class="step seam"><b>accepted-motion gate（_maybe_forward）</b><div class="s"><code>status=="ok"</code> かつ forwarder 配線時（Mode A/B）のみ Nav2 Bridge REST へ forward。<b>Mode C は forwarder=None ＝ 0 actuation（R-26）</b>。<span class="dref">tools.py _maybe_forward / 11 §Governance</span></div></div>
+    </div>
+  </div>
+
+  <div class="grid2">
+    <div class="superbox" style="margin:8px 0">
+      <div class="sbh" style="font-size:14px">Traffic Box <span class="badge b-box">box</span> <span class="role">実装あり（Mode C live は R-38 #187 待ち）</span></div>
+      <div class="sbs"><code>traffic_mode</code> 1 key で variant swap。必要がなければ X-lite へ縮退。<span class="dref">01:67,87 / 11a:47-54</span></div>
+      <div class="node n-sub" style="margin:6px 0"><div class="t" style="font-size:13px">none / simple / open-rmf</div><div class="s">No / Simple / RMFTrafficManager（§2）。<span class="dref">traffic_logic.py make_traffic_manager</span></div></div>
+      <div class="node n-sub" style="margin:6px 0"><div class="t" style="font-size:13px">virtual scan <span class="role">安全レイヤー外</span></div><div class="s">相手 robot を幻影 LaserScan として自 Nav2 へ注入（Mode A/B のみ）。<span class="dref">virtual_scan_logic.py / 12:110</span></div></div>
+    </div>
+    <div class="superbox" style="margin:8px 0">
+      <div class="sbh" style="font-size:14px">Contract Box <span class="badge b-box">box</span> <span class="role">† 凍結契約ハブ</span></div>
+      <div class="sbs">= <code>warehouse_interfaces</code>。L2–L0 が<b>一方向に横断依存</b>する単一ソース（判断しない箱）。<span class="dref">01:65,80 / 05 §Contract Box</span></div>
+      <div class="node n-demoted" style="margin:6px 0"><div class="s"><code>Command</code>・<code>Situation</code>・<code>StateSnapshot</code>／ <code>MAX_LINEAR_VELOCITY=0.3</code>・battery 10/20 ／ <code>KNOWN_LOCATIONS</code> 9 キー ／ Store IF ／ 共有 path。<span class="dref">schemas.py / safety.py / locations.py / stores.py / paths.py</span></div></div>
+    </div>
+  </div>
+
+  <!-- exit seam → L1 -->
+  <div class="seam-out">
+    <span class="arrow">└▶</span>
+    <div class="node n-seam" style="flex:1 1 320px;margin:0"><div class="t">出口（box の<b>外</b>へ・→ L1）<span class="badge b-seam">seam</span></div><div class="s">
+      <b>position goal のみ</b>: Mode A/B = Nav2 Bridge REST <code>/api/v1/{navigate,wait,stop}</code>（<code>:8645</code>）／ Mode C = Fleet Adapter の <code>NavigateToPose</code> action（唯一の Nav2 writer）。<b>velocity / trajectory / cmd_vel は出ない</b>。<span class="dref">01:88 / nav2_client.py / 11c:63,252</span>
+    </div></div>
+    <span class="arrow">▶</span>
+    <div class="gov-chip">L1 Navigation<span style="font-weight:400;color:var(--muted);font-size:11px">warehouse_nav2_bridge（L1・01:68）</span></div>
+  </div>
+</div>
+
+<div class="safe" style="margin-top:14px">
+  <b>bypass 不可帯（L1/L0・L2 の許可より強い）</b>: twist_mux <b>emergency=100</b>（Emergency Guardian）&gt; <b>nav2=10</b>（Nav2 + collision_monitor）→ <code>/bot{n}/cmd_vel</code> → <b>L0 ESP32 clamp ≤0.3 m/s</b>（非有限→0.0）。L2 のどの box もこの帯を迂回できない＝「真の強制は L2/L1/L0」の物理側。<span class="dref">twist_mux.yaml / safety_clamp.h / adr/0003:31 / §4</span>
+</div>
+
+<div class="note">
+  <b>図の読み方</b>: 外枠の破線帯＝L2 層。<b>青枠</b>＝3 box（すべて実装あり）、<b>橙破線</b>＝seam（入口 action_map は L4 所有・出口は position goal のみ）、<b>グレー</b>＝Contract Box が保管する凍結 artifact。<b>Governance の 5 step が縦の pipeline</b>で、最後の step（accepted-motion gate）だけが物理方向へ抜ける。赤帯は L2 の外（L1/L0）にある最終防衛線。<span class="dref">分類正本: box-taxonomy §0 / 01 §Box 種別と分類規則</span>
+</div>
+
+<!-- ===================== 1. Governance pipeline ===================== -->
+<h2>1. Governance pipeline（gen → idempotency → Policy Gate → forward）</h2>
+<p class="lead">全 7 tool が同じ guard 順で通る。reject は<b>実装済み語彙の転記</b>（このページで新 code を発明しない）。tool 仕様の正本は <a href="../architecture/15-mcp-platform.md">architecture/15</a>、「dispatch gate の本質」は <a href="05-decision-observability-and-tooling.md">05 §Dispatch Gate と Governance の本質</a>。<span class="dref">11 §Governance Box</span></p>
+
+<div class="optline">ToolCall(gen_id, idempotency_key) → <b>①gen(B-3)</b> → <b>②idempotency(C)</b> → <b>③Policy Gate</b> → ④audit(JSONL, gen_id) → <b>⑤_maybe_forward（status=="ok" のみ）</b> → Nav2 Bridge REST</div>
+
+<h3>1.1 tool catalog（motion 3 / read-only 2 / advisory 2）<span class="dref">15:133-205 / tools.py</span></h3>
+<table>
+  <thead><tr><th>tool</th><th>種別</th><th>Nav2 endpoint（Mode A/B）</th></tr></thead>
+  <tbody>
+    <tr><td><code>dispatch_task</code></td><td class="impl-no">motion</td><td>wait→<code>/api/v1/wait</code>・deliver/yield→<code>/api/v1/navigate</code></td></tr>
+    <tr><td><code>cancel_task</code></td><td class="impl-no">motion</td><td><code>/api/v1/stop</code></td></tr>
+    <tr><td><code>send_to_charging</code></td><td class="impl-no">motion</td><td><code>/api/v1/navigate</code>（dropoff=<code>charging_station</code>）</td></tr>
+    <tr><td><code>get_fleet_status</code> / <code>get_task_queue</code></td><td class="impl-yes">read-only</td><td>—（forward 対象外）</td></tr>
+    <tr><td><code>escalation_response</code> / <code>start_negotiation</code></td><td class="impl-yes">advisory（稟議・非 motion）</td><td>—（forward 対象外）</td></tr>
+  </tbody>
+</table>
+
+<h3>1.2 Policy Gate reject reason catalog（14 code・系統別）<span class="dref">policy_gate.py / 15:263-342 / 12:344-370</span></h3>
+<table>
+  <thead><tr><th>系統</th><th>reason code</th><th>条件（しきい値の出所）</th></tr></thead>
+  <tbody>
+    <tr><td>location</td><td><code>missing_location</code> / <code>unknown_location</code> / <code>same_location</code></td><td>名前なし／<code>KNOWN_LOCATIONS</code>（凍結 9 キー・<span class="dref">locations.py:23</span>）外／pickup==dropoff</td></tr>
+    <tr><td>robot 状態</td><td><code>unknown_robot</code> / <code>robot_stale</code> / <code>robot_unavailable</code> / <code>robot_in_emergency</code></td><td>snapshot なし／age &gt; 0.5s（dispatch 拒否）／age &gt; 2.0s（全拒否）／emergency 中（<span class="dref">policy_gate.py STALE_AFTER_S / UNAVAILABLE_AFTER_S</span>）</td></tr>
+    <tr><td>fail-closed</td><td><code>state_timestamp_corrupt</code></td><td>timestamp があるのに parse 不能 → <b>安全側で拒否</b></td></tr>
+    <tr><td>battery</td><td><code>battery_critical</code> / <code>battery_low</code> / <code>charging_not_needed</code></td><td>≤10／≤20（凍結・<span class="dref">safety.py</span>）／&gt;80（charging のみ・<span class="dref">policy_gate.py CHARGING_NOT_NEEDED_ABOVE</span>）</td></tr>
+    <tr><td>頻度・重複</td><td><code>rate_limited</code> / <code>duplicate_destination</code></td><td>同一 robot へ 0.5s 以内の連続 cmd／別 robot が同じ dropoff を実行中</td></tr>
+    <tr><td>action 固有</td><td><code>wait_requires_robot</code></td><td>wait に robot 指定なし</td></tr>
+  </tbody>
+</table>
+<div class="note"><b>charging の免除</b>: 充電経路は「battery が低い」ことが目的なので low/critical・duplicate・rate-limit を<b>意図的に検査しない</b>（unknown/stale/emergency/corrupt/&gt;80 のみ reject）。<span class="dref">policy_gate.py validate_and_register_charging</span>　配線層（Policy Gate 前）の reject: <code>unknown_tool</code> / <code>missing_gen_id</code> / <code>bad_arguments</code> / <code>no_active_task</code> / <code>already_resolved</code> ほか。<span class="dref">tools.py dispatch</span></div>
+
+<h3>1.3 Mode による forward の違い（gate は fail-closed・forward は fail-open）</h3>
+<div class="ex"><div class="tag">A/B</div><div class="body">
+  <b>forwarder 配線あり（X-lite 経路）</b>: <code>status=="ok"</code> の motion だけ Nav2 Bridge REST（<code>:8645</code>）へ POST。Nav2 Bridge が落ちていても<b>サイクルは殺さず</b> audit に残す（forward は fail-open、gate 判定は fail-closed）。<span class="dref">tools.py _maybe_forward / nav2_client.py plan_nav2_request</span>
+</div></div>
+<div class="ex c"><div class="tag">C</div><div class="body">
+  <b>forwarder=None（open-rmf 構成）</b>: 全 motion tool が受理されても <b>0 actuation</b>。Open-RMF 側の実 forward seam は未実装（#228 追跡）。この「0 actuation」は R-26 unit で凍結。<span class="dref">tests/unit/test_modec_noactuation.py / 15:211-219</span>
+</div></div>
+<div class="note"><b>atomicity</b>: validate→register（<code>active_tasks</code> への登録）は単一 <code>asyncio.Lock</code> 内で行い、2 台同時 dispatch の <code>duplicate_destination</code> 判定を決定論にする。<span class="dref">policy_gate.py validate_and_register_dispatch / 15:484-534</span></div>
+
+<!-- ===================== 2. Traffic variants ===================== -->
+<h2>2. Traffic Box — 3 variant と X-lite / X-rmf</h2>
+<p class="lead">切替は config 1 key <code>traffic_mode</code>（<span class="dref">config/warehouse.base.yaml traffic_mode</span>）。挙動の正本は <a href="../mode-a/11a-traffic-mode-a.md">11a</a>（A/B）と <a href="../mode-c/11c-traffic-mode-c.md">11c</a>（C）、OSS 小設計は <a href="06-oss-reuse-and-box-small-designs.md">06 §Traffic Box</a>。<span class="dref">11a:38-55</span></p>
+
+<div class="ex"><div class="tag">none</div><div class="body">
+  <b>Mode A ＝ NoTrafficManager</b>: 排他ロジックなし。交通問題も司令官 LLM が全判断（YouTube メイン回）。<code>submit_task</code> は dropoff のみを Nav2 Bridge へ。<span class="dref">11a:59-85 / traffic_logic.py</span>
+</div></div>
+<div class="ex b3"><div class="tag">simple</div><div class="body">
+  <b>Mode B ＝ SimpleTrafficManager</b>: 通路（aisle）排他ロックのみ自動化（戦略は LLM に残す）。占有中は <code>waiting</code>（入口で待つ＝≥0.15m を保てる唯一の幾何）。解放 = goal SUCCEEDED（主）+ lock timeout（副・<b>暫定 30s・非凍結</b> <code># TODO(Phase 3)</code>）。<span class="dref">11a:89-133,431-471 / traffic_logic.py</span>
+</div></div>
+<div class="ex c"><div class="tag">rmf</div><div class="body">
+  <b>Mode C ＝ RMFTrafficManager <span class="role">live は R-38 #187 待ち</span></b>: Open-RMF の Traffic Schedule + Conflict Negotiation が経路ベースで衝突予測（virtual scan・predicted_position は不要になる）。Task Dispatcher は<b>無効</b>（task 割当は LLM 所有）。escalation は retry 3 回超のみ LLM へ。<span class="dref">11c:59-61,82-116,197-199</span>
+</div></div>
+
+<h3>2.1 実行 profile（X-lite / X-rmf・Mode X-ER）<span class="dref">mode-x-er/01:199-206 / 01:114-145</span></h3>
+<div class="flow">
+  <div class="node n-sub"><div class="t" style="font-size:12.5px"><span class="lyr" style="background:var(--sub)">X-lite</span>MVP 採用</div><div class="s">MCP / Policy Gate → <b>Nav2 Bridge REST</b> → Nav2。Open-RMF 不使用・known location で完結。</div></div>
+  <div class="arr">vs</div>
+  <div class="node n-plugin"><div class="t" style="font-size:12.5px"><span class="lyr" style="background:var(--plugin)">X-rmf</span>optional・再評価候補</div><div class="s">MCP / Policy Gate → <b>RMF Task API → Fleet Adapter</b> → Nav2。複数台予約・狭路交渉が要るときだけ。</div></div>
+</div>
+<div class="note"><b>縮退原則</b>: 「Traffic は複数台の調整を担当する。必要がなければ X-lite に縮退する」（01 境界の原則 4）。X-lite⇄X-rmf は box を割らない variant swap。<span class="dref">01:87 / box-taxonomy §1 L2 帯</span></div>
+
+<h3>2.2 Mode C（rmf_adapter）の実装状態 — offline core は済・RMF 配線は gate 待ち<span class="dref">11c:203-271,437-467</span></h3>
+<div class="grid2">
+  <div class="node n-box"><div class="t">実装済み（RMF-free offline core）<span class="role" style="color:var(--sub);border-color:var(--sub)">host unit 済</span></div><div class="s">
+    <code>LocationResolver</code>: <code>KNOWN_LOCATIONS</code> 9 キー検証 + config 座標 → <code>Nav2Goal</code>（未知名・座標欠落は raise ＝ <b>fail-closed・0 actuation</b>）。1 プロセス 2 namespace・<b>Fleet Adapter が唯一の Nav2 writer</b>（single-writer 不変条件）。<span class="dref">nav2_router.py LocationResolver / robot_driver.py / fleet.py / 11c:63</span>
+  </div></div>
+  <div class="node n-sub" style="border-style:dashed"><div class="t">gate 待ち（BLOCKED）<span class="role">R-38 memory gate #187</span></div><div class="s">
+    EasyFullControl（案A）の rclpy / rmf 配線・live 実走。<code>fleet_adapter.py</code> は設計 scaffold（全 method <code>NotImplementedError</code>）。<code>make_traffic_manager("open-rmf")</code> も現状 raise。<span class="dref">fleet_adapter.py / traffic_logic.py / 11c:437-467</span>
+  </div></div>
+</div>
+
+<h3>2.3 virtual scan（Mode A/B のみ・安全レイヤー外）<span class="dref">11a:158-177,305-321</span></h3>
+<div class="optline">/{other}/amcl_pose → VirtualScanNode（10Hz・±15°・max 2.0m・&gt;1.0m 抑制・半径 0.075=warehouse_description 単一ソース） → /{own}/virtual_scan → Nav2 obstacle_layer（clearing:false）</div>
+<div class="note">相手 robot を<b>幻影の障害物</b>として自分の costmap に注入する Soft-RT の走行補助。<b>安全の担保ではない</b>（安全は L1 collision_monitor / Guardian / L0 clamp）。Mode C では node ごと停止し <code>observation_sources</code> からも外す。<span class="dref">virtual_scan_logic.py / 12:110 / 11a:314-321</span></div>
+
+<!-- ===================== 3. Contract Box ===================== -->
+<h2>3. Contract Box — 凍結契約ハブと一方向依存（†）</h2>
+<p class="lead"><code>warehouse_interfaces</code> は判断を持たない<b>純データ契約の箱</b>。L2 に属するが、L2–L0 の全 box が一方向に依存する（だから box map で † が付く）。rclpy 非依存＝非 ROS プロセス（Governance）からも import できる。<span class="dref">01:65,80 / 05 §Contract Box</span></p>
+
+<div class="flow">
+  <div class="node n-box"><div class="t" style="font-size:12.5px">Governance</div><div class="s">schemas・safety・locations・stores を consume</div></div>
+  <div class="arr">▶</div>
+  <div class="node n-demoted" style="flex:2 1 260px"><div class="t" style="font-size:13px">warehouse_interfaces（Contract Box †）</div><div class="s">単一ソース: <code>Command</code> / <code>Situation</code> / <code>StateSnapshot</code>・<code>MAX_LINEAR_VELOCITY=0.3</code>・battery 10/20・<code>KNOWN_LOCATIONS</code> 9 キー・Store IF（idempotency 8 世代 window）・共有 path</div></div>
+  <div class="arr">◀</div>
+  <div class="node n-box"><div class="t" style="font-size:12.5px">Traffic / L1 / L0</div><div class="s">locations・safety 上限・Store IF を consume（逆流なし）</div></div>
+</div>
+<div class="safe"><b>凍結契約が優先</b>: docs の例示 JSON / しきい値と <code>warehouse_interfaces</code> がズレたら凍結契約が正本。変更は contract PR（<code>contract</code> ラベル + 依存トラック合意）経由のみ。<span class="dref">docs-first.md / parallel-workflow.md §4</span></div>
+<div class="note"><b>凍結でないもの</b>（発明・凍結扱い禁止）: traffic の状態 dict（<code>get_traffic_state()</code> の形は doc 例示）・<code>route_A/route_B</code>（<code>KNOWN_LOCATIONS</code> 外・route_planner 注入）・aisle lock timeout 30s（暫定）・known location の<b>座標</b>（config 側・Phase 2 実測）。<span class="dref">traffic_logic.py / 11a:435-446 / nav2_router.py</span></div>
+
+<!-- ===================== 4. 安全チェーン ===================== -->
+<h2>4. L2 ↔ L1/L0 安全チェーン（bypass 不可）</h2>
+<p class="lead">L2 の accept は「Nav2 に goal を渡してよい」という許可であって、物理の最終決定ではない。<b>cmd_vel の producer は L1 の 2 つだけ</b>（Nav2 controller と Emergency Guardian）で、L2 はこのチェーンに書き込まない。<span class="dref">12:151-159 / 11 §境界</span></p>
+
+<div class="steps">
+  <div class="step"><b>L2 出口: position goal</b><div class="s">Nav2 Bridge REST <code>/api/v1/*</code>（Mode A/B）／ <code>NavigateToPose</code> action（Mode C・Fleet Adapter 唯一 writer）。速度は運ばない。<span class="dref">nav2_client.py / 11c:252,499-523</span></div></div>
+  <div class="step-down">▼</div>
+  <div class="step"><b>L1 Nav2</b>: 50ms（20Hz）制御ループが <code>/bot{n}/cmd_vel/nav2</code> を生成<div class="s">costmap（virtual scan もここに入る）・controller（DWB→MPPI）・AMCL。<span class="dref">shared/09:163-214 / 12:47</span></div></div>
+  <div class="step-down">▼</div>
+  <div class="step"><b>L1 collision_monitor</b>: prio-10 の<b>上流</b>で PolygonStop<div class="s">breach で cmd_vel/nav2 を 0 に。prio-100 帯は迂回できない。recovery（behavior_server）は自己ラッチ回避のため素通し。<span class="dref">12:522-561 / collision_monitor.yaml</span></div></div>
+  <div class="step-down">▼</div>
+  <div class="step seam"><b>L1 twist_mux</b>: emergency=<b>100</b> &gt; nav2=<b>10</b>（timeout 各 0.5s）<div class="s">Emergency Guardian の zero-Twist（毎 tick 再送）は Nav2 が何を言っても勝つ。凍結 safety contract。<span class="dref">twist_mux.yaml / 15:379-405</span></div></div>
+  <div class="step-down">▼</div>
+  <div class="step"><b>L0 ESP32 clamp</b>: MCU 内で <code>≤ 0.3 m/s</code>・非有限（NaN/Inf）→ 0.0 停止<div class="s">ROS / OS / 通信に依存しない最終防衛線。単一ソースは <code>warehouse_interfaces/safety.py:18</code>。<span class="dref">safety_clamp.h clampLinear / 12:75-78</span></div></div>
+</div>
+<div class="safe"><b>L2 が死んでも走行は縮退継続</b>: Nav2 単独の障害物回避 + Emergency Guardian の blocked 10s 検出。交通調整は止まるが物理安全は落ちない＝「真の強制は L2/L1/L0」（plugin/manifest 層の trust は ADVISORY）。<span class="dref">12:65 / adr/0003:31 / 09:281-282</span></div>
+
+<!-- ===================== 5. レイヤ番号の対応 ===================== -->
+<h2>5. レイヤ番号の正準化（商用 L0–L4 ／ 安全 Layer 0–3 ／ 時間 3 層）</h2>
+<p class="lead"><b>本ページと正本 11 は「商用 box map（L0–L4）」体系で番号を書く</b>。安全レイヤー（doc12）と時間クラス（doc12）は<b>別軸</b>（doc12 自身が「軸が異なる」と明記）。読むときは体系名を確かめる。<span class="dref">01:73-80 / 12:43-49,72-93,107-108</span></p>
+<table>
+  <thead><tr><th>対象</th><th>商用 box map（本書）</th><th>安全レイヤー 4 層</th><th>時間 3 層</th></tr></thead>
+  <tbody>
+    <tr><td>ESP32 firmware</td><td><b>L0</b> Hardware Box</td><td>Layer 0</td><td>即時（µs–ms）</td></tr>
+    <tr><td>Emergency Guardian</td><td><b>L1</b> Safety Box</td><td>Layer 1</td><td>Hard-RT（50ms 目標）</td></tr>
+    <tr><td>交通管理（RMF / Simple / none）</td><td><b>L2</b> Traffic Box</td><td>Layer 2</td><td>Soft-RT（event）</td></tr>
+    <tr><td>MCP Server / Policy Gate</td><td><b>L2</b> Governance Box</td><td>Layer 3 側に併記</td><td>Non-RT（数十 ms）</td></tr>
+    <tr><td>State Cache</td><td>帰属未定（F3・暫定 Safety）</td><td>層外</td><td>Soft-RT（100ms）</td></tr>
+    <tr><td>LLM Bridge / Hermes</td><td><b>L4</b> Super-Box</td><td>Layer 3</td><td>Non-RT（3s/5s）</td></tr>
+  </tbody>
+</table>
+<div class="note"><b>旧番号の in-code ラベルに注意</b>: <code>warehouse_interfaces/schemas.py</code> の docstring は <code>StateSnapshot</code> を「L2(producer) ↔ L1(consumer)」と呼ぶ（＝本ページと<b>逆向きの旧体系</b>）。読み替えはこの表で吸収し、docstring 是正は contract PR の別件（正本 11 §未凍結事項）。<span class="dref">schemas.py StateSnapshot / 11 §レイヤ番号の対応</span></div>
+
+<!-- ===================== 6. docs / 実体 ===================== -->
+<h2>6. L2 各要素 → docs / 実体</h2>
+<table>
+  <thead><tr><th>要素</th><th>種別</th><th>docs（正本）</th><th>実体 / 契約</th></tr></thead>
+  <tbody>
+    <tr><td>Contract Box</td><td><span class="badge b-box">box</span> †</td><td><a href="11-l2-contract-governance-traffic-box.md">11</a> §Contract / 01:65,80 / 05 §Contract</td><td class="impl-yes"><code>warehouse_interfaces</code>（凍結）</td></tr>
+    <tr><td>Governance Box</td><td><span class="badge b-box">box</span></td><td>11 §Governance / 01:66,86 / <a href="../architecture/15-mcp-platform.md">architecture/15</a> / 05 §Governance</td><td class="impl-yes"><code>warehouse_mcp_server</code>（7 tool + Policy Gate）</td></tr>
+    <tr><td>accepted-motion gate</td><td>gate（Governance 所有）</td><td>11 §Governance / 01:86</td><td class="impl-yes"><code>tools.py _maybe_forward</code>（R-26）</td></tr>
+    <tr><td>action_map（入口）</td><td><span class="badge b-seam">seam</span>（L4 所有）</td><td>01:92,110 / <a href="layer-l4-detail.html">L4 詳細図 §3</a></td><td class="impl-yes"><code>warehouse_llm_bridge/action_map.py</code></td></tr>
+    <tr><td>Traffic Box（none/simple）</td><td><span class="badge b-box">box</span></td><td>11 §Traffic / <a href="../mode-a/11a-traffic-mode-a.md">11a</a> / 06 §Traffic</td><td class="impl-yes"><code>warehouse_traffic</code>（+ virtual scan）</td></tr>
+    <tr><td>Traffic Box（open-rmf）</td><td><span class="badge b-box">box</span> variant</td><td>11 §Traffic / <a href="../mode-c/11c-traffic-mode-c.md">11c</a></td><td class="impl-no">一部実装（offline core 済・RMF 配線 = R-38 #187 待ち）</td></tr>
+    <tr><td>X-lite / X-rmf profile</td><td>variant swap</td><td>mode-x-er/01:199-206 / 01:114-145</td><td class="impl-yes">X-lite = 稼働経路（X-rmf は optional）</td></tr>
+    <tr><td>出口（position goal）</td><td><span class="badge b-seam">seam</span></td><td>11 §境界 / 01:88</td><td class="impl-yes"><code>nav2_client.py</code> → <code>warehouse_nav2_bridge</code>（L1）</td></tr>
+    <tr><td>bypass 不可帯（twist_mux / clamp）</td><td>L1/L0（参照）</td><td>15:379-405 / 12:72-93,522-561</td><td class="impl-yes"><code>twist_mux.yaml</code> / <code>safety_clamp.h</code>（凍結）</td></tr>
+    <tr><td>L2-G0〜G8（acceptance gates）</td><td>proposal catalog</td><td>11 §Acceptance Gates</td><td class="impl-no">product contract ではない（多くは既存 unit で green）</td></tr>
+    <tr><td>L2 Policy Profile（restrict-only）</td><td>思想（Governance profile）</td><td>11 §2026-07-09 補足 / <a href="../adr/0004-l2-restrict-only-policy-profile.md">ADR-0004</a></td><td class="impl-no">思想のみ・未実装（凍結値=floor・fail-closed）</td></tr>
+  </tbody>
+</table>
+
+<!-- ===================== 7. 二段ゲート / restrict-only ===================== -->
+<h2>7. 二段ゲート と L2 restrict-only policy profile（2026-07-09 思想・未実装）</h2>
+<p class="lead">L3 Validator と L2 Policy Gate は<b>似て見える check の重複ではない</b>＝<b>同一事故を別入力・別時刻で止める二段</b>。L3 は「Command 候補になってよいか」を plan 時に、L2 は「今この tool call を実行してよいか」を dispatch 時に判定する。正本 = <a href="11-l2-contract-governance-traffic-box.md">11 §2026-07-09 補足</a> ＋ <a href="../adr/0004-l2-restrict-only-policy-profile.md">ADR-0004</a>。</p>
+
+<div class="steps">
+  <div class="step"><b>L3 Validator</b>（問い「Command 候補になってよいか」）<div class="s">入力 = LLM / ER の plan draft。失敗 → <b>tool call を組み立てない</b>。語彙 = 凍結 9-code <code>ValidationCode</code>（<code>UNKNOWN_ROBOT</code> / <code>UNKNOWN_TARGET</code> / <code>EMERGENCY_ACTIVE</code> / <code>CYCLE_STATE_STALE</code> …）。<span class="dref">report.py:69-88</span></div></div>
+  <div class="step-down">▼</div>
+  <div class="step seam"><b>L2 Policy Gate</b>（問い「今この tool call を実行してよいか」）<div class="s">入力 = dispatch 引数 ＋ live <code>StateSnapshot</code>。失敗 → <b>Nav2 へ forward しない</b>。語彙 = 14 policy_gate code（§1.2）。<span class="dref">policy_gate.py / §1.2</span></div></div>
+</div>
+<div class="note"><b>紛らわしい 3 対（別層・別語彙・別時刻）</b>: <code>UNKNOWN_TARGET</code>〔L3〕 vs <code>missing_location</code>/<code>unknown_location</code>〔L2〕 ／ <code>EMERGENCY_ACTIVE</code>〔plan 時〕 vs <code>robot_in_emergency</code>〔dispatch 時〕 ／ <code>CYCLE_STATE_STALE</code>〔cycle 単位〕 vs <code>robot_stale</code> 0.5s〔per-robot〕。<b>defense-in-depth</b>: L3 が stale / bug でも L2 が止める（L3 は実行権限なし・L2 は planning 知能なし）。<span class="dref">report.py:69-88 / policy_gate.py</span></div>
+<div class="note"><b>accepted-motion forward は今や 3-way config gate</b>: L3 を通った候補が Policy Gate 受理後に Nav2 へ抜けるかは構成依存 — Mode A/B = forwarder 配線 ／ Mode C = <code>forwarder=None</code>（0 actuation・R-26）／ X-ER = config <code>mode_x_er.dispatch.forward_to_nav2</code>（safe-OFF 既定 <code>None</code> = 0 actuation・<code>true</code> → <code>Nav2RestForwarder</code>・#423）。「Mode A/B のみ」ではない。<span class="dref">tools.py _maybe_forward / mode_x_er.dispatch.forward_to_nav2</span></div>
+
+<div class="safe"><b>L2 Governance は自由 plugin 化しない = data-only restrict-only policy profile</b>: 凍結値（battery 10/20・<code>MAX_LINEAR_VELOCITY=0.3</code>）は<b>floor</b>で、緩い値は<b>起動時に fail-closed で拒否</b>。締める / 止めるのみ・合成は AND・v1 で code plugin 不採用（trust は ADVISORY <span class="dref">doc09:276-283 / adr/0003:31</span>）。<b>freshness レーン <code>feat/policy-gate-freshness-config</code> = restrict-only の in-flight 最初の例</b>（ただし鮮度窓の loosen を <code>MAX_FRESHNESS_S=10.0</code> ceiling まで許す＝厳密 tighten-only でない＝<b>REVIEW POINT</b>）。<span class="dref">safety.py:18,21,22 / adr/0004</span></div>
+
+<h3>7.1 座標ゴールの gap（凍結は N-G1 multi-owner gate 経由）</h3>
+<table>
+  <thead><tr><th>層</th><th>座標ゴールの扱い</th><th>状態</th></tr></thead>
+  <tbody>
+    <tr><td>Policy Gate</td><td>frame / finite / valid-polygon / calibration-approved を検証（<b>座標そのものは無限</b>で凍結できない）</td><td class="impl-no">思想のみ・未実装</td></tr>
+    <tr><td>Nav2 Bridge</td><td><b>additive (x,y[,yaw]) API 実在</b>（<code>INVALID_GOAL</code> で reject）<span class="dref">core.py:106 _coord_from_goal / 12a:463</span></td><td class="impl-yes">実装あり（#223・interfaces 未追加）</td></tr>
+    <tr><td>Visual Resolver</td><td>pixel → map → snap の offline core 実在<span class="dref">visual_resolver/resolver.py / seams.py:24</span></td><td class="impl-no">欠 = downstream contract ＋ live calibration</td></tr>
+  </tbody>
+</table>
+<div class="note">座標ゴールの<b>凍結は N-G1 multi-owner gate 経由</b>（owner = L3 Handoff + Governance + Nav2 Bridge・code <code>invalid_coordinate_goal</code> / <code>coordinate_goal_unfrozen</code>）<span class="dref">08:52</span>。<code>action_map</code> ＋ MCP / Policy Gate は<b>bypass されない</b>。</div>
+
+<footer>
+  <p>このページは <code>docs/productization/layer-l2-detail.html</code>（補足図解・ダーク）。一次ソース: <a href="11-l2-contract-governance-traffic-box.md">11</a> / <a href="01-commercial-box-map.md">01</a> / <code>docs/architecture/15-mcp-platform.md</code> / <code>docs/architecture/12-infrastructure-common.md</code> / <code>docs/mode-a/11a</code>・<code>docs/mode-c/11c</code>。
+  引用規約: L2 は実装済みの層＝<b>コードは symbol-anchored</b>（<span class="dref">tools.py _maybe_forward</span>）、productization docs は exact line、mode-*/architecture docs は file:line。frozen contract / topic / config key を追加しない。</p>
+  <p>← <a href="layer-l4-detail.html">L4 詳細図</a> ／ <a href="layer-l3-detail.html">L3 詳細図</a> ／ <a href="box-taxonomy.html">box-taxonomy</a> ／ 正本 <a href="11-l2-contract-governance-traffic-box.md">11-l2-contract-governance-traffic-box.md</a> ／ <a href="../adr/0004-l2-restrict-only-policy-profile.md">ADR-0004（L2 restrict-only policy profile）</a></p>
+</footer>
+
+</div>
+</body>
+</html>

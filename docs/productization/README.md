@@ -45,6 +45,7 @@
 | [10-llm-assisted-rule-authoring.md](10-llm-assisted-rule-authoring.md) | 顧客 rule を LLM 支援で site profile / plugin profile / fixture / simulation へ落とす設計 |
 | [l3-rule-authoring-detail.html](l3-rule-authoring-detail.html) | 10 の HTML 図解。authoring loop、layer classification、promotion gate を可視化 |
 | [l4/README.md](l4/README.md) | L4 内部 sub-box の layer skeleton。Model Transport / Adapter の詳細設計と図式化 |
+| [11-l2-contract-governance-traffic-box.md](11-l2-contract-governance-traffic-box.md) | Contract / Governance / Traffic の L2 商用 box 設計（実行許可 accepted-motion gate・Policy Gate reject catalog・X-lite/X-rmf・レイヤ番号対応） |
 
 ## 読み方
 
