@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import base64
 import json
 import statistics
 import sys
@@ -127,16 +128,39 @@ PIXEL_HINTS = (
 # Operator-approved batch ceiling (2026-07-08, doc07 §4.5). --budget can only NARROW this;
 # raising it requires editing this constant in a reviewed commit, not a CLI flag.
 APPROVED_CAP = 12
+# Per-call token guard for the live --image arg. The ~4.5k-token bound is PROVEN only for the
+# GENERATED frame (--selftest-image); an arbitrary --image path is not, so a fat-finger to a large
+# file would inflate per-call tokens on each of the <=8 calls (send count stays capped by the
+# budget; per-call cost would not). base64 ~= bytes*4/3 and tokens ~= base64/4, so 128 KiB ~= ~43k
+# tokens — safely under the ~100k ceiling while giving ~9x headroom over the ~13.5 KB generated
+# frames. Named constant so a future real-camera frame path can revisit it in a reviewed commit.
+MAX_IMAGE_BYTES = 128 * 1024
 
 
-def _request(*, live: bool, request_id: str, pixel_hints: bool = False) -> ErTaskRequest:
+def _file_blob_loader(ref: str) -> bytes:
+    """Filesystem ``BlobLoader`` (gemini_er.py:47): resolve an ``overhead_image_ref`` path to raw
+    bytes. Injected into ``build_er_adapter(load_blob=...)`` so ``build_provider_request`` can
+    attach the ``data:image/png`` part; the running XER6 node injects the same-shaped resolver."""
+    return Path(ref).read_bytes()
+
+
+def _request(
+    *,
+    live: bool,
+    request_id: str,
+    pixel_hints: bool = False,
+    image_ref: str | None = None,
+) -> ErTaskRequest:
     """The L4 input bundle (er_task.py:31-44; offline shape = test_x_er_offline_e2e.py:142-149).
 
     Live embeds the richer schema coaching (tests/live/_er_live_client.py:30-43) in the
     transcript because the adapter's built-in ``_SCHEMA`` (gemini_er.py:61-66) does not spell
     out ``schema_version`` — a missing version is a Handoff reject (red_blue_sequence.py).
     ``pixel_hints`` additionally supplies the ground-truth detection pixels (camera stand-in)
-    so the Visual Resolver can snap the live plan to KNOWN_LOCATIONS.
+    so the Visual Resolver can snap the live plan to KNOWN_LOCATIONS. ``image_ref`` instead
+    attaches a synthetic overhead image (er_task.py:38) so ER perceives the boxes itself — the
+    camera path that supersedes text-only ``pixel_hints``. Offline mode replays a fixed envelope
+    and ignores the request, so ``image_ref`` is a no-op there (used only by the live send).
     """
     if live:
         hints = f"\n{PIXEL_HINTS}" if pixel_hints else ""
@@ -149,6 +173,7 @@ def _request(*, live: bool, request_id: str, pixel_hints: bool = False) -> ErTas
         calibration_id=CALIBRATION_ID,
         known_robots=["bot1", "bot2"],
         known_locations=sorted(KNOWN_LOCATIONS),
+        overhead_image_ref=image_ref,
     )
 
 
@@ -221,6 +246,32 @@ def _assert_invariants(outcome, failures: list[str]) -> None:
         failures.append("non-dispatching exit still dispatched (R-26 violation)")
 
 
+def _assert_no_dispatch(outcome, cycle_label: str, failures: list[str]) -> None:
+    """Negative-image tier: a frame whose boxes map outside every snap radius must fail closed —
+    0 dispatch and 0 commit. Any dispatch here is a real safety regression, not a soft miss."""
+    dispatched = len(outcome.dispatched)
+    if dispatched:
+        failures.append(
+            f"{cycle_label}: negative image dispatched {dispatched} (fail-closed expects 0)"
+        )
+    if outcome.committed:
+        failures.append(
+            f"{cycle_label}: negative image committed {list(outcome.committed)} (expects none)"
+        )
+
+
+def _positive_branch(outcome) -> str:
+    """Classify a positive-image cycle outcome: only ``dispatch`` or ``empty_command`` are a real
+    PASS; anything else (``plugin_rejected`` / other non-error skip) is ``other:<reason>`` and must
+    surface as a distinct WARN, not a silent checkmark (FIX 4). Destination validity for a dispatch
+    is still enforced by :func:`_assert_invariants`; this only distinguishes the exit branch."""
+    if len(outcome.dispatched) > 0:
+        return "dispatch"
+    if outcome.skipped_reason == "empty_command":
+        return "empty_command"
+    return f"other:{outcome.skipped_reason}"
+
+
 def _run_scenario(
     *,
     spec: VariantSpec,
@@ -232,10 +283,13 @@ def _run_scenario(
     cycle2_live: bool,
     l3_substages: bool,
     pixel_hints: bool,
+    image_ref: str | None,
+    image_mode: str | None,
     out_dir: Path,
 ) -> dict:
     """One variant x rep: composition -> cycle1 -> synthetic completion -> cycle2 -> asserts."""
     failures: list[str] = []
+    warnings: list[str] = []  # non-fatal, distinct from ✓ (e.g. positive image neither disp/empty)
     work_dir = out_dir / "work" / f"{spec.key}_rep{rep}"
     work_dir.mkdir(parents=True, exist_ok=True)
 
@@ -268,7 +322,12 @@ def _run_scenario(
             with patched_cycle_boxes(recorder, l3_substages=l3_substages):
                 outcome = asyncio.run(
                     run_x_er_cycle(
-                        request=_request(live=live, request_id=request_id, pixel_hints=pixel_hints),
+                        request=_request(
+                            live=live,
+                            request_id=request_id,
+                            pixel_hints=pixel_hints,
+                            image_ref=image_ref,
+                        ),
                         adapter=timed_adapter,
                         runtime=runtime,
                         executor=executor,
@@ -307,6 +366,8 @@ def _run_scenario(
         return _finish(spec, rep, recorder, runtime, failures, live_sends=None)
     assert outcome1 is not None
     _assert_invariants(outcome1, failures)
+    if image_mode == "negative":
+        _assert_no_dispatch(outcome1, "cycle1", failures)
 
     error_codes, warning_ids, clamped = _finding_rows(outcome1.plugin_report)
     if spec.expect_cycle1_reject:
@@ -378,19 +439,55 @@ def _run_scenario(
         return _finish(spec, rep, recorder, runtime, failures, live_sends=None)
     assert outcome2 is not None
     _assert_invariants(outcome2, failures)
+    if image_mode == "negative":
+        _assert_no_dispatch(outcome2, "cycle2", failures)
+    if image_mode is not None:
+        branch1 = _positive_branch(outcome1)
+        branch2 = _positive_branch(outcome2)
+        recorder.set_context(variant=spec.key, rep=rep, cycle=None)
+        recorder.record(
+            "image_outcome",
+            image_mode=image_mode,
+            image_ref=image_ref,
+            cycle1_branch=branch1,
+            cycle1_dispatched=len(outcome1.dispatched),
+            cycle1_skipped_reason=outcome1.skipped_reason,
+            cycle1_destinations=[i.destination for i in outcome1.command.commands],
+            cycle2_branch=branch2,
+            cycle2_dispatched=len(outcome2.dispatched),
+            cycle2_skipped_reason=outcome2.skipped_reason,
+            cycle2_destinations=[i.destination for i in outcome2.command.commands],
+        )
+        # Positive tier (FIX 4): PASS only on dispatch OR empty_command; any other exit is a
+        # distinct WARN (⚠), never a silent ✓ — recorded above, surfaced here. (Negative tier's
+        # fail-closed dispatch guard already ran via _assert_no_dispatch and is unaffected.)
+        if image_mode == "positive":
+            for cycle_label, branch in (("cycle1", branch1), ("cycle2", branch2)):
+                if branch.startswith("other:"):
+                    warnings.append(
+                        f"{cycle_label}: positive image {branch} "
+                        "(neither dispatch nor empty_command)"
+                    )
     if spec.strict_red_blue_offline and not live:
         got2 = [(i.bot, i.action, i.destination) for i in outcome2.command.commands]
         if got2 != [("bot2", CommandAction.NAVIGATE, "shelf_2")]:
             failures.append(f"offline strict: cycle2 expected bot2->shelf_2, got {got2}")
     elif live and outcome1.committed and outcome2.skipped_reason not in (None, "empty_command"):
-        failures.append(
-            f"cycle2 (replay) unexpected skip: {outcome2.skipped_reason!r}"
-        )
+        failures.append(f"cycle2 (replay) unexpected skip: {outcome2.skipped_reason!r}")
 
-    return _finish(spec, rep, recorder, runtime, failures, live_sends=None)
+    return _finish(spec, rep, recorder, runtime, failures, live_sends=None, warnings=warnings)
 
 
-def _finish(spec, rep, recorder: Recorder, runtime, failures: list[str], *, live_sends) -> dict:
+def _finish(
+    spec,
+    rep,
+    recorder: Recorder,
+    runtime,
+    failures: list[str],
+    *,
+    live_sends,
+    warnings: list[str] | None = None,
+) -> dict:
     recorder.set_context(variant=spec.key, rep=rep, cycle=None)
     result = {
         "variant": spec.key,
@@ -399,6 +496,11 @@ def _finish(spec, rep, recorder: Recorder, runtime, failures: list[str], *, live
         "failures": failures,
         "witness_dir": str(runtime.out_dir) if runtime.out_dir else None,
     }
+    # Additive: only emit the key when there are warnings, so warning-free runs (all offline
+    # defaults) stay byte-compatible in the results JSONL / summary. ⚠ is non-fatal (pass stays
+    # True); it just prevents a WARN outcome from rendering as a silent ✓.
+    if warnings:
+        result["warnings"] = warnings
     recorder.record("variant_summary", **result)
     return result
 
@@ -427,6 +529,46 @@ def _selftest_budget(recorder: Recorder) -> int:
     return 1
 
 
+def _selftest_image(out_dir: Path) -> int:
+    """0-charge image-wiring rehearsal: generate the positive PNG, build the HERMES provider
+    request OFFLINE (gemini_er.build_provider_request, no network), and assert the request carries
+    exactly one ``data:image/png;base64,`` part that decodes back to the generated PNG bytes."""
+    import gen_overhead_image
+    from warehouse_llm_bridge.robotics.adapters.gemini_er import build_provider_request
+
+    paths = gen_overhead_image.write_images(out_dir / "images")
+    image_path = paths["positive"]
+    expected = image_path.read_bytes()
+
+    request = _request(live=True, request_id="selftest-image", image_ref=str(image_path))
+    if request.overhead_image_ref != str(image_path):
+        print("[selftest] FAIL overhead_image_ref not set on the request")
+        return 1
+
+    provider_request = build_provider_request(
+        Transport.HERMES, request, load_blob=_file_blob_loader
+    )
+    content = provider_request["messages"][0]["content"]
+    image_parts = [p for p in content if p.get("type") == "image_url"]
+    if len(image_parts) != 1:
+        print(f"[selftest] FAIL expected exactly 1 image_url part, got {len(image_parts)}")
+        return 1
+    url = image_parts[0]["image_url"]["url"]
+    prefix = "data:image/png;base64,"
+    if not url.startswith(prefix):
+        print(f"[selftest] FAIL image_url is not a data:image/png part ({url[:32]!r}...)")
+        return 1
+    if base64.b64decode(url[len(prefix) :]) != expected:
+        print("[selftest] FAIL base64 payload does not decode to the generated PNG bytes")
+        return 1
+    b64_len = len(url) - len(prefix)
+    print(
+        f"[selftest] PASS image wiring: data:image/png part decodes to {len(expected)} PNG bytes "
+        f"(base64 {b64_len} chars, ~{b64_len // 4} tokens); no network"
+    )
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--mode", choices=("offline", "live"), default="offline")
@@ -438,7 +580,21 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--l3-substages", action="store_true")
     parser.add_argument("--cycle2-live", action="store_true")
     parser.add_argument("--pixel-hints", action="store_true")
+    parser.add_argument(
+        "--image",
+        default=None,
+        help="overhead PNG path -> overhead_image_ref on the live request (real ER perception "
+        "without --pixel-hints; offline replays a fixed envelope and ignores it)",
+    )
+    parser.add_argument(
+        "--image-mode",
+        choices=("positive", "negative"),
+        default=None,
+        help="image-run assertion tier: positive=PASS if it dispatches OR records empty_command; "
+        "negative=PASS only if 0 dispatch (fail-closed)",
+    )
     parser.add_argument("--selftest-budget", action="store_true")
+    parser.add_argument("--selftest-image", action="store_true")
     args = parser.parse_args(argv)
 
     live = args.mode == "live"
@@ -457,6 +613,34 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.selftest_budget:
         return _selftest_budget(recorder)
+    if args.selftest_image:
+        return _selftest_image(out_dir)
+
+    if args.image is not None:
+        image_path = Path(args.image)
+        if not image_path.is_file():
+            print(f"ERROR: --image {args.image!r} is not a file", file=sys.stderr)
+            return 2
+        # Cost guard: cap the per-call image size BEFORE the sender is built (FIX 1). The budget
+        # caps the send COUNT; this caps the per-call token COST of an arbitrary --image.
+        image_size = image_path.stat().st_size
+        if image_size > MAX_IMAGE_BYTES:
+            approx_tokens = image_size * 4 // 3 // 4
+            print(
+                f"ERROR: --image {args.image!r} is {image_size} bytes > MAX_IMAGE_BYTES "
+                f"{MAX_IMAGE_BYTES} (~{approx_tokens} tokens); refusing to inflate per-call cost "
+                "on each of the <=8 calls.",
+                file=sys.stderr,
+            )
+            return 2
+        # Soft (non-blocking) pairing guard (FIX 5): a positive frame with --image-mode negative
+        # (or vice-versa) is a likely fat-finger. Self-corrects live, so warn rather than block.
+        if args.image_mode and args.image_mode not in image_path.stem.lower():
+            print(
+                f"WARN: --image {image_path.name!r} stem does not mention --image-mode "
+                f"{args.image_mode!r}; check the positive/negative pairing.",
+                file=sys.stderr,
+            )
 
     keys = [k.strip() for k in args.variants.split(",") if k.strip()]
     unknown = [k for k in keys if k not in VARIANTS]
@@ -500,7 +684,8 @@ def main(argv: list[str] | None = None) -> int:
 
     def adapter_factory_fn(cfg):
         if live:
-            base = build_er_adapter(cfg, sender=budgeted)
+            load_blob = _file_blob_loader if args.image else None
+            base = build_er_adapter(cfg, sender=budgeted, load_blob=load_blob)
             transport = resolve_audio_transport(cfg.get("robotics", {}).get("er_gateway"))
             if transport is not Transport.HERMES:
                 raise SystemExit(
@@ -542,6 +727,8 @@ def main(argv: list[str] | None = None) -> int:
                     cycle2_live=args.cycle2_live,
                     l3_substages=args.l3_substages,
                     pixel_hints=args.pixel_hints,
+                    image_ref=args.image,
+                    image_mode=args.image_mode,
                     out_dir=out_dir,
                 )
             except BudgetExceededError as exc:
@@ -619,10 +806,19 @@ def _print_table(results_path: Path, summary: dict) -> None:
         print(
             f"  {variant:<6} {box:<22} {med:>9.4f}s  [{min(vals):.4f}..{max(vals):.4f}]  n={len(vals)}"
         )
-    print(
-        f"\nvariants pass: {[r['variant'] + ('✓' if r['pass'] else '✗') for r in summary['results']]}"
-    )
+    print(f"\nvariants pass: {[r['variant'] + _marker(r) for r in summary['results']]}")
+    warned = [f"{r['variant']}: {r['warnings']}" for r in summary["results"] if r.get("warnings")]
+    if warned:
+        print("warnings (non-fatal): " + "; ".join(warned))
     print(f"live sends: {summary['live_sends']}, aborted: {summary['aborted']}")
+
+
+def _marker(result: dict) -> str:
+    """✗ = failed; ⚠ = passed but a non-fatal warning (e.g. positive image neither dispatch nor
+    empty_command); ✓ = clean pass. A ⚠ must never collapse to a silent ✓ (FIX 4)."""
+    if not result["pass"]:
+        return "✗"
+    return "⚠" if result.get("warnings") else "✓"
 
 
 if __name__ == "__main__":
