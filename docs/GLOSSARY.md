@@ -116,6 +116,8 @@
 - **idempotency_key** — 同一 command の replay（C 層）を弾く UUID。Bridge が tool call ごとに mint・LLM 由来不可・8 世代 window で eviction。 — `warehouse_interfaces/stores.py` `IdempotencyStore`（凍結 IF）/ [architecture/15-mcp-platform.md:135](architecture/15-mcp-platform.md)
 - **SimpleTrafficManager / NoTrafficManager** — Mode B の通路排他ロック実装／Mode A の素通し実装（交通判断は LLM）。`traffic_mode` で選択。 — `warehouse_traffic/traffic_logic.py` `make_traffic_manager`（symbol）/ [mode-a/11a-traffic-mode-a.md:47-54](mode-a/11a-traffic-mode-a.md)
 - **Fleet Adapter（RMF）** — Mode C で Open-RMF と Nav2 を仲介する**唯一の Nav2 制御パス**（single-writer・EasyFullControl 案A・live は R-38 #187 gate 待ち）。 — [mode-c/11c-traffic-mode-c.md:63](mode-c/11c-traffic-mode-c.md) / `warehouse_rmf_adapter/fleet_adapter.py`（scaffold）
+- **L2 Policy Profile（restrict-only）** — L2 Governance の案件差分を表す **data-only** profile。凍結値（battery `10`/`20`・`MAX_LINEAR_VELOCITY 0.3`）を floor とし **締める/止めるのみ・緩めない**（緩い値は起動拒否 fail-closed）。v1 で in-proc code plugin は不採用。L3 の自由 plugin 化（[adr/0003](adr/0003-bridge-local-manifest-composition.md)）と非対称。 — [productization/11 §2026-07-09 補足](productization/11-l2-contract-governance-traffic-box.md) / [adr/0004](adr/0004-l2-restrict-only-policy-profile.md)
+- **二段ゲート（L3 Validator ↔ L2 Policy Gate）** — 似て見える check の重複ではなく、同一事故を別入力・別時刻で止める2段。L3=「Command 候補になってよいか」（frozen 9-code [ValidationCode](../ws/src/warehouse_llm_bridge/warehouse_llm_bridge/robotics_planning_core/validator/report.py)）/ L2=「今この tool call を実行してよいか」（14 `policy_gate` code + live `StateSnapshot`）。 — [productization/11 §2026-07-09 補足](productization/11-l2-contract-governance-traffic-box.md) / [adr/0004](adr/0004-l2-restrict-only-policy-profile.md)
 
 ---
 

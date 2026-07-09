@@ -118,6 +118,7 @@
   <a href="../architecture/15-mcp-platform.md">architecture/15（MCP / Policy Gate）</a>
   <a href="../mode-a/11a-traffic-mode-a.md">mode-a/11a</a>
   <a href="../mode-c/11c-traffic-mode-c.md">mode-c/11c</a>
+  <a href="../adr/0004-l2-restrict-only-policy-profile.md">ADR-0004</a>
 </div>
 
 <div class="meta">
@@ -338,13 +339,39 @@
     <tr><td>出口（position goal）</td><td><span class="badge b-seam">seam</span></td><td>11 §境界 / 01:88</td><td class="impl-yes"><code>nav2_client.py</code> → <code>warehouse_nav2_bridge</code>（L1）</td></tr>
     <tr><td>bypass 不可帯（twist_mux / clamp）</td><td>L1/L0（参照）</td><td>15:379-405 / 12:72-93,522-561</td><td class="impl-yes"><code>twist_mux.yaml</code> / <code>safety_clamp.h</code>（凍結）</td></tr>
     <tr><td>L2-G0〜G8（acceptance gates）</td><td>proposal catalog</td><td>11 §Acceptance Gates</td><td class="impl-no">product contract ではない（多くは既存 unit で green）</td></tr>
+    <tr><td>L2 Policy Profile（restrict-only）</td><td>思想（Governance profile）</td><td>11 §2026-07-09 補足 / <a href="../adr/0004-l2-restrict-only-policy-profile.md">ADR-0004</a></td><td class="impl-no">思想のみ・未実装（凍結値=floor・fail-closed）</td></tr>
   </tbody>
 </table>
+
+<!-- ===================== 7. 二段ゲート / restrict-only ===================== -->
+<h2>7. 二段ゲート と L2 restrict-only policy profile（2026-07-09 思想・未実装）</h2>
+<p class="lead">L3 Validator と L2 Policy Gate は<b>似て見える check の重複ではない</b>＝<b>同一事故を別入力・別時刻で止める二段</b>。L3 は「Command 候補になってよいか」を plan 時に、L2 は「今この tool call を実行してよいか」を dispatch 時に判定する。正本 = <a href="11-l2-contract-governance-traffic-box.md">11 §2026-07-09 補足</a> ＋ <a href="../adr/0004-l2-restrict-only-policy-profile.md">ADR-0004</a>。</p>
+
+<div class="steps">
+  <div class="step"><b>L3 Validator</b>（問い「Command 候補になってよいか」）<div class="s">入力 = LLM / ER の plan draft。失敗 → <b>tool call を組み立てない</b>。語彙 = 凍結 9-code <code>ValidationCode</code>（<code>UNKNOWN_ROBOT</code> / <code>UNKNOWN_TARGET</code> / <code>EMERGENCY_ACTIVE</code> / <code>CYCLE_STATE_STALE</code> …）。<span class="dref">report.py:69-88</span></div></div>
+  <div class="step-down">▼</div>
+  <div class="step seam"><b>L2 Policy Gate</b>（問い「今この tool call を実行してよいか」）<div class="s">入力 = dispatch 引数 ＋ live <code>StateSnapshot</code>。失敗 → <b>Nav2 へ forward しない</b>。語彙 = 14 policy_gate code（§1.2）。<span class="dref">policy_gate.py / §1.2</span></div></div>
+</div>
+<div class="note"><b>紛らわしい 3 対（別層・別語彙・別時刻）</b>: <code>UNKNOWN_TARGET</code>〔L3〕 vs <code>missing_location</code>/<code>unknown_location</code>〔L2〕 ／ <code>EMERGENCY_ACTIVE</code>〔plan 時〕 vs <code>robot_in_emergency</code>〔dispatch 時〕 ／ <code>CYCLE_STATE_STALE</code>〔cycle 単位〕 vs <code>robot_stale</code> 0.5s〔per-robot〕。<b>defense-in-depth</b>: L3 が stale / bug でも L2 が止める（L3 は実行権限なし・L2 は planning 知能なし）。<span class="dref">report.py:69-88 / policy_gate.py</span></div>
+<div class="note"><b>accepted-motion forward は今や 3-way config gate</b>: L3 を通った候補が Policy Gate 受理後に Nav2 へ抜けるかは構成依存 — Mode A/B = forwarder 配線 ／ Mode C = <code>forwarder=None</code>（0 actuation・R-26）／ X-ER = config <code>mode_x_er.dispatch.forward_to_nav2</code>（safe-OFF 既定 <code>None</code> = 0 actuation・<code>true</code> → <code>Nav2RestForwarder</code>・#423）。「Mode A/B のみ」ではない。<span class="dref">tools.py _maybe_forward / mode_x_er.dispatch.forward_to_nav2</span></div>
+
+<div class="safe"><b>L2 Governance は自由 plugin 化しない = data-only restrict-only policy profile</b>: 凍結値（battery 10/20・<code>MAX_LINEAR_VELOCITY=0.3</code>）は<b>floor</b>で、緩い値は<b>起動時に fail-closed で拒否</b>。締める / 止めるのみ・合成は AND・v1 で code plugin 不採用（trust は ADVISORY <span class="dref">doc09:276-283 / adr/0003:31</span>）。<b>freshness レーン <code>feat/policy-gate-freshness-config</code> = restrict-only の in-flight 最初の例</b>（ただし鮮度窓の loosen を <code>MAX_FRESHNESS_S=10.0</code> ceiling まで許す＝厳密 tighten-only でない＝<b>REVIEW POINT</b>）。<span class="dref">safety.py:18,21,22 / adr/0004</span></div>
+
+<h3>7.1 座標ゴールの gap（凍結は N-G1 multi-owner gate 経由）</h3>
+<table>
+  <thead><tr><th>層</th><th>座標ゴールの扱い</th><th>状態</th></tr></thead>
+  <tbody>
+    <tr><td>Policy Gate</td><td>frame / finite / valid-polygon / calibration-approved を検証（<b>座標そのものは無限</b>で凍結できない）</td><td class="impl-no">思想のみ・未実装</td></tr>
+    <tr><td>Nav2 Bridge</td><td><b>additive (x,y[,yaw]) API 実在</b>（<code>INVALID_GOAL</code> で reject）<span class="dref">core.py:106 _coord_from_goal / 12a:463</span></td><td class="impl-yes">実装あり（#223・interfaces 未追加）</td></tr>
+    <tr><td>Visual Resolver</td><td>pixel → map → snap の offline core 実在<span class="dref">visual_resolver/resolver.py / seams.py:24</span></td><td class="impl-no">欠 = downstream contract ＋ live calibration</td></tr>
+  </tbody>
+</table>
+<div class="note">座標ゴールの<b>凍結は N-G1 multi-owner gate 経由</b>（owner = L3 Handoff + Governance + Nav2 Bridge・code <code>invalid_coordinate_goal</code> / <code>coordinate_goal_unfrozen</code>）<span class="dref">08:52</span>。<code>action_map</code> ＋ MCP / Policy Gate は<b>bypass されない</b>。</div>
 
 <footer>
   <p>このページは <code>docs/productization/layer-l2-detail.html</code>（補足図解・ダーク）。一次ソース: <a href="11-l2-contract-governance-traffic-box.md">11</a> / <a href="01-commercial-box-map.md">01</a> / <code>docs/architecture/15-mcp-platform.md</code> / <code>docs/architecture/12-infrastructure-common.md</code> / <code>docs/mode-a/11a</code>・<code>docs/mode-c/11c</code>。
   引用規約: L2 は実装済みの層＝<b>コードは symbol-anchored</b>（<span class="dref">tools.py _maybe_forward</span>）、productization docs は exact line、mode-*/architecture docs は file:line。frozen contract / topic / config key を追加しない。</p>
-  <p>← <a href="layer-l4-detail.html">L4 詳細図</a> ／ <a href="layer-l3-detail.html">L3 詳細図</a> ／ <a href="box-taxonomy.html">box-taxonomy</a> ／ 正本 <a href="11-l2-contract-governance-traffic-box.md">11-l2-contract-governance-traffic-box.md</a></p>
+  <p>← <a href="layer-l4-detail.html">L4 詳細図</a> ／ <a href="layer-l3-detail.html">L3 詳細図</a> ／ <a href="box-taxonomy.html">box-taxonomy</a> ／ 正本 <a href="11-l2-contract-governance-traffic-box.md">11-l2-contract-governance-traffic-box.md</a> ／ <a href="../adr/0004-l2-restrict-only-policy-profile.md">ADR-0004（L2 restrict-only policy profile）</a></p>
 </footer>
 
 </div>

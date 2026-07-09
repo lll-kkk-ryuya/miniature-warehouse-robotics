@@ -100,7 +100,7 @@ L2 が持たないもの:
 
 - ①② は `gen_check.py` `GenChecker.check`（idempotency は非 stale のときだけ登録・window は Contract Box の 8 世代）。`gen_id` / `idempotency_key` は **Bridge が mint** し、LLM / L3 / model 由来の値を信頼しない（§境界）。
 - ③〜⑤ の validate→register は**単一 `asyncio.Lock` 内で atomic**（2 台同時 dispatch の race を閉じる・[15:507-534](../architecture/15-mcp-platform.md)、symbol: `policy_gate.py` `validate_and_register_dispatch`）。
-- ⑤ `_maybe_forward`（symbol: `tools.py`）は forwarder 注入時（Mode A/B）かつ `status=="ok"` のときだけ Nav2 Bridge REST `POST /api/v1/{navigate,wait,stop}`（`:8645`・#86）へ forward する。**Mode C は forwarder=None＝全 motion tool が 0 actuation**（R-26 unit で固定）。forward 自体は fail-open（Nav2 Bridge 停止でもサイクルを殺さず audit に残す）だが、**gate 判定は fail-closed**（`ok` 以外は絶対に forward しない）。
+- ⑤ `_maybe_forward`（symbol: `tools.py`）は forwarder 注入時（Mode A/B）かつ `status=="ok"` のときだけ Nav2 Bridge REST `POST /api/v1/{navigate,wait,stop}`（`:8645`・#86）へ forward する。**Mode C は forwarder=None＝全 motion tool が 0 actuation**（R-26 unit で固定）。**Mode X-ER も同 gate を config `mode_x_er.dispatch.forward_to_nav2`（既定 None＝0 actuation・#421/#423）で駆動する**（symbol: `x_er_bridge.py` `resolve_nav2_forwarder`・safe-OFF 既定 None）。forward 自体は fail-open（Nav2 Bridge 停止でもサイクルを殺さず audit に残す）だが、**gate 判定は fail-closed**（`ok` 以外は絶対に forward しない）。
 
 ### 7 tool（motion 3 + read-only 2 + advisory 2）
 
@@ -225,6 +225,7 @@ warehouse_rmf_adapter/         # Traffic Box（Mode C・offline core、live は 
 - `escalation_response` / `start_negotiation` の下流実処理（registry は in-memory・実 forward なし）。
 - traffic の状態 dict・`route_A`/`route_B`・aisle lock timeout 30s は**すべて非凍結**（doc 例示 or 暫定値）。凍結は Contract Box の artifact のみ。
 - L2-G 表の product contract への昇格判断（昇格時は owner doc + contract PR に分ける）。
+- **鮮度窓の loosen 許容（REVIEW POINT）**: in-flight レーン `feat/policy-gate-freshness-config` は窓を `MAX_FRESHNESS_S=10.0` ceiling まで広げる overlay を許す＝restrict-only（[../adr/0004-l2-restrict-only-policy-profile.md](../adr/0004-l2-restrict-only-policy-profile.md)）の厳密 tighten-only と不一致。「環境適合ノブ（天井付き）の明示例外」とするか tighten-only へ寄せるかは当該レーンの設計判断（§2026-07-09 補足 ②注記）。
 
 ## 参考URL
 
@@ -234,3 +235,76 @@ warehouse_rmf_adapter/         # Traffic Box（Mode C・offline core、live は 
 - Model Context Protocol: <https://modelcontextprotocol.io/>（MCP tool 仕様の一次情報）
 - OPA（Open Policy Agent）: <https://www.openpolicyagent.org/> ／ Cedar: <https://www.cedarpolicy.com/>（Governance の候補 tool・採否は [07:56](07-layer-tool-decision-matrix.md)）
 - twist_mux（ROS 2）: <https://github.com/ros-teleop/twist_mux>（優先度 mux の一次情報）
+
+## 2026-07-09 補足: 二段ゲートと L2 policy profile（末尾追記・行参照非破壊）
+
+本節は 2026-07-09 に承認された設計思想（[../adr/0004-l2-restrict-only-policy-profile.md](../adr/0004-l2-restrict-only-policy-profile.md)）を正準化する。#165 末尾追記原則に従う additive tail であり、本文（1–237 行）の節番号・下流 file:line 参照を動かさない。
+
+### ① 二段ゲート（L3 Validator ↔ L2 Policy Gate）
+
+似て見える 2 つの check は重複ではなく、**同一事故を別入力・別時刻で 2 回止める**二段防御である。
+
+| 観点 | L3 Validator | L2 Policy Gate |
+|---|---|---|
+| 問い | この plan は Command 候補になってよいか？ | この具体 tool call を **今** 実行してよいか？ |
+| 入力 | LLM・ER の plan draft（実行前・plan 時刻） | `dispatch_task`/`cancel_task`/`send_to_charging` の引数 + live `StateSnapshot`（dispatch 瞬間） |
+| 失敗の結果 | tool call を組み立てない | Nav2 へ forward しない |
+| 語彙 | frozen 9-code `ValidationCode`（`report.py:69-88`・UPPERCASE） | 14 policy_gate code（§Governance の表・119-129 行） |
+
+**confusable pairs**（似て見えるが別レイヤ・別時刻）:
+
+- `UNKNOWN_TARGET`（L3: target をどの location にも ground できない）vs `missing_location`/`unknown_location`（L2: 具体 dropoff 引数が空 / `KNOWN_LOCATIONS` 外）。
+- `EMERGENCY_ACTIVE`（L3: emergency 中は plan するな＝plan 時刻の状態）vs `robot_in_emergency`（L2: dispatch 瞬間の状態）。
+- `CYCLE_STATE_STALE`（L3: cycle 単位の鮮度）vs `robot_stale` 0.5s（L2: gate での per-robot 鮮度）。
+
+**defense-in-depth**: L3 が stale/bug で漏らしても L2 が止める。強い L3 は L2 へ流れる garbage を減らす。**L3 は実行権限を持たず・L2 は planning 知能を持たない**（本書 §責務 / §境界と一貫・[01:85,86](01-commercial-box-map.md)・`report.py:69-88`・§Governance）。
+
+### ② L2 restrict-only policy profile
+
+L2 Governance は L3 のように自由 plugin 化**しない**。L2 の案件差分 = **data-only policy profile**（v1: L2 では in-proc code plugin を採らない）であり、**締める/止めるのみ・緩めない**（restrict-only。[../adr/0004-l2-restrict-only-policy-profile.md](../adr/0004-l2-restrict-only-policy-profile.md)）。
+
+**floor**: 凍結値（battery 10/20 = `safety.py:21-22`、`MAX_LINEAR_VELOCITY` 0.3 = `safety.py:18`）は hard FLOOR。より緩い profile 値は **起動拒否（fail-closed）**＝[09 §startup fail-closed composition preflight:356](09-run-manifest-and-plugin-composition.md) を鏡写す。`safety.py:11-12`「config may lower the operational speed, never raise」前例に倣う。
+
+**per-knob 安全方向**（方向は knob ごとに `policy_gate.py` の意味から決める＝一律コピーしない）:
+
+| knob | 締める（可） | 緩める（不可＝起動拒否） |
+|---|---|---|
+| `battery_low`（既定 20） | 20→30（厳しく） | 20→15 |
+| `battery_critical`（既定 10・floor） | 10→上げ可 | 10→下げ |
+| robot 鮮度窓（stale/unavailable） | 窓を縮める（tighten）方向のみが理想 | **REVIEW POINT**（下記注記） |
+| rate-limit 間隔 | 間隔を伸ばす（頻度を厳しく） | 間隔を縮める |
+
+**注記（鮮度窓の REVIEW POINT）**: in-flight レーン `feat/policy-gate-freshness-config`（未 land・branch 名で引く・行番号で引かない）は Policy Gate の robot 鮮度窓 `policy_gate.stale_after_s`（既定 0.5）/`unavailable_after_s`（既定 2.0）を config 駆動・additive・既定不変・fail-closed（非有限・<=0・stale>unavailable・上限 `MAX_FRESHNESS_S=10.0` 超・非 mapping は起動拒否）にする。**ただし機構としては overlay が窓を 10.0s まで広げる（＝緩める）ことを許す**（hard ceiling 10.0s は defang 防止だが tighten-only ではない）＝restrict-only の厳密形とは**不一致**。§未凍結事項に列挙する（このレーンは本書から編集しない）。同レーンは restrict-only を config 駆動 fail-closed で具体化する **in-flight 最初の例**として引く。
+
+**L2 で禁止（6 項）**: ① LLM raw 出力の再解釈 / ② motion tool の追加 / ③ accepted-motion gate の迂回・弱化 / ④ reject を accepted へ巻き戻す / ⑤ audit 無しで accept / ⑥ timeout・例外で accept。**合成 = AND**（どの reject も final）。
+
+**data-only v1 の理由（F-c）**: L2 は最後の許可境界。in-proc hookimpl の trust は ADVISORY で enforce 不可（[09:276-281](09-run-manifest-and-plugin-composition.md)・[../adr/0003-bridge-local-manifest-composition.md:31](../adr/0003-bridge-local-manifest-composition.md)）＝L2 では code plugin を v1 で採らない。真の強制は L2/L1/L0（本書 §境界）。
+
+**F-a / F2 未解決**: L2 profile は **data artifact** であり、run manifest は **record であって config source ではない**（[01:170](01-commercial-box-map.md) が [09:44](09-run-manifest-and-plugin-composition.md) を引く）。profile→config 翻訳の owner は F2 未定義（[01:170](01-commercial-box-map.md)）＝profile の loading owner も未確定。**manifest を config source に格上げしない**。
+
+**層別 plugin 化強度**:
+
+| 層 | plugin 化強度 |
+|---|---|
+| L4 Model Adapter | 強 |
+| L3 Validator・Visual Resolver | 強 |
+| L3 Command Compiler | 中（出力 contract 固定） |
+| L2 Governance | 中〜弱（restrict-only data profile） |
+| L1・L0 | 弱 |
+| Eval | 強（実行に非関与） |
+
+### ③ coordinate goal 6-gap（なぜ未凍結のままか）
+
+本書 §境界（160 行・N-G1）を展開する。座標 goal を凍結するには 6 層すべてに差分が要る:
+
+| # | 層 | 何が要るか | 現状 |
+|---|---|---|---|
+| 1 | Contract | `CommandItem` に goal variant | 未凍結 |
+| 2 | L4 action_map | goal mapping | 未 |
+| 3 | Governance `dispatch_task` | goal 引数 | 未 |
+| 4 | Policy Gate | frame/finite/valid-polygon/forbidden-zone/calibration-approved/profile-allows（座標は 9 named location と違い**無限**） | 未 |
+| 5 | audit/eval | x,y + `calibration_id` + source pixel を記録 | 未 |
+| 6 | Nav2 Bridge（L1） | **additive goal=(x,y[,yaw]) API は既に存在** | 実装済（`core.py:106` `_coord_from_goal`・INVALID_GOAL・navigate `core.py:160-197`・yaw drop／[12a:463](../mode-a/12a-integration-mode-a.md) 補遺・#223 additive） |
+
+- それでも action_map + MCP/Policy Gate は **bypass されない**。凍結は N-G1 multi-owner gate（L3 Handoff + Governance + Nav2 Bridge・[08:52](08-navigation-hardware-eval-gates.md)）経由。reject code は `invalid_coordinate_goal` / `coordinate_goal_unfrozen`（[08:52](08-navigation-hardware-eval-gates.md)）。座標キーは `warehouse_interfaces` に足さない＝contract ラベル不要。
+- Visual Resolver の pixel→homography→map→known-location snap の **offline core は既に存在**（`visual_resolver/resolver.py` `VisualTaskResolver`・`Calibration` = `validator/seams.py:24`）。欠けているのは **downstream contract + live calibration**（[../mode-x-er/07-implementation-status.md](../mode-x-er/07-implementation-status.md)）。
