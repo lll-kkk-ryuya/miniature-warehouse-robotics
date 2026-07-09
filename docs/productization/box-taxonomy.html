@@ -119,6 +119,7 @@
 <div class="nav">
   <a href="layer-l4-detail.html">▸ L4 詳細図（Super-Box 内部）</a>
   <a href="layer-l3-detail.html">▸ L3 詳細図（Planning Core）</a>
+  <a href="layer-l2-detail.html">▸ L2 詳細図（Contract / Governance / Traffic）</a>
   <a href="eval-sdk-detail.html">▸ eval-sdk 詳細図（観測・評価）</a>
   <a href="observability-tiering-detail.html">▸ 観測ログ 格納先 階層分離（Langfuse↔rosbag/audit/metrics）</a>
   <a href="eval-sdk-plugin-core-detail.html">▸ eval_sdk 拡張（core/plugin 3分割・指標の増やし方）</a>
@@ -130,7 +131,7 @@
 <div class="meta">
   正本: <a href="01-commercial-box-map.md"><code>docs/productization/01-commercial-box-map.md</code></a> §Box 種別と分類規則 ／
   本ページはその図解（補足資料）。定義・file:line は必ず <code>01</code>〜<code>08</code> の .md を一次ソースとする。
-  レイヤごとの詳細は上の <b>L4 / L3 詳細図</b>（L2/L1/L0 は今後）。
+  レイヤごとの詳細は上の <b>L4 / L3 / L2 詳細図</b>（L1/L0 は今後）。
 </div>
 
 <p>「box とは個々を組み合わせて再利用できる単位」という原則に対し、元の docs は3つの食い違う分類（map=Hermes を1箱に隔離 / 表=各箱を Hermes列・Bridge列に<b>縦割り</b> / 小設計=4箱）が混在し、seam（境界の写像）まで「box」として並んでいた。これを <b>1つの種別体系</b>に統一したのが今回の切り分け。</p>
@@ -151,7 +152,7 @@
 </div>
 
 <h2>1. 全体マップ（レイヤ × 種別）</h2>
-<p class="lead">縦＝リアルタイム性のレイヤ（L4 非RT … L0 即時）、色＝種別。L2 以下の7箱は安定アンカー。各レイヤの中身は <a href="layer-l4-detail.html">L4 詳細</a> / <a href="layer-l3-detail.html">L3 詳細</a> へ。</p>
+<p class="lead">縦＝リアルタイム性のレイヤ（L4 非RT … L0 即時）、色＝種別。L2 以下の7箱は安定アンカー。各レイヤの中身は <a href="layer-l4-detail.html">L4 詳細</a> / <a href="layer-l3-detail.html">L3 詳細</a> / <a href="layer-l2-detail.html">L2 詳細</a> へ。</p>
 
 <div class="layer L4">
   <div class="lh"><span>L4 — 入力・知覚 / オーケストレーション</span><span class="rt">Non-RT / external API</span></div>
@@ -181,7 +182,7 @@
 <div class="arrow-down">▼</div>
 
 <div class="layer L2">
-  <div class="lh"><span>L2 — 実行許可・交通管理</span><span class="rt">Soft-RT / Python + optional RMF</span></div>
+  <div class="lh"><span>L2 — 実行許可・交通管理 <a href="layer-l2-detail.html" style="font-size:11.5px;font-weight:600">▸ 詳細図</a></span><span class="rt">Soft-RT / Python + optional RMF</span></div>
   <div class="row">
     <div class="node n-box"><div class="t">Contract <span class="badge b-box">box</span></div><div class="s"><code>warehouse_interfaces</code>・凍結契約ハブ</div></div>
     <div class="node n-box"><div class="t">Governance <span class="badge b-box">box</span></div><div class="s"><code>warehouse_mcp_server</code>+Policy Gate・motion gate</div></div>
@@ -360,7 +361,7 @@
 </ul>
 
 <footer>
-  <p>このページは <code>docs/productization/box-taxonomy.html</code>（補足図解・ダークモード）。種別・file:line の一次ソースは <code>01</code>〜<code>08</code> の .md ／ レイヤ詳細は <a href="layer-l4-detail.html">L4</a> / <a href="layer-l3-detail.html">L3</a> ／ 横断観測 <a href="eval-sdk-detail.html">eval-sdk</a> / <a href="observability-tiering-detail.html">観測ログ格納先</a> / <a href="eval-sdk-plugin-core-detail.html">eval_sdk 拡張</a> / <a href="tool-catalog-detail.html">tool カタログ</a> / <a href="observability-open-problems-detail.html">未解決問題</a>。
+  <p>このページは <code>docs/productization/box-taxonomy.html</code>（補足図解・ダークモード）。種別・file:line の一次ソースは <code>01</code>〜<code>08</code> の .md ／ レイヤ詳細は <a href="layer-l4-detail.html">L4</a> / <a href="layer-l3-detail.html">L3</a> / <a href="layer-l2-detail.html">L2</a> ／ 横断観測 <a href="eval-sdk-detail.html">eval-sdk</a> / <a href="observability-tiering-detail.html">観測ログ格納先</a> / <a href="eval-sdk-plugin-core-detail.html">eval_sdk 拡張</a> / <a href="tool-catalog-detail.html">tool カタログ</a> / <a href="observability-open-problems-detail.html">未解決問題</a>。
   検証: <code>scripts/check_consistency.py</code> 0 ERROR ／ コード引用は実 Read で裏取り。</p>
   <p>Cursor で開く: <span class="kbd">python3 -m http.server 8123 --directory docs/productization</span> → <span class="kbd">Simple Browser: Show</span> → <span class="kbd">http://localhost:8123/box-taxonomy.html</span></p>
 </footer>

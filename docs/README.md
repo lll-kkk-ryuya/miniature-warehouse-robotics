@@ -71,6 +71,7 @@ docs/
 | [10-llm-assisted-rule-authoring](productization/10-llm-assisted-rule-authoring.md) | 顧客 rule を LLM 支援で site profile / plugin profile / fixture / simulation へ落とす設計 |
 | [l3-rule-authoring-detail](productization/l3-rule-authoring-detail.html) | LLM 支援 rule authoring の HTML 図解 |
 | [productization/l4](productization/l4/README.md) | L4 内部 sub-box の layer skeleton。Model Transport / Adapter の詳細設計 |
+| [11-l2-contract-governance-traffic-box](productization/11-l2-contract-governance-traffic-box.md) | L2（Contract / Governance / Traffic）の商用 box 設計。実行許可 accepted-motion gate・交通 X-lite/X-rmf・レイヤ番号対応 |
 
 ## mode-a/ — LLM単独交通管理
 
@@ -162,6 +163,7 @@ hard-to-reverse な設計判断とその理由を `NNNN-slug.md` で記録する
 | ファイル | 内容 |
 |---------|------|
 | [adr/README](adr/README.md) | ADR 一覧・命名・いつ起こすか（3条件）・retrospectives との違い |
+| [0004-l2-restrict-only-policy-profile](adr/0004-l2-restrict-only-policy-profile.md) | L2 Governance は自由 plugin 化せず data-only restrict-only policy profile に閉じる（凍結値=floor・緩い値は起動拒否・v1 code plugin 不採用）。ADR-0003（L3）と対 |
 | [0003-bridge-local-manifest-composition](adr/0003-bridge-local-manifest-composition.md) | bridge-local run manifest + fail-closed plugin composition を A案で標準化（manifest resolution 層／namespaced plugin code〔9-enum 非改変〕／advisory trust／ISOLATE_PLUGIN／safety-critical profile hash gate）。実装 = offline spike 済・配線 XER6 pending |
 | [0002-er-in-hermes-standard](adr/0002-er-in-hermes-standard.md) | ER-in-Hermes を標準 transport に採用（fork gateway 8644 一本で全 modality／`direct`=緊急 fallback／Langfuse Pattern A 現行・Pattern B は HLF gate 後）。実装は TARGET |
 | [0001-adopt-grill-with-docs-and-canonical-glossary](adr/0001-adopt-grill-with-docs-and-canonical-glossary.md) | docs authoring 規律として grill-with-docs skill 群＋単一正準 `docs/GLOSSARY.md`＋ADR 実践を採用 |
