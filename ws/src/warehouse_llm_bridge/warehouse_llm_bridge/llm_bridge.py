@@ -163,6 +163,9 @@ class LlmBridge(Node):
             state_store=state_store,
             nav2_forwarder=nav2_forwarder,
             negotiation_starter=self._publish_negotiation_start,
+            # Config-driven Policy Gate freshness windows (cfg["policy_gate"],
+            # base defaults 0.5/2.0; doc12 §stale 判定). Absent block => defaults.
+            config=cfg,
         )
         # Commander cadence is config-driven (cfg["cycle"], doc08:121-128 / README:88-91):
         # the configured TOTAL span minus typical response = the post-response idle wait.

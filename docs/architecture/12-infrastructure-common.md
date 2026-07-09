@@ -343,7 +343,7 @@ class StateCacheNode(Node):
 
 ### stale 判定
 
-Warehouse MCP Server（Policy Gate）側で、**top-level `timestamp` の経過時間**に応じて robot 鮮度を判定する。鮮度はスナップショット単位（全 robot 共通）で、`availability` は **契約フィールドではなく MCP が局所導出**する（#5 が明示的な `availability` を出すまでの暫定。実装: `warehouse_mcp_server.policy_gate`）:
+Warehouse MCP Server（Policy Gate）側で、**top-level `timestamp` の経過時間**に応じて robot 鮮度を判定する。鮮度はスナップショット単位（全 robot 共通）で、`availability` は **契約フィールドではなく MCP が局所導出**する（#5 が明示的な `availability` を出すまでの暫定。実装: `warehouse_mcp_server.policy_gate`）。**しきい値は config キー** `policy_gate.stale_after_s` / `policy_gate.unavailable_after_s`（`config/warehouse.base.yaml` の base 既定 **0.5 / 2.0**・env overlay で **tighten のみ可**・additive）で、下の code は**既定値**を示す（`FreshnessThresholds` が seed）。**fail-closed & tighten-only 検証**（[ADR-0004](../adr/0004-l2-restrict-only-policy-profile.md) L2 restrict-only）: 非数値・非有限・`<=0`・**既定より緩い値**（`stale_after_s > 0.5` / `unavailable_after_s > 2.0`＝凍結既定が上限。overlay は窓を縮める＝厳しくする方向のみ）・`stale_after_s > unavailable_after_s`・**非 mapping な `policy_gate` block** は起動拒否し、既定への黙示 fallback をしない（overlay は既定 **0.5/2.0 以下**に有界）。物理根拠: <=0.3 m/s で凍結既定は未観測走行を 1.8m ジオラマ内に収める（0.3×2.0=0.6m）が、より緩い窓は超える（`warehouse_interfaces/config.py:11-12,:101` の config-may-lower-never-raise / `MAX_LINEAR_VELOCITY` cap 前例に倣う）。既定は現行値と同一で gating を緩めず、全環境で prod と同一 gating（sim も mirror・operator 決定）。用語集: `GLOSSARY.md` の `policy_gate`（config sub-tree）:
 
 ```python
 # warehouse_mcp_server/policy_gate.py（要点）

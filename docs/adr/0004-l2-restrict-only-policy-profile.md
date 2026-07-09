@@ -22,7 +22,7 @@ L2 の案件差分 = **data-only restrict-only policy profile**。
 
 - restrict-only は表現力を落とす（役割別・時間帯別 policy の新 check は v1 で書けない）。
 - floor + fail-closed は運用の柔軟性を削る（境界値を緩めて回避、ができない）。
-- per-knob の安全方向を**人が決める**必要がある。freshness 窓の loosen 問題（`feat/policy-gate-freshness-config` は窓を `MAX_FRESHNESS_S=10.0` まで広げることも許す＝厳密 tighten-only でない）が実例＝**REVIEW POINT・未決**。
+- per-knob の安全方向を**人が決める**必要がある。freshness 窓の loosen 問題（`feat/policy-gate-freshness-config`）は **2026-07-09 裁定済み: ① tighten-only 採用**（PR #427 で実装。凍結既定 0.5/2.0 を上限に縮める方向のみ許可・旧 `MAX_FRESHNESS_S=10.0` ceiling は撤去）。
 
 ## Considered Options / 却下
 
@@ -33,7 +33,7 @@ L2 の案件差分 = **data-only restrict-only policy profile**。
 
 - 正本の展開は [11 §2026-07-09 補足: 二段ゲートと L2 policy profile](../productization/11-l2-contract-governance-traffic-box.md) §②（本 round で追記）。
 - [ADR-0003](0003-bridge-local-manifest-composition.md)（L3=narrow-only allowlist・downward-only clamp＝:30）と**対**をなす：L3=narrow-only allowlist / L2=floor+restrict-only profile。
-- `feat/policy-gate-freshness-config`（未 land）が restrict-only の in-flight 最初の例。loosen tension は未決（REVIEW POINT）。
+- `feat/policy-gate-freshness-config`（PR #427）が restrict-only の最初の実装例。loosen tension は **裁定済み（① tighten-only 採用・PR #427 で実装）**。
 - 本 ADR は [adr/README](README.md)・[GLOSSARY §10](../GLOSSARY.md)・[11 §2026-07-09 補足](../productization/11-l2-contract-governance-traffic-box.md) から back-link される。
 
 ## References（`origin/main` で検証済み file:line）

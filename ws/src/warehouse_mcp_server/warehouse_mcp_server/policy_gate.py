@@ -19,7 +19,9 @@ stores / paths). No rclpy, no network: fully unit-testable.
 """
 
 import asyncio
+import math
 import time
+from dataclasses import dataclass
 
 from warehouse_interfaces.locations import is_known_location
 from warehouse_interfaces.safety import battery_allows_new_task, battery_is_critical
@@ -31,8 +33,102 @@ WAIT_PLACEHOLDER = "_wait"
 
 # Robot state freshness windows (doc15 §Policy Gate availability). Derived locally
 # from StateSnapshot.timestamp until #5 publishes an explicit availability field.
+# These module constants remain the single DEFAULT source: they seed
+# ``FreshnessThresholds`` below and are imported directly by other lanes (e.g.
+# ``warehouse_llm_bridge.self_action_gate``), so they must not be removed.
+#
+# They are ALSO the hard CEILINGS for any config overlay (tighten-only, ADR-0004
+# L2 restrict-only policy profile): a ``policy_gate`` overlay may only SHRINK a
+# window below the frozen default, never loosen it. A looser value is refused at
+# startup (fail-closed). The rationale is physical: at the <=0.3 m/s miniature
+# scale (rules/safety.md), the frozen defaults bound the unobserved-travel
+# envelope (0.3 m/s * 2.0s = 0.6m < the 1.8m diorama), whereas an earlier proposed
+# 10.0s ceiling would have allowed 0.3 m/s * 10.0s = 3.0m > 1.8m — i.e. it did NOT
+# bound the physical envelope, so it is dropped. Mirrors the
+# config-may-lower-never-raise precedent warehouse_interfaces/config.py:11-12,:101
+# (safety.max_linear_velocity).
 STALE_AFTER_S = 0.5
 UNAVAILABLE_AFTER_S = 2.0
+
+
+@dataclass(frozen=True)
+class FreshnessThresholds:
+    """Robot-state freshness windows for the Policy Gate (doc12 §stale 判定 =
+    ``docs/architecture/12-infrastructure-common.md:344-370``).
+
+    ``stale_after_s`` — snapshot age beyond which a robot is ``robot_stale``
+    (dispatch rejected, cancel/charging still allowed). ``unavailable_after_s`` —
+    age beyond which it is ``robot_unavailable`` (all commands rejected). Defaults
+    mirror the frozen module constants (0.5 / 2.0) so every existing call site is
+    unchanged (additive-first, parallel-workflow.md §7.2).
+
+    Fail-closed & tighten-only (ADR-0004 L2 restrict-only policy profile): a value
+    that is non-numeric, non-finite, non-positive, LOOSER than the frozen default
+    (``stale_after_s > STALE_AFTER_S`` or ``unavailable_after_s >
+    UNAVAILABLE_AFTER_S``), or with ``stale_after_s > unavailable_after_s`` is
+    REFUSED at construction (``ValueError``). Config may only TIGHTEN (shrink) a
+    window, never loosen it, so a malformed OR loosening overlay refuses startup
+    instead of silently widening — or disabling — freshness gating.
+    """
+
+    stale_after_s: float = STALE_AFTER_S
+    unavailable_after_s: float = UNAVAILABLE_AFTER_S
+
+    def __post_init__(self) -> None:
+        """Validate both windows fail-closed at construction (independent oracle)."""
+        for name, value, ceiling in (
+            ("stale_after_s", self.stale_after_s, STALE_AFTER_S),
+            ("unavailable_after_s", self.unavailable_after_s, UNAVAILABLE_AFTER_S),
+        ):
+            # bool is an int subclass but is never a valid duration.
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise ValueError(f"policy_gate.{name} must be a number, got {value!r}")
+            if not math.isfinite(value):
+                raise ValueError(f"policy_gate.{name} must be finite, got {value!r}")
+            if value <= 0:
+                raise ValueError(f"policy_gate.{name} must be > 0, got {value!r}")
+            # Tighten-only ceiling (ADR-0004 restrict-only): the frozen default IS
+            # the upper bound. A looser (larger) window is refused so an overlay can
+            # only SHRINK the window, never widen — or disable — freshness gating.
+            if value > ceiling:
+                raise ValueError(
+                    f"policy_gate.{name}={value} exceeds the frozen default ceiling "
+                    f"{ceiling}s (tighten-only: config may only shrink a freshness "
+                    "window, never loosen it; ADR-0004 L2 restrict-only)"
+                )
+        if self.stale_after_s > self.unavailable_after_s:
+            raise ValueError(
+                "policy_gate.stale_after_s must be <= unavailable_after_s "
+                f"(got stale={self.stale_after_s}, unavailable={self.unavailable_after_s})"
+            )
+
+
+def freshness_from_config(config: dict | None) -> FreshnessThresholds:
+    """Resolve :class:`FreshnessThresholds` from a loaded config dict (base + overlay).
+
+    Reads the additive ``policy_gate`` block (``config/warehouse.base.yaml``, base
+    defaults 0.5 / 2.0). An ABSENT block (``None``) or an absent key falls back to
+    the module-constant default (current behaviour, never loosened). A present but
+    STRUCTURALLY malformed block (not a mapping) or a malformed value fails closed
+    (``ValueError``) so startup is refused rather than silently reverting to
+    defaults (doc12 §stale 判定: 既定への黙示 fallback をしない).
+    """
+    block = (config or {}).get("policy_gate")
+    if block is None:
+        return FreshnessThresholds()
+    if not isinstance(block, dict):
+        # e.g. `policy_gate: 5` / `"hello"` / `[1, 2]`: a structurally malformed
+        # block must fail closed uniformly (not TypeError, not silent defaults).
+        raise ValueError(
+            f"config policy_gate must be a mapping, got {type(block).__name__}: {block!r}"
+        )
+    kwargs: dict[str, float] = {}
+    if "stale_after_s" in block:
+        kwargs["stale_after_s"] = block["stale_after_s"]
+    if "unavailable_after_s" in block:
+        kwargs["unavailable_after_s"] = block["unavailable_after_s"]
+    return FreshnessThresholds(**kwargs)
+
 
 # Minimum gap between two commands to the same robot (doc15 §rate limit).
 RATE_LIMIT_S = 0.5
@@ -77,22 +173,29 @@ def check_battery(battery: int | None) -> str | None:
 
 
 def check_robot_state(
-    robot_snapshot: dict | None, now: float, snapshot_ts: float | None
+    robot_snapshot: dict | None,
+    now: float,
+    snapshot_ts: float | None,
+    *,
+    stale_after_s: float = STALE_AFTER_S,
+    unavailable_after_s: float = UNAVAILABLE_AFTER_S,
 ) -> str | None:
     """Reject an unknown or stale robot.
 
     ``robot_snapshot`` is the per-robot entry from ``state.json``; ``None`` means
     the robot is unknown. Availability is derived locally from the snapshot age
     (``now - snapshot_ts``) since the contract carries no availability field yet
-    (TODO: coordinate with #5).
+    (TODO: coordinate with #5). The two freshness windows default to the module
+    constants (0.5 / 2.0) and are overridable from config (doc12 §stale 判定); the
+    calling :class:`PolicyGate` passes its validated thresholds through.
     """
     if robot_snapshot is None:
         return "unknown_robot"
     if snapshot_ts is not None:
         age = now - snapshot_ts
-        if age > UNAVAILABLE_AFTER_S:
+        if age > unavailable_after_s:
             return "robot_unavailable"
-        if age > STALE_AFTER_S:
+        if age > stale_after_s:
             return "robot_stale"
     return None
 
@@ -161,13 +264,18 @@ class PolicyGate:
         state_store: StateStore | None = None,
         *,
         emergency: set[str] | None = None,
+        freshness: FreshnessThresholds | None = None,
     ) -> None:
         """Wire the gate.
 
         ``state_store`` defaults to the shared :class:`FileStateStore`.
         ``emergency`` seeds the in-memory emergency set (for tests / recovery).
+        ``freshness`` overrides the robot-state freshness windows (config-driven,
+        doc12 §stale 判定); it defaults to :class:`FreshnessThresholds` (0.5 / 2.0),
+        so every existing call site keeps its current gating unchanged.
         """
         self._state_store = state_store or FileStateStore()
+        self._freshness = freshness if freshness is not None else FreshnessThresholds()
         self.active_tasks: dict[str, str] = {}
         self._dropoffs: dict[str, str] = {}
         self._emergency: set[str] = set(emergency or set())
@@ -262,7 +370,13 @@ class PolicyGate:
             # unknown_robot instead).
             robots = state.get("robots") or {}
             snapshot = robots.get(robot)
-            reason = check_robot_state(snapshot, now, self._snapshot_ts(state))
+            reason = check_robot_state(
+                snapshot,
+                now,
+                self._snapshot_ts(state),
+                stale_after_s=self._freshness.stale_after_s,
+                unavailable_after_s=self._freshness.unavailable_after_s,
+            )
             if reason:
                 return reason
             battery = snapshot.get("battery") if isinstance(snapshot, dict) else None
@@ -366,7 +480,13 @@ class PolicyGate:
                 return DispatchResult(accepted=False, reason="state_timestamp_corrupt")
             robots = state.get("robots") or {}
             snapshot = robots.get(robot)
-            reason = check_robot_state(snapshot, when, self._snapshot_ts(state))
+            reason = check_robot_state(
+                snapshot,
+                when,
+                self._snapshot_ts(state),
+                stale_after_s=self._freshness.stale_after_s,
+                unavailable_after_s=self._freshness.unavailable_after_s,
+            )
             if reason:
                 return DispatchResult(accepted=False, reason=reason)
             reason = check_emergency(robot, self._emergency)
