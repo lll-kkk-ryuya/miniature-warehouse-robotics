@@ -1,0 +1,24 @@
+# Variant B — one real zone plugin (shared by B-in / B-out sub-variants; the zone polygon is
+# constructor-injected via plugin_factories, so the composed manifest is identical for both).
+schema_version: run_manifest.v1
+run_id: xer6_live_matrix_b_zone
+boxes:
+  l4_bridge:
+    enabled: true
+    profile: x_er_commander
+  l3_validator:
+    enabled: true
+    profile: x_lite_default
+    plugins:
+      - id: l3.zone_policy
+        version: 0.1.0
+        profile: customer_a
+  l2_governance:
+    enabled: true
+    profile: mini_warehouse_default
+expected_emitters:
+  - l4_bridge
+  - l3_validator
+  - l2_governance
+score_specs:
+  - result

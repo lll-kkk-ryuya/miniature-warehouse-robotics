@@ -1,0 +1,21 @@
+# DEV/DRAFT plugin manifest (doc09:231-257 shape). Clamp probe: requests emergency_stop
+# without allowlist membership -> policy must clamp to block (plugin_results.py:312-321).
+plugin_id: l3.escalation_probe
+box: l3_validator
+kind: plugin
+version: 0.1.0
+status: draft
+hook_points:
+  - validate_plan
+emits:
+  box: l3_validator
+  reason_codes:
+    - keepout_breach
+requires:
+  artifacts: []
+  profiles:
+    - customer_a
+fixtures: []
+safety_boundary:
+  may_dispatch_motion: false
+  may_write_cmd_vel: false

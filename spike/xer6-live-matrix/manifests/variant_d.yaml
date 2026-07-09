@@ -1,0 +1,24 @@
+# Variant D — emergency-escalation clamp probe (plugin requests emergency_stop while not
+# allowlisted; the narrow-only dispatch policy must clamp it to block, clamped_from recorded).
+schema_version: run_manifest.v1
+run_id: xer6_live_matrix_d_clamp
+boxes:
+  l4_bridge:
+    enabled: true
+    profile: x_er_commander
+  l3_validator:
+    enabled: true
+    profile: x_lite_default
+    plugins:
+      - id: l3.escalation_probe
+        version: 0.1.0
+        profile: customer_a
+  l2_governance:
+    enabled: true
+    profile: mini_warehouse_default
+expected_emitters:
+  - l4_bridge
+  - l3_validator
+  - l2_governance
+score_specs:
+  - result
