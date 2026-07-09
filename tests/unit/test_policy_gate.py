@@ -1,11 +1,15 @@
 """Policy Gate pure-check + atomic-validate tests (doc15 §Policy Gate / §4)."""
 
 import asyncio
+from datetime import datetime
 from pathlib import Path
 
 import pytest
 from warehouse_interfaces.stores import FileStateStore
 from warehouse_mcp_server.policy_gate import (
+    STALE_AFTER_S,
+    UNAVAILABLE_AFTER_S,
+    FreshnessThresholds,
     PolicyGate,
     check_battery,
     check_duplicate_destination,
@@ -14,6 +18,7 @@ from warehouse_mcp_server.policy_gate import (
     check_rate_limit,
     check_robot_state,
     check_same_location,
+    freshness_from_config,
 )
 
 # ── pure checks ─────────────────────────────────────────────────────────────
@@ -262,3 +267,206 @@ def test_pickup_none_passes_location_stage(tmp_path: Path) -> None:
         )
     )
     assert res.accepted is True
+
+
+# ── config-driven freshness windows (doc12 §stale 判定) ───────────────────────
+
+
+@pytest.mark.safety
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("age", "expected"),
+    [
+        (0.4, None),  # < STALE (0.5) → fresh / allowed
+        (0.5, None),  # AT the stale window: `age > 0.5` is False (guards > vs >=)
+        (0.6, "robot_stale"),  # just past STALE
+        (1.9, "robot_stale"),  # still < UNAVAILABLE (2.0)
+        (2.0, "robot_stale"),  # AT the unavailable window: `age > 2.0` is False (guards > vs >=)
+        (2.1, "robot_unavailable"),  # just past UNAVAILABLE
+    ],
+)
+def test_robot_state_default_boundaries(age: float, expected: str | None) -> None:
+    # Independent oracle: the reason is derived from age-vs-threshold semantics
+    # (STALE_AFTER_S=0.5, UNAVAILABLE_AFTER_S=2.0), not from re-reading the impl.
+    # snapshot_ts=0.0, now=age → age is exact, so the AT-window rows pin the
+    # boundary operator (a >/>= mutation flips 0.5→robot_stale / 2.0→robot_unavailable).
+    snap = {"battery": 90}
+    assert check_robot_state(snap, now=age, snapshot_ts=0.0) == expected
+
+
+@pytest.mark.safety
+@pytest.mark.unit
+def test_check_robot_state_config_override_shifts_boundary() -> None:
+    # With wider windows (stale=1.0 / unavailable=3.0) the SAME ages that would be
+    # stale/unavailable under the defaults shift accordingly. A mutation that swaps
+    # the two threshold args flips 1.5s from robot_stale to robot_unavailable.
+    snap = {"battery": 90}
+    assert (
+        check_robot_state(snap, now=0.7, snapshot_ts=0.0, stale_after_s=1.0, unavailable_after_s=3.0)
+        is None  # 0.7 < 1.0 → fresh (robot_stale under the 0.5 default)
+    )
+    assert (
+        check_robot_state(snap, now=1.5, snapshot_ts=0.0, stale_after_s=1.0, unavailable_after_s=3.0)
+        == "robot_stale"
+    )
+    assert (
+        check_robot_state(snap, now=3.1, snapshot_ts=0.0, stale_after_s=1.0, unavailable_after_s=3.0)
+        == "robot_unavailable"
+    )
+
+
+@pytest.mark.safety
+@pytest.mark.unit
+def test_gate_config_override_end_to_end(tmp_path: Path) -> None:
+    # Prove the non-default thresholds actually flow through PolicyGate → gating.
+    store = FileStateStore(tmp_path / "state.json")
+    store.write(
+        {
+            "timestamp": "2026-05-30T12:00:00",
+            "robots": {"bot1": {"battery": 90, "status": "idle"}},
+        }
+    )
+    ts = datetime.fromisoformat("2026-05-30T12:00:00").timestamp()
+    freshness = FreshnessThresholds(stale_after_s=1.0, unavailable_after_s=3.0)
+
+    # 0.7s age: robot_stale under defaults, but ACCEPTED under the widened window.
+    gate = PolicyGate(store, freshness=freshness)
+    ok = asyncio.run(
+        gate.validate_and_register_dispatch(
+            robot="bot1", dropoff="berth_A", action="deliver", now=ts + 0.7
+        )
+    )
+    assert ok.accepted is True
+
+    # 1.5s age now crosses the shifted stale window.
+    gate2 = PolicyGate(store, freshness=freshness)
+    stale = asyncio.run(
+        gate2.validate_and_register_dispatch(
+            robot="bot1", dropoff="berth_A", action="deliver", now=ts + 1.5
+        )
+    )
+    assert stale.accepted is False
+    assert stale.reason == "robot_stale"
+
+
+@pytest.mark.safety
+@pytest.mark.unit
+def test_freshness_from_config_resolution() -> None:
+    # Absent block / absent config → module-constant defaults (never loosened).
+    for cfg in (None, {}, {"policy_gate": {}}):
+        ft = freshness_from_config(cfg)
+        assert (ft.stale_after_s, ft.unavailable_after_s) == (STALE_AFTER_S, UNAVAILABLE_AFTER_S)
+    # Present block → config values are honoured.
+    ft = freshness_from_config({"policy_gate": {"stale_after_s": 0.8, "unavailable_after_s": 2.5}})
+    assert (ft.stale_after_s, ft.unavailable_after_s) == (0.8, 2.5)
+
+
+@pytest.mark.safety
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"stale_after_s": float("inf")},  # non-finite
+        {"unavailable_after_s": float("nan")},  # non-finite
+        {"stale_after_s": float("-inf")},  # non-finite
+        {"stale_after_s": 0.0},  # <= 0
+        {"stale_after_s": -0.5},  # <= 0
+        {"unavailable_after_s": -1.0},  # <= 0
+        {"stale_after_s": "0.5"},  # non-numeric (config typo)
+        {"stale_after_s": True},  # bool is not a valid duration
+        {"stale_after_s": 3.0, "unavailable_after_s": 1.0},  # stale > unavailable
+        # Upper ceiling (defang guard): valid-but-huge windows are refused even
+        # when internally consistent (stale <= unavailable). At >MAX_FRESHNESS_S a
+        # minutes-stale robot would never reach robot_unavailable / be dispatched.
+        {"stale_after_s": 0.5, "unavailable_after_s": 9999},  # unavailable > ceiling
+        {"stale_after_s": 999, "unavailable_after_s": 9999},  # both > ceiling
+        {"stale_after_s": 10.0001},  # just past the 10.0s ceiling
+    ],
+)
+def test_malformed_freshness_refuses_construction(kwargs: dict) -> None:
+    # Fail-closed: a malformed value must REFUSE at construction, never silently
+    # fall back to defaults / disable gating.
+    with pytest.raises(ValueError):
+        FreshnessThresholds(**kwargs)
+
+
+@pytest.mark.safety
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "block",
+    [
+        {"stale_after_s": 5.0, "unavailable_after_s": 1.0},  # stale > unavailable
+        {"unavailable_after_s": -1},  # <= 0
+        {"stale_after_s": float("inf")},  # non-finite
+        {"unavailable_after_s": 9999},  # > MAX_FRESHNESS_S (defang guard)
+    ],
+)
+def test_malformed_config_refuses_gate_construction(block: dict) -> None:
+    # The same fail-closed refusal reaches PolicyGate via the config path
+    # (WarehouseTools builds its default gate from freshness_from_config).
+    with pytest.raises(ValueError):
+        PolicyGate(freshness=freshness_from_config({"policy_gate": block}))
+
+
+@pytest.mark.safety
+@pytest.mark.unit
+@pytest.mark.parametrize("block", [5, 0.7, "hello", [1, 2], (1, 2)])
+def test_non_mapping_policy_gate_block_fails_closed(block: object) -> None:
+    # A structurally malformed block (not a mapping / not None) must fail closed
+    # UNIFORMLY as ValueError — never a raw TypeError, never silent defaults
+    # (doc12 §stale 判定: 既定への黙示 fallback をしない).
+    with pytest.raises(ValueError):
+        freshness_from_config({"policy_gate": block})
+
+
+@pytest.mark.safety
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("age", "expected"),
+    [
+        (0.9, None),  # < stale (1.0) → fresh
+        (1.0, None),  # AT stale: `age > 1.0` is False → fresh (pins > not >= for stale)
+        (1.5, "robot_stale"),  # in the widened stale band
+        (2.9, "robot_stale"),  # still < unavailable (3.0)
+        (3.0, "robot_stale"),  # AT unavailable: `age > 3.0` False → robot_stale, NOT
+        #                        robot_unavailable (pins > not >= AND that the equal
+        #                        boundary is not the unavailable-first branch)
+        (3.1, "robot_unavailable"),  # just past unavailable
+    ],
+)
+def test_injected_override_boundary_semantics(age: float, expected: str | None) -> None:
+    # Independent oracle: age-vs-(1.0, 3.0). snapshot_ts=0.0, now=age → exact ages,
+    # so the AT-window rows pin the strict `>` operator on the INJECTED thresholds
+    # (not just the module defaults).
+    snap = {"battery": 90}
+    assert (
+        check_robot_state(snap, now=age, snapshot_ts=0.0, stale_after_s=1.0, unavailable_after_s=3.0)
+        == expected
+    )
+
+
+@pytest.mark.safety
+@pytest.mark.unit
+def test_negative_age_treated_fresh() -> None:
+    # Clock skew / a future-dated snapshot yields a negative age. Documented
+    # behavior: negative age is neither stale nor unavailable → fresh (None).
+    # (now < snapshot_ts: `age > threshold` is False for both positive thresholds.)
+    snap = {"battery": 90}
+    assert check_robot_state(snap, now=99.0, snapshot_ts=100.0) is None  # age = -1.0
+
+
+@pytest.mark.safety
+@pytest.mark.unit
+def test_equal_thresholds_allowed_and_stale_unreachable() -> None:
+    # stale_after_s == unavailable_after_s is ALLOWED (only `stale > unavailable`
+    # is rejected; equal is stricter, not looser). Documented consequence: with a
+    # zero-width stale band, robot_stale becomes UNREACHABLE — any age past the
+    # shared threshold trips robot_unavailable (checked first); at exactly the
+    # threshold both `>` are False → fresh.
+    ft = FreshnessThresholds(stale_after_s=2.0, unavailable_after_s=2.0)
+    assert (ft.stale_after_s, ft.unavailable_after_s) == (2.0, 2.0)
+    snap = {"battery": 90}
+    kw = {"stale_after_s": 2.0, "unavailable_after_s": 2.0}
+    assert check_robot_state(snap, now=1.9, snapshot_ts=0.0, **kw) is None  # AT/below → fresh
+    assert check_robot_state(snap, now=2.0, snapshot_ts=0.0, **kw) is None  # exactly equal → fresh
+    assert check_robot_state(snap, now=2.1, snapshot_ts=0.0, **kw) == "robot_unavailable"  # never stale

@@ -32,7 +32,7 @@ from warehouse_interfaces.stores import FileStateStore, StateStore
 from warehouse_mcp_server.audit import CommandAuditLog
 from warehouse_mcp_server.gen_check import GenChecker, GenCheckResult
 from warehouse_mcp_server.nav2_client import Nav2Forwarder, plan_nav2_request
-from warehouse_mcp_server.policy_gate import PolicyGate
+from warehouse_mcp_server.policy_gate import PolicyGate, freshness_from_config
 
 log = logging.getLogger(__name__)
 
@@ -108,7 +108,13 @@ class WarehouseTools:
         so it is NOT a motion forward and is unaffected by the R-26 ``_maybe_forward`` gate.
         """
         self._gen_checker = gen_checker or GenChecker()
-        self._policy_gate = policy_gate or PolicyGate(state_store)
+        # A default PolicyGate resolves its freshness windows from config
+        # (``policy_gate`` block, base defaults 0.5/2.0; doc12 §stale 判定). A
+        # malformed value fails closed here = startup refusal. An explicitly
+        # injected gate (tests) is used as-is.
+        self._policy_gate = policy_gate or PolicyGate(
+            state_store, freshness=freshness_from_config(config)
+        )
         self._audit = audit or CommandAuditLog()
         self._state_store = state_store or FileStateStore()
         self._config = config or {}

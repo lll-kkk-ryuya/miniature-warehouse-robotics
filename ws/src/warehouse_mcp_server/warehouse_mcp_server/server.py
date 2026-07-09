@@ -11,6 +11,8 @@ Every tool's JSON schema marks ``gen_id`` as required (B-3, doc15 §2).
 
 from typing import Any
 
+from warehouse_interfaces.config import load_config
+
 from warehouse_mcp_server.tools import WarehouseTools
 
 # Shared property block: every tool requires gen_id (doc15 §2 B-3 guard).
@@ -138,7 +140,13 @@ def main() -> None:
 
     import asyncio
 
-    tools = WarehouseTools()
+    # Resolve config so the stdio Hermes child honours the SAME Policy Gate
+    # freshness overrides (and fail-closed validation) as the in-process bridge
+    # (llm_bridge.py:103). Without this the two paths would gate the same fleet
+    # divergently and malformed config would never be caught on the stdio path.
+    # load_config() is the existing loader (no new plumbing); a malformed config
+    # legitimately fails closed here rather than silently using hardcoded windows.
+    tools = WarehouseTools(config=load_config())
     schemas = _tool_schemas()
     server: Any = Server("warehouse-mcp-server")
 

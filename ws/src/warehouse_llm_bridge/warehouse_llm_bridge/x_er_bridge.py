@@ -216,6 +216,9 @@ if _NODE_IMPORT_ERROR is None:
                 gen_checker=GenChecker(self._gen_store, FileIdempotencyStore()),
                 state_store=FileStateStore(),
                 nav2_forwarder=resolve_nav2_forwarder(cfg),
+                # Config-driven Policy Gate freshness windows (cfg["policy_gate"],
+                # base defaults 0.5/2.0; doc12 §stale 判定). Absent block => defaults.
+                config=cfg,
             )
             self._tool_executor = DispatchToolExecutor(self._tools.dispatch)
             # v0 request source (dev-only, provisional): only consumed when set. A
