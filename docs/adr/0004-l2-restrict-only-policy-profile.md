@@ -15,7 +15,7 @@ L2 の案件差分 = **data-only restrict-only policy profile**。
 - 凍結値（battery `10`/`20` = [safety.py](../../ws/src/warehouse_interfaces/warehouse_interfaces/safety.py):21-22・`MAX_LINEAR_VELOCITY 0.3` = :18）は hard **FLOOR**。緩い profile 値 = **起動拒否（fail-closed）**＝[09 §startup fail-closed composition preflight](../productization/09-run-manifest-and-plugin-composition.md):356 の精神。config は下げられても上げられない前例（[safety.py](../../ws/src/warehouse_interfaces/warehouse_interfaces/safety.py):11-12）と同型。
 - profile は **締める/止めるのみ**（reject を accepted へ巻き戻さない・accepted-motion gate を弱化しない）。合成 = AND。
 - **v1 では L2 で in-proc code plugin を不採用**（trust ADVISORY ゆえ・[adr/0003](0003-bridge-local-manifest-composition.md):31）。L3 の自由 plugin 化とは非対称。
-- 語彙は frozen 14-code core（[11 §Governance](../productization/11-l2-contract-governance-traffic-box.md)・`policy_gate.py`）を安定に保つ。profile で新 reject code を mint しない。profile 由来 reject の namespaced pattern（[09](../productization/09-run-manifest-and-plugin-composition.md):368 の `<plugin_id>:<reason_code>` 同形）は**候補だが未凍結**。
+- 語彙は既存 14-code catalog（[11 §Governance](../productization/11-l2-contract-governance-traffic-box.md)・`policy_gate.py` の実装済み文字列リテラル＝`warehouse_interfaces` 凍結契約ではない）を安定に保つ。profile で新 reject code を mint しない。profile 由来 reject の namespaced pattern（[09](../productization/09-run-manifest-and-plugin-composition.md):368 の `<plugin_id>:<reason_code>` 同形）は**候補だが未凍結**。
 - profile は **data artifact**。run manifest を config source に格上げしない（manifest=record・[01](../productization/01-commercial-box-map.md):170 F2 loading owner 未定義）。
 
 ## トレードオフ / Trade-offs

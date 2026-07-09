@@ -114,7 +114,7 @@ L2 が持たないもの:
 
 ### Policy Gate reject reason catalog（実装済み語彙の転記・新設しない）
 
-しきい値の出所: battery は Contract Box（`safety.py`）、鮮度・rate は Governance 定数（`policy_gate.py:34-41`、doc の stale 判定表は [12:344-370](../architecture/12-infrastructure-common.md)）。
+しきい値の出所: battery は Contract Box（`safety.py`）、鮮度・rate は Governance 定数（symbol: `policy_gate.py` `STALE_AFTER_S`/`UNAVAILABLE_AFTER_S`/`RATE_LIMIT_S`/`CHARGING_NOT_NEEDED_ABOVE`、doc の stale 判定表は [12:344-370](../architecture/12-infrastructure-common.md)）。
 
 | 系統 | reason code | 条件 |
 |---|---|---|
