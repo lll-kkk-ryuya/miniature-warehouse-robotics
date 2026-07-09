@@ -42,3 +42,14 @@
 |---|---|---|---|
 | L8 | 新規 `.claude/hooks/*.py`（`guard-dangerous-git.py`）が **ruff format 未適用**で CI `Ruff + pytest`（`ruff format --check`）を落とした。ruff の format スコープは `ws/src` だけでなく **`.claude/hooks/*.py` も含む**（~302 files 対象）。`ruff check`（lint）は緑でも format ずれは別途落ちる。 | `.claude/hooks/` に Python を足したら push 前に **`ruff format`** を必ずかけ、CI と同じ **`ruff format --check`** をローカルで通す。 | 本 doc / [doc20 §3 Lint/Format](../architecture/20-dev-quality-and-testing.md) / [hooks/README](../../.claude/hooks/README.md) |
 | L9 | stacked PR の親（#393）を **`gh pr merge --delete-branch`** で merge したら、子 PR（#394・base=親ブランチ）が GitHub に**自動 CLOSE**され（base ブランチ削除で close 扱い・**reopen 不可・retarget 不可**）、作り直しになった。 | stacked PR は **①子を先に merge**、または **②親 merge 後に子ブランチへ `git merge origin/main` で reconcile（衝突解決）→ main 宛の新 PR を作り直す**。親を `--delete-branch` で消す前に子の扱いを決める。squash 故に子は親 squash commit を ancestor に持たない（[§7.3 squash 掃除](../../.claude/rules/parallel-workflow.md)と同根の落とし穴）。 | 本 doc / [parallel-workflow.md §7.3](../../.claude/rules/parallel-workflow.md) / [merge-and-communication.md §3](../../.claude/rules/merge-and-communication.md) |
+
+## サイクル（2026-07-08）: XER6 live-matrix（live ER→L3→dispatch 一本化）
+
+**この回の成果**: live ER（8644 fork）→ handoff → plugin composition → L3 → frozen `Command` → Policy Gate → dispatch 記帳（0 actuation）→ goal_result → 赤→青**順序**まで live で一本化（12/12 sends は live・全 Hermes・ER median 4.68s。cycle2 の 2nd ER call は envelope replay）。harness が node の backbone を駆動（**RUNNING node ではない**＝OFFLINE-WIRED≠RUNNING）。稼働 node の G5 sim ゲートは #342。
+
+### 教訓と反映先
+
+| # | 観測（実際に起きたこと） | 対策 | 反映先 |
+|---|---|---|---|
+| L10 | Policy Gate 鮮度上限 既定 `UNAVAILABLE_AFTER_S = 2.0`（`policy_gate.py`）に対し live ER 1 サイクルは 4–6s。ER 呼び出し**前**に取った `StateSnapshot` は dispatch 時点で必ず失効し `robot_unavailable` reject（batch2 実測）＝非同期外部 call を跨ぐ state は必ず古くなる。 | G5/本番は `warehouse_state` の 10Hz State Cache を dispatch と並行稼働させ、state が ER call を跨がないことを前提化。 | [dev/08 追補](08-xer6-live-sim-x-lite-runbook.md) / [doc12](../architecture/12-infrastructure-common.md) |
+| L11 | 画像無し text-only の live ER は pixel を発明し Visual Resolver の snap（既定 `_DEFAULT_SNAP_RADIUS_M = 0.25`・`visual_resolver/policy.py`）に解決せず、accepted でも空 `Command`（fail-closed 作動）。 | detection は camera 由来を前提化。暫定は harness の `--pixel-hints`、恒久は image 添付 ER call（follow-up）。 | [dev/08 追補](08-xer6-live-sim-x-lite-runbook.md) / [dev/07 追補](07-mode-x-er-live-e2e-runbook.md) |
