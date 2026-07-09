@@ -119,9 +119,9 @@ mode_x_er:
 
 # Policy Gate ロボット鮮度窓（doc12 §stale 判定 = docs/architecture/12-infrastructure-common.md:344-370）。
 # state.json top-level timestamp の経過時間で robot 鮮度を判定する MCP-局所導出（#5 が明示 availability を
-# 出すまでの暫定・実装 warehouse_mcp_server.policy_gate）。既定は現行値と同一（0.5/2.0）で gating を緩めない
-# ＝ 全環境で prod と同一 gating（sim も mirror・operator 決定）。additive・env overlay で上書き可。
-# fail-closed: 非有限・<=0・stale_after_s > unavailable_after_s は起動拒否（既定への黙示 fallback をしない）。
+# 出すまでの暫定・実装 warehouse_mcp_server.policy_gate）。tighten-only（ADR-0004）: 既定 0.5/2.0 が上限で、
+# より小さい値のみ許可（窓を縮める＝厳しくする方向）・緩い値は起動拒否。additive・env overlay で tighten のみ可。
+# fail-closed: 非数値・非有限・<=0・既定より緩い(>0.5/>2.0)・stale>unavailable・非 mapping は起動拒否。
 policy_gate:
-  stale_after_s: 0.5         # s: この経過超で robot_stale（dispatch 拒否・cancel/charging は許可）
-  unavailable_after_s: 2.0   # s: この経過超で robot_unavailable（全コマンド拒否）
+  stale_after_s: 0.5         # s: robot_stale（dispatch 拒否・cancel/charging は許可）。上限=既定・より小のみ可
+  unavailable_after_s: 2.0   # s: robot_unavailable（全コマンド拒否）。上限=既定・より小のみ可

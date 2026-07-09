@@ -36,19 +36,19 @@ WAIT_PLACEHOLDER = "_wait"
 # These module constants remain the single DEFAULT source: they seed
 # ``FreshnessThresholds`` below and are imported directly by other lanes (e.g.
 # ``warehouse_llm_bridge.self_action_gate``), so they must not be removed.
+#
+# They are ALSO the hard CEILINGS for any config overlay (tighten-only, ADR-0004
+# L2 restrict-only policy profile): a ``policy_gate`` overlay may only SHRINK a
+# window below the frozen default, never loosen it. A looser value is refused at
+# startup (fail-closed). The rationale is physical: at the <=0.3 m/s miniature
+# scale (rules/safety.md), the frozen defaults bound the unobserved-travel
+# envelope (0.3 m/s * 2.0s = 0.6m < the 1.8m diorama), whereas an earlier proposed
+# 10.0s ceiling would have allowed 0.3 m/s * 10.0s = 3.0m > 1.8m — i.e. it did NOT
+# bound the physical envelope, so it is dropped. Mirrors the
+# config-may-lower-never-raise precedent warehouse_interfaces/config.py:11-12,:101
+# (safety.max_linear_velocity).
 STALE_AFTER_S = 0.5
 UNAVAILABLE_AFTER_S = 2.0
-
-# Hard ceiling for either config-driven freshness window (fail-closed upper bound).
-# A valid-but-huge overlay (e.g. unavailable_after_s: 9999) would silently DEFANG
-# the gate: a robot whose snapshot is minutes stale would never reach
-# robot_unavailable (or even robot_stale) and would be dispatched as fresh. At the
-# <=0.3 m/s miniature scale (rules/safety.md) with the 100ms State Cache cadence
-# (doc12), a snapshot older than ~10s is unmodeled — beyond it, freshness gating is
-# effectively disabled. 10.0s is 5x the base unavailable window (2.0), leaving
-# generous tuning headroom while catching defang values. Mirrors the hard-cap
-# precedent warehouse_interfaces/config.py:101 (safety.max_linear_velocity).
-MAX_FRESHNESS_S = 10.0
 
 
 @dataclass(frozen=True)
@@ -62,11 +62,13 @@ class FreshnessThresholds:
     mirror the frozen module constants (0.5 / 2.0) so every existing call site is
     unchanged (additive-first, parallel-workflow.md §7.2).
 
-    Fail-closed: a non-numeric, non-finite, non-positive, above-ceiling
-    (``> MAX_FRESHNESS_S``), or ``stale_after_s > unavailable_after_s`` value is
-    REFUSED at construction (``ValueError``) so a malformed OR defanging config
-    refuses startup instead of silently loosening — or disabling — freshness
-    gating.
+    Fail-closed & tighten-only (ADR-0004 L2 restrict-only policy profile): a value
+    that is non-numeric, non-finite, non-positive, LOOSER than the frozen default
+    (``stale_after_s > STALE_AFTER_S`` or ``unavailable_after_s >
+    UNAVAILABLE_AFTER_S``), or with ``stale_after_s > unavailable_after_s`` is
+    REFUSED at construction (``ValueError``). Config may only TIGHTEN (shrink) a
+    window, never loosen it, so a malformed OR loosening overlay refuses startup
+    instead of silently widening — or disabling — freshness gating.
     """
 
     stale_after_s: float = STALE_AFTER_S
@@ -74,9 +76,9 @@ class FreshnessThresholds:
 
     def __post_init__(self) -> None:
         """Validate both windows fail-closed at construction (independent oracle)."""
-        for name, value in (
-            ("stale_after_s", self.stale_after_s),
-            ("unavailable_after_s", self.unavailable_after_s),
+        for name, value, ceiling in (
+            ("stale_after_s", self.stale_after_s, STALE_AFTER_S),
+            ("unavailable_after_s", self.unavailable_after_s, UNAVAILABLE_AFTER_S),
         ):
             # bool is an int subclass but is never a valid duration.
             if isinstance(value, bool) or not isinstance(value, (int, float)):
@@ -85,13 +87,14 @@ class FreshnessThresholds:
                 raise ValueError(f"policy_gate.{name} must be finite, got {value!r}")
             if value <= 0:
                 raise ValueError(f"policy_gate.{name} must be > 0, got {value!r}")
-            # Upper ceiling: reject a valid-but-huge window that would defang the
-            # gate (see MAX_FRESHNESS_S; config.py:101 hard-cap precedent).
-            if value > MAX_FRESHNESS_S:
+            # Tighten-only ceiling (ADR-0004 restrict-only): the frozen default IS
+            # the upper bound. A looser (larger) window is refused so an overlay can
+            # only SHRINK the window, never widen — or disable — freshness gating.
+            if value > ceiling:
                 raise ValueError(
-                    f"policy_gate.{name}={value} exceeds hard ceiling "
-                    f"MAX_FRESHNESS_S={MAX_FRESHNESS_S}s (freshness gating would be "
-                    "effectively disabled beyond this; config.py:101 precedent)"
+                    f"policy_gate.{name}={value} exceeds the frozen default ceiling "
+                    f"{ceiling}s (tighten-only: config may only shrink a freshness "
+                    "window, never loosen it; ADR-0004 L2 restrict-only)"
                 )
         if self.stale_after_s > self.unavailable_after_s:
             raise ValueError(
