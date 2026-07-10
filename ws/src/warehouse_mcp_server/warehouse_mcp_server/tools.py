@@ -94,9 +94,12 @@ class WarehouseTools:
     ) -> None:
         """Wire collaborators; each defaults to its shared file-backed instance.
 
-        ``nav2_forwarder`` (Mode A/B only) forwards an ACCEPTED motion tool to the
-        Nav2 Bridge REST API (doc12a:198-363). Left ``None`` (the default, and Mode
-        C / Open-RMF) the tools only validate + book-keep and actuate nothing —
+        ``nav2_forwarder`` forwards an ACCEPTED motion tool to the Nav2 Bridge
+        REST API (doc12a:198-363). Injected by Mode A/B (llm_bridge) and, since
+        #423, by Mode X-ER when config ``mode_x_er.dispatch.forward_to_nav2`` is
+        true (x_er_bridge ``resolve_nav2_forwarder``, safe-OFF default). Left
+        ``None`` (the default; Mode C / Open-RMF, and X-ER safe-OFF) the tools
+        only validate + book-keep and actuate nothing —
         the pre-#86 behaviour every existing test relies on.
 
         ``negotiation_starter`` (Slice 2) is the ``/negotiation/start`` publisher
