@@ -15,7 +15,7 @@ Scope of THIS Phase-0.5 groundwork slice:
   (frozen path ``warehouse_interfaces.paths.audit_log_path()``; record shape is
   illustrative, doc15:344-360 / warehouse_mcp_server/audit.py:34-43).
 * **result KPI family** — executed/rejected/error tallies per tool & per robot,
-  rejection-reason breakdown, and derived acceptance/error rates. Maps to doc08:373
+  rejection-reason breakdown, and derived acceptance/error rates. Maps to doc08:395
   (判断の正確性 → score "result") and doc06:265 (正確性・エラー率). These are
   descriptive tallies of documented fields, not a frozen score schema.
 * **cancelled exclusion** — exclude ``cancel_task`` rows AND any dispatch ``task_id``
@@ -29,7 +29,7 @@ Scope of THIS Phase-0.5 groundwork slice:
   (doc08:338, doc13:519) — deferred to Phase 3. Tests exercise it with synthetic
   completion events.
 
-Deferred (NOT in this slice): ``efficiency`` (= 総移動距離, doc08:375; needs odometry
+Deferred (NOT in this slice): ``efficiency`` (= 総移動距離, doc08:397; needs odometry
 distance), the live Langfuse score-send (needs ``trace_id`` — see
 :mod:`langfuse_sink`), and freezing an audit/KPI schema in ``warehouse_interfaces``
 (a future ``contract`` PR; see CLAUDE.md).
@@ -157,7 +157,7 @@ class CompletionRecord:
 
 @dataclass
 class CompletionStats:
-    """Aggregate ``task_completion_time`` stats (doc08:373). Empty until a live
+    """Aggregate ``task_completion_time`` stats (doc08:396). Empty until a live
     completion source is wired in Phase 3 — see :func:`pair_completion_times`."""
 
     count: int
