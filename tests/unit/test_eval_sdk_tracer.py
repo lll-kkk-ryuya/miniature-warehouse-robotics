@@ -6,6 +6,10 @@ present-but-misconfigured (fail-open, doc21 §4).
 """
 
 import asyncio
+import logging
+import sys
+import threading
+import types
 
 import pytest
 from eval_sdk.tracer import LangfuseTracer, NoopTracer, Tracer
@@ -216,6 +220,113 @@ def test_langfuse_tracer_accepts_env_as_opaque_extra_tag(
     asyncio.run(_run())
 
     assert fake.propagations[0]["tags"] == ["provider_x", "none", "env=dev"]
+
+
+class _ThreadRecordingObservation:
+    """Records the thread ident of __enter__ vs __exit__ (open vs close)."""
+
+    def __init__(self) -> None:
+        self.enter_thread: int | None = None
+        self.exit_thread: int | None = None
+
+    def __enter__(self) -> _FakeSpan:
+        self.enter_thread = threading.get_ident()
+        return _FakeSpan()
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self.exit_thread = threading.get_ident()
+
+
+class _ThreadRecordingClient:
+    def __init__(self) -> None:
+        self.contexts: list[_ThreadRecordingObservation] = []
+
+    def create_trace_id(self, *, seed: str) -> str:
+        return TRACE
+
+    def start_as_current_observation(self, **kwargs) -> _ThreadRecordingObservation:
+        ctx = _ThreadRecordingObservation()
+        self.contexts.append(ctx)
+        return ctx
+
+    def propagate_attributes(self, **kwargs) -> _ThreadRecordingObservation:
+        ctx = _ThreadRecordingObservation()
+        self.contexts.append(ctx)
+        return ctx
+
+
+@pytest.mark.unit
+def test_langfuse_tracer_closes_on_event_loop_thread(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Regression (#282 review): the langfuse span/attr CM __exit__ runs OTEL context.detach, which
+    # is thread-affine — it MUST run on the same (event loop) thread that opened/attached it, or
+    # OTEL logs "Failed to detach context" and leaks the current span every turn. Guard that the
+    # teardown is NOT moved off-loop (e.g. via asyncio.to_thread): every open/close shares the one
+    # loop-thread ident. This catches the exact regression the fake-context tests could not.
+    fake = _ThreadRecordingClient()
+    monkeypatch.setattr(LangfuseTracer, "_client", lambda self: fake)
+    tracer = LangfuseTracer(run_id="r", session_id="s", provider="p", mode="none")
+
+    async def _run() -> int:
+        async with tracer.turn(1), tracer.tool_span("dispatch", 1):
+            pass
+        return threading.get_ident()
+
+    loop_thread = asyncio.run(_run())
+    assert fake.contexts  # sanity: langfuse span + attrs were actually exercised
+    for ctx in fake.contexts:
+        assert ctx.enter_thread == loop_thread
+        assert ctx.exit_thread == loop_thread  # close stayed on the loop thread (not a worker)
+
+
+@pytest.mark.unit
+def test_langfuse_tracer_logs_disabled_once(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    # Missing creds do not raise: get_client() returns a silently disabled client (langfuse
+    # _client/client.py:339-354). The tracer must surface that to the operator exactly ONCE, not
+    # per turn. Mutation check: removing the _warn_if_disabled hook drops the count to 0.
+    monkeypatch.delenv("LANGFUSE_PUBLIC_KEY", raising=False)
+    monkeypatch.delenv("LANGFUSE_SECRET_KEY", raising=False)
+    fake_client = _FakeLangfuseClient()
+    fake_module = types.SimpleNamespace(get_client=lambda: fake_client)
+    monkeypatch.setitem(sys.modules, "langfuse", fake_module)
+    tracer = LangfuseTracer(run_id="r", session_id="s", provider="p", mode="none")
+
+    async def _run() -> None:
+        async with tracer.turn(1):
+            pass
+        async with tracer.turn(2):
+            pass
+
+    with caplog.at_level(logging.WARNING, logger="eval_sdk.tracer"):
+        asyncio.run(_run())
+
+    disabled = [r for r in caplog.records if "tracing disabled" in r.getMessage().lower()]
+    assert len(disabled) == 1  # logged once across two turns, not per turn
+    assert "LANGFUSE_PUBLIC_KEY" in disabled[0].getMessage()
+
+
+@pytest.mark.unit
+def test_langfuse_tracer_no_disabled_log_when_configured(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    # With creds present the tracer must NOT claim "disabled" (guards against a false alarm that
+    # would train operators to ignore the warning).
+    monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-test")
+    monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk-test")
+    fake_client = _FakeLangfuseClient()
+    fake_module = types.SimpleNamespace(get_client=lambda: fake_client)
+    monkeypatch.setitem(sys.modules, "langfuse", fake_module)
+    tracer = LangfuseTracer(run_id="r", session_id="s", provider="p", mode="none")
+
+    async def _run() -> None:
+        async with tracer.turn(1):
+            pass
+
+    with caplog.at_level(logging.WARNING, logger="eval_sdk.tracer"):
+        asyncio.run(_run())
+
+    assert not [r for r in caplog.records if "tracing disabled" in r.getMessage().lower()]
 
 
 @pytest.mark.unit

@@ -14,6 +14,7 @@ langfuse v4.9 OTEL API is isolated here so the rest of the system stays langfuse
 """
 
 import logging
+import os
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 from contextlib import AbstractAsyncContextManager, asynccontextmanager, suppress
@@ -101,6 +102,7 @@ class LangfuseTracer(Tracer):
             k: v for k, v in (extra_metadata or {}).items() if k not in ("gen_id", "trace_id")
         }
         self._unavailable = False
+        self._disabled_logged = False
 
     def _client(self) -> object | None:
         """Return the langfuse client, or ``None`` if langfuse is unavailable (fail-open)."""
@@ -109,11 +111,35 @@ class LangfuseTracer(Tracer):
         try:
             from langfuse import get_client
 
-            return get_client()
+            client = get_client()
         except Exception as exc:  # ImportError (extra absent) / misconfig — disable, fail-open
             self._unavailable = True
             log.warning("langfuse unavailable (%s); tracing disabled (fail-open, doc21 §4)", exc)
             return None
+        # Explicit class ref (not ``self.``) so borrowers that call ``LangfuseTracer._client(self)``
+        # with a foreign ``self`` (robotics/observability.py LangfuseTranscriptTracer) still work.
+        LangfuseTracer._warn_if_disabled(self)
+        return client
+
+    def _warn_if_disabled(self) -> None:
+        """Log ONCE when langfuse credentials are unset.
+
+        Unlike a missing extra, missing creds do NOT raise: ``get_client()`` returns a silently
+        disabled (``NoOpTracer``) client (verified against langfuse ``_client/client.py:339-354`` —
+        no public_key/secret_key → "Client will be disabled" + NoOpTracer). Without this the
+        operator gets no signal that every trace is being dropped. Gated on the same credential env
+        vars langfuse itself reads, so we never claim "disabled" when it is actually tracing.
+
+        ``_disabled_logged`` is read via ``getattr`` so a borrower whose ``self`` predates this
+        latch (see ``_client`` above) still gets one-time behaviour (the attr is set on first use)."""
+        if getattr(self, "_disabled_logged", False):
+            return
+        if not os.environ.get("LANGFUSE_PUBLIC_KEY") or not os.environ.get("LANGFUSE_SECRET_KEY"):
+            self._disabled_logged = True
+            log.warning(
+                "Langfuse tracing disabled: LANGFUSE_PUBLIC_KEY/SECRET_KEY not configured; "
+                "traces are dropped (fail-open, doc21 §4)"
+            )
 
     @staticmethod
     def _open(client: object, name: str, trace_id: str | None) -> tuple[object, object] | None:
@@ -197,6 +223,11 @@ class LangfuseTracer(Tracer):
         try:
             yield  # body exceptions propagate; only langfuse errors are swallowed
         finally:
+            # Close ON the event loop: langfuse span/attr CM __exit__ runs OTEL context.detach,
+            # which is thread-affine (the token was attached on this loop thread) — moving it to a
+            # worker thread spams "Failed to detach context" and leaks the current span (#282
+            # review). Under langfuse's default async span processor these closes do not block on
+            # the network, so the cycle is not stalled (doc21 §4).
             self._close_cm(attrs_cm)
             self._close(opened)
 
@@ -208,4 +239,4 @@ class LangfuseTracer(Tracer):
         try:
             yield
         finally:
-            self._close(opened)
+            self._close(opened)  # on-loop: OTEL context.detach is thread-affine (#282 review)
