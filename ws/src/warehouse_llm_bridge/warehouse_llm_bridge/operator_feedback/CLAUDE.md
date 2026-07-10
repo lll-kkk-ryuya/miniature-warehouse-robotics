@@ -7,9 +7,10 @@
 
 - **担当トラック / ブランチ**: `feat/operator-feedback`（track #345・Part of epic #336）
 - **Phase**: Mode X-ER / XER-OF1（doc05 §5.5 :249-260）
-- **編集境界**: この `operator_feedback/` 配下＋`tests/unit/test_operator_feedback_*.py` のみ。
-  `robotics_planning_core/`（Lane A）・`warehouse_interfaces`・`doc03`・config・
-  `productization/01` Box 表は触らない。
+- **編集境界**: この `operator_feedback/` 配下＋`tests/unit/test_operator_feedback_*.py`。
+  step②（本 contract PR）は追加で **doc05 §8.10（確定値）＋ doc03「Jetson 内部」表 1 行 additive**
+  のみ触る（`contract` ラベル）。`robotics_planning_core/`（Lane A）・`warehouse_interfaces`・
+  `llm_bridge.py`・config・`productization/01` Box 表・`setup.py` は触らない。
 - **依存**: 標準ライブラリのみ（`dataclasses` / `typing`）。pydantic / rclpy / ROS / 他トラック
   内部モジュールを import しない（疎結合・colcon なしで host 検証可能・doc16 §11）。
 
@@ -52,6 +53,13 @@
 - **`OperatorFeedbackBox.notify(...)`**（filter→build→**fail-open** deliver）＋`audit_log`。
   sink は注入 IF（`NoticeSink` Protocol / callable）。sink 失敗は raise せず fallback
   （XER-OF2 / L4OF-G2・doc05:270）。**0 actuation**: 出力は notice/None/AuditRecord のみ。
+- **`OperatorNoticePublisher`**（`publisher.py`・gate-side emit seam・doc05 §8 / §8.10）: 別ノード
+  gate の decision_event を `operator_notice.v0` JSON（`to_v0_payload`/`encode_notice`）に直列化し
+  **`/operator/notice`**（`TOPIC_OPERATOR_NOTICE`・`std_msgs/String`）へ publish。**publish-only=0
+  actuation**（R-26 / L4OF-G1・doc05:269）: 出力チャネルは注入 `publish` callable 1 本のみ・reject
+  級 `decision` 以外は wire に載せない（doc05:332）。ROS は注入（`for_ros_node` は lazy rclpy・
+  runtime のみ）で offline 検証可（`sinks.py` と同 injection 規律）。QoS 確定値: RELIABLE /
+  KEEP_LAST `NOTICE_QOS_DEPTH=10` / VOLATILE（doc05 §8.5・§8.10 item 2）。
 - **box 自身の event 語彙**（`box=l4_operator_feedback`・audit/fail-open 用・doc05:103）:
   `decision` ∈ `spoken/fell_open/suppressed`、`reason_code` ∈ `tts_failed/sink_unavailable`＋
   suppression 理由（`non_speakable_decision/uncorrelated_autonomous/duplicate_suppressed`）。
@@ -71,14 +79,24 @@
   **XER-OF2 fail-open**（sink 例外で run 継続）。
 - `tests/unit/test_operator_feedback_filter.py` — **XER-OF2.5 / L4OF-G5**（attribution・
   milestone・重複抑制・suppressed の audit 保持）。
+- `tests/unit/test_operator_feedback_publisher.py` — **R-26 / L4OF-G1（publish-only=0 actuation）**
+  ＋ 確定契約値（topic/QoS depth=10/schema_version）＋ reject-class-only ＋ fake-ROS 配線
+  ＋ publisher 出力＝box 入力の往復一致（producer/consumer 同形）。independent oracle・mutation 5/5 RED。
 - 実行: repo root から `python3 -m pytest tests/unit/test_operator_feedback_*.py`
   （target py312。conftest が `ws/src/warehouse_llm_bridge` を sys.path へ追加）。
 
-## 未凍結 / DEFER（contract PR・別 owner）
+## 確定（本 contract PR = step②・doc05 §8.10）
 
-- topic `/operator/notice`（名前・型 `std_msgs/String`(JSON)・QoS RELIABLE/KEEP_LAST depth=20
-  /VOLATILE・publisher）= doc03 contract PR（owner=skeleton/governance）。本 module は **配線しない**
-  （doc05 §8.8 :369-376・doc06 §7 :186-200）。
+- topic `/operator/notice`（`std_msgs/String`(JSON)・QoS RELIABLE/KEEP_LAST **depth=10**/VOLATILE・
+  `schema_version="operator_notice.v0"`・MVP publisher = nav2_bridge/mcp_server・emergency は
+  `/emergency/event` 相乗り）を doc05 §8.10 で**確定**し、doc03「Jetson 内部」表へ 1 行 additive。
+  gate-side emit adapter `OperatorNoticePublisher` を配線（publish-only）。**凍結成立は依存トラック
+  （safety-state/nav-traffic/wo/web）合意後**（Draft PR・`Refs #345`・§8.9）。
+
+## 未凍結 / DEFER（別 owner・後続 slice）
+
+- **subscriber runtime node**（`/operator/notice`＋`/emergency/event` を購読し box を駆動）＋
+  `setup.py` entry_point・実 gate node（nav2_bridge/mcp_server）への配線 = 所有トラック follow-up。
 - `OperatorNotice` の `warehouse_interfaces` 昇格 / `productization/01` Box 一覧登録 /
   観測 funnel への `l4_operator_feedback` 追加 = 別 owner（box-map / Eval-Obs）調整。
 - EN locale テンプレート（`templates_en`）・実 TTS sink（XER-OF3）・web 併走 sink（XER-OF4）=
