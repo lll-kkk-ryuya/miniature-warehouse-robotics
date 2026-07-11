@@ -3,11 +3,14 @@
 The XER6 backbone: one resident rclpy node (the Mode A ``llm_bridge.py`` shape) that
 closes the Mode X-ER connectivity hops ⓪③④⑤ (docs/mode-x-er/08 §1):
 
-* STARTUP (once, fail-closed — docs/mode-x-er/08 §4/§6): ``build_x_er_runtime(cfg)``
-  runs the composition sequence (run manifest -> plugin registry -> dispatch policy ->
-  composition -> preflight -> site-profile gate -> governed calibration -> effective
-  composition witness). ANY raise aborts construction and ``main()`` exits nonzero —
-  zero cycles, zero dispatch (the node never partially starts). ``build_er_adapter(cfg)``
+* STARTUP (once, fail-closed — docs/mode-x-er/08 §4/§6): ``build_x_er_runtime(cfg,
+  plugin_factories=production_plugin_factories())`` runs the composition sequence (run
+  manifest -> plugin registry -> dispatch policy -> composition -> preflight -> site-profile
+  gate -> governed calibration -> effective composition witness). Plugin factories come from
+  the explicit production registry (``robotics/composition/factory_registry.py``, empty
+  today — doc09 §稼働 node の plugin factory seam; a declared plugin with no registered
+  factory keeps refusing startup, fail-closed). ANY raise aborts construction and
+  ``main()`` exits nonzero — zero cycles, zero dispatch (the node never partially starts). ``build_er_adapter(cfg)``
   (robotics/adapter_factory.py:77) constructs the ER adapter (config-driven transport,
   shipped default DIRECT fail-safe, ADR-0002:43).
 * CYCLE (docs/mode-x-er/08 §5): ``propose_plan`` is async while L3/composition are sync,
@@ -61,6 +64,9 @@ from typing import Any
 # under plain pytest — the forwarder resolver below is a pure, testable helper.
 from warehouse_mcp_server.nav2_client import Nav2Forwarder, Nav2RestForwarder
 
+from warehouse_llm_bridge.robotics.composition.factory_registry import (
+    production_plugin_factories,
+)
 from warehouse_llm_bridge.robotics.er_task import ErTaskRequest
 
 try:
@@ -194,8 +200,13 @@ if _NODE_IMPORT_ERROR is None:
             cfg = load_config()
             # §4 composition startup (fail-closed, once): manifest -> plugin registry ->
             # dispatch policy -> composition -> preflight -> site-profile/calibration
-            # gate -> effective-composition witness (out/runs/<run_id>/).
-            self._runtime: XErRuntime = build_x_er_runtime(cfg)
+            # gate -> effective-composition witness (out/runs/<run_id>/). Plugin factories
+            # come from the explicit production registry (factory_registry.py — empty today;
+            # doc09 §稼働 node の plugin factory seam): a run-declared plugin missing from it
+            # keeps refusing startup (XErCompositionError, x_er_composition.py:174-182).
+            self._runtime: XErRuntime = build_x_er_runtime(
+                cfg, plugin_factories=production_plugin_factories()
+            )
             # §4 step8: config -> transport -> constructed ER adapter (DIRECT fail-safe,
             # adapter_factory.py:77). Construction only — a live send stays behind the
             # WAREHOUSE_LIVE_ER operator/cost gate, which this node NEVER sets.
