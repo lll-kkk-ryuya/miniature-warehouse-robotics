@@ -143,11 +143,11 @@ score_specs:
 `eval_observability` の `join_gap` / `artifact_missing` として扱う。
 
 `effective_composition.v1` は **任意の埋め込みブロック**も運べる: `site_profile`（version +
-content-hash・S3 由来）と `calibration_governance`（S3 の gate 判定）である。`EffectiveComposition`
-schema（`extra='forbid'`）はこの 2 slot を予約する必要がある。**RESIDUAL（未配線）**: S3↔S2 の
-埋め込みは現状未配線＝S3 は独立した `calibration_governance` ブロック（および
-`schema_version: effective_composition.site_profile.s3-proposal` 形の別提案）を出すが、S2 の
-`extra='forbid'` schema にはその slot が無い。S3 を run path に配線する slice で reconcile する
+content-hash・S3 由来）と `calibration_governance`（S3 の gate 判定）である。**解消済（PR #412
+2026-07-05・稼働 node への配線は PR #419 2026-07-07）**: `EffectiveComposition` schema
+（`extra='forbid'`）はこの 2 slot を optional field として予約し（`record.py`:121-122）、
+`build_effective_composition` が S3 の値を受けて埋め込む（`record.py`:145-146・`None` = block
+省略＝S3 を配線しない run は従来と byte-identical）。起動時の配線は `x_er_composition.py`:230-233
 （決定背景は [ADR-0003](../adr/0003-bridge-local-manifest-composition.md) の Consequences）。
 
 ### run_manifest.v1 schema（fail-closed）
@@ -399,7 +399,7 @@ needs_clarification > accepted`＝[mode-x-er/02](../mode-x-er/02-l3-planning-cor
 は決定的・順序非依存に解決し、両 finding を operator に残す。`permits_dispatch` /
 command candidates は composed status で gate する（double-guard）。
 
-### 2 種の manifest 取り込み（RESIDUAL・未配線）
+### 2 種の manifest 取り込み（解消済・配線済）
 
 composition が消費する manifest は **2 種類**に分かれる。**run manifest**（run ごとに何を
 有効化するか＝`id` + `version` + `profile`・emits は持たない・上記 [run_manifest.v1 schema](#run_manifestv1-schemafail-closed)）と、
@@ -410,10 +410,10 @@ declared-emits registry を建てる。run manifest の plugin `id` は plugin m
 突き合わせ（reconcile）、preflight が **run-declared == 登録済み hookimpls == plugin-manifest-present** を
 交差検査する。
 
-> **RESIDUAL（未配線）**: 現状のどの slice も per-plugin plugin manifest を **load しない**
-> （`PluginCodeRegistry.from_manifest_dicts` は seam として在るが呼ばれていない）。取り込み loader は
-> 将来 slice（S5 `x_er_bridge` か専用 loader lane）で配線する。決定背景は
-> [ADR-0003](../adr/0003-bridge-local-manifest-composition.md)（Consequences）。
+> **解消済（PR #411 2026-07-05 loader・PR #419 2026-07-07 稼働 node 配線）**: 取り込み loader は
+> `plugin_manifest.py`（`load_plugin_manifests` + `build_plugin_code_registry`）が提供し、`x_er_bridge`
+> 起動時に `x_er_composition.py`:162-166 が load して registry を建て、triple cross-check
+> （`x_er_composition.py`:95-116）を実行する。決定背景は [ADR-0003](../adr/0003-bridge-local-manifest-composition.md)（Consequences）。
 
 ## OSS の使いどころ
 
