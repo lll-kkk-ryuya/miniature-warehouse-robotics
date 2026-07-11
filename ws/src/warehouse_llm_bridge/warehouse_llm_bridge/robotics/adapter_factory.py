@@ -30,8 +30,10 @@ until then ``load_blob`` defaults to ``None`` (the request build omits the blob 
 
 from __future__ import annotations
 
+import json
 import os
 from collections.abc import Mapping
+from pathlib import Path
 
 from warehouse_llm_bridge.robotics.adapters.enums import Transport
 from warehouse_llm_bridge.robotics.adapters.gemini_er import (
@@ -48,6 +50,57 @@ from warehouse_llm_bridge.robotics.transport import resolve_audio_transport
 # provider/gateway secrets are never committed to config (.claude/rules/safety.md).
 _GEMINI_KEY_ENV = ("GEMINI_API_KEY", "GOOGLE_API_KEY")
 _HERMES_KEY_ENV = ("HERMES_API_KEY", "API_SERVER_KEY")
+
+# G5 offline-replay key (docs/mode-x-er/08 §3 "G5 準備 追加凍結"): path to a recorded ER transport
+# envelope (JSON object). Empty/absent = disabled = the unchanged live construction below. Non-empty
+# switches the factory to a replay GeminiErAdapter that carries NO sender — a provider call is
+# structurally impossible and WAREHOUSE_LIVE_ER is never needed (dev/verification path only; the
+# live cost gate on HttpErTransportSender.send is untouched, docs/dev/07 §4.5).
+_MODE_X_ER_KEY = "mode_x_er"
+_ER_OFFLINE_PAYLOAD_KEY = "er_offline_payload"
+
+
+def resolve_er_offline_payload_path(cfg: Mapping[str, object] | None) -> Path | None:
+    """Return ``mode_x_er.er_offline_payload`` as a ``Path``, or ``None`` when unset.
+
+    Mirrors ``x_er_bridge.resolve_request_fixture_path`` semantics (doc08 §3 fail-closed family):
+    absent block / absent key / blank string -> ``None`` (replay disabled — the factory builds the
+    unchanged live-capable adapter). A PRESENT but non-string value is malformed config and raises
+    (startup refusal) rather than being silently ignored.
+    """
+    if not isinstance(cfg, Mapping):
+        return None
+    mode_x_er = cfg.get(_MODE_X_ER_KEY)
+    if not isinstance(mode_x_er, Mapping):
+        return None
+    raw = mode_x_er.get(_ER_OFFLINE_PAYLOAD_KEY)
+    if raw is None:
+        return None
+    if not isinstance(raw, str):
+        raise ValueError(
+            f"{_MODE_X_ER_KEY}.{_ER_OFFLINE_PAYLOAD_KEY} must be a string path, "
+            f"got {type(raw).__name__} (doc08 §3 fail-closed)"
+        )
+    if not raw.strip():
+        return None
+    return Path(raw)
+
+
+def load_offline_payload(path: Path | str) -> dict[str, object]:
+    """Parse a recorded ER transport envelope JSON file (doc08 §3 er_offline_payload).
+
+    The file must hold a single JSON object — the envelope shape the L3 Handoff parses
+    (direct = ``candidates[...]`` / hermes = ``choices[...]``; handoff.py:103-110 normalizes by
+    key shape, not by transport tag). A missing path, malformed JSON or a non-object document
+    raises (startup refusal, fail-closed) — never a silent fall-back to the live path.
+    """
+    payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError(
+            f"er_offline_payload must be a JSON object (recorded ER transport envelope), "
+            f"got {type(payload).__name__}"
+        )
+    return payload
 
 
 def _first_env(env: Mapping[str, str], names: tuple[str, ...]) -> str | None:
@@ -94,8 +147,15 @@ def build_er_adapter(
     - resolved ``DIRECT`` (gateway off / absent / malformed) -> sender built with only the Gemini
       key; the adapter talks straight to the Gemini REST endpoint.
 
-    This function only *constructs*; it performs no I/O and fires no provider call. A real send
-    still requires the ``WAREHOUSE_LIVE_ER=1`` operator/cost gate on ``HttpErTransportSender.send``.
+    This function only *constructs*; it fires no provider call. A real send still requires the
+    ``WAREHOUSE_LIVE_ER=1`` operator/cost gate on ``HttpErTransportSender.send``.
+
+    G5 offline-replay (doc08 §3 ``mode_x_er.er_offline_payload``, additive freeze 2026-07-11):
+    when the key names a recorded envelope JSON, the factory instead returns a replay
+    ``GeminiErAdapter(offline_payload=...)`` with NO sender (live capability structurally
+    absent, no env key read, no cost gate involved). Empty/absent = this paragraph does not
+    apply (unchanged live construction). Missing path / malformed JSON / non-object /
+    non-string value = raise (startup refusal, fail-closed).
 
     Args:
         cfg: the deep-merged warehouse config mapping (base + ``config/<env>/`` overlay). Only the
@@ -118,6 +178,17 @@ def build_er_adapter(
     env = os.environ if env is None else env
     er_gateway_cfg = _er_gateway_cfg(cfg)
     transport = resolve_audio_transport(er_gateway_cfg)
+    # G5 offline-replay path (doc08 §3 er_offline_payload; docs/dev/08 追補 2): a configured
+    # replay wins over any sender (free side first) and the adapter is built WITHOUT a sender —
+    # live capability is structurally absent. The transport stays the resolved observation-only
+    # audit tag (doc03:75); the handoff normalizes the payload by envelope key shape.
+    offline_payload_path = resolve_er_offline_payload_path(cfg)
+    if offline_payload_path is not None:
+        return GeminiErAdapter(
+            transport=transport,
+            offline_payload=load_offline_payload(offline_payload_path),
+            load_blob=load_blob,
+        )
     if sender is None:
         sender = _build_http_sender(transport, er_gateway_cfg, env)
     return GeminiErAdapter(transport=transport, sender=sender, load_blob=load_blob)

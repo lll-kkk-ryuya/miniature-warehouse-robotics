@@ -210,3 +210,136 @@ def test_factory_adapter_proposes_plan_end_to_end_offline():
     assert raw.transport == Transport.DIRECT.value
     assert raw.payload == direct_envelope()
     assert fake.calls == [Transport.DIRECT]
+
+
+# --- G5 offline-replay (mode_x_er.er_offline_payload, doc08 §3 additive freeze) --------------
+# Free RUNNING-node plan source (docs/dev/08 追補 2): a configured recorded envelope switches the
+# factory to a replay adapter with NO sender — live capability structurally absent, no env key
+# read, WAREHOUSE_LIVE_ER never involved. Empty/absent = the unchanged live construction above.
+# Oracles are independent: the expected payloads are the red/blue fixture envelope and the
+# rejection expectations come from the doc08 §3 semantics (missing/malformed/non-object/
+# non-string => startup refusal), not from the implementation.
+
+import json  # noqa: E402
+from pathlib import Path  # noqa: E402
+
+from warehouse_llm_bridge.robotics.adapter_factory import (  # noqa: E402
+    load_offline_payload,
+    resolve_er_offline_payload_path,
+)
+
+
+def _replay_cfg(tmp_path: Path, payload: object = None, *, er_gateway: object = None) -> dict:
+    """A cfg naming a written er_offline_payload file (default: the red/blue direct envelope)."""
+    path = tmp_path / "er_offline_payload.json"
+    path.write_text(json.dumps(direct_envelope() if payload is None else payload), encoding="utf-8")
+    cfg = _cfg(er_gateway)
+    cfg["mode_x_er"] = {"er_offline_payload": str(path)}
+    return cfg
+
+
+def _g5_request() -> ErTaskRequest:
+    return ErTaskRequest(
+        request_id="req-replay",
+        transcript="bot1は赤い箱へ。到達したらbot2は青い箱へ。",
+        known_robots=["bot1", "bot2"],
+        known_locations=["shelf_1", "shelf_2"],
+    )
+
+
+@pytest.mark.safety
+def test_replay_adapter_replays_without_env_keys_or_live_gate(tmp_path, monkeypatch):
+    # The headline: with the key set, propose_plan returns the recorded envelope with an EMPTY
+    # env, no injected sender and WAREHOUSE_LIVE_ER explicitly absent — a free plan source.
+    monkeypatch.delenv("WAREHOUSE_LIVE_ER", raising=False)
+    adapter = build_er_adapter(_replay_cfg(tmp_path), env={})
+    raw = asyncio.run(adapter.propose_plan(_g5_request()))
+    assert isinstance(raw, RawModelOutput)
+    assert raw.payload == direct_envelope()
+
+
+@pytest.mark.safety
+def test_replay_adapter_carries_no_sender_even_when_one_is_injected(tmp_path):
+    # Structural live-incapability + precedence: replay wins over an injected sender and the
+    # built adapter holds NO sender at all — no code path can reach a provider call.
+    fake = _FakeSender(hermes_envelope())
+    adapter = build_er_adapter(_replay_cfg(tmp_path), sender=fake, env={})
+    assert adapter._sender is None
+    asyncio.run(adapter.propose_plan(_g5_request()))
+    assert fake.calls == []  # the injected sender was never used
+
+
+def test_replay_transport_tag_stays_the_resolved_audit_value(tmp_path):
+    # The observation-only transport tag still tracks resolve_audio_transport (doc03:75); the
+    # handoff normalizes by envelope key shape, so a HERMES tag over a direct-form recording is
+    # consistent (doc08 §3 G5 freeze, point 4).
+    hermes_gw = {"base_url": _GW_URL, "audio_input_audio_supported": True}
+    adapter = build_er_adapter(_replay_cfg(tmp_path, er_gateway=hermes_gw), env={})
+    assert adapter._transport is Transport.HERMES
+    adapter2 = build_er_adapter(_replay_cfg(tmp_path), env={})
+    assert adapter2._transport is Transport.DIRECT
+
+
+@pytest.mark.parametrize("blank", ["", "   "])
+def test_blank_key_disables_replay_and_keeps_live_construction(tmp_path, blank):
+    # Empty = disabled = the unchanged live path (base.yaml ships ""): a real HTTP sender is
+    # built and the send-time cost gate still guards it (RuntimeError without WAREHOUSE_LIVE_ER).
+    cfg = _cfg(None)
+    cfg["mode_x_er"] = {"er_offline_payload": blank}
+    adapter = build_er_adapter(cfg, env={})
+    assert isinstance(adapter._sender, HttpErTransportSender)
+
+
+def test_absent_key_and_absent_block_keep_live_construction():
+    cfg = _cfg(None)
+    cfg["mode_x_er"] = {"enabled": False}
+    assert isinstance(build_er_adapter(cfg, env={})._sender, HttpErTransportSender)
+    assert isinstance(build_er_adapter(_cfg(None), env={})._sender, HttpErTransportSender)
+
+
+@pytest.mark.safety
+def test_non_string_value_is_a_startup_refusal():
+    cfg = _cfg(None)
+    cfg["mode_x_er"] = {"er_offline_payload": 5}
+    with pytest.raises(ValueError, match="er_offline_payload"):
+        build_er_adapter(cfg, env={})
+
+
+@pytest.mark.safety
+def test_missing_payload_file_is_a_startup_refusal(tmp_path):
+    cfg = _cfg(None)
+    cfg["mode_x_er"] = {"er_offline_payload": str(tmp_path / "nope.json")}
+    with pytest.raises(OSError):
+        build_er_adapter(cfg, env={})
+
+
+@pytest.mark.safety
+def test_malformed_json_is_a_startup_refusal(tmp_path):
+    path = tmp_path / "bad.json"
+    path.write_text("{not json", encoding="utf-8")
+    cfg = _cfg(None)
+    cfg["mode_x_er"] = {"er_offline_payload": str(path)}
+    with pytest.raises(ValueError):  # json.JSONDecodeError is a ValueError
+        build_er_adapter(cfg, env={})
+
+
+@pytest.mark.safety
+def test_non_object_json_is_a_startup_refusal(tmp_path):
+    cfg = _replay_cfg(tmp_path, payload=["not", "an", "object"])
+    with pytest.raises(ValueError, match="JSON object"):
+        build_er_adapter(cfg, env={})
+
+
+def test_resolve_er_offline_payload_path_pure_semantics(tmp_path):
+    # The pure resolver the node reuses for its er_source startup log (x_er_bridge).
+    assert resolve_er_offline_payload_path(None) is None
+    assert resolve_er_offline_payload_path({}) is None
+    assert resolve_er_offline_payload_path({"mode_x_er": "oops"}) is None
+    assert resolve_er_offline_payload_path({"mode_x_er": {}}) is None
+    assert resolve_er_offline_payload_path({"mode_x_er": {"er_offline_payload": ""}}) is None
+    assert resolve_er_offline_payload_path(
+        {"mode_x_er": {"er_offline_payload": "/tmp/p.json"}}
+    ) == Path("/tmp/p.json")
+    payload_path = tmp_path / "env.json"
+    payload_path.write_text(json.dumps(direct_envelope()), encoding="utf-8")
+    assert load_offline_payload(payload_path) == direct_envelope()

@@ -11,7 +11,7 @@ closes the Mode X-ER connectivity hops ⓪③④⑤ (docs/mode-x-er/08 §1):
   today — doc09 §稼働 node の plugin factory seam; a declared plugin with no registered
   factory keeps refusing startup, fail-closed). ANY raise aborts construction and
   ``main()`` exits nonzero — zero cycles, zero dispatch (the node never partially starts). ``build_er_adapter(cfg)``
-  (robotics/adapter_factory.py:77) constructs the ER adapter (config-driven transport,
+  (robotics/adapter_factory.py:130) constructs the ER adapter (config-driven transport,
   shipped default DIRECT fail-safe, ADR-0002:43).
 * CYCLE (docs/mode-x-er/08 §5): ``propose_plan`` is async while L3/composition are sync,
   so the cycle runs on a background thread with a dedicated asyncio event loop — the
@@ -83,7 +83,10 @@ try:
     from warehouse_mcp_server.tools import WarehouseTools
 
     from warehouse_llm_bridge.executor import DispatchToolExecutor
-    from warehouse_llm_bridge.robotics.adapter_factory import build_er_adapter
+    from warehouse_llm_bridge.robotics.adapter_factory import (
+        build_er_adapter,
+        resolve_er_offline_payload_path,
+    )
     from warehouse_llm_bridge.robotics_planning_core.task_graph_executor import TaskGraphExecutor
     from warehouse_llm_bridge.x_er_completion import (
         apply_pending_completions,
@@ -208,7 +211,7 @@ if _NODE_IMPORT_ERROR is None:
                 cfg, plugin_factories=production_plugin_factories()
             )
             # §4 step8: config -> transport -> constructed ER adapter (DIRECT fail-safe,
-            # adapter_factory.py:77). Construction only — a live send stays behind the
+            # adapter_factory.py:130). Construction only — a live send stays behind the
             # WAREHOUSE_LIVE_ER operator/cost gate, which this node NEVER sets.
             self._adapter = build_er_adapter(cfg)
             # §5 step5: gen minting is node-owned via the shared FileGenStore
@@ -257,9 +260,16 @@ if _NODE_IMPORT_ERROR is None:
             # -> guarded mark_succeeded/failed -> re-trigger. 0 actuation.
             self.create_subscription(String, _GOAL_RESULT_TOPIC, self._on_goal_result_msg, 10)
             request_src = "fixture" if self._request is not None else "none"
+            # er_source surfaces which plan source the factory built (docs/dev/08 追補 2 step 3:
+            # the operator checks `er_source=offline_replay` before a free G5 run; `live` means
+            # the overlay was not picked up). resolve_er_offline_payload_path already ran inside
+            # build_er_adapter above — this re-resolution is pure and cannot diverge from it.
+            er_source = (
+                "offline_replay" if resolve_er_offline_payload_path(cfg) is not None else "live"
+            )
             self.get_logger().info(
-                f"x_er_bridge ready (composition preflight passed, request_source="
-                f"{request_src}, out_dir={self._runtime.out_dir})"
+                f"x_er_bridge ready (composition preflight passed, er_source={er_source}, "
+                f"request_source={request_src}, out_dir={self._runtime.out_dir})"
             )
 
         # ── cycle loop (background thread + dedicated event loop, llm_bridge.py:254-297) ──

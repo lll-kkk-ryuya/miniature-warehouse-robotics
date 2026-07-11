@@ -398,6 +398,15 @@ doc03 §ROS 2 トピック設計「Jetson 内部」表（`docs/architecture/03-s
 
 **publish-only=0 actuation の実装確認**（§8.9 additive・L4OF-G1:269）: 別ノード gate → `OperatorNoticePublisher.publish_event(decision_event)` → `/operator/notice` に `std_msgs/String`(JSON) を publish するだけ（`operator_feedback/publisher.py`）。motion / goal / tool dispatch チャネルを持たず、reject 級 `decision` 以外は wire に載せない。R-26 unit（`tests/unit/test_operator_feedback_publisher.py`）で (a) topic=`/operator/notice`（観測チャネル・非 actuation）、(b) payload に actuation key ゼロ、(c) publisher 出力＝box 入力の往復一致、を pin。
 
+### 8.11 plugin 発 decision_event の `plugin_id` 帰属（additive・v0 wire key set 不変）
+
+plugin composition（Variant B 採用＝`docs/productization/09-run-manifest-and-plugin-composition.md:374-381`）で plugin が emit する decision_event（`box=l3_validator`・`stage=validate_plan`）は、**optional field `plugin_id`** を携行し得る。`plugin_id` は Variant B の**別 field 形**（`reason_code` と連結した `id:code` 文字列にしない）で、値は plugin manifest の `plugin_id` 形式（lowercase dotted snake_case・例 `l3.zone_policy`＝`docs/productization/09-run-manifest-and-plugin-composition.md:231`）。同じ `reason_code` を複数 plugin が emit する場合は `box` / `stage` / `plugin_id` で区別する（`docs/productization/10-llm-assisted-rule-authoring.md:395-396`）。
+
+- **適用範囲は decision_events.jsonl の row 形**（検証 envelope＝doc09 実装順序 step 3・`docs/productization/09-run-manifest-and-plugin-composition.md:489`）**と将来の decision_events emitter の行形**。`plugin_id` は帰属（attribution）の optional 軸であり、join key（`run_id`/`gen_id`）は変えない。
+- **#446 で凍結した `/operator/notice` の `operator_notice.v0` wire payload key set（§8.4・§8.10 item 5）は変更しない**。v0 wire に `plugin_id` key は足さない（wire への追加は将来 `.v1` 等の additive 判断＝§8.10 item 5「consumer は `operator_notice.` prefix で key」）。plugin 発 reject は L4-local（Bridge 内・§5.2:179 直接 in-process render）ゆえ、そもそも本 topic に載らない（§8.10 item 3）。
+- `plugin_id` 無し（欠落 / None）の行は従来どおり有効（既存 producer 行の後方互換・additive-first＝`.claude/rules/parallel-workflow.md` §7.2）。既存購読者は新 field を無視できる。
+- 不正形式（UPPERCASE・`:` 入り＝namespaced full code の混入・空文字）は検証層で **typed error（fail-closed）** とし、silent drop しない（frozen 9 コードとの構造的 disjoint を守る＝`docs/productization/09-run-manifest-and-plugin-composition.md:380-381`）。
+
 ---
 
 ## 9. 参照
