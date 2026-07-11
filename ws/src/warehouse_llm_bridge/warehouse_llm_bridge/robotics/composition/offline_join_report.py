@@ -78,6 +78,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 from .decision_event_envelope import (
     ERROR_SCHEMA_VERSION_MISMATCH,
     SCHEMA_VERSION_PROPOSAL,
@@ -411,6 +413,14 @@ def build_report(
     if per_gen is None:
         per_gen = per_gen_rows_python(audit.rows, event_rows, results.rows)
 
+    # Rows that cannot resolve a gen_id never enter the join — count them so a
+    # correlation loss is visible, not silent (the join key is the whole point,
+    # doc09:34,41). Read-only audit rows legitimately carry no gen_id.
+    task_to_gen = build_task_to_gen(audit.rows)
+    unjoined_audit = sum(1 for row in audit.rows if _audit_gen_id(row) is None)
+    unjoined_events = sum(1 for row in event_rows if coerce_gen_id(row.get("gen_id")) is None)
+    unjoined_results = sum(1 for row in results.rows if _result_gen_id(row, task_to_gen) is None)
+
     artifact_missing: list[str] = []
     if audit.artifact_missing:
         artifact_missing.append("audit")
@@ -458,12 +468,14 @@ def build_report(
                 "path": audit.path,
                 "artifact_missing": audit.artifact_missing,
                 "rows": len(audit.rows),
+                "rows_without_gen": unjoined_audit,
                 "line_errors": [{"line_no": e.line_no, "message": e.message} for e in audit.errors],
             },
             "decision_events": {
                 "path": events_validation.path,
                 "artifact_missing": events_validation.artifact_missing,
                 "rows": len(event_rows),
+                "rows_without_gen": unjoined_events,
                 "envelope_valid": len(events_validation.rows),
                 "envelope_errors": [
                     {"line_no": e.line_no, "kind": e.kind, "message": e.message}
@@ -474,6 +486,7 @@ def build_report(
                 "path": results.path,
                 "artifact_missing": results.artifact_missing,
                 "rows": len(results.rows),
+                "rows_without_gen": unjoined_results,
                 "line_errors": [
                     {"line_no": e.line_no, "message": e.message} for e in results.errors
                 ],
@@ -516,7 +529,11 @@ def build_run_report(
     if manifest_path is not None and manifest_path.exists():
         try:
             manifest = load_run_manifest(manifest_path)
-        except Exception as exc:  # fail-closed loader; report records the rejection
+        except (OSError, ValueError, yaml.YAMLError) as exc:
+            # The loader's DOCUMENTED error surface (loader.py:3-10): OSError /
+            # yaml.YAMLError / ValueError (pydantic ValidationError ⊂ ValueError).
+            # The loader stays fail-closed; the report records the rejection and
+            # degrades instead of dying (E-G1 spirit, doc06:251).
             manifest_error = f"{type(exc).__name__}: {exc}"
         else:
             expected_emitters = manifest.expected_emitters

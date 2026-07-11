@@ -247,6 +247,24 @@ class TestEnvelopeRejectionSurfaces:
         assert "schema_version_mismatch" in reasons
 
 
+class TestUnjoinedRows:
+    def test_rows_without_gen_are_counted_not_silent(self, run_dir: Path) -> None:
+        """Correlation loss must be visible (join key is the point — doc09:34,41)."""
+        audit = CommandAuditLog(run_dir / AUDIT_FILENAME)
+        audit.record("get_warehouse_state", "executed", {"robots": 2})  # no gen_id
+        results_path = run_dir / RESULTS_FILENAME
+        ghost = json.dumps({"robot": "bot1", "task_id": "ghost", "result": "succeeded"})
+        results_path.write_text(
+            results_path.read_text(encoding="utf-8") + ghost + "\n", encoding="utf-8"
+        )
+        report = _report(run_dir)
+        assert report["sources"]["audit"]["rows_without_gen"] == 1
+        assert report["sources"]["results"]["rows_without_gen"] == 1
+        assert report["sources"]["decision_events"]["rows_without_gen"] == 0
+        # The unjoined rows do not distort the per-gen join.
+        assert [row["gen_id"] for row in report["per_gen"]] == [42, 43]
+
+
 class TestManifestDegradation:
     def test_broken_manifest_recorded_not_fatal(self, run_dir: Path) -> None:
         (run_dir / MANIFEST_FILENAME).write_text(
