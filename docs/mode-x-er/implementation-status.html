@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Mode X-ER 実装状況 — 想定(planned) vs 現状(main 9ad7ec9)</title>
+<title>Mode X-ER 実装状況 — 想定(planned) vs 現状(main 8261403)</title>
 <style>
   :root{
     color-scheme: dark;
@@ -145,8 +145,8 @@
 <div class="wrap">
 
 <header class="top">
-  <h1>Mode X-ER 実装状況 — 想定(planned) vs 現状(current on main <code>9ad7ec9</code>)</h1>
-  <p class="lead">ER → L3 パイプラインの各 node を、<b>想定(planned)</b> と <b>現状(main <code>9ad7ec9</code> に載っているもの)</b>で対比する。結論から言うと、<b>凍結 <code>Command</code> まで到達する offline L3 チェーンは DONE</b>（envelope → handoff → validator → resolver → executor → compiler → <code>pipeline.compile_raw_output</code>）、<b>LIVE send 機構（#389）も main 着地</b>、さらに <b>それらを鎖化する背骨 <code>x_er_bridge</code>（#419/#423）が land＝<code>goal_result</code> だけで red→blue を offline 完走</b>。ただし <b>実 rclpy node を sim で spin し L2/L1/L0 を実作動させる XER6 sim closure は G5 human gate＝未実走</b>。ER の <b>text / image は lean Hermes gateway（8643）経由</b>、<b>audio は DIRECT</b>（下の紫バンド）。本ページは図解（補足資料）で、設計の正本は <code>01</code>〜<code>07</code> / README の .md。</p>
+  <h1>Mode X-ER 実装状況 — 想定(planned) vs 現状(current on main <code>8261403</code>)</h1>
+  <p class="lead">ER → L3 パイプラインの各 node を、<b>想定(planned)</b> と <b>現状(main <code>8261403</code> に載っているもの)</b>で対比する。結論から言うと、<b>凍結 <code>Command</code> まで到達する offline L3 チェーンは DONE</b>（envelope → handoff → validator → resolver（object-class snap 込み #452）→ executor → compiler → <code>pipeline.compile_raw_output</code>）、<b>LIVE send 機構（#389）も main 着地</b>、さらに <b>それらを鎖化する背骨 <code>x_er_bridge</code>（#419/#423）が land＝<code>goal_result</code> だけで red→blue を offline 完走</b>。ただし <b>実 rclpy node を sim で spin し L2/L1/L0 を実作動させる XER6 sim closure は G5 human gate＝未実走</b>。ER transport の標準は <b>fork gateway（8644）一本で全 modality を Hermes 経由</b>（ADR-0002・live-matrix 12/12 sends 実証）、<b>shipped default の audio は依然 DIRECT</b>（下の紫バンド）。本ページは図解（補足資料）で、設計の正本は <code>01</code>〜<code>07</code> / README の .md。</p>
 </header>
 
 <div class="nav">
@@ -161,7 +161,7 @@
 
 <div class="meta">
   <b>読み方</b>: 各 node に <b>STATUS badge</b>（<span class="badge b-done">done</span> / <span class="badge b-partial">partial</span> / <span class="badge b-pending">pending</span>）とレイヤ帯（L4 ER-in-Hermes → L4 adapter → L3 → L2 → L1/L0）を付す。one-line note の <span class="dref">file:line</span> は <b>実コードで裏取り済み</b>の出所（例 <span class="dref">pipeline.py:90-187</span>）。想定の設計正本は <code>01</code>〜<code>03</code> / <code>06</code> / <code>07</code>。
-  <b>状態の要旨</b>: offline L3 → 凍結 <code>Command</code> は<b>配線済み(DONE)</b>／ <b>LIVE send（#389）は main 未載</b>／ <b>L2/L1/L0 の実 actuation（XER6）は未達</b>。
+  <b>状態の要旨</b>: offline L3 → 凍結 <code>Command</code> は<b>配線済み(DONE)</b>／ <b>LIVE send 機構（#389）＋稼働 cycle 配線（#419/#423）は main 着地</b>／ <b>L2/L1/L0 の実 actuation（XER6 sim closure）は G5 human gate＝未実走</b>。
 </div>
 
 <div class="legend">
@@ -185,38 +185,38 @@
 <div class="cxcap">STATUS は <b>node の塗り（fill）</b>＝実装済みか、CONNECTIVITY は <b>node の枠（ring）</b>＝上から running で到達するか、の<b>直交する 2 軸</b>。例：<span class="badge b-done">done</span> 塗り ＋ <span class="ring offline" style="margin:0 4px 0 0"></span>offline-only 枠 ＝「実装済みだが running からは到達不能」。</div>
 
 <div class="note">
-  <b>ER は Hermes の中（text/image）／ audio は直</b>: ER の <b>text + image</b> は <b>lean Hermes ER gateway（<span class="port">8643</span> / OpenAI-compat <code>/v1/chat/completions</code>）の内側</b>を通る（下の紫バンド）。一方 <b>audio は Hermes を経由せず ER へ DIRECT</b>（<span class="port direct">direct</span>・shipped default かつ恒久 fail-safe）。fork gateway（<span class="port">8644</span>・input_audio passthrough）は<b>productization TARGET のみ</b>で、今出荷している配線ではない。<span class="dref">06 §5 / doc06:159,269 / dev/07:188</span>
+  <b>ER-in-Hermes 標準 = fork gateway <span class="port">8644</span> 一本（ADR-0002）</b>: 全 modality（text + image + <code>input_audio</code>）を <b>fork gateway（<span class="port">8644</span>）1 本で Hermes 経由</b>にするのが標準。XER6 live-matrix は <b>12/12 approved sends を全て 8644 経由で live 実証</b>（<span class="dref">dev/07:211</span>・#428/#429）＝8644 は「probe のみ」ではなく live 実績のある標準 wire。8643（lean text/image gateway）は 8644 へ<b>統合し retire 中</b>。ただし <b>shipped default の audio は依然 DIRECT</b>（<span class="port direct">direct</span>・config <code>er_gateway</code> 既定 OFF・緊急 fail-safe / 恒久 fallback）。<span class="dref">ADR-0002:25-26,52 / doc06:159 / dev/07:211</span>
 </div>
 
 <!-- ================= PIPELINE (top-to-bottom, layer bands) ================= -->
 <h2>ER → L3 パイプライン（上から下・レイヤ帯ごと）</h2>
-<p class="lead">operator 入力から motor まで。各 node の badge が「main に載っているか」を示す。<b>L3 の凍結 <code>Command</code> までは緑（DONE）で連続する</b>が、<b>LIVE send と L2 以降は赤（pending）で途切れる</b>のが現状。</p>
+<p class="lead">operator 入力から motor まで。各 node の badge が「main に載っているか」を示す。<b>L3 の凍結 <code>Command</code> までは緑（DONE）で連続し、dispatch 記帳（L2 seam）まで offline で鎖化済（#419/#423）</b>。<b>実 sim/Nav2 作動（L1/L0）だけが G5 gate で途切れる</b>のが現状。</p>
 <div class="cxcap"><b>STATUS塗り = 実装済みか / CONNECTIVITY枠 = 上から running で到達するか。現状 running枠 はどの node にも付かない（Mode A の同型 seam のみ running-wired）。</b></div>
 
-<div class="optline">指示:「bot1 は赤い箱へ。到達したら bot2 は青い箱へ」<span style="color:var(--faint)"> → ER が intent + detections + task_graph を提案 → L3 が offline で正規化・検証・順序化・compile → 凍結 Command（<b>ここまで DONE</b>）→ …LIVE send / L2 / L1 / L0（<b>pending</b>）</span></div>
+<div class="optline">指示:「bot1 は赤い箱へ。到達したら bot2 は青い箱へ」<span style="color:var(--faint)"> → ER が intent + detections + task_graph を提案 → L3 が offline で正規化・検証・解決（距離＋object class snap）・順序化・compile → 凍結 Command → dispatch 記帳（<b>ここまで OFFLINE-WIRED</b>）→ …実 sim/Nav2 作動 L1/L0（<b>G5 gate</b>）</span></div>
 
 <!-- ===== L4 ER-in-Hermes band ===== -->
 <div class="er-band">
-  <div class="ebh"><span class="lyr" style="background:var(--plugin)">L4 ER-in-Hermes</span>ER は Hermes の中（text/image）／ audio は直</div>
-  <div class="ebs">この帯の中＝「ER inside Hermes」。<b>text/image は 8643 gateway 経由</b>、<b>audio は帯の外＝DIRECT</b>（fork 8644 は TARGET のみ）。</div>
+  <div class="ebh"><span class="lyr" style="background:var(--plugin)">L4 ER-in-Hermes</span>標準 = fork 8644 一本で全 modality（ADR-0002）／ shipped audio は直</div>
+  <div class="ebs">この帯の中＝「ER inside Hermes」。標準（ADR-0002）は <b>fork 8644 一本</b>（live-matrix 12/12 sends 実証・8643 は 8644 へ統合 retire 中）。<b>shipped default の audio は帯の外＝DIRECT</b>（config 既定 OFF・恒久 fail-safe）。</div>
 
   <!-- node 1 -->
-  <div class="pnode st-done cx-notwired">
+  <div class="pnode st-done cx-offline">
     <div class="phead">
       <div class="t"><span class="lyr" style="background:var(--plugin)">L4-ER-in-Hermes</span>① Voice / text / image operator input <span class="role">not-wired</span></div>
       <span class="badge b-done">done</span>
     </div>
-    <div class="s">One input drives an ER critical lane + optional out-of-band STT. <span class="dref">perception_lanes.py:48-125</span>. <b>mic→audio capture = MISSING</b>：この lane を driving する稼働 node が無い（呼び出し元不在）。</div>
+    <div class="s">One input drives an ER critical lane + optional out-of-band STT. <span class="dref">perception_lanes.py:48-125</span>. 稼働 cycle 部分は <code>x_er_bridge</code> が driving（#419・入力源＝<code>request_fixture</code> v0）。<b>実マイク capture = MISSING</b>（mic lane を driving する caller なし・後続 slice）。</div>
   </div>
   <div class="p-arrow">▼</div>
 
   <!-- node 2 -->
-  <div class="pnode st-done cx-notwired">
+  <div class="pnode st-done cx-offline">
     <div class="phead">
-      <div class="t"><span class="lyr" style="background:var(--plugin)">L4-ER-in-Hermes</span>② Text + image → lean Hermes ER gateway <span class="port">8643</span> <span style="font-weight:400;color:var(--muted);font-size:11.5px">OpenAI-compat <code>/v1/chat/completions</code></span> <span class="role">not-wired</span></div>
+      <div class="t"><span class="lyr" style="background:var(--plugin)">L4-ER-in-Hermes</span>② Text + image → lean Hermes ER gateway <span class="port">8643</span> <span style="font-weight:400;color:var(--muted);font-size:11.5px">OpenAI-compat <code>/v1/chat/completions</code>・<b>8644 へ統合 retire 中</b></span> <span class="role">offline-wired</span></div>
       <span class="badge b-done">done</span>
     </div>
-    <div class="s"><code>run-er-hermes.sh</code> + <code>config.lean.yaml</code>: isolated <code>HERMES_HOME</code>, provider google, model <code>gemini-robotics-er-1.6-preview</code>, zero tools. <b>ER INSIDE Hermes for text/image.</b> ただし「200 OK」を出したのは curl / pytest test-client＝<b>稼働 adapter からの呼び出しは無い</b>。</div>
+    <div class="s"><code>run-er-hermes.sh</code> + <code>config.lean.yaml</code>: isolated <code>HERMES_HOME</code>, provider google, model <code>gemini-robotics-er-1.6-preview</code>, zero tools. <b>ER INSIDE Hermes for text/image.</b> ADR-0002 により <b>8644 fork へ統合し retire していく CURRENT 実体</b>（cycle は #419 で adapter を構築・offline=fixture／live gateway 200 は gate）。</div>
   </div>
   <div class="p-arrow">▼</div>
 
@@ -233,10 +233,10 @@
   <!-- node 4 -->
   <div class="pnode st-partial cx-offline">
     <div class="phead">
-      <div class="t"><span class="lyr" style="background:var(--plugin)">L4-ER-in-Hermes</span>④ Audio-through-Hermes fork gateway <span class="port">8644</span> <span style="font-weight:400;color:var(--muted);font-size:11.5px">input_audio passthrough</span> <span class="role">offline-only</span></div>
+      <div class="t"><span class="lyr" style="background:var(--plugin)">L4-ER-in-Hermes</span>④ 標準 fork gateway <span class="port">8644</span>（全 modality） <span style="font-weight:400;color:var(--muted);font-size:11.5px">text + image + input_audio passthrough</span> <span class="role">offline-only</span></div>
       <span class="badge b-partial">partial</span>
     </div>
-    <div class="s"><code>er-audio-fork/</code> is a productionization <b>TARGET only</b> (<code>0001-input_audio</code> patch). NOT the shipped wire; audio today = direct.</div>
+    <div class="s"><code>er-audio-fork/</code>＝<b>ADR-0002 の標準（TARGET）</b>。XER6 live-matrix で <b>12/12 approved sends を全て 8644 経由で live 実証</b>（<span class="dref">dev/07:211</span>・#428/#429・harness 駆動＝RUNNING node ではない）。ただし <b>deployed default ではない</b>＝shipped audio は今日も direct（config 既定 OFF）。残＝default 配備＋8643 retire 完了（#357）。</div>
   </div>
 </div>
 
@@ -249,30 +249,30 @@
   <!-- node 5 -->
   <div class="pnode st-done cx-offline">
     <div class="phead">
-      <div class="t"><span class="lyr" style="background:var(--box)">L4-adapter</span>⑤ resolve_audio_transport <span style="font-weight:400;color:var(--muted);font-size:11.5px">wire SELECTION, fail-safe DIRECT</span> <span class="role">offline-only</span></div>
+      <div class="t"><span class="lyr" style="background:var(--box)">L4-adapter</span>⑤ resolve_audio_transport <span style="font-weight:400;color:var(--muted);font-size:11.5px">wire SELECTION, fail-safe DIRECT</span> <span class="role">offline-wired</span></div>
       <span class="badge b-done">done</span>
     </div>
-    <div class="s"><span class="dref">transport.py:29-58</span>. Observation-only tag, never an execution branch. Offline-tested＝<b>pytest からのみ呼ばれ、稼働 node は呼ばない</b>。</div>
+    <div class="s"><span class="dref">transport.py:29-58</span>. Observation-only tag, never an execution branch. <b><code>build_er_adapter</code>（<span class="dref">adapter_factory.py:120</span>）が node 起動時に呼ぶ</b>（#419）。</div>
   </div>
   <div class="p-arrow">▼</div>
 
   <!-- node 6 -->
-  <div class="pnode st-done cx-notwired">
+  <div class="pnode st-done cx-offline">
     <div class="phead">
-      <div class="t"><span class="lyr" style="background:var(--box)">L4-adapter</span>⑥ GeminiErAdapter.propose_plan → RawModelOutput <span style="font-weight:400;color:var(--muted);font-size:11.5px">offline seam</span> <span class="role">not-wired</span></div>
+      <div class="t"><span class="lyr" style="background:var(--box)">L4-adapter</span>⑥ GeminiErAdapter.propose_plan → RawModelOutput <span style="font-weight:400;color:var(--muted);font-size:11.5px">offline seam</span> <span class="role">offline-wired</span></div>
       <span class="badge b-done">done</span>
     </div>
-    <div class="s"><span class="dref">gemini_er.py:39-75</span> offline replay seam; audit-only transport/provider tags. <b>これを呼ぶ稼働 Bridge cycle が無い</b>（唯一の caller は pytest）。</div>
+    <div class="s"><span class="dref">gemini_er.py:39-75</span> offline replay seam; audit-only transport/provider tags. <b><code>x_er_cycle</code> が毎 cycle <code>adapter.propose_plan</code> を呼ぶ</b>（#419・offline=fixture 即答・live=gate）。</div>
   </div>
   <div class="p-arrow">▼</div>
 
   <!-- node 7 -->
-  <div class="pnode st-done cx-notwired">
+  <div class="pnode st-done cx-offline">
     <div class="phead">
-      <div class="t"><span class="lyr" style="background:var(--box)">L4-adapter</span>⑦ LIVE ER send <span style="font-weight:400;color:var(--muted);font-size:11.5px">build_provider_request + HttpErTransportSender + HERMES→DIRECT fallback</span> <span class="role">not-wired</span></div>
+      <div class="t"><span class="lyr" style="background:var(--box)">L4-adapter</span>⑦ LIVE ER send <span style="font-weight:400;color:var(--muted);font-size:11.5px">build_provider_request + HttpErTransportSender + HERMES→DIRECT fallback</span> <span class="role">offline-wired</span></div>
       <span class="badge b-done">done</span>
     </div>
-    <div class="s"><b>ON MAIN（#389・2026-07-02）</b>: <code>gemini_er.py</code> に <code>build_provider_request</code> + <code>HttpErTransportSender</code> + <code>_live_send</code> + HERMES→DIRECT fallback + <code>WAREHOUSE_LIVE_ER</code> gate（未設定で RuntimeError）。offline HTTP unit 済。ただし実 HTTP は gate 越し（有料）で、<b>稼働 Bridge cycle からの呼び出しは未接続</b>（XER6/wiring）。</div>
+    <div class="s"><b>ON MAIN（#389・2026-07-02）</b>: <code>gemini_er.py</code> に <code>build_provider_request</code> + <code>HttpErTransportSender</code> + <code>_live_send</code> + HERMES→DIRECT fallback + <code>WAREHOUSE_LIVE_ER</code> gate（未設定で RuntimeError）。offline HTTP unit 済。<b>稼働 cycle からの呼び出しは #419/#423 で着地</b>（offline=fixture／実 HTTP は gate 越し・有料）。live-matrix で 12/12 sends 実証（harness 駆動）。</div>
   </div>
 </div>
 
@@ -304,12 +304,12 @@
   <div class="p-arrow">▼</div>
 
   <!-- node 10 -->
-  <div class="pnode st-partial cx-offline">
+  <div class="pnode st-done cx-offline">
     <div class="phead">
-      <div class="t"><span class="lyr" style="background:var(--teal)">L3</span>⑩ Visual Resolver: pixel → homography → KNOWN_LOCATION snap <span class="role">offline-only</span></div>
-      <span class="badge b-partial">partial</span>
+      <div class="t"><span class="lyr" style="background:var(--teal)">L3</span>⑩ Visual Resolver: pixel → homography → KNOWN_LOCATION snap（距離＋object class） <span class="role">offline-only</span></div>
+      <span class="badge b-done">done</span>
     </div>
-    <div class="s"><code>resolver.py</code> distance snap + fail-closed guards done. <b>GAP</b>: <span class="dref">doc02:150</span> object-class clause DEFERRED (<code># TODO</code> <span class="dref">resolver.py:192-194</span>).</div>
+    <div class="s"><code>resolver.py</code> distance snap + fail-closed guards + <b>object-class 一致 gate 4b（#452・<span class="dref">doc02:150</span> conjunction 完全実装・不一致→<code>object_class_mismatch</code> 0-dispatch）</b> <span class="dref">resolver.py:201-217</span>。残: <code>location_classes</code> の本番供給は未配線（<span class="dref">x_er_composition.py:239-241</span> は coords+radius のみ注入）。</div>
   </div>
   <div class="p-arrow">▼</div>
 
@@ -345,8 +345,8 @@
 
 <div class="seam-out">
   <span class="arrow">└▶</span>
-  <div class="node st-pending" style="flex:1 1 320px;margin:0;border-style:dashed"><div class="t">凍結 Command → L2 seam（未到達）<span class="badge b-pending">pending</span></div><div class="s">
-    offline で作られた <code>Command</code> を MCP / Policy Gate へ運ぶ X-ER 経路がまだ無い（下記 ⑭）。
+  <div class="node st-pending" style="flex:1 1 320px;margin:0;border-style:dashed"><div class="t">凍結 Command → L2 seam（offline-wired）<span class="badge b-pending">gate</span></div><div class="s">
+    <code>x_er_cycle</code> が <code>Command</code> を MCP / Policy Gate へ運ぶ（#419/#423・offline 完走）。実 sim 作動は G5 gate（下記 ⑭）。
   </div></div>
   <span class="arrow">▶</span>
   <div class="gov-chip">L2 実行許可<span style="font-weight:400;color:var(--muted);font-size:11px">（別プロセス）</span></div>
@@ -357,7 +357,7 @@
   <div class="nh" style="color:var(--seam)"><span class="lyr" style="background:var(--seam)">L2</span>実行許可・交通管理（X-ER e2e 未到達）</div>
 
   <!-- node 14 -->
-  <div class="pnode st-pending cx-notwired">
+  <div class="pnode st-pending cx-offline">
     <div class="phead">
       <div class="t"><span class="lyr" style="background:var(--seam)">L2</span>⑭ action_map / MCP tool → Policy Gate <span style="font-weight:400;color:var(--muted);font-size:11.5px">final actuation permission</span> <span class="role">offline-wired (X-ER)</span></div>
       <span class="badge b-pending">gate</span>
@@ -378,7 +378,7 @@
       <div class="t"><span class="lyr" style="background:var(--red)">L1</span>⑮ Nav2 Bridge / RMF <span style="font-weight:400;color:var(--muted);font-size:11.5px">goal dispatch</span> <span class="role">not-wired (X-ER)</span></div>
       <span class="badge b-pending">pending</span>
     </div>
-    <div class="s">Existing <code>Command</code>→action_map→MCP→Nav2/RMF path; no Mode X-ER e2e reaches it (tests/e2e are Mode A).</div>
+    <div class="s">Existing <code>Command</code>→action_map→MCP→Nav2/RMF path。X-ER は <code>forward_to_nav2=true</code> で <code>Nav2RestForwarder</code> に到達する配線まで land（#423）。実 sim/Nav2 作動は G5 gate（tests/e2e は Mode A のみ）。</div>
   </div>
   <div class="p-arrow">▼</div>
 
@@ -396,10 +396,10 @@
 <h2>要旨（DONE / partial / pending の切り分け）</h2>
 <div class="grid2">
   <div class="node st-done"><div class="t">DONE（main・offline 検証済み）<span class="badge b-done">done</span></div><div class="s">
-    ① input lane・② lean Hermes ER gateway(8643)・③ audio DIRECT fail-safe・⑤ transport 選択・⑥ adapter offline seam・⑦ LIVE ER send 機構(#389・gated)・⑧ handoff・⑨ validator(R-26)・⑪ task graph executor・⑬ <code>pipeline.compile_raw_output</code>（full L3 chain → 凍結 <code>Command</code>）。<b>offline で Command まで連続して通る。</b>
+    ① input lane・② lean Hermes ER gateway(8643・8644 へ retire 中)・③ audio DIRECT fail-safe・⑤ transport 選択・⑥ adapter offline seam・⑦ LIVE ER send 機構(#389・gated)・⑧ handoff・⑨ validator(R-26)・⑩ Visual Resolver（object-class snap 込み #452）・⑪ task graph executor・⑬ <code>pipeline.compile_raw_output</code>（full L3 chain → 凍結 <code>Command</code>）。<b>offline で Command まで連続して通る。</b>
   </div></div>
   <div class="node st-partial"><div class="t">partial（一部 main・残り DEFER/TODO）<span class="badge b-partial">partial</span></div><div class="s">
-    ④ audio fork gateway(8644)＝TARGET のみ・⑩ Visual Resolver（object-class clause DEFER）・⑫ Command Compiler（<code>x_rmf</code> half DEFER #346）。
+    ④ 標準 fork gateway(8644)＝ADR-0002 決定＋live-matrix 12/12 実証済・<b>default 配備が残</b>（shipped audio=direct）・⑫ Command Compiler（<code>x_rmf</code> half DEFER #346）。ほか: ⑩ の <code>location_classes</code> 本番供給・composition の lifecycle status gate 機械強制（doc09 §RESIDUAL）。
   </div></div>
 </div>
 <div class="node st-pending"><div class="t">offline-wired / sim=G5 gate<span class="badge b-pending">gate</span></div><div class="s">
@@ -441,7 +441,7 @@
 
 <footer>
   <p>このページは <code>docs/mode-x-er/implementation-status.html</code>（自己完結ダークモード図解・補足資料）。設計の正本は <a href="07-implementation-status.md">07 implementation-status</a> ＋ <a href="01-architecture-and-flow.md">01</a> / <a href="02-l3-planning-core.md">02</a> / <a href="03-er-adapter-skeleton.md">03</a> / <a href="06-unfrozen-contract-resolutions.md">06</a> / <a href="README.md">README</a>。関連図解: <a href="mode-x-er-explainer.html">mode-x-er-explainer.html</a>。外部 CDN / JS / 画像に依存しない単一 HTML。</p>
-  <p>生成 2026-07-02（re-pin 2026-07-07・XER6 Slice A/B land 反映）・対象 origin/main 9ad7ec9・出典は各 node の file:line（実コードで裏取り済）。</p>
+  <p>生成 2026-07-02（re-pin 2026-07-11・#449-#453 land 反映＝ER-in-Hermes 標準整合 / object-class snap / composition factory seam / plugins incubator / eval join）・対象 origin/main 8261403・出典は各 node の file:line（実コードで裏取り済）。</p>
 </footer>
 
 </div>

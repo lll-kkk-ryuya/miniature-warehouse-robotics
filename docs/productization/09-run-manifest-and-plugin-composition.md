@@ -271,7 +271,7 @@ plugins/
 ```
 
 利用者が 2 件以上になり、site profile だけで差し替えられることが確認できたら、
-`04` の分離基準に従って別 repo / package registry へ切り出す。
+`04` の分離基準に従って別 repo / package registry へ切り出す。**この layout の実体は repo-root `plugins/` に着地済（#451・`l3_zone_policy`＝status `draft`）**。
 
 ### Trust model と fail-closed granularity
 
@@ -486,9 +486,9 @@ join key、score sink、汎用算術を安定提供し、どの box が有効か
 
 1. 本書の manifest 形を proposal として固定し、既存 docs から参照できるようにする。
 2. `out/runs/<run_id>/manifest.yaml` の最小 generator を WO または launch harness に追加する。
-3. `decision_events.jsonl` の envelope を Pydantic / JSON Schema で検証する。
-4. DuckDB で `audit.jsonl` / `decision_events.jsonl` / result export を join する offline report を作る。
-5. fail-closed composition 層（`run_manifest.v1` ＋ startup preflight ＋ 実効構成レコード ＋ typed `validate_plan` hookspec ＋ namespaced plugin code ＋ policy clamp）を **今すぐ標準として建てる**（spike ではなく本実装。[ADR-0003](../adr/0003-bridge-local-manifest-composition.md)）。`l3.zone_policy` fixture を 1 件添える。
+3. `decision_events.jsonl` の envelope を Pydantic / JSON Schema で検証する。**（済＝#453・`decision_event_envelope.py`＝unknown `schema_version` fail-closed）**
+4. DuckDB で `audit.jsonl` / `decision_events.jsonl` / result export を join する offline report を作る。**（済＝#453・`offline_join_report.py`＋`duckdb_join.py`＝join_gap / artifact_missing 検出・engine 等価 unit）**
+5. fail-closed composition 層（`run_manifest.v1` ＋ startup preflight ＋ 実効構成レコード ＋ typed `validate_plan` hookspec ＋ namespaced plugin code ＋ policy clamp）を **今すぐ標準として建てる**（spike ではなく本実装。[ADR-0003](../adr/0003-bridge-local-manifest-composition.md)）。`l3.zone_policy` fixture を 1 件添える。**（済＝composition 層は land〔:146-151 / :413-416 の解消済注記〕・`l3.zone_policy` fixture は #451 で repo-root `plugins/` incubator に実行可能 pair として着地）**
 6. `entry_points` 自動 discovery は **explicit-registry-first の後回し最適化**であり、composition 層を建てない理由にはしない。plugin package が 2 件以上になってから足す。
 7. OpenTelemetry Collector は Langfuse 以外の sink が必要になった時点で spike する。
 
@@ -525,8 +525,8 @@ fail-closed としては正しい既定だが、factory 供給経路が無い＝
   plugin package が 2 件以上になるまで後回し。registry は import 可能な factory を
   **人が明示列挙**する）。
 - **registry は今日は空**でよい: production plugin はまだ存在しない
-  （repo 内 incubator `plugins/` 構想＝:262-274 は別レーン。registry への配線は
-  incubator 側 plugin が review gate を通ってから行う）。
+  （repo 内 incubator `plugins/`＝:262-274 は **#451 で着地済**・別レーン。registry への配線は
+  incubator 側 plugin（`l3.zone_policy`＝status `draft`）が review gate を通ってから行う）。
 - **frozen contract 非追加**（:8 不変）: registry は bridge-local module であり
   `warehouse_interfaces` へ昇格しない。
 
@@ -544,7 +544,7 @@ fail-closed としては正しい既定だが、factory 供給経路が無い＝
 
 ### RESIDUAL（本節の未決・隠さない）
 
-- incubator plugin（:262-274）を registry へ実配線する手順（review gate 通過後・別レーン）。
+- incubator plugin（:262-274・#451 で `l3.zone_policy` が status `draft` として着地済）を registry へ実配線する手順（review gate 通過後・別レーン）。
 - **lifecycle status gate 未強制**: [10](10-llm-assisted-rule-authoring.md):152-153 は
   「`approved` 以上だけ run manifest で有効化」と定めるが、runtime は plugin manifest の
   `status` を enablement 判定に使っていない（現状は運用規約のみ）。registry か preflight での
