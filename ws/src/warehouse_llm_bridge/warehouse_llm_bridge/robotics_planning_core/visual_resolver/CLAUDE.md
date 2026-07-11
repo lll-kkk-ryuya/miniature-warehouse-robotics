@@ -2,8 +2,9 @@
 
 Pixel -> map -> known-location snap. Standalone, **bridge-local offline core** consumed LATER
 by XER5. Turns each `RoboticsPlanDraft` detection's image pixel into a map point via the
-calibration homography, gates it (valid polygon / reprojection error / snap radius), and snaps
-it to the nearest frozen `KNOWN_LOCATIONS` key — or marks it `unresolved` (the 0-dispatch path).
+calibration homography, gates it (valid polygon / reprojection error / snap radius / object-class
+agreement, doc02:150), and snaps it to the nearest frozen `KNOWN_LOCATIONS` key — or marks it
+`unresolved` (the 0-dispatch path).
 
 - **担当トラック / ブランチ**: Mode X-ER / `feat/mode-x-er-xer3`
 - **Phase**: Mode X-ER L3 Planning Core (stage 2 of 4, doc02:14-16).
@@ -29,8 +30,11 @@ marked as such in each module. It stays bridge-local until XER1-XER2 stabilize t
   reason:str }` (doc02:126-131).
 - `Resolution` StrEnum `{known_location, unresolved}` (doc02:128,151).
 - `UnresolvedReason` StrEnum `{off_map, outside_valid_polygon, beyond_snap_radius,
-  reprojection_error_too_large, no_calibration}` (doc02:151 + the snap/calibration gates).
-- `VisualPolicy` (frozen dataclass) — INJECTED thresholds + confidence formula + location coords.
+  reprojection_error_too_large, no_calibration, object_class_mismatch}` (doc02:151 + the
+  snap/calibration gates; `object_class_mismatch` = the doc02:150 class half, additive).
+- `VisualPolicy` (frozen dataclass) — INJECTED thresholds + confidence formula + location coords
+  + `location_classes` (expected object class per location, doc02:150 class half; default empty
+  = distance-only, behaviour-preserving).
 
 ## 消費 (consume)
 
@@ -85,16 +89,29 @@ state source. Until then tests inject placeholder magnitudes.
   `warehouse_interfaces`.
 - `# TODO(docs)`: reconcile doc02:211 (and docs/mode-x/08x:370,538) `"kind"` vs the
   authoritative `"resolution"` key (decision 1 above) in a `docs/*` PR.
-- `# TODO(object-class)`: doc02:150 snaps by "距離 *and* object class"; this MVP slice snaps by
-  Euclidean distance ONLY and **defers** the object-class clause (the draft carries a proxy in
-  `Detection.color`). XER5 / a follow-up should fold object-class into the snap gate.
+- **(済) object-class snap (doc02:150)**: the deferral is CLOSED — gate 4b in `_resolve_one`
+  now requires object-class agreement IN ADDITION to the unchanged distance criterion.
+  Detection-side class = `Detection.color` (the draft's only class field, doc01:142-143,229;
+  recorded proxy doc07:26,67); location-side expected class = INJECTED
+  `VisualPolicy.location_classes` (site snap rule — no doc/config table defines per-location
+  classes, so it follows the same consume-gap pattern as `location_coords`;
+  productization/03:31,39). **Adjudicated absent-class semantics**: class info missing on
+  either side (color=None or unregistered location) => criterion non-evaluable => distance
+  alone decides — licensed by doc02's own worked example (input :117 has no class field,
+  output :126-133 snaps to shelf_1). Only present-on-both-sides disagreement vetoes
+  (`object_class_mismatch`, fail-closed on the distance-nearest candidate; NO redirect to a
+  farther agreeing location — doc02:150 licenses no search rule). Matching = exact string
+  equality (no normalization invented).
 - Geometry is stdlib-only (no OpenCV/NumPy): a hand-rolled 3x3 homography apply + ray-casting
   point-in-polygon. doc02:196 suggests NetworkX/OpenCV for production; kept dependency-free here
   so the offline unit core needs no native libs.
 
 ## テスト
 
-`tests/unit/test_visual_resolver.py` — 14 offline pydantic tests (no ROS/Hermes). Run from the
+`tests/unit/test_visual_resolver.py` — 26 offline pydantic tests (no ROS/Hermes; 14 XER3 +
+5 hardening + 7 object-class conjunction: agree-snaps / distance-ok-class-mismatch no-snap /
+class-ok-distance-fail no-snap / absent-class distance-only ×2 / class-map injection flip /
+mismatch-never-redirects). Run from the
 worktree root: `python -m pytest tests/unit/test_visual_resolver.py -q`. Covers: red_box->shelf_1
 & blue_box->shelf_2 via real homography + `InMemoryCalibrationLoader` + real `KNOWN_LOCATIONS`;
 outside-valid-polygon; beyond-snap-radius; empty/degenerate homography -> no_calibration;
@@ -108,7 +125,7 @@ reprojection-error ceiling (both sides); SAME input + two snap radii flips known
   ResolvedTarget, :149 calibration 5 fields, :150-151 snap & unresolved, :159 confidence
   composition, :251-252 resolve signature). **doc02:5 = all internal/illustrative.**
 - docs/mode-x/08x-robotics-bridge-mode-x.md:280 (independent `resolution` key source;
-  `"known_location|coordinate_goal|unresolved"`). doc02:150 also names an *object class* snap
-  clause that this MVP slice defers (distance-only) — see resolver.py TODO.
+  `"known_location|coordinate_goal|unresolved"`). doc02:150's *object class* snap clause is
+  now IMPLEMENTED (gate 4b conjunction) — see the (済) entry above.
 - docs/mode-x-er/06-unfrozen-contract-resolutions.md §1:52 (reuse KNOWN_LOCATIONS, invent none).
 - Landed seam: validator/seams.py (Calibration / CalibrationLoader / InMemoryCalibrationLoader).
