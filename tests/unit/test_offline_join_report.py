@@ -57,9 +57,14 @@ def _event(
     decision: str,
     box: str = "l3_validator",
     reason_code: str = "",
+    plugin_id: str | None = None,
 ) -> dict[str, Any]:
-    """One envelope-valid decision_event line (doc05:49-64 proposal form)."""
-    return {
+    """One envelope-valid decision_event line (doc05:49-64 proposal form).
+
+    ``plugin_id`` (mode-x-er/05 §8.11) is only present on plugin-emitted rows —
+    ``None`` keeps the key absent, mirroring non-plugin producers.
+    """
+    row: dict[str, Any] = {
         "schema_version": "proposal",
         "timestamp": "2026-07-11T00:00:00Z",
         "run_id": "run_join_test",
@@ -70,6 +75,9 @@ def _event(
         "decision": decision,
         "reason_code": reason_code,
     }
+    if plugin_id is not None:
+        row["plugin_id"] = plugin_id
+    return row
 
 
 def _write_jsonl(path: Path, rows: list[dict[str, Any] | str]) -> Path:
@@ -154,7 +162,53 @@ class TestHappyJoin:
 
     def test_reject_reason_top_n(self, run_dir: Path) -> None:
         top = _report(run_dir)["reject_reason_top_n"]
-        assert top == [{"box": "l3_validator", "reason_code": "UNKNOWN_TARGET", "count": 1}]
+        # Non-plugin rows carry no plugin_id and group under "" (mode-x-er/05 §8.11).
+        assert top == [
+            {"box": "l3_validator", "reason_code": "UNKNOWN_TARGET", "plugin_id": "", "count": 1}
+        ]
+
+    def test_reject_reason_top_n_distinguishes_plugins(self, run_dir: Path) -> None:
+        """The same reason_code from two plugins stays distinguishable via plugin_id
+        (doc10:395-396 / mode-x-er/05 §8.11) — hand-computed: 2 vs 1 occurrences."""
+        events = run_dir / DECISION_EVENTS_FILENAME
+        _write_jsonl(
+            events,
+            [
+                _event(
+                    gen_id=42,
+                    decision="rejected",
+                    reason_code="target_out_of_zone",
+                    plugin_id="l3.zone_policy",
+                ),
+                _event(
+                    gen_id=42,
+                    decision="rejected",
+                    reason_code="target_out_of_zone",
+                    plugin_id="l3.zone_policy",
+                ),
+                _event(
+                    gen_id=43,
+                    decision="rejected",
+                    reason_code="target_out_of_zone",
+                    plugin_id="l3.freshness",
+                ),
+            ],
+        )
+        top = _report(run_dir)["reject_reason_top_n"]
+        assert top == [
+            {
+                "box": "l3_validator",
+                "reason_code": "target_out_of_zone",
+                "plugin_id": "l3.zone_policy",
+                "count": 2,
+            },
+            {
+                "box": "l3_validator",
+                "reason_code": "target_out_of_zone",
+                "plugin_id": "l3.freshness",
+                "count": 1,
+            },
+        ]
 
     def test_no_gaps_and_run_id_from_manifest(self, run_dir: Path) -> None:
         report = _report(run_dir)
