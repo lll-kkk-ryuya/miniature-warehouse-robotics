@@ -31,6 +31,13 @@ Fail-closed / fail-open split (each mirrors an existing convention):
   join key semantics: doc09:34,41). A non-coercible ``gen_id`` is a typed
   validation error here (this module's job IS 検証, doc09:489), unlike the
   speak-path producer which silently degrades to ``None`` (models.py:152-158).
+- ``plugin_id`` is ``str | None`` (mode-x-er/05 §8.11): plugin-emitted rows
+  (``StructuredPluginRuleResult.to_decision_event_fields`` — the doc09:374-381
+  Variant B separate-field form) carry their attribution; rows from non-plugin
+  producers omit it. A malformed ``plugin_id`` (UPPERCASE / colon-containing /
+  empty — outside the manifest form, doc09:231,380-381) is a typed validation
+  error (fail-closed), never silently dropped. The operator_notice.v0 WIRE key
+  set is unchanged (mode-x-er/05 §8.11 — this is a row/validation-layer field).
 
 This module is bridge-local (no ``warehouse_interfaces`` edit, no eval_sdk edit —
 eval_sdk stays composition-agnostic, doc09:479-483). Pure host-runnable: stdlib +
@@ -40,6 +47,7 @@ pydantic only (doc16 §11).
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -49,6 +57,13 @@ from pydantic import ConfigDict, ValidationError, field_validator
 from warehouse_llm_bridge.operator_feedback.models import DECISION_VOCAB
 from warehouse_llm_bridge.operator_feedback.publisher import SCHEMA_VERSION_V0
 from warehouse_llm_bridge.robotics_planning_core.models.base import _BridgeModel
+
+from .plugin_results import PLUGIN_ID_PATTERN
+
+#: Anchored manifest-form matcher for the optional ``plugin_id`` field (mode-x-er/05 §8.11).
+#: The pattern itself is the single composition-layer source (plugin_results.py:52 —
+#: lowercase dotted, doc09:231), compiled here from the PUBLIC constant.
+_PLUGIN_ID_RE = re.compile(rf"^{PLUGIN_ID_PATTERN}$")
 
 #: The documented decision_event basic-form version (docs/productization/05:63).
 SCHEMA_VERSION_PROPOSAL = "proposal"
@@ -95,6 +110,10 @@ class DecisionEventEnvelope(_BridgeModel):
     input_ref: str | None = None
     output_ref: str | None = None
     profile: str | None = None
+    # Plugin attribution (mode-x-er/05 §8.11; doc09:374-381 Variant B separate-field form).
+    # Present on plugin-emitted rows (to_decision_event_fields), absent everywhere else —
+    # NOT part of the operator_notice.v0 wire key set (publisher.py:66-78 unchanged).
+    plugin_id: str | None = None
 
     @field_validator("schema_version")
     @classmethod
@@ -114,6 +133,25 @@ class DecisionEventEnvelope(_BridgeModel):
         if value not in DECISION_VOCAB:
             raise ValueError(
                 f"decision {value!r} is not in the fixed vocabulary {sorted(DECISION_VOCAB)}"
+            )
+        return value
+
+    @field_validator("plugin_id")
+    @classmethod
+    def _valid_plugin_id(cls, value: str | None) -> str | None:
+        """Fail closed on a malformed ``plugin_id`` (mode-x-er/05 §8.11).
+
+        ``None`` / absent keeps the pre-plugin behaviour. A present value must match the
+        manifest form (lowercase dotted, doc09:231) — UPPERCASE or colon-containing values
+        (a smuggled ``<plugin_id>:<reason_code>`` full code, doc09:380-381) are typed errors,
+        so attribution is never silently corrupted.
+        """
+        if value is None:
+            return None
+        if not _PLUGIN_ID_RE.match(value):
+            raise ValueError(
+                f"plugin_id must match the manifest form {PLUGIN_ID_PATTERN} "
+                f"(lowercase dotted, e.g. 'l3.zone_policy'), got {value!r}"
             )
         return value
 
