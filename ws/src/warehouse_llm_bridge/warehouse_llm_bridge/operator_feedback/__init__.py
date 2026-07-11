@@ -2,9 +2,10 @@
 
 Deterministic (model-free) operator-notice builder + scope filter + fail-open delivery.
 Publish-only / 0 actuation (R-26 / L4OF-G1). Everything here is the OFFLINE part authorised
-by #345; the runtime ROS node, topic ``/operator/notice``, QoS, publisher and the
-``warehouse_interfaces`` promotion of ``OperatorNotice`` are UNFROZEN / DEFERRED
-(doc05:5,229-231,279, §8.8; doc06 §7 :186-200).
+by #345; the runtime ROS node is DEFERRED and the ``warehouse_interfaces`` promotion of
+``OperatorNotice`` is UNFROZEN, while the topic ``/operator/notice`` / QoS / publisher values are
+CONFIRMED in doc05 §8.10 (contract PR #446, pending dependency-track agreement — doc06 §7 :186
+RESOLVED) (doc05:5,229-231,279, §8.8).
 
 Design source of truth: ``docs/mode-x-er/05-operator-feedback-and-voice-response.md``.
 """
@@ -22,6 +23,7 @@ from .feedback_box import (
 from .models import (
     DECISION_VOCAB,
     SPEAKABLE_DECISIONS,
+    WIRE_NOTICE_DECISIONS,
     DecisionEvent,
     OperatorNotice,
 )
@@ -56,6 +58,7 @@ __all__ = [
     "NOTICE_QOS_RELIABILITY",
     "SCHEMA_VERSION_V0",
     "SPEAKABLE_DECISIONS",
+    "WIRE_NOTICE_DECISIONS",
     "STATUS_FELL_OPEN",
     "STATUS_SPOKEN",
     "STATUS_SUPPRESSED",

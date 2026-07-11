@@ -12,9 +12,13 @@ adapter is for **別ノード** (other-node) rejects only.
 Publish-only = 0 actuation (R-26 / L4OF-G1, doc05:269,199): the adapter's ONLY output channel
 is the injected publish callable — a ``std_msgs/String`` on ``/operator/notice``, which is an
 OBSERVATION/notice topic, never ``cmd_vel`` / ``goal_pose`` / a tool dispatch. It holds no
-motion channel and can emit no actuation. It also refuses to put anything but a reject-class
-``decision`` on the wire (``rejected`` / ``needs_clarification`` / ``emergency_stop`` —
-doc05:332, productization/05:69): ``accepted`` / ``warning`` / milestone never reach the topic.
+motion channel and can emit no actuation. It also refuses to put anything but a WIRE-eligible
+reject-class ``decision`` on the topic (``rejected`` / ``needs_clarification`` — doc05:332,
+productization/05:69, :data:`~.models.WIRE_NOTICE_DECISIONS`): ``accepted`` / ``warning`` /
+milestone never reach the topic, and ``emergency_stop`` is NOT published here either — emergency
+rides the existing ``/emergency/event`` topic and MUST NOT be double-published to
+``/operator/notice`` (doc05 §8.10 item 4 / §8.7 / doc03:111). The box still SPEAKS emergency
+(``SPEAKABLE_DECISIONS``); it just receives it from ``/emergency/event``, not from this wire.
 
 The ROS publisher is INJECTED (a plain ``Callable[[str], None]``) so this core stays
 pure-stdlib and testable without a colcon build (doc16 §11) — the same injection discipline as
@@ -32,7 +36,7 @@ import json
 from collections.abc import Callable
 from typing import Any
 
-from .models import SPEAKABLE_DECISIONS, DecisionEvent
+from .models import WIRE_NOTICE_DECISIONS, DecisionEvent
 
 # --------------------------------------------------------------------------------------
 # Confirmed contract values (doc05 §8.10 — resolves the §8.8 unfrozen points).
@@ -50,7 +54,8 @@ SCHEMA_VERSION_V0 = "operator_notice.v0"
 # within a session; VOLATILE prevents stale replay across a box restart. depth=10 matches every
 # other internal String topic in this package (character_node.py:87-89, llm_bridge.py:143-150)
 # and comfortably covers the max plausible per-cycle reject burst (2 robots × a handful of
-# non-L4-local gates < 10); RELIABLE makes the exact depth non-safety-critical.
+# non-L4-local gates < 10); RELIABLE turns overflow into back-pressure (not a silent drop), so
+# depth=10 loses no reject and is safe — it bounds the buffer, not the lossless guarantee.
 NOTICE_QOS_RELIABILITY = "reliable"
 NOTICE_QOS_HISTORY = "keep_last"
 NOTICE_QOS_DEPTH = 10
@@ -166,16 +171,19 @@ class OperatorNoticePublisher:
         self._publish = publish
 
     def publish_event(self, event: DecisionEvent | dict[str, Any]) -> str | None:
-        """Publish one reject-class decision_event as ``operator_notice.v0`` JSON.
+        """Publish one wire-eligible reject-class decision_event as ``operator_notice.v0`` JSON.
 
-        Returns the published JSON string, or ``None`` when the event is NOT reject-class
-        (``accepted`` / ``warning`` / milestone) — those never reach ``/operator/notice``
-        (doc05:332, productization/05:69). The only side effect is the injected notice
-        publish; there is no path that emits a motion command / goal / tool dispatch.
+        Returns the published JSON string, or ``None`` when the event is NOT wire-eligible
+        (``accepted`` / ``warning`` / milestone, OR ``emergency_stop``) — none of those reach
+        ``/operator/notice``. ``emergency_stop`` is spoken by the box but rides the existing
+        ``/emergency/event`` topic and is NEVER double-published here (doc05 §8.10 item 4 / §8.7 /
+        doc03:111), so the guard keys on :data:`~.models.WIRE_NOTICE_DECISIONS` (a strict subset of
+        ``SPEAKABLE_DECISIONS``), not the box SPEAK vocabulary. The only side effect is the injected
+        notice publish; there is no path that emits a motion command / goal / tool dispatch.
         """
         if isinstance(event, dict):
             event = DecisionEvent.from_payload(event)
-        if event.decision not in SPEAKABLE_DECISIONS:
+        if event.decision not in WIRE_NOTICE_DECISIONS:
             return None
         payload_json = encode_notice(event)
         self._publish(payload_json)

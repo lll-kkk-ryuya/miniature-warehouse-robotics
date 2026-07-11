@@ -27,8 +27,8 @@
   code→decision 早見表 `:338-343`）。
 - `docs/mode-x-er/02-l3-planning-core.md:240-266` 系の保管単位案 →
   `docs/productization/02-l4-robotics-bridge-box.md:240-266`（module 配置の接地）。
-- `docs/mode-x-er/06-unfrozen-contract-resolutions.md` §7 `:186-200`（案A 採用方針のみ確定・
-  型/QoS/topic名/schema_version は未凍結 draft）。
+- `docs/mode-x-er/06-unfrozen-contract-resolutions.md` §7 `:186-205`（#446 で **RESOLVED**・
+  確定値の正本は doc05 §8.10・凍結成立は依存トラック合意後）。
 
 ## 消費する契約（consume）
 
@@ -56,8 +56,10 @@
 - **`OperatorNoticePublisher`**（`publisher.py`・gate-side emit seam・doc05 §8 / §8.10）: 別ノード
   gate の decision_event を `operator_notice.v0` JSON（`to_v0_payload`/`encode_notice`）に直列化し
   **`/operator/notice`**（`TOPIC_OPERATOR_NOTICE`・`std_msgs/String`）へ publish。**publish-only=0
-  actuation**（R-26 / L4OF-G1・doc05:269）: 出力チャネルは注入 `publish` callable 1 本のみ・reject
-  級 `decision` 以外は wire に載せない（doc05:332）。ROS は注入（`for_ros_node` は lazy rclpy・
+  actuation**（R-26 / L4OF-G1・doc05:269）: 出力チャネルは注入 `publish` callable 1 本のみ。**wire
+  語彙 = `WIRE_NOTICE_DECISIONS`（`rejected`/`needs_clarification`）**で、box の SPEAK 語彙
+  `SPEAKABLE_DECISIONS` とは別＝**emergency は既存 `/emergency/event` 相乗りで `/operator/notice`
+  へ二重 publish しない**（doc05:332・§8.10 item4 / doc03:111）。ROS は注入（`for_ros_node` は lazy rclpy・
   runtime のみ）で offline 検証可（`sinks.py` と同 injection 規律）。QoS 確定値: RELIABLE /
   KEEP_LAST `NOTICE_QOS_DEPTH=10` / VOLATILE（doc05 §8.5・§8.10 item 2）。
 - **box 自身の event 語彙**（`box=l4_operator_feedback`・audit/fail-open 用・doc05:103）:
@@ -80,8 +82,9 @@
 - `tests/unit/test_operator_feedback_filter.py` — **XER-OF2.5 / L4OF-G5**（attribution・
   milestone・重複抑制・suppressed の audit 保持）。
 - `tests/unit/test_operator_feedback_publisher.py` — **R-26 / L4OF-G1（publish-only=0 actuation）**
-  ＋ 確定契約値（topic/QoS depth=10/schema_version）＋ reject-class-only ＋ fake-ROS 配線
-  ＋ publisher 出力＝box 入力の往復一致（producer/consumer 同形）。independent oracle・mutation 5/5 RED。
+  ＋ 確定契約値（topic/QoS depth=10/schema_version）＋ **wire 語彙（reject 級−emergency・§8.10 item4）**
+  ＋ fake-ROS 配線 ＋ publisher 出力＝box 入力の往復一致（producer/consumer 同形）。independent oracle
+  （SPEAK/WIRE 語彙の literal pin）＋ emergency 二重 publish guard の除去 mutation で RED。
 - 実行: repo root から `python3 -m pytest tests/unit/test_operator_feedback_*.py`
   （target py312。conftest が `ws/src/warehouse_llm_bridge` を sys.path へ追加）。
 
