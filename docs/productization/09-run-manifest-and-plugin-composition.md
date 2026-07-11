@@ -511,7 +511,7 @@ run manifest 宣言 plugin に factory が無ければ起動拒否する
 **plugin を 1 件でも宣言した run manifest は production node では常に起動拒否**になる。
 fail-closed としては正しい既定だが、factory 供給経路が無い＝plugin-bearing manifest を
 稼働させる正規の口が存在しない。spike harness だけが factory を注入している
-（[`spike/xer6-live-matrix/variants.py`](../../spike/xer6-live-matrix/variants.py):51）。
+（[`spike/xer6-live-matrix/variants.py`](../../spike/xer6-live-matrix/variants.py):50）。
 
 ### 設計（explicit-registry-first）
 
