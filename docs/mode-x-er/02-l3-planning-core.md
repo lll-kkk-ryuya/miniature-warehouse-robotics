@@ -360,3 +360,49 @@ full L3 chain entry point `compile_raw_output`（`RawModelOutput -> ... -> froze
 - **R-26 は END-TO-END**: 非 accepted な `ValidationReport` は **空の `Command`** を返し、注入された executor/store には **一切触れない**（zero get / zero put）＝reject された cycle は durable state を読むことも汚すこともできない。
 - **STALE-HANDLE ハザード（実測・pin）**: `mark_running` は store ではなく caller が保持する state を検査するため、最初の commit 前に load された 2 handle は raise せずに **double-commit** する。XER5 の caller は **plan ごと・cycle ごとに live handle を 1 つだけ**保つ contract を守る（single-live-handle-per-plan-per-cycle）。将来の store 再読 commit guard が意図する fix。
 - **DEFAULT-PATH 等価（後方互換）**: 非注入 path は注入前と挙動が同一（呼び出しごとに fresh in-memory store・stateless one-shot・cross-call leakage なし）。store payload は JSON/Redis-serializable（plain `str`→`str` の status）＝durable-store 差替 readiness。
+
+## クロスロボット依存トリガーの語彙（2026-07-11 裁定）
+
+> G5 choreography（#342・[dev/08 §4](../dev/08-xer6-live-sim-x-lite-runbook.md)）の設計議論で確定した裁定の恒久記録。「bot1 がここに到達したら bot2 が動く」型のオペレーター指示を `task_graph` へ翻訳するときの正本節であり、都度の再議論を防ぐ。§3（Task Graph Executor）の従属節で、**依存語彙そのものは変更しない**（本 doc は設計提案＝`:5`・凍結契約ではない）。
+
+### 表現できる形（現行語彙のまま・追加設計不要）
+
+依存語彙が表すのは **先行タスクの完了** のみである。`TaskNode.after` は `"<task_id>.completed"` 形の単一参照（§3:171・[robotics_plan_draft.py:63-77](../../ws/src/warehouse_llm_bridge/warehouse_llm_bridge/robotics_planning_core/models/robotics_plan_draft.py)＝TaskNode は `{id, robot, action, target, after}` で位置・距離・時間の field を持たない）で、executor は参照先タスクが完了 status に達したときだけ従属タスクを ready にする（[executor.py:137-146](../../ws/src/warehouse_llm_bridge/warehouse_llm_bridge/robotics_planning_core/task_graph_executor/executor.py) `_dependencies_met`）。「完了」= `succeeded` のみ（[states.py:43-46](../../ws/src/warehouse_llm_bridge/warehouse_llm_bridge/robotics_planning_core/task_graph_executor/states.py) `COMPLETED_STATUS`）。`failed` / `cancelled` は従属タスクを**解放しない**（[executor.py:179-196](../../ws/src/warehouse_llm_bridge/warehouse_llm_bridge/robotics_planning_core/task_graph_executor/executor.py)）＝先行が失敗したら後続は pending に留まる（fail-closed な順序）。
+
+依存はクロスロボットでも同一ロボットでも同じ形で書ける。**「bot1 が X に到達したら bot2 が動く」= bot2 のタスクを bot1 の X 到達タスク（navigate）の完了に `after` させるだけ**であり、追加設計は不要。dev/08 の赤箱/青箱デモ（`t2: bot2, after t1.completed`）がその実例で、「到達」は navigate タスクの完了信号（`/nav2_bridge/goal_result` → `mark_succeeded`・[08-x-er-bridge-node-spec §5 手順7（:92）](08-x-er-bridge-node-spec.md)）として観測される。
+
+### 表現できない形（空間述語トリガー）
+
+依存語彙は完了ベースであり、**位置の実時間述語を持たない**。次は現行 `after` では表現できない:
+
+- **離脱 / vacancy 検知**: 「bot1 がその場から**離れたら** bot2 が入る」
+- **ゾーン占有 / 近接条件**: 「エリア A が空いたら」「相手と一定距離まで近づいたら」
+
+`TaskNode` に位置・距離・ゾーンの field は無く（[robotics_plan_draft.py:63-77](../../ws/src/warehouse_llm_bridge/warehouse_llm_bridge/robotics_planning_core/models/robotics_plan_draft.py)）、executor は robot pose を一切読まない（store 由来の task status のみ検査・[executor.py:113-134](../../ws/src/warehouse_llm_bridge/warehouse_llm_bridge/robotics_planning_core/task_graph_executor/executor.py)）。
+
+### v1 規範（G5 choreography で採用する近似）
+
+離脱条件は「**離脱側ロボットの次タスク（帰還等）の完了**に依存」で近似する。例: 「bot1 が shelf_1 から離れたら bot2 が shelf_1 へ向かう」は、bot1 に帰還タスク（例 navigate `berth_A`）を与え、bot2 のタスクをその帰還タスクの完了に `after` させる。帰還 navigate の完了は bot1 が帰還地点に居ること＝元の地点に**居ない**ことを構造的に保証する。
+
+加えて実行時には、依存語彙とは独立の安全網が dispatch 経路に常在する（依存の書き方を誤ってもこれらは迂回されない・[dev/08 §5](../dev/08-xer6-live-sim-x-lite-runbook.md)）:
+
+- **L2 Policy Gate の destination 排他**: X-ER の navigate は `dispatch_task`（action 既定 `"deliver"`・[action_map.py:46-55](../../ws/src/warehouse_llm_bridge/warehouse_llm_bridge/action_map.py) / [tools.py:203](../../ws/src/warehouse_mcp_server/warehouse_mcp_server/tools.py)）として検証され、**別ロボットが既に向かっている destination への dispatch は `duplicate_destination` で拒否**される（[policy_gate.py:222-235,393-397](../../ws/src/warehouse_mcp_server/warehouse_mcp_server/policy_gate.py)）。タイミングが重なっても 2 台が同一地点へ収束する dispatch は通らない。
+- **L1 反射層**: collision_monitor / twist_mux / Emergency Guardian が上流 cmd_vel より優先して停止できる（[dev/08 §5](../dev/08-xer6-live-sim-x-lite-runbook.md)・[doc12](../architecture/12-infrastructure-common.md)）。最終床は L0 firmware クランプ（≤0.3 m/s）。
+- **≥0.15m 最小分離の出所（正確に）**: 「最接近 ≥0.15m」は Mode A/B の head-on デモで **traffic 層の隘路排他ロック**が保証する幾何（[mode-a/11a §9](../mode-a/11a-traffic-mode-a.md):433,446・[traffic_manager.py:12,40](../../ws/src/warehouse_traffic/warehouse_traffic/traffic_manager.py)・#125 で live 実証）。**L2 Policy Gate に 0.15m の距離チェックは存在しない**（[policy_gate.py](../../ws/src/warehouse_mcp_server/warehouse_mcp_server/policy_gate.py) の check〔known location/battery/freshness/emergency/rate/duplicate 等〕に距離 rule は無い）。X-lite は traffic manager 縮退構成（[GLOSSARY「Traffic Box」](../GLOSSARY.md)）ゆえ、metric な最小分離は L1 反射層＋L0 クランプ側の責務——依存語彙の近似が破れた場合の最終防衛はそこにある。
+
+### 将来拡張の判断基準（真の空間述語依存）
+
+「離脱した**瞬間**に発火」等の真の空間述語依存（vacancy / zone occupancy / proximity trigger）は、executor への**新依存型の追加＝docs-first の新設計**である。robot pose の実時間監視・述語評価の鮮度契約・fail 時の意味論が新規に要り、hard-to-reverse（ADR 3条件の判定は [docs/adr/README](../adr/README.md):8）に該当しうる。**G5 v1 の通過後に必要性が実証されてから設計する**。それまで fixture / プロンプト側で空間述語を偽装しない（docs に無い契約の発明＝禁止・[docs-first](../../.claude/rules/docs-first.md)）。
+
+### トリガーパターン対応表（指示翻訳の早見表）
+
+| オペレーター指示のパターン | 現行語彙での扱い | 根拠 |
+|---|---|---|
+| 到達トリガ（「bot1 が X に着いたら」） | **可**: 到達タスクの完了に `after` | §3:171・[executor.py:137-146](../../ws/src/warehouse_llm_bridge/warehouse_llm_bridge/robotics_planning_core/task_graph_executor/executor.py) |
+| 離脱トリガ（「bot1 が X から離れたら」） | **v1 近似**: 離脱側の次タスク（帰還等）の完了に `after` ＋ L2/L1 安全網 | 本節「v1 規範」 |
+| ゾーン占有・近接条件 | **未対応**（将来 ADR 級の新依存型） | 本節「将来拡張」 |
+| 時間遅延（「30 秒後に」） | **未対応**: `after` に時間形は無く、`TaskNode` に delay/duration field も executor に timer も無い。凍結 `CommandItem` には `wait`＋`duration` がある（[schemas.py:137,148](../../ws/src/warehouse_interfaces/warehouse_interfaces/schemas.py)）が、x_lite MVP の Command Compiler は navigate のみ compile する（[compiler.py:67-70,113-114](../../ws/src/warehouse_llm_bridge/warehouse_llm_bridge/robotics_planning_core/command_compiler/compiler.py)） | [robotics_plan_draft.py:63-77](../../ws/src/warehouse_llm_bridge/warehouse_llm_bridge/robotics_planning_core/models/robotics_plan_draft.py) |
+
+### choreography v2 仕様への前方リンク
+
+G5 デモ v2（bot1: red→帰還 / bot2: blue を **bot1 帰還完了後**に red→帰還）は、本節 v1 規範（離脱＝帰還完了依存）の適用例である。v2 本体は別スライスで扱い、現行 G5 は [dev/08 §4](../dev/08-xer6-live-sim-x-lite-runbook.md) の 2 タスク形（t1/t2）のまま。前提: home/帰還位置が `KNOWN_LOCATIONS`（[locations.py:11-23](../../ws/src/warehouse_interfaces/warehouse_interfaces/locations.py) の 9 地点・[config/warehouse.base.yaml:39-48](../../config/warehouse.base.yaml) と同期）に存在すること。既存の帰還先候補は `berth_A` / `berth_B`（2台の start berth＝[layout.py:39-40](../../ws/src/warehouse_sim/warehouse_sim/layout.py) `SPAWN_LOCATIONS`）。無い帰還位置が要る場合は `KNOWN_LOCATIONS` への **additive な contract 追加が先行**する（変更は contract change・[locations.py:8](../../ws/src/warehouse_interfaces/warehouse_interfaces/locations.py)）。
