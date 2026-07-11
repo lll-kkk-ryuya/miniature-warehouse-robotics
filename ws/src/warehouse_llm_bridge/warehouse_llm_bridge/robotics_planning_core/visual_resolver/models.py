@@ -51,7 +51,10 @@ class UnresolvedReason(StrEnum):
     reprojection-error-too-large as unresolved causes; ``beyond_snap_radius`` (the snap
     distance gate, doc02:150) and ``no_calibration`` (empty/degenerate homography, doc02:148)
     are this slice's explicit reason codes for the same fail-closed behaviour. Stable strings
-    so audit / operators can explain a 0-dispatch (doc02:99,107).
+    so audit / operators can explain a 0-dispatch (doc02:99,107). ``object_class_mismatch``
+    is the object-class half of the doc02:150 snap conjunction ("距離と object class"): the
+    detection's class disagrees with the class registered for the distance-nearest location
+    (additive value, same 発明 licence as ``beyond_snap_radius``).
     """
 
     OFF_MAP = "off_map"
@@ -59,6 +62,7 @@ class UnresolvedReason(StrEnum):
     BEYOND_SNAP_RADIUS = "beyond_snap_radius"
     REPROJECTION_ERROR_TOO_LARGE = "reprojection_error_too_large"
     NO_CALIBRATION = "no_calibration"
+    OBJECT_CLASS_MISMATCH = "object_class_mismatch"
 
 
 class ResolvedTarget(_BridgeModel):
