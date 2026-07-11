@@ -11,7 +11,7 @@ closes the Mode X-ER connectivity hops ⓪③④⑤ (docs/mode-x-er/08 §1):
   today — doc09 §稼働 node の plugin factory seam; a declared plugin with no registered
   factory keeps refusing startup, fail-closed). ANY raise aborts construction and
   ``main()`` exits nonzero — zero cycles, zero dispatch (the node never partially starts). ``build_er_adapter(cfg)``
-  (robotics/adapter_factory.py:77) constructs the ER adapter (config-driven transport,
+  (robotics/adapter_factory.py:130) constructs the ER adapter (config-driven transport,
   shipped default DIRECT fail-safe, ADR-0002:43).
 * CYCLE (docs/mode-x-er/08 §5): ``propose_plan`` is async while L3/composition are sync,
   so the cycle runs on a background thread with a dedicated asyncio event loop — the
@@ -211,7 +211,7 @@ if _NODE_IMPORT_ERROR is None:
                 cfg, plugin_factories=production_plugin_factories()
             )
             # §4 step8: config -> transport -> constructed ER adapter (DIRECT fail-safe,
-            # adapter_factory.py:77). Construction only — a live send stays behind the
+            # adapter_factory.py:130). Construction only — a live send stays behind the
             # WAREHOUSE_LIVE_ER operator/cost gate, which this node NEVER sets.
             self._adapter = build_er_adapter(cfg)
             # §5 step5: gen minting is node-owned via the shared FileGenStore
