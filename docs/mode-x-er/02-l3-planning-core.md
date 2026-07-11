@@ -369,7 +369,7 @@ full L3 chain entry point `compile_raw_output`（`RawModelOutput -> ... -> froze
 
 依存語彙が表すのは **先行タスクの完了** のみである。`TaskNode.after` は `"<task_id>.completed"` 形の単一参照（§3:171・[robotics_plan_draft.py:63-77](../../ws/src/warehouse_llm_bridge/warehouse_llm_bridge/robotics_planning_core/models/robotics_plan_draft.py)＝TaskNode は `{id, robot, action, target, after}` で位置・距離・時間の field を持たない）で、executor は参照先タスクが完了 status に達したときだけ従属タスクを ready にする（[executor.py:137-146](../../ws/src/warehouse_llm_bridge/warehouse_llm_bridge/robotics_planning_core/task_graph_executor/executor.py) `_dependencies_met`）。「完了」= `succeeded` のみ（[states.py:43-46](../../ws/src/warehouse_llm_bridge/warehouse_llm_bridge/robotics_planning_core/task_graph_executor/states.py) `COMPLETED_STATUS`）。`failed` / `cancelled` は従属タスクを**解放しない**（[executor.py:179-196](../../ws/src/warehouse_llm_bridge/warehouse_llm_bridge/robotics_planning_core/task_graph_executor/executor.py)）＝先行が失敗したら後続は pending に留まる（fail-closed な順序）。
 
-依存はクロスロボットでも同一ロボットでも同じ形で書ける。**「bot1 が X に到達したら bot2 が動く」= bot2 のタスクを bot1 の X 到達タスク（navigate）の完了に `after` させるだけ**であり、追加設計は不要。dev/08 の赤箱/青箱デモ（`t2: bot2, after t1.completed`）がその実例で、「到達」は navigate タスクの完了信号（`/nav2_bridge/goal_result` → `mark_succeeded`・[08-x-er-bridge-node-spec §7](08-x-er-bridge-node-spec.md)）として観測される。
+依存はクロスロボットでも同一ロボットでも同じ形で書ける。**「bot1 が X に到達したら bot2 が動く」= bot2 のタスクを bot1 の X 到達タスク（navigate）の完了に `after` させるだけ**であり、追加設計は不要。dev/08 の赤箱/青箱デモ（`t2: bot2, after t1.completed`）がその実例で、「到達」は navigate タスクの完了信号（`/nav2_bridge/goal_result` → `mark_succeeded`・[08-x-er-bridge-node-spec §5 手順7（:92）](08-x-er-bridge-node-spec.md)）として観測される。
 
 ### 表現できない形（空間述語トリガー）
 
