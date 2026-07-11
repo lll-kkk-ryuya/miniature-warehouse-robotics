@@ -145,7 +145,8 @@ def build_variant_cfg(
     """The merged cfg mapping for this variant; live mode adds ``robotics.er_gateway``.
 
     ``build_x_er_runtime`` reads only ``mode_x_er`` + ``locations`` (x_er_composition.py:150,240)
-    and ``build_er_adapter`` reads only ``robotics.er_gateway`` (adapter_factory.py:64-74), so
+    and ``build_er_adapter`` reads ``robotics.er_gateway`` (adapter_factory.py:115-126) plus the
+    optional ``mode_x_er.er_offline_payload`` replay key (#456), so
     the union is safe to hand to both.
     """
     cfg = build_x_er_cfg(

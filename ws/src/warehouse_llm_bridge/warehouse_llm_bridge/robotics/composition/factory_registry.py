@@ -13,7 +13,7 @@ Rules this module encodes (all from the doc09 section above):
   discovery is deliberately deferred until >=2 plugin packages exist (doc09 実装順序 6 /
   ADR-0003:58). Nothing in this module scans, imports lazily, or discovers.
 - **empty today**: no production plugin exists yet — the repo incubator ``plugins/``
-  (doc09:262-274) is a parallel lane and is wired here only after its review gate
+  (doc09:262-274; landed #451 as ``draft``) is wired here only after its review gate
   (doc09 §RESIDUAL). An empty registry keeps a plugin-less run manifest working unchanged.
 - **fail-closed preserved, no allow_unlisted**: this module never filters or defaults; a
   run-declared plugin missing from the registry hits the existing startup refusal
