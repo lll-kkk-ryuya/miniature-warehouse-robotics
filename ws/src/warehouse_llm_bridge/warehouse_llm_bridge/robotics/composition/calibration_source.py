@@ -18,7 +18,7 @@ into a live cycle (XER6 / #342; ADR-0003 item ``## Consequences`` — "稼働 Br
 (``compile_raw_output`` を呼ぶ経路) への配線は XER6 pending"). This module provides ONLY the
 constructible, unit-tested seam that XER6 will call; it wires nothing into a running node, reads
 no config, opens no socket, and dispatches no motion. It mirrors the landed
-``robotics/adapter_factory.py:77`` ``build_er_adapter`` pattern (loaded-profile in, constructed
+``robotics/adapter_factory.py:130`` ``build_er_adapter`` pattern (loaded-profile in, constructed
 seam out — pure, injectable, offline).
 
 WHY A RAISE, NOT A ``None``. ``GovernedCalibrationLoader.load`` returning ``None`` is the right

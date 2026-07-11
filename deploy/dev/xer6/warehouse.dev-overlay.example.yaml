@@ -1,0 +1,27 @@
+# G5 無償 offline-replay 用 mode_x_er overlay の例（docs/dev/08-xer6-live-sim-x-lite-runbook.md
+# 追補 2 step 1）。この block を config/dev/warehouse.yaml に手動 merge して使う（このファイル自体は
+# 読み込まれない・example のみ）。path は container 内（repo は /ws に rw マウント＝run-sim-cockpit.sh）。
+#
+# 安全メモ:
+# - enabled: true は Mode A commander（llm_bridge）との相互排他 flip（doc mode-x-er/08 §2）。
+#   G5 実走のときだけローカルで立て、commit しない。
+# - er_offline_payload 非空 = replay adapter（sender 無し・provider call 構造的不可・課金ゼロ・
+#   WAREHOUSE_LIVE_ER 不要。doc mode-x-er/08 §3 G5 追加凍結）。
+# - dispatch.forward_to_nav2 はまず false（受理・記帳のみ 0 actuation）で dry run し、確認後に
+#   true へ flip して実 sim motion（docs/dev/08 追補 2 step 5 の 2 段階）。
+mode_x_er:
+  enabled: true
+  execution_profile: x_lite
+  calibration_id: dev-sim-v1
+  visual:
+    snap_radius_m: 0.25
+  run_manifest: /ws/deploy/dev/xer6/run_manifest.yaml
+  plugin_manifests: []
+  site_profile:
+    base_dir: /ws/deploy/dev/xer6/site_profiles
+    customer: customer_a
+    site: site_01
+  dispatch:
+    forward_to_nav2: false
+  request_fixture: /ws/deploy/dev/xer6/er_request.red_blue.json
+  er_offline_payload: /ws/deploy/dev/xer6/er_offline_payload.direct.json

@@ -1,0 +1,23 @@
+# XER6/G5 offline-replay run manifest — zero-plugin baseline（spike/xer6-live-matrix/manifests/
+# variant_a.yaml 踏襲・run_manifest.v1 形は robotics/composition/manifest.py）。
+# production_plugin_factories()（factory_registry.py）は今日空＝plugin を宣言すると起動拒否
+# （fail-closed・doc mode-x-er/08 §4 step4）のため、G5 は plugin-less で回す。
+# 使い方は docs/dev/08-xer6-live-sim-x-lite-runbook.md 追補 2。
+schema_version: run_manifest.v1
+run_id: xer6_g5_offline_replay
+boxes:
+  l4_bridge:
+    enabled: true
+    profile: x_er_commander
+  l3_validator:
+    enabled: true
+    profile: x_lite_default
+  l2_governance:
+    enabled: true
+    profile: mini_warehouse_default
+expected_emitters:
+  - l4_bridge
+  - l3_validator
+  - l2_governance
+score_specs:
+  - result

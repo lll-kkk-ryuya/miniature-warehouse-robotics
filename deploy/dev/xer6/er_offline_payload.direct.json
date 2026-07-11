@@ -1,0 +1,15 @@
+{
+  "candidates": [
+    {
+      "content": {
+        "role": "model",
+        "parts": [
+          {
+            "text": "{\"schema_version\": \"robotics_plan_draft.v0\", \"plan_id\": \"plan_demo_red_blue\", \"source_model\": \"gemini-robotics-er\", \"input_refs\": {\"audio\": \"audio-ref\", \"image\": \"frame-ref\", \"state\": \"state-ref\"}, \"transcript\": \"bot1は赤い箱へ。到達したらbot2は青い箱へ。\", \"interpreted_intent\": \"bot1 red_box first; bot2 blue_box after t1\", \"detections\": [{\"id\": \"red_box\", \"color\": \"red\", \"pixel\": [420, 310], \"confidence\": 0.92}, {\"id\": \"blue_box\", \"color\": \"blue\", \"pixel\": [810, 280], \"confidence\": 0.89}], \"task_graph\": [{\"id\": \"t1\", \"robot\": \"bot1\", \"action\": \"navigate\", \"target\": \"red_box\"}, {\"id\": \"t2\", \"robot\": \"bot2\", \"action\": \"navigate\", \"target\": \"blue_box\", \"after\": \"t1.completed\"}], \"operator_clarification_required\": false}"
+          }
+        ]
+      }
+    }
+  ],
+  "modelVersion": "gemini-robotics-er-1.6-preview"
+}
