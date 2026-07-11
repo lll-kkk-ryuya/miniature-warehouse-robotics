@@ -494,3 +494,59 @@ join key、score sink、汎用算術を安定提供し、どの box が有効か
 
 この順序なら、box / plugin の動的な追加・取り外しに備えつつ、初期実装は
 JSONL と manifest だけで小さく始められる。
+
+## 稼働 node の plugin factory seam（explicit registry・fail-closed）
+
+> 追記 2026-07-11。ここまでの本文は「composition 層そのもの」を定義した。本節は
+> **稼働 node（`x_er_bridge`）がどの factory を composition に渡すか**という最後の 1 hop
+> （production factory seam）を確定する。決定条件は [ADR-0003](../adr/0003-bridge-local-manifest-composition.md) を変えない。
+
+### 問題（gap）
+
+`build_x_er_runtime` は `plugin_factories`（`plugin_id -> zero-arg factory`）を受け、
+run manifest 宣言 plugin に factory が無ければ起動拒否する
+（[`x_er_composition.py`](../../ws/src/warehouse_llm_bridge/warehouse_llm_bridge/x_er_composition.py):138-141,174-182
+`XErCompositionError`・fail-closed）。しかし稼働 node の呼び出しは factory を一切渡さない
+（`XErBridge.__init__` の `build_x_er_runtime(cfg)` 呼び出し＝実装 seam・行 pin しない）ため、
+**plugin を 1 件でも宣言した run manifest は production node では常に起動拒否**になる。
+fail-closed としては正しい既定だが、factory 供給経路が無い＝plugin-bearing manifest を
+稼働させる正規の口が存在しない。spike harness だけが factory を注入している
+（[`spike/xer6-live-matrix/variants.py`](../../spike/xer6-live-matrix/variants.py):51）。
+
+### 設計（explicit-registry-first）
+
+- **bridge-local な明示 registry module**
+  `warehouse_llm_bridge/robotics/composition/factory_registry.py` を置く。中身は
+  `plugin_id -> zero-arg factory` の **explicit typed mapping** ＋ それを read-only で返す
+  resolve 関数（`production_plugin_factories()`）のみ。node（`x_er_bridge`）は起動時に
+  これを `build_x_er_runtime(cfg, plugin_factories=production_plugin_factories())` へ渡す。
+- **explicit-registry-first**: `entry_points` 自動 discovery は採らない
+  （実装順序 6 / [ADR-0003](../adr/0003-bridge-local-manifest-composition.md):58 のとおり
+  plugin package が 2 件以上になるまで後回し。registry は import 可能な factory を
+  **人が明示列挙**する）。
+- **registry は今日は空**でよい: production plugin はまだ存在しない
+  （repo 内 incubator `plugins/` 構想＝:262-274 は別レーン。registry への配線は
+  incubator 側 plugin が review gate を通ってから行う）。
+- **frozen contract 非追加**（:8 不変）: registry は bridge-local module であり
+  `warehouse_interfaces` へ昇格しない。
+
+### fail-closed が保たれること（ADR-0003 条件の保存）
+
+- **unknown declared plugin = 起動拒否のまま**: registry が空／未登録の plugin_id を
+  run manifest が宣言した場合、既存の missing-factory 拒否
+  （`XErCompositionError`・[`x_er_composition.py`](../../ws/src/warehouse_llm_bridge/warehouse_llm_bridge/x_er_composition.py):174-182）
+  がそのまま発火する。registry は `allow_unlisted` 相当の silent skip を**導入しない**。
+- **plugin-less manifest ＋ 空 registry = 現状と同一挙動**（surplus factory は無視＝
+  run manifest が意図の witness、[`x_er_composition.py`](../../ws/src/warehouse_llm_bridge/warehouse_llm_bridge/x_er_composition.py):138-141）。
+- preflight／三重突合（run-declared == registered == plugin-manifest-present・
+  [ADR-0003](../adr/0003-bridge-local-manifest-composition.md):27）・trust=ADVISORY（同:31）・
+  downward-only clamp（同:30）は本 seam の上流・下流で不変。
+
+### RESIDUAL（本節の未決・隠さない）
+
+- incubator plugin（:262-274）を registry へ実配線する手順（review gate 通過後・別レーン）。
+- **lifecycle status gate 未強制**: [10](10-llm-assisted-rule-authoring.md):152-153 は
+  「`approved` 以上だけ run manifest で有効化」と定めるが、runtime は plugin manifest の
+  `status` を enablement 判定に使っていない（現状は運用規約のみ）。registry か preflight での
+  機械強制は follow-up。
+- `entry_points` discovery（実装順序 6 の条件を満たしてから）。
