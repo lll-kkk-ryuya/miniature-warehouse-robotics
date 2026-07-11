@@ -16,15 +16,15 @@ plugin manifest ``plugin_id`` (doc09:409-410 "run manifest の plugin ``id`` は
 existing ``PluginCodeRegistry.from_manifest_dicts`` seam (plugin_results.py:311-323, which reads
 only ``plugin_id`` + ``emits.reason_codes``, doc09:408).
 
-WIRING vs. this lane (doc09:413-416 RESIDUAL, ADR-0003):
-    doc09:413-416 records that NO slice currently *loads* per-plugin plugin manifests — the
-    ``PluginCodeRegistry.from_manifest_dicts`` seam exists but is not called, and the ingestion
-    loader "は将来 slice（S5 ``x_er_bridge`` か専用 loader lane）で配線する". THIS module is that
-    loader lane: it makes the ingestion CONSTRUCTIBLE and unit-testable OFFLINE. Actually
-    **WIRING it into a running node** (a launch harness that discovers plugin manifest files,
-    calls this loader once per run, hands the registry to the live PluginManager, and cross-checks
-    ``run-declared == registered hookimpls == plugin-manifest-present`` via the preflight,
-    doc09:410-411) is **XER6 (#342)** — it is deliberately NOT done here. Nothing in this module
+WIRING (landed — doc09:402-416, ADR-0003):
+    doc09:413-416 originally recorded as RESIDUAL that NO slice loaded per-plugin plugin
+    manifests — the ``PluginCodeRegistry.from_manifest_dicts`` seam existed but was not called.
+    THIS module closed the loader half (PR #411, 2026-07-05), and the running-node wiring the
+    doc delegated to XER6 (#342) landed in PR #419 (2026-07-07): the startup builder
+    ``x_er_composition.build_x_er_runtime`` calls this loader once per run
+    (x_er_composition.py:162-166), hands the registry to the live ``PluginComposition``, and
+    enforces the delegated triple cross-check ``run-declared == registered hookimpls ==
+    plugin-manifest-present`` (x_er_composition.py:95-116, doc09:410-411). Nothing in this module
     dispatches motion, opens a socket, or reads config/ROS.
 
 The schema is BRIDGE-LOCAL and fail-closed (``extra="forbid"``): a plugin manifest is an
@@ -318,9 +318,9 @@ def build_plugin_code_registry(
     manifest's ``plugin_id`` to its ``emits.reason_codes`` (so ``registry.is_declared`` gates a
     plugin finding against its manifest, plugin_results.py:308-309).
 
-    NOTE (doc09:413-416 RESIDUAL / XER6=#342): this builds the ingestion OFFLINE. Handing the
-    returned registry to a live ``PluginManager`` and cross-checking against the registered
-    hookimpls via ``preflight_composition`` at node startup is XER6 wiring, not this lane.
+    NOTE (wired — doc09:413-416 resolved / XER6=#342 landed in PR #419): this builds the
+    ingestion OFFLINE; ``x_er_composition.build_x_er_runtime`` calls it at node startup
+    (x_er_composition.py:162-166) and cross-checks the registered hookimpls (preflight + triple).
     """
     report = reconcile_manifests(run_manifest, plugin_manifests, allow_unlisted=allow_unlisted)
     registry = PluginCodeRegistry.from_manifest_dicts(
