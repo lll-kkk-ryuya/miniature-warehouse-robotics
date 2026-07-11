@@ -130,8 +130,8 @@ deploy/dev/run-mode-a-live.sh --start-hermes
 
 ### 7.1 忠実度ギャップ — どの環境で何が閉じるか
 
-現状ソフトは **Mac M4 + tiryoh(ARM64-native, doc03:262)** で検証。CPU アーキは Jetson Orin Nano Super も
-**ARM64**（doc06:91「Mac M4 と Jetson はどちらも ARM64」）/ Ubuntu 24.04（doc03:270）で一致するため
+現状ソフトは **Mac M4 + tiryoh(ARM64-native, doc03:263)** で検証。CPU アーキは Jetson Orin Nano Super も
+**ARM64**（doc06:91「Mac M4 と Jetson はどちらも ARM64」）/ Ubuntu 24.04（doc03:271）で一致するため
 **ROS ロジック・凍結契約・launch 合成・pytest・config overlay・2台 Gazebo E2E は dev で高忠実に検証可**。
 一方、以下は **dev(Mac) でも stg(§1 クラウド sim) でも原理的に近似不可**で、**実 Jetson でしか露見しない**：
 

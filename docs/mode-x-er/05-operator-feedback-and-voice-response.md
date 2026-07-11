@@ -289,11 +289,11 @@ transport は box interface 裏の `transport: hermes|direct` 選択であって
 
 ## 8. doc03 トピック契約ドラフト（`/operator/notice`）— contract PR 用
 
-> **状態**: 契約 PR 用ドラフト。§5.2 で採用した**案A（専用 topic）**の実体。doc03（トピック契約カタログ）には **topic 名・型・一行責務**のみを足し、**payload schema / QoS / publisher / subscriber の正本は本節**に置く（doc03 の慣習: `docs/architecture/03-software-architecture.md:112`「doc03 は topic 名・型・一行責務のみ」）。**doc03 への行追加は別 contract PR**（owner = skeleton/governance・`.claude/rules/parallel-workflow.md` §4）で行い、本書では凍結しない。
+> **状態**: 契約 PR 用ドラフト。§5.2 で採用した**案A（専用 topic）**の実体。doc03（トピック契約カタログ）には **topic 名・型・一行責務**のみを足し、**payload schema / QoS / publisher / subscriber の正本は本節**に置く（doc03 の慣習: `docs/architecture/03-software-architecture.md:113`「doc03 は topic 名・型・一行責務のみ」）。**doc03 への行追加は別 contract PR**（owner = skeleton/governance・`.claude/rules/parallel-workflow.md` §4）で行い、本書では凍結しない。
 
 ### 8.1 doc03 へ追加する行（提案）
 
-doc03 §ROS 2 トピック設計「Jetson 内部」表（`docs/architecture/03-software-architecture.md:92-110`）に1行追加:
+doc03 §ROS 2 トピック設計「Jetson 内部」表（`docs/architecture/03-software-architecture.md:92-111`。**本 PR で追加＝`/operator/notice` 行は 111 行目**）に1行追加:
 
 ```
 | `/operator/notice` | `std_msgs/String`（JSON） | 別ノード(L2/L1/L0)の operator 起因 reject/clarification/emergency 通知。L4 Operator Feedback Box が購読し音声化（契約正本: mode-x-er/05 §8。Phase 4 で `.msg` 化, doc16 §3） |
@@ -338,11 +338,11 @@ doc03 §ROS 2 トピック設計「Jetson 内部」表（`docs/architecture/03-s
 | QoS policy | 値 | 根拠 |
 |---|---|---|
 | Reliability | **RELIABLE** | 案A 採用の理由＝**lossless**（reject の取りこぼし不可・State Cache フラグを却下した理由・§5.2） |
-| History | **KEEP_LAST, depth=20**（暫定） | バースト緩衝。単一購読者（box）が捌ける前提。depth は実装時に調整 |
+| History | **KEEP_LAST, depth=20**（暫定→§8.10 item 2 で **10** に確定） | バースト緩衝。単一購読者（box）が捌ける前提。depth は実装時に調整（§8.10 で repo 慣習の 10 へ・RELIABLE ゆえ lossless 性に非依存） |
 | Durability | **VOLATILE** | event は瞬間値。**late-join / box 再起動後に古い reject を再生しない**（古い拒否を後から喋らない）。`transient_local`（latch）は不可 |
 | Liveliness | AUTOMATIC（default） | 特別要件なし |
 
-> RELIABLE ＋ KEEP_LAST で **live session 内は lossless・順序保証**（節目を取りこぼさない）。VOLATILE で **再起動跨ぎの stale 再生を防ぐ**。これが「State Cache の boolean フラグ（latest-value・transition 取りこぼし）」を不可とした理由（§5.2）。
+> RELIABLE ＋ KEEP_LAST で **live session 内は lossless・順序保証**（節目を取りこぼさない）。VOLATILE で **再起動跨ぎの stale 再生を防ぐ**。これが「State Cache の boolean フラグ（latest-value・transition 取りこぼし）」を不可とした理由（§5.2）。**RELIABLE は gate をブロックし得ない**: 単一購読者（box）が TTS（数百ms〜秒）で滞留しても、**box は subscriber callback 内で TTS を待たず非ブロッキングに drain する**（音声合成は callback 外の worker で実行）ため、RELIABLE の back-pressure が publisher＝gate 側へ伝播しない＝§5.2「gate は publish して即継続」不変条件を購読側でも保つ。
 
 ### 8.6 publisher / subscriber
 
@@ -378,10 +378,25 @@ doc03 §ROS 2 トピック設計「Jetson 内部」表（`docs/architecture/03-s
 ### 8.9 contract PR チェックリスト
 
 - [ ] **additive 確認**: 新 topic は既存購読者が無視できる（破壊的でない・§7.2）。
-- [ ] doc03 §トピック設計「Jetson 内部」表に §8.1 の行を追加（`contract` ラベル）。
+- [x] doc03 §トピック設計「Jetson 内部」表に §8.1 の行を追加（`contract` ラベル）。※本 PR #446 で doc03:111 へ additive 追加済。
 - [ ] 依存トラック（safety-state / nav-traffic / wo / web）へ予告し合意（§4）。
 - [ ] 本 §8 を payload / QoS / pub-sub の正本としてリンク（doc03 は一行のみ）。
 - [ ] `OperatorNotice`（box の出力・§7）と本 topic（box の入力 decision_event）の別物性を明記。
+
+### 8.10 確定値（§8.8 解決・XER-OF1 実証後・contract PR 用）
+
+> XER-OF1 offline fixture（#367・`operator_notice.v0` payload を golden 実証）と本 slice の publish-only 配線（`operator_feedback/publisher.py`）を経て、§8.8 の未凍結 5+1 点を**確定**する。方式（案A 専用 topic）は §5.2:194 で既決＝ここは**未決値の充填**であり方式の再議論ではない（doc06 §7:193）。凍結は **doc03 行追加（本 contract PR）＋依存トラック合意**（§8.9）をもって成立する。
+
+| # | §8.8 の未決 | 確定値 | 理由 / 根拠 |
+|---|---|---|---|
+| 1 | topic 名（`/operator/notice` vs `/operator/reject_event`・:371） | **`/operator/notice`** | 本 topic は reject **だけでなく** clarification/emergency も運ぶ（§8.4 `decision` 3 値）ので `reject_event` は狭すぎる。box の**出力** `OperatorNotice`（§7）と**入力** decision_event の別物性は §8.9 で明記済（出力＝in-process object、topic＝入力チャネル＝名前衝突なし）。§8.1:299 の提案どおり。 |
+| 2 | KEEP_LAST depth（:341「暫定20」）・QoS 微調整 | **depth=10**（RELIABLE / KEEP_LAST / VOLATILE / AUTOMATIC は §8.5 のまま） | 本 package の全 internal String topic が depth=10（`character_node.py:87-89`・`llm_bridge.py:143-150`）＝repo 慣習に合わせる。単一購読者・lifecycle transition（低頻度）・scope filter が連投を間引く（§5.3）。1 commander cycle の最大 reject burst ≈ 2 台 × 別ノード gate 数(<5) < 10。**RELIABLE は overflow を silent-drop でなく back-pressure に変えるため、depth=10 でも reject を取りこぼさず安全上十分**（depth は buffer 上限で、lossless 性そのものは RELIABLE が担保＝depth を無関係化はしない）。暫定20→repo 慣習の10（§8.5:341「実装時調整」の実行）。 |
+| 3 | MVP publisher node（:373）・L0 bridge 方法 | **`warehouse_nav2_bridge`（L1・`no_path`/`recovery_exhausted`）＋ `warehouse_mcp_server`（L2 Policy Gate・`battery_low`/`stale_generation` 等）** が本 slice の再利用 adapter `OperatorNoticePublisher`（`operator_feedback/publisher.py`）で publish。L0 Hardware（`nonfinite_cmd`/`clamped_velocity`/`heartbeat_lost`）は micro-ROS Agent / firmware bridge 経由で Phase 1+（DEFER）。 | grep（`ws/src`）: 既存 decision_event producer は `robotics/composition/plugin_results.py`（`box=l3_validator`）のみ＝**L4-local**（Bridge 内・§5.2:179 で直接 in-process render・topic 不使用）。ゆえに `/operator/notice` publisher は net-new。§8.6:351-357 候補のうち 2 台 PoC で価値が高い非 L4-local・非 emergency reject は Navigation `no_path` と Governance `battery_low`。実 gate node への配線は所有トラック（nav-traffic / safety-state）の follow-up＝本 slice は再利用 adapter を提供する。 |
+| 4 | emergency 相乗り or 二重化（:374） | **MVP＝emergency は既存 `/emergency/event`（doc03:98）を box が直接購読。`/operator/notice` へ二重 publish しない**（§8.6 safety 行は post-MVP 候補） | §8.7:366 推奨。Emergency Guardian が既に estop 構造化 event を `/emergency/event` に出す（doc03:98）＝二重 publish 回避。box の runtime subscriber node は両 topic を購読し `/emergency/event` を内部で `emergency_stop` decision へ写像する（subscriber node 配線は follow-up）。 |
+| 5 | `schema_version` 凍結・Phase 4 `.msg`（:375） | **`schema_version = "operator_notice.v0"`**（`.msg` 化は Phase 4 DEFER・doc16 §3） | #367 fixtures / `models.py` / `publisher.py` が既にこの値で稼働。consumer は `operator_notice.` prefix で key＝将来 `.v1` は additive。Phase 4 まで `std_msgs/String`(JSON)（§8.3・doc16 §3）。 |
+| 6 | milestone 連動（:376） | **v0 は reject 級のみ**（`rejected`/`needs_clarification`/`emergency_stop`）。milestone（`arrived`/`completed`）は **v0 scope 外** | milestone は `decision` 固定語彙（`docs/productization/05-decision-observability-and-tooling.md:69`）に**無い**＝v0 payload で運べない。喋ると決めたら別 event 語彙 / 別チャネルを additive 追加（:376）。code は既にこの scope（`models.py` `SPEAKABLE_DECISIONS`・`publisher.py` は非 reject を wire に載せない）。 |
+
+**publish-only=0 actuation の実装確認**（§8.9 additive・L4OF-G1:269）: 別ノード gate → `OperatorNoticePublisher.publish_event(decision_event)` → `/operator/notice` に `std_msgs/String`(JSON) を publish するだけ（`operator_feedback/publisher.py`）。motion / goal / tool dispatch チャネルを持たず、reject 級 `decision` 以外は wire に載せない。R-26 unit（`tests/unit/test_operator_feedback_publisher.py`）で (a) topic=`/operator/notice`（観測チャネル・非 actuation）、(b) payload に actuation key ゼロ、(c) publisher 出力＝box 入力の往復一致、を pin。
 
 ---
 

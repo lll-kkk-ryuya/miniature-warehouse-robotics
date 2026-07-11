@@ -16,7 +16,7 @@
 > - 安全4層・実時間目標: [`docs/architecture/12-infrastructure-common.md:47-48`](../architecture/12-infrastructure-common.md)（Hard/Soft RT）`:75-84`（Layer0/1）`:483`（50ms/100ms は非ハードRT）`:254`（battery scale #44）。
 > - メモリ二段構え: [`docs/architecture/06-implementation-phases.md:89-102`](../architecture/06-implementation-phases.md)（段階1 Mac Docker 6GB 近似 / 段階2 Jetson 実測）。
 > - ハードウェア: [`docs/shared/02-hardware-design.md:52-164`](../shared/02-hardware-design.md)（Jetson Orin Nano Super 準備）`:180`（RPLiDAR USB）。
-> - 開発環境定義: [`docs/architecture/03-software-architecture.md:255-274`](../architecture/03-software-architecture.md)（Mac 開発機 :257 / Jetson 実行機 :266）。
+> - 開発環境定義: [`docs/architecture/03-software-architecture.md:256-275`](../architecture/03-software-architecture.md)（Mac 開発機 :258 / Jetson 実行機 :267）。
 > - 実装: [`deploy/jetson/`](../../deploy/jetson/)（systemd unit・スクリプト・env 雛形）/ 正本手順 [`docs/setup/jetson-deploy.md`](../setup/jetson-deploy.md)。
 
 ---
@@ -24,8 +24,8 @@
 ## 1. 要旨 — なぜこの doc が要るか
 
 - **追い風（忠実度が高い側）**: CPU アーキは **Mac M4 も Jetson Orin Nano Super も ARM64**（doc06:91
-  「Mac M4 と Jetson はどちらも ARM64」）で、tiryoh コンテナも **ARM64-native**（doc03:262）、Jetson は
-  **ROS 2 Jazzy / Ubuntu 24.04**（doc03:270）・micro-ROS も Jazzy 対応確認済（doc07:22）で揃う。
+  「Mac M4 と Jetson はどちらも ARM64」）で、tiryoh コンテナも **ARM64-native**（doc03:263）、Jetson は
+  **ROS 2 Jazzy / Ubuntu 24.04**（doc03:271）・micro-ROS も Jazzy 対応確認済（doc07:22）で揃う。
   x86 dev マシンより**命令セット・依存ビルドの忠実度が高い**。ROS ノードロジック・凍結契約・launch 合成・
   pytest はこの一致のおかげで Mac で高忠実に検証できる。
 - **逆風（原理的に近似不可な側）**: 一方、以下は **Mac/Docker では原理的に検証できない**。実 Jetson でしか
@@ -51,7 +51,7 @@
 |---|---|:---:|---|---|---|
 | F1 | ROS ノードロジック・凍結契約・launch 合成 | ◯ | arm64 一致＋偽トピック/偽 `state.json` で完全独立検証可（doc16:219-222） | dev（pytest/CI） | unit/CI 緑。`scripts/check_consistency.py` 0 ERROR |
 | F2 | config overlay（`WAREHOUSE_ENV`・base+prod） | ◯ | パス解決は純 Python（`paths.py`）。prod=`/run/warehouse` は env 解決で再現可 | dev（unit） | `WAREHOUSE_ENV=prod` で `/run/warehouse` 解決（doc19:18 / jetson-deploy.md:157-158） |
-| F3 | 2台 Gazebo 自律走行 E2E | ◯ | headless `gz sim`＋`ros_gz_bridge` 環境成立（spike GO, doc06:112）。tiryoh は ARM64-native（doc03:262）。実 bot1/bot2 E2E は sim track #8/#156 で進行（doc06:112） | dev（tiryoh Docker） | 2台が衝突せず巡回（sim。実機性能は別） |
+| F3 | 2台 Gazebo 自律走行 E2E | ◯ | headless `gz sim`＋`ros_gz_bridge` 環境成立（spike GO, doc06:112）。tiryoh は ARM64-native（doc03:263）。実 bot1/bot2 E2E は sim track #8/#156 で進行（doc06:112） | dev（tiryoh Docker） | 2台が衝突せず巡回（sim。実機性能は別） |
 | F4 | **GPU / CUDA**（Isaac ROS・GPU 加速 Nav2/SLAM・GPU costmap） | ✕ | **Mac に CUDA 無し**。Isaac ROS は Jetson 専用、release-3.x は未検証（doc07:23 / doc02:90） | **実機ゲート G4**（Jetson） | CPU 版 Nav2×2 で巡回が実時間成立。GPU 利用は載れば加点（doc06:100 ユニファイド食合せ計測） |
 | F5 | **実時間性**（50ms Guardian / 100ms State Cache の jitter） | ✕ | Docker Desktop は Mac 上 VM 経由でスケジューラが別物。R-40（doc07:250）GC/GIL スパイク＝最悪応答有界でない。doc12:483 が非ハードRT明記 | **実機ゲート G3**（Jetson） | §4 G3 の jitter 合否（p99 / max・stale 検出）。最終防衛は Layer0(doc12:75-78) |
 | F6 | **micro-ROS WiFi UDP 2台同時**（R-37） | ✕ | 実 ESP32×2 + WiFi が必要。**XRCE `client_key` 衝突**で片方向喪失（doc07:242）。host spike は distinct key で実証も loopback 止まり | **実機ゲート G2**（Jetson+実機） | §4 G2＝distinct `client_key` で単一 Agent(:8888) 2台双方向 OK（doc07:79,242 / firmware/spike/RESULT.md） |

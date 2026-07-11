@@ -11,10 +11,11 @@ so the box stays testable without a colcon build, doc16 §11):
 - ``OperatorNotice`` — the box's deterministic OUTPUT (``05``:279 fields
   ``box, reason_code, locale, text, severity, source_decision_ref``).
 
-NOTHING here is frozen: the runtime topic name / QoS / publisher and the
-``warehouse_interfaces`` promotion of ``OperatorNotice`` are DEFERRED (``05``:5,279,
-§8.8 :369-376; doc06 §7 :186-200). The vocabulary below is CONSUMED from existing
-catalogs (``productization/05``:48-69, ``mode-x-er/02``:96,319-328) — it invents none.
+NOTHING is frozen in ``warehouse_interfaces``. The runtime topic name / QoS / publisher values
+are CONFIRMED in ``05`` §8.10 (contract PR #446, pending dependency-track agreement — doc06 §7
+:186 RESOLVED); the Phase-4 ``.msg`` type and the ``warehouse_interfaces`` promotion of
+``OperatorNotice`` remain DEFERRED (``05``:5,279, §8.8 :369-376). The vocabulary below is CONSUMED
+from existing catalogs (``productization/05``:48-69, ``mode-x-er/02``:96,319-328) — it invents none.
 """
 
 from __future__ import annotations
@@ -44,12 +45,22 @@ DECISION_VOCAB: frozenset[str] = frozenset(
     }
 )
 
-#: v0 is reject-class ONLY: the box speaks for these decisions and nothing else
+#: v0 is reject-class ONLY: the box SPEAKS for these decisions and nothing else
 #: (doc05:332 / §8.4 / doc06 §7 :197). ``accepted`` / ``warning`` and any milestone
 #: (``arrived`` / ``completed`` — NOT in the fixed vocab, doc05:376) => silent (None).
+#: This is the box's SPEAK vocabulary — emergency is spoken (it arrives from the existing
+#: ``/emergency/event`` topic and is mapped in-process to ``emergency_stop``, doc05 §8.10 item 4).
 SPEAKABLE_DECISIONS: frozenset[str] = frozenset(
     {DECISION_REJECTED, DECISION_NEEDS_CLARIFICATION, DECISION_EMERGENCY_STOP}
 )
+
+#: The decisions the ``/operator/notice`` WIRE adapter may put on the topic — a STRICT SUBSET
+#: of :data:`SPEAKABLE_DECISIONS`. ``emergency_stop`` is EXCLUDED because emergency rides the
+#: existing ``/emergency/event`` topic and MUST NOT be double-published to ``/operator/notice``
+#: (doc05 §8.10 item 4 / §8.7 / doc03:111). Keeping this separate from the SPEAK vocabulary is
+#: deliberate: the box still SPEAKS emergency, but no gate may legally emit it on THIS wire, so a
+#: future gate-wiring PR cannot silently re-enable the forbidden double-publish.
+WIRE_NOTICE_DECISIONS: frozenset[str] = SPEAKABLE_DECISIONS - frozenset({DECISION_EMERGENCY_STOP})
 
 # L3 Validator stable ``code`` vocabulary — 8 reject codes + 1 clarification-origin
 # derived code = 9 total (mode-x-er/02:319-328, table :338-343). Consumed, not invented.
