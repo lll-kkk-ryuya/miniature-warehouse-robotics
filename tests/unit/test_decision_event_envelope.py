@@ -1,0 +1,180 @@
+"""decision_events.jsonl envelope validation (doc09:489 step 3) — offline unit tests.
+
+Independent oracle: the REAL producer serialization (``operator_feedback.publisher
+encode_notice``, the only code path on main that turns a decision_event into a JSON
+line) and the golden reject-class fixtures (``operator_feedback.fixtures``) must
+validate — the envelope is checked against what the producer actually emits, not
+against a copy of the envelope's own logic.
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+from warehouse_llm_bridge.operator_feedback.fixtures import GATE_REJECT_EVENTS
+from warehouse_llm_bridge.operator_feedback.models import DECISION_VOCAB
+from warehouse_llm_bridge.operator_feedback.publisher import SCHEMA_VERSION_V0, encode_notice
+from warehouse_llm_bridge.robotics.composition.decision_event_envelope import (
+    ERROR_JSON_DECODE,
+    ERROR_SCHEMA_VERSION_MISMATCH,
+    ERROR_VALIDATION,
+    KNOWN_ENVELOPE_SCHEMA_VERSIONS,
+    SCHEMA_VERSION_PROPOSAL,
+    DecisionEventEnvelope,
+    decision_event_json_schema,
+    validate_decision_event_payload,
+    validate_decision_events_file,
+)
+
+# The doc05:49-64 basic-form example (schema_version "proposal", doc05:63) — the
+# documented target shape, carrying the fields the v0 wire payload does not.
+PROPOSAL_EVENT: dict = {
+    "timestamp": "2026-06-22T12:00:00Z",
+    "run_id": "run_x_er_customer_a_001",
+    "trace_id": "optional-langfuse-trace-id",
+    "gen_id": 42,
+    "robot": "bot1",
+    "box": "l3_validator",
+    "stage": "target_reference",
+    "decision": "rejected",
+    "reason_code": "unknown_target",
+    "reason_detail": "target red_box_3 is not in detections or known locations",
+    "input_ref": "raw_model_output://...",
+    "output_ref": "validation_report://...",
+    "profile": "customer_a_site_01",
+    "schema_version": "proposal",
+}
+
+
+def _write_lines(path: Path, lines: list[str]) -> Path:
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return path
+
+
+class TestEnvelopeModel:
+    def test_real_producer_output_validates(self) -> None:
+        """Every line the REAL publisher emits must pass the envelope (oracle)."""
+        for name, payload in GATE_REJECT_EVENTS.items():
+            line = encode_notice(payload)
+            event, error = validate_decision_event_payload(json.loads(line))
+            assert error is None, f"{name}: {error}"
+            assert event is not None
+            assert event.schema_version == SCHEMA_VERSION_V0
+            assert event.decision == payload["decision"]
+            assert event.reason_code == payload["reason_code"]
+            assert event.gen_id == payload["gen_id"]
+
+    def test_doc05_proposal_basic_form_validates(self) -> None:
+        event, error = validate_decision_event_payload(PROPOSAL_EVENT)
+        assert error is None
+        assert event is not None
+        assert event.schema_version == SCHEMA_VERSION_PROPOSAL
+        assert event.trace_id == "optional-langfuse-trace-id"
+        assert event.profile == "customer_a_site_01"
+        assert event.gen_id == 42
+
+    def test_extra_keys_are_ignored_mirroring_producer(self) -> None:
+        """Producer decode convention is extra=ignore (operator_feedback/models.py:8-9)."""
+        payload = dict(PROPOSAL_EVENT, invented_field="zzz")
+        event, error = validate_decision_event_payload(payload)
+        assert error is None
+        assert event is not None
+        assert "invented_field" not in event.model_dump()
+
+    def test_unknown_schema_version_is_fail_closed(self) -> None:
+        payload = dict(PROPOSAL_EVENT, schema_version="decision_event.v99")
+        event, error = validate_decision_event_payload(payload, line_no=7)
+        assert event is None
+        assert error is not None
+        assert error.kind == ERROR_SCHEMA_VERSION_MISMATCH
+        assert error.line_no == 7
+
+    def test_missing_schema_version_is_fail_closed(self) -> None:
+        payload = {k: v for k, v in PROPOSAL_EVENT.items() if k != "schema_version"}
+        event, error = validate_decision_event_payload(payload)
+        assert event is None
+        assert error is not None and error.kind == ERROR_SCHEMA_VERSION_MISMATCH
+
+    def test_decision_outside_fixed_vocabulary_rejected(self) -> None:
+        """decision is a fixed vocabulary (doc05:69)."""
+        payload = dict(PROPOSAL_EVENT, decision="arrived")  # milestone, NOT in the vocab
+        event, error = validate_decision_event_payload(payload)
+        assert event is None
+        assert error is not None and error.kind == ERROR_VALIDATION
+        assert "arrived" in error.message
+
+    def test_every_fixed_decision_is_accepted(self) -> None:
+        for decision in sorted(DECISION_VOCAB):
+            payload = dict(PROPOSAL_EVENT, decision=decision)
+            event, error = validate_decision_event_payload(payload)
+            assert error is None and event is not None
+
+    def test_non_numeric_gen_id_is_a_typed_error(self) -> None:
+        """The eval validator must NOT silently null a corrupt join key (doc09:34,41)."""
+        payload = dict(PROPOSAL_EVENT, gen_id="not-a-number")
+        event, error = validate_decision_event_payload(payload)
+        assert event is None
+        assert error is not None and error.kind == ERROR_VALIDATION
+
+    def test_known_versions_are_exactly_the_two_documented(self) -> None:
+        assert {SCHEMA_VERSION_V0, SCHEMA_VERSION_PROPOSAL} == KNOWN_ENVELOPE_SCHEMA_VERSIONS
+
+
+class TestFileValidation:
+    def test_happy_file_from_real_producer(self, tmp_path: Path) -> None:
+        lines = [encode_notice(p) for p in GATE_REJECT_EVENTS.values()]
+        path = _write_lines(tmp_path / "decision_events.jsonl", lines)
+        outcome = validate_decision_events_file(path)
+        assert not outcome.artifact_missing
+        assert outcome.ok
+        assert len(outcome.rows) == len(GATE_REJECT_EVENTS)
+        assert [row.line_no for row in outcome.rows] == list(range(1, len(lines) + 1))
+
+    def test_absent_file_is_artifact_missing(self, tmp_path: Path) -> None:
+        outcome = validate_decision_events_file(tmp_path / "nope.jsonl")
+        assert outcome.artifact_missing
+        assert outcome.rows == ()
+        assert outcome.errors == ()
+        assert not outcome.ok
+
+    def test_bad_lines_become_typed_errors_and_good_lines_survive(self, tmp_path: Path) -> None:
+        good = json.dumps(PROPOSAL_EVENT)
+        lines = [
+            good,
+            "{not json",  # json_decode
+            json.dumps(dict(PROPOSAL_EVENT, schema_version="v99")),  # version mismatch
+            json.dumps([1, 2, 3]),  # not an object
+            "",  # blank: skipped entirely
+            good,
+        ]
+        path = _write_lines(tmp_path / "decision_events.jsonl", lines)
+        outcome = validate_decision_events_file(path)
+        assert len(outcome.rows) == 2
+        assert [row.line_no for row in outcome.rows] == [1, 6]
+        kinds = {error.line_no: error.kind for error in outcome.errors}
+        assert kinds == {
+            2: ERROR_JSON_DECODE,
+            3: ERROR_SCHEMA_VERSION_MISMATCH,
+            4: ERROR_VALIDATION,
+        }
+        assert not outcome.ok
+
+
+class TestJsonSchema:
+    def test_json_schema_export(self) -> None:
+        """doc09:489 names Pydantic / JSON Schema — the JSON Schema form must exist."""
+        schema = decision_event_json_schema()
+        assert schema["title"] == DecisionEventEnvelope.__name__
+        for field in ("schema_version", "decision", "gen_id", "run_id", "box"):
+            assert field in schema["properties"]
+        assert set(schema["required"]) == {"schema_version", "decision"}
+
+
+@pytest.mark.parametrize("name", sorted(GATE_REJECT_EVENTS))
+def test_each_golden_fixture_validates(name: str) -> None:
+    """Golden reject-class fixtures (PR #446 producer vocabulary) all pass the envelope."""
+    event, error = validate_decision_event_payload(GATE_REJECT_EVENTS[name])
+    assert error is None, f"{name}: {error}"
+    assert event is not None
