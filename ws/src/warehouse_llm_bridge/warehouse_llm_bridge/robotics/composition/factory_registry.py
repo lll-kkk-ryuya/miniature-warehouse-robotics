@@ -5,7 +5,7 @@ Design canon: docs/productization/09-run-manifest-and-plugin-composition.md
 ``x_er_bridge`` node resolves this registry once at startup and hands it to
 ``build_x_er_runtime(cfg, plugin_factories=production_plugin_factories())`` — the ONLY
 legitimate supply path of plugin factories to the production composition (the spike harness
-keeps injecting its own map, spike/xer6-live-matrix/variants.py:51).
+keeps injecting its own map, spike/xer6-live-matrix/variants.py:50).
 
 Rules this module encodes (all from the doc09 section above):
 

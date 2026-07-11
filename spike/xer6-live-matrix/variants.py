@@ -25,7 +25,6 @@ from plugins import (
     EscalationProbePlugin,
     ZonePolicyPlugin,
 )
-
 from tests.unit.x_er_fixtures import HOMOGRAPHY, build_x_er_cfg, write_site_profile_bundle
 
 SPIKE_DIR = Path(__file__).resolve().parent
