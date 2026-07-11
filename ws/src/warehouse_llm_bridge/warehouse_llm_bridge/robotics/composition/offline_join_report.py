@@ -329,18 +329,24 @@ def _funnel_counters(
 def _reject_reason_top_n(
     event_rows: tuple[dict[str, Any], ...], *, top_n: int
 ) -> list[dict[str, Any]]:
-    """Reject reason top-N per (box, reason_code) — doc05:105,339-343."""
-    counts: Counter[tuple[str, str]] = Counter()
+    """Reject reason top-N per (box, reason_code, plugin_id) — doc05:105,339-343.
+
+    ``plugin_id`` joins the grouping axes so the same ``reason_code`` emitted by multiple
+    plugins stays distinguishable (doc10:395-396 / mode-x-er/05 §8.11). Non-plugin rows
+    carry no ``plugin_id`` and group under ``""`` (row shape stays uniform / JSON-safe).
+    """
+    counts: Counter[tuple[str, str, str]] = Counter()
     for event in event_rows:
         if event.get("decision") != "rejected":
             continue
         box = event.get("box")
         reason = event.get("reason_code")
-        counts[(str(box or ""), str(reason or ""))] += 1
+        plugin = event.get("plugin_id")
+        counts[(str(box or ""), str(reason or ""), str(plugin or ""))] += 1
     ranked = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
     return [
-        {"box": box, "reason_code": reason, "count": count}
-        for (box, reason), count in ranked[:top_n]
+        {"box": box, "reason_code": reason, "plugin_id": plugin, "count": count}
+        for (box, reason, plugin), count in ranked[:top_n]
     ]
 
 
