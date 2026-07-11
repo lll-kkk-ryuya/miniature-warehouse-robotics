@@ -1,0 +1,45 @@
+{
+  "_comment": [
+    "Negative-fixture INPUT half of the doc09:251-253 replay pair (doc10:163: red_box outside",
+    "the zone -> target_out_of_zone). Replayed by tests/unit/test_plugins_incubator_zone_policy.py.",
+    "zone_polygon_map_m: the doc10:243-248 zone_a polygon (map frame, metres; open ring).",
+    "homography: hand-checkable pixel->map calibration (u,v)/1000 -> (x,y) metres, so",
+    "pixel [500, 700] -> map (0.5, 0.7); 0.7 > 0.45 (zone_a y-max) => outside zone_a.",
+    "Behavior (reject + reason_code) lives in the plugin/profile, geometry is data-only",
+    "(root CLAUDE.md GeoJSON discipline; doc10:218-220)."
+  ],
+  "zone_policy": {
+    "zone_id": "zone_a",
+    "zone_polygon_map_m": [
+      [0.10, 0.10],
+      [0.80, 0.10],
+      [0.80, 0.45],
+      [0.10, 0.45]
+    ],
+    "homography": [
+      [0.001, 0.0, 0.0],
+      [0.0, 0.001, 0.0],
+      [0.0, 0.0, 1.0]
+    ]
+  },
+  "plan": {
+    "schema_version": "robotics_plan_draft.v0",
+    "plan_id": "fixture_red_box_out_of_zone",
+    "detections": [
+      {
+        "id": "red_box",
+        "color": "red",
+        "pixel": [500, 700],
+        "confidence": 0.92
+      }
+    ],
+    "task_graph": [
+      {
+        "id": "t1",
+        "robot": "bot1",
+        "action": "navigate",
+        "target": "red_box"
+      }
+    ]
+  }
+}
