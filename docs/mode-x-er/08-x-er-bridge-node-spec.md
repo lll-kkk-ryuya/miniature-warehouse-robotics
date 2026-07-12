@@ -123,6 +123,15 @@ async 境界: `propose_plan` は async・L3/composition は sync のため、Mod
 - doc16 §9 ブランチ表に Mode X-ER 行が無い（現行は precedent＝`mwr-mode-x-er`/`feat/mode-x-er-*`。表追記は governance follow-up）。
 - コード内 stale 注記の sweep（[07:71](07-implementation-status.md) 掲載分）＝XER6 実装 PR で同梱。
 
+## 10. per-run 実行系切替戦略（x_lite ↔ x_rmf・2026-07-11 追補）
+
+実行系（execution backend）の切替は **per-run の宣言切替**とする。単位・手順・非採用を確定する:
+
+- **切替の単位 = run（node 起動）**: `mode_x_er.execution_profile`（§3 凍結・`x_lite | x_rmf`）＋ run manifest（`mode_x_er.run_manifest`）の**宣言**で選ぶ。切替の実作業は **config 変更（overlay の 2 key）＋ node 再起動（数秒）**であり、deploy / rebuild は不要（§4 の composition・profile gate は起動時 1 回読み＝[x_er_composition.py `_execution_profile`](../../ws/src/warehouse_llm_bridge/warehouse_llm_bridge/x_er_composition.py) が起動時に validate する。config は runtime に再読しない）。
+- **manifest 2 枚運用を推奨**: 実行系ごとに run manifest を 1 枚ずつ用意し（例: `run_manifest.yaml`〔x_lite・現行〕と将来の `run_manifest.x_rmf.yaml`）、overlay の `run_manifest` path と `execution_profile` を**組で**差し替える。manifest は「recorded == ran」の witness record（[ADR-0003](../adr/0003-bridge-local-manifest-composition.md) 決定 4）なので、1 枚を書き換え回すより run ごとに固定した 2 枚を切り替える方が監査が濁らない。
+- **per-instruction（per-cycle）切替は非採用**: 1 つの稼働 node が指示ごとに実行系を替える形は、(a) 実効構成レコードと実行の 1:1（§4 step7・ADR-0003 決定 4）が壊れる（起動時に一度書いた record と mid-run の実行系が食い違う）、(b) 長命 executor の single-live-handle 契約（[02:361](02-l3-planning-core.md)）と gen 発番 owner の一意性（§2 相互排他）が「どの実行系の cycle か」で曖昧になる、(c) §4 の fail-closed startup gate（profile 拒否含む）が cycle 中に再評価されず安全前提が崩れる——ため採用しない。将来必要になったら **docs-first の新設計＋ADR**（hard-to-reverse 判定は [docs/adr/README](../adr/README.md)）を先行する。
+- **x_rmf の実体は #346 gate 後**: 現状 `execution_profile: x_rmf` は**起動拒否**（`NotImplementedError` fail-closed・§3 / compiler.py:79-83）。本節は切替の**戦略**（単位と手順）だけを先に確定するもので、x_rmf backend を実装したり [ADR-0002](../adr/0002-er-in-hermes-standard.md)（ER-in-Hermes 標準）/ ADR-0003（bridge-local composition）の決定を変えるものではない。
+
 ## References
 
 - 判定履歴: [06-unfrozen-contract-resolutions §3＋追補](06-unfrozen-contract-resolutions.md) / 現状記録: [07-implementation-status](07-implementation-status.md)

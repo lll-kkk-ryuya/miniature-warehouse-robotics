@@ -1,0 +1,20 @@
+{
+  "request_id": "req-xer6-g5-choreography-v2",
+  "transcript": "bot1は赤い箱へ行き、終わったら所定の位置に戻る。bot2は青い箱へ。bot1が赤い箱の場所から離れたら、bot2は赤い箱の場所へ行き、最後に所定の位置に戻る。",
+  "calibration_id": "dev-sim-v1",
+  "known_robots": [
+    "bot1",
+    "bot2"
+  ],
+  "known_locations": [
+    "berth_A",
+    "berth_B",
+    "charging_station",
+    "retreat_A",
+    "retreat_B",
+    "shelf_1",
+    "shelf_2",
+    "shelf_3",
+    "shipping_station"
+  ]
+}

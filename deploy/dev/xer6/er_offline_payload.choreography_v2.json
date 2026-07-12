@@ -1,0 +1,15 @@
+{
+  "candidates": [
+    {
+      "content": {
+        "role": "model",
+        "parts": [
+          {
+            "text": "{\"schema_version\": \"robotics_plan_draft.v0\", \"plan_id\": \"plan_demo_choreography_v2\", \"source_model\": \"gemini-robotics-er\", \"input_refs\": {\"audio\": \"audio-ref\", \"image\": \"frame-ref\", \"state\": \"state-ref\"}, \"transcript\": \"bot1は赤い箱へ行き、終わったら所定の位置に戻る。bot2は青い箱へ。bot1が赤い箱の場所から離れたら、bot2は赤い箱の場所へ行き、最後に所定の位置に戻る。\", \"interpreted_intent\": \"bot1: red_box then return to berth_A; bot2: blue_box in parallel, then the red_box spot after bot1 has returned (departure approximated by t2 completion, doc02 v1 ruling), then return to berth_B\", \"detections\": [{\"id\": \"red_box\", \"color\": \"red\", \"pixel\": [420, 310], \"confidence\": 0.92}, {\"id\": \"blue_box\", \"color\": \"blue\", \"pixel\": [810, 280], \"confidence\": 0.89}, {\"id\": \"berth_A_marker\", \"pixel\": [420, 1060], \"confidence\": 0.97}, {\"id\": \"berth_B_marker\", \"pixel\": [810, 1060], \"confidence\": 0.96}], \"task_graph\": [{\"id\": \"t1\", \"robot\": \"bot1\", \"action\": \"navigate\", \"target\": \"red_box\"}, {\"id\": \"t2\", \"robot\": \"bot1\", \"action\": \"navigate\", \"target\": \"berth_A_marker\", \"after\": \"t1.completed\"}, {\"id\": \"t3\", \"robot\": \"bot2\", \"action\": \"navigate\", \"target\": \"blue_box\"}, {\"id\": \"t4\", \"robot\": \"bot2\", \"action\": \"navigate\", \"target\": \"red_box\", \"after\": \"t2.completed\"}, {\"id\": \"t5\", \"robot\": \"bot2\", \"action\": \"navigate\", \"target\": \"berth_B_marker\", \"after\": \"t4.completed\"}], \"operator_clarification_required\": false}"
+          }
+        ]
+      }
+    }
+  ],
+  "modelVersion": "gemini-robotics-er-1.6-preview"
+}

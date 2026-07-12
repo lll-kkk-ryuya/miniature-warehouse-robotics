@@ -25,3 +25,9 @@ mode_x_er:
     forward_to_nav2: false
   request_fixture: /ws/deploy/dev/xer6/er_request.red_blue.json
   er_offline_payload: /ws/deploy/dev/xer6/er_offline_payload.direct.json
+# --- v1 ↔ v2 切替（docs/dev/08 追補 3）---------------------------------------------------
+# 上の 2 key は v1（赤箱/青箱・機構検証ベースライン）。G5 本番デモ振り付け v2
+# （t1-t5 完了依存 DAG）で回すときはこの 2 key だけを v2 kit に差し替える
+# （run_manifest / site_profile は v1 と共用・他 key 変更なし）:
+#   request_fixture: /ws/deploy/dev/xer6/er_request.choreography_v2.json
+#   er_offline_payload: /ws/deploy/dev/xer6/er_offline_payload.choreography_v2.json
