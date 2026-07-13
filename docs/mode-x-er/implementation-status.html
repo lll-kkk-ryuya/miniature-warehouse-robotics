@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Mode X-ER 実装状況 — 想定(planned) vs 現状(main 4114195)</title>
+<title>Mode X-ER 実装状況 — 想定(planned) vs 現状(main 7b5b32f)</title>
 <style>
   :root{
     color-scheme: dark;
@@ -145,8 +145,8 @@
 <div class="wrap">
 
 <header class="top">
-  <h1>Mode X-ER 実装状況 — 想定(planned) vs 現状(current on main <code>4114195</code>)</h1>
-  <p class="lead">ER → L3 パイプラインの各 node を、<b>想定(planned)</b> と <b>現状(main <code>4114195</code> に載っているもの)</b>で対比する。結論から言うと、<b>凍結 <code>Command</code> まで到達する offline L3 チェーンは DONE</b>（envelope → handoff → validator → resolver（object-class snap 込み #452）→ executor → compiler → <code>pipeline.compile_raw_output</code>）、<b>LIVE send 機構（#389）も main 着地</b>、さらに <b>それらを鎖化する背骨 <code>x_er_bridge</code>（#419/#423）が land＝<code>goal_result</code> だけで red→blue を offline 完走</b>。ただし <b>実 rclpy node を sim で spin し L2/L1/L0 を実作動させる XER6 sim closure は G5 human gate＝未実走</b>（#456 の無償 replay 経路 <code>mode_x_er.er_offline_payload</code> land 済＝課金なしで実走可）。ER transport の標準は <b>fork gateway（8644）一本で全 modality を Hermes 経由</b>（ADR-0002・live-matrix 12/12 sends 実証）、<b>shipped default の audio は依然 DIRECT</b>（下の紫バンド）。本ページは図解（補足資料）で、設計の正本は <code>01</code>〜<code>07</code> / README の .md。</p>
+  <h1>Mode X-ER 実装状況 — 想定(planned) vs 現状(current on main <code>7b5b32f</code>)</h1>
+  <p class="lead">ER → L3 パイプラインの各 node を、<b>想定(planned)</b> と <b>現状(main <code>7b5b32f</code> に載っているもの)</b>で対比する。結論から言うと、<b>凍結 <code>Command</code> まで到達する offline L3 チェーンは DONE</b>（envelope → handoff → validator → resolver（object-class snap 込み #452）→ executor → compiler → <code>pipeline.compile_raw_output</code>）、<b>LIVE send 機構（#389）も main 着地</b>、さらに <b>それらを鎖化する背骨 <code>x_er_bridge</code>（#419/#423）が land＝<code>goal_result</code> だけで red→blue を offline 完走</b>。ただし <b>実 rclpy node を sim で spin し L2/L1/L0 を実作動させる XER6 sim closure は G5 human gate＝未実走</b>（#456 の無償 replay 経路 <code>mode_x_er.er_offline_payload</code> land 済＝課金なしで実走可）。ER transport の標準は <b>fork gateway（8644）一本で全 modality を Hermes 経由</b>（ADR-0002・live-matrix 12/12 sends 実証）、<b>shipped default の audio は依然 DIRECT</b>（下の紫バンド）。本ページは図解（補足資料）で、設計の正本は <code>01</code>〜<code>07</code> / README の .md。</p>
 </header>
 
 <div class="nav">
@@ -441,7 +441,7 @@
 
 <footer>
   <p>このページは <code>docs/mode-x-er/implementation-status.html</code>（自己完結ダークモード図解・補足資料）。設計の正本は <a href="07-implementation-status.md">07 implementation-status</a> ＋ <a href="01-architecture-and-flow.md">01</a> / <a href="02-l3-planning-core.md">02</a> / <a href="03-er-adapter-skeleton.md">03</a> / <a href="06-unfrozen-contract-resolutions.md">06</a> / <a href="README.md">README</a>。関連図解: <a href="mode-x-er-explainer.html">mode-x-er-explainer.html</a>。外部 CDN / JS / 画像に依存しない単一 HTML。</p>
-  <p>生成 2026-07-02（re-pin 2026-07-11・#449-#453 land 反映＝ER-in-Hermes 標準整合 / object-class snap / composition factory seam / plugins incubator / eval join。re-pin2 同日・#454-#456 land 反映）・対象 origin/main 4114195・出典は各 node の file:line（実コードで裏取り済）。</p>
+  <p>生成 2026-07-02（re-pin 2026-07-11・#449-#453 land 反映＝ER-in-Hermes 標準整合 / object-class snap / composition factory seam / plugins incubator / eval join。re-pin2 同日・#454-#456 land 反映）・対象 origin/main 7b5b32f・出典は各 node の file:line（実コードで裏取り済）。</p>
 </footer>
 
 </div>
