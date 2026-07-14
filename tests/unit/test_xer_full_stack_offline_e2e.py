@@ -133,7 +133,9 @@ def test_l3_reject_surfaces_to_operator_notice_zero_actuation():
     notice = build_notice(event)
     assert isinstance(notice, OperatorNotice)  # a reject-class decision is spoken
     assert notice.reason_code == "UNKNOWN_TARGET"
-    assert notice.fallback is False  # the real L3 validator template rendered, not the safe fallback
+    assert (
+        notice.fallback is False
+    )  # the real L3 validator template rendered, not the safe fallback
     assert isinstance(notice.text, str) and notice.text  # text-only; build_notice cannot actuate
     assert "UNKNOWN_TARGET" in notice.source_decision_ref  # attribution back to the event
 
