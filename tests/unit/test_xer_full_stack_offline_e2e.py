@@ -1,6 +1,7 @@
 """Mode X-ER full-stack OFFLINE deterministic E2E — ER → L3 → (dispatch / 0-dispatch) → observation.
 
-Threads the layers a real live run would, but **without network / ROS / provider / cost**, so it
+Exercises the same layers a real live run would traverse, but **without network / ROS / provider /
+cost**, so it
 runs in the standard host pytest CI gate (`Ruff + pytest`). It exercises, in one deterministic module:
 
   * **L4→L3 command path** — an ER output *fixture* (`direct_envelope()`) through the whole L3 chain
@@ -8,9 +9,10 @@ runs in the standard host pytest CI gate (`Ruff + pytest`). It exercises, in one
     a frozen `Command`.
   * **R-26 zero-dispatch** — a non-accepted plan (emergency runtime) yields an EMPTY `Command`;
     resolve/compile are never reached (`docs/architecture/16` §11 / `test_validator_zero_dispatch.py`).
-  * **observation layer (L3 reject → operator)** — the same reject class that stops actuation ALSO
-    surfaces to the operator as a text-only `OperatorNotice`, with ZERO actuation (`build_notice` can
-    only return `OperatorNotice | None` — R-26 / L4OF-G1, `docs/mode-x-er/05`:269).
+  * **observation layer (reject → operator)** — a reject ALSO reaches the operator as a text-only
+    `OperatorNotice` (ZERO actuation — `build_notice` returns `OperatorNotice | None`, R-26 / L4OF-G1,
+    `docs/mode-x-er/05`:269). This is a SEPARATE guarantee from the 0-dispatch, not one threaded
+    rejection: the pipeline emits no decision_event; the `/operator/notice` producer is net-new (:394).
   * **today's L0 work as observation vocabulary** — the comms-loss watchdog landed in #468
     (`command_is_stale`) / #467 (doc12 §Layer 0 doctrine) appears in this E2E ONLY as the reason_code
     `heartbeat_lost` (box=hardware=L0) rendering to an operator notice. The real L0-node publish is
@@ -116,21 +118,24 @@ def test_er_nonaccept_is_zero_dispatch_r26():
 # =============================================================================================
 @pytest.mark.safety
 def test_l3_reject_surfaces_to_operator_notice_zero_actuation():
-    """The reject class that stops actuation ALSO surfaces to the operator — as a text value object,
-    never a command (R-26 / L4OF-G1, mode-x-er/05:269)."""
+    """The observation layer independently surfaces an L3 reject to the operator — a text value
+    object, never a command (R-26 / L4OF-G1, mode-x-er/05:269). A SEPARATE guarantee from the
+    enforcement-side 0-dispatch above (no shared seam; the /operator/notice producer is net-new,
+    mode-x-er/05:394)."""
     event = DecisionEvent(
         decision="rejected",
         box="l3_validator",
-        reason_code="unknown_target",
+        reason_code="UNKNOWN_TARGET",  # canonical ValidationCode (report.py) -> real JA template
         robot="bot1",
         run_id="e2e",
         gen_id=1,
     )
     notice = build_notice(event)
     assert isinstance(notice, OperatorNotice)  # a reject-class decision is spoken
-    assert notice.reason_code == "unknown_target"
+    assert notice.reason_code == "UNKNOWN_TARGET"
+    assert notice.fallback is False  # the real L3 validator template rendered, not the safe fallback
     assert isinstance(notice.text, str) and notice.text  # text-only; build_notice cannot actuate
-    assert "unknown_target" in notice.source_decision_ref  # attribution back to the event
+    assert "UNKNOWN_TARGET" in notice.source_decision_ref  # attribution back to the event
 
 
 @pytest.mark.safety
@@ -153,8 +158,9 @@ def test_l0_heartbeat_lost_surfaces_as_observation_vocabulary():
     assert isinstance(notice, OperatorNotice)
     assert notice.box == BOX_HARDWARE
     assert notice.reason_code == "heartbeat_lost"
-    # No dedicated JA template for heartbeat_lost yet -> safe fallback that still NAMES the reason_code
-    # so the operator can locate it (L4OF-G4, mode-x-er/05:268); never a `template_missing` crash.
+    # No dedicated JA template for heartbeat_lost yet -> safe fallback (L4OF-G0, mode-x-er/05:268:
+    # never a `template_missing` crash) that still NAMES the reason_code so the operator can locate
+    # it (L4OF-G4, mode-x-er/05:272).
     assert notice.fallback is True
     assert "heartbeat_lost" in notice.text
     assert isinstance(notice.text, str)  # text-only value object (zero actuation)
@@ -168,6 +174,7 @@ def test_langfuse_transcript_leg_is_offline_noop():
     record_transcript returns None and never touches langfuse. Live Langfuse tags are a separate
     human-gate (WAREHOUSE_LIVE_LANGFUSE_TAGS=1, #88 / dev/07:125), keeping this E2E deterministic."""
     tracer = LangfuseTranscriptTracer()  # default enabled=False
+    assert tracer._enabled is False  # noqa: SLF001 -- grounds "offline default"; a flip to enabled=True fails here
     result = tracer.record_transcript(
         run_id="e2e",
         transcript="ER→L3 offline e2e probe",
