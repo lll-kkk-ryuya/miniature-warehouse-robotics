@@ -148,13 +148,13 @@
 
 <h2>3. 実装順序（PHASE1_CHECKLIST A→D・依存順）</h2>
 <div class="flow">
-  <div class="node n-box"><div class="t">A. 通信・micro-ROS</div><div class="s">Agent 導入・WiFi UDP・R-37 client_key・再接続 <span class="dref">PHASE1:21-29</span></div></div>
+  <div class="node n-box"><div class="t">A. 通信・micro-ROS</div><div class="s">Agent 導入・WiFi UDP・R-37 client_key・再接続 <span class="dref">PHASE1:21-27</span></div></div>
   <div class="arr">▶</div>
-  <div class="node n-box"><div class="t">B. cmd_vel・モータ (L0)</div><div class="s">cmd_vel sub・PWM 実体・クランプ回帰・近接 reflex <span class="dref">PHASE1:31-38</span></div></div>
+  <div class="node n-box"><div class="t">B. cmd_vel・モータ (L0)</div><div class="s">cmd_vel sub・PWM 実体・クランプ回帰・近接 reflex <span class="dref">PHASE1:28-34</span></div></div>
   <div class="arr">▶</div>
-  <div class="node n-box"><div class="t">C. センサ publisher</div><div class="s">MS200→scan・encoder→odom・battery・登録 <span class="dref">PHASE1:40-46</span></div></div>
+  <div class="node n-box"><div class="t">C. センサ publisher</div><div class="s">MS200→scan・encoder→odom・battery・登録 <span class="dref">PHASE1:35-42</span></div></div>
   <div class="arr">▶</div>
-  <div class="node n-box"><div class="t">D. リソース・検証</div><div class="s">mem/CPU・実寸・RViz・MAX_ANGULAR 実測 <span class="dref">PHASE1:44-48</span></div></div>
+  <div class="node n-box"><div class="t">D. リソース・検証</div><div class="s">mem/CPU・実寸・RViz・MAX_ANGULAR 実測 <span class="dref">PHASE1:43-48</span></div></div>
 </div>
 <div class="note"><b>完了条件</b>（<code>PHASE1_CHECKLIST:52-59</code> / <code>doc06:138-139</code>）: Jetson から1台を ROS 2 で遠隔操作でき、RViz2 に位置が出て、<b>Layer-0 クランプ R-26 unit が 9/9 緑のまま</b>。これで #3 の Phase 1 実機分が閉じ、Phase 2（SLAM/Nav2）へ。</div>
 
