@@ -34,7 +34,7 @@
 - **L3 司令・検証（Planning Core）** — Non-RT / Python。ER 提案を既存実行契約が理解できる command 候補へ変換する（Validator/Visual Resolver/Task Graph Executor/Command Compiler）。 — [productization/01-commercial-box-map.md:23-24,64](productization/01-commercial-box-map.md)
 - **L2 実行許可・交通管理** — Soft-RT / Python + optional RMF。Governance（MCP/Policy Gate）と Traffic（X-lite/X-rmf）。box 詳細＝§10。 — [productization/01-commercial-box-map.md:25,66-67](productization/01-commercial-box-map.md) / [productization/11-l2-contract-governance-traffic-box.md](productization/11-l2-contract-governance-traffic-box.md)
 - **L1 自律走行・安全** — Hard-RT。Navigation（Nav2）と Safety（collision_monitor/twist_mux/Emergency Guardian）。 — [productization/01-commercial-box-map.md:29,68-69](productization/01-commercial-box-map.md)
-- **L0 物理安全** — MCU / 即時。firmware の速度クランプ・近接停止（micro-ROS）。 — [productization/01-commercial-box-map.md:32,70](productization/01-commercial-box-map.md) / [architecture/12-infrastructure-common.md:72](architecture/12-infrastructure-common.md)（安全レイヤー4層）
+- **L0 物理安全** — MCU / 即時。firmware の速度クランプ・近接停止・上位通信途絶時の heartbeat/watchdog deadman（Layer 0 の責務・実 enforcement は Phase 1、H-G6 `heartbeat_lost`）（micro-ROS）。 — [productization/01-commercial-box-map.md:32,70](productization/01-commercial-box-map.md) / [architecture/12-infrastructure-common.md:72](architecture/12-infrastructure-common.md)（安全レイヤー4層）
 - **レイヤ annotation 対応表** — 回答・plan・実装・PR/Issue・レビューで対象の layer（L0–L4 / 横断観測面）を明記するときの package/主要ファイル file-level 正準対応表（layer≠process / layer≠package の注意付き）。 — [productization/01-commercial-box-map.md:174](productization/01-commercial-box-map.md)（§レイヤ annotation 対応表）
 
 ## 4. L3 Planning Core の seam（データ変換段）
@@ -67,6 +67,7 @@
 - **R-26** — 「テスト戦略の欠如」リスク。Emergency Guardian / Policy Gate / firmware Layer-0 クランプは**ユニットテスト必須**とする規律。 — [shared/07-research-notes.md:159](shared/07-research-notes.md) / [architecture/16-repository-and-conventions.md:221](architecture/16-repository-and-conventions.md)
 - **R-37** — micro-ROS Agent 2台同時接続の既知不具合。Agent はクライアントを UDP ポートでなく XRCE `client_key`（session 識別子）で識別し、**同一/弱RNG キーだと session を奪い合い pub/sub の片方向が落ちる**。第一対策＝両 ESP32 に distinct `client_key`（`rmw_uros_options_set_client_key()`・BOT_ID/MAC 由来）→ 単一 Agent(:8888) で2台双方向。host spike 実証・実機クローズは Phase 1。 — [shared/07-research-notes.md:242](shared/07-research-notes.md) / [firmware/spike/RESULT.md](../firmware/spike/RESULT.md) / [firmware/CLAUDE.md:12](../firmware/CLAUDE.md)
 - **R-43** — LaserScan の micro-ROS UDP 転送問題。360°/0.4°≈3.6KB/scan が UDP MTU 512B を超過（2台常時送出）。対策＝scan ダウンサンプル(0.4°→1–2°) / Reliable・MTU 設定 / 最悪 USB 有線。方針は Phase 1 実機で確定（未決・T3 併せ）。R-37 host spike はこの MTU を未検証。 — [shared/07-research-notes.md:253](shared/07-research-notes.md)
+- **command-stream watchdog（comms-loss deadman）** — 上位からの `/cmd_vel` 途絶（ESP32↔Jetson リンク断・上位クラッシュ）で MCU が自力停止する L0 の deadman。off-MCU の Emergency Guardian(L1) は死んだリンク越しに停止を押せないため、通信断で確実に止められるのは MCU 常駐のみ。純判定 `command_is_stale`（unsigned rollover-safe・host-test R-26・#468）＝実 enforcement は Phase 1。L1 の blocked-timeout watchdog＋battery 3段とは別。 — [architecture/12-infrastructure-common.md:79](architecture/12-infrastructure-common.md) / [productization/08-navigation-hardware-eval-gates.md:105](productization/08-navigation-hardware-eval-gates.md)（H-G6 `heartbeat_lost`）
 
 ## 6. 交通・走行（traffic / navigation）
 
