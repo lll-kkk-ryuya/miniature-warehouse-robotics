@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<!--
+  L0 firmware Phase-1 実装戦略 — 自己完結ダーク図解（html-explainer 準拠）。
+  正本は firmware/PHASE1_CHECKLIST.md / doc06 / doc12 / doc07 / doc03。本 HTML は図解（補足資料）。
+  主張はすべて辿れる file:line を併記（docs-first）。発明しない。
+-->
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L0 firmware Phase-1 実装戦略 — 図解</title>
+<style>
+  :root{
+    color-scheme: dark;
+    --bg:#1a1a1a; --bg2:#141414; --card:#222222; --card2:#262626; --surface:#2d2d2d;
+    --ink:#ededed; --muted:#c4c4c4; --faint:#8f8f8f; --line:#3a3a3a; --code:#141414;
+    --badge-ink:#1a1a1a; --head:#dcdcdc;
+    --box:#7aa2f7;     --box-bg:rgba(122,162,247,.13);
+    --sub:#9ece6a;     --sub-bg:rgba(158,206,106,.12);
+    --seam:#e0af68;    --seam-bg:rgba(224,175,104,.12);
+    --plugin:#bb9af7;  --plugin-bg:rgba(187,154,247,.12);
+    --demoted:#9a9a9a; --demoted-bg:rgba(154,154,154,.10);
+    --red:#f7768e; --yellow:#e0c07a; --teal:#7dcfff;
+    --Lt1:rgba(122,162,247,.05); --Lt2:rgba(158,206,106,.05); --Lt3:rgba(224,175,104,.05);
+    --Lt4:rgba(187,154,247,.06); --Lt5:rgba(125,207,255,.05);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Noto Sans JP",Meiryo,sans-serif;
+    line-height:1.7;font-size:15px;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1080px;margin:0 auto;padding:32px 20px 80px}
+  header.top{border-bottom:3px solid var(--box);padding-bottom:18px;margin-bottom:8px}
+  h1{font-size:26px;margin:0 0 6px}
+  h2{font-size:21px;margin:46px 0 14px;padding-left:10px;border-left:5px solid var(--box)}
+  h3{font-size:16px;margin:26px 0 10px;color:var(--head)}
+  p{margin:10px 0}
+  .lead{color:var(--muted);font-size:14px}
+  a{color:var(--box);text-decoration:none} a:hover{text-decoration:underline}
+  code{background:var(--code);padding:1px 6px;border-radius:4px;font-size:.9em;
+    font-family:"SF Mono",Menlo,Consolas,monospace;color:var(--ink)}
+  .dref{color:var(--teal);font-size:.82em;font-family:"SF Mono",Menlo,monospace;white-space:nowrap}
+  .note{background:var(--seam-bg);border:1px solid rgba(224,175,104,.4);border-radius:8px;padding:12px 16px;margin:16px 0;font-size:14px}
+  .note.red{background:rgba(247,118,142,.08);border-color:rgba(247,118,142,.45)}
+  .meta{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 16px;font-size:13px;color:var(--muted);margin:14px 0}
+  .badge{display:inline-block;font-size:11px;font-weight:700;padding:2px 9px;border-radius:999px;
+    color:var(--badge-ink);letter-spacing:.3px;vertical-align:middle}
+  .b-box{background:var(--box)} .b-sub{background:var(--sub)} .b-seam{background:var(--seam)}
+  .b-plugin{background:var(--plugin)} .b-demoted{background:var(--demoted);color:var(--ink)}
+  .b-red{background:var(--red)}
+  .legend{display:flex;flex-wrap:wrap;gap:10px;margin:16px 0}
+  .legend .item{background:var(--card);border:1px solid var(--line);border-radius:10px;
+    padding:10px 14px;flex:1 1 180px;min-width:180px}
+  .legend .item b{display:block;margin-bottom:3px} .legend .item small{color:var(--muted);font-size:12.5px}
+  .node{border-radius:10px;padding:10px 12px;border:2px solid;background:var(--card);font-size:13.5px}
+  .node .t{font-weight:700;font-size:14px} .node .s{color:var(--muted);font-size:12px;margin-top:2px}
+  .n-box{border-color:var(--box);background:var(--box-bg)}
+  .n-sub{border-color:var(--sub);background:var(--sub-bg)}
+  .n-seam{border-color:var(--seam);background:var(--seam-bg);border-style:dashed}
+  .n-plugin{border-color:var(--plugin);background:var(--plugin-bg)}
+  .n-demoted{border-color:var(--demoted);background:var(--demoted-bg);color:var(--muted)}
+  .n-red{border-color:var(--red);background:rgba(247,118,142,.08)}
+  .layer{border-radius:12px;padding:12px 14px;margin:10px 0;border:1px solid var(--line)}
+  .layer .lh{font-size:12px;font-weight:700;color:var(--head);letter-spacing:.5px;margin-bottom:8px;
+    display:flex;justify-content:space-between;align-items:center}
+  .layer .lh .rt{font-weight:500;color:var(--muted);font-size:11px}
+  .row{display:flex;flex-wrap:wrap;gap:10px} .row .node{flex:1 1 150px}
+  .Lt1{background:var(--Lt1)} .Lt2{background:var(--Lt2)} .Lt3{background:var(--Lt3)}
+  .Lt4{background:var(--Lt4)} .Lt5{background:var(--Lt5)}
+  .arrow-down{text-align:center;color:var(--faint);font-size:18px;line-height:1;margin:-2px 0}
+  .flow{display:flex;flex-wrap:wrap;align-items:stretch;gap:6px;margin:14px 0}
+  .flow .node{flex:1 1 150px;min-width:140px;display:flex;flex-direction:column;justify-content:center}
+  .flow .arr{display:flex;align-items:center;color:var(--faint);font-weight:700;font-size:18px;padding:0 1px}
+  table{border-collapse:collapse;width:100%;margin:14px 0;font-size:13px;background:var(--card)}
+  th,td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
+  th{background:var(--surface);font-size:12.5px;color:var(--head)}
+  tr:nth-child(even) td{background:rgba(255,255,255,.02)}
+  td code{font-size:.85em}
+  .impl-yes{color:var(--sub);font-weight:700} .impl-no{color:var(--yellow);font-weight:700}
+  .impl-def{color:var(--faint);font-weight:700} .impl-drift{color:var(--red);font-weight:700}
+  ul.tight{margin:8px 0;padding-left:22px} ul.tight li{margin:6px 0}
+  footer{margin-top:50px;padding-top:18px;border-top:1px solid var(--line);color:var(--muted);font-size:12.5px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <h1>L0 firmware Phase-1 実装戦略（実機到着ゲート）</h1>
+  <p class="lead">ESP32 が実車を回す最終防衛線（Layer 0）。現状は <b>純ロジックのみ host-unit-tested</b>・実 I/O は全て stub。「実車を買って繋いだら走る」ではなく「買ってから A〜D を実装して初めて走る」の全体像と、docs 間の整合ドリフトを 1 枚に整理する。</p>
+</header>
+
+<div class="meta">
+  正本: <a href="PHASE1_CHECKLIST.md"><code>firmware/PHASE1_CHECKLIST.md</code></a>（配線ゲート）／
+  <a href="../docs/architecture/06-implementation-phases.md"><code>doc06</code></a> Phase 1 <span class="dref">06:124-140</span>／
+  <a href="../docs/architecture/12-infrastructure-common.md"><code>doc12</code></a> 安全レイヤー <span class="dref">12:72-93</span>／
+  <a href="../docs/architecture/03-software-architecture.md"><code>doc03</code></a> topic 契約 <span class="dref">03:77-81</span>／
+  <a href="../docs/shared/07-research-notes.md"><code>doc07</code></a> R-37/R-43。
+  本ページは図解（補足）。定義・数値の正本は上記 .md。
+</div>
+
+<h2>0. 凡例（実装ステータス）</h2>
+<div class="legend">
+  <div class="item"><b><span class="badge b-sub">緑</span></b><small>純ロジック host-unit-tested（実機非依存で完成）</small></div>
+  <div class="item"><b><span class="badge b-seam">stub</span></b><small>skeleton / <code>TODO(Phase 1)</code>（実機到着後に配線）</small></div>
+  <div class="item"><b><span class="badge b-demoted">defer</span></b><small>意図的に未配線（Phase 1 で判断 / 契約外）</small></div>
+  <div class="item"><b><span class="badge b-red">drift</span></b><small>docs 間で責務割当が不一致（整合が必要）</small></div>
+</div>
+<div class="note"><b>核心:</b> 速度クランプ（<code>≤0.3 m/s</code>）・NaN/Inf 停止という <b>Layer 0 の純ロジックは完成し host で緑</b>。だが <b>モーターを回す実体・micro-ROS 配線・センサ parse は全て stub</b>で、通信断時の <b>heartbeat/watchdog 停止は docs 間でドリフト</b>している（§4）。</div>
+
+<h2>1. 4層 安全マップ（doc12）と L0 の位置</h2>
+<p class="lead">上ほど賢いが遅い・保証なし、下ほど単純だが速い・確実。<b>最終防衛線は Layer 0</b> <span class="dref">12:112</span>。firmware が担うのは最下段。</p>
+<div class="layer Lt3">
+  <div class="lh"><span>Layer 3 — 戦略（LLM）</span><span class="rt">Non-RT / 3〜5s / 保証なし</span></div>
+  <div class="row"><div class="node n-demoted"><div class="t">LLM Bridge / Hermes</div><div class="s">タスク割当・説明 <span class="dref">12:90-92</span></div></div></div>
+</div>
+<div class="arrow-down">▼</div>
+<div class="layer Lt2">
+  <div class="lh"><span>Layer 1 — 緊急監視（software）</span><span class="rt">Hard-RT 目標 50ms / off-MCU</span></div>
+  <div class="row"><div class="node n-box"><div class="t">Emergency Guardian</div><div class="s">AMCL距離・battery 3段・blocked timeout <span class="dref">12:80-84</span></div></div></div>
+</div>
+<div class="arrow-down">▼</div>
+<div class="layer Lt5">
+  <div class="lh"><span>Layer 0 — 物理安全（ESP32 / micro-ROS）</span><span class="rt">即時 µs〜ms / 通信非依存・最終防衛線</span></div>
+  <div class="row">
+    <div class="node n-sub"><div class="t">速度クランプ ≤0.3 m/s <span class="badge b-sub">緑</span></div><div class="s"><code>clampLinear</code> / <span class="dref">12:77</span> / R-26 host 緑</div></div>
+    <div class="node n-seam"><div class="t">近接/bumper 停止 <span class="badge b-seam">stub</span></div><div class="s">MCU内・通信非依存 <span class="dref">12:76,78</span> / <code>main.cpp:123-126</code></div></div>
+    <div class="node n-red"><div class="t">heartbeat/watchdog 停止 <span class="badge b-red">drift</span></div><div class="s">§4 参照。doc12 L0 に不記載 / <code>main.cpp:147-158</code> 先送り</div></div>
+  </div>
+</div>
+
+<h2>2. L0 firmware 責務の正準セット（docs 横断で突合）</h2>
+<p class="lead">各責務を「どの層・現状・正本 docs・PHASE1_CHECKLIST 項目」で突合。<b>複数の doc 群を照合して初めて完全な責務集合になる</b>（単一 doc には無い）。</p>
+<table>
+  <thead><tr><th>L0 責務</th><th>現状</th><th>設計正本 docs</th><th>firmware 実体 / checklist</th></tr></thead>
+  <tbody>
+    <tr><td>速度クランプ <code>≤0.3 m/s</code></td><td class="impl-yes">緑（host-tested）</td><td><code>doc12:77</code> / <a href="../docs/shared/07-research-notes.md">R-26</a></td><td><code>include/safety_clamp.h</code> <code>clampLinear</code> / <code>main.cpp:53-57</code></td></tr>
+    <tr><td>NaN/Inf <code>cmd_vel</code> → 停止</td><td class="impl-yes">緑（host-tested）</td><td><code>productization/06:228</code>（<code>nonfinite_cmd</code>）</td><td><code>safety_clamp.h:38</code> / #235</td></tr>
+    <tr><td>近接 / bumper → motor 停止（通信非依存）</td><td class="impl-no">stub</td><td><code>doc12:76,78</code> / <code>productization/08:105</code>（H-G6 <code>proximity_stop</code>）</td><td class="impl-no"><code>main.cpp:123-126</code> TODO</td></tr>
+    <tr><td>heartbeat / watchdog → motor 停止（通信断）</td><td class="impl-drift">drift + defer</td><td><code>productization/06:225,228</code> / <code>08:105,113</code>（H-G6 <code>heartbeat_lost</code>・owner=firmware）/ <code>mode-x-er/05:36,357</code></td><td class="impl-no"><code>main.cpp:147-158</code> scaffold（先送り）／<b>doc12 L0・checklist に項目なし</b></td></tr>
+    <tr><td>モーター PWM 出力（skid-steer）</td><td class="impl-no">stub（ロジックは緑）</td><td><code>doc02:14</code>（310motor×4）</td><td class="impl-no"><code>setMotorVelocity</code> 空実装 <code>main.cpp:40-48</code> ／ <code>mixSkidSteer</code>=<code>kinematics.h</code> host緑</td></tr>
+    <tr><td>micro-ROS 配線 + R-37 distinct <code>client_key</code></td><td class="impl-no">stub（spike 済）</td><td><code>doc07:242</code> / <a href="spike/RESULT.md"><code>spike/RESULT.md</code></a></td><td class="impl-no"><code>main.cpp:131-137</code> TODO</td></tr>
+    <tr><td><code>/scan</code>（MS200 UART parse）</td><td class="impl-no">stub</td><td><code>doc03:78</code> / R-43 <code>doc07:253</code></td><td class="impl-no"><code>main.cpp:71-75,117-121</code></td></tr>
+    <tr><td><code>/odom</code>（encoder dead-reckon）</td><td class="impl-no">stub（積分は緑）</td><td><code>doc03:77</code></td><td class="impl-no"><code>publishOdom</code> <code>main.cpp:81-90</code> ／ <code>integrateOdom</code>=<code>kinematics.h</code> host緑</td></tr>
+    <tr><td><code>/battery</code>（ADC）</td><td class="impl-no">stub</td><td><code>doc03:79</code></td><td class="impl-no"><code>main.cpp:94-99</code></td></tr>
+    <tr><td><code>/imu</code></td><td class="impl-def">意図的 defer</td><td><code>doc03:81</code>（契約外＝publish しない）</td><td class="impl-def"><code>publishImu</code> 未配線（新規=contract-PR）</td></tr>
+  </tbody>
+</table>
+
+<h2>3. 実装順序（PHASE1_CHECKLIST A→D・依存順）</h2>
+<div class="flow">
+  <div class="node n-box"><div class="t">A. 通信・micro-ROS</div><div class="s">Agent 導入・WiFi UDP・R-37 client_key・再接続 <span class="dref">PHASE1:21-29</span></div></div>
+  <div class="arr">▶</div>
+  <div class="node n-box"><div class="t">B. cmd_vel・モータ (L0)</div><div class="s">cmd_vel sub・PWM 実体・クランプ回帰・近接 reflex <span class="dref">PHASE1:31-38</span></div></div>
+  <div class="arr">▶</div>
+  <div class="node n-box"><div class="t">C. センサ publisher</div><div class="s">MS200→scan・encoder→odom・battery・登録 <span class="dref">PHASE1:40-46</span></div></div>
+  <div class="arr">▶</div>
+  <div class="node n-box"><div class="t">D. リソース・検証</div><div class="s">mem/CPU・実寸・RViz・MAX_ANGULAR 実測 <span class="dref">PHASE1:44-48</span></div></div>
+</div>
+<div class="note"><b>完了条件</b>（<code>PHASE1_CHECKLIST:52-59</code> / <code>doc06:138-139</code>）: Jetson から1台を ROS 2 で遠隔操作でき、RViz2 に位置が出て、<b>Layer-0 クランプ R-26 unit が 9/9 緑のまま</b>。これで #3 の Phase 1 実機分が閉じ、Phase 2（SLAM/Nav2）へ。</div>
+
+<h2>4. おかしな箇所（cross-doc 整合ドリフト・未決）</h2>
+<div class="note red">
+  <b>D1. heartbeat/watchdog 停止の層割当が docs 間で不一致。</b>
+  <ul class="tight">
+    <li><b>box-map / eval-gate 群は firmware(L0) に割当済</b>: 自作境界に <code>heartbeat / watchdog</code> <span class="dref">productization/06:225</span>、H-G6「heartbeat lost → motor stop（上位通信非依存）・owner=firmware」<span class="dref">productization/08:105</span>、reason_code <code>heartbeat_lost</code> <span class="dref">08:113 / 06:228 / mode-x-er/05:36,357</span>。</li>
+    <li><b>安全 canon / firmware は未反映</b>: doc12 の Layer 0 は速度クランプ＋近接停止のみ <span class="dref">12:76-78</span>、<code>main.cpp:147-158</code> は「MCU に置く hard-cut は Phase 1 で判断」と明示先送り、<code>PHASE1_CHECKLIST</code> に heartbeat 項目なし。</li>
+    <li><b>なぜ重要（安全論点）</b>: 通信断（ESP32↔Jetson リンク喪失・MCU 生存）時、最後の <code>cmd_vel</code> が residual で走り続ける runaway 経路。off-MCU の Guardian(L1) は死んだリンク越しに停止を押せない → <b>通信断で確実に止められるのは MCU 常駐 stop のみ</b>。</li>
+    <li><b>提案（所有境界を守る）</b>: firmware は H-G6 に沿って Phase 1 で heartbeat/watchdog stop を実装（<code>PHASE1_CHECKLIST</code> に項目追加＝本 PR）。<b>doc12 §Layer 0 への反映は safety-state 所有 → decision-needed として送る</b>（本 PR では doc12 を書き換えない）。</li>
+  </ul>
+</div>
+<div class="note red">
+  <b>D2. R-43 LaserScan MTU 方針が未決。</b> 360°/0.4°≈3.6KB/scan が UDP MTU 512B 超過（2台常時送出）<span class="dref">doc07:253</span>。選択肢＝scan ダウンサンプル(0.4°→1–2°) / Reliable・MTU 設定 / 最悪 USB 有線。<b>どれを既定にするか Phase 1 実機（T3 併せ）で確定</b>。R-37 host spike はこの MTU を未検証 <span class="dref">spike/RESULT.md</span>。
+</div>
+<ul class="tight">
+  <li><b>実測で確定する定数</b>（発明しない・引数扱い）: <code>TRACK_WIDTH</code>・速度→PWM duty 曲線・encoder scale <span class="dref">kinematics.h / PHASE1:31,38</span>、<code>MAX_ANGULAR_VELOCITY</code>（現 <code>2.0</code>=placeholder <span class="dref">config.h:10</span>）、ロボット実寸 <span class="dref">PHASE1:46</span>。</li>
+  <li><b>秘密</b>: WiFi SSID/PASS・Agent IP は <code>config_secret.h</code>（gitignore・コミット禁止 <span class="dref">.claude/rules/safety.md</span>）。</li>
+</ul>
+
+<footer>
+  <p>このページは <code>firmware/phase1-l0-strategy.html</code>（補足図解・ダーク）。一次ソースは
+  <code>firmware/PHASE1_CHECKLIST.md</code> / <code>doc06,12,03,07</code> / <code>firmware/src/main.cpp</code>。
+  検証: <code>scripts/check_consistency.py</code> 0 ERROR / コード引用は実 Read で裏取り。</p>
+  <p>引用規約: <code>productization/</code> docs = exact line（<code>08:105</code>）／ <code>architecture/</code>・<code>mode-*</code> = file:§ or :line ／ コード = symbol or file:line。</p>
+</footer>
+
+</div>
+</body>
+</html>

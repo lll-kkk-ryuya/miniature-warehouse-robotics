@@ -10,6 +10,7 @@
 - **秘密情報**: WiFi パス・Agent IP は `config_secret.h`（コミット禁止）。`config.h` はプレースホルダ。
 - **現状**: **雛形のみ・実機未検証**。`main.cpp` は micro-ROS 配線・各 publisher・モータ・MS200 を **stub / `# TODO(Phase 1)`** まで肉付け済（host コンパイル + クランプ R-26 unit が緑）。実機到着時の配線ゲートは [`PHASE1_CHECKLIST.md`](PHASE1_CHECKLIST.md)（micro-ROS executor/QoS、MS200 ドライバ、モータ PWM、再接続、R-37 client_key、近接 reflex）。
 - **R-37（2台同時接続）**: 単一 `micro_ros_agent udp4 --port 8888`（凍結）に2台。**Phase 1 必須**＝両機に **distinct な XRCE `client_key`**（`rmw_uros_options_set_client_key()`、BOT_ID/MAC 由来）。同一/弱RNG キーだと session 衝突で pub/sub 片方向落ち（R-37）。host 先行検証 = [`spike/`](spike/)（[RESULT](spike/RESULT.md)）。正本 [doc07:242](../docs/shared/07-research-notes.md)。
+- **実装戦略・未決判断**: L0 責務の docs 横断突合・4層安全マップ・A〜D 依存順・cross-doc 整合ドリフト（heartbeat/watchdog stop の層割当・R-43 MTU）を [`phase1-l0-strategy.html`](phase1-l0-strategy.html) に図解。着手前に確定すべき decision-needed（D1 heartbeat/watchdog・D2 R-43）は [`PHASE1_CHECKLIST.md`](PHASE1_CHECKLIST.md) 末尾「未決の設計判断・cross-doc 整合」。**doc12 §Layer 0 は heartbeat/watchdog を欠き productization/06:225・08:105(H-G6) とドリフト → safety-state で整合（本 firmware PR では doc12 を書き換えない）**。
 
 ## R-37 spike（ESP32 無し host 検証 / track #116）
 - 場所: `firmware/spike/`（`run_spike.sh` + `uros_app/minicar_client` + `RESULT.md`）。tiryoh jazzy Docker で 1 agent + 2 ソフトクライアント。

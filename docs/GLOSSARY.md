@@ -65,6 +65,8 @@
 - **twist_mux** — `/bot{n}/cmd_vel` の多重 publisher を優先度制御で1本化する ROS 2 公式ノード（emergency prio 最上位）。 — [architecture/15-mcp-platform.md:379-404](architecture/15-mcp-platform.md)
 - **collision_monitor** — Nav2 の `nav2_collision_monitor`。twist_mux 上流に挿入し breach で PolygonStop（近接停止トポロジ）。 — [architecture/12-infrastructure-common.md:522](architecture/12-infrastructure-common.md) / [productization/01-commercial-box-map.md:69](productization/01-commercial-box-map.md)
 - **R-26** — 「テスト戦略の欠如」リスク。Emergency Guardian / Policy Gate / firmware Layer-0 クランプは**ユニットテスト必須**とする規律。 — [shared/07-research-notes.md:159](shared/07-research-notes.md) / [architecture/16-repository-and-conventions.md:221](architecture/16-repository-and-conventions.md)
+- **R-37** — micro-ROS Agent 2台同時接続の既知不具合。Agent はクライアントを UDP ポートでなく XRCE `client_key`（session 識別子）で識別し、**同一/弱RNG キーだと session を奪い合い pub/sub の片方向が落ちる**。第一対策＝両 ESP32 に distinct `client_key`（`rmw_uros_options_set_client_key()`・BOT_ID/MAC 由来）→ 単一 Agent(:8888) で2台双方向。host spike 実証・実機クローズは Phase 1。 — [shared/07-research-notes.md:242](shared/07-research-notes.md) / [firmware/spike/RESULT.md](../firmware/spike/RESULT.md) / [firmware/CLAUDE.md:12](../firmware/CLAUDE.md)
+- **R-43** — LaserScan の micro-ROS UDP 転送問題。360°/0.4°≈3.6KB/scan が UDP MTU 512B を超過（2台常時送出）。対策＝scan ダウンサンプル(0.4°→1–2°) / Reliable・MTU 設定 / 最悪 USB 有線。方針は Phase 1 実機で確定（未決・T3 併せ）。R-37 host spike はこの MTU を未検証。 — [shared/07-research-notes.md:253](shared/07-research-notes.md)
 
 ## 6. 交通・走行（traffic / navigation）
 

@@ -57,3 +57,19 @@
   **Layer-0 クランプ R-26 unit が引き続き 9/9 緑**（`safety_clamp.h` 不変）。
 
 > 本リストの完了をもって #3 の Phase 1 実機分が閉じる（Phase 2 = SLAM/Nav2 自律走行は doc06:149〜）。
+
+---
+
+## 実装戦略の図解
+
+全体像（現状ステータス・4層安全マップ・L0 責務の docs 横断突合・A〜D 依存順・cross-doc 整合ドリフト）を 1 枚に:
+[`phase1-l0-strategy.html`](phase1-l0-strategy.html)（自己完結ダーク図解・[html-explainer](../.claude/skills/html-explainer/SKILL.md) 準拠）。
+
+## 未決の設計判断・cross-doc 整合（decision-needed / A〜D 着手前に確定）
+
+> 下記は docs が**先送り、または doc 群間でドリフト**している判断。**firmware/docs 側で安全 canon を勝手に確定しない**（安全所有＝[safety.md](../.claude/rules/safety.md) / doc12）。証拠を file:line で整理し、**人間 / safety-state レビューで確定**してから実装する。図解＝[`phase1-l0-strategy.html`](phase1-l0-strategy.html)。
+
+- [ ] **D1. heartbeat / watchdog → motor 停止（通信断 stop）を L0(MCU) に実装** — box-map/eval-gate 群は既に **firmware(L0) 所有**として割当済（自作境界 `heartbeat / watchdog` [productization/06:225](../docs/productization/06-oss-reuse-and-box-small-designs.md)、H-G6「heartbeat lost → motor stop・上位通信非依存・owner=firmware」[productization/08:105](../docs/productization/08-navigation-hardware-eval-gates.md)、reason_code `heartbeat_lost` [08:113](../docs/productization/08-navigation-hardware-eval-gates.md) / [06:228](../docs/productization/06-oss-reuse-and-box-small-designs.md)）。だが **doc12 の Layer 0（[12:76-78](../docs/architecture/12-infrastructure-common.md)）は速度クランプ＋近接停止のみ**で未記載、`src/main.cpp:147-158` は「MCU に置く hard-cut は Phase 1 で判断」と**明示先送り**、本チェックリストにも項目が無かった。
+  - **安全論点**: 通信断（ESP32↔Jetson リンク喪失・MCU 生存）時、最後の `/cmd_vel` が residual で走行継続する runaway 経路。off-MCU の Emergency Guardian(L1) は死んだリンク越しに停止を押せない → **通信断で確実に止められるのは MCU 常駐 stop のみ**。
+  - **要確定（decision-needed）**: firmware は H-G6 に沿って Phase 1 で heartbeat/watchdog stop（`CMD_TIMEOUT` 超過→`setMotorVelocity(0,0)`・通信非依存）を実装する。**doc12 §安全レイヤー Layer 0 への反映は safety-state 所有**＝別 PR で整合（本項目はその予告・[implementation-and-dependencies.md §3](../.claude/rules/implementation-and-dependencies.md)）。**なぜ hard-to-reverse**: MCU の安全クリティカルコード配置は後から層を移すのが再アーキ。
+- [ ] **D2. R-43 LaserScan MTU 方針の確定** — 360°/0.4°≈3.6KB/scan が UDP MTU 512B 超過（2台常時送出。[doc07:253](../docs/shared/07-research-notes.md)）。選択肢＝scan ダウンサンプル(0.4°→1–2°) / Reliable・MTU 設定 / 最悪 USB 有線。**どれを既定にするか Phase 1 実機（T3 併せ）で確定**（R-37 host spike は MTU 未検証）。→ 用語 [R-43](../docs/GLOSSARY.md)。
