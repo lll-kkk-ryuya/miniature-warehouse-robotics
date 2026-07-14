@@ -144,17 +144,17 @@ void loop() {
   publishBattery();  // /<ns>/battery sensor_msgs/BatteryState (doc03:79)
   // publishImu() intentionally NOT called — /bot{n}/imu is doc03-external (:81).
 
-  // ---- SAFETY WATCHDOG SCAFFOLD (design record; NOT enforced this round) ------
-  // Layer 0 ACTIVELY enforces only the velocity clamp (onCmdVel) and the proximity
-  // reflex (above). The timeouts below are stale-input fail-stops; in this 4-layer
-  // model (doc12:80-84) the battery 3-stage policy and blocked-timeout watchdog are
-  // Layer 1 Emergency Guardian, which runs in software OFF the MCU. Firmware only
-  // records the intent + hook points here so Phase 1 can decide what (if any) hard
-  // cut belongs in the MCU; this round adds NO runtime gating beyond the clamp:
-  //   1) stale /cmd_vel : if millis() - last_cmd_ms > CMD_TIMEOUT → setMotorVelocity(0,0).
-  //   2) stale /scan    : if no MS200 frame for N ms → stop (lost obstacle sensing).
+  // ---- SAFETY WATCHDOG (Layer 0 comms-loss deadman decided; wiring = Phase 1) -------
+  // Layer 0 ACTIVELY enforces the velocity clamp (onCmdVel) + the proximity reflex.
+  // The comms-loss heartbeat deadman is now a DECIDED Layer-0 mechanism (doc12 §安全
+  // レイヤー Layer 0 heartbeat/watchdog + H-G6 heartbeat_lost, productization/08:105);
+  // its pure decision lives in command_watchdog.h (command_is_stale, host-tested R-26),
+  // kept distinct from the L1 blocked-timeout watchdog + battery 3-stage (Emergency
+  // Guardian, doc12:82, OFF the MCU). Only the millis()/last_cmd_ms wiring is Phase 1:
+  //   1) stale /cmd_vel : command_is_stale(last_cmd_ms, millis(), CMD_TIMEOUT) → setMotorVelocity(0,0). [L0]
+  //   2) stale /scan    : if no MS200 frame for N ms → stop (lost obstacle sensing).  [L0, Phase 1]
   //   3) low battery    : MCU hard-cut floor only; the 3-stage policy is Layer 1
   //                       (doc12:82, Emergency Guardian), not the firmware.
-  // Enforcement deliberately deferred (Layer 1 = Guardian, doc12:80-84).
+  // Runtime gating (millis(), last_cmd_ms) is Phase 1; the decision + pure logic land now.
   delay(10);
 }
