@@ -11,6 +11,7 @@ firmware/
 ├── include/kinematics.h    # skid-steer mix + dead-reckon odom 純ロジック(Arduino 非依存・host unit-tested)
 ├── src/main.cpp            # ノード骨格 + 速度クランプ(Layer 0) + モータ/各 publisher/MS200 stub
 ├── PHASE1_CHECKLIST.md     # 実機到着時の配線ゲート(stub→実値・実ドライバ・file:line 根拠付)
+├── phase1-l0-strategy.html # L0 責務突合・4層マップ・A〜D 順・cross-doc 整合ドリフトの図解(ダーク)
 ├── test/test_clamp/        # クランプ R-26 unit test (Unity・host 実行)
 ├── test/test_kinematics/   # キネマティクス unit test (Unity・host 実行)
 ├── test/run_host_test.sh   # クランプ unit を pio 不在でも g++ で(同一テスト源)
