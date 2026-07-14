@@ -52,6 +52,19 @@ void test_rollover_large_gap_is_stale(void) {
   TEST_ASSERT_TRUE(command_is_stale(0xFFFFFF00u, 0x00000050u, 100u));  // 336 > 100
 }
 
+// timeout == 0: any nonzero elapsed is immediately stale; exactly-zero elapsed (a
+// command received on this very tick) stays fresh. Pins the lower bound of the timeout.
+void test_zero_timeout_boundary(void) {
+  TEST_ASSERT_TRUE(!command_is_stale(1000u, 1000u, 0u));  // elapsed 0 == timeout 0 -> fresh
+  TEST_ASSERT_TRUE(command_is_stale(1000u, 1001u, 0u));   // elapsed 1  >  timeout 0 -> stale
+}
+
+// backwards clock (now < last, NOT a rollover): unsigned subtraction yields a huge
+// elapsed -> stale, pinning the header's "backwards clock -> fail-stop" direction.
+void test_backwards_clock_fail_stops(void) {
+  TEST_ASSERT_TRUE(command_is_stale(1100u, 1000u, 500u));  // now 100 < last -> huge elapsed -> stale
+}
+
 int main(void) {
   UNITY_BEGIN();
   RUN_TEST(test_fresh_command_is_not_stale);
@@ -59,5 +72,7 @@ int main(void) {
   RUN_TEST(test_boundary_exact_timeout_is_fresh);
   RUN_TEST(test_rollover_small_gap_is_fresh);
   RUN_TEST(test_rollover_large_gap_is_stale);
+  RUN_TEST(test_zero_timeout_boundary);
+  RUN_TEST(test_backwards_clock_fail_stops);
   return UNITY_END();
 }
