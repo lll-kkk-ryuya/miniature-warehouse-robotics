@@ -34,7 +34,7 @@
 - **L3 司令・検証（Planning Core）** — Non-RT / Python。ER 提案を既存実行契約が理解できる command 候補へ変換する（Validator/Visual Resolver/Task Graph Executor/Command Compiler）。 — [productization/01-commercial-box-map.md:23-24,64](productization/01-commercial-box-map.md)
 - **L2 実行許可・交通管理** — Soft-RT / Python + optional RMF。Governance（MCP/Policy Gate）と Traffic（X-lite/X-rmf）。box 詳細＝§10。 — [productization/01-commercial-box-map.md:25,66-67](productization/01-commercial-box-map.md) / [productization/11-l2-contract-governance-traffic-box.md](productization/11-l2-contract-governance-traffic-box.md)
 - **L1 自律走行・安全** — Hard-RT。Navigation（Nav2）と Safety（collision_monitor/twist_mux/Emergency Guardian）。 — [productization/01-commercial-box-map.md:29,68-69](productization/01-commercial-box-map.md)
-- **L0 物理安全** — MCU / 即時。firmware の速度クランプ・近接停止（micro-ROS）。 — [productization/01-commercial-box-map.md:32,70](productization/01-commercial-box-map.md) / [architecture/12-infrastructure-common.md:72](architecture/12-infrastructure-common.md)（安全レイヤー4層）
+- **L0 物理安全** — MCU / 即時。firmware の速度クランプ・近接停止・上位通信途絶時の heartbeat/watchdog 停止（deadman、H-G6 `heartbeat_lost`）（micro-ROS）。 — [productization/01-commercial-box-map.md:32,70](productization/01-commercial-box-map.md) / [architecture/12-infrastructure-common.md:72](architecture/12-infrastructure-common.md)（安全レイヤー4層）
 - **レイヤ annotation 対応表** — 回答・plan・実装・PR/Issue・レビューで対象の layer（L0–L4 / 横断観測面）を明記するときの package/主要ファイル file-level 正準対応表（layer≠process / layer≠package の注意付き）。 — [productization/01-commercial-box-map.md:174](productization/01-commercial-box-map.md)（§レイヤ annotation 対応表）
 
 ## 4. L3 Planning Core の seam（データ変換段）
