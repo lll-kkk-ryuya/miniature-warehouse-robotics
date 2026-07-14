@@ -1,0 +1,70 @@
+# Live-run manifest — Mode X-ER direct-transport E2E: ER → L3 → L2 Governance dispatch (0 actuation).
+#
+# run_manifest.v1 box shape mirrors spike/xer6-live-matrix/manifests/variant_a.yaml. This documents a
+# PAID live ER run over the `direct` transport (call_er_direct generateContent), NOT the Hermes
+# gateway (that is the xer6-live-matrix harness's territory). Operator-authorised and budget-bounded
+# (see the `live_run` block). Module-skips unless WAREHOUSE_LIVE_ER=1.
+schema_version: run_manifest.v1
+run_id: xer_l3_l2_direct_live
+boxes:
+  l4_bridge:
+    enabled: true
+    profile: x_er_commander          # Gemini Robotics-ER, direct generateContent (text-only)
+  l3_validator:
+    enabled: true
+    profile: x_lite_default          # handoff → validator → visual resolver → task graph → compiler
+  l2_governance:
+    enabled: true
+    profile: mini_warehouse_default  # action_map → dispatch tool → Policy Gate → accepted-motion gate
+expected_emitters:
+  - l4_bridge
+  - l3_validator
+  - l2_governance
+score_specs:
+  - result
+
+# --- live-run scope (PAID; operator-authorised, budget-bounded) ----------------------------------
+live_run:
+  transport: direct                  # call_er_direct generateContent (NOT the Hermes-gateway harness)
+  model: gemini-robotics-er-1.6-preview   # text-only call (cheap); override via MWR_ER_MODEL
+  gate: WAREHOUSE_LIVE_ER=1           # module-skip unless set; the agent does not set it by default
+  key: GEMINI_API_KEY | GOOGLE_API_KEY    # provider key from env (never committed)
+  budget:
+    max_er_calls: 3                  # operator-approved ceiling (~3 calls)
+    cost_cap_jpy: 100                # operator-approved yen ceiling
+  tests:                             # each makes exactly ONE call_er_direct() → 1 ER call
+    - path: tests/live/test_xer_l2_governance_live.py   # ER → L3 → L2 dispatch (0 actuation)  [this PR]
+      er_calls: 1
+    - path: tests/live/test_xer_full_chain_live.py      # ER → L3 → frozen Command (forerunner)
+      er_calls: 1
+  excluded:
+    - path: tests/live/test_er_handoff_live.py
+      reason: 7 test fns via a shared live-response mechanism — call count unbounded here; out of budget
+  invariants:                        # asserted regardless of live acceptance (fail-closed is OK)
+    - "0-dispatch: dispatchable items target a frozen KNOWN_LOCATION"
+    - "x_lite: compiled items are `navigate` only"
+    - "0-actuation: nav2_forwarder=None; accepted-motion forward seam (tools.py:173) never entered"
+    - "book-kept: audit ledger records each dispatch, tagged with the issuing gen_id"
+
+results:  # PAID live run — agent-executed under explicit operator authorisation (3 ER calls, text-only)
+  er_calls_used: 3
+  model: gemini-robotics-er-1.6-preview
+  runs:
+    - test: tests/live/test_xer_l2_governance_live.py   # call #1 (initial, pre-witness)
+      live_command_items: 0        # text-only live ER → fail-closed empty Command (the norm)
+      result: passed
+    - test: tests/live/test_xer_full_chain_live.py      # call #2 (forerunner)
+      live_command_items: 0        # ~599 tokens → empty Command (consistent fail-closed)
+      result: passed
+    - test: tests/live/test_xer_l2_governance_live.py   # call #3 (with deterministic L2 witness)
+      live_command_items: 0
+      witness_dispatch: "accepted (status=ok)"   # canned navigate berth_A through the SAME live-wired L2
+      actuations: 0                # forwarder=None; accepted-motion forward seam (tools.py:173) never entered
+      audit_records: 1             # dispatch book-kept, tagged gen_id=1
+      result: passed
+  finding: >
+    Text-only live ER is fail-closed (empty Command → 0 dispatch) consistently across 3 calls. The
+    ER→L3→L2 seam RUNS live and holds the 0-actuation invariant; the deterministic witness proves an
+    ACCEPTED L2 dispatch is book-kept yet actuates nothing (forwarder=None). Witnessing a live L2
+    dispatch of an ER-DERIVED plan needs image input (real pixels) — out of this text-only scope
+    (a later image E2E). The L2 dispatch LOGIC is fully covered offline (tests/unit/test_modec_noactuation.py).
