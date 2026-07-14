@@ -14,10 +14,12 @@ firmware/
 ├── phase1-l0-strategy.html # L0 責務突合・4層マップ・A〜D 順・cross-doc 整合ドリフトの図解(ダーク)
 ├── test/test_clamp/        # クランプ R-26 unit test (Unity・host 実行)
 ├── test/test_kinematics/   # キネマティクス unit test (Unity・host 実行)
+├── test/test_watchdog/     # command-stream watchdog R-26 unit test (Unity・host 実行)
 ├── test/run_host_test.sh   # クランプ unit を pio 不在でも g++ で(同一テスト源)
 ├── test/run_kinematics_test.sh # キネマティクス unit を g++ で(同梱 Unity shim)
+├── test/run_watchdog_test.sh   # watchdog unit を g++ で(同梱 Unity shim・R-26)
 ├── test/run_host_compile.sh# skeleton(main.cpp)を Arduino shim で host 構文確認
-├── test/support/           # unity_shim(クランプ/キネマ用) / arduino_shim(skeleton compile 用)
+├── test/support/           # unity_shim(クランプ/キネマ/watchdog 用) / arduino_shim(skeleton compile 用)
 ├── CLAUDE.md               # 担当コンテキスト
 └── README.md               # 本ファイル
 ```
