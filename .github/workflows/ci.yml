@@ -163,7 +163,7 @@ jobs:
         run: python3 scripts/check_consistency.py
 
   firmware-safety:
-    name: Firmware host gates (R-26 clamp + kinematics + compile)
+    name: Firmware host gates (R-26 clamp + watchdog + kinematics + compile)
     runs-on: ubuntu-latest
     # Gates the firmware host units that NO other job runs: python-quality's pytest
     # collects ws/src Python only — never the C++ under firmware/test/. All three steps
@@ -171,6 +171,9 @@ jobs:
     #   1. R-26 Layer-0 velocity clamp (run_host_test.sh) — SAFETY anchor: without it,
     #      loosening the 0.3 m/s ceiling, the non-finite (NaN/±Inf)→stop fail-safe, or
     #      the negative-cap guard would not turn CI red (silent rot).
+    #   1b. Layer-0 command-stream watchdog (run_watchdog_test.sh) — R-26 SAFETY: the
+    #      comms-loss heartbeat deadman; a `>`→`>=` boundary or signed/rollover regression
+    #      in command_is_stale must turn CI red (host-verified mutation-adequate).
     #   2. Differential-drive kinematics (run_kinematics_test.sh) — a sign error in the
     #      skid-steer mix or a bad dead-reckon integration step would otherwise go
     #      unnoticed.
@@ -188,6 +191,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Layer-0 clamp R-26 (host)
         run: bash firmware/test/run_host_test.sh
+      - name: Layer-0 command-stream watchdog R-26 (host)
+        run: bash firmware/test/run_watchdog_test.sh
       - name: Kinematics host unit (skid-steer mix + dead-reckon odom)
         run: bash firmware/test/run_kinematics_test.sh
       - name: Skeleton host compile (main.cpp)
