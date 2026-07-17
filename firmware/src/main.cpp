@@ -150,11 +150,11 @@ void loop() {
   // レイヤー Layer 0 heartbeat/watchdog + H-G6 heartbeat_lost, productization/08:105);
   // its pure decision lives in command_watchdog.h (command_is_stale, host-tested R-26),
   // kept distinct from the L1 blocked-timeout watchdog + battery 3-stage (Emergency
-  // Guardian, doc12:82, OFF the MCU). Only the millis()/last_cmd_ms wiring is Phase 1:
+  // Guardian, doc12:80-84, OFF the MCU). Only the millis()/last_cmd_ms wiring is Phase 1:
   //   1) stale /cmd_vel : command_is_stale(last_cmd_ms, millis(), CMD_TIMEOUT) → setMotorVelocity(0,0). [L0]
   //   2) stale /scan    : if no MS200 frame for N ms → stop (lost obstacle sensing).  [L0, Phase 1]
-  //   3) low battery    : MCU hard-cut floor only; the 3-stage policy is Layer 1
-  //                       (doc12:82, Emergency Guardian), not the firmware.
+  //   3) low battery    : NO battery cutoff in L0 today (publish /battery only); percent 3-stage
+  //                       policy = Layer 1 (doc12:82). Future L0 brownout floor = voltage-based, distinct name from percent battery_is_critical — ADR-0005.
   // Runtime gating (millis(), last_cmd_ms) is Phase 1; the decision + pure logic land now.
   delay(10);
 }
