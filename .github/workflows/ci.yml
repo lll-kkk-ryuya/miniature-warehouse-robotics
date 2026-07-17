@@ -163,7 +163,7 @@ jobs:
         run: python3 scripts/check_consistency.py
 
   firmware-safety:
-    name: Firmware host gates (R-26 clamp + watchdog + kinematics + compile)
+    name: Firmware host gates (R-26 clamp + watchdog + client_key + kinematics + compile)
     runs-on: ubuntu-latest
     # Gates the firmware host units that NO other job runs: python-quality's pytest
     # collects ws/src Python only — never the C++ under firmware/test/. All three steps
@@ -174,6 +174,10 @@ jobs:
     #   1b. Layer-0 command-stream watchdog (run_watchdog_test.sh) — R-26 SAFETY: the
     #      comms-loss heartbeat deadman; a `>`→`>=` boundary or signed/rollover regression
     #      in command_is_stale must turn CI red (host-verified mutation-adequate).
+    #   1c. Layer-0 XRCE client_key derivation (run_client_key_test.sh) — R-26 SAFETY
+    #      (R-37 enabler): the distinct/deterministic per-board key; dropping the BOT_ID
+    #      mix, zeroing the MAC term, or a shift/XOR slip in derive_xrce_client_key must
+    #      turn CI red (host-verified mutation-adequate).
     #   2. Differential-drive kinematics (run_kinematics_test.sh) — a sign error in the
     #      skid-steer mix or a bad dead-reckon integration step would otherwise go
     #      unnoticed.
@@ -193,6 +197,8 @@ jobs:
         run: bash firmware/test/run_host_test.sh
       - name: Layer-0 command-stream watchdog R-26 (host)
         run: bash firmware/test/run_watchdog_test.sh
+      - name: Layer-0 XRCE client_key R-26 (host, R-37 distinct-key)
+        run: bash firmware/test/run_client_key_test.sh
       - name: Kinematics host unit (skid-steer mix + dead-reckon odom)
         run: bash firmware/test/run_kinematics_test.sh
       - name: Skeleton host compile (main.cpp)
