@@ -13,6 +13,7 @@ docs/
 ├── dev/             開発プロセス（並列開発 playbook・オペレーター手順・教訓ログ）
 ├── setup/           デプロイ手順（Jetson prod 常駐化・systemd / 監視）
 ├── jetson/          Jetson 忠実度ギャップ・実機投入前ゲート（dev/stg→prod de-risk・#127）
+├── sim/             シミュレーション二層分担（Gazebo 開発ループ / Isaac Sim 投入前ゲート・fixture 工場）
 ├── mode-a/          Mode A/B: LLM単独交通管理（Open-RMFなし）
 ├── mode-c/          Mode C: LLM + Open-RMF（主方針）
 ├── mode-x-er/       Mode X-ER: Gemini Robotics-ER 視覚タスク司令（設計提案）
@@ -136,6 +137,17 @@ docs/
 |---------|------|
 | [01-fidelity-and-validation](jetson/01-fidelity-and-validation.md) | Jetson 忠実度ギャップ・dev/stg→prod de-risk（#127） |
 
+## sim/ — シミュレーション二層分担（開発ループ / 投入前ゲート）
+
+> 司令官入力が situation JSON の間は sim ≠ テスト入力（Gazebo の開発ループで足りる）。**司令官入力が pixel（Mode X-ER/VLA）になると sim レンダリング＝テスト入力**になり、Isaac Sim が投入前検証ゲート＋fixture 工場として必須になる。決定記録は [adr/0005](adr/0005-isaac-sim-as-verification-gate.md)。
+
+| ファイル | 内容 |
+|---------|------|
+| [README](sim/README.md) | sim サブツリーの位置づけ・二層分担（Gazebo 開発ループ / Isaac Sim 投入前ゲート） |
+| [00-simulation-platform-strategy](sim/00-simulation-platform-strategy.md) | 二層分担戦略と中核テーゼ（situation JSON→pixel で sim がテスト入力になる） |
+| [01-isaac-sim-verification-gate](sim/01-isaac-sim-verification-gate.md) | Isaac Sim 投入前検証ゲート（ロボットの CI/CD・決定的 replay floor） |
+| [02-synthetic-data-and-domain-randomization](sim/02-synthetic-data-and-domain-randomization.md) | fixture 工場・domain randomization・sim-to-real gap・golden fixture 生成 |
+
 ## モード切替
 
 > 下記は**要点の抜粋（例示）**。ロード可能な正本スキーマは `config/warehouse.base.yaml` + `config/<env>/warehouse.yaml`（doc13 §3.3）。
@@ -163,6 +175,7 @@ hard-to-reverse な設計判断とその理由を `NNNN-slug.md` で記録する
 | ファイル | 内容 |
 |---------|------|
 | [adr/README](adr/README.md) | ADR 一覧・命名・いつ起こすか（3条件）・retrospectives との違い |
+| [0005-isaac-sim-as-verification-gate](adr/0005-isaac-sim-as-verification-gate.md) | Isaac Sim を映像用オプションから投入前検証ゲート（Mode X-ER/VLA から必須）＋fixture 工場へ格上げし、映像用途のみ optional として残す。pixel 入力で sim=テスト入力。Mode A/C（situation JSON）は Gazebo で足りる |
 | [0004-l2-restrict-only-policy-profile](adr/0004-l2-restrict-only-policy-profile.md) | L2 Governance は自由 plugin 化せず data-only restrict-only policy profile に閉じる（凍結値=floor・緩い値は起動拒否・v1 code plugin 不採用）。ADR-0003（L3）と対 |
 | [0003-bridge-local-manifest-composition](adr/0003-bridge-local-manifest-composition.md) | bridge-local run manifest + fail-closed plugin composition を A案で標準化（manifest resolution 層／namespaced plugin code〔9-enum 非改変〕／advisory trust／ISOLATE_PLUGIN／safety-critical profile hash gate）。実装 = offline spike 済・配線 XER6 pending |
 | [0002-er-in-hermes-standard](adr/0002-er-in-hermes-standard.md) | ER-in-Hermes を標準 transport に採用（fork gateway 8644 一本で全 modality／`direct`=緊急 fallback／Langfuse Pattern A 現行・Pattern B は HLF gate 後）。実装は TARGET |

@@ -14,7 +14,7 @@
 | Phase 2 | 2週間 | SLAM(MS200) + Nav2(DWB→MPPI) + Multi-Robot Layer | 2台がジオラマ上を自律走行 | Phase 1 |
 | Phase 3 | 2週間 | 2台協調 + LLM Bridge + TrafficManager(A/B/C) | LLM+交通管理で2台が動く | Phase 2 + Phase 0.5 |
 | Phase 4 | 2週間 | LLM比較 + 交通管理4パターン比較 + WO統合 | 比較データ | Phase 3 |
-| Phase 5 | 2週間 | Isaac Sim連携 | デジタルツイン映像 | Phase 4 |
+| Phase 5 | 2週間 | Isaac Sim連携（検証基盤＋映像） | 投入前検証ゲート・fixture／映像は副産物 | Phase 4 |
 | Phase 6 | 2週間 | 撮影・編集・公開 | YouTube動画完成 | Phase 5 |
 
 ※ Phase 0.5 は Phase 1 と並行実行可能（Mac上のシミュレーションのため実機不要）。並行した場合の実質期間は約13週間（**実機 ETA 起点で「## スケジュール再基準化」に上書きされる暫定値**）。
@@ -278,7 +278,7 @@
 
 ---
 
-## Phase 5: Isaac Sim連携・デジタルツイン（2週間 — **確定オプション**＝間に合わなければカット。R-18（`../shared/07-research-notes.md:183`）／推奨アクション #4（`:214`）。動画は実機本番版＋sim 先行リリース版で成立する）
+## Phase 5: Isaac Sim連携・デジタルツイン（2週間 — **用途分割**: 映像・撮影＝optional（間に合わなければカット。R-18（`../shared/07-research-notes.md:183`）／推奨アクション #4（`:214`）・動画は実機本番版＋sim 先行リリース版で成立）／**投入前検証ゲート・fixture＝カット不可**（Mode X-ER/VLA は pixel 入力ゆえ必須。正本 [sim/00](../sim/00-simulation-platform-strategy.md)・[sim/01](../sim/01-isaac-sim-verification-gate.md)））
 
 ### タスク
 
@@ -346,7 +346,7 @@
 
 - **起点を実機 ETA（〜2週間以内）へ再基準化**: 冒頭 `:5` の「15週間」／ `:20` の「実質13週間」は実機到着前提の初期見積もり。実機 ETA を起点に rebaseline する（R-16, `../shared/07-research-notes.md:157`、検証タイミング＝「Phase 0 で再見積もり」）。
 - **Phase 1-2 に「実測→再設計バッファ」を明示確保**: 実機実測（R-04 寸法 `../shared/07-research-notes.md:154`／R-08 WiFi `:155`／R-37 micro-ROS 2台接続 `:242`／R-41-42 通路×車体 `:251`-`:252`）の結果で Nav2・通路幅・footprint を再設計する余地を Phase 1-2 に持たせる。実測値が初期前提（通路200mm／車体寸法）を崩す可能性があるため、固定週数を確約しない。
-- **Phase 5（Isaac Sim）を確定オプションへ降格**: R-18（`../shared/07-research-notes.md:183`「Isaac Sim なしでも動画成立」）／推奨 #4（`:214`「Phase 5 を完全オプション化」）に従い、間に合わなければカット。動画は **実機本番版**（タイムライン）＋ **sim 先行リリース版**（[`05-video-storyboard.md`](../shared/05-video-storyboard.md) §先行リリース構成）で成立する。
+- **Phase 5 を用途分割（映像＝optional／検証基盤＝カット不可）**: R-18（`../shared/07-research-notes.md:183`）／推奨 #4（`:214`）の逃げ道は **映像制作カットに限定**し、間に合わなければ映像はカット（動画は **実機本番版** ＋ **sim 先行リリース版**（[`05-video-storyboard.md`](../shared/05-video-storyboard.md) §先行リリース構成）で成立）。**投入前検証ゲート・fixture 工場（Mode X-ER/VLA は pixel 入力ゆえ必須）はカット不可**＝正本 [sim/00](../sim/00-simulation-platform-strategy.md)・[sim/01](../sim/01-isaac-sim-verification-gate.md)。
 - **暫定（未決）**: 具体的な再見積もり週数は実機 ETA 確定後に算出（R-16 検証タイミング＝Phase 0）。Phase 5 カットの最終判断は Phase 4 後。sim 先行リリース版の素材比率（Gazebo 俯瞰／RViz/Foxglove／思考ログ）は Phase 0.5 の sim 進捗に依存。
 
 ---
