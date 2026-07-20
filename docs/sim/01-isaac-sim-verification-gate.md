@@ -48,7 +48,7 @@ layer 番号は [GLOSSARY §3:29-37](../GLOSSARY.md)（L0–L4）と一致させ
 ## CI としての現実解: 決定的 floor と fixture 工場
 
 - **floor（毎回の CI ゲート）＝決定的 fixture replay**。同じ入力→同じ判定を保証する（G0 fixture〔[03:15](../mode-x-er-vla/03-simulation-and-safety-gates.md)〕→ G3 offline validator〔[03:18](../mode-x-er-vla/03-simulation-and-safety-gates.md)〕の deterministic 経路）。CI が緑/赤を再現可能に判定できるのはこの層。
-- **Isaac Sim ＝非決定でよい「fixture 工場」**。pixel レンダリングは run ごとにピクセルが揺れて非決定（実測知見: pixel 非決定・PolicyGate 鮮度 2s < ER 4–6s 等）でよい。役割は **新しい failure を発掘し、それを golden fixture に落とす**こと（G4 sim-only replay〔[03:19](../mode-x-er-vla/03-simulation-and-safety-gates.md)〕・「failure case を golden fixture にできるか」[03:55](../mode-x-er-vla/03-simulation-and-safety-gates.md)）。
+- **Isaac Sim ＝非決定でよい「fixture 工場」**。pixel レンダリングは run ごとにピクセルが揺れて非決定でよい。役割は **新しい failure を発掘し、それを golden fixture に落とす**こと（G4 sim-only replay〔[03:19](../mode-x-er-vla/03-simulation-and-safety-gates.md)〕・「failure case を golden fixture にできるか」[03:55](../mode-x-er-vla/03-simulation-and-safety-gates.md)）。
 - **設計理由**: **pixel 非決定性を CI ゲートに持ち込まない**。非決定な Isaac Sim を毎 PR の合否判定に置くと赤/緑が揺れて gate が壊れる。だから CI floor は決定的 fixture、Isaac Sim は floor の外で failure を発掘し fixture を供給する非同期の工場、と役割を分離する。golden fixture 化の概念は [mode-x-er-vla/03:55](../mode-x-er-vla/03-simulation-and-safety-gates.md)（「failure case を golden fixture にできるか」）、工場が供給する合成データ・domain randomization の射程は [docs/sim/02](02-synthetic-data-and-domain-randomization.md) が正本（本 doc はリンクで委譲）。
 
 ## G0-G7 名前衝突の注意喚起
