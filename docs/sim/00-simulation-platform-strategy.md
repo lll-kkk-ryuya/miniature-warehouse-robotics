@@ -36,7 +36,7 @@ Isaac Sim には**別々の用途**があり、それぞれ扱いが異なる。
 - **映像・撮影用途（Before/After・デジタルツイン映像）＝ optional のまま**: R-18「Isaac Sim なしでも動画成立」（[../shared/07-research-notes.md:183](../shared/07-research-notes.md)）と推奨アクション #4「Phase 5 を完全オプション化」（[:214](../shared/07-research-notes.md)）は、**映像制作に関してのみ真**。Phase 5 を「確定オプション」とする [../architecture/06-implementation-phases.md:281](../architecture/06-implementation-phases.md)（および [:349](../architecture/06-implementation-phases.md)）の逃げ道も、この映像用途に閉じる。
 - **検証基盤用途＝ カット不可**: pixel 入力モード（X-ER/X-ER-VLA）では sim 描画がテスト入力そのものであり、検証をカットすれば「投入前に pixel を一度も検証していない」状態になる。R-16（[../shared/07-research-notes.md:157](../shared/07-research-notes.md)）が示すスケジュール緩和策としての「Isaac Sim カット」も、**映像制作カット限定**であり検証には非適用。
 
-この用途分割の hard-to-reverse な決定は [../adr/0005-isaac-sim-as-verification-gate.md](../adr/0005-isaac-sim-as-verification-gate.md) に記録する。
+この用途分割の hard-to-reverse な決定は [../adr/0006-isaac-sim-as-verification-gate.md](../adr/0006-isaac-sim-as-verification-gate.md) に記録する。
 
 ## Isaac Sim が検証する層（layer 明記）
 
@@ -69,5 +69,5 @@ Isaac Sim の sim-only replay（[../mode-x-er-vla/03-simulation-and-safety-gates
 - ER 入力（俯瞰画像）・data flow: [../mode-x-er-vla/01-integration-architecture.md:22](../mode-x-er-vla/01-integration-architecture.md)
 - Ladder S（G0-G7・sim/offline ゲート）: [../mode-x-er-vla/03-simulation-and-safety-gates.md](../mode-x-er-vla/03-simulation-and-safety-gates.md)（[:19](../mode-x-er-vla/03-simulation-and-safety-gates.md),:47-55）
 - 別系統 G0-G7（実機 fidelity ゲート）: [../jetson/01-fidelity-and-validation.md:99](../jetson/01-fidelity-and-validation.md)-106
-- ADR（Isaac Sim を検証ゲートへ格上げ）: [../adr/0005-isaac-sim-as-verification-gate.md](../adr/0005-isaac-sim-as-verification-gate.md)
+- ADR（Isaac Sim を検証ゲートへ格上げ）: [../adr/0006-isaac-sim-as-verification-gate.md](../adr/0006-isaac-sim-as-verification-gate.md)
 - 用語集 §11「シミュレーション / 検証基盤」・§3 レイヤ L0–L4: [../GLOSSARY.md](../GLOSSARY.md)

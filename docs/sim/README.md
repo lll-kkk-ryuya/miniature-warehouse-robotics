@@ -22,7 +22,7 @@ Mode X-ER 司令官（Gemini Robotics-ER）が俯瞰画像を入力に取るこ�
 | **Isaac Sim 5.1** | RunPod A10G（RT コア必須・photorealistic。[../shared/07-research-notes.md:107](../shared/07-research-notes.md)-112,:127） | 非決定でよい | pixel 入力の**投入前検証ゲート ＋ fixture 工場** | Mode X-ER・X-ER-VLA | **検証はカット不可・映像用途のみ optional** |
 
 > GPU 制約: Isaac Sim は RT コア必須ゆえ A100/H100 は不可、A10G/L4/RTX 4090 が可（[../shared/07-research-notes.md:107](../shared/07-research-notes.md)-112）。Isaac Sim 5.1 は GA（[:127](../shared/07-research-notes.md)）。Gazebo Harmonic は CPU・ARM64-native で Mac Docker に載る（[../architecture/03-software-architecture.md:263](../architecture/03-software-architecture.md)）。
-> 「映像 optional / 検証 カット不可」の根拠（R-16/R-18/推奨#4 の適用範囲）は [00 §D2](00-simulation-platform-strategy.md) と [../adr/0005-isaac-sim-as-verification-gate.md](../adr/0005-isaac-sim-as-verification-gate.md) を参照。
+> 「映像 optional / 検証 カット不可」の根拠（R-16/R-18/推奨#4 の適用範囲）は [00 §D2](00-simulation-platform-strategy.md) と [../adr/0006-isaac-sim-as-verification-gate.md](../adr/0006-isaac-sim-as-verification-gate.md) を参照。
 
 ## サブツリー内 doc
 
@@ -41,7 +41,7 @@ Mode X-ER 司令官（Gemini Robotics-ER）が俯瞰画像を入力に取るこ�
 - ER 入力（俯瞰画像）・data flow: [../mode-x-er-vla/01-integration-architecture.md](../mode-x-er-vla/01-integration-architecture.md)
 - G0-G7 gate ladder（**Ladder S**＝ER/VLA sim・offline 検証ゲート）: [../mode-x-er-vla/03-simulation-and-safety-gates.md](../mode-x-er-vla/03-simulation-and-safety-gates.md)
 - **別系統** G0-G7（実機 fidelity ゲート・Jetson 到着後に確定。Ladder S とは別ラダー）: [../jetson/01-fidelity-and-validation.md](../jetson/01-fidelity-and-validation.md)
-- ADR（Isaac Sim を検証ゲートへ格上げ）: [../adr/0005-isaac-sim-as-verification-gate.md](../adr/0005-isaac-sim-as-verification-gate.md)
+- ADR（Isaac Sim を検証ゲートへ格上げ）: [../adr/0006-isaac-sim-as-verification-gate.md](../adr/0006-isaac-sim-as-verification-gate.md)
 - 用語集 §11「シミュレーション / 検証基盤」: [../GLOSSARY.md](../GLOSSARY.md)（§11）
 
 ## backlink（別 sub が張る）

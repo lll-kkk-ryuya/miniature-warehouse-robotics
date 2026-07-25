@@ -126,7 +126,7 @@
 
 ## 11. シミュレーション / 検証基盤（simulation / verification）
 
-> pixel が司令官入力になると sim レンダリング＝テスト入力になる。sim を「開発ループ（Gazebo）」と「投入前検証ゲート＋fixture 工場（Isaac Sim）」の二層に分ける語彙。正本＝[sim/00](sim/00-simulation-platform-strategy.md)・[sim/01](sim/01-isaac-sim-verification-gate.md)・[sim/02](sim/02-synthetic-data-and-domain-randomization.md)。設計決定＝[adr/0005-isaac-sim-as-verification-gate.md](adr/0005-isaac-sim-as-verification-gate.md)。
+> pixel が司令官入力になると sim レンダリング＝テスト入力になる。sim を「開発ループ（Gazebo）」と「投入前検証ゲート＋fixture 工場（Isaac Sim）」の二層に分ける語彙。正本＝[sim/00](sim/00-simulation-platform-strategy.md)・[sim/01](sim/01-isaac-sim-verification-gate.md)・[sim/02](sim/02-synthetic-data-and-domain-randomization.md)。設計決定＝[adr/0006-isaac-sim-as-verification-gate.md](adr/0006-isaac-sim-as-verification-gate.md)。
 
 - **Gazebo（Harmonic）** — CPU・決定的・物理/Nav2 の開発ループ用シミュレータ（Docker on Mac・ARM64）。situation JSON 入力の Mode A/C はこれで足りる。 — [sim/00-simulation-platform-strategy.md](sim/00-simulation-platform-strategy.md) / [architecture/03-software-architecture.md:263](architecture/03-software-architecture.md)
 - **Isaac Sim（5.1）** — RT コア必須・photorealistic の投入前検証ゲート＋fixture 工場（RunPod A10G）。pixel 入力の Mode X-ER/VLA から必須。 — [sim/00-simulation-platform-strategy.md](sim/00-simulation-platform-strategy.md) / [shared/07-research-notes.md:107-112,:127](shared/07-research-notes.md)

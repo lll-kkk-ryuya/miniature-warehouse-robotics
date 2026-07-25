@@ -94,5 +94,5 @@ sim の object label / 見え方と real camera の差分（[mode-x-er-vla/03:52
 - [mode-x-er-vla/02-openvla-research-plan.md](../mode-x-er-vla/02-openvla-research-plan.md) — OpenVLA 調査計画（fine-tune 射程の正本・§調査項目 :29-40 / :38 simulation）
 - [mode-x-er-vla/03-simulation-and-safety-gates.md](../mode-x-er-vla/03-simulation-and-safety-gates.md) — ER+VLA gate（G0 fixture :15 / G3 validator :18 / golden fixture :55 / sim-to-real :52）
 - [GLOSSARY §11](../GLOSSARY.md) — sim / 合成データ 正準用語（DR・golden fixture・3セット分離）
-- [adr/0005-isaac-sim-as-verification-gate](../adr/0005-isaac-sim-as-verification-gate.md) — 非決定 sim 工場 → 決定的 gate の決定記録
+- [adr/0006-isaac-sim-as-verification-gate](../adr/0006-isaac-sim-as-verification-gate.md) — 非決定 sim 工場 → 決定的 gate の決定記録
 - [shared/01-budget-and-procurement.md](../shared/01-budget-and-procurement.md)（RunPod A10G 従量課金 :67 / GPU 追加時間 :35）/ [shared/07-research-notes.md](../shared/07-research-notes.md)（Isaac Sim RT コア必須 :109）

@@ -89,4 +89,4 @@ layer 番号は [GLOSSARY §3:29-37](../GLOSSARY.md)（L0–L4）と一致させ
 - [productization/01-commercial-box-map.md](../productization/01-commercial-box-map.md) — レイヤ annotation 対応表（[:174-187](../productization/01-commercial-box-map.md)）
 - [productization/11-l2-contract-governance-traffic-box.md](../productization/11-l2-contract-governance-traffic-box.md) — §レイヤ番号の対応（[:30](../productization/11-l2-contract-governance-traffic-box.md)・競合番号体系の読み替え先例）
 - [GLOSSARY.md](../GLOSSARY.md) — §3 レイヤ（[:29-37](../GLOSSARY.md) L0–L4・裏取り済）／§4 L3 seam（[:42](../GLOSSARY.md)）／§11 シミュレーション・検証基盤（本 round で追加中・§ form）
-- [adr/0005](../adr/0005-isaac-sim-as-verification-gate.md) — Isaac Sim を検証基盤へ格上げする決定記録（round-sibling・着地済）
+- [adr/0006](../adr/0006-isaac-sim-as-verification-gate.md) — Isaac Sim を検証基盤へ格上げする決定記録（round-sibling・着地済）
