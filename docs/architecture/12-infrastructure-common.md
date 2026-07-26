@@ -79,7 +79,7 @@ Layer 0: micro-ROS / ESP32（ハードウェア安全 — 最終防衛線）
   └── heartbeat/watchdog: 上位からの /cmd_vel（コマンドストリーム）途絶 → モータ停止（MCU内・通信非依存の comms-loss deadman＝Layer 0 の責務。H-G6 heartbeat_lost。実 enforcement は Phase 1）
 Layer 1: Emergency Guardian（ソフトウェア安全、50ms周期目標）
   └── AMCL距離監視 → Nav2 goal cancel要求 + cmd_vel停止 → /emergency/event 発行
-  └── バッテリー3段階ポリシー
+  └── バッテリー3段階ポリシー（percent 基準・Layer 1 所有。現行 L0 に battery cutoff は無く、将来の最小 over-discharge/brownout floor は voltage-based の別名機構＝ADR-0005）
   └── blocked タイムアウト検出
   └── ※ ハードリアルタイム保証ではない。最終防衛線はLayer 0
 
@@ -243,7 +243,7 @@ class EmergencyGuardian(Node):
 
 ### バッテリーポリシー（3段階）
 
-以下の閾値はアプリケーション側のポリシーであり、ハードウェア仕様ではない。実機のバッテリー特性に応じて調整する。
+以下の閾値はアプリケーション側のポリシーであり、ハードウェア仕様ではない。実機のバッテリー特性に応じて調整する。**この percent 3段ポリシーは Layer 1（Emergency Guardian / Policy Gate）の所有**で、凍結 `battery_is_critical(pct)` は percent 基準（`warehouse_interfaces.safety`）。**現行 L0 firmware に battery cutoff は無い**（`/battery` の sensor publish ＋ MCU 生存不能時の物理切断＝§縮退運転パターンのみ）。将来 phase で L0 が持つ最小 over-discharge（brownout）floor は、この percent policy とは**別名・別機構の voltage-based** floor（通信非依存の last-line floor）として設計し、cutoff 電圧は Phase-1 実機実測で確定する（値をここに発明しない）＝[ADR-0005](../adr/0005-l0-battery-brownout-floor.md)。
 
 | バッテリー残量 | Emergency Guardian | Policy Gate | Claude |
 |--------------|-------------------|-------------|--------|

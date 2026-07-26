@@ -9,17 +9,20 @@ firmware/
 ├── include/config.h        # ピン・MAX_LINEAR_VELOCITY=0.3 ・通信(秘密は config_secret.h)
 ├── include/safety_clamp.h  # Layer 0 速度クランプ純ロジック(Arduino 非依存・host unit-tested)
 ├── include/kinematics.h    # skid-steer mix + dead-reckon odom 純ロジック(Arduino 非依存・host unit-tested)
+├── include/client_key.h    # XRCE client_key 導出純ロジック(Arduino/rmw 非依存・host unit-tested・R-37)
 ├── src/main.cpp            # ノード骨格 + 速度クランプ(Layer 0) + モータ/各 publisher/MS200 stub
 ├── PHASE1_CHECKLIST.md     # 実機到着時の配線ゲート(stub→実値・実ドライバ・file:line 根拠付)
 ├── phase1-l0-strategy.html # L0 責務突合・4層マップ・A〜D 順・cross-doc 整合ドリフトの図解(ダーク)
 ├── test/test_clamp/        # クランプ R-26 unit test (Unity・host 実行)
 ├── test/test_kinematics/   # キネマティクス unit test (Unity・host 実行)
 ├── test/test_watchdog/     # command-stream watchdog R-26 unit test (Unity・host 実行)
+├── test/test_client_key/   # XRCE client_key R-26 unit test (Unity・host 実行・R-37)
 ├── test/run_host_test.sh   # クランプ unit を pio 不在でも g++ で(同一テスト源)
 ├── test/run_kinematics_test.sh # キネマティクス unit を g++ で(同梱 Unity shim)
 ├── test/run_watchdog_test.sh   # watchdog unit を g++ で(同梱 Unity shim・R-26)
+├── test/run_client_key_test.sh # client_key unit を g++ で(同梱 Unity shim・R-26)
 ├── test/run_host_compile.sh# skeleton(main.cpp)を Arduino shim で host 構文確認
-├── test/support/           # unity_shim(クランプ/キネマ/watchdog 用) / arduino_shim(skeleton compile 用)
+├── test/support/           # unity_shim(クランプ/キネマ/watchdog/client_key 用) / arduino_shim(skeleton compile 用)
 ├── CLAUDE.md               # 担当コンテキスト
 └── README.md               # 本ファイル
 ```
@@ -47,7 +50,7 @@ bash test/run_host_test.sh
 ```
 - 固定する契約: 境界（>上限→上限 / <−上限→−上限 / 素通し / 上限ちょうど / 0）＋ **非有限（NaN/±Inf）→ stop**（fail-safe・`warehouse_interfaces/safety.py:31-32` と一致）＋ `MAX_LINEAR_VELOCITY == 0.3 m/s`（safety.md / `docs/architecture/12-infrastructure-common.md:77`）＋ `MAX_*_VELOCITY > 0`（負上限=runaway ガード）。
 - `MAX_ANGULAR_VELOCITY=2.0`（`include/config.h:10`）は **Phase 1 実測 placeholder**＝テストは境界動作のみ固定。
-- CI 組込み（`.github/**`）は governance 所有（人間配線）。R-26 クランプ unit（`run_host_test.sh`）に加え `run_kinematics_test.sh` / `run_host_compile.sh` も CI job **`firmware-safety` の3 step として配線済**（#244 / #251・`.github/workflows/ci.yml`）。
+- CI 組込み（`.github/**`）は governance 所有（人間配線）。R-26 クランプ unit（`run_host_test.sh`）に加え `run_watchdog_test.sh`（R-26）・`run_client_key_test.sh`（R-26）・`run_kinematics_test.sh` / `run_host_compile.sh` も CI job **`firmware-safety` の各 step として配線済**（#244 / #251・firmware-PR が自 gate を足す precedent・`.github/workflows/ci.yml`）。
 
 ### キネマティクス host unit（ESP32 不要）
 skid-steer mix（`mixSkidSteer`）と dead-reckon odom（`integrateOdom`）の純ロジック（`include/kinematics.h`・Arduino 非依存・差動駆動の標準モデル）を host で検証する。hardware 値（`TRACK_WIDTH`・PWM duty 曲線・encoder scale・`dt`）は**引数**で渡し、ヘッダに定数を発明しない:
@@ -66,6 +69,15 @@ bash test/run_host_compile.sh   # main.cpp を -c で型検査（PASS で緑）
 ```
 実ドライバ・実 rclc publish・モータ PWM・UART parse は Phase 1（[`PHASE1_CHECKLIST.md`](PHASE1_CHECKLIST.md)）。
 
+### client_key host unit（R-26・R-37 enabler・ESP32 不要）
+2台が単一 Agent で衝突しないための **distinct/deterministic な XRCE `client_key`** 導出（`include/client_key.h`・Arduino/rmw 非依存）を host で検証する。`bot_id`（BOT_ID build flag）と `mac[6]`（実行時に読む per-board MAC）は**引数**で渡し、魔法定数を発明しない:
+```bash
+cd firmware
+pio test -e native                 # PlatformIO + Unity（test_filter allowlist が clamp と一括実行）
+bash test/run_client_key_test.sh   # pio 不在の g++/clang フォールバック・4/4 で緑（distinct/deterministic/非ゼロ）
+```
+期待値は手計算リテラルの独立オラクル（例 `mac={AA..FF}`: bot1→`0x01775533` / bot2→`0x02775533`）で pin し、BOT_ID mix 落とし・MAC 項ゼロ化・shift/XOR slip の mutation で赤くなる。安全 R-26 クランプ gate（`run_host_test.sh`）とは**別ゲート**で不変に保つ。
+
 ## トピック（doc03 契約）
 - Pub: `/<ns>/odom`(`nav_msgs/Odometry`), `/<ns>/scan`(`sensor_msgs/LaserScan`, ORBBEC MS200), `/<ns>/battery`(`sensor_msgs/BatteryState`)
 - Sub: `/<ns>/cmd_vel`(`geometry_msgs/Twist`)
@@ -78,7 +90,9 @@ ESP32 無しの host 再現）で確定した**最重要要件**:
   （session 識別子）で識別**し、**同一キーだと session を奪い合い pub/sub の片方向が落ちる**（= R-37 を host で強制再現）。
 - distinct キーなら**単一 Agent で2台双方向 OK**（spike fixA 実証。[spike/RESULT.md](spike/RESULT.md)）。
 - micro_ros_arduino 既定キーが両機で同一/弱 RNG だと踏むため、**Phase 1 で `rmw_uros_options_set_client_key()`
-  に BOT_ID/MAC 由来の値を明示設定**し、起動時にキー差を確認する。# TODO(Phase 1): set distinct client_key per board。
+  に BOT_ID/MAC 由来の値を明示設定**し、起動時にキー差を確認する。導出の純ロジックは `include/client_key.h`
+  （`derive_xrce_client_key(bot_id, mac)`・host unit-tested・R-26）に確定済＝Phase 1 では runtime が読む MAC を
+  この関数に渡して `rmw_uros_options_set_client_key()` に載せるのみ。# TODO(Phase 1): feed board MAC + call setter。
 - 不可なら **USB 有線（serial）** へフォールバック（2 Agent/別ポートは不要・別問題＝降格）。
 - 根拠/正本: [docs/shared/07-research-notes.md:242](../docs/shared/07-research-notes.md)（R-37）, [spike/RESULT.md](spike/RESULT.md), Issue #116。
 
