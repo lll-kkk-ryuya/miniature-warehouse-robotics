@@ -15,7 +15,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-  "ruff>=0.6",
+  "ruff>=0.6,<0.16",
   "pytest>=7.4",
   "pytest-cov>=5.0",
   "pre-commit>=3.7",
@@ -23,6 +23,13 @@ dev = [
 
 # ── Ruff: lint + format (replaces flake8/black/isort) ───────────────
 [tool.ruff]
+# Pin the Ruff version range. 0.16.0 changed trailing-comment formatting, so an
+# unpinned `pip install ruff` (latest) reformats already-committed files repo-wide
+# and reddens `ruff format --check` on untouched code (format drift, not a defect).
+# `required-version` makes ANY out-of-range Ruff fail LOUDLY here (clear error)
+# instead of silently reformatting — kept in lockstep with the `dev` extra and the
+# ci.yml install. Bump deliberately, with a full `ruff format .` sweep in the same PR.
+required-version = ">=0.6,<0.16"
 target-version = "py312"        # ROS 2 Jazzy / Ubuntu 24.04
 line-length = 100
 extend-exclude = ["ws/build", "ws/install", "ws/log", ".claude/worktrees"]
