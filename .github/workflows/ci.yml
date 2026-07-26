@@ -22,7 +22,10 @@ jobs:
       - name: Install dev tools
         # pydantic + pyyaml: runtime deps of warehouse_interfaces (contract schemas
         # + config loader). See pyproject [project].dependencies. Needed for pytest.
-        run: pip install ruff pytest pytest-cov "pydantic>=2" pyyaml
+        # ruff is pinned <0.16: 0.16.0 changed trailing-comment formatting and an
+        # unpinned install (latest) reformats committed files repo-wide → CI drift.
+        # Kept in lockstep with pyproject [tool.ruff] required-version + the dev extra.
+        run: pip install "ruff>=0.6,<0.16" pytest pytest-cov "pydantic>=2" pyyaml
       - name: Ruff lint
         run: ruff check .
       - name: Ruff format check
