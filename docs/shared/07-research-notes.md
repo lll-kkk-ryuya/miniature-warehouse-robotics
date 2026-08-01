@@ -154,7 +154,7 @@
 | R-04 | ロボット実寸が未測定（通路幅200mm前提が崩壊する可能性） | Yahboom公式に寸法記載なし。~150mmは推定のまま | 🟡 | Phase 1（実測） |
 | R-08 | WiFi が唯一の通信経路（micro-ROS + LLM API 全依存） | 未検証（実機必要） | 🔴 | Phase 1 |
 | R-12 | rclpy + FastAPI + asyncio の共存（Nav2 Bridge） | MultiThreadedExecutor分離パターンで設計済み。実装時に検証 | 🟡 | Phase 0.5 Day 3-4 |
-| R-16 | 15週間のスケジュールが非現実的（1人開発） | 未検証。映像制作カットで緩和可能（検証基盤は非対象＝adr/0006） | 🔴 | Phase 0 で再見積もり |
+| R-16 | 15週間のスケジュールが非現実的（1人開発） | 未検証。映像制作カットで緩和可能（検証基盤は非対象＝[adr/0006](../adr/0006-isaac-sim-as-verification-gate.md)） | 🔴 | Phase 0 で再見積もり |
 | R-25 | Fleet Adapter の詳細設計が未着手 | 未着手だが Open-RMF aptパッケージ利用で工数低減見込み | 🟡 | Phase 3 後半 |
 | R-26 | テスト戦略の完全な欠如 | 未対応。最低限 Emergency Guardian + Policy Gate のユニットテスト必要 | 🟡 | Phase 0.5 |
 
