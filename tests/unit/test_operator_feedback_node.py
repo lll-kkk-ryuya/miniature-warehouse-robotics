@@ -332,9 +332,13 @@ def test_off_wire_vocabulary_is_exactly_emergency_stop() -> None:
 def test_wire_legal_reject_decisions_are_not_dropped_by_the_off_wire_guard(decision: str) -> None:
     """The guard drops the off-wire decision ONLY — everything the gate may publish is kept.
 
-    Mutation oracle: widening the guard to ``decision not in WIRE_NOTICE_DECISIONS`` would also
-    swallow ``accepted``/``warning`` before the box (losing their audit row) and, in a ``.v1``
-    that adds a wire decision, silently discard it. Both make this RED.
+    Mutation oracle (verified): keying the guard on the SPEAK vocabulary
+    (``decision in SPEAKABLE_DECISIONS``) instead of the WIRE one — the plausible confusion,
+    since the two constants differ by exactly ``emergency_stop`` — swallows every reject at
+    ingest and turns both params RED. (The opposite over-wide form,
+    ``decision not in WIRE_NOTICE_DECISIONS``, is caught by
+    ``test_non_reject_class_wire_events_are_suppressed_with_audit`` instead: it would drop
+    ``accepted``/``warning``/milestone before the box and lose their audit row.)
     """
     driver, _ = _driver()
     payload = {**GATE_REJECT_EVENTS["unknown_target"], "decision": decision}
