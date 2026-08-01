@@ -391,7 +391,7 @@ live persona は Slice 3（Hermes persona・human-gated・Phase 3、≈ #288）�
 - トピックカタログ: [docs/architecture/03-software-architecture.md:98-108](03-software-architecture.md), :113, :277-282
 - 会話 producer: `ws/src/warehouse_llm_bridge/warehouse_llm_bridge/negotiation_messages.py:88-101,49-53,10-17`（decode_abort `:131-141` は **lenient consumer**） / `character_session.py:89-90,103` / `character_node.py:15-17,91-94,154-156` / `persona.py:114-160`
 - abort producer（canonical）: `ws/src/warehouse_safety/warehouse_safety/guard_logic.py:181,191`（`build_abort`→`{reason, bot, event_id}`・[doc03:108](03-software-architecture.md)・doc14:241-247 R2）
-- 司令官 publisher: `ws/src/warehouse_llm_bridge/warehouse_llm_bridge/llm_bridge.py:132-133,165,181-187,231-235` / `scheduler.py:146(noop),187-188(callback配線),350(proposal注入),359-360(発火)`
+- 司令官 publisher: `ws/src/warehouse_llm_bridge/warehouse_llm_bridge/llm_bridge.py:143-144,150(create_publisher),165(negotiation_starter 配線),267-273,287(publish helper)` / `scheduler.py:151(_noop),178-179(既定 publish 配線),232-246(proposal 注入 API),302,334(cycle への attach),357(situation へ発火)`
 - 凍結契約: `ws/src/warehouse_interfaces/warehouse_interfaces/schemas.py`（Situation :125-132 / Command :187-196 / Proposal :209-214 / StateSnapshot :95,:104 / RobotState :38-61）
 - trace seed / paths: `ws/src/eval_sdk/eval_sdk/seed.py:16,33-42,70-85` / `tracer.py:70-71,194` / `ws/src/warehouse_interfaces/warehouse_interfaces/paths.py:22-30`
 - QoS / rate: `state_cache.py:43,59-61,124` / `emergency_guardian.py:117-122`
