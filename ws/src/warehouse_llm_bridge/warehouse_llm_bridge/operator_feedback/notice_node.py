@@ -40,10 +40,17 @@ RESIDUAL (docs are silent — NOT invented here, see ``CLAUDE.md``): nothing sup
 with the *live operator command* ``gen_id`` set that the doc05 §5.3 (:205-208) speak formula
 requires, and the frozen ``/emergency/event`` core shape carries no ``gen_id``/``run_id`` at
 all. Until that correlation source is decided, events stay ``uncorrelated_autonomous``-
-suppressed (doc05:200 黙る例) with the audit record kept. :meth:`OperatorNoticeDriver.
-register_live_command` is the seam a future in-process composition (or a docs-agreed
-correlation channel) drives — it delegates to the EXISTING :class:`~.scope_filter.ScopeFilter`
-API and invents no new policy.
+suppressed (doc05:200 黙る例) with the audit record kept — i.e. **this node is WIRED but does
+not yet SPEAK**. :meth:`OperatorNoticeDriver.register_live_command` is the seam a future
+in-process composition (or a docs-agreed correlation channel) drives — it delegates to the
+EXISTING :class:`~.scope_filter.ScopeFilter` API and invents no new policy.
+
+RESIDUAL (unbounded audit): :attr:`~.feedback_box.OperatorFeedbackBox.audit_log` is an
+in-memory ``list`` with no trim (``feedback_box.py:85``) and this node is the FIRST long-lived
+process to host it — every received message appends one record and nothing here consumes them.
+No docs value bounds it, so no cap is invented; revisit together with the real TTS sink /
+a persistent audit sink (XER-OF3). The drain deque is self-limiting by contrast (the worker
+empties it), see :class:`OperatorNoticeDriver`.
 """
 
 from __future__ import annotations
@@ -59,6 +66,8 @@ from .feedback_box import NotifyResult, OperatorFeedbackBox
 from .models import (
     BOX_SAFETY,
     DECISION_EMERGENCY_STOP,
+    SPEAKABLE_DECISIONS,
+    WIRE_NOTICE_DECISIONS,
     DecisionEvent,
 )
 from .publisher import (
@@ -113,10 +122,22 @@ EMERGENCY_REASON_CODE = "emergency"
 #: (doc05 §8.10 item 5 :396). A payload declaring a foreign schema is not ours to consume.
 SCHEMA_PREFIX = SCHEMA_VERSION_V0.split(".")[0] + "."
 
+#: Decisions the box SPEAKS but that may NOT legally ride ``/operator/notice`` — today exactly
+#: ``{emergency_stop}``, which rides ``/emergency/event`` (doc05 §8.10 item 4 / §8.7 :366 /
+#: doc03:111). DERIVED from the producer-side vocabulary rather than re-spelled, so a future
+#: ``.v1`` that changes ``WIRE_NOTICE_DECISIONS`` moves producer AND consumer together
+#: (``publisher.py:186`` keys on the same constant).
+OFF_WIRE_SPEAKABLE_DECISIONS: frozenset[str] = SPEAKABLE_DECISIONS - WIRE_NOTICE_DECISIONS
+
 # Wake-up poll period of the drain worker (seconds). NOT a doc threshold: the worker is
 # event-driven (an enqueue sets the wake event); this timeout only bounds how long it waits
 # before re-checking the stop flag on shutdown.
 _DRAIN_POLL_S = 0.2
+
+# How long ``DrainWorker.shutdown`` waits for the final flush before giving up (seconds).
+# NOT a doc threshold either — it only bounds shutdown so a wedged sink cannot hang the
+# process; the worker is a daemon thread, so the process still exits if the wait expires.
+_SHUTDOWN_JOIN_S = 2.0
 
 
 def emergency_qos_kwargs() -> dict[str, object]:
@@ -163,6 +184,13 @@ def decode_notice(raw: str) -> DecisionEvent | None:
     declares a schema outside the ``operator_notice.`` family (doc05 §8.10 item 5), or is
     missing the required ``decision`` field. Unknown keys are ignored by
     ``DecisionEvent.from_payload`` (``extra=ignore``, doc05 §8.4 :314).
+
+    A payload that declares NO ``schema_version`` at all is accepted on purpose (fail-open,
+    doc05:270): the prefix rule of §8.10 item 5 exists to keep a future ``.v1`` additive, i.e.
+    to reject a FOREIGN family — not to silence a producer that omitted the field. Only an
+    explicitly foreign declaration is dropped. (Our own ``publisher.py`` always stamps
+    ``operator_notice.v0`` via ``to_v0_payload``, so this leniency only ever covers third-party
+    or hand-written payloads.)
     """
     payload = _load_json_object(raw)
     if payload is None:
@@ -260,6 +288,17 @@ class OperatorNoticeDriver:
         self.dropped_off_wire_emergency = 0
         self.delivery_errors = 0
 
+    # -- wake seam ------------------------------------------------------------------------
+    def set_on_enqueue(self, hook: Callable[[], None] | None) -> None:
+        """(Re)bind the wake hook fired after every successful enqueue.
+
+        Exists so an INJECTED driver gets the same immediate wake-up as a node-built one: the
+        node calls this unconditionally, instead of only passing ``on_enqueue`` on the default
+        construction path (otherwise an injected driver would silently degrade to waiting out
+        :data:`_DRAIN_POLL_S` before delivery).
+        """
+        self._on_enqueue = hook
+
     # -- attribution context (delegates to the EXISTING ScopeFilter API) ------------------
     def register_live_command(self, gen_id: int | None) -> None:
         """Register a live operator command ``gen_id`` (doc05 §5.3 :202 attribution key)."""
@@ -281,16 +320,27 @@ class OperatorNoticeDriver:
         Enforces the ONE wire rule the box itself cannot see: an ``emergency_stop`` decision
         must NOT arrive on this topic (it rides ``/emergency/event`` — doc05 §8.10 item 4 /
         §8.7 :366 / doc03:111). Accepting it would let a mis-wired gate produce TWO notices
-        for one estop, so it is dropped and counted. Non-reject-class payloads
+        for one estop, so it is dropped and counted. The guard keys on
+        :data:`OFF_WIRE_SPEAKABLE_DECISIONS`, DERIVED from the producer-side
+        :data:`~.models.WIRE_NOTICE_DECISIONS` (``publisher.py:186``), so consumer and producer
+        cannot drift apart on what this wire may carry. Non-reject-class payloads
         (``accepted`` / ``warning`` / milestone) are NOT filtered here — they are handed to
         the box, whose ScopeFilter suppresses them with an auditable reason (doc05:227).
+
+        **Deliberate asymmetry vs doc05:227** (「filter で落とした event は audit に残す」): an
+        off-wire ``emergency_stop`` leaves a counter + log line, NOT an ``AuditRecord``. doc05:227
+        governs the box's SCOPE FILTER (a policy decision about a legitimately delivered event);
+        this drop is a PRODUCER CONTRACT VIOLATION detected before the box, and routing it into
+        the box is precisely what would create the double notice §8.10 item 4 forbids (pinned by
+        ``test_one_estop_seen_on_both_wires_is_delivered_once``). The trace therefore lives in
+        :attr:`dropped_off_wire_emergency` + the warning log.
         """
         event = decode_notice(raw)
         if event is None:
             self.dropped_malformed += 1
             self._warn(f"dropped malformed {TOPIC_OPERATOR_NOTICE} payload")
             return False
-        if event.decision == DECISION_EMERGENCY_STOP:
+        if event.decision in OFF_WIRE_SPEAKABLE_DECISIONS:
             self.dropped_off_wire_emergency += 1
             self._warn(
                 f"dropped emergency_stop on {TOPIC_OPERATOR_NOTICE}: emergency rides "
@@ -349,6 +399,72 @@ class OperatorNoticeDriver:
             self._log(message)
 
 
+class DrainWorker:
+    """ROS-free lifecycle of the non-blocking drain worker (doc05 §8.5 :345).
+
+    Deliberately OUTSIDE the rclpy import guard: the drain loop needs no ROS, so keeping it
+    here means its ordering (wake / clear / drain), its shutdown and its final flush are
+    verifiable by a host unit test — the same fake-seam discipline
+    :func:`wire_notice_subscriptions` follows (doc16 §11). :class:`OperatorFeedbackNode` is a
+    thin adapter that owns one of these.
+
+    0 actuation (R-26): it only calls :meth:`OperatorNoticeDriver.drain`, which can emit text
+    and audit records and nothing else.
+    """
+
+    def __init__(
+        self,
+        driver: OperatorNoticeDriver,
+        *,
+        poll_s: float = _DRAIN_POLL_S,
+        join_s: float = _SHUTDOWN_JOIN_S,
+        name: str = "operator_feedback_drain",
+    ) -> None:
+        self._driver = driver
+        self._poll_s = poll_s
+        self._join_s = join_s
+        self._wake = threading.Event()
+        self._stopped = threading.Event()
+        self._thread = threading.Thread(target=self.run, name=name, daemon=True)
+        self._started = False
+
+    def wake(self) -> None:
+        """Wake the worker now (bound as the driver's ``on_enqueue`` hook)."""
+        self._wake.set()
+
+    def start(self) -> None:
+        """Start the daemon worker thread."""
+        self._started = True
+        self._thread.start()
+
+    def run(self) -> None:
+        """The drain loop itself. Runs on the worker thread (or synchronously in a test)."""
+        while not self._stopped.is_set():
+            self._wake.wait(timeout=self._poll_s)
+            self._wake.clear()
+            self._driver.drain()
+        # Final flush: anything enqueued between the last drain and the stop signal is still
+        # delivered, so the "no silent drop" rationale behind the UNBOUNDED queue holds for
+        # shutdown too. :meth:`shutdown` joins so this actually completes before teardown.
+        self._driver.drain()
+
+    def shutdown(self) -> bool:
+        """Stop the worker and WAIT for its final flush. True iff the worker finished.
+
+        Joining matters: without it the caller (``main()``) proceeds to ``destroy_node()`` /
+        ``rclpy.shutdown()`` while the daemon worker may still be mid-drain, which would both
+        drop queued notices and let a sink log through an already destroyed node. A ``False``
+        return means the join expired (a wedged sink) — the caller reports it rather than
+        hanging, since the daemon thread cannot block process exit.
+        """
+        self._stopped.set()
+        self._wake.set()
+        if not self._started:
+            return True
+        self._thread.join(timeout=self._join_s)
+        return not self._thread.is_alive()
+
+
 def wire_notice_subscriptions(
     node: Any,
     driver: OperatorNoticeDriver,
@@ -400,8 +516,6 @@ if _NODE_IMPORT_ERROR is None:
             scope_filter: ScopeFilter | None = None,
         ) -> None:
             super().__init__(NODE_NAME)
-            self._wake = threading.Event()
-            self._stopped = threading.Event()
             log = self.get_logger()
             if driver is None:
                 driver = OperatorNoticeDriver(
@@ -410,14 +524,15 @@ if _NODE_IMPORT_ERROR is None:
                     # sink is XER-OF3 and is NOT wired here (doc05:259,281).
                     primary_sink=LoggingNoticeSink(log.info),
                     fallback_sink=RecordingSink(),
-                    on_enqueue=self._wake.set,
                     log=log.warning,
                 )
             self._driver = driver
+            self._worker = DrainWorker(self._driver)
+            # UNCONDITIONALLY (not only on the default path): an injected driver must get the
+            # same immediate wake-up, otherwise composition would silently degrade to poll
+            # latency while the default path stayed fast.
+            self._driver.set_on_enqueue(self._worker.wake)
             self._subs = wire_notice_subscriptions(self, self._driver, string_type=String)
-            self._thread = threading.Thread(
-                target=self._drain_loop, name="operator_feedback_drain", daemon=True
-            )
             log.info(
                 f"{NODE_NAME} ready — subscribing {TOPIC_OPERATOR_NOTICE} + "
                 f"{TOPIC_EMERGENCY_EVENT} (subscribe-only, 0 actuation). No live-command "
@@ -431,19 +546,15 @@ if _NODE_IMPORT_ERROR is None:
 
         def start(self) -> None:
             """Start the non-blocking drain worker (doc05 §8.5 :345)."""
-            self._thread.start()
-
-        def _drain_loop(self) -> None:
-            while not self._stopped.is_set():
-                self._wake.wait(timeout=_DRAIN_POLL_S)
-                self._wake.clear()
-                self._driver.drain()
-            self._driver.drain()  # final flush on shutdown
+            self._worker.start()
 
         def shutdown(self) -> None:
-            """Stop the drain worker (best-effort; the thread is a daemon)."""
-            self._stopped.set()
-            self._wake.set()
+            """Stop the drain worker and WAIT for its final flush before teardown."""
+            if not self._worker.shutdown():
+                self.get_logger().warning(
+                    f"drain worker did not finish within {_SHUTDOWN_JOIN_S}s; "
+                    f"{self._driver.pending} queued notice(s) may be dropped"
+                )
 
 
 def main() -> None:

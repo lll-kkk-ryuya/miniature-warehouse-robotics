@@ -13,6 +13,8 @@ The CONSUMER half of the ``/operator/notice`` contract (the producer half lives 
   and sink delivery happen on the drain, off the callback thread.
 - **Fail-open (doc05:270 / productization/05:290)**: malformed payloads and delivery failures
   are counted + dropped, never raised.
+- **Drain worker lifecycle**: wake / stop / final flush / join-on-shutdown, exercised on the
+  host because ``DrainWorker`` is deliberately kept outside the rclpy import guard (doc16 §11).
 - **Round trip**: publisher -> wire JSON -> subscriber -> the box speaks (producer/consumer
   are one shape).
 
@@ -24,13 +26,18 @@ co-mutation of impl + test cannot stay green. Offline, pure-stdlib, no ROS / no 
 from __future__ import annotations
 
 import json
+import time
+from collections.abc import Callable
+from typing import Any
 
 import pytest
 from warehouse_llm_bridge.operator_feedback import (
+    OFF_WIRE_SPEAKABLE_DECISIONS,
     REASON_UNCORRELATED,
     STATUS_SPOKEN,
     TOPIC_EMERGENCY_EVENT,
     TOPIC_OPERATOR_NOTICE,
+    DrainWorker,
     LoggingNoticeSink,
     OperatorFeedbackBox,
     OperatorNoticeDriver,
@@ -115,11 +122,35 @@ class _RaisingSink:
         raise RuntimeError("tts down")
 
 
-def _driver(live: set[int] | None = None, **kwargs) -> tuple[OperatorNoticeDriver, RecordingSink]:
+class _SlowSink:
+    """A sink that takes measurable time, so "did the caller wait?" is observable."""
+
+    def __init__(self, delay_s: float = 0.05) -> None:
+        self.delay_s = delay_s
+        self.spoken: list[object] = []
+
+    def speak(self, notice: object) -> None:
+        time.sleep(self.delay_s)
+        self.spoken.append(notice)
+
+
+def _driver(
+    live: set[int] | None = None, **kwargs: Any
+) -> tuple[OperatorNoticeDriver, RecordingSink]:
     """A driver whose primary sink records everything it is asked to speak."""
     spoken = RecordingSink()
     box = OperatorFeedbackBox(ScopeFilter(live_command_gen_ids=live or set()))
     return OperatorNoticeDriver(box, primary_sink=spoken, **kwargs), spoken
+
+
+def _wait_until(predicate: Callable[[], bool], timeout_s: float = 2.0) -> bool:
+    """Poll ``predicate`` until true or the timeout expires (bounded, never sleeps blindly)."""
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        if predicate():
+            return True
+        time.sleep(0.005)
+    return predicate()
 
 
 # -- consumed contract values -----------------------------------------------------------------
@@ -287,6 +318,31 @@ def test_every_emergency_type_maps_to_the_single_documented_reason_code(
     assert event.reason_detail == emergency_type
 
 
+def test_off_wire_vocabulary_is_exactly_emergency_stop() -> None:
+    """Exactly ONE speakable decision is barred from this wire (doc05 §8.10 item 4 / doc03:111).
+
+    Independent oracle: the expected set is the literal ``{"emergency_stop"}``, not an import
+    of the producer constant. The consumer derives its guard from the producer vocabulary
+    (``WIRE_NOTICE_DECISIONS``) so a future ``.v1`` cannot move only one side of the wire.
+    """
+    assert set(OFF_WIRE_SPEAKABLE_DECISIONS) == {"emergency_stop"}
+
+
+@pytest.mark.parametrize("decision", ["rejected", "needs_clarification"])
+def test_wire_legal_reject_decisions_are_not_dropped_by_the_off_wire_guard(decision: str) -> None:
+    """The guard drops the off-wire decision ONLY — everything the gate may publish is kept.
+
+    Mutation oracle: widening the guard to ``decision not in WIRE_NOTICE_DECISIONS`` would also
+    swallow ``accepted``/``warning`` before the box (losing their audit row) and, in a ``.v1``
+    that adds a wire decision, silently discard it. Both make this RED.
+    """
+    driver, _ = _driver()
+    payload = {**GATE_REJECT_EVENTS["unknown_target"], "decision": decision}
+    assert driver.enqueue_notice(json.dumps(payload)) is True
+    assert driver.pending == 1
+    assert driver.dropped_off_wire_emergency == 0
+
+
 def test_emergency_stop_on_the_notice_wire_is_dropped() -> None:
     """doc05 §8.10 item 4 / §8.7: emergency rides ``/emergency/event`` ONLY.
 
@@ -379,6 +435,28 @@ def test_future_schema_minor_version_is_still_consumed() -> None:
     assert event.decision == "rejected"
 
 
+def test_payload_without_schema_version_is_accepted_fail_open() -> None:
+    """A payload that DECLARES no family is consumed; only a FOREIGN declaration is dropped.
+
+    doc05 §8.10 item 5 (:396) keys consumers on the ``operator_notice.`` prefix so a future
+    ``.v1`` stays additive — that rule rejects a foreign family, it does not require every
+    producer to stamp the field. Silence is therefore treated fail-open (doc05:270), which is
+    the deliberate asymmetry with ``some_other.v1`` above; pinned so it cannot flip silently.
+    """
+    payload = {
+        k: v for k, v in GATE_REJECT_EVENTS["unknown_target"].items() if k != "schema_version"
+    }
+    assert "schema_version" not in payload
+
+    event = decode_notice(json.dumps(payload))
+    assert event is not None
+    assert event.decision == "rejected"
+
+    driver, _ = _driver()
+    assert driver.enqueue_notice(json.dumps(payload)) is True
+    assert driver.dropped_malformed == 0
+
+
 def test_sink_failure_does_not_stop_the_drain() -> None:
     """L4OF-G2 fail-open: a raising TTS sink degrades to the fallback and the run continues."""
     fallback = RecordingSink()
@@ -410,6 +488,104 @@ def test_delivery_exception_is_counted_and_the_drain_continues() -> None:
     assert len(results) == 1, "the healthy event after the failure was still delivered"
     assert len(spoken.spoken) == 1
     assert logged
+
+
+# -- drain worker lifecycle (ROS-free, so the concurrency IS covered on host CI) --------------
+
+
+def test_drain_worker_run_final_flushes_after_stop() -> None:
+    """The loop's final flush delivers whatever was queued when the stop signal arrived.
+
+    Deterministic (no thread): with the worker already stopped, ``run()`` skips the loop body
+    and must STILL drain once. Mutation oracle: deleting the post-loop ``drain()`` leaves the
+    event undelivered -> RED.
+    """
+    event = GATE_REJECT_EVENTS["unknown_target"]
+    driver, spoken = _driver(live={event["gen_id"]})
+    worker = DrainWorker(driver, poll_s=0.01)
+    worker.shutdown()  # not started: sets the stop flag, joins nothing
+
+    driver.enqueue_notice(json.dumps(event))
+    assert driver.pending == 1
+    worker.run()
+
+    assert driver.pending == 0
+    assert len(spoken.spoken) == 1
+
+
+def test_drain_worker_shutdown_waits_for_the_final_flush() -> None:
+    """``shutdown()`` JOINS the worker, so a queued notice is delivered before teardown.
+
+    This is the lossless claim behind the unbounded queue stated as behaviour. Mutation oracle:
+    removing the join makes ``shutdown()`` return while the (slow) sink is still speaking ->
+    the return value goes False and the delivery assertion goes RED.
+    """
+    event = GATE_REJECT_EVENTS["unknown_target"]
+    slow = _SlowSink(delay_s=0.05)
+    box = OperatorFeedbackBox(ScopeFilter(live_command_gen_ids={event["gen_id"]}))
+    driver = OperatorNoticeDriver(box, primary_sink=slow)
+    worker = DrainWorker(driver, poll_s=0.01)
+    driver.set_on_enqueue(worker.wake)
+    worker.start()
+
+    driver.enqueue_notice(json.dumps(event))
+    finished = worker.shutdown()
+
+    assert finished is True, "shutdown must wait for the worker to finish its final flush"
+    assert driver.pending == 0
+    assert len(slow.spoken) == 1
+
+
+def test_drain_worker_shutdown_without_start_is_safe() -> None:
+    """``shutdown()`` on a never-started worker must not raise (join on an unstarted thread).
+
+    Mutation oracle: joining unconditionally raises ``RuntimeError: cannot join thread before
+    it is started`` -> RED. Matters because composition may build a node and tear it down
+    without ever calling ``start()``.
+    """
+    driver, _ = _driver()
+    assert DrainWorker(driver).shutdown() is True
+
+
+def test_drain_worker_is_woken_by_enqueue_instead_of_waiting_out_the_poll() -> None:
+    """The wake hook drives latency, not the poll period (doc05 §8.5 non-blocking drain).
+
+    Oracle: the poll period is set far above the test timeout, so delivery can only happen if
+    the enqueue actually woke the worker. Mutation oracle: dropping the ``on_enqueue`` wiring
+    (e.g. only binding it on the default construction path) makes this time out -> RED.
+    """
+    event = GATE_REJECT_EVENTS["unknown_target"]
+    driver, spoken = _driver(live={event["gen_id"]})
+    worker = DrainWorker(driver, poll_s=30.0)
+    driver.set_on_enqueue(worker.wake)
+    worker.start()
+    try:
+        driver.enqueue_notice(json.dumps(event))
+        assert _wait_until(lambda: len(spoken.spoken) == 1), "wake hook did not run the drain"
+    finally:
+        worker.shutdown()
+
+
+def test_set_on_enqueue_rebinds_the_wake_hook_on_an_injected_driver() -> None:
+    """The seam the node uses to give an INJECTED driver the same immediate wake-up.
+
+    The rclpy adapter cannot be built on host (no rclpy), so the wiring it performs is pinned
+    at this seam instead: a driver constructed WITHOUT ``on_enqueue`` gains it via
+    ``set_on_enqueue`` and fires on every accepted payload.
+    """
+    woken: list[int] = []
+    driver, _ = _driver(live={42})
+    driver.enqueue_notice(json.dumps(GATE_REJECT_EVENTS["unknown_target"]))
+    assert woken == [], "no hook bound yet"
+
+    driver.set_on_enqueue(lambda: woken.append(1))
+    driver.enqueue_notice(json.dumps(GATE_REJECT_EVENTS["unknown_target"]))
+    driver.enqueue_emergency(json.dumps(_EMERGENCY_EVENT))
+    assert len(woken) == 2
+
+    driver.set_on_enqueue(None)
+    driver.enqueue_emergency(json.dumps(_EMERGENCY_EVENT))
+    assert len(woken) == 2
 
 
 # -- box-side scope behaviour reached through the node ----------------------------------------

@@ -82,10 +82,22 @@
     `reason_detail`（人向け補足・productization/05:71）で運ぶ。`event_id`/`severity`/`action_taken`/
     `requires_llm_review` は v0 に landing 先が無く drop。
   - `/operator/notice` に `emergency_stop` が来たら **drop**（`dropped_off_wire_emergency`）＝
-    二重発話の防止（doc05 §8.10 item4 / §8.7:366）。非 reject 級（accepted/warning/milestone）は
-    drop せず box に渡し、ScopeFilter が理由付きで suppress（audit 保持・doc05:227）。
+    二重発話の防止（doc05 §8.10 item4 / §8.7:366）。判定は **`OFF_WIRE_SPEAKABLE_DECISIONS`
+    ＝`SPEAKABLE_DECISIONS − WIRE_NOTICE_DECISIONS`**（producer 側 `publisher.py:186` と**同一
+    定数から導出**）＝綴りの単一源化で、将来 `.v1` が wire 語彙を変えても producer/consumer が
+    片側だけ動かない。非 reject 級（accepted/warning/milestone）は drop せず box に渡し、
+    ScopeFilter が理由付きで suppress（audit 保持・doc05:227）。
   - **非ブロッキング drain**（doc05 §8.5:345）: callback は decode＋enqueue のみ、render/sink は
     daemon worker の `drain()` 側。TTS が callback を塞がず RELIABLE back-pressure が gate に伝播しない。
+  - **`DrainWorker`（rclpy import-guard の外＝host 検証可・doc16 §11）**: worker の lifecycle
+    （wake / stop / **final flush** / `shutdown()` の join）を ROS 非依存クラスに隔離。node は
+    薄い adapter として 1 個保持するだけ。`shutdown()` は `_SHUTDOWN_JOIN_S=2.0s`（**docs 由来では
+    ない実装値**・wedge した sink で停止が固まらないための上限）まで join し、**final flush 完了後に**
+    `destroy_node()` へ進める。join 期限切れは `False` を返し node が warning を出す（daemon ゆえ
+    プロセス終了は妨げない）。
+  - **wake hook は注入 driver にも張る**: `OperatorNoticeDriver.set_on_enqueue(worker.wake)` を
+    node が**無条件に**呼ぶ（既定構築経路だけに `on_enqueue` を渡すと、in-process composition で
+    注入した driver だけ poll 間隔（0.2s）まで配送が遅れる非対称が生じるため）。
   - **fail-open**（doc05:270 / productization/05:290）: 不正 payload は count＋log して drop
     （`state_cache.py:120` 前例）、delivery 例外は `delivery_errors` に計上して drain を継続。
   - sink は注入（`LoggingNoticeSink`＝runtime の stand-in speaker ＋ `RecordingSink` fallback）。
@@ -114,9 +126,13 @@
   fake node の `create_publisher`/`create_client` が呼ばれたら AssertionError ＋ 2 subscription のみ。
   ＋ **二重経路ガード**（`/operator/notice` の `emergency_stop` は drop・両 wire に来ても notify 1 回）
   ＋ **非ブロッキング drain**（callback では sink/audit に触れない）＋ **fail-open**（不正 payload・
-  delivery 例外）＋ **emergency 写像**（独立 oracle = doc12 コア形の literal）＋ **publisher→wire→
-  subscriber 往復**。mutation で RED を実測: 二重 publish ガード除去 / callback 内 drain /
-  `type`→reason_code 表の発明 / wiring への publisher 混入 / emergency QoS depth ドリフト。
+  delivery 例外・`schema_version` 欠落は受理）＋ **emergency 写像**（独立 oracle = doc12 コア形の
+  literal）＋ **wire 語彙**（off-wire 集合＝`{emergency_stop}` の literal pin ＋ wire 合法 decision を
+  巻き込み drop しない）＋ **`DrainWorker` lifecycle**（final flush・`shutdown()` の join 待ち・未 start
+  での join 安全・wake hook で poll 待ちしない）＋ **publisher→wire→subscriber 往復**。
+  mutation で RED を実測: 二重 publish ガード除去 / callback 内 drain / `type`→reason_code 表の発明 /
+  wiring への publisher 混入 / emergency QoS depth ドリフト / **final flush 削除** /
+  **`shutdown()` の join 削除** / **guard を `not in WIRE_NOTICE_DECISIONS` へ拡大**。
 - `tests/unit/test_operator_feedback_publisher.py` — **R-26 / L4OF-G1（publish-only=0 actuation）**
   ＋ 確定契約値（topic/QoS depth=10/schema_version）＋ **wire 語彙（reject 級−emergency・§8.10 item4）**
   ＋ fake-ROS 配線 ＋ publisher 出力＝box 入力の往復一致（producer/consumer 同形）。independent oracle
@@ -141,6 +157,25 @@
 
 ## 未凍結 / DEFER（別 owner・後続 slice）
 
+- **`OperatorFeedbackBox.audit_log` は無制限に伸びる（常駐 node で初めて顕在化）**: `feedback_box.py:85`
+  の素の `list` で trim / eviction / 読み出しが repo に無く、`notice_node` が受信 1 件につき必ず
+  1 `AuditRecord` を append する（suppress 経路も同様＝`feedback_box.py:119`）。**現状は全 event が
+  suppress されるので例外なく積まれる**。docs に上限値が無いため **cap を発明しない**（in-process
+  queue の `maxlen` を置かなかったのと同じ理由）。ただし queue は drain worker が空にする
+  self-limiting なのに対し **`audit_log` は誰も消費しない**点が異なる。実 TTS / 永続 audit sink
+  （XER-OF3）投入時に **deque 化 or 定期 drain seam** を box 所有者判断で再検討する。
+- **wire 違反 drop（`/operator/notice` 上の `emergency_stop`）は audit 行を残さない**: doc05:227 は
+  「filter で落とした event は audit に残す」と定めるが、これは box の **scope filter**（正当に届いた
+  event への policy 判断）の話。off-wire drop は box 手前で検出する **producer 契約違反**であり、
+  box に渡すと §8.10 item4 が禁じる二重 notice が発生する（`test_one_estop_seen_on_both_wires_is_
+  delivered_once` が pin）。よって痕跡は `dropped_off_wire_emergency` counter ＋ warning log に置く
+  **意図的な非対称**。audit 行が要るなら doc05 §8.10 側に「wire 違反も audit 対象」の追記が先。
+- **rclpy adapter（`OperatorFeedbackNode` 本体）は host CI で構造的に未実行**: rclpy 不在 host では
+  `if _NODE_IMPORT_ERROR is None:` 配下のクラスが定義されないため。今回 drain ループを `DrainWorker`
+  として guard の外へ出し **並行処理は host unit 化した**が、`__init__` の配線そのもの
+  （`set_on_enqueue(worker.wake)` / `wire_notice_subscriptions` 呼び出し / `start` / `shutdown` の
+  委譲）は container / 実機側の検証に残る（doc16 §11 の ①層外）。seam 単位（`DrainWorker` /
+  `set_on_enqueue` / `wire_notice_subscriptions`）は個別に pin 済み。
 - **live command 相関の供給源が未決（最重要）**: doc05 §5.3 :205-208 の speak 式は
   `gen_id ∈ {live な operator 命令}` を要求するが、**別プロセスの subscriber node にその集合を
   供給する経路が docs に無い**（doc05:202 は L3→action_map の in-process 相関を前提）。さらに
@@ -151,6 +186,10 @@
   (a) node を x_er_bridge に in-process composition する、(b) `/emergency/event` へ
   `gen_id`/`run_id` を additive 追加（safety-state 所有・contract PR）、(c) doc05 §5.3 に
   emergency の filter-bypass policy を追記、のいずれかの **docs 決定**が要る。
+- **この node は「配線済だが未発話」**: 上記の相関源欠如により、`/operator/notice` / `/emergency/event`
+  双方とも現状 100% suppress される（audit のみ）。**doc05 §8.10 item4 の括弧書きが解消されるのは
+  「subscriber node 配線」であって「emergency を喋る」ではない**。発話の解錠は上記 (a)(b)(c) の
+  docs 決定待ち。
 - **`/emergency/event` の `type` → `reason_code` 逐語表が docs に無い**（doc05 §8.6:356 は
   `emergency`（near_collision / pose_stale）と示すのみ）。`type` は `reason_detail` で運び、
   `battery_critical`/`blocked_timeout` 専用文面は作らない（templates は fallback 経路を持つ）。
