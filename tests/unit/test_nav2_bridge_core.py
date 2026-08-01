@@ -126,7 +126,7 @@ def test_navigate_accepts_coordinate_goal():
 def test_navigate_coordinate_goal_drops_yaw():
     core, backend = make_core()
     res = core.navigate("bot1", goal=(0.45, 0.12, 1.5707963))
-    # yaw is validated then dropped — backend.Pose is (x, y) (nav2_bridge.py:80).
+    # yaw is validated then dropped — backend.Pose is (x, y) (nav2_bridge.py:84).
     assert backend.goals == [("bot1", [(0.45, 0.12)])]
     assert res["goal"] == [0.45, 0.12]
 

@@ -7,13 +7,13 @@ Runtime wiring only: the request logic + task state live in the pure
 runs rclpy in a background thread while uvicorn serves the API on the main thread
 (the ROS-recommended rclpy+asyncio coexistence pattern, doc12a:200-219).
 
-ROS deps (rclpy, ``nav2_simple_commander``) are imported at module load — rclpy has to be,
-since :class:`Nav2BridgeNode` subclasses ``rclpy.node.Node`` at class-definition time — and
-the unit tests import only ``core`` / ``backend`` / ``preflight`` (no ROS). The **pip** deps
-(uvicorn, fastapi) are imported lazily instead, so ``main()`` can run
-:func:`~warehouse_nav2_bridge.preflight.require_runtime_deps` first and fail with an
-actionable provisioning hint rather than a bare ``ModuleNotFoundError`` in an image whose
-pip block never installed them (#283, ``deploy/dev/Dockerfile:41-48``).
+``rclpy`` is the one dep imported at module load — it has to be, since
+:class:`Nav2BridgeNode` subclasses ``rclpy.node.Node`` at class-definition time; the rosdep-
+provided ``nav2_simple_commander`` is imported lazily inside
+:meth:`BasicNavigatorBackend.__init__`, and so are the **pip** deps (uvicorn, fastapi,
+pydantic), so ``main()`` can run :func:`~warehouse_nav2_bridge.preflight.require_runtime_deps`
+first and fail with an actionable provisioning hint rather than a bare ``ModuleNotFoundError``
+in an image whose pip block never installed them (#283, ``deploy/dev/Dockerfile:41-48``).
 
 ⚠️ doc12:459 / doc16 risk: two ``BasicNavigator`` instances in one process is a
 namespacing/singleton hazard, and the FastAPI thread (``go_to``) and the rclpy timer

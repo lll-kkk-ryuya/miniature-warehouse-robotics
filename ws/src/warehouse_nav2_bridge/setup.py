@@ -10,11 +10,14 @@ setup(
         ("share/ament_index/resource_index/packages", [f"resource/{package_name}"]),
         (f"share/{package_name}", ["package.xml"]),
     ],
-    # fastapi + uvicorn serve the Nav2 Bridge REST API (doc12a:198-343); imported
-    # lazily (app.py / nav2_bridge.py) so the pure-core unit tests run without them,
-    # the same pattern warehouse_llm_bridge uses for langfuse.
+    # fastapi + uvicorn serve the Nav2 Bridge REST API (doc12a:198-343) and pydantic types
+    # its request bodies (app.py create_app imports it directly); all imported lazily
+    # (app.py / nav2_bridge.py) so the pure-core unit tests run without them, the same
+    # pattern warehouse_llm_bridge uses for langfuse.
     # Upper bounds guard a major bump that could break the REST app / ASGI lifecycle.
-    install_requires=["setuptools", "fastapi>=0.110,<1", "uvicorn>=0.27,<1"],
+    # pydantic>=2 matches the rest of the repo (warehouse_interfaces/setup.py:13,
+    # pyproject.toml:12) and the image that provisions it (deploy/dev/Dockerfile:42).
+    install_requires=["setuptools", "fastapi>=0.110,<1", "pydantic>=2", "uvicorn>=0.27,<1"],
     zip_safe=True,
     maintainer="kawaguchiryuya",
     maintainer_email="ryu3124ruyu@gmail.com",

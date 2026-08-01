@@ -1,6 +1,6 @@
 """nav2_bridge startup preflight for unprovisioned pip deps (#283 DoD③).
 
-``fastapi`` / ``uvicorn`` are pip deps that ``colcon build`` never installs
+``fastapi`` / ``pydantic`` / ``uvicorn`` are pip deps that ``colcon build`` never installs
 (``ws/src/warehouse_nav2_bridge/setup.py`` install_requires; provisioned for dev/sim in
 ``deploy/dev/Dockerfile:41-48``). Before this slice the node died on a bare
 ``ModuleNotFoundError`` — #283 records exactly that ("nav2_bridge が uvicorn 不在で死亡").
@@ -23,6 +23,8 @@ from pathlib import Path
 
 import pytest
 from warehouse_nav2_bridge import preflight
+
+pytestmark = pytest.mark.unit
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _PKG = _REPO_ROOT / "ws/src/warehouse_nav2_bridge"
@@ -100,14 +102,38 @@ def test_missing_dep_is_named_and_the_fix_is_runnable():
     assert excinfo.value.code != 0
 
 
-def test_every_missing_module_is_reported_once_in_declaration_order():
+def test_every_missing_module_appears_in_the_hint_in_declaration_order():
     declared = list(preflight.RUNTIME_PIP_MODULES)
     missing = preflight.missing_runtime_modules(_fake_importer(absent=set(declared)))
     assert missing == declared
 
     message = preflight.format_missing_hint(missing)
+    # Every declared module is blamed, and the operator reads them in declaration order
+    # (checked by first appearance, so this does not depend on the hint's wording).
     for module in declared:
-        assert message.count(f" {module}") >= 1
+        assert module in message, f"{module} missing from: {message}"
+    positions = [message.index(module) for module in declared]
+    assert positions == sorted(positions), f"names out of declaration order: {message}"
+
+
+def test_partial_install_blames_the_sub_dependency_that_actually_failed():
+    """`uvicorn` installed but its own dep gone still raises ModuleNotFoundError.
+
+    Blaming only `uvicorn` would send the operator to reinstall a package that is already
+    there; what they need is the name of the module that really could not be imported.
+    """
+
+    def _import(name: str) -> object:
+        if name == "uvicorn":
+            raise ModuleNotFoundError("No module named 'h11'", name="h11")
+        return object()
+
+    with pytest.raises(SystemExit) as excinfo:
+        preflight.require_runtime_deps(_import)
+
+    message = str(excinfo.value.code)
+    assert "h11" in message, f"real culprit not named in: {message}"
+    assert "uvicorn" in message  # ...and which declared dep it came in under
 
 
 def test_broken_install_keeps_its_own_traceback():
