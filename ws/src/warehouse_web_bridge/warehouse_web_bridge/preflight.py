@@ -80,6 +80,9 @@ _UNKNOWN_HINT = DepHint(
     source=f"{DOCKERFILE}:{PIP_BLOCK_LINES[0]}-{PIP_BLOCK_LINES[1]} (dev/sim image pip block)",
 )
 
+#: Every module this table can name a real provisioning fix for.
+_KNOWN_DEPS = frozenset(_PIP_DEPS) | _ROS_DEPS | _WORKSPACE_DEPS
+
 
 def missing_module_name(exc: BaseException) -> str | None:
     """The **top-level** module name an ``ImportError`` is about (``rclpy.qos`` → ``rclpy``).
@@ -104,6 +107,21 @@ def hint_for(module: str | None) -> DepHint:
     if module in _WORKSPACE_DEPS:
         return _WORKSPACE_HINT
     return _UNKNOWN_HINT
+
+
+def is_provisioning_failure(exc: BaseException) -> bool:
+    """Does this ``ImportError`` name a dependency this table can actually explain?
+
+    The hint is an improvement only where it REPLACES a bare "module not found" traceback for a
+    heavy dep. An ImportError from anywhere else (a typo'd symbol, a broken lazy import inside a
+    third-party package) must keep its traceback: dressing it up as a provisioning problem would
+    send the operator to the wrong file. Used by :mod:`warehouse_web_bridge.cli` to decide
+    whether to convert a *runtime* ImportError — ``fastapi`` is imported lazily inside
+    ``create_app`` and ``websockets`` is pulled in by uvicorn at serve time, so their absence
+    surfaces after the node import, not during it. Never raises.
+    """
+    module = missing_module_name(exc)
+    return module is not None and module in _KNOWN_DEPS
 
 
 def missing_dependency_hint(exc: BaseException) -> str:

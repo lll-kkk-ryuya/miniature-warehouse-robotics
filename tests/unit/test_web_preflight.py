@@ -141,14 +141,73 @@ def test_cli_defers_the_node_import_into_main() -> None:
 
 
 @pytest.mark.unit
-def test_cli_reports_a_missing_dependency_and_exits_non_zero(monkeypatch, capsys) -> None:
+def test_cli_reports_a_blocked_node_import_as_a_workspace_problem(monkeypatch, capsys) -> None:
     from warehouse_web_bridge import cli
 
-    # None in sys.modules is the stdlib's own "this import is blocked" marker: the import
-    # raises ImportError exactly like an absent rclpy would, with no ROS needed here.
+    # None in sys.modules is the stdlib's own "this import is blocked" marker, so the import
+    # raises ImportError with no ROS needed. The name it carries is the NODE module, whose
+    # top-level segment is the package itself — hence the workspace hint, not a pip one.
     monkeypatch.setitem(sys.modules, "warehouse_web_bridge.web_bridge_node", None)
     assert cli.main() == 1
-    assert "web_bridge cannot start" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "web_bridge cannot start" in err
+    assert "colcon build" in err  # the hint this path actually produces
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "module,spec,where",
+    [("fastapi", "fastapi>=0.110", "deploy/dev/Dockerfile:44"), ("uvicorn", "uvicorn>=0.27", None)],
+)
+def test_cli_reports_a_lazily_imported_dep_that_fails_at_run_time(
+    monkeypatch, capsys, module: str, spec: str, where: str | None
+) -> None:
+    # fastapi is imported INSIDE create_app and websockets by uvicorn at serve time, so their
+    # absence surfaces after the node import succeeded. Without guarding the call too, the
+    # operator gets the bare traceback #283 is about, and the fastapi/websockets rows of the
+    # hint table would be unreachable decoration.
+    from warehouse_web_bridge import cli
+
+    def _explode() -> None:
+        raise ModuleNotFoundError(f"No module named {module!r}", name=module)
+
+    fake = types.ModuleType("warehouse_web_bridge.web_bridge_node")
+    fake.main = _explode
+    monkeypatch.setitem(sys.modules, "warehouse_web_bridge.web_bridge_node", fake)
+    assert cli.main() == 1
+    err = capsys.readouterr().err
+    assert spec in err
+    if where is not None:
+        assert where in err
+
+
+@pytest.mark.unit
+def test_cli_does_not_disguise_an_unrelated_import_error_as_provisioning(monkeypatch) -> None:
+    # The guard must not swallow runtime bugs: an ImportError the table cannot explain keeps
+    # its traceback rather than sending the operator to the Dockerfile.
+    from warehouse_web_bridge import cli
+
+    def _explode() -> None:
+        raise ImportError("cannot import name 'Nope' from 'somewhere'")
+
+    fake = types.ModuleType("warehouse_web_bridge.web_bridge_node")
+    fake.main = _explode
+    monkeypatch.setitem(sys.modules, "warehouse_web_bridge.web_bridge_node", fake)
+    with pytest.raises(ImportError, match="Nope"):
+        cli.main()
+
+
+@pytest.mark.unit
+def test_is_provisioning_failure_only_claims_modules_the_table_can_explain() -> None:
+    known = [
+        ModuleNotFoundError(name="fastapi"),
+        ModuleNotFoundError(name="websockets"),
+        ModuleNotFoundError(name="rclpy.qos"),
+        ModuleNotFoundError(name="eval_sdk"),
+    ]
+    assert all(preflight.is_provisioning_failure(exc) for exc in known)
+    assert not preflight.is_provisioning_failure(ModuleNotFoundError(name="totally_unknown_pkg"))
+    assert not preflight.is_provisioning_failure(ImportError("cannot import name 'x'"))
 
 
 @pytest.mark.unit
