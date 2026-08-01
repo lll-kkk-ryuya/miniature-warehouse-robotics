@@ -64,3 +64,7 @@ ER + VLA を実機 path に近づけるには、最低限以下を満たす。
 - deterministic Validator / SafetyCompiler が存在する。
 - MCP / Policy Gate を bypass しない。
 - Emergency Guardian / Layer0 safety の優先順位を変えない。
+
+## 関連: 投入前検証ゲート（docs/sim/01）
+
+本 doc の Gate 列（G0–G7 ＝ Ladder S）は、Isaac Sim を「映像ツール」ではなく **投入前検証基盤** として位置づける [sim/01](../sim/01-isaac-sim-verification-gate.md)（投入前検証ゲート）と対応する。特に **G4 sim-only replay（上表）は sim/01 の決定的 replay floor と 1:1** で、pixel 入力（ER/VLA）の危険 output を実機・L0 に触れず replay して reject する。用途分割の分担正本は [sim/00](../sim/00-simulation-platform-strategy.md)。

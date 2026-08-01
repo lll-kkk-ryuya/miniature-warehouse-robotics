@@ -37,10 +37,10 @@
 │      │      │  Sub: /cmd_vel                       │
 └──────┴──────┴────────────────────────────────────┘
         │
-        ▼ （開発・撮影時のみ）
+        ▼ （投入前検証・開発・撮影時）
 ┌──────────────────────────────────────────────────┐
 │  RunPod A10G（クラウド）                           │
-│  └── Isaac Sim 5.1（デジタルツイン・映像生成）     │
+│  └── Isaac Sim 5.1（検証基盤・デジタルツイン）     │
 │      ※RTコア必須 → A10G/L4/RTX 4090              │
 └──────────────────────────────────────────────────┘
 ```
@@ -239,17 +239,17 @@ WO（Webアプリ）  ←→  WO Bridge Node（ROS 2）  ←→  Nav2
 
 | モデル | Phase | 用途 |
 |--------|-------|------|
-| Isaac Sim 5.1 | Phase 5 | デジタルツイン構築、Before/After映像 |
+| Isaac Sim 5.1 | Phase 5 | 投入前検証・fixture 生成（映像は副産物） |
 | Isaac ROS | Phase 2〜 | Jetson上でNav2高速化 |
 | FoundationPose | Phase 5+ | 荷物（箱・パレット）の姿勢認識 |
 | SLAM Toolbox | Phase 2 | 2D地図生成 |
 
-### Isaac Sim 連携
+### Isaac Sim 連携（投入前検証基盤＋映像）
 
-- クラウド（RunPod A10G）上で Isaac Sim を実行
-- ジオラマと同じレイアウトの3Dシーンを構築
-- ROS 2 Bridge でロボットの位置データを同期
-- 開発・撮影時のみ使用（常時起動不要）
+- 用途分割: Mode A/C は situation JSON 入力ゆえ Gazebo で足り Isaac Sim は optional／Mode X-ER・VLA は pixel 入力ゆえ Isaac Sim 必須（分担正本 → [sim/00](../sim/00-simulation-platform-strategy.md)）
+- クラウド（RunPod A10G）上で Isaac Sim を実行し、ジオラマと同じレイアウトの3Dシーンを構築
+- ROS 2 Bridge で位置データを同期。合成データ・domain randomization で fixture を量産（投入前検証ゲート）
+- 映像・撮影は副産物（optional・常時起動不要）／投入前検証ゲートはカット不可（X-ER/VLA 前提）
 
 ---
 
@@ -286,7 +286,7 @@ WO（Webアプリ）  ←→  WO Bridge Node（ROS 2）  ←→  Nav2
 
 | ツール | 用途 | Phase |
 |--------|------|-------|
-| Isaac Sim 5.1（RunPod A10G） | デジタルツイン映像生成 | Phase 5 |
+| Isaac Sim 5.1（RunPod A10G） | 投入前検証・fixture 生成（映像は副産物） | Phase 5 |
 | Claude / ChatGPT / Gemini / Grok API | LLM司令官（Hermes Agent経由） | Phase 0.5〜 |
 
 ---

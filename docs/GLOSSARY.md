@@ -125,6 +125,20 @@
 - **L2 Policy Profile（restrict-only）** — L2 Governance の案件差分を表す **data-only** profile。凍結値（battery `10`/`20`・`MAX_LINEAR_VELOCITY 0.3`）を floor とし **締める/止めるのみ・緩めない**（緩い値は起動拒否 fail-closed）。v1 で in-proc code plugin は不採用。L3 の自由 plugin 化（[adr/0003](adr/0003-bridge-local-manifest-composition.md)）と非対称。 — [productization/11 §2026-07-09 補足](productization/11-l2-contract-governance-traffic-box.md) / [adr/0004](adr/0004-l2-restrict-only-policy-profile.md)
 - **二段ゲート（L3 Validator ↔ L2 Policy Gate）** — 似て見える check の重複ではなく、同一事故を別入力・別時刻で止める2段。L3=「Command 候補になってよいか」（frozen 9-code [ValidationCode](../ws/src/warehouse_llm_bridge/warehouse_llm_bridge/robotics_planning_core/validator/report.py)）/ L2=「今この tool call を実行してよいか」（14 `policy_gate` code + live `StateSnapshot`）。 — [productization/11 §2026-07-09 補足](productization/11-l2-contract-governance-traffic-box.md) / [adr/0004](adr/0004-l2-restrict-only-policy-profile.md)
 
+## 11. シミュレーション / 検証基盤（simulation / verification）
+
+> pixel が司令官入力になると sim レンダリング＝テスト入力になる。sim を「開発ループ（Gazebo）」と「投入前検証ゲート＋fixture 工場（Isaac Sim）」の二層に分ける語彙。正本＝[sim/00](sim/00-simulation-platform-strategy.md)・[sim/01](sim/01-isaac-sim-verification-gate.md)・[sim/02](sim/02-synthetic-data-and-domain-randomization.md)。設計決定＝[adr/0006-isaac-sim-as-verification-gate.md](adr/0006-isaac-sim-as-verification-gate.md)。
+
+- **Gazebo（Harmonic）** — CPU・決定的・物理/Nav2 の開発ループ用シミュレータ（Docker on Mac・ARM64）。situation JSON 入力の Mode A/C はこれで足りる。 — [sim/00-simulation-platform-strategy.md](sim/00-simulation-platform-strategy.md) / [architecture/03-software-architecture.md:263](architecture/03-software-architecture.md)
+- **Isaac Sim（5.1）** — RT コア必須・photorealistic の投入前検証ゲート＋fixture 工場（RunPod A10G）。pixel 入力の Mode X-ER/VLA から必須。 — [sim/00-simulation-platform-strategy.md](sim/00-simulation-platform-strategy.md) / [shared/07-research-notes.md:107-112,:127](shared/07-research-notes.md)
+- **投入前検証ゲート（deployment verification gate）** — sim = ロボットの CI/CD。ER/VLA 生 output→L3→L2→L1 の鎖を実機・L0 に触れず replay して危険 output を reject する gate 群。 — [sim/01-isaac-sim-verification-gate.md](sim/01-isaac-sim-verification-gate.md) / Ladder S=[mode-x-er-vla/03-simulation-and-safety-gates.md:15-22](mode-x-er-vla/03-simulation-and-safety-gates.md)
+- **fixture 工場（fixture factory）** — Isaac Sim を「非決定でよく、新しい failure を発掘し golden fixture に落とす」生成器として使う役割。 — [sim/02-synthetic-data-and-domain-randomization.md](sim/02-synthetic-data-and-domain-randomization.md)
+- **決定的 floor（deterministic replay floor）** — CI ゲート下限＝毎回同じ入力・同じ判定の fixture replay。pixel 非決定性を CI に持ち込まない。 — [sim/01-isaac-sim-verification-gate.md](sim/01-isaac-sim-verification-gate.md)
+- **golden fixture** — sim/実機で発掘した failure を固定した決定的テスト入力（recorded image + instruction + fake state + expected verdict）。 — [sim/02-synthetic-data-and-domain-randomization.md](sim/02-synthetic-data-and-domain-randomization.md) / [mode-x-er-vla/03-simulation-and-safety-gates.md:55](mode-x-er-vla/03-simulation-and-safety-gates.md)
+- **domain randomization（DR）** — 照明・テクスチャ・カメラ内外・配置・色・ノイズ・オクルージョンを randomize し sim 由来 pixel 分布を広げる合成データ手法。パラメータ範囲は未凍結。 — [sim/02-synthetic-data-and-domain-randomization.md](sim/02-synthetic-data-and-domain-randomization.md)
+- **sim-to-real gap** — sim の object label / 見え方と real camera の差分。DR で狭める。 — [sim/02-synthetic-data-and-domain-randomization.md](sim/02-synthetic-data-and-domain-randomization.md) / [mode-x-er-vla/03-simulation-and-safety-gates.md:52](mode-x-er-vla/03-simulation-and-safety-gates.md)
+- **photorealistic fidelity** — Isaac Sim の RT コア/レイトレーシングによる写実的レンダリング。pixel が司令官入力になる Mode X-ER/VLA でテスト入力の質を決める。 — [sim/00-simulation-platform-strategy.md](sim/00-simulation-platform-strategy.md) / [shared/07-research-notes.md:107-112](shared/07-research-notes.md)
+
 ---
 
 > 未登録の canonical anchor（正本 doc がまだ無い語）を見つけたら、**発明せず**に code file:line を暫定 anchor にし、正本 doc 化を doc PR で提案する（[docs-first.md](../.claude/rules/docs-first.md)）。

@@ -154,7 +154,7 @@
 | R-04 | ロボット実寸が未測定（通路幅200mm前提が崩壊する可能性） | Yahboom公式に寸法記載なし。~150mmは推定のまま | 🟡 | Phase 1（実測） |
 | R-08 | WiFi が唯一の通信経路（micro-ROS + LLM API 全依存） | 未検証（実機必要） | 🔴 | Phase 1 |
 | R-12 | rclpy + FastAPI + asyncio の共存（Nav2 Bridge） | MultiThreadedExecutor分離パターンで設計済み。実装時に検証 | 🟡 | Phase 0.5 Day 3-4 |
-| R-16 | 15週間のスケジュールが非現実的（1人開発） | 未検証。Isaac Sim（Phase 5）カットで緩和可能 | 🔴 | Phase 0 で再見積もり |
+| R-16 | 15週間のスケジュールが非現実的（1人開発） | 未検証。映像制作カットで緩和可能（検証基盤は非対象＝[adr/0006](../adr/0006-isaac-sim-as-verification-gate.md)） | 🔴 | Phase 0 で再見積もり |
 | R-25 | Fleet Adapter の詳細設計が未着手 | 未着手だが Open-RMF aptパッケージ利用で工数低減見込み | 🟡 | Phase 3 後半 |
 | R-26 | テスト戦略の完全な欠如 | 未対応。最低限 Emergency Guardian + Policy Gate のユニットテスト必要 | 🟡 | Phase 0.5 |
 
@@ -180,7 +180,7 @@
 | R-14 | Hermes MCP stdio通信 と Warehouse MCP Server の安定性 | Phase 0.5 |
 | R-15 | Emergency Guardian の cmd_vel と Nav2 Controller の競合（タイミングウィンドウ） | Phase 2 |
 | R-17 | Open-RMF の学習曲線（「3-5日」は楽観的） | Phase 3 |
-| R-18 | Isaac Sim（Phase 5）の実現可能性（RunPod A10G環境構築 + 3Dシーン + ROS 2 Bridge を2週間） | Phase 5（フォールバック: Isaac Simなしでも動画成立） |
+| R-18 | Isaac Sim（Phase 5）の実現可能性（RunPod A10G環境構築 + 3Dシーン + ROS 2 Bridge を2週間） | Phase 5（映像はなしでも成立／検証ゲートはカット不可＝X-ER/VLA 前提） |
 | R-21 | dispatch_task の過積載（action/via/duration、LLM誤用リスク） | Phase 0.5 |
 | R-22 | ファイルベース State Cache（I/O遅延、データ鮮度） | Phase 0.5 |
 | R-27 | エラーリカバリーフローの一部が未設計 | Phase 3 |
@@ -211,7 +211,7 @@
 | **1** | `pip install hermes-agent` のJetson ARM64確認 | R-01は🟢だが実機確認が最終判定。失敗時は案D（2-3週間追加） |
 | **2** | Jetson 8GB で Nav2x2 + Hermes 同時起動 → `free -h` 記録 | R-02が最大の🔴。500MB未満なら Open-RMF 断念を即決 |
 | **3** | `apt install ros-jazzy-rmf-fleet-adapter` のJetson確認 | R-03は🟢（aptバイナリあり）だが実機最終確認 |
-| **4** | スケジュール見直し: 15週→20週、または Isaac Sim カット | R-16対応。Phase 5 を完全オプション化 |
+| **4** | スケジュール見直し: 15週→20週、または映像制作カット（検証ゲートは非対象） | R-16対応。映像制作のみ optional 化（検証基盤はカット不可） |
 | **5** | Emergency Guardian + Policy Gate のユニットテスト作成 | R-26対応。Phase 0.5 で最低限のテスト基盤 |
 | **6** | Yahboom サポートにロボット寸法を問い合わせ | R-04対応。実機到着前に情報取得を試みる |
 | **7** | Gemini モデル名を gemini-2.5-flash のまま維持、Phase 4 で再評価 | R-29は🟢。10月まで猶予あり |
