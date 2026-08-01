@@ -17,6 +17,8 @@ handed to the loop via ``call_soon_threadsafe`` (asyncio.Queue is not thread-saf
 
 Heavy deps (rclpy, uvicorn, std_msgs) are imported at module load — fine because only
 ``main()`` imports this module at runtime; the unit tests import the pure cores (no ROS).
+The ``web_bridge`` console script therefore resolves to :mod:`warehouse_web_bridge.cli`, which
+guards that module-load import and turns a missing dep into an actionable hint (#283).
 """
 
 from __future__ import annotations
@@ -29,6 +31,7 @@ import time
 
 import rclpy
 import uvicorn
+from eval_sdk.seed import resolve_run_id
 from rclpy.executors import SingleThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
@@ -43,6 +46,7 @@ from warehouse_web_bridge.ingest import Ingestor
 from warehouse_web_bridge.kind_map import SUBSCRIBED_TOPICS
 from warehouse_web_bridge.settings import resolve_settings
 from warehouse_web_bridge.state import GatewayState
+from warehouse_web_bridge.trace import make_trace_deriver
 
 SNAPSHOT_TOPIC = "/state_cache/snapshot"
 
@@ -126,10 +130,18 @@ def main() -> None:
     """Run the gateway: rclpy spin in a thread, uvicorn API + snapshot drain on the main loop."""
     config = load_config()
     settings = resolve_settings(config, token=os.environ.get("WEB_BRIDGE_TOKEN"))
-    run_id = os.environ.get("WAREHOUSE_RUN_ID") or f"run-{int(time.time())}"  # synthetic fallback
+    # The shared per-run id both trace legs seed from (#108). resolve_run_id treats a blank
+    # env exactly as the Bridge does (seed.py:129-137), so a whitespace-only WAREHOUSE_RUN_ID
+    # cannot become a run_id that stamps events and joins nothing; synthetic fallback until
+    # /run/header lands (doc22:303,:309).
+    run_id = resolve_run_id(os.environ.get("WAREHOUSE_RUN_ID"), f"run-{int(time.time())}")
 
     event_log = EventLog(settings.recordings_dir, run_id)
-    ingestor = Ingestor(event_log, run_id=run_id)  # trace_deriver=None in S2 (live derive: later)
+    # Live trace_id derivation (doc22 §7:194-195): gen_id-bearing negotiation events get the
+    # Langfuse join key, everything else stays null. The recipe follows the trace-owner knob
+    # (Pattern A vs Option D) so the console never deep-links an id nobody minted; absent
+    # langfuse it degrades to null (fail-open both ways, ingest.py:68-77).
+    ingestor = Ingestor(event_log, run_id=run_id, trace_deriver=make_trace_deriver(config))
     coalescer = SnapshotCoalescer()
     hub = FanoutHub(max_clients=settings.max_clients, client_queue_max=settings.client_queue_max)
     state = GatewayState(

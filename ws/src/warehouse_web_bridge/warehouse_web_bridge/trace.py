@@ -1,0 +1,128 @@
+"""``trace_id`` derivation for gen_id-bearing ObsEvents (doc22 §7:190-195).
+
+doc22:194 fixes the v1 scope: **only** the two gen_id-bearing negotiation events
+(``/negotiation/start`` / ``/negotiation/proposal``, doc22:192) can carry a Langfuse join key;
+reasoning / command / snapshot have no ``gen_id`` on the wire and stay ``trace_id: null``.
+That gating lives in :class:`~warehouse_web_bridge.ingest.Ingestor` (it consults the deriver
+only when ``event["gen_id"] is not None``) — this module supplies only the *recipe*.
+
+**The recipe must MATCH whoever minted the trace**, otherwise the console deep-links to a
+trace id that exists nowhere (a silently wrong link is worse than no link):
+
+* **Pattern A** (default — ``WAREHOUSE_LANGFUSE_OWNER`` unset / ``bridge``): the LLM Bridge owns
+  the trace and seeds it from ``seed_for(run_id, gen_id)`` (``eval_sdk/seed.py:33-42``) →
+  ``derive_trace_id`` (``seed.py:70-85``). This is the recipe doc22:195 names.
+* **Option D** (``hermes_plugin``): the Hermes Langfuse plugin mints the root trace server-side
+  from its own ``H::H`` doubling → ``derive_plugin_trace_id`` (``seed.py:108-126``).
+
+:func:`resolve_pattern_d` MIRRORS ``warehouse_orchestrator.score_send.resolve_pattern_d``
+(``score_send.py:65-89``): the scorer lane already re-derives the same id from the same knob,
+so ONE config value keeps the Bridge, the scorer and this gateway on one trace. We deliberately
+do **not** import the orchestrator copy — web_bridge depends only on ``warehouse_interfaces`` +
+``eval_sdk`` (one-way dependency, parallel-workflow §2.1; a cross-track import is also rejected
+by CI). The two literal owner values are a stable cross-lane string contract, exactly like the
+trace seed itself; ``tests/unit/test_web_trace.py`` pins our copies byte-identical to the
+orchestrator's, with the cross-lane import living ONLY in that test (the precedent set by
+``tests/unit/test_hermes_client_option_d.py:243-251``).
+
+Fail-open in every direction (doc22:152,:194) — trace derivation must never gate an event:
+
+* no ``run_id`` (pre-``/run/header`` runs can pass ``None``, doc22:148) → ``None``;
+* langfuse SDK absent / unreachable → ``None`` (``derive_trace_id`` swallows it);
+* unknown owner value → **fails SAFE to Pattern A** and is LOGGED, so a typo never silently
+  deep-links every negotiation onto the wrong recipe.
+"""
+
+from __future__ import annotations
+
+import logging
+import os
+from collections.abc import Callable, Mapping
+
+from eval_sdk.seed import derive_plugin_trace_id, derive_trace_id, seed_for
+
+log = logging.getLogger(__name__)
+
+# CROSS-LANE STRING CONTRACT — byte-identical mirrors of the orchestrator's copies
+# (score_send.py:59-61) and the Bridge's (hermes_client.LANGFUSE_OWNER_*). Mirrored, never
+# imported (see module docstring); a rename on one side alone is caught by the pin unit.
+WAREHOUSE_LANGFUSE_OWNER_ENV = "WAREHOUSE_LANGFUSE_OWNER"
+LANGFUSE_OWNER_BRIDGE = "bridge"
+LANGFUSE_OWNER_HERMES_PLUGIN = "hermes_plugin"
+_LANGFUSE_OWNERS = frozenset({LANGFUSE_OWNER_BRIDGE, LANGFUSE_OWNER_HERMES_PLUGIN})
+
+TraceDeriver = Callable[[str | None, int], str | None]
+
+
+def resolve_pattern_d(cfg: Mapping[str, object], env: Mapping[str, str] | None = None) -> bool:
+    """Is the Hermes Langfuse plugin the trace owner this run? (Option D ⇒ ``True``).
+
+    Same precedence as the scorer's mirror (``score_send.py:65-89``) and the Bridge's resolver:
+    ``WAREHOUSE_LANGFUSE_OWNER`` env first, then ``hermes.langfuse_owner`` config, else the
+    default ``bridge`` (Pattern A). Returns ``True`` ONLY for the exact value ``hermes_plugin``;
+    a blank env falls through to config, and any unknown/typo value fails SAFE to Pattern A
+    (``False``) — and is LOGGED so the misconfig is not silent. Pure (``env`` injected for
+    tests); never raises on a malformed config block.
+    """
+    env = os.environ if env is None else env
+    raw = env.get(WAREHOUSE_LANGFUSE_OWNER_ENV)
+    if raw is None or not str(raw).strip():
+        hermes = cfg.get("hermes") if isinstance(cfg, Mapping) else None
+        raw = hermes.get("langfuse_owner") if isinstance(hermes, Mapping) else None
+    owner = str(raw).strip() if raw is not None else ""
+    if owner and owner not in _LANGFUSE_OWNERS:
+        log.warning(
+            "unknown %s=%r; falling back to Pattern A (Option D stays off)",
+            WAREHOUSE_LANGFUSE_OWNER_ENV,
+            owner,
+        )
+    return owner == LANGFUSE_OWNER_HERMES_PLUGIN
+
+
+def _derive_pattern_a(
+    run_id: str,
+    gen_id: object,
+    *,
+    create_fn: Callable[..., str] | None = None,
+) -> str | None:
+    """Pattern A: hash the Bridge-owned join key ``f"{run_id}:{gen_id}"`` (doc22:195)."""
+    return derive_trace_id(seed_for(run_id, gen_id), create_fn=create_fn)
+
+
+def make_trace_deriver(
+    cfg: Mapping[str, object],
+    *,
+    env: Mapping[str, str] | None = None,
+    create_fn: Callable[..., str] | None = None,
+) -> TraceDeriver:
+    """Build the :class:`~warehouse_web_bridge.ingest.Ingestor` ``trace_deriver`` for this run.
+
+    The owner knob is read ONCE at startup (it is a per-run setting, like the Bridge's), so the
+    per-event path is a plain function call. ``create_fn`` is injectable so a unit can exercise
+    the recipe without the Langfuse SDK (``seed.py:70-85``) — the node passes ``None`` and the
+    SDK is resolved lazily inside ``derive_trace_id``.
+
+    The returned deriver is total: it returns ``None`` rather than raising for any input. The
+    Ingestor guards it a second time (``ingest.py:74-77``) so even a future non-total deriver
+    cannot drop a never-drop event; this is defence in depth, not redundancy.
+    """
+    pattern_d = resolve_pattern_d(cfg, env)
+    derive = derive_plugin_trace_id if pattern_d else _derive_pattern_a
+    log.info(
+        "trace_id recipe: %s (%s)",
+        "Option D / hermes_plugin" if pattern_d else "Pattern A / bridge",
+        "derive_plugin_trace_id" if pattern_d else "derive_trace_id(seed_for(...))",
+    )
+
+    def _deriver(run_id: str | None, gen_id: int) -> str | None:
+        # run_id is the other half of the join key: without it there is nothing to join to,
+        # so emit no trace_id rather than a run-less id that matches no Langfuse trace. Blank
+        # is "unset" here for the SAME reason resolve_run_id treats it so (seed.py:129-137):
+        # the Bridge would have fallen back to its session id, so a blank-seeded id would
+        # deep-link to a trace that was never minted. The seed itself is still VERBATIM
+        # (seed.py:39-41) — we reject the run, we do not strip it.
+        if run_id is None or not run_id.strip():
+            return None
+        return derive(run_id, gen_id, create_fn=create_fn)
+
+    return _deriver
