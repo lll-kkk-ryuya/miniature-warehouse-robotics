@@ -22,6 +22,8 @@ setup(
     license="Apache-2.0",
     tests_require=["pytest"],
     entry_points={
-        "console_scripts": ["web_bridge = warehouse_web_bridge.web_bridge_node:main"],
+        # Executable name unchanged; cli:main preflights the heavy deps (#283) before importing
+        # web_bridge_node (whose module-load rclpy/uvicorn import is what fails first).
+        "console_scripts": ["web_bridge = warehouse_web_bridge.cli:main"],
     },
 )
