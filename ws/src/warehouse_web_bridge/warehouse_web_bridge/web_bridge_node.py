@@ -140,7 +140,10 @@ def main() -> None:
     # Live trace_id derivation (doc22 §7:194-195): gen_id-bearing negotiation events get the
     # Langfuse join key, everything else stays null. The recipe follows the trace-owner knob
     # (Pattern A vs Option D) so the console never deep-links an id nobody minted; absent
-    # langfuse it degrades to null (fail-open both ways, ingest.py:68-77).
+    # langfuse it degrades to null (fail-open both ways, ingest.py:68-77). The deriver also
+    # refuses the SYNTHETIC run_id above: without the shared WAREHOUSE_RUN_ID the Bridge seeds
+    # from its own session id (llm_bridge.py:179), so joining is impossible and trace_id stays
+    # null (doc22:152,:194) rather than pointing at a trace nobody minted (trace.py).
     ingestor = Ingestor(event_log, run_id=run_id, trace_deriver=make_trace_deriver(config))
     coalescer = SnapshotCoalescer()
     hub = FanoutHub(max_clients=settings.max_clients, client_queue_max=settings.client_queue_max)
