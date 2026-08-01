@@ -298,7 +298,7 @@ def _is_cancelled(entry: AuditEntry, cancelled: set[str]) -> bool:
 
 
 def robot_load_fairness(by_robot: dict[str, ResultTally]) -> float | None:
-    """Jain fairness index over the per-robot **executed** command load (doc21:186, :310).
+    """Jain fairness index over the per-robot **executed** load in ``by_robot`` (doc21:186, :310).
 
     The domain half of the Tier-1 fairness KPI: doc21:186 fixes the data source (`by_robot`)
     and doc21:310 fixes the index (Jain), but neither says *which* tally is "the load", so this
@@ -306,8 +306,15 @@ def robot_load_fairness(by_robot: dict[str, ResultTally]) -> float | None:
     robot that merely attracted rejections look equally loaded. Rejected/error rows stay
     visible in ``by_robot`` for anyone who wants the other reading (PR residual).
 
-    ``1.0`` = every robot got the same number of executed commands; ``1/n`` = one robot got all
-    of them; ``None`` when no robot rows exist or nothing was executed (undefined, not "unfair").
+    Scope caveat: ``by_robot`` collects **every** audit row that carries a ``robot`` field, not
+    only ``COMMAND_TOOLS`` rows. Today the two coincide (only the command tools write ``robot``;
+    the read-only tools do not), but the audit record shape is explicitly not a frozen contract
+    (``audit_reader.py:3-8``), so a future read-only producer that starts writing ``robot`` would
+    enter this load silently. Narrowing to a command-only tally is a follow-up, not something
+    this additive slice does implicitly (PR residual).
+
+    ``1.0`` = every robot got the same executed load; ``1/n`` = one robot got all of it;
+    ``None`` when no robot rows exist or nothing was executed (undefined, not "unfair").
     """
     return jain_fairness_index([tally.executed for tally in by_robot.values()])
 
@@ -450,7 +457,12 @@ def completion_stats(records: Sequence[CompletionRecord]) -> CompletionStats:
     ``count / makespan`` tasks per second. Both are ``None`` for an empty record set, and
     ``throughput`` is also ``None`` for a zero-length span (a single instantaneous task has no
     defined rate). :func:`pair_completion_times` already drops completions preceding their
-    dispatch, so ``makespan`` never sees an inverted interval.
+    dispatch, so the ``compute_kpis`` path never hands ``makespan`` an inverted interval.
+
+    Failure mode (new in this slice): a :class:`CompletionRecord` built by hand with
+    ``completion_ts < dispatch_ts`` and passed here **directly** raises ``ValueError`` from
+    ``eval_sdk.stats.makespan`` — a malformed pairing is treated as a programming error, not a
+    measurable span. Reaching it requires bypassing :func:`pair_completion_times`.
     """
     times = [record.completion_time for record in records]
     span = makespan([(record.dispatch_ts, record.completion_ts) for record in records])

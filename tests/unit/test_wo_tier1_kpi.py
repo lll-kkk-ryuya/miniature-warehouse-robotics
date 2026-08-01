@@ -6,15 +6,15 @@ completion throughput/makespan.
 
 The chain under test is the real one: a fake ``audit.jsonl`` written to ``tmp_path`` and read
 through the frozen path (``WAREHOUSE_AUDIT_LOG_PATH`` → ``read_audit_log``) → ``compute_kpis``.
-The fixture mirrors the **real producer** (``warehouse_mcp_server/audit.py:34-43``:
+The fixture mirrors the **real producer** (``warehouse_mcp_server/audit.py:37-39``:
 ``{timestamp, tool, result, detail, robot}``; ``escalation_response`` executed rows carry
-``robot=new_robot``, tools.py:409) — no invented fields.
+``robot=new_robot``, tools.py:408) — no invented fields.
 
 Every expected number is hand-counted from the fixture or hand-computed from the published
 Jain / makespan definitions, never re-derived from the implementation (independent oracle,
 .claude/rules/safety.md R-26 / doc20 §9): flipping ``executed``→``total`` in the fairness load,
-counting rejected escalations as interventions, or swapping the makespan endpoints each turns a
-listed assertion red.
+counting rejected escalations as interventions, nesting the intervention tally inside the
+``COMMAND_TOOLS`` branch, or swapping the makespan endpoints each turns a listed assertion red.
 
 Scope note (deliberate): the **odom-sourced** Tier-1 entries of doc21:310 (detour factor,
 jerk/SPARC composition, 速度予算消化率, idle 率) are NOT covered because they are not
@@ -26,6 +26,7 @@ import json
 from pathlib import Path
 
 import pytest
+from warehouse_orchestrator import kpi as kpi_module
 from warehouse_orchestrator.audit_reader import read_audit_log
 from warehouse_orchestrator.kpi import (
     ResultTally,
@@ -35,8 +36,15 @@ from warehouse_orchestrator.kpi import (
 )
 
 
-def _rec(tool, result, *, detail=None, robot=None, ts=None):
-    """One audit line in the producer's shape (audit.py:34-43)."""
+def _rec(
+    tool: str,
+    result: str,
+    *,
+    detail: object = None,
+    robot: str | None = None,
+    ts: float | None = None,
+) -> dict[str, object]:
+    """One audit line in the producer's shape (audit.py:37-39)."""
     return {"timestamp": ts, "tool": tool, "result": result, "detail": detail, "robot": robot}
 
 
@@ -116,8 +124,24 @@ def test_intervention_rate_is_none_without_command_decisions(
 def test_intervention_count_survives_a_rescoped_command_tool_set(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # The numerator is counted independently of COMMAND_TOOLS membership (doc21:184): even a
-    # log whose only rows are escalations still reports them.
+    # The numerator is counted independently of COMMAND_TOOLS membership (doc21:184). Actually
+    # re-scope that set so escalation_response is no longer a member: the 1 executed escalation
+    # must STILL be counted. Only the denominator may shrink (to the 4 dispatch decisions).
+    # An implementation that counted interventions inside the COMMAND_TOOLS branch reports
+    # count 0 / rate 0.0 here — that is the whole point of the guard this test names.
+    monkeypatch.setattr(kpi_module, "COMMAND_TOOLS", frozenset({"dispatch_task"}))
+    _write_audit(tmp_path, monkeypatch, _FIXTURE)
+    rescoped = compute_kpis(read_audit_log())
+    assert rescoped.command_decisions == 4
+    assert rescoped.intervention_count == 1
+    assert rescoped.intervention_rate == pytest.approx(1 / 4)
+
+
+@pytest.mark.unit
+def test_intervention_is_counted_in_an_escalation_only_log(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Degenerate log: escalations are the only rows, so numerator and denominator coincide.
     _write_audit(
         tmp_path,
         monkeypatch,

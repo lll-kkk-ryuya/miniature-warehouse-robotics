@@ -241,7 +241,7 @@ def test_percentile_helper_edges() -> None:
 
 @pytest.mark.unit
 def test_send_to_charging_flows_through_both_dispatch_kpi_paths() -> None:
-    # send_to_charging is the second DISPATCH_TOOL (kpi.py:59): the producer mints a
+    # send_to_charging is the second DISPATCH_TOOL (kpi.DISPATCH_TOOLS): the producer mints a
     # task_id for its executed rows (tools.py:279/283), so it must behave like
     # dispatch_task in BOTH the cancelled-exclusion path and completion pairing. This
     # pins DISPATCH_TOOLS membership against a future narrowing regression.
@@ -349,7 +349,7 @@ _TOL = 1e-9  # absolute float slack for interpolated-percentile / mean compariso
 def test_percentile_properties_over_random_samples() -> None:
     """_percentile invariants for any sample (it sorts internally): p(0)=min,
     p(100)=max, min ≤ p(q) ≤ max, non-decreasing in q, and order-independent
-    (kpi.py:79-91)."""
+    (kpi._percentile = eval_sdk.stats.percentile)."""
     rng = random.Random(20260612)
     quantiles = [0, 1, 25, 50, 75, 95, 99, 100]
     for _ in range(300):
@@ -375,7 +375,7 @@ def test_percentile_hits_order_statistics_exactly() -> None:
     """When q lands exactly on an index (q = 100·k/(n-1)), _percentile returns the
     k-th order statistic within float tolerance — pins the rank→index mapping. The
     computed rank can be ~1 ULP off, so the interpolation branch may run; pytest.approx
-    absorbs the ~1e-13 residual (kpi.py:86-91)."""
+    absorbs the ~1e-13 residual (kpi._percentile = eval_sdk.stats.percentile)."""
     rng = random.Random(7)
     for _ in range(100):
         n = rng.randint(2, 30)
@@ -388,7 +388,7 @@ def test_percentile_hits_order_statistics_exactly() -> None:
 @pytest.mark.unit
 def test_cancelled_task_ids_only_executed_cancel_rows() -> None:
     """cancelled_task_ids returns exactly the task_ids of EXECUTED cancel_task rows
-    (kpi.py:252-263): other tools, non-executed cancels and missing task_ids never
+    (kpi.cancelled_task_ids): other tools, non-executed cancels and missing task_ids never
     contribute, and duplicates collapse to a set. Cross-checked vs an independent
     oracle over random logs."""
     rng = random.Random(99)
@@ -409,7 +409,7 @@ def test_cancelled_task_ids_only_executed_cancel_rows() -> None:
 
 @pytest.mark.unit
 def test_pair_completion_times_invariants() -> None:
-    """Structural invariants over random audit logs (kpi.py:345-388): non-negative
+    """Structural invariants over random audit logs (kpi.pair_completion_times): non-negative
     durations (never premature), ≤1 record per task_id, dispatch_ts is the EARLIEST
     executed dispatch start, and every output id was both supplied AND had an
     executed dispatch."""
@@ -443,7 +443,7 @@ def test_pair_completion_times_invariants() -> None:
 def test_pair_completion_times_exclusion_is_monotone_subset() -> None:
     """exclude_cancelled=True yields a SUBSET of exclude_cancelled=False, dropping
     exactly the task_ids resolved by an executed cancel_task — ties the exclusion to
-    cancelled_task_ids (kpi.py:360,375)."""
+    cancelled_task_ids (kpi.pair_completion_times / kpi.cancelled_task_ids)."""
     rng = random.Random(555)
     for _ in range(150):
         task_ids = [f"nav_{i:03d}" for i in range(rng.randint(1, 5))]
@@ -479,7 +479,7 @@ def test_pair_completion_times_exclusion_is_monotone_subset() -> None:
 def test_completion_stats_invariants() -> None:
     """completion_stats aggregates obey min ≤ p50 ≤ p95 ≤ p99 ≤ max and
     min ≤ mean ≤ max, with count == len(records) and records preserved verbatim
-    (kpi.py:391-403)."""
+    (kpi.completion_stats)."""
     rng = random.Random(31337)
     for _ in range(200):
         n = rng.randint(1, 50)
@@ -512,7 +512,7 @@ def test_completion_stats_invariants() -> None:
 
 @pytest.mark.unit
 def test_completion_stats_empty_is_all_none() -> None:
-    """Empty input → count 0 and every statistic None (kpi.py:391-403)."""
+    """Empty input → count 0 and every statistic None (kpi.completion_stats)."""
     stats = completion_stats([])
     assert stats.count == 0
     assert stats.mean is None
