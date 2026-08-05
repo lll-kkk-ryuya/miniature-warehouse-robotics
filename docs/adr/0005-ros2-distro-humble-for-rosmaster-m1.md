@@ -43,7 +43,11 @@
 ## Open / 未決
 
 - `# TODO(Phase 0.5 再スパイク)` **Gazebo をどうするか（本 ADR で唯一未決）。** 推奨は **選択肢 A（Humble + Fortress）で ARM64 headless の再スパイクを回す**。理由は選択肢 B（非公式 Harmonic ＋ `ros-humble-ros-gz*` 競合）のリスクを恒久的に抱えたくないため。**再スパイクが割れた場合の退避 = sim（dev の Mac Docker）だけ Jazzy + Harmonic に残し、Jetson 実機・ロボット・Isaac ROS は Humble とする split-distro 運用**（PR#43 の実証済み資産を捨てずに済むが、dev と prod で distro が異なる二重管理になる）。判断材料は [16 §10](../architecture/16-repository-and-conventions.md):213 の分岐点＝「Phase 0.5 が Mac 単体で完結する」前提が維持できるか。
-- `# TODO(関連・別決定)` **Layer 0 の速度クランプの所在**。M1 の STM32 ファームは Yahboom 製バイナリのため、0.3 m/s のハードクランプを L0 に置けず L2 強制になる（[02](../shared/02-hardware-design.md) 残課題 7）。distro とは独立の決定だが、**M1 採用という同一の起点から派生する**ため併せて決める。
+  - **【2026-08-05 追調査】選択肢 A（Fortress）を推す根拠が強化された。**
+    1. **`ros-humble-ros-gzharmonic` に arm64 バイナリは今後も提供されない。** upstream issue [gazebosim/ros_gz#614](https://github.com/gazebosim/ros_gz/issues/614)（2024-09-18 起票・arm64 バイナリ欠如の報告）は **closed as *not planned***。開発機は **Mac M4（ARM64）** なので、選択肢 B は「非公式かつソースビルド」が恒久化する。
+    2. **Humble の `ros_gz` は 0.244.25 が released**（[ROS Index](https://index.ros.org/p/ros_gz/) 参照日 2026-08-05）。0.244.x は **Fortress 対応ライン**で、Humble / Ubuntu 22.04 arm64 は ROS 2 の Tier 1 プラットフォームのため **buildfarm の arm64 バイナリが期待できる**。`# TODO(再スパイク時)` 実際に `apt install ros-humble-ros-gz` が arm64 で引けるかを最初に確認する。
+    3. 残るリスクは変わらず **ARM64 headless の Fortress で LiDAR センサが成立するか**（Fortress でのセンサ名が `gpu_lidar` か `gpu_ray` かを含む）。ここが通れば本 ADR を `accepted` へ上げられる。
+- ~~`# TODO(関連・別決定)` **Layer 0 の速度クランプの所在**~~ → **【2026-08-05 決着・本 ADR の未決から外す】** 0.3 m/s のハードクランプは **ホスト側シリアルドライバの送信直前（L0'）** に置く。「L2 強制になる」という当初の見立ては誤りで、自前ドライバの `FUNC_MOTION` 組立直前が全 `cmd_vel` の単一絞り点になるため、Nav2 / Policy Gate より下に置ける（[02](../shared/02-hardware-design.md) 残課題 7）。distro とは独立の決定。
 - docs 一括改訂（"jazzy" 363 箇所）の範囲と順序。
 
 ## 適用状況（2026-08-05 時点・**部分適用のままコミット**）

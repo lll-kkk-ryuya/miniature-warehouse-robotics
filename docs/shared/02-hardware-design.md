@@ -388,6 +388,46 @@ RPLiDAR A2（+10,000円）: 精度・回転速度が向上。予備費からの�
 - **変わらないもの**: C-1〜C-4（車体寸法由来）は Superior / Standard の別と無関係にそのまま必要。
 - `# TODO(発注と独立に先行決定)` **distro をどうするか（ADR-0005 の未決＝Gazebo を Fortress に落とすか Harmonic をソースビルドするか）は Phase 0.5 のブロッカー**。実機到着を待つ必要が無いので、発注可否とは切り離して先に決める。判断材料は ARM64 headless での Gazebo 再スパイク結果（[16-repository-and-conventions.md](../architecture/16-repository-and-conventions.md):213-215 の GO 判定を引き継げるか）。
 
+### 購入確定（2026-08-05）と Orin 立ち上げ経路
+
+**発注済**: Amazon.co.jp 注文 `249-3401070-6986233`（2026-08-05・¥67,527）。商品名「Yahboom Jetson Nano B01搭載 ROS2ロボット …**Superior without Nano**」＝ `Superior-without / NANO 4GB SUB`（公式 sku 3000200910）。**到着予定 2026-08-10〜08-13**。
+
+#### Orin Nano Super Dev Kit の実ポート構成（公式 Hardware Layout 実見）
+
+| 項目 | 実際 | 帰結 |
+|---|---|---|
+| 映像出力 | **DisplayPort のみ**（「HDMI output and DisplayPort over USB-C are not supported」） | **DP→HDMI 変換が必須**（公式に adapter 対応と明記） |
+| USB-C | 映像出力なし・**給電も不可** | モニタ・電源とも USB-C 経由は不可 |
+| M.2 Key-E 2230 | **無線モジュール実装済（同梱）** | **WiFi/BT の買い足し不要** |
+| M.2 Key-M 2280 | PCIe 3.0 x4 | 同梱 KIOXIA 1TB NVMe をここへ |
+| M.2 Key-M 2230 | PCIe 3.0 x2 | 空き |
+| USB-A ×4 | 10Gbps・各スタック VBUS 3A 制限 | LiDAR / 拡張ボード(CH340) / HP60C を USB で束ねられる |
+| DC ジャック | **5.5×2.5mm** | 昇圧 DC-DC の出力プラグをこれに合わせる |
+
+#### フラッシュ経路（**開発機が Mac のみ → microSD 経路が唯一**）
+
+- QSPI ファームウェアが **`36.0` より古いと JetPack 6.x を起動できない**。確認は起動時 Esc → UEFI setup menu、または `sudo nvbootctrl dump-slots-info`。**`36.x` 以降なら更新不要**。
+- 更新方法は2つ: **microSD 経路**（公式「Requires no Ubuntu host PC; needs a computer with Internet access and an SD card reader」）と **SDK Manager**（公式「if you have an Ubuntu **x86_64** host PC」）。
+- 本プロジェクトの開発機は **MacBook Pro M4 のみ** → **SDK Manager は使えない**。**microSD 経路を採る**（microSD と SD カードリーダーが前提）。
+- JetPack は **6.2 系**（Ubuntu 22.04 rootfs = Humble ネイティブ。Super 化 `nvpmodel -m 2` も 6.2 で入った機能）。
+
+#### マウント
+
+NVIDIA は Carrier Board Specification に**取付穴の位置を公開していない**（外形寸法のみ）。→ 既存の 3D プリントキャリア（MakerWorld / Printables「JETSON ORIN NANO CARRIER WITH DIN RAIL MOUNT」等・M3 対応）を **Bambu Lab A1 mini で印刷**し、**M1 上段デッキへのアダプタ板のみ自作**する。穴位置の実測と試行錯誤を回避できる。
+
+#### 到着前に用意するもの
+
+| 品目 | 用途 | 必須度 |
+|---|---|---|
+| **DP→HDMI 変換アダプタ** | Orin に HDMI 端子が無い。無いと初回ブートで画面が出ない | **必須** |
+| **microSD（64GB A2 以上）＋ SD カードリーダー** | QSPI 更新と初回ブート。Mac 経路の前提 | **必須** |
+| **昇圧 DC-DC（12.6→19V・連続 ≥45W・出力 5.5×2.5 センタープラス）** | 残課題 2 の既定構成 | **必須** |
+| XH2.54 2PIN ⇔ DC5.5×2.5 ケーブル | 拡張ボード 12V → 昇圧 DC-DC 入力（自作可） | **必須** |
+| DC インライン電力計 / テスター | 給電の実測 ①〜④ | 強く推奨 |
+| WiFi モジュール | **不要**（Key-E に同梱済） | — |
+
+> `# TODO(到着前)` 昇圧 DC-DC は汎用モジュール（例: Amazon.co.jp の 12V→19V 昇圧・1–15A 品）しか見つかっておらず、**リプル・効率・実効電流の実測値が不明**。現物でのリプル測定を前提に選定する。
+
 ---
 
 ## References
