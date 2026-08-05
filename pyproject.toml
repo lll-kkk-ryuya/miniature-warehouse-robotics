@@ -23,7 +23,7 @@ dev = [
 
 # ── Ruff: lint + format (replaces flake8/black/isort) ───────────────
 [tool.ruff]
-target-version = "py312"        # ROS 2 Jazzy / Ubuntu 24.04
+target-version = "py310"        # ROS 2 Humble / Ubuntu 22.04 (ADR-0005)
 line-length = 100
 extend-exclude = ["ws/build", "ws/install", "ws/log", ".claude/worktrees"]
 

@@ -64,7 +64,7 @@ micro-ROS実装に2-3週間の追加工数が必要。予算が厳しい場合�
 
 ### 役割
 
-- ROS 2 Jazzy のホスト（司令塔）
+- ROS 2 Humble のホスト（司令塔。ADR-0005）
 - **LLM Bridge Node の実行**（Claude / ChatGPT / Gemini / Grok APIとの通信、Hermes Agent経由）
 - Nav2 による経路計画・障害物回避
 - SLAM Toolbox による地図生成
@@ -144,11 +144,11 @@ OS環境構築 = SSD への JetPack 焼き込み。**焼く相手（Jetson本体
 | 段階 | 作業 | Jetson要否 |
 |------|------|-----------|
 | 準備（到着前にできる） | NVIDIA SDK Manager / JetPack 6.x イメージのダウンロード | 不要 |
-| 準備（到着前にできる） | ROS 2 Jazzy + 依存パッケージのインストールスクリプト作成 | 不要 |
+| 準備（到着前にできる） | ROS 2 Humble + 依存パッケージのインストールスクリプト作成 | 不要 |
 | 準備（到着前にできる） | 各プロセスの systemd サービス定義のたたき台 | 不要 |
 | 実行（到着後） | 同梱 KIOXIA NVMe SSD 1TB へ JetPack 6.x を焼き込み（microSDで初回ブート → SSDへ移行） | **必要** |
 | 実行（到着後） | Super 化（`sudo nvpmodel -m 2` + `sudo jetson_clocks`、上記「Super化の手順」参照） | **必要** |
-| 実行（到着後） | ROS 2 Jazzy + micro-ROS Agent インストール、メモリ検証（`06-implementation-phases.md` Phase 0.5 段階2） | **必要** |
+| 実行（到着後） | ROS 2 Humble + micro-ROS Agent インストール、メモリ検証（`06-implementation-phases.md` Phase 0.5 段階2） | **必要** |
 
 #### Jetson が無くてもできること / できないこと
 
@@ -289,6 +289,107 @@ RPLiDAR A2（+10,000円）: 精度・回転速度が向上。予備費からの�
 
 ---
 
+## ROSMASTER M1 採用検討時の残課題（2026-08-05・未確定）
+
+> Yahboom ROSMASTER M1（メカナム4輪）に**手持ちの Orin Nano Super Dev Kit を載せる**構成を調査した結果。
+> 車体寸法は車種選定の制約にしない（[04-diorama-layout.md](04-diorama-layout.md) §「決定（2026-08-05）」）。
+> 購入候補: Amazon.co.jp `Superior / without Nano`（ASIN B0G495C65Q・¥67,527・Nuwa-HP60C 深度カメラ同梱）。
+
+### 確認済み（一次情報で裏取り済）
+
+| 項目 | 値 | 出典 |
+|---|---|---|
+| 車体寸法 | 全幅 231.40 × 全長 284.40 × 全高 181.40mm（LiDAR 上面 147.50 / 車体上面 74.58） | 公式 Product parameters 図 |
+| バッテリ | 12.6V 6000mAh + 12.6V/2A 充電器 → **3S 構成と整合**（保管 11.1–11.7V・**9.6V でブザー警報**） | 公式 unboxing / battery precautions |
+| 拡張ボード出力 | **DC 12V ×2（XH2.54 2PIN）/ DC 5V ×1（バレル・シルク "5VOUT2"）/ Type-C 5V ×1（"5VOUT1"・Pi5 給電対応）** | ROS robot board V3.0 パラメータ表 |
+| 拡張ボード入力 | T プラグ **DC 12V のみ**（公式 Q&A「This board just support 12VDC input」） | 公式製品ページ Q&A |
+| Orin 給電経路（純正） | Orin Nano SUPER 版のみ **「DC5.5×2.5 → XH2.54 2PIN 電源ケーブル」**同梱＝**12V を Orin の DC ジャックへ直結**（DC-DC 非使用） | 公式 Shipping List 図 |
+| Orin 入力仕様 | **9–20V / センタープラス / バレル外径 5.5mm・ピン 2.5mm / 最大 3.5A**（付属アダプタ 19V） | NVIDIA SP-11324-001 v1.3 §1.2, §3.8 |
+| 電力モード | 15W / 25W / MAXN SUPER（**uncapped・W 値は非公開**） | NVIDIA JetPack 6.2 blog / Developer Guide |
+| OS | M1 の Orin 版は Ubuntu 22.04 + **ROS 2 Humble**（本プロジェクトは Jazzy） | 公式 Product parameters 図 |
+| 拡張ボード実装（2026-08-05 追加） | 型番 **YB-ERF01-V3.0**／MCU STM32F103RCT6／USB-serial **CH340**／IMU **ICM20948 9軸**／モータドライバ **AM2861 ×4**／通信 **115200bps**／待機電流 **約 50mA**／基板 **85×56mm**・取付穴 **4-φ2.5（58×49mm ピッチ）** | 公式 `ROS_control_board_V3.0_parameters.jpg` を実見 |
+| 拡張ボード保護回路（2026-08-05 追加） | **「サーボ過電流保護・逆接続保護・短絡保護」のみ**。**12V 出力レールの電流定格・過電流保護・ヒューズの記載は無い** | 同上 |
+| **12V 出力の性質（2026-08-05・重要）** | 入力が「T type **DC12V** input」、出力が「**DC 12V** interface ×2」、モータも「**12V** encoder motor」＝**同一呼称の単一レール**。3S（12.6→9.6V）から定電圧 12V を作るには昇降圧回路が要るが**その記載も実装も見当たらない** → **生バッテリ電圧のスルー出力と判断**（強い推定。実測で確定させる） | 同上（パラメータ表からの導出） |
+
+> 注: 本節の「9–20V」が正。上記 `#### Super モードで必要な追加投資` の「入力 7–20V」は NVIDIA フォーラム由来の記述で、**Carrier Board Specification の 9–20V と食い違う**（`# TODO`: 該当行を要訂正）。
+
+### 未確定（購入・実装前に潰す）
+
+1. `# TODO(発注前)` **拡張ボード 12V レールの連続電流定格は、公式パラメータ表を実見しても記載が無い**（2026-08-05 確認）。保護回路の記載も「サーボ過電流保護・逆接続保護・短絡保護」のみで、**12V 出力レールの過電流保護・ヒューズは明示されていない**。Orin は 25W モードで 12V 換算 ≈2.1A、MAXN SUPER は uncapped。同じ 12V 系に AM2861 モータドライバ ×4 がぶら下がるため**モータ加減速時の突入と競合**する。→ Yahboom support へ照会 ＋ 実機実測（下記「給電の実測手順」）。
+2. **【ほぼ確定 / 方針決定 2026-08-05】12V 出力は生バッテリ電圧のスルーと判断**（根拠は上表「12V 出力の性質」）。したがって **Orin が見る電圧は満充電 12.6V からブザー警報 9.6V まで下がり、Orin 下限 9V までの余裕は 0.6V しかない**。モータ加速時のサグが重なれば 9V 割れは現実的に起こりうる。
+   **→ 既定の構成を「昇圧 DC-DC 経由」とする**（12.6V→19V・連続 **≥45W**・出力 **5.5×2.5 センタープラス**）。**12V 直結は「実測①〜④で問題が無いと確認できた場合のみ選べる縮退案」へ格下げする。** 理由: Orin の電圧断は L1 緊急停止と外部通信ごと落とす安全事象であり、0.6V のマージンに賭ける設計は `.claude/rules/safety.md` の趣旨に反する。純正 Orin 版が 12V 直結ケーブルを同梱している事実（上表）は、Yahboom がこのマージンを許容していることを示すに留まり、**本プロジェクトの安全要件を満たす根拠にはならない**。
+3. `# TODO(発注前)` **"without" 版に Orin 用電源ケーブルは付かない見込み**。`without Nano` に付くのは Jetson Nano B01 用の **DC5.5×2.1 ケーブル**で、これは拡張ボードの **5V 出力**バレルから取る線。**電圧もピン径も Orin へ流用不可**。→ **XH2.54 2PIN ⇔ DC5.5×2.5 センタープラス ケーブルを自作 or 単品調達**（要 Yahboom 確認）。
+4. `# TODO(Phase 1)` **マウント**: `without` 版の取付板は選択したボード用。Orin Dev Kit（キャリア一体・完成体 103×90.5×34.8mm）は**自作プレートで固定する前提**。上段デッキとの高さ干渉は実物合わせ。
+5. **【解決】ソフト方針＝Yahboom スタックを使わず自前 ROS 2 ノードを書く。** 制御プロトコルは判明済（USB シリアル 115200 8N1・`HEAD=0xFF, DEVICE_ID=0xFC, LEN, FUNC, payload…, CHECKSUM`、`CHECKSUM=(sum+257-0xFC)&0xFF`、`FUNC_MOTION=0x12`・`FUNC_MOTOR=0x10`・`FUNC_REPORT_*` を MCU が **40ms 周期で auto-report**）。Yahboom の `Rosmaster_Lib` は `struct/time/serial/threading` のみ依存＝**アーキ非依存で aarch64 可**だが、ライセンスが Proprietary 表記・PyPI 未配布・配布が Google Drive のため、**判明済フレーム仕様から自前実装する方がクリーン**。デバイスは udev symlink `/dev/myserial` に固定。
+6. **【解決】メカナム逆運動学は STM32 ファーム側にある** → ホストは `/cmd_vel` の `(vx, vy, wz)` を投げるだけ（`set_car_motion` は body 速度を `int16(v*1000)` で送るのみ・4輪配分なし）。**よって凍結 URDF / Nav2 が diff-drive のままでも `linear.y = 0` で成立し、メカナム採用に契約変更は不要**。omni 化（AMCL Omni / `vy_max` > 0 / `motion_model: "Omni"` / `linear.y` の twist_mux→collision_monitor 通し）は**任意の後続拡張**として扱う。sim 側 diff_drive プラグインの差し替えも omni 化する場合のみ。
+7. **【方針決定 2026-08-05・M1 / Superior 構成】速度クランプは「ホスト側シリアルドライバ内の送信直前クランプ（L0'）」に置く。**
+   現行方針は ESP32 自前ファーム内で 0.3 m/s をハードクランプする（`.claude/rules/safety.md`・`firmware/include/safety_clamp.h` の R-26 unit）。**M1 の STM32 ファームは Yahboom 製バイナリ**のため、MCU 内に同じ保証を置けない。一方で残課題 5 の通り**ホスト側シリアルドライバは自前実装**であり、`FUNC_MOTION=0x12` フレームを組む直前が**全 `cmd_vel` が必ず通る単一の絞り点**になる。ここでクランプすれば、Nav2 / Policy Gate / Emergency Guardian のいずれが壊れても wire に 0.3 m/s 超は出ない。
+   - **採用**: ドライバの送信直前（body 速度を `int16(v*1000)` へ変換する直前）でクランプする。**R-26（独立オラクル unit ＋ mutation で赤くなること）の対象**とし、`warehouse_interfaces.safety.MAX_LINEAR_VELOCITY` を**単一ソースとして import**する（値の再定義を禁止＝`safety.py:19` の「hardcode するな」に従う）。
+   - **却下**: STM32 ファームの自前差し替えによる L0 維持 — 残課題 6 の通り**メカナム逆運動学が STM32 側にある**ため、差し替えると 4輪配分の再実装まで背負う。Phase 1 のスコープに対して過大。
+   - **明記すべき限界**: L0' は**ホストプロセスが生きている間だけ**有効。ホスト停止・USB 断では MCU 側に最後の指令が残り、暴走しうる。→ `# TODO(Phase 1)` **MCU の通信タイムアウト停止（watchdog）の有無を実機で確認**する。無い場合は Emergency Guardian からの明示 stop フレーム送出＋電源系での縮退で補う。
+   - `# TODO(採用時)` **doc 影響**: `.claude/rules/safety.md`「ロボット速度制限をコード内で強制する」の実施箇所と、[12-infrastructure-common.md](../architecture/12-infrastructure-common.md) の Layer マップ（L0 の定義）を M1 採用時に改訂する。
+8. `# TODO(発注前)` **Nuwa-HP60C 深度カメラ（Superior 版）の Jazzy 動作は未保証。** ROS 2 ドライバ `ascamera` は ament_cmake ＋ **閉ソースのプリビルド `.so`**（`libAngstrongCameraSdk.so` ほか）に静的リンク。aarch64 バイナリは同梱されるが、その `libs/lib/aarch64-linux-gnu/readme.md` は **「5.4.1 20170404 (Linaro GCC 5.4-2017.05)」＝2017 年 GCC 5.4 ビルド**。動作報告のある distro は Foxy(20.04) / Humble(22.04) のみで、**Jazzy / Ubuntu 24.04 の成功報告は無い**。割れてもソースが無く修正不能。
+   **→ 2026-08-05 方針: distro 自体を Humble に寄せることで本項を構造的に解消する（[ADR-0005](../adr/0005-ros2-distro-humble-for-rosmaster-m1.md) proposed）。** retreat plan（Humble コンテナ隔離 / RealSense・Orbbec 等への置換）は ADR-0005 が却下扱いとして保持。
+9. `# TODO(Phase 1)` **LiDAR ドライバ**: T-mini Plus は YDLIDAR 製（model 151・baud 230400・12m）。`ydlidar_ros2_driver` は **OSS でソースビルド可＝aarch64 に障害なし**。**master は Jazzy でビルドが割れる**（upstream issue #72 / PR #66 が OPEN）が、`humble` ブランチが本来の対象のため **Humble 採用時は C++17 引き上げパッチ不要**（[ADR-0005](../adr/0005-ros2-distro-humble-for-rosmaster-m1.md)）。Jazzy を維持する場合のみ vendoring + パッチが要る。
+10. **【一部解決】小項目**: 公式パラメータ表の実見（2026-08-05）で **USB-serial = CH340**（→ udev は `1a86:7523`）・**IMU = ICM20948**・**通信 115200bps** が確定。残る実機確認は **M1 用 `car_type` 値**と、**MCU auto-report が 40ms=25Hz 固定**である点の Nav2 チューニング（`controller_frequency` / AMCL 更新レート）への影響。
+
+### 給電の実測手順（実機到着後）
+
+| 段階 | 測り方 | 合格ライン |
+|---|---|---|
+| ① 無負荷 | マルチメータで 12V 出力端子 | 表記どおりの電圧が出ているか |
+| ② Orin アイドル | DC インライン電力計 または `sudo tegrastats` の `VDD_IN` | 実消費 W を記録 |
+| ③ Orin 高負荷 | MAXN SUPER + Nav2 + LiDAR + カメラ | **9V を下回らない**・再起動しない |
+| ④ **モータ同時加速 ＋ ③** | ③の状態で急発進（最悪条件） | 同上 |
+
+④で 9V 割れ・リプルが出た場合のみ、上記 2 の昇圧 DC-DC を採用する。
+
+> 対象 layer: 給電系は **L0 未満（ハードウェア）**。ただし Orin の電圧断は L0 の緊急停止と micro-ROS リンクごと落とすため、安全要件として扱う（`.claude/rules/safety.md`）。
+
+### 決定（2026-08-05）: 車体寸法・既存コードは車種選定の制約にしない
+
+**オペレーター裁定（2026-08-05）**: ジオラマは未着工・実機ソフトは Phase 1 未着手のため、**M1 の実寸に合わせてジオラマを作り直し、開発コードも書き換える**。したがって下表は「M1 を却下する理由」ではなく、**採用した場合に実施する作業項目**として扱う（ジオラマ側の対応は [04-diorama-layout.md](04-diorama-layout.md) §「決定（2026-08-05）」）。
+
+#### 必須（車体が物理的に大きくなることの帰結。駆動方式とは無関係）
+
+| # | 書き換え対象 | 現在値（実ファイル） | M1 採用時 | layer |
+|---|---|---|---|---|
+| C-1 | `ROBOT_RADIUS` | `ws/src/warehouse_description/warehouse_description/robot_dimensions.py:45` = `0.075`（75mm） | 外接円半径 **≈184mm**（対角 367mm ÷ 2）へ改訂 | L2 |
+| C-2 | costmap `robot_radius` ×2 | `ws/src/warehouse_bringup/config/nav2_params.yaml:215` / `:257` = `0.075` | C-1 と同値へ同期（単一ソース維持・R-42） | L2 |
+| C-3 | collision_monitor PolygonStop | `ws/src/warehouse_bringup/config/collision_monitor.yaml:68` `radius: 0.09` | 車体外接 + 余裕へ改訂 | L1 |
+| C-4 | 速度クランプの**置き場所** | `firmware/include/safety_clamp.h:45`（ESP32 ファーム内） | **ホスト側シリアルドライバの送信直前（L0'）へ移設**（残課題 7） | L0' |
+
+#### 任意（**omni 化を選んだ場合のみ**。既定では不要）
+
+> **重要（2026-08-05 訂正）**: 残課題 6 の通り**メカナム逆運動学は STM32 ファーム側にある**。ホストは `(vx, vy, wz)` を送るだけなので、**`linear.y = 0` に固定すれば凍結 URDF / Nav2 が diff-drive のままで M1 は成立し、契約変更は不要**。下表は「横移動を実際に使う」と決めた場合にのみ発生する。
+
+| # | 書き換え対象 | 現在値（実ファイル） | omni 化する場合 | layer |
+|---|---|---|---|---|
+| C-5 | 横速度 `linear.y` | `ws/src` / `firmware` に**実装 0 件**（grep 一致なし・テスト除く） | twist_mux → collision_monitor → ドライバを縦断で新規実装 | L0'–L2 |
+| C-6 | 駆動モデル | `nav2_params.yaml:52` `DifferentialMotionModel` / `:124` `vy_max: 0.0` / `:134` `motion_model: "DiffDrive"` | AMCL Omni / `vy_max > 0` / `motion_model: "Omni"` | L2 |
+| C-7 | sim プラグイン | Gazebo `diff_drive` | メカナム相当へ差し替え | L2 |
+| C-8 | **ベクトル速度クランプ** | `ws/src/warehouse_interfaces/warehouse_interfaces/safety.py:26-34` `clamp_velocity()` は**スカラー1軸** | **(vx, vy) の大きさ**でクランプする関数を追加 | L0' / L1 |
+
+> **C-8 は omni 化の前提条件であり、後回しにできない。** `vy ≠ 0` を許した状態で各軸を独立に 0.3 m/s クランプすると、対角合成が √(0.3² + 0.3²) = **0.424 m/s** となり `.claude/rules/safety.md` の 0.3 m/s ハードキャップを **41% 超過**する。C-5 と C-8 は同一 PR で入れること。R-26（独立オラクル・mutation で赤くなること）の対象（[20-dev-quality-and-testing.md](../architecture/20-dev-quality-and-testing.md) §9）。
+
+凍結リンク名 `wheel_{front,rear}_{left,right}`（`robot_dimensions.py:26-29`）はメカナム化でも**無傷**（4輪配置が同じため）。C-1 は `warehouse_description`、C-8 は `warehouse_interfaces` に触れるため **`contract` ラベル PR ＋ 依存トラック予告**が必要（`.claude/rules/parallel-workflow.md` §4）。C-2〜C-7 は config / 各パッケージ内で閉じる。
+
+> `# TODO(採用時)`: C-1〜C-4 を epic Issue のチェックリストへ展開する。C-5〜C-8 は「横移動を使うか」を決めてから別 Issue に切る。
+
+### 決定（2026-08-05）: Superior 版を採用し、HP60C 深度カメラを開発要件に含める
+
+**オペレーター裁定（2026-08-05）**: 購入は **`Superior-without / NANO 4GB SUB`**（公式 sku 3000200910 / $499.90、Amazon.co.jp ASIN B0G495C65Q ¥67,527）とし、同梱の **Nuwa-HP60C 深度カメラを「使わない同梱物」ではなく開発要件として扱う**。
+
+- **帰結（重要）**: 残課題 8（HP60C の ROS 2 ドライバ `ascamera` が閉ソース `.so` 依存・Jazzy 動作報告なし）が**回避可能な項目から、必ず解かねばならない項目へ昇格**する。したがって [ADR-0005](../adr/0005-ros2-distro-humble-for-rosmaster-m1.md)（Jazzy→Humble）の前提が成立する。ADR-0005 は **proposed のまま保持**（同日オペレーター指示）。
+- **深度カメラを要件化して得るもの**（何に使うかを docs 側で先に定義しておく）:
+  - 2D LiDAR の死角（棚の張り出し・低い荷物・段差）の**3D 障害物検知** → costmap への voxel 反映。
+  - **パレット / 荷物の認識**。上記 §B「将来: FoundationPose による荷物認識」の実入力となる。
+  - **Mode X-ER（ER 視覚司令官）への実カメラ入力**。現状は静止画・sim 由来のため、実機 RGB-D が入ると live 検証の忠実度が上がる。
+- **変わらないもの**: C-1〜C-4（車体寸法由来）は Superior / Standard の別と無関係にそのまま必要。
+- `# TODO(発注と独立に先行決定)` **distro をどうするか（ADR-0005 の未決＝Gazebo を Fortress に落とすか Harmonic をソースビルドするか）は Phase 0.5 のブロッカー**。実機到着を待つ必要が無いので、発注可否とは切り離して先に決める。判断材料は ARM64 headless での Gazebo 再スパイク結果（[16-repository-and-conventions.md](../architecture/16-repository-and-conventions.md):213-215 の GO 判定を引き継げるか）。
+
+---
+
 ## References
 
 - [Yahboom ESP32 MicroROS Robot Car — 公式](https://category.yahboom.net/products/microros-esp32) — 参照日: 2026-05-19
@@ -300,3 +401,8 @@ RPLiDAR A2（+10,000円）: 精度・回転速度が向上。予備費からの�
 - [Isaac Sim Requirements — NVIDIA](https://docs.isaacsim.omniverse.nvidia.com/5.1.0/installation/requirements.html) — 参照日: 2026-05-19
 - [ORBBEC MS200 dToF LiDAR — Orbbec公式](https://www.orbbec.com/products/lidar/ms200k/) — 参照日: 2026-05-21
 - [ORBBEC MS200 ユーザーマニュアル](https://manuals.plus/orbbec/ms200-dtof-lidar-sensor-manual) — 参照日: 2026-05-21
+- [Yahboom ROSMASTER M1 — 公式](https://category.yahboom.net/products/rosmaster-m1) — 参照日: 2026-08-05（車体寸法・同梱物は公式 Product parameters 図 / Shipping List 図を実見）
+- [Yahboom ROS robot expansion board V3.0 — 公式](https://category.yahboom.net/products/ros-driver-board) — 参照日: 2026-08-05（12V/5V/Type-C 出力・T プラグ 12V 入力・Q&A）
+- [Yahboom バッテリ取扱注意](https://www.yahboom.net/public/upload/upload-html/1697613339/Precautions%20for%20battery.html) — 参照日: 2026-08-05（保管 11.1–11.7V / 9.6V 警報）
+- [Jetson Orin Nano Devkit Carrier Board Specification SP-11324-001 v1.3 — NVIDIA](https://developer.nvidia.com/downloads/assets/embedded/secure/jetson/orin_nano/docs/jetson_orin_nano_devkit_carrier_board_specification_sp.pdf) — 参照日: 2026-08-05（§1.2 / §3.8 DC ジャック 9–20V・5.5mm/2.5mm・3.5A）
+- [Nuwa-HP60C 深度カメラ — 公式](https://category.yahboom.net/products/hp60c) — 参照日: 2026-08-05（単品 $150 / ブラケット付 $170）

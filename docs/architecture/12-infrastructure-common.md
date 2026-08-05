@@ -122,7 +122,7 @@ Layer 3: Claude / Hermes（戦略判断、Mode A: 3秒 / Mode C: 5秒サイク�
 | **自律走行**（Hard-RT） | Nav2・AMCL・SLAM Toolbox・collision_monitor・twist_mux（**全て C++ 既存依存**）＋ 設定 `warehouse_bringup/config/nav2_params.yaml`・launch（Python） |
 | **緊急監視**（Hard-RT / Layer 1） | Emergency Guardian（**Python 自作**・`warehouse_safety`） |
 | **物理安全**（即時 / Layer 0） | ESP32 firmware（**C++ 自作**・FreeRTOS・PlatformIO・`firmware/`）／ micro-ROS（C・XRCE-DDS）／ micro-ROS Agent（C++・Jetson 上）／ on-robot センサ MS200（`/scan`）・エンコーダ・バッテリ（※**RPLiDAR A1 は Jetson-USB 固定の外部トラッキング用・optional**＝on-robot ではない。doc02:179-180 / doc03:167） |
-| **横断**（全層共通） | ROS 2 Jazzy（DDS）／ 凍結契約 `warehouse_interfaces`（Python・pydantic）／ `warehouse_description`（URDF）／ Sim：Gazebo Harmonic＋ros_gz_bridge・Isaac Sim／ 実行機：Jetson Orin Nano（Ubuntu 24.04）／ 環境切替：`WAREHOUSE_ENV`＋config（doc19） |
+| **横断**（全層共通） | ROS 2 Humble（DDS。[ADR-0005](../adr/0005-ros2-distro-humble-for-rosmaster-m1.md)）／ 凍結契約 `warehouse_interfaces`（Python・pydantic）／ `warehouse_description`（URDF）／ Sim：Gazebo＋ros_gz_bridge（版は ADR-0005 §Open）・Isaac Sim／ 実行機：Jetson Orin Nano（Ubuntu 22.04 / JetPack 6.x）／ 環境切替：`WAREHOUSE_ENV`＋config（doc19） |
 
 > 各パッケージ責務の正本は各 `ws/src/warehouse_*/CLAUDE.md`、リポジトリ構成は doc16、環境/config は doc19。
 
@@ -170,7 +170,7 @@ Layer 3: Claude / Hermes（戦略判断、Mode A: 3秒 / Mode C: 5秒サイク�
          └────── センサ値は ⬆ で State Cache へ還流し situation を再構成 ──────┘
 
 ── 横断（全層共通の土台）──────────────────────────────────────────────────
-   通信  : ROS 2 Jazzy (DDS)         契約: warehouse_interfaces (pydantic・凍結)
+   通信  : ROS 2 Humble (DDS)        契約: warehouse_interfaces (pydantic・凍結)
    記述  : warehouse_description(URDF) Sim : Gazebo Harmonic+ros_gz_bridge / Isaac Sim
    実行機: Jetson Orin Nano (Ubuntu 24.04)
    環境  : WAREHOUSE_ENV + config/<env>  (dev=Mac/Docker/Gazebo ・ prod=Jetson実機)

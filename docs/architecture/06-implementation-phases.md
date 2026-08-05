@@ -46,8 +46,8 @@
 - [ ] カメラ・スタンド・LED を発注
 - [ ] ホームセンターでベースボード素材を購入
 - [ ] Mac に Docker Desktop をインストール
-- [ ] Docker 内に ROS 2 Jazzy + Gazebo Harmonic 環境を構築
-  - 推奨イメージ: `tiryoh/ros2-desktop-vnc:jazzy`（ARM64対応、VNC付き）
+- [ ] Docker 内に ROS 2 Humble + Gazebo 環境を構築（Gazebo の版は ADR-0005 §Open）
+  - 推奨イメージ: `tiryoh/ros2-desktop-vnc:humble`（ARM64対応、VNC付き。旧 `:jazzy` の GO 実績は Jazzy+Harmonic のもの）
 - [x] ~~**micro-ROS の ROS 2 Jazzy 対応状況を確認**~~ → **確認済み（2026-05-22）。Jazzy対応確定**
 - [ ] RunPod アカウント登録（クラウドGPU用）
 - [ ] Anthropic API キー取得（Claude用）
@@ -64,8 +64,8 @@
 ### 完了条件
 
 - 全機材の発注完了
-- Mac 上で Docker + ROS 2 Jazzy + Gazebo Harmonic が動作する
-- **ROS 2 バージョンが確定している** → Jazzy に確定（micro-ROS Jazzy対応確認済み 2026-05-22）
+- Mac 上で Docker + ROS 2 Humble + Gazebo が動作する（Humble での再スパイク必須。ADR-0005 §Open）
+- **ROS 2 バージョンが確定している** → **Humble に確定**（2026-08-05 ADR-0005。旧: Jazzy 確定 2026-05-22）
 - 各LLM APIが呼び出せることを確認
 
 ---
@@ -141,7 +141,7 @@
 
 ### リスク
 
-- micro-ROS の Jazzy 対応が不完全な場合 → Humble にフォールバック
+- ~~micro-ROS の Jazzy 対応が不完全な場合 → Humble にフォールバック~~ → ADR-0005 で Humble が本線化（本リスクは解消）
 - WiFi遅延が大きい場合 → USB有線接続を検討
 
 ---

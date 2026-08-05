@@ -13,6 +13,7 @@ hard-to-reverse な設計判断と**その理由**を記録する場所。フォ
 
 | ADR | 決定 | 状態 |
 |---|---|---|
+| [0005](0005-ros2-distro-humble-for-rosmaster-m1.md) | ROS 2 distro を **Jazzy → Humble / Ubuntu 22.04** へ切替。決定要因は ①**Orin Nano で Isaac ROS を使う道は 3.x=Humble のみ**（4.x は Jazzy だが Thor 専用）②ROSMASTER M1 の Yahboom driver が Humble 固定（HP60C は 2017 GCC5.4 の閉ソース .so）。MPPI は Humble にも有り。代償は **Gazebo の公式ペア喪失**（Humble↔Fortress・Harmonic は非公式） | accepted（Gazebo の扱いのみ Open） |
 | [0004](0004-l2-restrict-only-policy-profile.md) | L2 Governance は自由 plugin 化せず **data-only restrict-only policy profile** に閉じる（凍結値=floor・緩い値は起動拒否 fail-closed・reject 巻き戻し禁止・v1 で code plugin 不採用）。L3 の自由 plugin 化（ADR-0003）と非対称 | accepted |
 | [0003](0003-bridge-local-manifest-composition.md) | bridge-local run manifest + fail-closed plugin composition を A案で標準化（manifest resolution 層／namespaced plugin code〔9-enum 非改変〕／advisory trust／ISOLATE_PLUGIN／safety-critical profile hash gate）。実装 = offline spike 済・配線 XER6 pending | accepted |
 | [0002](0002-er-in-hermes-standard.md) | ER-in-Hermes を標準 transport に採用（fork gateway 8644 一本で全 modality／`direct`=緊急 fallback／Langfuse Pattern A 現行・Pattern B は HLF gate 後）。実装は TARGET（#389 の live-send seam は main 着地済・残は wiring〔XER6〕と 8644 fork 配備） | accepted |

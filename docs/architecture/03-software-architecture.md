@@ -18,7 +18,7 @@
                    ▼
 ┌──────────────────────────────────────────────────┐
 │  Jetson Orin Nano Super（司令塔）                  │
-│  ├── ROS 2 Jazzy（Ubuntu 24.04）                   │
+│  ├── ROS 2 Humble（Ubuntu 22.04）                  │
 │  ├── LLM Bridge Node（Mode A: 3秒 / Mode C: 5秒 → Hermes Gateway） │
 │  ├── Hermes Gateway（daemon、Warehouse MCP Server接続）│
 │  ├── Warehouse MCP Server（自作、Policy Gate + 座標変換）│
@@ -114,21 +114,21 @@ LLMはタスク割当・優先順位・バッテリー管理の戦略判断の�
 
 ## ソフトウェアスタック詳細
 
-### ROS 2 Jazzy
+### ROS 2 Humble
 
 | 項目 | 内容 |
 |------|------|
-| バージョン | Jazzy Jalisco |
-| OS | Ubuntu 24.04 |
-| EOL | 2029年5月（LTSリリース、2024年5月リリース） |
-| Isaac ROS対応 | release-3.x の公式対応バージョン |
+| バージョン | Humble Hawksbill |
+| OS | Ubuntu 22.04 |
+| EOL | 2027年5月（LTSリリース、2022年5月リリース） |
+| Isaac ROS対応 | **Isaac ROS 3.x**（Orin を対象に含む唯一の系列。JetPack 6.x + 公式 dev container） |
 
-Humbleではなく Jazzy を選択する理由:
-- Isaac ROS最新版が Jazzy をターゲットにしている
-- Nav2、SLAM Toolbox ともに Jazzy 公式対応済み
-- Humble（EOL 2027年5月）より長いサポート期間
+**2026-08-05: Jazzy から Humble へ変更した（[ADR-0005](../adr/0005-ros2-distro-humble-for-rosmaster-m1.md) accepted）。** 理由:
+- **Jetson Orin Nano で Isaac ROS を使う道は Isaac ROS 3.x = Humble しかない。** 最新の Isaac ROS 4.x は Jazzy をターゲットにするが、**対応プラットフォームは Jetson Thor のみ**（JetPack 7.1）で Orin Nano は含まれない。
+- 実機候補 ROSMASTER M1 の Yahboom driver 資産（深度カメラ `ascamera` / LiDAR / 工場イメージ）が Humble 固定。特に `ascamera` は 2017 年 GCC 5.4 ビルドの閉ソース `.so` 依存で Jazzy 実績がゼロ。加えて Jetson は JetPack 6.x = Ubuntu 22.04 のため **Humble がネイティブ**（Jazzy は JetPack 7.x か container が必要だった）。
+- Nav2 / SLAM Toolbox は Humble 公式対応済み。**MPPI controller も Humble にリリースあり**（`nav2_mppi_controller` 1.1.20）。
 
-**確認済み（2026-05-29）**: ROS 2 Jazzy Jalisco は公式LTSリリース（2024年5月リリース、EOL 2029年5月）。Humbleも確定LTS（EOL 2027年5月）。
+> **旧記述（2026-05-29 時点の判断・記録として保持）**: 当時は「Isaac ROS 最新版が Jazzy をターゲット」「Humble（EOL 2027年5月）より長いサポート期間」を理由に Jazzy を選定していた。前者は **Orin が Isaac ROS 4.x のサポート表から外れたことで無効化**され、後者（EOL 2029年5月 vs 2027年5月）はトレードオフとして受け入れた（ADR-0005 §トレードオフ）。
 
 ### micro-ROS（ESP32側）
 
@@ -136,11 +136,11 @@ Humbleではなく Jazzy を選択する理由:
 |------|------|
 | RTOS | FreeRTOS |
 | 通信 | WiFi UDP → micro-ROS Agent（Jetson上で実行） |
-| 対応ROS 2 | Humble対応済み、**Jazzy対応済み**（2026-05-22確認、micro_ros_setupにJazzyブランチ存在） |
+| 対応ROS 2 | **Humble 対応済み**（Jazzy 対応も 2026-05-22 に確認済だが、ADR-0005 により Humble を採用） |
 
 注意:
 - WiFi経由のUDP転送では遅延が生じる。タイムクリティカルな制御ループが必要になった場合はUSB有線接続を検討。
-- micro-ROS の Jazzy 対応は確認済み（2026-05-22確認）。ROS 2 Jazzy で統一して進める。Humbleフォールバック計画は保険として残す。
+- micro-ROS は Humble・Jazzy とも公式対応。**ADR-0005 により ROS 2 Humble で統一する**（旧記述の「Humble フォールバック計画」が本線になった形）。
 
 ### Nav2
 
@@ -260,7 +260,7 @@ WO（Webアプリ）  ←→  WO Bridge Node（ROS 2）  ←→  Nav2
 | ツール | 用途 | Phase |
 |--------|------|-------|
 | Docker Desktop | ROS 2 + Gazebo コンテナ実行 | Phase 0〜 |
-| `tiryoh/ros2-desktop-vnc:jazzy` | ROS 2 Jazzy + Gazebo Harmonic（gz-sim 8.11, ARM64-native。動作確認済 2026-05-30 / #43） | Phase 0〜 |
+| `tiryoh/ros2-desktop-vnc:humble` | ROS 2 Humble + Gazebo（版は未決＝[ADR-0005](../adr/0005-ros2-distro-humble-for-rosmaster-m1.md) §Open。公式ペアは Fortress、Harmonic は非公式）。旧 `:jazzy` の GO 実績（gz-sim 8.11 Harmonic, ARM64-native, 2026-05-30 / #43）は **Jazzy+Harmonic のもので、Humble では再スパイクが要る** | Phase 0〜 |
 | VS Code | ローカル開発 + Remote SSH（Jetson接続） | Phase 0〜 |
 | Git | バージョン管理 | Phase 0〜 |
 
@@ -268,7 +268,7 @@ WO（Webアプリ）  ←→  WO Bridge Node（ROS 2）  ←→  Nav2
 
 | ツール | 用途 | Phase |
 |--------|------|-------|
-| ROS 2 Jazzy（Ubuntu 24.04） | 全ノードのホスト | Phase 1〜 |
+| ROS 2 Humble（Ubuntu 22.04 / JetPack 6.x） | 全ノードのホスト | Phase 1〜 |
 | Nav2 | 経路計画・障害物回避 | Phase 2〜 |
 | SLAM Toolbox | 2D地図生成 | Phase 2 |
 | micro-ROS Agent | minicarとのWiFi通信 | Phase 1〜 |
