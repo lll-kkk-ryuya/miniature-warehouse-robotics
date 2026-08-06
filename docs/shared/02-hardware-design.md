@@ -126,8 +126,8 @@ sudo jetson_clocks        # クロック最大化
   - ⚠️ **USB-C ポートは output 専用で、Dev Kit の給電には使えない**（NVIDIA公式フォーラム: "the USB-C port on Orin nano devkit is output only, can not be used as power supply of devkit"）。給電は必ず **DCバレルジャック（入力 7–20V、同梱は19V）** を使う。
   - ❌ 旧記載「USB-C PD 45W（Anker Nano II）推奨」は**誤りのため撤回**。Mac用USB-C充電器やUSB-C PDではDev Kitを駆動できない。
   - MAXN SUPER（25W）で Nav2×2 + MPPI を回す場合も同梱19V電源で給電する。Mac純正70W充電器による給電は不可（USB-C のため）。
-- **NVMe M.2 2280 SSD (TLC NAND, Gen3 以上, 500GB)**: OS用、microSDより圧倒的に高速
-- **microSD 64GB A2** (初回ブート用): SanDisk Extreme 等
+- **NVMe M.2 2280 SSD**: OS 用（microSD より圧倒的に高速）。**調達済み＝別売購入（2026-05-28・¥31,980）: KIOXIA EXCERIA PLUS G3 1TB `SSD-CK1.0N4PLG3R`**。Gen4x4 品だが Orin の Key-M は **PCIe 3.0 x4** のため Gen3 相当で動作（下位互換・実害なし）
+- **microSD 64GB A2**（初回ブート＋QSPI ファーム更新用）: **調達済み（2026-05-28・¥3,980）= SanDisk Extreme 64GB A2/U3/V30**。Mac のみの環境では microSD 経路が唯一のフラッシュ手段
 
 ### OS環境構築（JetPack 6.x）
 
@@ -146,7 +146,7 @@ OS環境構築 = SSD への JetPack 焼き込み。**焼く相手（Jetson本体
 | 準備（到着前にできる） | NVIDIA SDK Manager / JetPack 6.x イメージのダウンロード | 不要 |
 | 準備（到着前にできる） | ROS 2 Humble + 依存パッケージのインストールスクリプト作成 | 不要 |
 | 準備（到着前にできる） | 各プロセスの systemd サービス定義のたたき台 | 不要 |
-| 実行（到着後） | 同梱 KIOXIA NVMe SSD 1TB へ JetPack 6.x を焼き込み（microSDで初回ブート → SSDへ移行） | **必要** |
+| 実行（到着後） | **別売購入した** KIOXIA NVMe SSD 1TB へ JetPack 6.x を焼き込み（microSDで初回ブート → SSDへ移行） | **必要** |
 | 実行（到着後） | Super 化（`sudo nvpmodel -m 2` + `sudo jetson_clocks`、上記「Super化の手順」参照） | **必要** |
 | 実行（到着後） | ROS 2 Humble + micro-ROS Agent インストール、メモリ検証（`06-implementation-phases.md` Phase 0.5 段階2） | **必要** |
 
@@ -399,7 +399,7 @@ RPLiDAR A2（+10,000円）: 精度・回転速度が向上。予備費からの�
 | 映像出力 | **DisplayPort のみ**（「HDMI output and DisplayPort over USB-C are not supported」） | **DP→HDMI 変換が必須**（公式に adapter 対応と明記） |
 | USB-C | 映像出力なし・**給電も不可** | モニタ・電源とも USB-C 経由は不可 |
 | M.2 Key-E 2230 | **無線モジュール実装済（同梱）** | **WiFi/BT の買い足し不要** |
-| M.2 Key-M 2280 | PCIe 3.0 x4 | 同梱 KIOXIA 1TB NVMe をここへ |
+| M.2 Key-M 2280 | PCIe 3.0 x4 | 別売購入の KIOXIA 1TB NVMe をここへ（Gen4 品だが Gen3 動作） |
 | M.2 Key-M 2230 | PCIe 3.0 x2 | 空き |
 | USB-A ×4 | 10Gbps・各スタック VBUS 3A 制限 | LiDAR / 拡張ボード(CH340) / HP60C を USB で束ねられる |
 | DC ジャック | **5.5×2.5mm** | 昇圧 DC-DC の出力プラグをこれに合わせる |
