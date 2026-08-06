@@ -35,6 +35,10 @@ import pytest
 from warehouse_interfaces.safety import MAX_LINEAR_VELOCITY
 from warehouse_m1_driver.clamp import _scale_to_magnitude
 
+# Safety-critical speed clamp: same markers as the other R-26 suites
+# (convention: tests/unit/test_modec_noactuation.py:111-112).
+pytestmark = [pytest.mark.safety, pytest.mark.unit]
+
 # A vector comfortably above any sane ceiling, so a working clamp must shrink it and a
 # broken one is caught growing it.
 OVER_CAP = (0.5, 0.5)

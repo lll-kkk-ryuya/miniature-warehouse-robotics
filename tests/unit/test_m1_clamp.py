@@ -36,6 +36,10 @@ import pytest
 from warehouse_interfaces.safety import MAX_LINEAR_VELOCITY
 from warehouse_m1_driver.clamp import clamp_body_velocity
 
+# 安全クリティカルな速度クランプ。他の R-26 suite と同じ marker を付ける
+# （慣行: tests/unit/test_modec_noactuation.py:111-112）。
+pytestmark = [pytest.mark.safety, pytest.mark.unit]
+
 # 仕様値（凍結契約）。テスト内で 0.3 リテラルは使わない。
 CAP = MAX_LINEAR_VELOCITY
 

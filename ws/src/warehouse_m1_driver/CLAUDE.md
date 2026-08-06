@@ -41,30 +41,35 @@ Yahboom ROSMASTER M1 の STM32 制御ボードは**ベンダ製バイナリ**の
 ### 実施結果（2026-08-06・241 tests green）
 
 ```
-PYTHONPATH=ws/src/warehouse_m1_driver:ws/src/warehouse_interfaces \
-  .venv/bin/python -m pytest ws/src/warehouse_m1_driver/test -q
+.venv/bin/python -m pytest tests/unit/test_m1_clamp.py tests/unit/test_m1_scale_guard.py -q
 ```
+
+**unit は `tests/unit/` に置く**（`ws/src/<pkg>/test/` ではない）。理由: `pyproject.toml:43` が `testpaths = ["tests"]` を指定しており、CI の素の `pytest`（`.github/workflows/ci.yml:31`）は **`ws/src/**` を収集しない**。当初 `ws/src/warehouse_m1_driver/test/` に置いたところ CI から不可視で、**安全テストが偽 GREEN になる**ところだった。repo 内の既存 unit 124 本も全て `tests/unit/` にある。import はルート `conftest.py` が `ws/src/<pkg>/` を `sys.path` に足すため素の `from warehouse_m1_driver.clamp import ...` で通る。marker は他の R-26 suite と同じ `@pytest.mark.safety` + `@pytest.mark.unit`（module 冒頭の `pytestmark`）。
 
 **2 suite 構成。混ぜないこと**:
 
 | ファイル | 種別 | 役割 |
 |---|---|---|
-| `test/test_clamp.py`（22 関数 / 218 ケース） | **黒箱・独立オラクル** | 実装を読まない担当が仕様のみから作成。公開関数 `clamp_body_velocity` だけを対象とし、**私有関数を import しない**（すると oracle が impl-coupled になり R-26 の担保が壊れる） |
-| `test/test_scale_guard.py`（23 ケース） | **白箱・防御契約** | `_scale_to_magnitude` の「不正な上限で増幅しない」契約。公開 API は常に定数 `MAX_LINEAR_VELOCITY` を渡すため、この分岐は黒箱からは**原理的に到達不能** |
+| `tests/unit/test_m1_clamp.py`（22 関数 / 218 ケース） | **黒箱・独立オラクル** | 実装を読まない担当が仕様のみから作成。公開関数 `clamp_body_velocity` だけを対象とし、**私有関数を import しない**（すると oracle が impl-coupled になり R-26 の担保が壊れる） |
+| `tests/unit/test_m1_scale_guard.py`（23 ケース） | **白箱・防御契約** | `_scale_to_magnitude` の「不正な上限で増幅しない」契約。公開 API は常に定数 `MAX_LINEAR_VELOCITY` を渡すため、この分岐は黒箱からは**原理的に到達不能** |
 
 **mutation 結果（R-26 の実証）** — 実装に欠陥を仕込み、suite が赤くなるかを確認:
 
 | # | 仕込んだ欠陥 | 結果 |
 |---|---|---|
-| M1 | ベクトル大きさ → **軸独立クランプ**にすり替え（本命） | **KILLED**（89 fail） |
+| M1 | ベクトル大きさ → **軸独立クランプ**にすり替え（本命） | **KILLED** |
 | M2 | 境界 `<=` → `<` | **SURVIVED = 等価変異**（下記） |
-| M3 | 非有限入力を stop でなく**上限にスナップ** | **KILLED**（67 fail） |
-| M4 | 非正・非有限の上限ガードを削除（#169 の増幅器化） | **KILLED**（5 fail・`test_scale_guard.py` が捕捉） |
-| M5 | スケールを `vx` のみに適用＝**方向が保存されない** | **KILLED**（77 fail） |
+| M3 | 非有限入力を stop でなく**上限にスナップ** | **KILLED** |
+| M4 | 非正・非有限の上限ガードを削除（#169 の増幅器化） | **KILLED**（`test_m1_scale_guard.py` が捕捉） |
+| M5 | スケールを `vx` のみに適用＝**方向が保存されない** | **KILLED** |
+| M6 | スケール係数を `wz` にも掛ける | **KILLED** |
+| M7 | `math.hypot` → `math.sqrt(vx**2 + vy**2)` | **KILLED**（`1e200**2` が `OverflowError`＝安全層が例外死してクランプが効かなくなる事故） |
 
 > **M2 は「テストの穴」ではなく等価変異**。`magnitude == max_magnitude` のとき `<` 側は `scale = max/mag = 1.0` を掛けるだけで、`vx * 1.0 == vx` ゆえ出力がビット単位で一致する。上限ちょうどの 8 ベクトル（軸上4・3-4-5 の 3 象限・任意角）で両分岐の出力完全一致を実測して確認済み。**観測可能な差が無いのでどのテストでも殺せず、殺そうとすべきでもない。**
 >
-> M4 は当初 **SURVIVED だった**（黒箱 218 本が全緑のまま通過）。私有ヘルパの防御分岐に公開 API から到達できないためで、これを塞ぐために `test_scale_guard.py` を追加した経緯を残す。
+> M4 は当初 **SURVIVED だった**（黒箱 218 本が全緑のまま通過）。私有ヘルパの防御分岐に公開 API から到達できないためで、これを塞ぐために `test_m1_scale_guard.py` を追加した経緯を残す。
+>
+> **mutation ハーネスの落とし穴（再現時の注意）**: パッケージを別ツリーへ複製して `PYTHONPATH` で差し込む方式は**機能しない**。ルート `conftest.py` が `sys.path.insert(0, ws/src/<pkg>)` で先頭に入れるため常に実物が勝ち、**全変異体が「生存」して偽の安心を返す**（実際に一度そうなった）。`clamp.py` 自体を一時的に差し替えて `try/finally` で復元すること。加えて **「必ず死ぬはずの変異体（M1）が死ぬこと」をハーネス自身の自己チェックとして先に走らせる** — これが無いと壊れたハーネスの出力を信じてしまう。
 
 ## 前提・未確定 (TODO)
 
