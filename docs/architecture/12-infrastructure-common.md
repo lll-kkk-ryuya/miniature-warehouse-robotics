@@ -122,7 +122,7 @@ Layer 3: Claude / Hermes（戦略判断、Mode A: 3秒 / Mode C: 5秒サイク�
 | **自律走行**（Hard-RT） | Nav2・AMCL・SLAM Toolbox・collision_monitor・twist_mux（**全て C++ 既存依存**）＋ 設定 `warehouse_bringup/config/nav2_params.yaml`・launch（Python） |
 | **緊急監視**（Hard-RT / Layer 1） | Emergency Guardian（**Python 自作**・`warehouse_safety`） |
 | **物理安全**（即時 / Layer 0） | ESP32 firmware（**C++ 自作**・FreeRTOS・PlatformIO・`firmware/`）／ micro-ROS（C・XRCE-DDS）／ micro-ROS Agent（C++・Jetson 上）／ on-robot センサ MS200（`/scan`）・エンコーダ・バッテリ（※**RPLiDAR A1 は Jetson-USB 固定の外部トラッキング用・optional**＝on-robot ではない。doc02:179-180 / doc03:167） |
-| **横断**（全層共通） | ROS 2 Jazzy（DDS）／ 凍結契約 `warehouse_interfaces`（Python・pydantic）／ `warehouse_description`（URDF）／ Sim：Gazebo Harmonic＋ros_gz_bridge・Isaac Sim／ 実行機：Jetson Orin Nano（Ubuntu 24.04）／ 環境切替：`WAREHOUSE_ENV`＋config（doc19） |
+| **横断**（全層共通） | ROS 2 Humble（DDS。[ADR-0008](../adr/0008-ros2-distro-humble-for-rosmaster-m1.md)）／ 凍結契約 `warehouse_interfaces`（Python・pydantic）／ `warehouse_description`（URDF）／ Sim：Gazebo＋ros_gz_bridge（版は ADR-0008 §Open）・Isaac Sim／ 実行機：Jetson Orin Nano（Ubuntu 22.04 / JetPack 6.x）／ 環境切替：`WAREHOUSE_ENV`＋config（doc19） |
 
 > 各パッケージ責務の正本は各 `ws/src/warehouse_*/CLAUDE.md`、リポジトリ構成は doc16、環境/config は doc19。
 
@@ -170,7 +170,7 @@ Layer 3: Claude / Hermes（戦略判断、Mode A: 3秒 / Mode C: 5秒サイク�
          └────── センサ値は ⬆ で State Cache へ還流し situation を再構成 ──────┘
 
 ── 横断（全層共通の土台）──────────────────────────────────────────────────
-   通信  : ROS 2 Jazzy (DDS)         契約: warehouse_interfaces (pydantic・凍結)
+   通信  : ROS 2 Humble (DDS)        契約: warehouse_interfaces (pydantic・凍結)
    記述  : warehouse_description(URDF) Sim : Gazebo Harmonic+ros_gz_bridge / Isaac Sim
    実行機: Jetson Orin Nano (Ubuntu 24.04)
    環境  : WAREHOUSE_ENV + config/<env>  (dev=Mac/Docker/Gazebo ・ prod=Jetson実機)
@@ -585,3 +585,13 @@ Nav2 behavior_server (recovery: BackUp/DriveOnHeading/Spin)
 - [WiseVision ROS 2 MCP Server — GitHub](https://github.com/wise-vision/mcp_server_ros_2) — 参照日: 2026-05-23（調査対象、不採用）
 - [Nav2 MCP Server — GitHub](https://github.com/ajtudela/nav2_mcp_server) — 参照日: 2026-05-23（調査対象、不採用）
 - [Langfuse — 公式サイト](https://langfuse.com/) — 参照日: 2026-05-23
+
+---
+
+## 【2026-08-10 追補】Guardian の localization health 監視プロファイル構想 → 正本は doc23 追補
+
+Guardian の pose 監視を **AMCL 固定から config 切替（監視プロファイル）へ抽象化する構想**——購読先 topic / heartbeat 信号 / 静止ゲート / stale 閾値 / **startup_timeout**（初回 pose 不着の沈黙穴の根治）/ 自己申告フラグを 1 プロファイルに束ね、`Health Aggregator` 集約ノードは置かず直接購読を維持する方針——および **localization ロストを protective stop ではなく operational stop（運用停止）として位置づける**業界標準との対応は、[architecture/23-perception-and-localization.md 【2026-08-10 追補】](23-perception-and-localization.md) が正本。
+
+本節は **TARGET 構想へのポインタのみ**であり、上記 §「Emergency Guardian — pose freshness guard」（:502-513）の CURRENT 契約（`pose_freshness_timeout` 既定 1.0s・`/amcl_pose` 直購読・`pose_stale` estop）は**不変**である。
+
+> 【2026-08-17 追記】doc23 の【2026-08-17 追補】B-8 が、監視プロファイル（上記ポインタ先【2026-08-10 追補】A-5〜A-7）に **MOLA-LO 行**を追加した: スキャンマッチャは**縮退時も publish を続ける**（鮮度単独では loss を検出できない）ため、速い経路＝`pose_quality` 自己申告・遅い経路＝watchdog の二重化で監視する。CURRENT の Guardian 契約は引き続き不変。

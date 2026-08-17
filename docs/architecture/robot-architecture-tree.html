@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Robot Architecture Tree — M1 単騎構成（01-08 機能ツリー）</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg:#0d1117; --panel:#161b22; --panel2:#1c2330; --line:#30363d;
+    --txt:#e6edf3; --dim:#8b949e; --mono:"SF Mono",ui-monospace,Menlo,Consolas,monospace;
+    --sensor:#58a6ff; --loc:#d29922; --tf:#39c5cf; --gpu:#3fb950;
+    --nav:#bc8cff; --safe:#f85149; --obs:#6e7681; --hri:#ff9bce;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--txt);font-family:"Hiragino Sans","Noto Sans JP",sans-serif;line-height:1.55;padding:32px 20px 60px}
+  .wrap{max-width:1180px;margin:0 auto}
+  h1{font-size:21px;margin-bottom:4px}
+  h2{font-size:16px;margin:34px 0 10px;padding-left:10px;border-left:4px solid var(--nav)}
+  .sub{color:var(--dim);font-size:12.5px;margin-bottom:14px}
+  .sub code{font-family:var(--mono);font-size:11px}
+  .navbar{display:flex;flex-wrap:wrap;gap:10px;margin:10px 0 18px}
+  .navbar a{color:var(--tf);text-decoration:none;font-size:12.5px;border:1px solid var(--line);border-radius:6px;padding:4px 10px;background:var(--panel)}
+  .navbar a.here{color:var(--txt);border-color:var(--tf)}
+  .legend{display:flex;flex-wrap:wrap;gap:8px 16px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:9px 13px;font-size:12px;margin-bottom:16px}
+  .legend b{font-weight:600}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:12px;overflow-x:auto}
+  .card h3{font-size:13.5px;margin-bottom:8px}
+  pre.tree{font-family:var(--mono);font-size:12.3px;line-height:1.62;white-space:pre;color:var(--txt)}
+  .s{color:var(--sensor)} .l{color:var(--loc)} .t{color:var(--tf)} .g{color:var(--gpu)}
+  .n{color:var(--nav)} .r{color:var(--safe)} .o{color:var(--obs)} .h{color:var(--hri)}
+  .d{color:var(--dim)} .x{color:var(--dim);opacity:.85}
+  .new{color:var(--gpu);font-weight:700} .warn{color:#d29922;font-weight:700}
+  .badge{font-size:10px;font-weight:700;border-radius:4px;padding:0 4px;border:1px solid}
+  table.diff{width:100%;border-collapse:collapse;font-size:12.5px}
+  table.diff th,table.diff td{border:1px solid var(--line);padding:6px 9px;text-align:left;vertical-align:top}
+  table.diff th{background:var(--panel2)}
+  table.diff td:first-child{white-space:nowrap}
+  .foot{color:var(--dim);font-size:11.5px;margin-top:26px}
+  .foot code{font-family:var(--mono);font-size:10.5px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>Robot Architecture Tree — ROSMASTER M1 単騎構成（01-08 機能ツリー）</h1>
+<div class="sub">
+  「何があるか・何を採らないか」の全体地図。データの流れ（Runtime Data Flow）は companion の
+  <code>perception-localization-flow.html</code> 側。正本は各 md（各ノードに併記）。行番号は 2026-08-09 時点。
+</div>
+<div class="navbar">
+  <a class="here" href="robot-architecture-tree.html">① Architecture Tree（本頁）</a>
+  <a href="perception-localization-flow.html">② Runtime Data Flow（doc23 companion）</a>
+  <a href="../productization/tool-catalog-detail.html">③ 観測 tool カタログ（07 の詳細）</a>
+</div>
+<div class="legend">
+  <span class="s">■ 01 Sensors</span><span class="l">■ 02 Localization</span><span class="t">■ 03 TF</span>
+  <span class="g">■ 04 3D Perception</span><span class="n">■ 05 Navigation</span><span class="r">■ 06 Control/安全</span>
+  <span class="h">■ 08 Human Interaction</span><span class="o">■ 07 Observability（横断帯）</span>
+  <span><b class="new">★NEW/TARGET</b>・<b class="warn">⚠未確定/ドリフト</b>・<span class="x">✗ 不採用（理由つきで残す）</span></span>
+</div>
+
+<div class="card"><h3>bot1/ — ROSMASTER M1（メカナム4輪）+ Orin Nano Super 8GB / ROS 2 Humble（ADR-0008・ADR-0006 単騎。namespace bot1/ は単騎でも維持）</h3>
+<pre class="tree">
+├── <span class="s">01_Sensors/</span>
+│   ├── <span class="s">wheel_encoders ×4</span> ── STM32 auto-report 40ms/25Hz ─▶ /bot1/odom
+│   ├── <span class="s">imu_icm20948</span>（9軸・拡張ボード YB-ERF01-V3.0）─────▶ /bot1/imu
+│   ├── <span class="s">lidar_2d = T-mini Plus</span>（YDLIDAR・230400bps・12m）──▶ /bot1/scan
+│   │     <span class="warn">⚠ docs / nav2_params.yaml:55 は MS200 表記のまま（doc23 OQ-9）</span>
+│   │     <span class="d">/scan 消費者: AMCL ／ collision_monitor ／ costmap×2 ／ <span class="new">mola_lo（新・2026-08-17）</span></span>
+│   ├── <span class="s">depth_camera = Nuwa HP60C</span>（ascamera・閉ソース .so・Humble 実績のみ）
+│   │     ├─▶ /bot1/camera/depth/image_raw <span class="d">（encoding は S2 で確定）</span>+ camera_info
+│   │     └─▶ /bot1/camera/color/image_raw <span class="d">（既定 OFF → 08 で ON 化要）</span>
+│   ├── <span class="d">[virtual] /bot1/virtual_scan ── 相手ロボ注入（2台復帰時）・dual-consumer 契約</span>
+│   ├── <span class="d">[external] 固定 RPLiDAR A1 ── TF ツリー外・ground truth 取得専用（doc23 §5-5 提案）</span>
+│   └── <span class="x">✗ GNSS / RTK-GNSS ── 対象外（屋内・0.01m 地図でセル数個分・予算外）</span>
+│
+├── <span class="l">02_Localization/</span>                       <span class="d">正本: doc23 §5 ＋【2026-08-10 追補】A-1 ＋【2026-08-17 追補】</span>
+│     <span class="new">★accuracy-first で入れ替え可（攻め領域）</span> <span class="d">AMCL=CURRENT / MOLA-LO=TARGET-1（2026-08-17）。床（06 の pose 非依存チェーン）の外側だから攻めてよい</span>
+│   ├── <span class="l">robot_localization ekf_node</span> <span class="new">★ odom→base_link TF の唯一の配信者</span>
+│   │     odom0=/bot1/odom  imu0=/bot1/imu  <span class="new">[+ odom1=mola_lo ＝ ★TARGET-1（2026-08-17）]</span>
+│   │     <span class="d">状態割当: x,y,yaw ◀ MOLA-LO ／ vx,vy ◀ wheel(25Hz) ／ vyaw ◀ wheel＋IMU（独立2センサの良い重複）</span>
+│   │     <span class="d">IMU の絶対 yaw は入れない ／ differential・relative は初期すべて false（絶対姿勢ソースが MOLA 1本＝N−1 ルールで差分化不要）</span>
+│   │     <span class="d">切替条件: 将来 IMU 絶対 yaw を足すときのみ MOLA を differential:true へ倒す</span>
+│   ├── <span class="l">amcl</span> <span class="new">★ map→odom TF の唯一の配信者</span>（tf_broadcast:true = nav2_params.yaml:59）
+│   │     └─▶ /bot1/amcl_pose ── <span class="r">Guardian の pose 鮮度ガード入力（省略不可）</span>
+│   ├── <span class="l">slam_toolbox</span> ── 地図生成時のみ・AMCL と排他起動
+│   ├── <span class="l">mola_lo</span> <span class="new">★NEW ＝ TARGET-1（2026-08-17 ユーザー決定）</span> ── 2D LiDAR odometry
+│   │     in : 車載 <span class="s">T-mini Plus /bot1/scan</span> <span class="d">単独（wheel / IMU は渡さない）・設定 lidar2d.yaml</span>
+│   │     out: EKF odom1（x,y,yaw）＋ 真の ICP covariance ＋ <span class="l">pose_quality</span> <span class="d">（自己申告＝Guardian 監視の「速い経路」・doc23 追補 A-7）</span>
+│   │     <span class="x">✗ TF は配信しない（TF 無効設定。odom→base_link は ekf_node 単独のまま）</span>
+│   │     <span class="warn">⚠ GPLv3（配布形態の判断が要る）／⚠ 縮退時も publish し続ける＝鮮度単独では loss 検出不可</span>
+│   ├── <span class="x">✗ cuvslam (Isaac ROS) ── blocked-by-hardware で不採用確定（2026-08-17。旧 TARGET-1）</span>
+│   │     <span class="x">理由: HP60C は IR / ステレオを一切出せない ＋ Humble 用 Isaac ROS 3.2 に depth 入力経路なし（RGBD 対応は 4.1+ / Jazzy / Thor 専用）</span>
+│   │     <span class="x">✗ TARGET-alt（VSLAM pose で AMCL 省略）= 不採用（Guardian 沈黙 + map 原点ズレの 2 blocker）</span>
+│   └── <span class="x">✗ 3D LiDAR（FAST-LIO 系）── closed。垂直 FOV の直下盲円錐 r ≈ 8〜9 × 搭載高 h ＞ 盤面半対角 1.02m ＝ 盤面でなく部屋に localize してしまう（価格・重量・電力・演算は blocker でない）</span>
+│
+├── <span class="t">03_Coordinate_System_TF/</span>   <span class="d">各エッジの配信者は常に 1 ノード（launch 排他 + unit pin）</span>
+│   map ─────────────────────── <span class="l">AMCL（or SLAM Toolbox・排他）</span>
+│    └── bot1/odom ──────────── <span class="l">ekf_node（唯一）</span>
+│         └── bot1/base_link ── <span class="d">robot_state_publisher（URDF static）</span>
+│              ├── bot1/lidar_link <span class="d">（凍結）</span>／ bot1/imu_link <span class="d">（凍結）</span>
+│              └── bot1/camera_link <span class="new">★NEW = FROZEN_LINK_NAMES 未登録 → contract PR 必要</span>
+│         <span class="x">✗ M1 シリアルドライバに odom TF を出させない（二重配信の温床）</span>
+│
+├── <span class="g">04_3D_Perception/</span>            <span class="warn">⚠TARGET（S1=8GB・S2=HP60C ゲート通過後）</span> <span class="d">正本: doc23 §2-3,§7</span>
+│   └── <span class="g">nvblox_node</span>（Isaac ROS 3.x / CUDA）
+│         in : depth + camera_info ＋ <span class="new">★pose(TF) の並行供給が必須</span>
+│         out: /bot1/nvblox/map_slice <span class="d">（/map と別名＝単独 publisher 契約を守る）</span>
+│         static TSDF/ESDF のみ・voxel 0.02m 初期値
+│         <span class="x">✗ TF を配信しない（pose は AMCL に完全従属＝ロスト時 TSDF 焼き付き注意）</span>
+│         <span class="x">✗ dynamic 層 不採用（走行面上に動的障害物なし・相手ロボは VirtualScan）／✗ mesh・color OFF</span>
+│
+├── <span class="n">05_Navigation/  Nav2</span>          <span class="d">正本: doc09（CURRENT）/ doc23 §2（TARGET）</span>
+│   ├── bt_navigator / waypoint_follower
+│   ├── planner_server = NavfnPlanner   <span class="x">✗ SmacPlannerHybrid 不採用（メカナム=曲率制約が本質でない）</span>
+│   ├── controller_server = MPPI 20Hz・vx_max 0.3
+│   │     <span class="warn">⚠ 円形 footprint（半径184mm相当）vs 通路280mm ＝ 非円形化が要る（doc23 OQ-3）</span>
+│   ├── behavior_server（recovery は collision_monitor を BYPASS＝#233 ⑥確定）
+│   └── costmap_2d/
+│        ├── global（map・0.01・全域）: static ◀ /map ／ <span class="g">nvblox_layer</span> <span class="new">★T4</span> ／ obstacle ◀ scan+virtual ／ inflation
+│        │     <span class="x">✗ voxel_layer（不採用・nvblox 縮退時の retreat plan として保持）</span>
+│        └── local（odom・rolling 3×3m）: <span class="g">nvblox_layer</span> <span class="new">★T3=主戦場（ここで止める判断も正当）</span> ／ obstacle ／ inflation
+│              <span class="x">✗ static_layer（rolling に無意味）／✗ voxel_layer</span>
+│
+├── <span class="r">06_Control/</span>                    <span class="d">正本: doc12 §cmd_vel トポロジ（凍結）/ 02-hardware §残課題5-7</span>
+│   ├── <span class="r">safety_chain/ ★凍結トポロジ＝1 バイトも変えない（原則 P2）</span>
+│   │     <span class="r">＝不変の床（pose 非依存・凍結・入れ替え対象外）</span> <span class="d">localization がどれだけ間違っても機能する（doc23 追補 A-2）</span>
+│   │     controller ─▶ /bot1/cmd_vel/nav2_raw
+│   │       └ <span class="r">collision_monitor</span>（obs = scan+virtual_scan のみ。<span class="x">✗ GPU/depth/nvblox 禁止＝原則 P1</span>）
+│   │          ─▶ /bot1/cmd_vel/nav2 (prio10)
+│   │       └ <span class="r">twist_mux</span> ◀── /bot1/cmd_vel/emergency <span class="r">(prio100 = FROZEN safety contract)</span>
+│   │          ─▶ /bot1/cmd_vel
+│   ├── <span class="r">emergency_guardian</span>（L1 安全機構・<span class="warn">pose 依存＝床の外だが入れ替え対象外</span>）─▶ /bot1/cmd_vel/emergency
+│   │     in : /bot1/amcl_pose <span class="d">（CURRENT はハードコード直購読・鮮度 1.0s = warehouse.base.yaml:21）</span>
+│   │     <span class="new">★監視プロファイル(TARGET): 購読先を config 切替・restrict-only（floor より締める方向のみ・緩い値は起動拒否）</span>
+│   │     <span class="d">localization ロスト＝operational stop（protective stop は上の床の責務）。変更は R-26 unit ＋ safety-state トラック経由（doc23 追補 A-3・A-5・A-9）</span>
+│   ├── <span class="r">m1_serial_driver</span>（自前・115200 8N1・/dev/myserial）
+│   │     └ <span class="r">L0' 送信直前クランプ ≤0.3 m/s</span> ─ FUNC_MOTION=0x12 (vx,vy,wz)
+│   ├── <span class="r">stm32_firmware</span>（Yahboom）── ★メカナム逆運動学はここ <span class="warn">⚠MCU watchdog 有無は実機未確認</span>
+│   ├── <span class="x">✗ ros2_control ── 非採用（IK は STM32 側・ホストは body 速度を投げるだけ）</span>
+│   └── <span class="x">✗ micro-ROS ── M1 経路 不使用（ESP32 旧構成・2台復帰時のみ legacy）</span>
+│
+└── <span class="h">08_Human_Interaction/</span>          <span class="d">正本: mode-x-er/09（2026-08-09 改訂）/ ADR-0007（俯瞰カメラ不使用）</span>
+    └── <span class="h">gesture_detector</span> <span class="new">★NEW</span>（L4 知覚・publish-only・0 actuation）
+          in : HP60C color(+depth) ＋ TF(03) <span class="d">← 04 と並列に同じセンサ+TF を消費する第2ブランチ</span>
+          NN : MediaPipe Pose（Apache-2.0・CPU）<span class="d">／F1=RTMPose／F2=YOLO-pose(AGPL=要判断)</span>
+          out: /perception/gesture_events ─▶ x_er_bridge/gesture_source ─▶ L3 ─▶ L2 Policy Gate ─▶ 05
+          <span class="d">ジェスチャ①肩より上=召喚 ②腕を伸ばす=指差し（KNOWN_LOCATIONS snap・margin 不足は clarify）</span>
+          <span class="warn">⚠ 取付角が 04（下向き）と競合 → Phase 1 は水平固定</span>
+          <span class="x">✗ 俯瞰カメラ C922n を ER/知覚入力に使わない（撮影専用・ADR-0007）</span>
+</pre>
+</div>
+
+<div class="card" style="border-left:4px solid var(--obs)"><h3><span class="o">07_Observability</span> — 横断帯（01-08 の全段に key join。書き込み合流ではなく run_id / gen_id / robot / timestamp で結合）</h3>
+<pre class="tree">
+① 判断 tier  <span class="o">Langfuse</span> <span class="d">[実装あり・live は gate 待ち]</span>   ② event tier  <span class="o">audit.jsonl / decision_event</span> <span class="d">[実装あり]</span>
+③ 集計 tier  <span class="o">OTel(候補) / Prometheus・Grafana(要spike)</span> <span class="d">[未実装・当面 audit.jsonl→DuckDB]</span>
+④ 生 tier    <span class="o">rosbag2</span> <span class="warn">⚠採用方針・未配線</span><span class="o"> / mcap(要spike) / PlotJuggler・Foxglove(候補)</span>
+             <span class="d">nvblox の回帰は「Jetson + rosbag 再生」の場（doc23 S3）。詳細 → ③ 観測 tool カタログ</span>
+</pre>
+</div>
+
+<h2>一般形ツリーとの差分（M1 でこう変わる）</h2>
+<div class="card">
+<table class="diff">
+<tr><th>一般形（外部レビュー案）</th><th>M1 実構成での裁定</th><th>正本</th></tr>
+<tr><td>GNSS / RTK を Sensors に置く</td><td><b>対象外</b>（屋内ジオラマ・0.01m 地図でセル数個分・予算外。理由つきで ✗ 残置）</td><td>doc23 §5-1</td></tr>
+<tr><td>ros2_control を Control に置く</td><td><b>非採用</b>。メカナム逆運動学は STM32 ファーム側・ホストは自前シリアルドライバで body 速度を送るだけ</td><td>02-hardware §残課題5-6</td></tr>
+<tr><td>micro-ROS を Control に置く</td><td><b>M1 経路では不使用</b>（ESP32 旧構成の legacy。2台復帰時のみ再評価）</td><td>ADR-0006 Context</td></tr>
+<tr><td>collision_monitor を Nav2 配下に置く</td><td>Nav2 の一部でもあるが、本質は<b>凍結 cmd_vel 安全チェーン</b>（→twist_mux prio100→L0'）＝06 に独立掲載。recovery は BYPASS（#233 ⑥）</td><td>doc12 §cmd_vel トポロジ / doc23 §1 P1・P2</td></tr>
+<tr><td>nvblox_layer を Local のみに置く</td><td><b>偶然 T3 段と一致</b>。TARGET 完成形は Global にも T4 で追加（ただし OQ-8 次第で T3 止めが現実解）</td><td>doc23 §2・§7 移行順</td></tr>
+<tr><td>cuVSLAM を確定要素として置く／cuVSLAM→Pose→nvblox 直結も可</td><td><b>不採用確定 = blocked-by-hardware</b>（2026-08-17。HP60C が IR/ステレオ不可 ＋ Humble 用 Isaac ROS 3.2 に depth 経路なし）。<b>TARGET-1 は MOLA-LO（2D LiDAR odometry）へ置換</b>し、TF を出さない EKF 第2入力（odom1）という形だけを引き継ぐ。直結（TARGET-alt）は Guardian 沈黙 + map 原点ズレの 2 blocker で<b>不採用</b></td><td>doc23 §5-3 ／【2026-08-17 追補】</td></tr>
+<tr><td>TF ツリー（map→odom→base_link→sensor）</td><td>形は同じ。<b>本質はエッジごとの配信責任</b>（AMCL / ekf_node / robot_state_publisher が各 1 ノード・launch 排他・unit pin）＋ camera_link は contract PR 要</td><td>doc23 §5-2</td></tr>
+<tr><td>（無し）Human Interaction</td><td><b>08 を新設</b>。gesture_detector は 04 と並列の第2ブランチ（Nav2 の下流ではない）。ER バイパスの決定論経路・既存 L3/L2 ゲートは全通過</td><td>mode-x-er/09 / ADR-0007</td></tr>
+<tr><td>nvblox は Depth 単独で地図を作る（誤解）</td><td>指摘どおり <b>Pose(TF) の並行供給が必須</b>——本 repo は doc23 §3 で明記済み（さらに pose ロスト時の TSDF 焼き付きまで残件化）</td><td>doc23 §3・OQ-6</td></tr>
+</table>
+</div>
+
+<div class="foot">
+  生成: 2026-08-09（<b>2026-08-17 MOLA-LO 追補反映</b>: 02 に mola_lo 追加・cuVSLAM ✗ blocked-by-hardware 降格・3D LiDAR ✗ 残置）／ 正本は各 md（<code>docs/architecture/23-perception-and-localization.md</code>・<code>docs/mode-x-er/09-hand-raise-summon.md</code>・<code>docs/architecture/12-infrastructure-common.md</code>・<code>docs/shared/02-hardware-design.md</code>・ADR-0008/0006/0007）。
+  データフローの詳細は <a href="perception-localization-flow.html" style="color:var(--tf)">② Runtime Data Flow</a>、観測 4 tier の詳細は <a href="../productization/tool-catalog-detail.html" style="color:var(--tf)">③ tool カタログ</a>。
+</div>
+
+</div>
+</body>
+</html>

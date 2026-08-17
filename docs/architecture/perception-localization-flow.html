@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>知覚・自己位置データフロー（doc23 図解）</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0d1117; --panel: #161b22; --panel2: #1c2330; --line: #30363d;
+    --txt: #e6edf3; --dim: #8b949e; --mono: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+    --sensor: #58a6ff;   /* センサ */
+    --gpu: #3fb950;      /* GPU 知覚 (nvblox) */
+    --loc: #d29922;      /* 自己位置 (EKF/AMCL) */
+    --nav: #bc8cff;      /* Nav2 planning */
+    --safe: #f85149;     /* 安全チェーン (L1/L0) */
+    --frozen: #39c5cf;   /* 凍結契約・不変 */
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--txt); font-family: "Hiragino Sans", "Noto Sans JP", sans-serif; line-height: 1.55; padding: 32px 20px 60px; }
+  .wrap { max-width: 1180px; margin: 0 auto; }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  h2 { font-size: 17px; margin: 40px 0 12px; padding-left: 10px; border-left: 4px solid var(--nav); }
+  .sub { color: var(--dim); font-size: 12.5px; margin-bottom: 18px; }
+  .sub code, .cite { font-family: var(--mono); font-size: 11px; color: var(--dim); }
+  .legend { display: flex; flex-wrap: wrap; gap: 10px 18px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; font-size: 12px; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .dot { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+
+  /* box primitives */
+  .box { background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--dim); border-radius: 8px; padding: 9px 12px; font-size: 13px; }
+  .box b { font-size: 13.5px; }
+  .box .note { color: var(--dim); font-size: 11.5px; margin-top: 2px; }
+  .box .cite { display: block; margin-top: 3px; }
+  .b-sensor { border-left-color: var(--sensor); }
+  .b-gpu    { border-left-color: var(--gpu); }
+  .b-loc    { border-left-color: var(--loc); }
+  .b-nav    { border-left-color: var(--nav); }
+  .b-safe   { border-left-color: var(--safe); }
+  .b-frozen { border-left-color: var(--frozen); background: #12202a; }
+  .new { color: var(--gpu); font-size: 10.5px; font-weight: 700; border: 1px solid var(--gpu); border-radius: 4px; padding: 0 5px; margin-left: 6px; vertical-align: 1px; }
+  .warn { color: #d29922; font-size: 10.5px; font-weight: 700; border: 1px solid #d29922; border-radius: 4px; padding: 0 5px; margin-left: 6px; vertical-align: 1px; }
+  .frozenTag { color: var(--frozen); font-size: 10.5px; font-weight: 700; border: 1px solid var(--frozen); border-radius: 4px; padding: 0 5px; margin-left: 6px; vertical-align: 1px; }
+
+  .arrow { text-align: center; color: var(--dim); font-size: 15px; line-height: 1.1; padding: 3px 0; }
+  .arrow small { display: block; font-family: var(--mono); font-size: 10.5px; color: var(--dim); }
+
+  /* diagram 1: three sensor columns converging */
+  .cols { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; align-items: start; }
+  .stack > * + * { margin-top: 0; }
+  .flow-note { background: var(--panel2); border: 1px dashed var(--line); border-radius: 8px; padding: 8px 12px; font-size: 12px; color: var(--dim); margin: 10px 0; }
+
+  /* costmap layer stacks */
+  .cm { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  .cmcard { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; }
+  .cmcard h3 { font-size: 14px; margin-bottom: 8px; }
+  .cmcard h3 small { color: var(--dim); font-weight: 400; font-family: var(--mono); font-size: 11px; }
+  .layer { border: 1px solid var(--line); border-radius: 6px; padding: 7px 10px; font-size: 12.5px; margin-bottom: 6px; background: var(--panel2); }
+  .layer b { font-size: 12.5px; }
+  .layer .note { color: var(--dim); font-size: 11px; }
+  .l-static { border-left: 4px solid var(--frozen); }
+  .l-nvblox { border-left: 4px solid var(--gpu); }
+  .l-obs    { border-left: 4px solid var(--sensor); }
+  .l-infl   { border-left: 4px solid var(--nav); }
+  .rejected { opacity: .55; }
+  .rejected b { text-decoration: line-through; }
+
+  /* TF tree */
+  .tf { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; font-family: var(--mono); font-size: 12.5px; overflow-x: auto; }
+  .tf .k { color: var(--txt); font-weight: 700; }
+  .tf .who { color: var(--loc); }
+  .tf .whoE { color: var(--gpu); }
+  .tf .dim { color: var(--dim); }
+  .tf .nw { color: var(--gpu); font-weight: 700; }
+
+  /* phases */
+  .phases { display: flex; flex-wrap: wrap; gap: 8px; }
+  .ph { flex: 1 1 150px; background: var(--panel); border: 1px solid var(--line); border-top: 3px solid var(--nav); border-radius: 8px; padding: 8px 10px; font-size: 12px; }
+  .ph b { display: block; font-size: 12.5px; }
+  .ph .note { color: var(--dim); font-size: 11px; }
+  .ph.gate { border-top-color: var(--safe); }
+
+  table.oq { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  table.oq th, table.oq td { border: 1px solid var(--line); padding: 6px 9px; text-align: left; vertical-align: top; }
+  table.oq th { background: var(--panel2); }
+  @media (max-width: 860px) { .cols, .cm { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>知覚・自己位置スタック データフロー — 単騎構成 TARGET</h1>
+<div class="sub">
+  正本: <code>docs/architecture/23-perception-and-localization.md</code>（DRAFT）／ CURRENT 正本: <code>docs/shared/09-navigation-internals.md</code>／ 前提: <code>ADR-0008</code>（Humble + Isaac ROS 3.x）・<code>ADR-0006</code>（1台 = bot1）。
+  <b style="color:var(--txt)">図中の行番号は 2026-08-09 時点。</b>
+</div>
+
+<div style="display:flex;flex-wrap:wrap;gap:10px;margin:0 0 14px">
+  <a href="robot-architecture-tree.html" style="color:var(--frozen);text-decoration:none;font-size:12.5px;border:1px solid var(--line);border-radius:6px;padding:4px 10px;background:var(--panel)">① Architecture Tree（01-08 全体地図）</a>
+  <a href="perception-localization-flow.html" style="color:var(--txt);text-decoration:none;font-size:12.5px;border:1px solid var(--frozen);border-radius:6px;padding:4px 10px;background:var(--panel)">② Runtime Data Flow（本頁）</a>
+  <a href="../productization/tool-catalog-detail.html" style="color:var(--frozen);text-decoration:none;font-size:12.5px;border:1px solid var(--line);border-radius:6px;padding:4px 10px;background:var(--panel)">③ 観測 tool カタログ</a>
+</div>
+<div class="legend">
+  <span><i class="dot" style="background:var(--sensor)"></i>センサ入力</span>
+  <span><i class="dot" style="background:var(--gpu)"></i>GPU 知覚（nvblox）= 安全層外・TARGET</span>
+  <span><i class="dot" style="background:var(--loc)"></i>自己位置（EKF / AMCL）</span>
+  <span><i class="dot" style="background:var(--nav)"></i>Nav2 planning</span>
+  <span><i class="dot" style="background:var(--safe)"></i>安全チェーン（L1 / L0'）= 不変</span>
+  <span><i class="dot" style="background:var(--frozen)"></i>凍結契約・変更不可</span>
+</div>
+
+<h2>1. 全体データフロー（センサ → costmap → cmd_vel）</h2>
+<div class="cols">
+  <!-- col 1: depth camera / GPU -->
+  <div class="stack">
+    <div class="box b-sensor"><b>Nuwa HP60C 深度カメラ</b>（ロボット搭載・USB）
+      <div class="note">ascamera driver（閉ソース .so・Humble 実績のみ）</div>
+      <span class="cite">/bot1/camera/depth/image_raw + camera_info<br>doc23 §4 ／ 02-hardware-design §残課題</span>
+    </div>
+    <div class="arrow">▼<small>depth + camera_info + pose(TF)</small></div>
+    <div class="box b-gpu"><b>nvblox</b>（Isaac ROS 3.x・CUDA）<span class="new">TARGET</span>
+      <div class="note">static TSDF/ESDF のみ（dynamic 層 不採用・人はいない／相手ロボは VirtualScan 担当）。<b>TF は配信しない</b>＝pose は AMCL に従属</div>
+      <span class="cite">doc23 §2-3 ／ ゲート S1(8GB)・S2(HP60C)</span>
+    </div>
+    <div class="arrow">▼<small>/bot1/nvblox/map_slice（ESDF 2D slice・/map とは別名）</small></div>
+    <div class="box b-gpu"><b>Nvblox Layer</b> → costmap へ<span class="new">TARGET</span>
+      <div class="note">LiDAR 面に映らない棚の張り出し・低い荷物・段差を marking 方向のみで反映</div>
+    </div>
+  </div>
+  <!-- col 2: LiDAR -->
+  <div class="stack">
+    <div class="box b-sensor"><b>T-mini Plus 2D LiDAR</b>（M1 搭載）
+      <div class="note">⚠ docs/params は MS200 表記のまま（既存ドリフト・doc23 OQ-9）</div>
+      <span class="cite">/bot1/scan（AMCL・collision_monitor・costmap×2 ＋ <b>MOLA-LO（新・2026-08-17）</b> の 5 consumer）</span>
+    </div>
+    <div class="arrow">▼<small>/bot1/scan ＋ /bot1/virtual_scan（2台復帰時）</small></div>
+    <div class="box b-sensor"><b>Obstacle Layer</b> → costmap へ
+      <div class="note">virtual_scan は dual-consumer 契約を維持（costmap から外さない）</div>
+      <span class="cite">doc12:547 ／ nav2_params.yaml:221,274</span>
+    </div>
+    <div class="arrow">▼<small>＋ /map（共有 map_server・transient_local）</small></div>
+    <div class="box b-frozen"><b>Static Layer</b> ← /map<span class="frozenTag">単独 publisher</span>
+      <div class="note">既知構造（周壁・棚・隘路壁）。decay しない。nvblox に /map を出させない</div>
+      <span class="cite">nav2_params.yaml:262（#67 絶対パス教訓）</span>
+    </div>
+  </div>
+  <!-- col 3: odometry -->
+  <div class="stack">
+    <div class="box b-sensor"><b>STM32 auto-report</b>（40ms / 25Hz）
+      <div class="note">4輪エンコーダ + ICM20948 9軸 IMU → 自前 m1_driver が publish</div>
+      <span class="cite">/bot1/odom + /bot1/imu ／ 02 §残課題5</span>
+    </div>
+    <div class="arrow">▼<small>odom0 = wheel(vx,vy,vyaw) ／ imu0 = IMU(vyaw)</small></div>
+    <div class="box b-loc"><b>MOLA-LO</b>（2D LiDAR odometry）<span class="new">TARGET-1（2026-08-17 置換）</span>
+      <div class="note">入力は<b>車載 T-mini Plus /bot1/scan 単独</b>（中列と同一ソース・wheel/IMU は渡さない）・<code>lidar2d.yaml</code>・<b>TF 無効</b>。真の ICP covariance ＋ <code>pose_quality</code> を出す。<b>⚠ GPLv3</b></div>
+      <span class="cite">doc23【2026-08-17 追補】／ cuVSLAM から差し替え</span>
+    </div>
+    <div class="arrow">▼<small>odom1 = MOLA-LO pose（x,y,yaw。TF は出させない）</small></div>
+    <div class="box b-loc"><b>robot_localization EKF</b>
+      <div class="note"><b>odom→base_link TF の唯一の配信者</b>。x,y,yaw ← MOLA-LO ／ vx,vy ← wheel ／ vyaw ← wheel+IMU（下の状態割当表）。差し替え候補は TF を出させず第2入力に限定する原則は不変</div>
+      <span class="cite">doc23 §5-2（TF 単一所有ルール）</span>
+    </div>
+    <div class="arrow">▼<small>TF: bot1/odom → bot1/base_link</small></div>
+    <div class="box b-loc"><b>AMCL</b>（/scan + 既知地図）
+      <div class="note">map→odom を配信（tf_broadcast: true）。<b>Guardian の pose 鮮度ガード入力</b>のため省略不可（TARGET-alt を既定にしない理由）</div>
+      <span class="cite">nav2_params.yaml:59 ／ doc12:506-513</span>
+    </div>
+  </div>
+</div>
+
+<div class="arrow">▼ ▼ ▼<small>3 系統が costmap（§2）へ合流 → Inflation Layer</small></div>
+
+<div class="cols">
+  <div class="box b-nav"><b>Planner Server</b>（NavfnPlanner 維持）
+    <div class="note">SmacPlannerHybrid 不採用（メカナムはその場回転可・#125 実証値を守る）</div>
+    <span class="cite">nav2_params.yaml:300 ／ doc23 §2</span>
+  </div>
+  <div class="box b-nav"><b>Controller Server</b>（MPPI・20Hz）
+    <div class="note">vx_max 0.3。⚠ 円形 footprint 前提は M1 で要改訂（184mm 半径 vs 通路 280mm = doc23 OQ-3）</div>
+    <span class="cite">nav2_params.yaml:115,171-179</span>
+  </div>
+  <div class="box b-nav"><b>BT Navigator / Behavior / Waypoint</b>
+    <div class="note">recovery は collision_monitor を BYPASS（#233 ⑥確定）</div>
+  </div>
+</div>
+
+<div class="arrow">▼<small>/bot1/cmd_vel/nav2_raw</small></div>
+<div class="box b-safe"><b>L1: collision_monitor</b> — observation = <b>scan + virtual_scan のみ</b>（原則 P1: GPU/depth/nvblox を反射経路に入れない）
+  <span class="cite">doc23 §1 P1 ／ doc12:526-541</span>
+</div>
+<div class="arrow">▼<small>/bot1/cmd_vel/nav2（prio10）</small></div>
+<div class="box b-frozen"><b>twist_mux</b> ← /bot1/cmd_vel/emergency（<b>prio100 = FROZEN safety contract</b>・Emergency Guardian）<span class="frozenTag">P2: 1 バイトも変えない</span>
+  <span class="cite">doc12:545 ／ doc23 §1 P2</span>
+</div>
+<div class="arrow">▼<small>/bot1/cmd_vel</small></div>
+<div class="box b-safe"><b>L0': ホストシリアルドライバ 送信直前クランプ ≤ 0.3 m/s</b> → STM32（メカナム逆運動学）→ モータ
+  <span class="cite">02 §残課題7 ／ safety.py MAX_LINEAR_VELOCITY=0.3（凍結 floor）</span>
+</div>
+
+<h3 style="font-size:14px;margin:22px 0 8px">EKF 状態割当（2026-08-17 決定・TARGET / 数値・キー名は例示）</h3>
+<table class="oq">
+  <tr><th>EKF 状態</th><th>MOLA-LO（odom1）</th><th>Wheel（odom0・25Hz）</th><th>IMU（imu0・ICM20948）</th><th>意図</th></tr>
+  <tr>
+    <td><b>x, y, yaw</b>（絶対姿勢）</td>
+    <td><b>✔ 採用</b>（唯一の絶対姿勢ソース）</td><td>—</td><td>— <span class="cite">絶対 yaw は入れない</span></td>
+    <td>スリップに汚染されない位置・向きを LiDAR 幾何から取る</td>
+  </tr>
+  <tr>
+    <td><b>vx, vy</b></td>
+    <td>—</td><td><b>✔ 採用</b></td><td>—</td>
+    <td>メカナムの横移動を含む body 速度は wheel が最も素直</td>
+  </tr>
+  <tr>
+    <td><b>vyaw</b></td>
+    <td>—</td><td><b>✔</b></td><td><b>✔</b></td>
+    <td><b>独立2センサの良い重複</b>（原理の異なる2系統が同一量を支え、片方の劣化を EKF が吸収）</td>
+  </tr>
+</table>
+<div class="flow-note"><b><code>differential</code> / <code>relative</code> は初期すべて false</b>。IMU を vyaw のみに使う限り<b>絶対姿勢ソースは MOLA-LO の1本</b>で、複数の絶対姿勢入力が喧嘩する状況（N−1 個を differential 化するルール）に該当しないため差分化不要。<b>切替条件</b>: 将来 IMU の絶対 yaw を足すときに限り、MOLA-LO 側を <code>differential: true</code> へ倒す。</div>
+
+<h2>2. Nav2 costmap — Global / Local のレイヤ構成（TARGET）</h2>
+<div class="cm">
+  <div class="cmcard">
+    <h3>Global Costmap <small>global_frame: map ・ resolution 0.01 ・ 全域</small></h3>
+    <div class="layer l-static"><b>Static Layer</b> <span class="note">← /map（設計上の既知構造。「そこに必ずあるもの」）</span></div>
+    <div class="layer l-nvblox"><b>Nvblox Layer</b><span class="new">T4 で追加</span> <span class="note">← ESDF slice（unknown で Static の FREE を潰さない marking 設定が前提 = OQ-8）</span></div>
+    <div class="layer l-obs"><b>Obstacle Layer</b> <span class="note">← scan + virtual_scan</span></div>
+    <div class="layer l-infl"><b>Inflation Layer</b> <span class="note">inflation_radius 0.085 / cost_scaling 10.0（#125 live 実証値）</span></div>
+    <div class="layer rejected"><b>Voxel Layer</b> <span class="note">不採用 — nvblox と同機能の CPU 版・8GB 二重消費。<b>nvblox が S1 で落ちた時の retreat plan</b> として保持</span></div>
+  </div>
+  <div class="cmcard">
+    <h3>Local Costmap <small>global_frame: bot1/odom ・ rolling 3×3m ・ 0.01</small></h3>
+    <div class="layer l-nvblox"><b>Nvblox Layer</b><span class="new">T3 = 主戦場</span> <span class="note">3D 障害物の反映は Local だけで要件充足（0.3 m/s に対し rolling 3m ≈ 10 秒先）＝ <b>T3 で止める判断も正当</b></span></div>
+    <div class="layer l-obs"><b>Obstacle Layer</b> <span class="note">← scan + virtual_scan</span></div>
+    <div class="layer l-infl"><b>Inflation Layer</b></div>
+    <div class="layer rejected"><b>Static Layer</b> <span class="note">不採用 — rolling window に static は無意味（CURRENT も持たない）</span></div>
+    <div class="layer rejected"><b>Voxel Layer</b> <span class="note">不採用（同左）</span></div>
+  </div>
+</div>
+
+<h2>3. TF ツリーと配信責任（単騎でも namespace bot1/ 維持）</h2>
+<div class="tf">
+<span class="k">map</span> <span class="dim">──────────────</span> <span class="who">AMCL が map→odom を配信</span> <span class="dim">（tf_broadcast: true ／ SLAM Toolbox とは同時起動しない・排他）</span><br>
+&nbsp;│<br>
+<span class="k">bot1/odom</span> <span class="dim">────────</span> <span class="whoE">robot_localization ekf_node が odom→base_link を配信（唯一）</span><br>
+&nbsp;│&nbsp;&nbsp;&nbsp;<span class="dim">入力: odom0=/bot1/odom(wheel 25Hz・vx,vy,vyaw) ／ imu0=/bot1/imu(vyaw のみ) ／ odom1=<span class="nw">MOLA-LO</span>(TARGET-1 2026-08-17・x,y,yaw・<b>TF 無効</b>)</span><br>
+<span class="k">bot1/base_link</span> <span class="dim">───</span> <span class="dim">robot_state_publisher（URDF static）</span><br>
+&nbsp;├─ <span class="k">bot1/lidar_link</span> <span class="dim">（凍結）</span><br>
+&nbsp;├─ <span class="k">bot1/imu_link</span> <span class="dim">（凍結）</span><br>
+&nbsp;└─ <span class="k">bot1/camera_link</span> <span class="nw">★ NEW — FROZEN_LINK_NAMES に無い = contract PR 必要</span> <span class="dim">（robot_dimensions.py:33）</span><br>
+<br>
+<span class="dim">ルール: 各 TF エッジの配信者は常に 1 ノード（launch で排他化・unit で pin）。M1 ドライバに odom TF を出させない（二重配信の温床）。</span>
+</div>
+
+<h2>4. 段階的移行（前段が緑でないと進めない）</h2>
+<div class="phases">
+  <div class="ph"><b>T0 土台</b><span class="note">camera_link contract PR・Nvblox Layer を plugins 未登録で記述（挙動 = CURRENT と同一・sim CI 緑維持）</span></div>
+  <div class="ph gate"><b>T1 = S2</b><span class="note">HP60C→depth topic が Humble/Orin で出る（min range が最重要 Go/No-Go）</span></div>
+  <div class="ph gate"><b>T2 = S1</b><span class="note">nvblox 単体が 8GB に載る（固定コスト実測。voxel 0.02m 初期値・Open-RMF の余地込み）</span></div>
+  <div class="ph"><b>T3 Local のみ結合</b><span class="note">Global 不変 = #67 教訓に触れない。<b>ここで止める判断も正当</b></span></div>
+  <div class="ph"><b>T4 Global 追加</b><span class="note">OQ-8（NO_INFORMATION 挙動）確認後</span></div>
+  <div class="ph"><b>T5 2台同時</b><span class="note">2台復帰フェーズ（ADR-0006）</span></div>
+</div>
+<div class="flow-note">sim 検証: Mac に CUDA 無し → <b>「sim（Gazebo）= CURRENT の回帰を守る場、nvblox = Jetson + rosbag 再生の場」と分離</b>（S3）。<b>cuVSLAM の HP60C 成立性は blocked-by-hardware で確定（2026-08-17）</b>: HP60C は IR/ステレオを一切出せず、かつ Humble 用 Isaac ROS 3.2 に depth 入力経路が無い（RGBD 対応は 4.1+ / Jazzy / Thor 専用）＝ OQ-1 は negative で解決し、TARGET-1 は <b>MOLA-LO（2D LiDAR odometry）</b>へ置換。</div>
+
+<h2>5. Localization Health 監視（Guardian 監視プロファイル・TARGET）</h2>
+<div class="sub">
+  正本: <a href="23-perception-and-localization.md" style="color:var(--frozen)"><code>docs/architecture/23-perception-and-localization.md</code></a> の【2026-08-10 追補】A-1〜A-12。
+  <b style="color:var(--txt)">Status: TARGET 設計の記録のみ＝実装なし。</b>
+  CURRENT の Guardian は <code>/bot1/amcl_pose</code> をハードコードで直購読し、鮮度しきい値は 1.0s（<code>config/warehouse.base.yaml:21</code>）。
+</div>
+
+<div class="cmcard" style="border-left:4px solid var(--gpu)">
+  <h3>攻めてよい領域 — accuracy-first で高速に入れ替える <small>doc23 追補 A-1（実験段階・ADR-0006 単騎）</small></h3>
+  <div class="cols">
+    <div class="box b-loc"><b>AMCL</b><span class="frozenTag">CURRENT</span>
+      <div class="note">/scan + 既知地図 → map→odom を配信</div>
+    </div>
+    <div class="box b-loc"><b>MOLA-LO</b>（2D LiDAR odometry）<span class="new">TARGET-1（2026-08-17）</span>
+      <div class="note">車載 T-mini Plus /scan 単独・<code>lidar2d.yaml</code>・TF 無効 → EKF odom1（x,y,yaw）。ICP covariance ＋ <code>pose_quality</code> 自己申告。<b>⚠ GPLv3</b></div>
+    </div>
+    <div class="box b-gpu rejected"><b>cuVSLAM</b><span class="warn">✗ blocked-by-hardware（2026-08-17 確定）</span>
+      <div class="note">HP60C が IR/ステレオを一切出せない ＋ Humble 用 Isaac ROS 3.2 に depth 入力経路なし（RGBD は 4.1+/Jazzy/Thor 専用）。行は消さず不採用理由つきで残置</div>
+    </div>
+    <div class="box b-loc"><b>robot_localization EKF</b>
+      <div class="note">odom→base_link の唯一の配信者。入力構成は差し替え可</div>
+    </div>
+  </div>
+  <div class="flow-note"><b>3D LiDAR（FAST-LIO 系）は closed</b>: 垂直 FOV の直下盲円錐は半径 r ≈ 8〜9 × 搭載高 h に及び、盤面半対角 1.02m を超える＝<b>盤面ではなく部屋に対して localize してしまう</b>。価格・重量・電力・演算はいずれも blocker ではなく、<b>形状（盲円錐 ＞ 盤面）が理由</b>。</div>
+  <div class="box b-gpu" style="margin-top:12px"><b>nvblox</b>（3D 知覚・static TSDF/ESDF）<span class="new">TARGET</span>
+    <div class="note">S1/S2 ゲート次第で採否・retreat plan あり（§4）。安全層の外側＝入れ替え自由</div>
+  </div>
+  <div class="flow-note">「一度決めて凍結する」のではなく<b>精度が良い方を採る</b>方針で都度入れ替える。ただし<b>攻めが許されるのは安全層の外側に限る</b>（doc23 追補 A-2）。</div>
+</div>
+
+<div class="arrow" style="border-top:1px dashed var(--line);margin-top:14px;padding-top:8px">▼ ▼ ▼<small>境界: ここから下は pose 非依存＝実験・入れ替えの対象外</small></div>
+
+<div class="box b-safe"><b>Emergency Guardian</b>（L1 安全機構・<b>pose 依存</b>）<span class="warn">入れ替え対象外</span>
+  <div class="note">床ではないが「自由に入れ替える」対象でもない。単騎化でも安全レイヤは1枚も減らさない（ADR-0006 Decision 5）。購読先・判定の変更は <b>R-26</b>（独立オラクル unit ＋ mutation）＋ safety-state トラック Issue 経由。</div>
+  <span class="cite">doc23 追補 A-2・A-9 ／ doc12:506-513</span>
+</div>
+
+<div class="cmcard" style="border-left:4px solid var(--safe);margin-top:12px">
+  <h3>不変の床（安全ストッパー）— pose 非依存・凍結・入れ替え禁止 <small>doc23 追補 A-2</small></h3>
+  <div class="layer" style="border-left:4px solid var(--safe)"><b>L1 反射: collision_monitor</b> ← /bot1/scan（＋ /bot1/virtual_scan）
+    <span class="note">生センサ＝pose 非依存。observation source は不変（原則 P1・GPU 非依存）</span>
+  </div>
+  <div class="arrow">▼<small>/bot1/cmd_vel/nav2（prio10）</small></div>
+  <div class="layer" style="border-left:4px solid var(--frozen)"><b>L1 調停: twist_mux</b> ← /bot1/cmd_vel/emergency（prio100）<span class="frozenTag">FROZEN safety contract</span>
+    <span class="note">pose 非依存（doc12:526-541 ／ 原則 P2）</span>
+  </div>
+  <div class="arrow">▼<small>/bot1/cmd_vel</small></div>
+  <div class="layer" style="border-left:4px solid var(--safe)"><b>L0': ホストシリアルドライバ 送信直前クランプ ≤ 0.3 m/s</b>
+    <span class="note">pose 非依存。凍結値は <code>warehouse_interfaces/safety.py</code> の MAX_LINEAR_VELOCITY</span>
+  </div>
+  <div class="flow-note">localization がどれだけ間違っていてもこの3段は機能する。<b>床自体を実験対象にしてはならない</b>（<code>.claude/rules/safety.md</code>）。逆に言えば、床と Guardian があるからこそ localization 側で攻めた実験ができる。</div>
+</div>
+
+<div class="flow-note"><b>operational stop（運用停止）と protective stop（安全停止）は別物</b>: localization ロストは走行タスクを止める <b>operational stop</b> であって protective stop ではなく、protective stop の責務は上の「不変の床」3段が持ち続ける（doc23 追補 A-3・産業用 AMR の標準的な切り分けと同型 ／ GLOSSARY §11）。</div>
+
+<h3 style="font-size:14px;margin:22px 0 8px">ソース別の鮮度セマンティクス（監視プロファイルが要る理由・doc23 追補 A-6）</h3>
+<table class="oq">
+  <tr><th>ソース</th><th>出力の出方</th><th>鮮度で loss を検出できるか</th><th>実 heartbeat / 補助信号</th><th>閾値の目安</th></tr>
+  <tr>
+    <td><b>AMCL</b><br><span class="cite">/amcl_pose・CURRENT</span></td>
+    <td><b>motion-gated</b>: <code>update_min_d</code> / <code>update_min_a</code> を超える移動時のみ publish</td>
+    <td><b>できない</b>。完全静止中は無期限沈黙（駐機で偽陽性）・かつ delocalized でも発行を続ける（<b>迷子でも鮮度は正常に見える</b>）</td>
+    <td>毎スキャン再発行される <b>map→odom TF</b></td>
+    <td>秒級 ＋ <b>静止ゲート必須</b></td>
+  </tr>
+  <tr>
+    <td><b>cuVSLAM</b><br><span class="cite">isaac_ros_visual_slam・<b>旧</b> TARGET-1 候補＝blocked（履歴行・md A-6 と同期）</span></td>
+    <td>tracking loss で odometry / TF 出力が<b>完全停止</b></td>
+    <td><b>できる</b>（鮮度が真の loss 検出器になる）</td>
+    <td><code>/visual_slam/status</code> の <code>vo_state</code>（1=Success / 2=Failed）・<code>/diagnostics</code> の <code>localized_in_exist_map</code></td>
+    <td><b>300ms 級に締める</b>（<code>vo_state=1</code> のまま約 0.5〜1s 惰性追従する窓を跨がせない）</td>
+  </tr>
+  <tr>
+    <td><b>MOLA-LO</b><br><span class="cite">2D LiDAR odometry・TARGET-1（2026-08-17）</span></td>
+    <td><b>常時 publish</b>: スキャンマッチャは幾何が縮退（一様な壁・廊下）しても出力を止めない</td>
+    <td><b>できない</b>。解が滑っても出続けるため、鮮度だけでは loss を検出できない（cuVSLAM 型の「止まるから分かる」性質は無い）</td>
+    <td><b>自己申告</b>: <code>pose_quality</code> ＋ <code>/diagnostics</code>（＋ ICP covariance の膨張）＝ 追補 A-7 の<b>速い経路</b></td>
+    <td>鮮度は補助に留め、<b>主判定は pose_quality 閾値</b>（値は実測で決める＝未定）</td>
+  </tr>
+</table>
+
+<div class="box b-frozen" style="margin-top:12px"><b>Guardian 監視プロファイル</b>（config 切替）<span class="new">TARGET</span>
+  <div class="note">同じ「pose が来ない」でも AMCL では正常（駐機）・cuVSLAM では致命（loss）＝閾値だけの config 化では足りない。①監視 topic＋型 ②heartbeat 信号の選択 ③静止ゲートの要否 ④stale 閾値 ⑤startup_timeout ⑥自己申告フラグの有無 を<b>1つのプロファイルに束ね</b>、Nav2 が使う localization ソース = Guardian が監視するソース を config で一致させる。集約ノード（Health Aggregator）は安全経路に SPOF を作るため<b>不採用</b>（A-4）。<br>
+  <b>restrict-only（fail-closed）</b>: 凍結値を floor とし<b>締める方向のみ</b>・緩い profile 値は起動拒否（ADR-0004 準用）。floor は <code>safety.pose_freshness_timeout: 1.0</code>（<code>config/warehouse.base.yaml:21</code>）。キー名は追補内の例示であり凍結契約ではない。</div>
+  <span class="cite">doc23 追補 A-4・A-5・A-6 ／ ADR-0004（restrict-only）</span>
+</div>
+
+<h2>6. 主要な未決（doc23 §8 抜粋）</h2>
+<table class="oq">
+  <tr><th>#</th><th>未決</th><th>影響</th></tr>
+  <tr><td>OQ-1</td><td>cuVSLAM の入力要件（ステレオ必須か / RGB-D 可か）・HP60C の出力</td><td><b>解決済み（negative・2026-08-17）</b> — HP60C は IR/ステレオ不可 ＋ Humble 用 Isaac ROS 3.2 に depth 経路なし ＝ blocked-by-hardware。<b>TARGET-1 は MOLA-LO へ置換</b>（行は履歴として残置）</td></tr>
+  <tr><td>OQ-2</td><td>nvblox と Open-RMF（Mode C）の 8GB 食い合い</td><td>載らなければ主方針レベルのユーザー判断</td></tr>
+  <tr><td>OQ-3</td><td><b>M1 外接円半径 184mm vs 通路 280mm</b>（円形 footprint では通路に入れない）</td><td>非円形 footprint 化が nvblox より優先</td></tr>
+  <tr><td>OQ-8</td><td>nvblox costmap plugin の NO_INFORMATION 書き込み挙動</td><td>overwrite なら T3 止めが現実解</td></tr>
+  <tr><td>OQ-9</td><td>LiDAR 型番ドリフト（T-mini Plus vs MS200 表記）</td><td>V 系検証の前に要反映</td></tr>
+  <tr><td>OQ-11</td><td><b>駐機時の <code>pose_stale</code> 誤発火（検証中）</b> — AMCL は motion-gated（<code>update_min_d: 0.05</code>）で静止中は沈黙する一方、Guardian の鮮度は 1.0s</td><td>駐機が 1.0s を超えると estop 誤発火の疑い（§6 V7 は走行中のみ）。解は静止ゲート or TF を heartbeat 化＝<b>閾値を緩める方向には解かない</b>。検証タスクは未起票（doc23 追補 A-10）</td></tr>
+  <tr><td>OQ-13</td><td><b>MOLA-LO の途中再起動で原点がリセットされる edge case</b>（LO は起動位置を原点に取るため、再起動後の odom1 が EKF の推定と不連続になる）</td><td>再起動＝pose ジャンプ。EKF 側の扱い（再初期化 / odom1 一時無効化）と Guardian の operational stop 連動が未設計</td></tr>
+  <tr><td>OQ-14</td><td><b>bot2 復帰時のスキャンマッチング毒</b>（2台構成では相手ロボが /scan に動く物体として写り、ICP の対応付けを引っ張る）</td><td>単騎（ADR-0006）では顕在化しないが、T5＝2台復帰フェーズで MOLA-LO の前提が崩れうる。フィルタ or 復帰時の LO 無効化の判断が未定</td></tr>
+  <tr><td>OQ-15</td><td><b>棚とスキャン面 147.5mm の交差が未確認</b>（スキャン平面の高さで棚がどう見えるか＝MOLA-LO が拾える幾何の量）</td><td>スキャン面に十分な構造が写らなければ縮退しやすくなる。実測（実機 or 図面照合）が必要</td></tr>
+</table>
+
+<div class="sub" style="margin-top:28px">
+  生成: 2026-08-09（2026-08-10 Localization Health 節追補 ／ <b>2026-08-17 MOLA-LO 追補反映</b>: TARGET-1 = MOLA-LO 置換・cuVSLAM blocked-by-hardware 降格・EKF 状態割当・3D LiDAR closed）／ 本図は <code>docs/architecture/23-perception-and-localization.md</code> の companion（正本は md 側。数値・行番号の一次ソースも md 側の References を参照）。
+</div>
+
+</div>
+</body>
+</html>

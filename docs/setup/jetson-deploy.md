@@ -35,7 +35,7 @@ guardian が**異常終了/クラッシュしても Nav2 を停止**する（`sy
 | 到着前 | `deploy/jetson/bin/preflight.sh --offline` で unit/env/script の静的検査 | 不要 |
 | 到着後 | SSD へ JetPack 焼込（microSD 初回ブート→SSD 移行） | **必要** |
 | 到着後 | Super 化（`sudo nvpmodel -m 2` + `sudo jetson_clocks`） | **必要** |
-| 到着後 | ROS 2 Jazzy + `micro_ros_agent` 導入・8GB メモリ実測（doc06 Phase 0.5 段階2） | **必要** |
+| 到着後 | ROS 2 Humble + `micro_ros_agent` 導入・8GB メモリ実測（doc06 Phase 0.5 段階2） | **必要** |
 
 詳細は doc02:140-164。本書はその後の **systemd 常駐化**を扱う。
 
@@ -54,7 +54,7 @@ cd /opt/warehouse
 ## 3. ビルド
 
 ```bash
-source /opt/ros/jazzy/setup.bash
+source /opt/ros/humble/setup.bash
 cd /opt/warehouse/ws && colcon build && cd /opt/warehouse
 ```
 
@@ -128,7 +128,7 @@ systemctl status warehouse.target
 
 ```bash
 cd /opt/warehouse && sudo git fetch --tags && sudo git checkout v0.y
-source /opt/ros/jazzy/setup.bash && (cd ws && colcon build)
+source /opt/ros/humble/setup.bash && (cd ws && colcon build)
 sudo /opt/warehouse/deploy/jetson/bin/install.sh   # unit 差分反映
 sudo systemctl restart warehouse.target
 ```

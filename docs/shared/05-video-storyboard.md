@@ -291,3 +291,13 @@ Phase 5（Isaac Sim連携）が遅延・未完成の場合、以下の短縮版�
 - [OpenAI API Reference](https://platform.openai.com/docs/api-reference) — 参照日: 2026-05-21
 - [Google AI Gemini API](https://ai.google.dev/gemini-api/docs) — 参照日: 2026-05-21
 - [xAI Grok API](https://docs.x.ai/) — 参照日: 2026-05-23（※URL未確定、Phase 0で確認）
+
+---
+
+## 【2026-08-07 追記】単騎（1台）構成での映像成立（ADR-0006）
+
+実機素材は当面 **M1 1台**（[ADR-0006](../adr/0006-single-bot-first.md)）。本 doc の 2台前提カットの扱い:
+
+- **1台で撮れる主素材**: 単騎巡回 Before/After・障害物投入→LLM の迂回判断＋思考ログ・LLM 4社比較・**ジェスチャ司令（召喚・指差し）**（[mode-x-er/09 §3](../mode-x-er/09-hand-raise-summon.md)「Phase 1 の絵」＝左に立てば左へ・ロボット視点の骨格 overlay・安全ゲート HUD。2026-08-09 改訂で発進 ≈1.3s に短縮）。なお **ER/知覚入力の俯瞰カメラは不使用**（[ADR-0007](../adr/0007-no-overhead-camera-gesture-via-onboard-nn.md)）だが、**撮影用俯瞰 C922n（本 doc の主素材 70%）の扱いは ADR-0007 Open**＝本 doc の俯瞰撮影前提は当面維持。
+- **1台では撮れない実機カット**（Bot1 待機・2台コマンド・衝突回避成功率・「2台のロボットを…」ナレーション）は 2台復帰フェーズへ。
+- **sim（Gazebo）カットは2台のまま維持できる**（§先行リリース構成は sim 主素材で成立）。実機1台/sim 2台の素材が混在するため、**視聴者に台数を誤認させない編集規律**を必須とする（sim 画面には sim 表記）。

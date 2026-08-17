@@ -25,7 +25,7 @@
 
 - **追い風（忠実度が高い側）**: CPU アーキは **Mac M4 も Jetson Orin Nano Super も ARM64**（doc06:91
   「Mac M4 と Jetson はどちらも ARM64」）で、tiryoh コンテナも **ARM64-native**（doc03:263）、Jetson は
-  **ROS 2 Jazzy / Ubuntu 24.04**（doc03:271）・micro-ROS も Jazzy 対応確認済（doc07:22）で揃う。
+  **ROS 2 Humble / Ubuntu 22.04**（doc03:271・ADR-0008）・micro-ROS も Humble 対応済（doc07:22）で揃う。
   x86 dev マシンより**命令セット・依存ビルドの忠実度が高い**。ROS ノードロジック・凍結契約・launch 合成・
   pytest はこの一致のおかげで Mac で高忠実に検証できる。
 - **逆風（原理的に近似不可な側）**: 一方、以下は **Mac/Docker では原理的に検証できない**。実 Jetson でしか
@@ -204,3 +204,9 @@ doc06:112、sim 範囲。実 bot E2E は sim track #8/#156）。→ F1-F3。**AR
 - [doc02 ハードウェア](../shared/02-hardware-design.md)（Jetson Orin Nano Super / センサ）
 - [docs/setup/jetson-deploy.md](../setup/jetson-deploy.md)（prod デプロイ正本手順）/ [deploy/jetson/](../../deploy/jetson/)（実装）
 - `.claude/rules/safety.md`（速度上限・estop・secrets 非コミット）
+
+---
+
+## 【2026-08-07 追記】ADR-0006（単騎構成）によるゲート読み替え
+
+[ADR-0006](../adr/0006-single-bot-first.md) の 1台先行では、**G2「micro-ROS 2台」・G6「WiFi 同時通信（micro-ROS×2 + LLM API）」は本フェーズ N/A**（ゲート定義は削除せず、2台復帰フェーズで再有効化）。G4「Nav2×2 の実時間追従」は **Nav2×1** に読み替える。nvblox / MOLA-LO（旧 cuVSLAM は blocked）を載せる場合の実機ゲートは [architecture/23 §7 スパイクゲート S1-S3](../architecture/23-perception-and-localization.md) を併用する。

@@ -53,6 +53,8 @@ docs/
 | [20-dev-quality-and-testing](architecture/20-dev-quality-and-testing.md) | 開発品質・テスト戦略（Ruff/pytest/pre-commit/CI/Playwright・安全契約テスト・テストピラミッド） |
 | [21-eval-sdk-extraction](architecture/21-eval-sdk-extraction.md) | Eval SDK 抽出（`eval_sdk`：Langfuse trace/score・KPI をドメイン非依存に抽出する設計提案） |
 | [22-web-observability](architecture/22-web-observability.md) | Web Observability（Mode A 会話・稟議のリアルタイム観測基盤：`web_bridge` + Next.js `web/console`、Langfuse 整合） |
+| [23-perception-and-localization](architecture/23-perception-and-localization.md) | 知覚・自己位置スタック TARGET 設計（nvblox / **MOLA-LO**〔旧 cuVSLAM は blocked〕/ robot_localization EKF / Nav2 costmap 層・スパイクゲート S1-S3。CURRENT=doc09 は不変） |
+| [robot-architecture-tree](architecture/robot-architecture-tree.html) + [perception-localization-flow](architecture/perception-localization-flow.html) | HTML 図解 2 枚構成: ① 01-08 機能 Tree（全体地図・不採用の理由つき残置・M1 差分表）② Runtime Data Flow（doc23 companion）。観測 4 tier は [productization/tool-catalog-detail](productization/tool-catalog-detail.html) |
 
 ## productization/ — 商用再利用 Box 設計
 
@@ -106,6 +108,7 @@ docs/
 | [dev/07 live runbook](dev/07-mode-x-er-live-e2e-runbook.md) | Mode X-ER live ER→L3→Langfuse 実走 operator runbook（gateway 起動・preflight・課金 gate・scoped 承認文言・honest limits。設計は本 mode-x-er/、live 手順は dev/ 側） |
 | [deploy/hermes/er-audio-fork/](../deploy/hermes/er-audio-fork/) | **ER audio-via-Hermes `input_audio` fork パッケージ**（#357）＋ `hlf-g0-langfuse` Option-D（#360）の配備成果物。`apply-fork.sh` / `run-er-gateway.sh` / patch。**TARGET=default-Hermes**（fork 経由で audio も Hermes）／ **CURRENT（shipped）=audio は direct**（fork は未 productionize・direct は恒久 fallback。doc `mode-x-er/06` §5 補遺:263-271） |
 | [08-x-er-bridge-node-spec](mode-x-er/08-x-er-bridge-node-spec.md) | **XER6 `x_er_bridge` node 契約（設計正本）**: X-ER commander node の形・`mode_x_er:` config key 凍結（06 §3 RESOLVED と対）・composition 起動シーケンス・plugin gating（二重 validate）・dispatch seam・エラー方針・テスト 3 層 |
+| [09-hand-raise-summon](mode-x-er/09-hand-raise-summon.md) | **ジェスチャ司令（召喚・指差し）設計**（2026-08-09 全面改訂・ADR-0007）: 搭載 HP60C + ローカル骨格 NN で「肩より上=召喚」「腕を伸ばす=指差し」を決定論認識・ER バイパスで既存 L3/L2 ゲートを全通過（INV-1/INV-2）・時間窓多数決・到達点は KNOWN_LOCATIONS snap（coordinate goal は Phase 2 defer）・/goal_pose 直注入はしない・旧俯瞰+マーカー方式は §13 に降格保存 |
 
 ## mode-x-er-vla/ — Gemini Robotics-ER + VLA 統合モード（設計提案）
 
@@ -163,7 +166,11 @@ hard-to-reverse な設計判断とその理由を `NNNN-slug.md` で記録する
 | ファイル | 内容 |
 |---------|------|
 | [adr/README](adr/README.md) | ADR 一覧・命名・いつ起こすか（3条件）・retrospectives との違い |
+| [0007-no-overhead-camera-gesture-via-onboard-nn](adr/0007-no-overhead-camera-gesture-via-onboard-nn.md) | ER/知覚入力に**俯瞰カメラを使わない**。搭載 HP60C + ローカル骨格 NN（MediaPipe 第1候補）でジェスチャ2種を決定論認識し既存 L3/L2 ゲートへ。homography 系は fail-closed で降格保存 |
+| [0006-single-bot-first](adr/0006-single-bot-first.md) | 今回のフェーズはロボット**1台（単騎構成）**で実装。2台系の設計 doc・実装資産は削除せず凍結保存し、交通管理・交渉・min-separation の実機実証は2台復帰フェーズへ繰延 |
+| [0008-ros2-distro-humble-for-rosmaster-m1](adr/0008-ros2-distro-humble-for-rosmaster-m1.md) | ROS 2 distro を Jazzy→**Humble** へ切替（Orin Nano の Isaac ROS は 3.x=Humble のみ・ROSMASTER M1 の Yahboom 資産が Humble 固定）。代償は Gazebo 公式ペア喪失 |
 | [0005-l0-battery-brownout-floor](adr/0005-l0-battery-brownout-floor.md) | L0 の battery brownout floor は percent 3段 policy と別名・別機構の voltage-based MCU floor として将来 phase に持つ方針（現行 L0 は cutoff 無し・percent policy は L1 所有・cutoff 電圧は Phase-1 実測）。凍結 percent `battery_is_critical(pct)` とは非対称 |
+
 | [0004-l2-restrict-only-policy-profile](adr/0004-l2-restrict-only-policy-profile.md) | L2 Governance は自由 plugin 化せず data-only restrict-only policy profile に閉じる（凍結値=floor・緩い値は起動拒否・v1 code plugin 不採用）。ADR-0003（L3）と対 |
 | [0003-bridge-local-manifest-composition](adr/0003-bridge-local-manifest-composition.md) | bridge-local run manifest + fail-closed plugin composition を A案で標準化（manifest resolution 層／namespaced plugin code〔9-enum 非改変〕／advisory trust／ISOLATE_PLUGIN／safety-critical profile hash gate）。実装 = offline spike 済・配線 XER6 pending |
 | [0002-er-in-hermes-standard](adr/0002-er-in-hermes-standard.md) | ER-in-Hermes を標準 transport に採用（fork gateway 8644 一本で全 modality／`direct`=緊急 fallback／Langfuse Pattern A 現行・Pattern B は HLF gate 後）。実装は TARGET |

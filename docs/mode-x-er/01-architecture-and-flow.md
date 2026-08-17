@@ -257,3 +257,13 @@ L4 transport の再利用判断では、Nous Research の Hermes Agent 公式 do
 - **標準（TARGET）= 1 本の fork gateway（8644）で全 modality**: fork は `input_audio` を追加するだけで text/image を保持するため、従来 two-path（text/image=8643 / audio=direct）は **8644 一本へ統合し 8643 を retire** する方針。`direct` は上表の「明示 fallback」から**緊急 fail-safe / 恒久 fallback**へ格下げ。
 - **Langfuse**: Pattern A（Bridge 所有 trace）が現行標準・Pattern B（Hermes plugin 所有・wrapper 除去）は HLF-G0〜G5 gate 後（[`../productization/02-l4-robotics-bridge-box.md`](../productization/02-l4-robotics-bridge-box.md):177-199）。
 - **overclaim しない**: 上「2026-06-27 補足」の CURRENT=direct は不変（wire=#389・fork ship が着地するまで shipped は direct）。本補足は「向かう標準方針」であり現稼働ではない。
+
+---
+
+## 【2026-08-09 追補】画像入力源の変更: 俯瞰カメラ → 搭載 HP60C（ADR-0007）
+
+[ADR-0007](../adr/0007-no-overhead-camera-gesture-via-onboard-nn.md) により、本フェーズの ER/知覚の画像入力は**ロボット搭載 HP60C（RGB+深度）**に一本化する。読み替え:
+
+- 本文の `[Overhead Camera Capture]` / 「overhead image」（:24,:34 のブロック図・:45 標準フロー）の**capture 源は搭載カメラフレーム**。`overhead_image_ref` フィールドは**改名しない**（意味のみ「搭載カメラフレーム参照」へ再定義）。
+- §知覚の2系統（:226-243）のうち **1系統目（俯瞰カメラ + ER vision）は搭載 RGB-D + ローカル骨格 NN 版に差し替え**（設計正本: [09-hand-raise-summon](09-hand-raise-summon.md)）。2/3系統目（車載 LiDAR・SLAM）は不変。
+- `pixel → homography → map`（:47）は**俯瞰復帰時の設計として保存**。TARGET は depth + TF（camera_optical→…→map）による 3D 投影。本フェーズは `homography: []` の fail-closed（`NO_CALIBRATION` → 0 dispatch）を既定とする。

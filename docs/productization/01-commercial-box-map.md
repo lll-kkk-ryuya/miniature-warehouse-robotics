@@ -193,3 +193,13 @@ annotation の注意（layer ≠ process / layer ≠ package）:
 - **帰属未定の component は未定と書く**: State Cache（`ws/src/warehouse_state/`）は box 帰属未定（F3・§未凍結事項・暫定 `safety` box に subsume）。annotation では「State Cache（box 帰属未定 F3・暫定 Safety）」と書き、断定しない。
 - **起動・記述・sim 系 package（`warehouse_bringup` / `warehouse_description` / `warehouse_sim` / `warehouse_teleop`）は単一 layer に帰属させない**（複数レイヤの起動/記述/開発基盤）。annotation は「扱っている config / launch がどの layer の component か」で書く（例: `collision_monitor.yaml`＝L1 Safety の config）。
 - **他体系の番号を裸で書かない**: 安全レイヤー 4 層（Layer 0–3・[../architecture/12-infrastructure-common.md](../architecture/12-infrastructure-common.md)）・時間 3 層とは軸が異なる。読み替えは [11 §レイヤ番号の対応](11-l2-contract-governance-traffic-box.md) を正とする。
+
+## 将来 box 候補: Localization Health 監視プロファイル
+
+実験段階（単騎構成）で得た **Guardian 監視プロファイル**——localization health を集約ノードでなく Guardian の直接購読先 config 切替として抽象化し、ソースごとに heartbeat / 静止ゲート / stale 閾値 / startup_timeout を束ねる設計——は、**L1 Safety Box の「safety profile」artifact（§Box 一覧）を localization ソース非依存に拡張する商品化候補**である。案件ごとに localizer（2D LiDAR / VSLAM / 外部測位）が変わっても Safety Box の interface を変えずに済む差替点になりうる。
+
+併せて、**localization ロスト = operational stop（運用停止）であって protective stop（安全停止）ではない**という切り分け（ISO 3691-4 / MiR / OTTO と同型）は、Safety Box の event catalog と reject reason の分類軸として再利用できる。
+
+現時点では **box 化しない**（実験段階の知見であり、produces/consumes 契約が固まっていない＝§Box 種別と分類規則の box 条件を満たさない）。設計の正本は [architecture/23-perception-and-localization.md 【2026-08-10 追補】](../architecture/23-perception-and-localization.md)、用語は [GLOSSARY §11](../GLOSSARY.md)。
+
+**License flag（2026-08-17）**: TARGET-1 に採用した MOLA-LO（`mola_lidar_odometry`）は **GPLv3**（商用ライセンスは作者へ要相談）。localization を含む box を商品化する際は、GPLv3 コンポーネントの扱い（分離プロセス化・商用ライセンス取得・license-clean 代替 Kinematic-ICP(MIT) への差し替え）を box 化前に裁定すること。正本: [architecture/23-perception-and-localization.md 【2026-08-17 追補】B-2](../architecture/23-perception-and-localization.md)。
