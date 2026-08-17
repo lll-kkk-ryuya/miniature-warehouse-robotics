@@ -25,7 +25,7 @@
 # can never exceed the 0.3 hard cap (load_config rejects a higher value).
 #
 # FOOTPRINT/INFLATION: robot_radius = 0.075 m — single source
-# warehouse_description.robot_dimensions.ROBOT_RADIUS (robot_dimensions.py:45,
+# warehouse_description.robot_dimensions.ROBOT_RADIUS (robot_dimensions.py:66,
 # R-42, PROVISIONAL until Phase 1 実測). Do not raise it independently.
 #
 # RESOLUTION: 0.01 m/cell (doc09:25, map.yaml resolution).
