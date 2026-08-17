@@ -354,7 +354,7 @@ RPLiDAR A2（+10,000円）: 精度・回転速度が向上。予備費からの�
 
 | # | 書き換え対象 | 現在値（実ファイル） | M1 採用時 | layer |
 |---|---|---|---|---|
-| C-1 | `ROBOT_RADIUS` | `ws/src/warehouse_description/warehouse_description/robot_dimensions.py:45` = `0.075`（75mm） | 外接円半径 **≈184mm**（対角 367mm ÷ 2）へ改訂 | L2 |
+| C-1 | `ROBOT_RADIUS` | `ws/src/warehouse_description/warehouse_description/robot_dimensions.py:66` = `0.075`（75mm） | 外接円半径 **≈184mm**（対角 367mm ÷ 2）へ改訂 | L2 |
 | C-2 | costmap `robot_radius` ×2 | `ws/src/warehouse_bringup/config/nav2_params.yaml:215` / `:257` = `0.075` | C-1 と同値へ同期（単一ソース維持・R-42） | L2 |
 | C-3 | collision_monitor PolygonStop | `ws/src/warehouse_bringup/config/collision_monitor.yaml:68` `radius: 0.09` | 車体外接 + 余裕へ改訂 | L1 |
 | C-4 | 速度クランプの**置き場所** | `firmware/include/safety_clamp.h:45`（ESP32 ファーム内） | **ホスト側シリアルドライバの送信直前（L0'）へ移設**（残課題 7） | L0' |
@@ -372,7 +372,7 @@ RPLiDAR A2（+10,000円）: 精度・回転速度が向上。予備費からの�
 
 > **C-8 は omni 化の前提条件であり、後回しにできない。** `vy ≠ 0` を許した状態で各軸を独立に 0.3 m/s クランプすると、対角合成が √(0.3² + 0.3²) = **0.424 m/s** となり `.claude/rules/safety.md` の 0.3 m/s ハードキャップを **41% 超過**する。C-5 と C-8 は同一 PR で入れること。R-26（独立オラクル・mutation で赤くなること）の対象（[20-dev-quality-and-testing.md](../architecture/20-dev-quality-and-testing.md) §9）。
 
-凍結リンク名 `wheel_{front,rear}_{left,right}`（`robot_dimensions.py:26-29`）はメカナム化でも**無傷**（4輪配置が同じため）。C-1 は `warehouse_description`、C-8 は `warehouse_interfaces` に触れるため **`contract` ラベル PR ＋ 依存トラック予告**が必要（`.claude/rules/parallel-workflow.md` §4）。C-2〜C-7 は config / 各パッケージ内で閉じる。（**注 2026-08-17**: C-8 は L0' driver 側実装＝interfaces 無編集の別解で landed 済み・contract PR 不要になった。C-1 は従来通り）
+凍結リンク名 `wheel_{front,rear}_{left,right}`（`robot_dimensions.py:32-35`）はメカナム化でも**無傷**（4輪配置が同じため）。C-1 は `warehouse_description`、C-8 は `warehouse_interfaces` に触れるため **`contract` ラベル PR ＋ 依存トラック予告**が必要（`.claude/rules/parallel-workflow.md` §4）。C-2〜C-7 は config / 各パッケージ内で閉じる。（**注 2026-08-17**: C-8 は L0' driver 側実装＝interfaces 無編集の別解で landed 済み・contract PR 不要になった。C-1 は従来通り）
 
 > `# TODO(採用時)`: C-1〜C-4 を epic Issue のチェックリストへ展開する。C-5〜C-8 は「横移動を使うか」を決めてから別 Issue に切る。
 

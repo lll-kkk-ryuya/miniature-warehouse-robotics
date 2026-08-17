@@ -14,7 +14,7 @@ from warehouse_traffic import virtual_scan_logic as vsl
 @pytest.mark.unit
 def test_robot_radius_single_source() -> None:
     # VirtualScan must consume warehouse_description's frozen radius, not a literal
-    # (robot_dimensions.py:45, R-42; doc11a's older 0.1 is superseded).
+    # (robot_dimensions.py:66, R-42; doc11a's older 0.1 is superseded).
     assert vsl.ROBOT_RADIUS == DESC_ROBOT_RADIUS == 0.075
 
 

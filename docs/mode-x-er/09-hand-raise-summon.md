@@ -11,7 +11,7 @@ Status: **設計提案（未凍結）**。`warehouse_interfaces` は Phase 1 で
 | # | 前提 | 状態 |
 |---|---|---|
 | P1 | 搭載 HP60C（RGB+深度）から上半身骨格（肩/肘/手首）が 2D+深度で ~15-30fps 取れる | **未検証の作業前提**。NN 第1候補 = **MediaPipe Pose Landmarker**（Apache-2.0・CPU 推論・公式 aarch64 wheel あり・world landmarks 3D）。fallback F1=RTMPose（Apache-2.0/TensorRT）、F2=YOLO-pose（**AGPL-3.0＝オペレーター判断必須**）。SAM2 は骨格を出さないため不採用、Isaac ROS 3.x に人体骨格パッケージは無い（lane-gesture-tech 調査・2026-08-09） |
-| P2 | `bot1/camera_link`（＋光学 frame）TF | **未成立＝contract PR 対象**（`robot_dimensions.py:33` に無い。[23 §4](../architecture/23-perception-and-localization.md)） |
+| P2 | `bot1/camera_link`（＋光学 frame）TF | **camera_link は contract PR で landed**（`robot_dimensions.py:41` の `FROZEN_LINK_NAMES`。名前のみ・URDF は実測待ち）。**光学 frame 名は未凍結**＝OQ-4。[23 §4](../architecture/23-perception-and-localization.md) |
 | P3 | HP60C の FOV / 解像度 / fps / min range / depth-color alignment | **未裏取り**（公称 73.8°/0.2-4m のみ。[23 §7 S2](../architecture/23-perception-and-localization.md)） |
 | P4 | 単騎構成 bot1 のみ | 確定（ADR-0006） |
 | P5 | `config/warehouse.base.yaml:39-48` の 9 location 座標 | **暫定値**・ジオラマ再設計待ち（[04](../shared/04-diorama-layout.md)） |
@@ -158,7 +158,7 @@ is_point = straightness ≥ th and angle(d, unit(W-E)) ≤ 12° and -d.z ≥ sin
 
 - **config**: `mode_x_er.gesture.*`（`enabled: false` / `source_topic: ""`=fail-closed / §5-§6 の各閾値 / `sentry.location: ""`）。`snap_radius_m` は**新設せず**既存 `mode_x_er.visual.snap_radius_m` を再利用。base.yaml 実追加は bringup/skeleton 所有 Issue へ予告→末尾追記（[08 §3](08-x-er-bridge-node-spec.md) 手順）。
 - **新トピック**: `/perception/gesture_events`（`std_msgs/String` JSON・`goal_result` と同形式・`.msg` 化は Phase 4=doc16 方針）。封筒に `resolved{status,location,d1_m,d2_m}` と監査用 `evidence{ray_origin/dir/board_hit}`（**draft には入れない**=INV-1）、`needs_semantic_resolution`。doc03 カタログへ land 時に追記。
-- **contract PR 依存**: `camera_link`（+ ROS 光学規約 z-forward の光学 frame）→ [23 §4](../architecture/23-perception-and-localization.md) の contract PR と統合（先行必須）。
+- **contract PR 依存**: `camera_link` は [23 §4](../architecture/23-perception-and-localization.md) の contract PR で **landed（名前のみ）**。残るのは ROS 光学規約 z-forward の**光学 frame 名の凍結**（OQ-4）と URDF 取付実測。
 - **必須実装項目（consistency-audit 2026-08-09 E1 で判明した設計の空白）**: 現行 Command Compiler は `task.target` を **`ResolutionResult`（`detection.id` キー）経由でしか compile しない**（`command_compiler/compiler.py` の `by_target` 参照）ため、本設計の `target=<known location 名>` は現行実装のままだと **skip＝0 dispatch** になる（L3 Validator は location 名を許すが compiler が落とす）。**bridge-local の known-location passthrough（[02:240](02-l3-planning-core.md) の compiler plugin seam / [ADR-0003](../adr/0003-bridge-local-manifest-composition.md) 準拠・narrow 追加のみ）を Phase 1 の必須実装項目とする**。よって「L3 実装は無編集」は Visual Resolver（`homography: []` fail-closed）には成立するが **Command Compiler には成立しない**——正直に明記する。
 - **初版の「契約変更ゼロ」は本改訂では成立しない**（camera_link PR + additive topic/config + compiler passthrough が要る）——正直に明記する。
 

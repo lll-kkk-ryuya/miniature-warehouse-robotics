@@ -121,7 +121,7 @@ Nav2 (per-bot, namespace /bot{n})
 | `/bot{n}/camera/color/image_raw` | `sensor_msgs/Image` | ascamera→(任意) | Mode X-ER 実カメラ入力（[02 §決定（2026-08-05: Superior 版 + HP60C 要件化）](../shared/02-hardware-design.md)）。既定 OFF |
 | `/bot{n}/nvblox/map_slice` | `nvblox_msgs/DistanceMapSlice` 等 | nvblox→Nvblox Layer | **`/map` と名前を分ける**（共有 map_server の `/map` 単独 publisher 契約を守る） |
 | `/bot{n}/odometry/filtered` | `nav_msgs/Odometry` | ekf_node→(診断) | EKF 出力（§5） |
-| TF `base_link → camera_link` | static | robot_state_publisher | ⚠️ **`camera_link` は `FROZEN_LINK_NAMES`（`robot_dimensions.py:33`）に無い＝contract PR 必要** |
+| TF `base_link → camera_link` | static | robot_state_publisher | ✅ **`camera_link` は contract PR で `FROZEN_LINK_NAMES` に landed**（名前のみ凍結。URDF の body/joint は取付実測待ち＝`PENDING_URDF_LINKS`。光学 frame は未凍結＝OQ-4/OQ-7） |
 
 既存契約で**不変を明示するもの**: `/map`（共有 map_server 単独 publisher。nvblox に出させない）・`/bot{n}/scan`・`/bot{n}/virtual_scan`（dual-consumer 維持）・`/bot{n}/cmd_vel*` 一式（原則 P2）・`/bot{n}/amcl_pose`（Guardian の freshness guard 入力。§5-4）。
 
@@ -144,7 +144,7 @@ Nav2 (per-bot, namespace /bot{n})
 
 ### 5-2. TF フレームツリーと配信責任（単騎でも namespace `bot1/` は維持）
 
-凍結フレーム名の単一ソースは `robot_dimensions.py:16-24`。1台構成でも `bot1/` namespace を維持する（`nav2_params.yaml` の namespace 置換・State Cache の per-bot 構造・凍結契約への波及を避けるため＝本 doc の設計判断。単騎構成の前提は [ADR-0006](../adr/0006-single-bot-first.md)）。
+凍結フレーム名の単一ソースは `robot_dimensions.py:17-27`。1台構成でも `bot1/` namespace を維持する（`nav2_params.yaml` の namespace 置換・State Cache の per-bot 構造・凍結契約への波及を避けるため＝本 doc の設計判断。単騎構成の前提は [ADR-0006](../adr/0006-single-bot-first.md)）。
 
 ```
 map ───────────── AMCL (nav2_amcl, tf_broadcast: true = nav2_params.yaml:59)
@@ -157,7 +157,7 @@ bot1/odom ─────── robot_localization ekf_node（★ 唯一の odom
 bot1/base_link ── robot_state_publisher（URDF static）
  ├── bot1/lidar_link（凍結）
  ├── bot1/imu_link（凍結）
- └── bot1/camera_link ★ NEW（contract PR。§4）
+ └── bot1/camera_link ★ NEW（contract PR landed。名前のみ凍結・URDF は実測待ち。§4）
 ```
 
 **TF 配信責任の一意化ルール（本節の中核契約）**: `map→odom` は AMCL（または SLAM Toolbox）**1ノードだけ**。`odom→base_link` は ekf_node **1個だけ**（M1 ドライバに odom TF を出させない＝二重配信の温床。sim 側の既存経路との調停含む）。`base_link→sensor_*` は robot_state_publisher のみ。**launch レベルで排他化し、unit テストで pin する。**
@@ -245,7 +245,7 @@ T0 土台（camera_link contract PR・plugins 未登録記述・回帰ゼロ）�
 4. **Yahboom 工場イメージの ekf 設定の実体**: [ADR-0008](../adr/0008-ros2-distro-humble-for-rosmaster-m1.md) の一行のみが根拠。`robot_localization` の ekf.yaml か独自実装か、実機到着後に確認するまで「流用できる」を前提にしない。
 5. **ZUPT の実装場所と所有トラック**: 静止判定→0速度 Odometry 注入ノードの新設（robot_localization 標準機能に無い想定・要確認）。
 6. **pose_stale 時の nvblox integration 停止**: TSDF 汚染（§3）への対策として Guardian→nvblox の信号が要るか。Guardian を policy 層に留める方針（#126）との整合は所有トラック判断。
-7. **`camera_link` contract PR の切り方**: C-1（ROBOT_RADIUS 改訂）と同一 PR か分離か。C-1 は OQ-3 に依存するため camera_link だけ先行が早い可能性。
+7. **`camera_link` contract PR の切り方**（**解決済**: camera_link の**名前のみ**を単独先行で land し、C-1（ROBOT_RADIUS 改訂・OQ-3 依存）は分離した。URDF body/joint と光学 frame 名は実測・OQ-4 待ちで据え置き）。
 8. **nvblox costmap plugin の `NO_INFORMATION` 書き込み挙動**（overwrite か max か・要外部裏取り）。overwrite なら Global 追加（T4）は不可＝T3 止めが現実解。
 9. **車載 LiDAR 型番の既存ドリフト**: M1 は T-mini Plus（[02 §確認済み表](../shared/02-hardware-design.md)）だが doc03/doc09/`nav2_params.yaml:55`（`laser_max_range: 12.0 # MS200`）は MS200 のまま。AMCL のスキャンパラメータは LiDAR 依存＝V 系試験の前に反映が要る。
 10. **EKF 周波数と STM32 auto-report 25Hz の整合**（EKF `frequency` は 25Hz 近傍に合わせるのが妥当か、実測で決める）。
