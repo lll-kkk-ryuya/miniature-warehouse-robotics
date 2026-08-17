@@ -64,7 +64,8 @@ export DISPLAY=:1 XAUTHORITY=/home/ubuntu/.Xauthority      # else RViz: "could n
 export LIBGL_ALWAYS_SOFTWARE=1 GALLIUM_DRIVER=llvmpipe      # software GL (no GPU in Docker-on-Mac)
 source /opt/ros/jazzy/setup.bash && source /ws/ws/install/setup.bash
 export WAREHOUSE_CONFIG_DIR=/ws/config WAREHOUSE_ENV=dev
-export WAREHOUSE__SAFETY__POSE_FRESHNESS_TIMEOUT=999        # sim: AMCL only republishes on motion
+# pose_freshness_timeout stays at its 1.0s default: the odom displacement gate absorbs a parked
+# bot's AMCL silence (doc23 A-5③), so no freshness override is needed here any more.
 ros2 launch warehouse_bringup bringup.launch.py sim:=true llm:=false traffic_mode:=none rviz:=true rviz_config:=record
 # then (separate exec, after lifecycle active): seed AMCL to the spawn, drive with Nav2 goals:
 cd /ws && SCENARIO=default scripts/slice3_seed_initialpose.sh

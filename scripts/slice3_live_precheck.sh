@@ -451,8 +451,8 @@ print_next_steps() {
   cat <<'EOF'
 export WAREHOUSE_CONFIG_DIR=/ws/config
 export WAREHOUSE_ENV=dev
-# sim idle only: AMCL may publish initial pose once, so avoid false pose_stale while recording.
-export WAREHOUSE__SAFETY__POSE_FRESHNESS_TIMEOUT=999
+# No pose-freshness override: the odom displacement gate keeps a parked bot from false pose_stale
+# at the 1.0s default (doc23 A-5③), so recording no longer needs the old 999 workaround.
 # Source ROS before every launch shell. The cockpit image has ROS installed but non-login shells
 # do not put ros2 on PATH until this is sourced.
 source /opt/ros/jazzy/setup.bash

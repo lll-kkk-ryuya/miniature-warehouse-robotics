@@ -3,7 +3,7 @@
 No ``rclpy`` import -> unit-testable in CI without ROS (conftest.py puts
 ``ws/src/warehouse_safety`` on sys.path). Thresholds are INJECTED by the node,
 which sources them from ``warehouse_interfaces.config.load_config`` (distance,
-blocked_timeout). Battery criticality reuses
+blocked_timeout, pose freshness + displacement-gate epsilons). Battery criticality reuses
 ``warehouse_interfaces.safety.battery_is_critical`` — the constants 0.3 / 10 / 20
 are NEVER hardcoded here (safety.py is the single source of truth).
 """
@@ -26,6 +26,13 @@ class BotState:
     battery_pct: float | None  # None or NaN = unknown
     blocked_duration: float  # seconds stationary (from BlockTracker)
     pose_age: float | None = None  # s since last /amcl_pose; None until 1st pose (#126 freshness)
+    # --- displacement gate inputs (doc23 A-5③ / OQ-11), all from wheel odom ---
+    # Accumulated (path-length) travel and |yaw| turned since the LAST /amcl_pose
+    # arrival, plus the current odom speed. ``None`` = odom unknown / stale /
+    # non-finite -> the gate FAILS CLOSED (opens), i.e. degrades to CURRENT.
+    odom_disp_since_pose: float | None = None
+    odom_dyaw_since_pose: float | None = None
+    odom_speed: float | None = None
 
 
 @dataclass(frozen=True)
@@ -64,6 +71,69 @@ def _has_pose(b: BotState) -> bool:
     return b.x is not None and b.y is not None and math.isfinite(b.x) and math.isfinite(b.y)
 
 
+def yaw_from_quaternion(x: float, y: float, z: float, w: float) -> float:
+    """Planar yaw (rad) from a ROS quaternion (``nav_msgs/Odometry`` orientation).
+
+    Kept here (not in the node) so the whole displacement-gate path stays
+    rclpy-free and unit-testable (R-26 / doc23 A-9).
+    """
+    siny_cosp = 2.0 * (w * z + x * y)
+    cosy_cosp = 1.0 - 2.0 * (y * y + z * z)
+    return math.atan2(siny_cosp, cosy_cosp)
+
+
+def wrap_angle(a: float) -> float:
+    """Wrap an angle into (-pi, pi] so a +-2pi wrap is never counted as rotation."""
+    return math.atan2(math.sin(a), math.cos(a))
+
+
+def pose_gate_open(
+    b: BotState,
+    *,
+    motion_epsilon: float | None,
+    angular_epsilon: float | None,
+    speed_epsilon: float | None,
+) -> bool:
+    """Displacement gate for the pose-freshness estop (doc23:349 = A-5③).
+
+    Returns True when ``/amcl_pose`` silence is *evidence of a fault* rather than
+    the normal behaviour of a motion-gated localizer. AMCL only resamples and
+    publishes past ``update_min_d`` / ``update_min_a``
+    (``ws/src/warehouse_bringup/config/nav2_params.yaml:57-58``), so a PARKED
+    robot's silence is normal (OQ-11 false positive, doc23:394-399) while a
+    MOVING robot's silence is not.
+
+    Gate opens when ANY of:
+      * accumulated travel since the last pose arrival ``> motion_epsilon``;
+      * accumulated ``|yaw|`` turned since then ``> angular_epsilon``;
+      * current odom speed magnitude ``> speed_epsilon``;
+      * odom is unknown / stale / non-finite, or the epsilons are unset/non-finite
+        (**fail-closed**: the gate can then only degrade to the CURRENT gate-less
+        behaviour, never suppress an estop).
+
+    The first two inputs accumulate monotonically from the last pose arrival, so
+    once the gate opens it STAYS open until a pose actually arrives — the latch is
+    built into the quantity, with no separate sticky state (doc23:349 "変位は
+    単調非減少＝ラッチ内蔵"). This is what stops the fail-open limit cycle a
+    speed-only gate would create (estop -> speed 0 -> gate closes -> estop released).
+    """
+    if motion_epsilon is None or angular_epsilon is None or speed_epsilon is None:
+        return True  # gate not configured -> CURRENT (gate-less) behaviour
+    if not (
+        math.isfinite(motion_epsilon)
+        and math.isfinite(angular_epsilon)
+        and math.isfinite(speed_epsilon)
+    ):
+        return True  # a NaN epsilon would make every `>` False -> would fail OPEN
+    disp, dyaw, speed = b.odom_disp_since_pose, b.odom_dyaw_since_pose, b.odom_speed
+    if disp is None or dyaw is None or speed is None:
+        return True  # odom unknown / stale -> fail-closed
+    if not (math.isfinite(disp) and math.isfinite(dyaw) and math.isfinite(speed)):
+        return True  # non-finite odom -> fail-closed
+    # `disp` is an accumulated path length (never negative); the other two are signed.
+    return disp > motion_epsilon or abs(dyaw) > angular_epsilon or abs(speed) > speed_epsilon
+
+
 def evaluate(
     bot_a: BotState,
     bot_b: BotState,
@@ -71,16 +141,23 @@ def evaluate(
     distance_threshold: float,  # cfg safety.emergency_min_distance (NOT the speed cap)
     blocked_timeout: float,  # cfg safety.blocked_timeout
     pose_freshness_timeout: float,  # cfg safety.pose_freshness_timeout (#126; amcl_pose staleness)
+    # doc23 A-5③ displacement gate. Unset (None) => gate always open => CURRENT
+    # gate-less behaviour, so an un-wired caller can only be MORE conservative.
+    pose_gate_motion_epsilon: float | None = None,  # cfg safety.pose_freshness_motion_epsilon
+    pose_gate_angular_epsilon: float | None = None,  # cfg safety.pose_freshness_angular_epsilon
+    pose_gate_speed_epsilon: float | None = None,  # cfg safety.pose_freshness_speed_epsilon
 ) -> list[Decision]:
     """Reflex decisions in doc12 ``check_safety`` order.
 
     1. inter-bot distance < threshold (both poses known) -> estop BOTH;
     2. per-bot critical battery -> estop;
     3. per-bot blocked longer than timeout -> recovery (LOW-HARM, not an estop);
-    4. per-bot /amcl_pose older than ``pose_freshness_timeout`` -> estop
-       (precautionary, fail-safe: localization likely lost, doc12 §freshness guard).
-       ``pose_age`` is None until the first pose, so a not-yet-localized bot is
-       never estopped at startup (#126).
+    4. per-bot /amcl_pose older than ``pose_freshness_timeout`` **AND** the
+       displacement gate open -> estop (precautionary, fail-safe: localization
+       likely lost, doc12 §freshness guard). ``pose_age`` is None until the first
+       pose, so a not-yet-localized bot is never estopped at startup (#126).
+       The gate (doc23:349 = A-5③) suppresses ONLY the parked-robot false positive
+       (OQ-11), never a moving one — see ``pose_gate_open``.
     """
     decisions: list[Decision] = []
 
@@ -133,8 +210,18 @@ def evaluate(
     # auto-releases once poses resume (EdgeLatch re-arms on the falling edge). This
     # is intentionally additive: proximity (1) still runs on the last-known pose, so
     # the guard can only ADD an estop, never suppress a real near_collision one.
+    # doc23 A-5③: gated by odom displacement so a PARKED bot under a motion-gated
+    # localizer (AMCL) is not falsely estopped (OQ-11) — the gate is fail-closed and
+    # provably non-relaxing while moving, so it never delays a genuine estop.
     for b in (bot_a, bot_b):
         if b.pose_age is not None and b.pose_age > pose_freshness_timeout:
+            if not pose_gate_open(
+                b,
+                motion_epsilon=pose_gate_motion_epsilon,
+                angular_epsilon=pose_gate_angular_epsilon,
+                speed_epsilon=pose_gate_speed_epsilon,
+            ):
+                continue  # parked + odom healthy: silence is normal, not a fault
             decisions.append(
                 Decision(
                     b.bot,
@@ -214,6 +301,79 @@ class BlockTracker:
             self._last_moved_t[bot] = now
             return 0.0
         return now - self._last_moved_t.get(bot, now)
+
+
+@dataclass
+class PoseGateTracker:
+    """Per-bot wheel-odom accumulator feeding the displacement gate (doc23:349 = A-5③).
+
+    Mirrors ``BlockTracker``: the node feeds raw samples, this pure object holds the
+    state and the node holds none. Two independent event streams:
+
+    * ``on_odom`` — accumulate PATH LENGTH and ``|Δyaw|`` travelled, and remember the
+      latest speed + arrival time. Accumulating path length (not straight-line
+      distance from the origin) is what makes the quantity **monotonic**, hence the
+      latch: a bot that moved 1 m and then stopped still reads ``disp = 1 m`` until a
+      pose actually arrives, so the estop cannot release itself while blind.
+    * ``on_pose`` — a ``/amcl_pose`` arrived: reset the accumulators (gate closes).
+
+    ``snapshot`` returns ``(None, None, None)`` when odom has never arrived or has
+    itself gone stale, so the gate fails CLOSED (``pose_gate_open`` opens) and the
+    Guardian degrades to its CURRENT gate-less behaviour rather than going silent.
+    """
+
+    _disp: dict[str, float] = field(default_factory=dict)
+    _dyaw: dict[str, float] = field(default_factory=dict)
+    _last: dict[str, tuple[float, float, float]] = field(default_factory=dict)  # x, y, yaw
+    _speed: dict[str, float] = field(default_factory=dict)
+    _odom_t: dict[str, float] = field(default_factory=dict)
+
+    def on_odom(
+        self, bot: str, x: float, y: float, yaw: float, vx: float, vy: float, now: float
+    ) -> None:
+        """Feed one ``/{bot}/odom`` sample (planar pose + body twist) at ``now``."""
+        if not all(math.isfinite(v) for v in (x, y, yaw, vx, vy, now)):
+            # A non-finite sample is unusable. DROP the bot's odom state entirely so
+            # snapshot() reports unknown -> gate fails closed. Silently ignoring the
+            # sample instead would keep serving a stale-but-finite reading as if fresh.
+            self._forget(bot)
+            return
+        prev = self._last.get(bot)
+        if prev is None:
+            # First sample after startup / after a non-finite drop: it becomes the
+            # origin, contributing no travel of its own.
+            self._disp.setdefault(bot, 0.0)
+            self._dyaw.setdefault(bot, 0.0)
+        else:
+            self._disp[bot] = self._disp.get(bot, 0.0) + distance(prev[0], prev[1], x, y)
+            self._dyaw[bot] = self._dyaw.get(bot, 0.0) + abs(wrap_angle(yaw - prev[2]))
+        self._last[bot] = (x, y, yaw)
+        self._speed[bot] = math.hypot(vx, vy)
+        self._odom_t[bot] = now
+
+    def on_pose(self, bot: str) -> None:
+        """A ``/{bot}/amcl_pose`` arrived -> restart the accumulators (gate closes)."""
+        self._disp[bot] = 0.0
+        self._dyaw[bot] = 0.0
+
+    def snapshot(
+        self, bot: str, now: float, *, stale_after: float
+    ) -> tuple[float | None, float | None, float | None]:
+        """Return ``(disp, |Δyaw|, speed)`` for ``BotState``; ``(None, None, None)``
+        when odom is absent or older than ``stale_after`` (fail-closed).
+
+        ``stale_after`` itself is validated: a non-finite window would make the
+        ``>`` comparison False for NaN and silently keep serving stale odom
+        (fail-OPEN), so it is rejected explicitly.
+        """
+        t = self._odom_t.get(bot)
+        if t is None or not math.isfinite(stale_after) or now - t > stale_after:
+            return (None, None, None)
+        return (self._disp.get(bot), self._dyaw.get(bot), self._speed.get(bot))
+
+    def _forget(self, bot: str) -> None:
+        for d in (self._disp, self._dyaw, self._last, self._speed, self._odom_t):
+            d.pop(bot, None)
 
 
 @dataclass
