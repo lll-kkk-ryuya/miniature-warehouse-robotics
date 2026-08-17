@@ -101,19 +101,19 @@ active_provider: anthropic   # Claude
 
 ```python
 LOCATIONS = {
-    "shelf_1":          {"x": 0.2, "y": 0.3},
-    "shelf_2":          {"x": 0.7, "y": 0.3},
-    "shelf_3":          {"x": 1.2, "y": 0.3},
+    "shelf_1":          {"x": 0.2, "y": 0.57},  # 棚前 docking 点（棚 box 北面+0.12m。棚 box 中心を goal にしない＝warehouse_sim.layout.SHELF_STANDOFF で box 位置を導出）
+    "shelf_2":          {"x": 0.7, "y": 0.57},  # 同上
+    "shelf_3":          {"x": 1.2, "y": 0.57},  # 同上
     "berth_A":          {"x": 0.2, "y": 0.8},
     "berth_B":          {"x": 0.7, "y": 0.8},
-    "shipping_station": {"x": 0.2, "y": 0.1},
-    "charging_station": {"x": 1.2, "y": 0.1},   # 物理1基。同時占有の排他は下流(Nav2/Open-RMF)想定・所有層 TODO、Policy Gate では未強制
-    "retreat_A":        {"x": 0.45, "y": 0.85}, # 通路A yield 退避先
-    "retreat_B":        {"x": 0.95, "y": 0.85}, # 通路B yield 退避先
+    "shipping_station": {"x": 0.45, "y": 0.12}, # 通路A南口（棚直下の南帯 140mm は robot 径 150mm 未満＝走行目標不可。04-diorama-layout.md §走行目標点）
+    "charging_station": {"x": 1.5, "y": 0.12},  # 物理1基。同時占有の排他は下流(Nav2/Open-RMF)想定・所有層 TODO、Policy Gate では未強制。棚3東側オープン領域
+    "retreat_A":        {"x": 0.45, "y": 0.78}, # 通路A yield 退避先（北壁 inscribed 圏外）
+    "retreat_B":        {"x": 0.95, "y": 0.78}, # 通路B yield 退避先
 }
 ```
 
-※座標はジオラマの実測後に確定する。
+※座標はジオラマの実測後に確定する。全キーは Nav2 走行目標点＝shipped sim map の free 空間に置く（占有/inscribed 圏の goal は Nav2 が ABORTED を返す。検証 unit: `tests/unit/test_known_locations_navigable.py`、幾何の正本: `04-diorama-layout.md` §走行目標点）。
 ※このテーブルのキーは `13-hermes-setup.md §3.3 config.yaml` の `locations`（Policy Gate の known_locations 検証用）と**完全に一致させること**。充電ステーションは1箇所（`charging_station`、物理1基。**同時占有の排他は Policy Gate では未強制＝所有層 TODO**（下流 Nav2/Open-RMF が担う想定。`policy_gate.validate_and_register_charging` 参照）、物理ジオラマ `04-diorama-layout.md` と一致）。`yield` の `retreat_to` はこの LOCATIONS のキー（`retreat_A`/`retreat_B`）を渡す（WAYPOINTS ではなく LOCATIONS で解決され、Policy Gate の known_locations でも検証される）。
 
 ## サイクル設計

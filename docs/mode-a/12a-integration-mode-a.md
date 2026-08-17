@@ -468,7 +468,7 @@ t=3.0s   次のサイクル開始
 
 ### なぜ座標ゴールが要るか（`11a-traffic-mode-a.md:455`）
 
-`#### POST /api/v1/navigate` の `destination` は凍結 `locations`（`KNOWN_LOCATIONS` 9地点）の**名前**に限られる。しかし ≥0.15m head-on デモ（doc11a §9）の南端ゴールは **隘路整列座標**（通路A 中心列 x≈0.45・通路B x≈0.95, y≈0.12）で、名前付き location には**存在しない**: 南側 `shipping_station` / `charging_station`（y=0.1）は shelf 直下で robot 中心を置けず**到達不能**（`11a-traffic-mode-a.md:455`）。そこで `navigate` に **inline 座標 `goal`** を additive に受理させる（`core.py:160-197`）。
+`#### POST /api/v1/navigate` の `destination` は凍結 `locations`（`KNOWN_LOCATIONS` 9地点）の**名前**に限られる。≥0.15m head-on デモ（doc11a §9）の南端ゴールは**隘路整列座標**（通路A 中心列 x≈0.45・通路B x≈0.95, y≈0.12）で、2026-08-17 の座標改訂（doc04 §走行目標点）後は通路A 側が `shipping_station`(0.45, 0.12) として名前付きになった一方、**通路B 側（x≈0.95, y≈0.12）は依然名前付き location に存在しない**（`11a-traffic-mode-a.md:455`）。そこで `navigate` の **inline 座標 `goal`**（additive 受理・`core.py:160-197`）は引き続き必要。
 
 ### Request（座標ゴール）
 

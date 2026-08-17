@@ -352,7 +352,7 @@ def _snap_radius(section: Mapping[str, Any]) -> float:
 
 
 def _location_coords(cfg: Mapping[str, Any]) -> dict[str, tuple[float, float]]:
-    """``locations: {name: {x, y}}`` (config/warehouse.base.yaml:39-48) -> name -> (x, y)."""
+    """``locations: {name: {x, y}}`` (config/warehouse.base.yaml:47-56) -> name -> (x, y)."""
     raw = cfg.get("locations")
     if not isinstance(raw, Mapping) or not raw:
         raise XErCompositionError(

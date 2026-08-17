@@ -3,8 +3,8 @@
 # docs/mode-x-er/08-x-er-bridge-node-spec.md §3 / 06-unfrozen-contract-resolutions.md:105).
 # Identity: file stem == camera_id == mode_x_er.calibration_id (doc08 §3 — one identifier).
 # Values: the VERIFIED red/blue fixture geometry (tests/unit/test_visual_resolver.py:106 /
-# tests/unit/test_l3_pipeline.py:159-169): red_box pixel (420,310) -> map (0.2,0.3) -> shelf_1,
-# blue_box pixel (810,280) -> map (0.7,0.28) -> shelf_2. Pinned against the fixture builder by
+# tests/unit/test_l3_pipeline.py:159-169): red_box pixel (420,310) -> map (0.2,0.57) -> shelf_1,
+# blue_box pixel (810,280) -> map (0.7,0.5608) -> shelf_2 (docking points, doc04 §走行目標点). Pinned against the fixture builder by
 # tests/unit/x_er_fixtures.py::test_checked_in_dev_calibration_artifact_matches_fixture_geometry.
 camera_id: dev-sim-v1
 map_frame: map
@@ -13,8 +13,8 @@ homography:
     - 0.0
     - -0.3384615384615384
   - - 0.0
-    - 0.0006666666666666655
-    - 0.09333333333333371
+    - 0.0003066666666666668
+    - 0.47493333333333326
   - - 0.0
     - 0.0
     - 1.0

@@ -9,7 +9,7 @@ end-to-end (11c:279 残未決1) is NOT covered here and stays #187-gated.
 設計正本: docs/mode-c/11c-traffic-mode-c.md:63 (唯一 writer) / :252 (action 名) / :283
 (waypoint/lane を発明しない) ; docs/architecture/03-software-architecture.md:97
 (/bot{n}/goal_pose) ; warehouse_interfaces/locations.py:23 (凍結 KNOWN_LOCATIONS) ;
-config/warehouse.base.yaml:35-44 (座標 = 暫定値).
+config/warehouse.base.yaml:47-56 (座標 = 暫定値).
 """
 
 from pathlib import Path
@@ -30,7 +30,7 @@ from warehouse_rmf_adapter.nav2_router import (
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _BASE_YAML = _REPO_ROOT / "config" / "warehouse.base.yaml"
 
-# A self-contained coord map (mirrors config/warehouse.base.yaml:36-44 — provisional).
+# A self-contained coord map (mirrors config/warehouse.base.yaml:47-56 — provisional).
 _LOCATIONS = {
     "shelf_2": {"x": 0.7, "y": 0.3},
     "berth_A": {"x": 0.2, "y": 0.8},

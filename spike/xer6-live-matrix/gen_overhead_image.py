@@ -6,8 +6,9 @@ whose colored boxes sit at the pixels the FROZEN ``dev-sim-v1`` calibration maps
 locations, so a live ER call given this image can do real perception and the plan resolves
 WITHOUT ``--pixel-hints``:
 
-- POSITIVE image: RED box centered at pixel (420, 310) -> map (0.20, 0.30) = ``shelf_1`` and
-  BLUE box centered at pixel (810, 280) -> map (0.70, 0.28) -> snaps ``shelf_2`` (0.70, 0.30).
+- POSITIVE image: RED box centered at pixel (420, 310) -> map (0.20, 0.57) = ``shelf_1`` and
+  BLUE box centered at pixel (810, 280) -> map (0.70, 0.5608) -> snaps ``shelf_2`` (0.70, 0.57)
+  (docking-point coords since 2026-08-17, doc04 §走行目標点; values flow from the fixture kit).
 - NEGATIVE image: both boxes at pixels whose homography image lies > snap_radius (0.25 m) from
   EVERY known location, so a faithful perception yields no snap -> 0 dispatch (fail-closed).
 
