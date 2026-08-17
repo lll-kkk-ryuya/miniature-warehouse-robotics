@@ -179,6 +179,27 @@ def test_check_range_end_past_eof(tmp_path, monkeypatch):
     assert "past EOF" in findings[0].message
 
 
+def test_check_skips_agent_worktrees(tmp_path, monkeypatch):
+    """Files under .claude/worktrees/ (subagent isolation repo copies) are never
+    scanned — they would duplicate every B4 ref as spurious WARNs."""
+    _build_doc(tmp_path)
+    wt = tmp_path / ".claude" / "worktrees" / "x" / ".claude" / "rules"
+    wt.mkdir(parents=True)
+    # doc12:2 is a blank-line hit → WOULD warn if the worktree copy were scanned
+    (wt / "r.md").write_text("ref: doc12:2\n", encoding="utf-8")
+    # sibling dir named "worktrees" NOT under .claude/ must still be scanned
+    ws_wt = tmp_path / "ws" / "worktrees"
+    ws_wt.mkdir(parents=True)
+    (ws_wt / "n.md").write_text("ref: doc12:2\n", encoding="utf-8")
+    monkeypatch.setattr(cc, "ROOT", tmp_path)
+    monkeypatch.setattr(cc, "DOCS", tmp_path / "docs")
+
+    findings = cc.check_cross_doc_line_refs(None, None)
+    assert len(findings) == 1  # only the ws/worktrees/ ref, not the agent copy
+    assert findings[0].file.endswith("n.md")
+    assert ".claude/worktrees" not in findings[0].file
+
+
 def test_check_skips_per_file_mode(tmp_path, monkeypatch):
     _build_doc(tmp_path)
     ws = tmp_path / "ws"
