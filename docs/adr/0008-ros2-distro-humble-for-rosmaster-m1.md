@@ -84,3 +84,8 @@
 Isaac ROS release-3.2 が **Orin + Humble 線の終点**であることを一次情報で確認した（4.x = Jazzy + Jetson Thor 専用・Orin は 4.x でサポート外）。したがって 2026-02-02 に cuVSLAM wrapper へ追加された **RGB-D 入力モード（`tracking_mode: RGBD`）には、本 ADR の選択上永久に届かない**。これは採択時に列挙されていなかったトレードオフとして記録する（**決定自体は変えない**: Orin Nano Super 8GB は 3.2 の公式サポート内＝除外は 4GB のみ、と release-3.2 System Requirements で再確認済み）。この帰結の詳細（cuVSLAM blocked-by-hardware・TARGET-1 の MOLA-LO への差し替え）は [doc23 【2026-08-17 追補】B-1](../architecture/23-perception-and-localization.md)。
 
 - 参照: <https://nvidia-isaac-ros.github.io/repositories_and_packages/isaac_ros_visual_slam/index.html>（Updates: 2026-02-02 RGBD / Thor・Jazzy）・<https://nvidia-isaac-ros.github.io/v/release-3.2/getting_started/index.html>（3.2 = Humble・Orin・4GB のみ非推奨）— 参照日 2026-08-17
+
+## 追記（2026-08-17 その2）: ruff target-version flip の繰延と ADR 番号の変更
+
+- **本 ADR は 0005 → 0008 へ改番**した（main に別内容の [ADR-0005 L0 battery brownout floor](0005-l0-battery-brownout-floor.md) が先に land していた番号衝突のため。main の番号が正準）。
+- `pyproject.toml` の `target-version` は **py312 のまま維持**する（本ブランチが一度 py310 化したが、main に PEP 695 構文のコード（`robotics/composition/plugin_results.py` 等）が存在し repo 全体が ruff invalid-syntax になるため revert）。**py310 への flip は「PEP 695 構文の一掃 + `ruff format .` sweep」を伴う Humble 移行スライスで同一 PR として行う**（未適用 53 ファイルの Open に追加）。
