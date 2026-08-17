@@ -545,3 +545,18 @@ A-6 の既存表は行安定のため編集せず、本行を追補として扱�
 - [ADR-0008](../adr/0008-ros2-distro-humble-for-rosmaster-m1.md) — 末尾追記「Humble pin の新たに判明したコスト」（B-1 のソフト側 blocker の ADR 側記録）。
 - [productization/01-commercial-box-map.md](../productization/01-commercial-box-map.md) — MOLA-LO GPLv3 flag（末尾）。
 - HTML companions: [perception-localization-flow.html](perception-localization-flow.html) / [robot-architecture-tree.html](robot-architecture-tree.html) — 本追補と同一ラウンドで更新。
+
+### B-13.【2026-08-17 追記】sim gate 完走記録 — A-10 受け入れ二部構成のクローズ
+
+PR #525（速度項除去）後の Gazebo sim 再実行で **A-10 の受け入れ（999 全削除 ＋ 既定 `pose_freshness_timeout: 1.0` のまま full-stack 完走）を PASS** した。実測（コンテナ内コードは main `5c8e439` と byte 一致を検証済み・証跡は run ログ）:
+
+- **駐機免疫**: 135s〜16min 駐機・AMCL 完全沈黙（`topic hz` 120s 無サンプル）・pose_stale **0 件**。
+- **発進**: 駐機 pose_age 273s からの発進×3 + 別 bot 含む計6回、すべて pose_stale 0 で離脱。AMCL は **26.6mm（直線）/ 0.24rad** で republish ＝ ゲート閾値 100mm / 0.4rad に対し**両軸で約2倍マージンが実測どおり成立**（回転主導の離脱では `update_min_a 0.2rad` 側が先に効く）。
+- **陽性対照**: AMCL 停止後、**経路長 100.4mm でちょうど1回** estop（修正前: 3.2mm で 17 edges/12s のバタつき）。ラッチ健全。
+
+**新規 OQ（sim 実測由来・未修正の残差）**:
+
+- **OQ-16: odom ギャップ >0.5s で駐機偽陽性が fail-closed 経由で再発** — 完全静止中に計算負荷で `/odom` が 0.69s 途切れ、`odom_freshness_timeout: 0.5` の fail-closed がゲートを開いて pose_stale 発火（2 bot 同ミリ秒）。仕様どおりの fail-closed だが、OQ-11 の駐機免疫は「odom が 0.5s 以内に届き続ける限り」に条件づけられる。解の候補: 静止確定後の odom gap 猶予・timeout の実測ベース調整（緩和は restrict-only 裁定要）・odom publisher の QoS/負荷対策。
+- **OQ-17: ゲートの距離は経路長・AMCL の `update_min_d` は直線距離** — 振動・微動の累積で「経路長 99.3mm / 直線 2.3mm / Δyaw 0.014rad」が実測され、AMCL が理論上 republish できない量でゲートが開き得る（除去済み速度項と同クラス・ただし遥かに軽微: 直線離脱では 50mm 直線で AMCL が先に発火する）。加えて累積器は pose 到着でのみリセットされるため駐機を跨いで primed される（実測: 34.4mm 持ち込み）。解の候補: 累積を直線変位 max に変更 or 閾値の余裕拡大（tighten 側でない変更は A-5 restrict-only 裁定要）。
+
+（gate と独立の発見: `KNOWN_LOCATIONS` の shelf_*/charging_station が `map.pgm` の障害物セル内＝Nav2 到達不能。nav-traffic/bringup 所有の別課題として起票する）
