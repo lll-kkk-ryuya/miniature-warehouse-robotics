@@ -293,7 +293,7 @@ RPLiDAR A2（+10,000円）: 精度・回転速度が向上。予備費からの�
 
 > Yahboom ROSMASTER M1（メカナム4輪）に**手持ちの Orin Nano Super Dev Kit を載せる**構成を調査した結果。
 > 車体寸法は車種選定の制約にしない（[04-diorama-layout.md](04-diorama-layout.md) §「決定（2026-08-05）」）。
-> 購入候補: Amazon.co.jp `Superior / without Nano`（ASIN B0G495C65Q・¥67,527・Nuwa-HP60C 深度カメラ同梱）。
+> 購入候補: Amazon.co.jp `Superior / without Nano`（ASIN B0G495C65Q・¥67,527・Nuwa-HP60C 深度カメラ同梱）。**出品者確認済（2026-08-06・Amazonメッセージ）**: 本 SKU の制御ボードは拡張ボード V3.0（YB-ERF01-V3.0）であり、`without Nano` は **Jetson Nano B01 計算ボードのみ非同梱**の意。
 
 ### 確認済み（一次情報で裏取り済）
 
@@ -308,18 +308,18 @@ RPLiDAR A2（+10,000円）: 精度・回転速度が向上。予備費からの�
 | 電力モード | 15W / 25W / MAXN SUPER（**uncapped・W 値は非公開**） | NVIDIA JetPack 6.2 blog / Developer Guide |
 | OS | M1 の Orin 版は Ubuntu 22.04 + **ROS 2 Humble**（本プロジェクトは Jazzy） | 公式 Product parameters 図 |
 | 拡張ボード実装（2026-08-05 追加） | 型番 **YB-ERF01-V3.0**／MCU STM32F103RCT6／USB-serial **CH340**／IMU **ICM20948 9軸**／モータドライバ **AM2861 ×4**／通信 **115200bps**／待機電流 **約 50mA**／基板 **85×56mm**・取付穴 **4-φ2.5（58×49mm ピッチ）** | 公式 `ROS_control_board_V3.0_parameters.jpg` を実見 |
-| 拡張ボード保護回路（2026-08-05 追加） | **「サーボ過電流保護・逆接続保護・短絡保護」のみ**。**12V 出力レールの電流定格・過電流保護・ヒューズの記載は無い** | 同上 |
-| **12V 出力の性質（2026-08-05・重要）** | 入力が「T type **DC12V** input」、出力が「**DC 12V** interface ×2」、モータも「**12V** encoder motor」＝**同一呼称の単一レール**。3S（12.6→9.6V）から定電圧 12V を作るには昇降圧回路が要るが**その記載も実装も見当たらない** → **生バッテリ電圧のスルー出力と判断**（強い推定。実測で確定させる） | 同上（パラメータ表からの導出） |
+| 拡張ボード保護回路（2026-08-05 追加） | **「サーボ過電流保護・逆接続保護・短絡保護」のみ**。**12V 出力レールには過電流保護・ヒューズが無いことを出品者が明言**（2026-08-06 回答「No overcurrent protection circuit or fuse is installed」） | 同上 ＋ 出品者回答（下記 References） |
+| **12V 出力の性質（2026-08-05・重要）** | 入力が「T type **DC12V** input」、出力が「**DC 12V** interface ×2」、モータも「**12V** encoder motor」＝**同一呼称の単一レール**。3S（12.6→9.6V）から定電圧 12V を作るには昇降圧回路が要るが**その記載も実装も見当たらない** → **生バッテリ電圧のスルー出力で確定**（2026-08-06 出品者回答「The output voltage is the same as the input voltage from the T-plug (it is not regulated)」。定格 **4A／ピーク 6A**） | 同上 ＋ 出品者回答（下記 References） |
 
 > 注: 本節の「9–20V」が正。上記 `#### Super モードで必要な追加投資` の「入力 7–20V」は NVIDIA フォーラム由来の記述で、**Carrier Board Specification の 9–20V と食い違う**（`# TODO`: 該当行を要訂正）。
 
 ### 未確定（購入・実装前に潰す）
 
-1. `# TODO(発注前)` **拡張ボード 12V レールの連続電流定格は、公式パラメータ表を実見しても記載が無い**（2026-08-05 確認）。保護回路の記載も「サーボ過電流保護・逆接続保護・短絡保護」のみで、**12V 出力レールの過電流保護・ヒューズは明示されていない**。Orin は 25W モードで 12V 換算 ≈2.1A、MAXN SUPER は uncapped。同じ 12V 系に AM2861 モータドライバ ×4 がぶら下がるため**モータ加減速時の突入と競合**する。→ Yahboom support へ照会 ＋ 実機実測（下記「給電の実測手順」）。
-2. **【ほぼ確定 / 方針決定 2026-08-05】12V 出力は生バッテリ電圧のスルーと判断**（根拠は上表「12V 出力の性質」）。したがって **Orin が見る電圧は満充電 12.6V からブザー警報 9.6V まで下がり、Orin 下限 9V までの余裕は 0.6V しかない**。モータ加速時のサグが重なれば 9V 割れは現実的に起こりうる。
+1. **【解決 2026-08-06・出品者回答】拡張ボード 12V レールは定格 4A／ピーク 6A・過電流保護もヒューズも無し**（Amazonメッセージでの Yahboom 回答。2026-08-05 時点では公式パラメータ表に記載が無かった項目）。Orin 系統の最悪ケースは 12V 側で約 7.5A（下記「給電の配線設計」）＝**定格 4A のほぼ 2 倍**であり、同レールに AM2861 モータドライバ ×4 も同居する。→ **バッテリー直タップ（拡張ボード非経由）の決定が定量的にも裏付けられた**。実機実測（下記「給電の実測手順」）はレール確認から Orin 系統の健全性確認へ目的を変えて維持。
+2. **【確定 2026-08-06 / 方針決定 2026-08-05】12V 出力は生バッテリ電圧のスルー（非安定化）**（出品者回答で確定。根拠は上表「12V 出力の性質」）。したがって **Orin が見る電圧は満充電 12.6V からブザー警報 9.6V まで下がり、Orin 下限 9V までの余裕は 0.6V しかない**。モータ加速時のサグが重なれば 9V 割れは現実的に起こりうる。出品者自身も「9V 未満で電圧降下が顕著・**9.5V 以上での運用を推奨**」と回答しており、マージンの薄さは vendor 公認。
    **→ 既定の構成を「昇圧 DC-DC 経由」とする**（12.6V→19V・連続 **≥45W**・出力 **5.5×2.5 センタープラス**）。**12V 直結は「実測①〜④で問題が無いと確認できた場合のみ選べる縮退案」へ格下げする。** 理由: Orin の電圧断は L1 緊急停止と外部通信ごと落とす安全事象であり、0.6V のマージンに賭ける設計は `.claude/rules/safety.md` の趣旨に反する。純正 Orin 版が 12V 直結ケーブルを同梱している事実（上表）は、Yahboom がこのマージンを許容していることを示すに留まり、**本プロジェクトの安全要件を満たす根拠にはならない**。
-3. `# TODO(発注前)` **"without" 版に Orin 用電源ケーブルは付かない見込み**。`without Nano` に付くのは Jetson Nano B01 用の **DC5.5×2.1 ケーブル**で、これは拡張ボードの **5V 出力**バレルから取る線。**電圧もピン径も Orin へ流用不可**。→ **XH2.54 2PIN ⇔ DC5.5×2.5 センタープラス ケーブルを自作 or 単品調達**（要 Yahboom 確認）。
-4. `# TODO(Phase 1)` **マウント**: `without` 版の取付板は選択したボード用。Orin Dev Kit（キャリア一体・完成体 103×90.5×34.8mm）は**自作プレートで固定する前提**。上段デッキとの高さ干渉は実物合わせ。
+3. **【解決 2026-08-06・出品者回答】XH2.54 2PIN ⇔ DC5.5×2.5 ケーブル（Orin 版同梱と同一品）は単品購入可**。ただし現行の既定構成はバッテリー直タップ＋昇圧 DC-DC（出力側は汎用 DC5.5×2.5 ケーブル）のため、このケーブルが必要なのは**縮退案（12V 直結）を選ぶ場合のみ**。縮退案の保険として購入するかは発注時に判断。
+4. `# TODO(Phase 1)` **マウント**: `without` 版の取付板は選択したボード用。Orin Dev Kit（キャリア一体・完成体 103×90.5×34.8mm）は**自作プレートで固定する前提**（3D プリント案は下記「Orin マウント」）。出品者回答（2026-08-06）: Orin Dev Kit 用取付板の単品販売は**手持ちボードの確認待ち**（「Orin Nano Developer Kit か Nano B01 か」への返信が必要）＋**現行キット付属品の一部は Orin Dev Kit に非互換の可能性**と注意あり。上段デッキとの高さ干渉は実物合わせ。
 5. **【解決】ソフト方針＝Yahboom スタックを使わず自前 ROS 2 ノードを書く。** 制御プロトコルは判明済（USB シリアル 115200 8N1・`HEAD=0xFF, DEVICE_ID=0xFC, LEN, FUNC, payload…, CHECKSUM`、`CHECKSUM=(sum+257-0xFC)&0xFF`、`FUNC_MOTION=0x12`・`FUNC_MOTOR=0x10`・`FUNC_REPORT_*` を MCU が **40ms 周期で auto-report**）。Yahboom の `Rosmaster_Lib` は `struct/time/serial/threading` のみ依存＝**アーキ非依存で aarch64 可**だが、ライセンスが Proprietary 表記・PyPI 未配布・配布が Google Drive のため、**判明済フレーム仕様から自前実装する方がクリーン**。デバイスは udev symlink `/dev/myserial` に固定。
 6. **【解決】メカナム逆運動学は STM32 ファーム側にある** → ホストは `/cmd_vel` の `(vx, vy, wz)` を投げるだけ（`set_car_motion` は body 速度を `int16(v*1000)` で送るのみ・4輪配分なし）。**よって凍結 URDF / Nav2 が diff-drive のままでも `linear.y = 0` で成立し、メカナム採用に契約変更は不要**。omni 化（AMCL Omni / `vy_max` > 0 / `motion_model: "Omni"` / `linear.y` の twist_mux→collision_monitor 通し）は**任意の後続拡張**として扱う。sim 側 diff_drive プラグインの差し替えも omni 化する場合のみ。
 7. **【方針決定 2026-08-05・M1 / Superior 構成】速度クランプは「ホスト側シリアルドライバ内の送信直前クランプ（L0'）」に置く。**
@@ -342,7 +342,7 @@ RPLiDAR A2（+10,000円）: 精度・回転速度が向上。予備費からの�
 | ③ Orin 高負荷 | MAXN SUPER + Nav2 + LiDAR + カメラ | **9V を下回らない**・再起動しない |
 | ④ **モータ同時加速 ＋ ③** | ③の状態で急発進（最悪条件） | 同上 |
 
-④で 9V 割れ・リプルが出た場合のみ、上記 2 の昇圧 DC-DC を採用する。
+既定は昇圧 DC-DC 経由（残課題 2）。①〜④すべてで 9V 割れ・リプルが無いと確認できた場合のみ、縮退案（12V 直結）を選択できる。
 
 > 対象 layer: 給電系は **L0 未満（ハードウェア）**。ただし Orin の電圧断は L0 の緊急停止と micro-ROS リンクごと落とすため、安全要件として扱う（`.claude/rules/safety.md`）。
 
@@ -368,11 +368,11 @@ RPLiDAR A2（+10,000円）: 精度・回転速度が向上。予備費からの�
 | C-5 | 横速度 `linear.y` | `ws/src` / `firmware` に**実装 0 件**（grep 一致なし・テスト除く） | twist_mux → collision_monitor → ドライバを縦断で新規実装 | L0'–L2 |
 | C-6 | 駆動モデル | `nav2_params.yaml:52` `DifferentialMotionModel` / `:124` `vy_max: 0.0` / `:134` `motion_model: "DiffDrive"` | AMCL Omni / `vy_max > 0` / `motion_model: "Omni"` | L2 |
 | C-7 | sim プラグイン | Gazebo `diff_drive` | メカナム相当へ差し替え | L2 |
-| C-8 | **ベクトル速度クランプ** | `ws/src/warehouse_interfaces/warehouse_interfaces/safety.py:26-34` `clamp_velocity()` は**スカラー1軸** | **(vx, vy) の大きさ**でクランプする関数を追加 | L0' / L1 |
+| C-8 | **ベクトル速度クランプ** | `ws/src/warehouse_interfaces/warehouse_interfaces/safety.py:26-34` `clamp_velocity()` は**スカラー1軸** | **(vx, vy) の大きさ**でクランプする関数を追加（**【2026-08-17】L0' driver 側 `clamp.py:127` の hypot 実装で landed＝interfaces 無編集**） | L0' / L1 |
 
 > **C-8 は omni 化の前提条件であり、後回しにできない。** `vy ≠ 0` を許した状態で各軸を独立に 0.3 m/s クランプすると、対角合成が √(0.3² + 0.3²) = **0.424 m/s** となり `.claude/rules/safety.md` の 0.3 m/s ハードキャップを **41% 超過**する。C-5 と C-8 は同一 PR で入れること。R-26（独立オラクル・mutation で赤くなること）の対象（[20-dev-quality-and-testing.md](../architecture/20-dev-quality-and-testing.md) §9）。
 
-凍結リンク名 `wheel_{front,rear}_{left,right}`（`robot_dimensions.py:26-29`）はメカナム化でも**無傷**（4輪配置が同じため）。C-1 は `warehouse_description`、C-8 は `warehouse_interfaces` に触れるため **`contract` ラベル PR ＋ 依存トラック予告**が必要（`.claude/rules/parallel-workflow.md` §4）。C-2〜C-7 は config / 各パッケージ内で閉じる。
+凍結リンク名 `wheel_{front,rear}_{left,right}`（`robot_dimensions.py:26-29`）はメカナム化でも**無傷**（4輪配置が同じため）。C-1 は `warehouse_description`、C-8 は `warehouse_interfaces` に触れるため **`contract` ラベル PR ＋ 依存トラック予告**が必要（`.claude/rules/parallel-workflow.md` §4）。C-2〜C-7 は config / 各パッケージ内で閉じる。（**注 2026-08-17**: C-8 は L0' driver 側実装＝interfaces 無編集の別解で landed 済み・contract PR 不要になった。C-1 は従来通り）
 
 > `# TODO(採用時)`: C-1〜C-4 を epic Issue のチェックリストへ展開する。C-5〜C-8 は「横移動を使うか」を決めてから別 Issue に切る。
 
@@ -421,7 +421,7 @@ NVIDIA は Carrier Board Specification に**取付穴の位置を公開してい
 
 #### 給電の配線設計（2026-08-06 変更: 拡張ボード経由 → **バッテリー直タップ**）
 
-当初は拡張ボードの DC12V 出力（XH2.54）から昇圧 DC-DC を取る想定だったが、**同レールの連続電流定格が非公開**（残課題 1）である以上、そこに Orin 分（12V 側で最大約 7.5A）を上乗せするのは未知の容量に賭けることになる。→ **バッテリーの T プラグで分岐し、Orin 系統は拡張ボードを一切経由させない**。
+当初は拡張ボードの DC12V 出力（XH2.54）から昇圧 DC-DC を取る想定だったが、決定時点では**同レールの連続電流定格が非公開**（残課題 1）で、未知の容量に賭けることになるため回避した。**2026-08-06 の出品者回答で定格 4A／ピーク 6A・保護なしと判明**し、Orin 分（12V 側で最大約 7.5A）は**定格のほぼ 2 倍**＝この回避は事後的にも必須だったと確定。→ **バッテリーの T プラグで分岐し、Orin 系統は拡張ボードを一切経由させない**。
 
 ```
 バッテリー(メス) ──[T型オス]──┬──[T型メス]──→ 拡張ボード(オス) ── モータ×4
@@ -440,7 +440,7 @@ NVIDIA は Carrier Board Specification に**取付穴の位置を公開してい
 | microSD 64GB A2 | QSPI 更新と初回ブート（Mac 経路の前提） | ✅ **調達済**（SanDisk Extreme） |
 | NVMe SSD | JetPack 焼き込み先 | ✅ **調達済**（KIOXIA 1TB） |
 | **昇圧 DC-DC 150W**（入力 10–32V / 出力 12–35V 可変・自然空冷 100W） | 12.6V→**19V** | **要購入** |
-| **DC プラグ付きケーブル 外径5.5×内径2.5mm・5A 対応** | 昇圧出力 → Orin の DC ジャック | **要購入** |
+| **DC プラグ付きケーブル 外径5.5×内径2.5mm・5A 対応** | 昇圧出力 → Orin の DC ジャック（Yahboom の XH2.54⇔DC5.5×2.5 単品は**縮退案=12V 直結用**。残課題 3） | **要購入** |
 | **T型（ディーンズ）コネクタ オス＋メス** | バッテリー分岐の自作 | **要購入** |
 | **ミニ平型ヒューズホルダー（エーモン 3367・1.25sq）＋ ミニ平型ヒューズ 10A** | バッテリー直タップの配線保護。**ホルダにヒューズは同梱されない**（メーカー公式に「ヒューズは別途お買い求め下さい」と明記） | **要購入** |
 | **テスター（マルチメータ）** | **昇圧出力を 19.0V に設定・確認**（下記警告） | **要購入・必須** |
@@ -470,3 +470,17 @@ NVIDIA は Carrier Board Specification に**取付穴の位置を公開してい
 - [Yahboom バッテリ取扱注意](https://www.yahboom.net/public/upload/upload-html/1697613339/Precautions%20for%20battery.html) — 参照日: 2026-08-05（保管 11.1–11.7V / 9.6V 警報）
 - [Jetson Orin Nano Devkit Carrier Board Specification SP-11324-001 v1.3 — NVIDIA](https://developer.nvidia.com/downloads/assets/embedded/secure/jetson/orin_nano/docs/jetson_orin_nano_devkit_carrier_board_specification_sp.pdf) — 参照日: 2026-08-05（§1.2 / §3.8 DC ジャック 9–20V・5.5mm/2.5mm・3.5A）
 - [Nuwa-HP60C 深度カメラ — 公式](https://category.yahboom.net/products/hp60c) — 参照日: 2026-08-05（単品 $150 / ブラケット付 $170）
+- Yahboom 出品者回答（Amazon メッセージ・2026-08-06 16:41）— 一次情報。①本 SKU の制御ボード=拡張ボード V3.0・`without Nano`=Jetson Nano B01 のみ非同梱 ②12V 出力（XH2.54）= T プラグ入力の非安定化スルー・**定格 4A／ピーク 6A・過電流保護/ヒューズ無し**・バッテリー 9.5V 以上推奨 ③XH2.54⇔DC5.5×2.5 ケーブル（Orin 版同梱と同一）単品購入可 ④Orin Dev Kit 用取付板はボード種別の確認待ち＋キット付属品の一部非互換の注意
+
+---
+
+## 【2026-08-07 追記】台数と知覚スタックの現行方針
+
+- **台数**: §A 仕様表の「2台」は ESP32 Car 旧前提。現行実機は **ROSMASTER M1 1台 + Orin 直結シリアル（micro-ROS 経路不使用）**＝[ADR-0006 単騎構成](../adr/0006-single-bot-first.md)。§「ROSMASTER M1 採用検討時の残課題」以降が実機の正本。
+- **知覚・自己位置**: HP60C 深度・T-mini Plus・IMU/エンコーダを使う TARGET スタック（nvblox / MOLA-LO〔旧 cuVSLAM は blocked〕/ robot_localization EKF）は [architecture/23](../architecture/23-perception-and-localization.md) が設計正本（スパイクゲート S1=8GB メモリ・S2=HP60C 互換が前提）。固定 RPLiDAR A1 の「外部トラッキング補正」→ **ground truth 取得装置**への役割変更は同 doc §5-5 の**提案**（doc09 所有トラック承認待ち）。
+
+---
+
+## 【2026-08-09 追記】俯瞰カメラの用途切り分け（ADR-0007）
+
+§E 撮影機材の俯瞰カメラ（Logicool C922n）は**動画撮影専用**であり、**ER/知覚の画像入力には使わない**（[ADR-0007](../adr/0007-no-overhead-camera-gesture-via-onboard-nn.md)。ER/ジェスチャ入力は搭載 HP60C に一本化）。撮影用 C922n 自体の要否・「撮影用カメラを ER 入力に流用しない」運用の明文化は ADR-0007 Open。ジェスチャ認識の設計正本は [mode-x-er/09](../mode-x-er/09-hand-raise-summon.md)、HP60C の S2 スパイクゲートは [architecture/23 §7](../architecture/23-perception-and-localization.md)。

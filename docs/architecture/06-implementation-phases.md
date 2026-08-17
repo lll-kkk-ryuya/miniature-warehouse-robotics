@@ -358,3 +358,14 @@
 - [tiryoh/ros2-desktop-vnc — Docker Hub](https://hub.docker.com/r/tiryoh/ros2-desktop-vnc) — 参照日: 2026-05-21
 - [Nav2 Documentation](https://docs.nav2.org/) — 参照日: 2026-05-19
 - [SLAM Toolbox — GitHub](https://github.com/SteveMacenski/slam_toolbox) — 参照日: 2026-05-19
+
+---
+
+## 【2026-08-07 追記】単騎（1台）先行によるフェーズ再定義（ADR-0006）
+
+[ADR-0006](../adr/0006-single-bot-first.md) により今回のフェーズは**ロボット1台**で実装する。本 doc の Phase 表は無編集で残し、読み替えを以下に定める:
+
+- **Phase 2 後半の「2台目ハードウェアセットアップ」「micro-ROS Agent 2台同時接続」「Multi-Robot Costmap Layer」「2台同時走行での衝突回避」と完了条件「2台が互いを認識して衝突回避できる」は、後続の 2台復帰フェーズへ繰延。** Phase 2 の今回の完了条件は「実機1台の SLAM + Nav2 自律走行」。
+- **Phase 3（2台協調・交渉・:182-238）は丸ごと 2台復帰フェーズ**の定義として凍結保存する（doc/実装とも削除しない）。
+- マイルストーン「AIが2台を指揮できた」（:333）に対応する今回の単騎マイルストーンは「**実機1台が LLM 司令官の指令＋手挙げ召喚（[mode-x-er/09](../mode-x-er/09-hand-raise-summon.md)）で自律走行する**」。
+- `# TODO(ユーザー判断)` :225 の「モードA/Bが動作することを初回公開の必須ゲートとする」は1台実機では満たせない。ゲート再定義（1台版に置換 or sim 先行リリースのみ公開）は ADR-0006 Open。

@@ -84,3 +84,9 @@ STATUS（実装済みか）とは**直交する第 2 軸＝CONNECTIVITY**（稼�
 - 設計正本: [01-architecture-and-flow](01-architecture-and-flow.md) / [02-l3-planning-core](02-l3-planning-core.md) / [03-er-adapter-skeleton](03-er-adapter-skeleton.md) / [04-er-input-modalities-and-stt](04-er-input-modalities-and-stt.md) / [06-unfrozen-contract-resolutions](06-unfrozen-contract-resolutions.md)
 - live 手順: [dev/07-mode-x-er-live-e2e-runbook](../dev/07-mode-x-er-live-e2e-runbook.md) / gateway: `deploy/dev/run-er-hermes.sh`(8643) / `deploy/hermes/er-audio-fork/`(8644)
 - 実装: `ws/src/warehouse_llm_bridge/warehouse_llm_bridge/{robotics,robotics_planning_core}/` / tests: `tests/unit/test_l3_*` `tests/live/test_xer_*`
+
+---
+
+## 【2026-08-09 追補】Visual Resolver homography 経路の運用ステータス（ADR-0007）
+
+L3 Visual Resolver（:26）の homography 実装は**俯瞰カメラ前提＝本フェーズ未使用**。`homography: []` により `NO_CALIBRATION` → 0 dispatch の fail-closed で運用する（実装無編集・[ADR-0007](../adr/0007-no-overhead-camera-gesture-via-onboard-nn.md)）。hop ⓪ の capture 未実装は「実 mic」に加え「**搭載カメラフレーム capture（gesture_detector・[09](09-hand-raise-summon.md)）**」も同種の未実装配線として追加。

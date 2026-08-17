@@ -89,3 +89,9 @@
 - [Jetson Orin Nano Super Dev Kit — スイッチサイエンス](https://www.switch-science.com/products/10188) — 参照日: 2026-05-19
 - [Jetson Orin Nano Super — 菱洋エレクトロ](https://ryoyo-gpu.jp/product/jetson/orin_nano_super_devkit/) — 参照日: 2026-05-19
 - [サンワサプライ 俯瞰撮影スタンド 200-DGCAM028](https://direct.sanwa.co.jp/ItemPage/200-DGCAM028) — 参照日: 2026-05-19
+
+---
+
+## 【2026-08-07 追記】単騎（1台）先行の調達方針（ADR-0006）
+
+「2台+LLMで動いてから追加投資を判断」の段取りを変更: **1台先行**（[ADR-0006](../adr/0006-single-bot-first.md)）とし、**2台目（M1 追加 ¥67,527＋電源パーツ一式）の発注は 1台目 bring-up のゲート通過後の判断**へ移動する（判断基準の定義は ADR-0006 Open）。

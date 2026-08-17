@@ -360,3 +360,14 @@ full L3 chain entry point `compile_raw_output`（`RawModelOutput -> ... -> froze
 - **R-26 は END-TO-END**: 非 accepted な `ValidationReport` は **空の `Command`** を返し、注入された executor/store には **一切触れない**（zero get / zero put）＝reject された cycle は durable state を読むことも汚すこともできない。
 - **STALE-HANDLE ハザード（実測・pin）**: `mark_running` は store ではなく caller が保持する state を検査するため、最初の commit 前に load された 2 handle は raise せずに **double-commit** する。XER5 の caller は **plan ごと・cycle ごとに live handle を 1 つだけ**保つ contract を守る（single-live-handle-per-plan-per-cycle）。将来の store 再読 commit guard が意図する fix。
 - **DEFAULT-PATH 等価（後方互換）**: 非注入 path は注入前と挙動が同一（呼び出しごとに fresh in-memory store・stateless one-shot・cross-call leakage なし）。store payload は JSON/Redis-serializable（plain `str`→`str` の status）＝durable-store 差替 readiness。
+
+---
+
+## 【2026-08-09 追補】Visual Resolver の投影方式: CURRENT=homography（保存）/ TARGET=depth+TF（ADR-0007）
+
+俯瞰カメラ不使用（[ADR-0007](../adr/0007-no-overhead-camera-gesture-via-onboard-nn.md)）に伴う本 doc の読み替え:
+
+- **homography 経路（:135-151）は俯瞰カメラ前提の設計として保存**（削除しない）。本フェーズは calibration の `homography: []` により `NO_CALIBRATION` → unresolved → **0 dispatch の fail-closed が既定**（`visual_resolver/resolver.py` の既存挙動＝**実装無編集**）。
+- TARGET の pixel→map は `pixel(u,v)+depth → K 逆投影 → TF camera_optical→base_link→odom→map`。**valid polygon 検査・known location snap・0-dispatch 不変条件・confidence 合成は map 空間演算のため無編集で生存**する。
+- calibration artifact の逐語 5 field（:149）は形として保持。`homography` の扱い（空維持 or intrinsics/camera_frame の additive 追加）は**未決＝この追補では発明しない**（所有トラック判断）。`calibration_id ≡ camera_id`・配置規約は不変。
+- 新たな失敗モード: 投影が **AMCL pose 品質・TF freshness に従属**する（俯瞰は pose 非依存だった）。pose_stale 時の投影可否は [09](09-hand-raise-summon.md) / [architecture/23](../architecture/23-perception-and-localization.md) 側で扱う。

@@ -1,6 +1,6 @@
 # ROS 2 distro を Jazzy から Humble へ切り替える（Isaac ROS on Orin ＋ ROSMASTER M1 採用に伴う）
 
-**Status**: accepted（2026-08-05 user approval。ただし Gazebo の扱いのみ未決＝下記 Open）
+**Status**: proposed（2026-08-05 オペレーター指示で proposed 保持＝[02:383](../shared/02-hardware-design.md)。Gazebo の扱い等 Open が閉じたら accepted へ昇格）
 
 **Jetson Orin Nano で Isaac ROS を使う道は Isaac ROS 3.x = ROS 2 Humble しか存在しない**（最新の Isaac ROS 4.x は Jazzy だが対応プラットフォームが Jetson Thor のみ）。加えて実機候補を Yahboom ROSMASTER M1 に変更したことで、ベンダ driver 資産（深度カメラ・LiDAR・工場イメージ）も **Humble / Ubuntu 22.04 固定**であることが判明した。両者が同じ結論を指すため、distro を Humble に合わせる。代償は Gazebo の公式ペアが崩れること 1 点に集約される。
 
@@ -78,3 +78,9 @@
 - [Isaac ROS Getting Started — NVIDIA](https://nvidia-isaac-ros.github.io/getting_started/index.html) — 参照日: 2026-08-05（最新版=Jazzy・対応は Jetson Thor のみ・JetPack 7.1）
 - [Isaac ROS Getting Started (release-3.1) — NVIDIA](https://nvidia-isaac-ros.github.io/v/release-3.1/getting_started/index.html) — 参照日: 2026-08-05（3.x 系 = Humble・Orin 対応・Orin Nano 4GB は非推奨）
 - [Isaac ROS Release Notes — NVIDIA](https://nvidia-isaac-ros.github.io/releases/index.html) — 参照日: 2026-08-05
+
+## 追記（2026-08-17）: Humble pin の新たに判明したコスト
+
+Isaac ROS release-3.2 が **Orin + Humble 線の終点**であることを一次情報で確認した（4.x = Jazzy + Jetson Thor 専用・Orin は 4.x でサポート外）。したがって 2026-02-02 に cuVSLAM wrapper へ追加された **RGB-D 入力モード（`tracking_mode: RGBD`）には、本 ADR の選択上永久に届かない**。これは採択時に列挙されていなかったトレードオフとして記録する（**決定自体は変えない**: Orin Nano Super 8GB は 3.2 の公式サポート内＝除外は 4GB のみ、と release-3.2 System Requirements で再確認済み）。この帰結の詳細（cuVSLAM blocked-by-hardware・TARGET-1 の MOLA-LO への差し替え）は [doc23 【2026-08-17 追補】B-1](../architecture/23-perception-and-localization.md)。
+
+- 参照: <https://nvidia-isaac-ros.github.io/repositories_and_packages/isaac_ros_visual_slam/index.html>（Updates: 2026-02-02 RGBD / Thor・Jazzy）・<https://nvidia-isaac-ros.github.io/v/release-3.2/getting_started/index.html>（3.2 = Humble・Orin・4GB のみ非推奨）— 参照日 2026-08-17

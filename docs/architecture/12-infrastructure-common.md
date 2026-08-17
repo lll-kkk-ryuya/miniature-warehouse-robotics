@@ -585,3 +585,13 @@ Nav2 behavior_server (recovery: BackUp/DriveOnHeading/Spin)
 - [WiseVision ROS 2 MCP Server — GitHub](https://github.com/wise-vision/mcp_server_ros_2) — 参照日: 2026-05-23（調査対象、不採用）
 - [Nav2 MCP Server — GitHub](https://github.com/ajtudela/nav2_mcp_server) — 参照日: 2026-05-23（調査対象、不採用）
 - [Langfuse — 公式サイト](https://langfuse.com/) — 参照日: 2026-05-23
+
+---
+
+## 【2026-08-10 追補】Guardian の localization health 監視プロファイル構想 → 正本は doc23 追補
+
+Guardian の pose 監視を **AMCL 固定から config 切替（監視プロファイル）へ抽象化する構想**——購読先 topic / heartbeat 信号 / 静止ゲート / stale 閾値 / **startup_timeout**（初回 pose 不着の沈黙穴の根治）/ 自己申告フラグを 1 プロファイルに束ね、`Health Aggregator` 集約ノードは置かず直接購読を維持する方針——および **localization ロストを protective stop ではなく operational stop（運用停止）として位置づける**業界標準との対応は、[architecture/23-perception-and-localization.md 【2026-08-10 追補】](23-perception-and-localization.md) が正本。
+
+本節は **TARGET 構想へのポインタのみ**であり、上記 §「Emergency Guardian — pose freshness guard」（:502-513）の CURRENT 契約（`pose_freshness_timeout` 既定 1.0s・`/amcl_pose` 直購読・`pose_stale` estop）は**不変**である。
+
+> 【2026-08-17 追記】doc23 の【2026-08-17 追補】B-8 が、監視プロファイル（上記ポインタ先【2026-08-10 追補】A-5〜A-7）に **MOLA-LO 行**を追加した: スキャンマッチャは**縮退時も publish を続ける**（鮮度単独では loss を検出できない）ため、速い経路＝`pose_quality` 自己申告・遅い経路＝watchdog の二重化で監視する。CURRENT の Guardian 契約は引き続き不変。

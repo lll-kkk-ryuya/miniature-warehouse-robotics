@@ -126,3 +126,7 @@ Mode X-ER では VLA / OpenVLA を扱わない。VLA が L3 を代行・補助�
 ## 実装 node 仕様 (index)
 
 > XER6（X-lite E2E・#342）の背骨＝X-ER commander node `x_er_bridge` の設計正本は [08-x-er-bridge-node-spec](08-x-er-bridge-node-spec.md)。「未凍結事項」のうち **Mode X-ER config key / calibration artifact の配置と形式**は [06 §3](06-unfrozen-contract-resolutions.md) の RESOLVED 追補（2026-07-07）＋ 08 §3 で凍結済み。（#165 回避のため末尾追記）
+
+## ジェスチャ司令（召喚・指差し） (index)
+
+> 人が**腕を肩より上に挙げる（召喚）／腕を前方に伸ばす（指差し）**と、搭載 HP60C + ローカル骨格 NN が決定論認識し、L3 Handoff→L2 Policy Gate 経由で最寄り known location へ接近する**単騎デモ**（[ADR-0006](../adr/0006-single-bot-first.md)・[ADR-0007](../adr/0007-no-overhead-camera-gesture-via-onboard-nn.md)＝俯瞰カメラ不使用）。設計正本は [09-hand-raise-summon](09-hand-raise-summon.md)（2026-08-09 全面改訂。旧: 俯瞰+召喚マーカー方式は同 doc §13 に降格保存）。`/goal_pose` 直注入なし・ER は常時ポーリングせず意味解釈イベントのみ・`mode_x_er.gesture.*`（additive・safe-OFF）+ 新ノード `gesture_detector`（publish-only・0 actuation）+ plugin 1 本。なお本文 :12 の検証項目「俯瞰カメラ画像からの object target 認識」は**搭載 HP60C 画像へ読み替え**（全景前提の task graph 例は成立条件が変わる＝ADR-0007）。（#165 回避のため末尾追記）

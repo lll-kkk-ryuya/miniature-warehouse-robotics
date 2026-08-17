@@ -340,3 +340,9 @@ sim マップの占有規約は Nav2 `nav2_map_server/src/map_io.cpp` に準拠�
 - [Nav2 Simple Commander API](https://docs.nav2.org/commander_api/index.html) — 参照日: 2026-05-21
 - [Nav2 MPPI Controller](https://docs.nav2.org/configuration/packages/configuring-mppic.html) — 参照日: 2026-05-22
 - [SLAM Toolbox — GitHub](https://github.com/SteveMacenski/slam_toolbox) — 参照日: 2026-05-19
+
+---
+
+## 【2026-08-07 追記】TARGET 知覚・自己位置スタックへの forward link
+
+本 doc は **CURRENT（SLAM Toolbox + AMCL + 2D costmap）の正本**として不変。Isaac ROS **nvblox** を costmap 層に足し、**robot_localization EKF** を `odom→base_link` の唯一の配信者に置き、**MOLA-LO**（2D LiDAR odometry。旧候補 cuVSLAM は blocked-by-hardware）を EKF 第2入力とする TARGET 設計（＋固定 RPLiDAR A1 の ground truth への役割変更・TF 配信責任の一意化・検証 V1-V10）は [architecture/23-perception-and-localization.md](../architecture/23-perception-and-localization.md) を正本とする。単騎構成の前提は [ADR-0006](../adr/0006-single-bot-first.md)。

@@ -170,3 +170,13 @@ L4 ER Adapter
   - **profile ↔ traffic_mode 翻訳 owner 未定義（F2）**: box profile 文字列が `traffic_mode`（`none|simple`）を命名規約で運ぶが、それを config key へ翻訳する component が未定義（manifest は現状 record であって config source ではない・[doc09:44](09-run-manifest-and-plugin-composition.md)）。
   - **State Cache の box 帰属（F3）**: `warehouse_state/state_cache`（稼働 Mode A node）が doc01 の box 行に無い（暫定 `safety` box に subsume＝taxonomy 判断は未確定）。
   - **mode 自体が first-class でない（F4）**: 「これは Mode A」が profile 命名にしか encode されない。first-class な `mode`/`scenario` field は v2 議論（now-scope では blocker でない）。
+
+## 将来 box 候補: Localization Health 監視プロファイル
+
+実験段階（単騎構成）で得た **Guardian 監視プロファイル**——localization health を集約ノードでなく Guardian の直接購読先 config 切替として抽象化し、ソースごとに heartbeat / 静止ゲート / stale 閾値 / startup_timeout を束ねる設計——は、**L1 Safety Box の「safety profile」artifact（§Box 一覧）を localization ソース非依存に拡張する商品化候補**である。案件ごとに localizer（2D LiDAR / VSLAM / 外部測位）が変わっても Safety Box の interface を変えずに済む差替点になりうる。
+
+併せて、**localization ロスト = operational stop（運用停止）であって protective stop（安全停止）ではない**という切り分け（ISO 3691-4 / MiR / OTTO と同型）は、Safety Box の event catalog と reject reason の分類軸として再利用できる。
+
+現時点では **box 化しない**（実験段階の知見であり、produces/consumes 契約が固まっていない＝§Box 種別と分類規則の box 条件を満たさない）。設計の正本は [architecture/23-perception-and-localization.md 【2026-08-10 追補】](../architecture/23-perception-and-localization.md)、用語は [GLOSSARY §11](../GLOSSARY.md)。
+
+**License flag（2026-08-17）**: TARGET-1 に採用した MOLA-LO（`mola_lidar_odometry`）は **GPLv3**（商用ライセンスは作者へ要相談）。localization を含む box を商品化する際は、GPLv3 コンポーネントの扱い（分離プロセス化・商用ライセンス取得・license-clean 代替 Kinematic-ICP(MIT) への差し替え）を box 化前に裁定すること。正本: [architecture/23-perception-and-localization.md 【2026-08-17 追補】B-2](../architecture/23-perception-and-localization.md)。

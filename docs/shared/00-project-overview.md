@@ -98,3 +98,9 @@ docs/
 - [Nav2 Documentation](https://docs.nav2.org/) — 参照日: 2026-05-19
 - [Hermes Agent — GitHub](https://github.com/NousResearch/hermes-agent) — 参照日: 2026-05-23
 - [Nav2 MCP Server — GitHub](https://github.com/ajtudela/nav2_mcp_server) — 参照日: 2026-05-23（調査対象、不採用。`../architecture/12-infrastructure-common.md` の Nav2 MCP Server の不採用 セクション 参照）
+
+---
+
+## 【2026-08-07 スコープ変更】単騎（1台）先行構成
+
+本 doc の「2台」記述（§目的・§スコープ・§アーキテクチャ概要）は**将来形（2台復帰フェーズ）**として残す。今回の実装フェーズは **ROSMASTER M1 1台 + Jetson Orin Nano Super 8GB の単騎構成（single-bot-first）**＝[ADR-0006](../adr/0006-single-bot-first.md)。2台の交通管理・キャラ LLM 交渉の実機実証は後続フェーズへ繰延（sim は2台のまま維持可）。知覚・自己位置の TARGET 設計は [architecture/23](../architecture/23-perception-and-localization.md)、1台で成立する手挙げ召喚デモは [mode-x-er/09](../mode-x-er/09-hand-raise-summon.md)。

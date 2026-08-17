@@ -204,3 +204,9 @@ doc06:112、sim 範囲。実 bot E2E は sim track #8/#156）。→ F1-F3。**AR
 - [doc02 ハードウェア](../shared/02-hardware-design.md)（Jetson Orin Nano Super / センサ）
 - [docs/setup/jetson-deploy.md](../setup/jetson-deploy.md)（prod デプロイ正本手順）/ [deploy/jetson/](../../deploy/jetson/)（実装）
 - `.claude/rules/safety.md`（速度上限・estop・secrets 非コミット）
+
+---
+
+## 【2026-08-07 追記】ADR-0006（単騎構成）によるゲート読み替え
+
+[ADR-0006](../adr/0006-single-bot-first.md) の 1台先行では、**G2「micro-ROS 2台」・G6「WiFi 同時通信（micro-ROS×2 + LLM API）」は本フェーズ N/A**（ゲート定義は削除せず、2台復帰フェーズで再有効化）。G4「Nav2×2 の実時間追従」は **Nav2×1** に読み替える。nvblox / MOLA-LO（旧 cuVSLAM は blocked）を載せる場合の実機ゲートは [architecture/23 §7 スパイクゲート S1-S3](../architecture/23-perception-and-localization.md) を併用する。

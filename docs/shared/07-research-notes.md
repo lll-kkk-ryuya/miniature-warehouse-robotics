@@ -290,3 +290,9 @@
 - [micro-ROS](https://micro.ros.org/) — 参照日: 2026-05-19
 - [Mini Warehouse — Printables.com](https://www.printables.com/model/561782) — 参照日: 2026-05-19
 - [Pallet Rack 1:10 — Printables.com](https://www.printables.com/model/567874) — 参照日: 2026-05-19
+
+---
+
+## 【2026-08-07 追記】ADR-0006（単騎構成）による非適用リスク
+
+R-37（micro-ROS Agent 2台同時接続の `client_key` 衝突・:242）と R-43（LaserScan の micro-ROS UDP MTU・:253）は **ESP32 + micro-ROS WiFi UDP × 2台**という旧構成に固有のリスクであり、ROSMASTER M1（Orin 直結シリアル・[ADR-0006 単騎構成](../adr/0006-single-bot-first.md)）では**構成ごと非適用**。2台復帰フェーズで M1 × 2台前提のリスク地図を再作成する（micro-ROS 多重化問題は再発しない見込みだが、1 Orin で 2台駆動か 2 Orin かの構成判断が新リスクとして立つ）。
