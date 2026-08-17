@@ -13,7 +13,7 @@ Yahboom ROSMASTER M1 の STM32 制御ボードは**ベンダ製バイナリ**の
 - 正本: [`docs/shared/02-hardware-design.md:325`](../../../docs/shared/02-hardware-design.md)（残課題 7・方針決定 2026-08-05）
 - L0' の限界: [`docs/shared/02-hardware-design.md:329`](../../../docs/shared/02-hardware-design.md) — ホストプロセスが生きている間だけ有効。`# TODO(Phase 1)` MCU 側 watchdog の有無を実機確認。
 - ベクトルクランプの必然性: [`docs/shared/02-hardware-design.md:371`](../../../docs/shared/02-hardware-design.md)（C-8）— 軸独立クランプでは対角 √(0.3²+0.3²)=**0.424 m/s** で上限を 41% 超過する。
-- distro / 決定記録: [`docs/adr/0005-ros2-distro-humble-for-rosmaster-m1.md:50`](../../../docs/adr/0005-ros2-distro-humble-for-rosmaster-m1.md)
+- distro / 決定記録: [`docs/adr/0008-ros2-distro-humble-for-rosmaster-m1.md:50`](../../../docs/adr/0008-ros2-distro-humble-for-rosmaster-m1.md)
 
 ## 提供 (produce)
 
@@ -84,6 +84,6 @@ Yahboom ROSMASTER M1 の STM32 制御ボードは**ベンダ製バイナリ**の
 ## 設計ドキュメント
 
 - [`docs/shared/02-hardware-design.md`](../../../docs/shared/02-hardware-design.md) — M1 採用・L0' 決定・C-1〜C-8 書き換え表
-- [`docs/adr/0005-ros2-distro-humble-for-rosmaster-m1.md`](../../../docs/adr/0005-ros2-distro-humble-for-rosmaster-m1.md) — distro（Humble）決定
+- [`docs/adr/0008-ros2-distro-humble-for-rosmaster-m1.md`](../../../docs/adr/0008-ros2-distro-humble-for-rosmaster-m1.md) — distro（Humble）決定
 - [`docs/architecture/12-infrastructure-common.md`](../../../docs/architecture/12-infrastructure-common.md) — Layer マップ（L0 の定義。M1 採用に伴う改訂が `# TODO(採用時)` として残っている）
 - `.claude/rules/safety.md` / `.claude/rules/docs-first.md` / `.claude/rules/parallel-workflow.md`

@@ -25,7 +25,7 @@
 
 - **追い風（忠実度が高い側）**: CPU アーキは **Mac M4 も Jetson Orin Nano Super も ARM64**（doc06:91
   「Mac M4 と Jetson はどちらも ARM64」）で、tiryoh コンテナも **ARM64-native**（doc03:263）、Jetson は
-  **ROS 2 Humble / Ubuntu 22.04**（doc03:271・ADR-0005）・micro-ROS も Humble 対応済（doc07:22）で揃う。
+  **ROS 2 Humble / Ubuntu 22.04**（doc03:271・ADR-0008）・micro-ROS も Humble 対応済（doc07:22）で揃う。
   x86 dev マシンより**命令セット・依存ビルドの忠実度が高い**。ROS ノードロジック・凍結契約・launch 合成・
   pytest はこの一致のおかげで Mac で高忠実に検証できる。
 - **逆風（原理的に近似不可な側）**: 一方、以下は **Mac/Docker では原理的に検証できない**。実 Jetson でしか

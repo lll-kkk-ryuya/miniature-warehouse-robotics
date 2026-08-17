@@ -25,7 +25,7 @@ Gate 2 skip, but now only through a deliberate, attributable decision instead of
 
 Wiring mirrors the landed production factory pattern (config -> constructed object, pure,
 injectable, no I/O beyond reading the already-loaded profile bundle):
-``robotics/adapter_factory.py:77`` ``build_er_adapter``. It finally *consumes* the
+``robotics/adapter_factory.py:130`` ``build_er_adapter``. It finally *consumes* the
 ``CalibrationLoader`` seam that ``validator/seams.py:39`` declared but nothing wired
 ("Default impl is in-memory; a file/version-managed loader replaces it per site",
 seams.py:42 / docs/mode-x-er/02-l3-planning-core.md:156 "version-managed file, never
@@ -295,7 +295,7 @@ def build_calibration_loader(
 ) -> GovernedCalibrationLoader:
     """Construct the production calibration loader from a loaded site profile.
 
-    The ``adapter_factory.build_er_adapter`` pattern (adapter_factory.py:77): config/profile in,
+    The ``adapter_factory.build_er_adapter`` pattern (adapter_factory.py:130): config/profile in,
     constructed seam out, pure, injectable (``policy`` overrides the profile-derived one for
     tests). Every calibration is gated at build time so the report is complete even for cameras
     never ``load``-ed.

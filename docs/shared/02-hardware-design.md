@@ -64,7 +64,7 @@ micro-ROS実装に2-3週間の追加工数が必要。予算が厳しい場合�
 
 ### 役割
 
-- ROS 2 Humble のホスト（司令塔。ADR-0005）
+- ROS 2 Humble のホスト（司令塔。ADR-0008）
 - **LLM Bridge Node の実行**（Claude / ChatGPT / Gemini / Grok APIとの通信、Hermes Agent経由）
 - Nav2 による経路計画・障害物回避
 - SLAM Toolbox による地図生成
@@ -329,8 +329,8 @@ RPLiDAR A2（+10,000円）: 精度・回転速度が向上。予備費からの�
    - **明記すべき限界**: L0' は**ホストプロセスが生きている間だけ**有効。ホスト停止・USB 断では MCU 側に最後の指令が残り、暴走しうる。→ `# TODO(Phase 1)` **MCU の通信タイムアウト停止（watchdog）の有無を実機で確認**する。無い場合は Emergency Guardian からの明示 stop フレーム送出＋電源系での縮退で補う。
    - `# TODO(採用時)` **doc 影響**: `.claude/rules/safety.md`「ロボット速度制限をコード内で強制する」の実施箇所と、[12-infrastructure-common.md](../architecture/12-infrastructure-common.md) の Layer マップ（L0 の定義）を M1 採用時に改訂する。
 8. `# TODO(発注前)` **Nuwa-HP60C 深度カメラ（Superior 版）の Jazzy 動作は未保証。** ROS 2 ドライバ `ascamera` は ament_cmake ＋ **閉ソースのプリビルド `.so`**（`libAngstrongCameraSdk.so` ほか）に静的リンク。aarch64 バイナリは同梱されるが、その `libs/lib/aarch64-linux-gnu/readme.md` は **「5.4.1 20170404 (Linaro GCC 5.4-2017.05)」＝2017 年 GCC 5.4 ビルド**。動作報告のある distro は Foxy(20.04) / Humble(22.04) のみで、**Jazzy / Ubuntu 24.04 の成功報告は無い**。割れてもソースが無く修正不能。
-   **→ 2026-08-05 方針: distro 自体を Humble に寄せることで本項を構造的に解消する（[ADR-0005](../adr/0005-ros2-distro-humble-for-rosmaster-m1.md) proposed）。** retreat plan（Humble コンテナ隔離 / RealSense・Orbbec 等への置換）は ADR-0005 が却下扱いとして保持。
-9. `# TODO(Phase 1)` **LiDAR ドライバ**: T-mini Plus は YDLIDAR 製（model 151・baud 230400・12m）。`ydlidar_ros2_driver` は **OSS でソースビルド可＝aarch64 に障害なし**。**master は Jazzy でビルドが割れる**（upstream issue #72 / PR #66 が OPEN）が、`humble` ブランチが本来の対象のため **Humble 採用時は C++17 引き上げパッチ不要**（[ADR-0005](../adr/0005-ros2-distro-humble-for-rosmaster-m1.md)）。Jazzy を維持する場合のみ vendoring + パッチが要る。
+   **→ 2026-08-05 方針: distro 自体を Humble に寄せることで本項を構造的に解消する（[ADR-0008](../adr/0008-ros2-distro-humble-for-rosmaster-m1.md) proposed）。** retreat plan（Humble コンテナ隔離 / RealSense・Orbbec 等への置換）は ADR-0008 が却下扱いとして保持。
+9. `# TODO(Phase 1)` **LiDAR ドライバ**: T-mini Plus は YDLIDAR 製（model 151・baud 230400・12m）。`ydlidar_ros2_driver` は **OSS でソースビルド可＝aarch64 に障害なし**。**master は Jazzy でビルドが割れる**（upstream issue #72 / PR #66 が OPEN）が、`humble` ブランチが本来の対象のため **Humble 採用時は C++17 引き上げパッチ不要**（[ADR-0008](../adr/0008-ros2-distro-humble-for-rosmaster-m1.md)）。Jazzy を維持する場合のみ vendoring + パッチが要る。
 10. **【一部解決】小項目**: 公式パラメータ表の実見（2026-08-05）で **USB-serial = CH340**（→ udev は `1a86:7523`）・**IMU = ICM20948**・**通信 115200bps** が確定。残る実機確認は **M1 用 `car_type` 値**と、**MCU auto-report が 40ms=25Hz 固定**である点の Nav2 チューニング（`controller_frequency` / AMCL 更新レート）への影響。
 
 ### 給電の実測手順（実機到着後）
@@ -380,13 +380,13 @@ RPLiDAR A2（+10,000円）: 精度・回転速度が向上。予備費からの�
 
 **オペレーター裁定（2026-08-05）**: 購入は **`Superior-without / NANO 4GB SUB`**（公式 sku 3000200910 / $499.90、Amazon.co.jp ASIN B0G495C65Q ¥67,527）とし、同梱の **Nuwa-HP60C 深度カメラを「使わない同梱物」ではなく開発要件として扱う**。
 
-- **帰結（重要）**: 残課題 8（HP60C の ROS 2 ドライバ `ascamera` が閉ソース `.so` 依存・Jazzy 動作報告なし）が**回避可能な項目から、必ず解かねばならない項目へ昇格**する。したがって [ADR-0005](../adr/0005-ros2-distro-humble-for-rosmaster-m1.md)（Jazzy→Humble）の前提が成立する。ADR-0005 は **proposed のまま保持**（同日オペレーター指示）。
+- **帰結（重要）**: 残課題 8（HP60C の ROS 2 ドライバ `ascamera` が閉ソース `.so` 依存・Jazzy 動作報告なし）が**回避可能な項目から、必ず解かねばならない項目へ昇格**する。したがって [ADR-0008](../adr/0008-ros2-distro-humble-for-rosmaster-m1.md)（Jazzy→Humble）の前提が成立する。ADR-0008 は **proposed のまま保持**（同日オペレーター指示）。
 - **深度カメラを要件化して得るもの**（何に使うかを docs 側で先に定義しておく）:
   - 2D LiDAR の死角（棚の張り出し・低い荷物・段差）の**3D 障害物検知** → costmap への voxel 反映。
   - **パレット / 荷物の認識**。上記 §B「将来: FoundationPose による荷物認識」の実入力となる。
   - **Mode X-ER（ER 視覚司令官）への実カメラ入力**。現状は静止画・sim 由来のため、実機 RGB-D が入ると live 検証の忠実度が上がる。
 - **変わらないもの**: C-1〜C-4（車体寸法由来）は Superior / Standard の別と無関係にそのまま必要。
-- `# TODO(発注と独立に先行決定)` **distro をどうするか（ADR-0005 の未決＝Gazebo を Fortress に落とすか Harmonic をソースビルドするか）は Phase 0.5 のブロッカー**。実機到着を待つ必要が無いので、発注可否とは切り離して先に決める。判断材料は ARM64 headless での Gazebo 再スパイク結果（[16-repository-and-conventions.md](../architecture/16-repository-and-conventions.md):213-215 の GO 判定を引き継げるか）。
+- `# TODO(発注と独立に先行決定)` **distro をどうするか（ADR-0008 の未決＝Gazebo を Fortress に落とすか Harmonic をソースビルドするか）は Phase 0.5 のブロッカー**。実機到着を待つ必要が無いので、発注可否とは切り離して先に決める。判断材料は ARM64 headless での Gazebo 再スパイク結果（[16-repository-and-conventions.md](../architecture/16-repository-and-conventions.md):213-215 の GO 判定を引き継げるか）。
 
 ### 購入確定（2026-08-05）と Orin 立ち上げ経路
 

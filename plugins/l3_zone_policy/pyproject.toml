@@ -1,0 +1,20 @@
+# Incubator packaging (doc09:262-271 layout includes pyproject.toml). This package is NOT
+# installed by any runtime path: plugin.yaml pins status: draft (offline replay + review only,
+# doc09:216-218). No [project.entry-points] on purpose — entry_points auto-discovery is an
+# explicit-registry-first postponed optimization (doc09:492).
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "l3-zone-policy"
+# Kept in lockstep with plugin.yaml `version` (asserted by the replay test).
+version = "0.1.0"
+description = "L3 Validator zone policy plugin (draft incubator; must_be_inside target rule)"
+requires-python = ">=3.12"
+# warehouse_llm_bridge (hookimpl marker + finding types) is a repo-local ament package
+# (ws/src/warehouse_llm_bridge), not a PyPI distribution, so it cannot be declared here.
+dependencies = []
+
+[tool.setuptools.packages.find]
+where = ["src"]

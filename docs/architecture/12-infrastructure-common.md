@@ -76,10 +76,10 @@ Layer 0: micro-ROS / ESP32（ハードウェア安全 — 最終防衛線）
   └── ToF/LiDAR近接物体検出 → モータPWM停止 / motor enable OFF（MCU内、通信不要）
   └── 速度上限 0.3 m/s（MCU内で強制、ROS 2側の cmd_vel 値に関わらず上限クランプ）
   └── bumper / 近接センサ → モータ停止（MCU内、OS・ROS 2非依存）
-
+  └── heartbeat/watchdog: 上位からの /cmd_vel（コマンドストリーム）途絶 → モータ停止（MCU内・通信非依存の comms-loss deadman＝Layer 0 の責務。H-G6 heartbeat_lost。実 enforcement は Phase 1）
 Layer 1: Emergency Guardian（ソフトウェア安全、50ms周期目標）
   └── AMCL距離監視 → Nav2 goal cancel要求 + cmd_vel停止 → /emergency/event 発行
-  └── バッテリー3段階ポリシー
+  └── バッテリー3段階ポリシー（percent 基準・Layer 1 所有。現行 L0 に battery cutoff は無く、将来の最小 over-discharge/brownout floor は voltage-based の別名機構＝ADR-0005）
   └── blocked タイムアウト検出
   └── ※ ハードリアルタイム保証ではない。最終防衛線はLayer 0
 
@@ -109,7 +109,7 @@ Layer 3: Claude / Hermes（戦略判断、Mode A: 3秒 / Mode C: 5秒サイク�
 - **Nav2/AMCL/SLAM は時間=Hard-RT の自律走行スタック**だが「安全レイヤー」には属さない（＝安全層が守る対象。賢い回避は Nav2、確実な停止は Layer 0/1）。
 - **Layer 2 は「交通管理」のみ**（Open-RMF〔Mode C〕／ SimpleTrafficManager〔Mode B〕＝§安全レイヤー:86）。同じ Soft-RT でも **State Cache（状態集約）・VirtualScan（センサ補助）・Orchestrator KPI（計測）は安全層外**（交通制御ではないため）。下のデータフロー図の帯ラベル「Layer2」は粗い俯瞰で、正準の層所属は本注と §安全レイヤー表。
 - **言語の境界**: 確定時間が要る最下層（Layer 0）＝**C++ 自作**、その上の自律走行＝**C++ 既存依存**（YAML/launch で設定）、戦略・調整・監視のロジック＝**Python 自作**。**Python↔C++ は ROS 2 トピック（DDS）越しに疎結合**で会話し、直接呼び出さない。
-- **Layer 0 が最終防衛線**: 上位が全停止しても MCU 内で速度上限 0.3 m/s ＋ 近接停止を保証（§安全レイヤー / `firmware/`）。
+- **Layer 0 が最終防衛線**: 上位が全停止しても MCU 内で速度上限 0.3 m/s ＋ 近接停止を担い、上位通信途絶時の heartbeat/watchdog 停止（deadman）も Layer 0 の責務（**実 enforcement は Phase 1**・純ロジックは host-test 化＝#468）（§安全レイヤー / H-G6 [productization/08:105](../productization/08-navigation-hardware-eval-gates.md)＝`heartbeat_lost`・自作境界 [productization/06:225](../productization/06-oss-reuse-and-box-small-designs.md) / `firmware/`）。
 
 #### 各層の技術スタック（実体）
 
@@ -122,7 +122,7 @@ Layer 3: Claude / Hermes（戦略判断、Mode A: 3秒 / Mode C: 5秒サイク�
 | **自律走行**（Hard-RT） | Nav2・AMCL・SLAM Toolbox・collision_monitor・twist_mux（**全て C++ 既存依存**）＋ 設定 `warehouse_bringup/config/nav2_params.yaml`・launch（Python） |
 | **緊急監視**（Hard-RT / Layer 1） | Emergency Guardian（**Python 自作**・`warehouse_safety`） |
 | **物理安全**（即時 / Layer 0） | ESP32 firmware（**C++ 自作**・FreeRTOS・PlatformIO・`firmware/`）／ micro-ROS（C・XRCE-DDS）／ micro-ROS Agent（C++・Jetson 上）／ on-robot センサ MS200（`/scan`）・エンコーダ・バッテリ（※**RPLiDAR A1 は Jetson-USB 固定の外部トラッキング用・optional**＝on-robot ではない。doc02:179-180 / doc03:167） |
-| **横断**（全層共通） | ROS 2 Humble（DDS。[ADR-0005](../adr/0005-ros2-distro-humble-for-rosmaster-m1.md)）／ 凍結契約 `warehouse_interfaces`（Python・pydantic）／ `warehouse_description`（URDF）／ Sim：Gazebo＋ros_gz_bridge（版は ADR-0005 §Open）・Isaac Sim／ 実行機：Jetson Orin Nano（Ubuntu 22.04 / JetPack 6.x）／ 環境切替：`WAREHOUSE_ENV`＋config（doc19） |
+| **横断**（全層共通） | ROS 2 Humble（DDS。[ADR-0008](../adr/0008-ros2-distro-humble-for-rosmaster-m1.md)）／ 凍結契約 `warehouse_interfaces`（Python・pydantic）／ `warehouse_description`（URDF）／ Sim：Gazebo＋ros_gz_bridge（版は ADR-0008 §Open）・Isaac Sim／ 実行機：Jetson Orin Nano（Ubuntu 22.04 / JetPack 6.x）／ 環境切替：`WAREHOUSE_ENV`＋config（doc19） |
 
 > 各パッケージ責務の正本は各 `ws/src/warehouse_*/CLAUDE.md`、リポジトリ構成は doc16、環境/config は doc19。
 
@@ -243,7 +243,7 @@ class EmergencyGuardian(Node):
 
 ### バッテリーポリシー（3段階）
 
-以下の閾値はアプリケーション側のポリシーであり、ハードウェア仕様ではない。実機のバッテリー特性に応じて調整する。
+以下の閾値はアプリケーション側のポリシーであり、ハードウェア仕様ではない。実機のバッテリー特性に応じて調整する。**この percent 3段ポリシーは Layer 1（Emergency Guardian / Policy Gate）の所有**で、凍結 `battery_is_critical(pct)` は percent 基準（`warehouse_interfaces.safety`）。**現行 L0 firmware に battery cutoff は無い**（`/battery` の sensor publish ＋ MCU 生存不能時の物理切断＝§縮退運転パターンのみ）。将来 phase で L0 が持つ最小 over-discharge（brownout）floor は、この percent policy とは**別名・別機構の voltage-based** floor（通信非依存の last-line floor）として設計し、cutoff 電圧は Phase-1 実機実測で確定する（値をここに発明しない）＝[ADR-0005](../adr/0005-l0-battery-brownout-floor.md)。
 
 | バッテリー残量 | Emergency Guardian | Policy Gate | Claude |
 |--------------|-------------------|-------------|--------|

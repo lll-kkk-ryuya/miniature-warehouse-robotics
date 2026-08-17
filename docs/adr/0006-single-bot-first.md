@@ -7,7 +7,7 @@
 ## Context / 背景
 
 - **ハードウェアが物理的に1台しかない。** 実機は Yahboom ROSMASTER M1（メカナム4輪）**1台**（Amazon `Superior / without Nano`・[02 §ROSMASTER M1 採用検討時の残課題](../shared/02-hardware-design.md)）＋ 手持ちの Jetson Orin Nano Super 8GB。一方 docs の正本は依然 2台前提（[02 §A 仕様表](../shared/02-hardware-design.md):12「台数 | 2台」、[01 予算](../shared/01-budget-and-procurement.md):38「2台+LLMで動いてから追加投資を判断」）。**2台目を今買うか**は未決であり、決めるまで実装を止める理由が無い。
-- **立ち上げリスクを直列化しない。** M1 採用は distro 切替（[ADR-0005](0005-ros2-distro-humble-for-rosmaster-m1.md) = Jazzy→Humble）、Gazebo 公式ペア喪失、Yahboom 閉ソース driver、電源自作（バッテリー直タップ＋昇圧 19V＋10A ヒューズ・[02 §給電の配線設計](../shared/02-hardware-design.md)）、L0' ホスト側速度クランプ（[02 残課題7](../shared/02-hardware-design.md)）と、**未検証の一次リスクが同時に立っている**。ここに「2台同時通信・namespace 分離・交通管理」を重ねると、失敗時の切り分けができない。
+- **立ち上げリスクを直列化しない。** M1 採用は distro 切替（[ADR-0008](0008-ros2-distro-humble-for-rosmaster-m1.md) = Jazzy→Humble）、Gazebo 公式ペア喪失、Yahboom 閉ソース driver、電源自作（バッテリー直タップ＋昇圧 19V＋10A ヒューズ・[02 §給電の配線設計](../shared/02-hardware-design.md)）、L0' ホスト側速度クランプ（[02 残課題7](../shared/02-hardware-design.md)）と、**未検証の一次リスクが同時に立っている**。ここに「2台同時通信・namespace 分離・交通管理」を重ねると、失敗時の切り分けができない。
 - **2台前提の一次リスクの一部は、M1 採用で構造ごと消えている。** R-37「micro-ROS Agent 2台同時接続の XRCE `client_key` 衝突」（[07](../shared/07-research-notes.md):242）と R-43「LaserScan の micro-ROS UDP MTU」（[07](../shared/07-research-notes.md):253）は、いずれも **ESP32 + micro-ROS WiFi UDP × 2台**という旧構成に固有。M1 はホスト（Orin）直結の自前シリアルドライバ経路（[02 残課題5-7](../shared/02-hardware-design.md)）であり、micro-ROS Agent の多重化問題そのものが存在しない。**2台に戻すときはリスク地図の書き換えが要る。**
 - **1台でも「主役の絵」は成立する。** LLM司令官が状況を読んで実機に指示を出す様子（Before/After・障害物投入→迂回・思考ログ・LLM 4社比較）は robot 1台で撮れる。Mode X-ER 系の「人が意図を与え、ロボットが解釈して動く」デモ＝**手挙げ召喚**も1台で成立する（正本: [mode-x-er/09-hand-raise-summon.md](../mode-x-er/09-hand-raise-summon.md)）。
 - **凍結契約は台数非依存に作られている。** `warehouse_interfaces` の `StateSnapshot.robots` / `RobotState` は `dict[str, ...]` で台数を固定しない（[schemas.py:104,130](../../ws/src/warehouse_interfaces/warehouse_interfaces/schemas.py)）。**1台化のために凍結契約を変更する必要は無い。**
@@ -24,8 +24,8 @@
 
 ## 得られるもの
 
-- **未検証リスクを直列に潰せる。** M1 の distro（ADR-0005）・電源・シリアル driver・L0' クランプ・Nav2 パラメータ実測を、交通管理の変数を混ぜずに1つずつ確定できる。
-- **実機ゲートが軽くなる。** [jetson/01](../jetson/01-fidelity-and-validation.md) の G2「micro-ROS 2台」（:101）と G6「WiFi 同時通信」（:105）は M1 1台では非適用（ゲート定義は消さず「本フェーズ N/A」として残す）。G4「Nav2×2」（:103）も Nav2×1 に軽くなり、Orin Nano 8GB のユニファイドメモリ制約に余裕が生まれる（Isaac ROS 知覚スタック＝[architecture/23](../architecture/23-perception-and-localization.md) を載せる余地。ADR-0005 の狙いと整合）。
+- **未検証リスクを直列に潰せる。** M1 の distro（ADR-0008）・電源・シリアル driver・L0' クランプ・Nav2 パラメータ実測を、交通管理の変数を混ぜずに1つずつ確定できる。
+- **実機ゲートが軽くなる。** [jetson/01](../jetson/01-fidelity-and-validation.md) の G2「micro-ROS 2台」（:101）と G6「WiFi 同時通信」（:105）は M1 1台では非適用（ゲート定義は消さず「本フェーズ N/A」として残す）。G4「Nav2×2」（:103）も Nav2×1 に軽くなり、Orin Nano 8GB のユニファイドメモリ制約に余裕が生まれる（Isaac ROS 知覚スタック＝[architecture/23](../architecture/23-perception-and-localization.md) を載せる余地。ADR-0008 の狙いと整合）。
 - **凍結契約を1行も変えずに済む**（`dict[str, RobotState]` が台数非依存）。
 - **sim は2台のまま維持できる。** sim 先行リリース版（[05 §先行リリース構成](../shared/05-video-storyboard.md)）は Gazebo なので台数制約が無い＝実機1台と sim 2台を同時に持てる。
 - **ジオラマ再設計の自由度が上がる。** ジオラマは M1 実寸に合わせて作り直す方針（[04 §M1 影響](../shared/04-diorama-layout.md)）であり、1台なら 200mm 真隘路の「すれ違い不可」制約が当面クリティカルパスから外れる。
@@ -55,7 +55,7 @@
 
 ## References
 
-- [ADR-0005 ROS 2 distro を Jazzy から Humble へ](0005-ros2-distro-humble-for-rosmaster-m1.md) — M1 + Orin + Isaac ROS 3.x 経路
+- [ADR-0008 ROS 2 distro を Jazzy から Humble へ](0008-ros2-distro-humble-for-rosmaster-m1.md) — M1 + Orin + Isaac ROS 3.x 経路
 - [02-hardware-design §ROSMASTER M1 採用検討時の残課題 / §給電の配線設計](../shared/02-hardware-design.md)
 - [06-implementation-phases §Phase 2/3 / §マイルストーン:333](../architecture/06-implementation-phases.md)
 - [05-video-storyboard §先行リリース構成](../shared/05-video-storyboard.md)

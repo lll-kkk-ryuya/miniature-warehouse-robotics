@@ -2,7 +2,7 @@
 
 作成日: 2026-08-07
 Status: **DRAFT / TARGET 設計提案**（CURRENT 構成は変更しない。スパイクゲート S1/S2 が緑になるまで `nav2_params.yaml` の `plugins` リストは触らない）
-前提: [ADR-0005](../adr/0005-ros2-distro-humble-for-rosmaster-m1.md)（Humble + Isaac ROS 3.x + M1 メカナム + Orin Nano Super 8GB）・[ADR-0006](../adr/0006-single-bot-first.md)（単騎構成）
+前提: [ADR-0008](../adr/0008-ros2-distro-humble-for-rosmaster-m1.md)（Humble + Isaac ROS 3.x + M1 メカナム + Orin Nano Super 8GB）・[ADR-0006](../adr/0006-single-bot-first.md)（単騎構成）
 
 > 参考実装: ZED2i + nvblox + Nav2 の公開事例（Qiita motoms・Orin NX 16GB・Humble）を参照した。**同記事の実測値（メモリ 10-12GB 等）はハード・構成が異なるためそのまま持ち込まない**（§7 S1）。
 
@@ -16,7 +16,7 @@ Status: **DRAFT / TARGET 設計提案**（CURRENT 構成は変更しない。ス
 | [03-software-architecture](03-software-architecture.md) | トピック契約カタログ（:113 = plumbing 除外規約） |
 | [12-infrastructure-common](12-infrastructure-common.md) | 安全レイヤー L0-L3・cmd_vel 挿入トポロジ（:526-541） |
 | [shared/02-hardware-design](../shared/02-hardware-design.md) | M1 実寸・HP60C・T-mini Plus・給電 |
-| [ADR-0005](../adr/0005-ros2-distro-humble-for-rosmaster-m1.md) | Humble / Isaac ROS 3.x / Gazebo 未決 |
+| [ADR-0008](../adr/0008-ros2-distro-humble-for-rosmaster-m1.md) | Humble / Isaac ROS 3.x / Gazebo 未決 |
 
 ## 1. レイヤ対応と設計原則
 
@@ -227,11 +227,11 @@ bot1/base_link ── robot_state_publisher（URDF static）
 | FOV・解像度・fps（棚の張り出しが視野に入る取付高さか） | 取付設計・要外部裏取り |
 | rclcpp_components 登録の有無（Component Container 同居可否。無ければ depth が DDS シリアライズ経由＝CPU 消費増） | 性能設計 |
 
-retreat plan: RealSense / Orbbec への置換（[ADR-0005 §却下](../adr/0005-ros2-distro-humble-for-rosmaster-m1.md) が記録済み）。
+retreat plan: RealSense / Orbbec への置換（[ADR-0008 §却下](../adr/0008-ros2-distro-humble-for-rosmaster-m1.md) が記録済み）。
 
 ### S3 — sim での nvblox 検証可否 → **場を分ける**
 
-Mac に CUDA 無し（[jetson/01 F4](../jetson/01-fidelity-and-validation.md):55）・Gazebo は Humble ペア未決（ADR-0005 Open）・Isaac Sim は Phase 5 のカット可能オプション、の3重障壁により **sim での nvblox 検証は構造的に不可に近い**。方針: **「sim（Mac/Gazebo）は CURRENT（2D costmap）の回帰を守る場、nvblox は Jetson + rosbag 再生の場」と分離する**。実機で HP60C depth を rosbag に録り、以後の回帰は rosbag→nvblox で回す（録画に実機が要るのは 1 回だけ）。`nav2_params.yaml` に Nvblox Layer を「plugins 未登録の状態で」記述しておく T0 設計により、sim CI は CURRENT のまま緑を維持できる。
+Mac に CUDA 無し（[jetson/01 F4](../jetson/01-fidelity-and-validation.md):55）・Gazebo は Humble ペア未決（ADR-0008 Open）・Isaac Sim は Phase 5 のカット可能オプション、の3重障壁により **sim での nvblox 検証は構造的に不可に近い**。方針: **「sim（Mac/Gazebo）は CURRENT（2D costmap）の回帰を守る場、nvblox は Jetson + rosbag 再生の場」と分離する**。実機で HP60C depth を rosbag に録り、以後の回帰は rosbag→nvblox で回す（録画に実機が要るのは 1 回だけ）。`nav2_params.yaml` に Nvblox Layer を「plugins 未登録の状態で」記述しておく T0 設計により、sim CI は CURRENT のまま緑を維持できる。
 
 ### 移行順（前段が緑でないと進めない）
 
@@ -242,7 +242,7 @@ T0 土台（camera_link contract PR・plugins 未登録記述・回帰ゼロ）�
 1. **cuVSLAM の入力要件（最重要・要外部裏取り）**: ステレオ（左右 rectified + camera_info）必須か、RGB-D 単眼で成立するか。**リポジトリ内一次情報ゼロ**。HP60C が左右 IR 画像を publish できるかも未確認（`ascamera` の実トピックは実機で `ros2 topic list` が最速）。満たせない場合の代替は RGB-D SLAM 系（RTAB-Map 等・例示に留め採否は決めない）。
 2. **nvblox と Open-RMF（Mode C）の 8GB 食い合い**: R-38 の段階1（Mac Docker 6GB）は Open-RMF 実体も GPU も未搭載。両方は載らない可能性があり、その場合「Mode C を諦めるか nvblox を諦めるか」は**主方針に関わるユーザー判断**。S1 測定順に Open-RMF を含める。
 3. **M1 外接円半径 184mm vs 通路 280mm（nvblox 以前の既存矛盾・優先度高）**: 円形 footprint（直径 368mm）では通路に入れない。非円形 footprint polygon への移行（`consider_footprint` 再有効化・`nav2_params.yaml:171-179` の #67 教訓に注意）が事実上必須で、**nvblox 統合より先**。担当トラックの確定が要る。
-4. **Yahboom 工場イメージの ekf 設定の実体**: [ADR-0005](../adr/0005-ros2-distro-humble-for-rosmaster-m1.md) の一行のみが根拠。`robot_localization` の ekf.yaml か独自実装か、実機到着後に確認するまで「流用できる」を前提にしない。
+4. **Yahboom 工場イメージの ekf 設定の実体**: [ADR-0008](../adr/0008-ros2-distro-humble-for-rosmaster-m1.md) の一行のみが根拠。`robot_localization` の ekf.yaml か独自実装か、実機到着後に確認するまで「流用できる」を前提にしない。
 5. **ZUPT の実装場所と所有トラック**: 静止判定→0速度 Odometry 注入ノードの新設（robot_localization 標準機能に無い想定・要確認）。
 6. **pose_stale 時の nvblox integration 停止**: TSDF 汚染（§3）への対策として Guardian→nvblox の信号が要るか。Guardian を policy 層に留める方針（#126）との整合は所有トラック判断。
 7. **`camera_link` contract PR の切り方**: C-1（ROBOT_RADIUS 改訂）と同一 PR か分離か。C-1 は OQ-3 に依存するため camera_link だけ先行が早い可能性。
@@ -261,7 +261,7 @@ T0 土台（camera_link contract PR・plugins 未登録記述・回帰ゼロ）�
 - [shared/07-research-notes.md](../shared/07-research-notes.md)（T6 :85・R-38 :243・R-41 :251）
 - [architecture/06-implementation-phases.md](06-implementation-phases.md)（8GB ユニファイドメモリ :93-100）
 - [jetson/01-fidelity-and-validation.md](../jetson/01-fidelity-and-validation.md)（F4 :55・G4 :103）
-- [ADR-0005](../adr/0005-ros2-distro-humble-for-rosmaster-m1.md) / [ADR-0006](../adr/0006-single-bot-first.md)
+- [ADR-0008](../adr/0008-ros2-distro-humble-for-rosmaster-m1.md) / [ADR-0006](../adr/0006-single-bot-first.md)
 - [docs/GLOSSARY.md §11](../GLOSSARY.md)（nvblox / TSDF・ESDF / cuVSLAM / EKF の正準用語）
 - HTML 図解 companion: [perception-localization-flow.html](perception-localization-flow.html)（本 doc のデータフロー・costmap 層・TF ツリー・移行段・Localization Health 監視〔【2026-08-10 追補】〕の図式化。正本は本 md）
 - 全体地図: [robot-architecture-tree.html](robot-architecture-tree.html)（01-08 機能 Tree。本 doc の射程は 01-05。06=doc12/02-hardware・07=productization/05,07・08=mode-x-er/09 が各正本）
@@ -428,7 +428,7 @@ Status: **TARGET 設計の記録 + OQ-1 の解決**（実装なし。CURRENT の
 cuVSLAM は本プロジェクトの現行ハード＋現行 distro pin では成立しない。**カメラ側とソフト側の独立した2つの blocker** が両側で閉じており、remap・ドライバ改修・パラメータでは埋まらない。
 
 1. **HP60C 側（ステレオを出せない）**: `ascamera` ドライバの HP60C 分岐は **depth×2 + rgb×2 + points の5 publisher のみ**を生成し、IR は1本も publish しない（兄弟機種 NUWA_HP60/HP60V は単眼 IR を持つが HP60C は別 enum 分岐。redistribution ソース `CameraPublisher.cpp:227-241` で確認・実機 `ros2 topic list` の community 報告とも一致）。SDK 構造体は単数 `irImg` で**左右ペアの API 自体が存在せず**、閉ソース .so（GCC 5.4/2017）ゆえ改修不能。さらに HP60C は構造化光方式＝**投光パターンを消せない**（消すと depth が死ぬ）ため、仮に IR が取れても NVIDIA が RealSense で要求する「emitter off」を満たせない。
-2. **ソフト側（Humble 用 3.2 に depth 入力経路が無い）**: ADR-0005 が pin する Isaac ROS release-3.2 の cuVSLAM ノードは `visual_slam/image_{i}` + `camera_info_{i}`（**MONO8/RGB8 の生ステレオペア**・ペア内同期 ±100µs・≥30Hz）のみを購読し、depth 処理コードが 3.x 系に存在しない。RGB-D モード（`tracking_mode: RGBD`）は **2026-02-02 の Isaac ROS 4.1 で追加＝Jazzy + Jetson Thor 専用**（Orin は 4.x でサポート外）。
+2. **ソフト側（Humble 用 3.2 に depth 入力経路が無い）**: ADR-0008 が pin する Isaac ROS release-3.2 の cuVSLAM ノードは `visual_slam/image_{i}` + `camera_info_{i}`（**MONO8/RGB8 の生ステレオペア**・ペア内同期 ±100µs・≥30Hz）のみを購読し、depth 処理コードが 3.x 系に存在しない。RGB-D モード（`tracking_mode: RGBD`）は **2026-02-02 の Isaac ROS 4.1 で追加＝Jazzy + Jetson Thor 専用**（Orin は 4.x でサポート外）。
 3. **記録しておく抜け道（不採用・将来 option）**: standalone **PyCuVSLAM の RGBD モード**は Jetson Orin / JetPack 6.x / cp310 wheel が公式配布されており、非 ROS 経路でなら本実機で動く。ただし ROS ノード自作・covariance 出力なし・Orin Nano Super の Mono-Depth は 424×240@30fps でようやく安定、のコストを伴う。
 
 §8 OQ-1 の本文は履歴として残し（行安定）、結論は本節が正。
@@ -533,6 +533,6 @@ A-6 の既存表は行安定のため編集せず、本行を追補として扱�
 
 - [12-infrastructure-common.md](12-infrastructure-common.md) — Guardian/freshness guard（CURRENT 正本）。監視プロファイルの MOLA 行は B-8。
 - [docs/GLOSSARY.md §11](../GLOSSARY.md) — **MOLA-LO** / **状態割当（EKF state allocation）** の正準定義（本追補と同時追加）。
-- [ADR-0005](../adr/0005-ros2-distro-humble-for-rosmaster-m1.md) — 末尾追記「Humble pin の新たに判明したコスト」（B-1 のソフト側 blocker の ADR 側記録）。
+- [ADR-0008](../adr/0008-ros2-distro-humble-for-rosmaster-m1.md) — 末尾追記「Humble pin の新たに判明したコスト」（B-1 のソフト側 blocker の ADR 側記録）。
 - [productization/01-commercial-box-map.md](../productization/01-commercial-box-map.md) — MOLA-LO GPLv3 flag（末尾）。
 - HTML companions: [perception-localization-flow.html](perception-localization-flow.html) / [robot-architecture-tree.html](robot-architecture-tree.html) — 本追補と同一ラウンドで更新。

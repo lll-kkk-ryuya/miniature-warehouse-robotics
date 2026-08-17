@@ -214,3 +214,74 @@ live ER を前置きした full G5（#342）には、offline X-lite（§3〜§6�
 2. **detection が camera 由来であること**。画像無しの text-only live ER はモデルが pixel を発明し、Visual Resolver の snap（既定 `_DEFAULT_SNAP_RADIUS_M = 0.25`、`ws/src/warehouse_llm_bridge/warehouse_llm_bridge/robotics_planning_core/visual_resolver/policy.py`）にまず解決せず、accepted でも空 `Command`（fail-closed が正しく作動）。実運用は camera detections が前提。ハーネスは暫定 `--pixel-hints` で full-chain を閉じ、image 添付 ER call（`overhead_image_ref`）での自然 resolve は follow-up。
 
 > 本ラウンドは **RUNNING node ではなく harness が node と同一の backbone 関数列を駆動**した結果（OFFLINE-WIRED≠RUNNING）。稼働 rclpy node での G5 sim ゲートは #342 で継続。live 一本線の位置づけは [`docs/dev/07-mode-x-er-live-e2e-runbook.md`](07-mode-x-er-live-e2e-runbook.md) の live-matrix 追補。
+
+---
+
+## 追補 2 — G5 無償 RUNNING-node offline-replay 経路（2026-07-11・#342 準備）
+
+§2〜§6 は「offline で組んだ frozen `Command` を**人手で** L2 に投入する」手順、追補 1 は live ER を前置きした full G5 の前提だった。G5（#342）の受入は本来 **稼働 rclpy node（`x_er_bridge`）が自走で red→blue を回す**ことだが、従来この node の plan 供給源は実 paid ER 呼び出しのみ（`build_er_adapter` は live sender を構築し、実 send は `WAREHOUSE_LIVE_ER=1` 課金 gate 越し）で、**RUNNING-node 受入を無償で回す経路が無かった**。それを `mode_x_er.er_offline_payload`（[docs/mode-x-er/08 §3 G5 追加凍結](../mode-x-er/08-x-er-bridge-node-spec.md)）で埋める: 非空なら factory が録画済み ER envelope を replay する `GeminiErAdapter(offline_payload=...)` を構築（**HTTP sender を持たない＝provider call が構造的に不可能・課金ゼロ・`WAREHOUSE_LIVE_ER` 不要**）。live gate 自体は不変（[dev/07 §4.5](07-mode-x-er-live-e2e-runbook.md)）。
+
+### G5 実行 artifact（repo commit 済・`deploy/dev/xer6/`）
+
+| ファイル | 役割 |
+|---|---|
+| `er_request.red_blue.json` | `ErTaskRequest` fixture（§3 の canonical 赤箱/青箱指示の転写。`mode_x_er.request_fixture` に指す） |
+| `er_offline_payload.direct.json` | 録画済み ER 応答 envelope（`robotics_planning_core/fixtures/red_blue_sequence.py` `direct_envelope()` と同一形。`mode_x_er.er_offline_payload` に指す） |
+| `run_manifest.yaml` | plugin-less な `run_manifest.v1`（`production_plugin_factories()` は今日空＝plugin 宣言があると起動拒否のため、G5 は zero-plugin baseline＝`spike/xer6-live-matrix/manifests/variant_a.yaml` 踏襲） |
+| `site_profiles/customer_a/site_01/` | `APPROVED.yaml` 付き site profile bundle（doc mode-x-er/08 §4 step6 gate 用。**dev-sim 専用承認**であり実 site 承認ではない） |
+| `warehouse.dev-overlay.example.yaml` | `config/dev/warehouse.yaml` へ operator が手動 merge する `mode_x_er` overlay の例（path は container 内 `/ws/...`） |
+
+CI 側の裏取り: `tests/unit/test_xer6_g5_replay_artifacts.py` が **commit 済 artifacts そのもの**で node cycle 相当（red→blue・goal_result 駆動）を `WAREHOUSE_LIVE_ER` 無しで完走することを固定する（artifact が腐ればユニットが赤くなる）。
+
+### 手順（無償・provider call ゼロ・human-gated は sim 起動のみ）
+
+1. **overlay を手動 merge**: `deploy/dev/xer6/warehouse.dev-overlay.example.yaml` の `mode_x_er` block を `config/dev/warehouse.yaml` に足す。`enabled: true` は **Mode A commander（`llm_bridge`）と相互排他の意識的 flip**（doc mode-x-er/08 §2）なので commit しない（G5 実走のときだけローカルで立てる）。
+2. **bring-up は §2 と同一**（`run-sim-cockpit.sh` → `install-nav2-e2e.sh` → `TRAFFIC_MODE=none deploy/dev/run-mode-a-live.sh --no-restart`）。`mode_x_er.enabled: true` の bringup は `x_er_bridge` を compose し `llm_bridge` を起動しない。State Cache（10Hz）は同 stack 内で稼働（追補 1 の前提 1 は replay では ER レイテンシ 0 のため更に緩いが、Policy Gate 鮮度窓 2.0s 自体は不変＝state writer 必須）。
+3. **起動ログ確認**: `x_er_bridge ready (... er_source=offline_replay, request_source=fixture ...)`。`er_source=live` のままなら overlay が読まれていない（No-Go）。
+4. **node が自走で red→blue**: cycle 1 = `bot1 NAVIGATE shelf_1` → Nav2 完了 → `/nav2_bridge/goal_result` → node が `mark_succeeded` → cycle 2 = `bot2 NAVIGATE shelf_2`（§4 の手動 2-cycle 投入は不要。doc mode-x-er/08 §5 step7）。
+5. **actuation の 2 段階**: まず `dispatch.forward_to_nav2: false`（既定）で dry run（受理・記帳のみ 0 actuation・tools.py:92-115）→ ログ/audit を確認してから `true` に flip して実 sim motion（MCP → Policy Gate → Nav2 Bridge REST → Nav2）。安全境界は §5 / Go/No-Go 転記は §6 の表をそのまま使う（項目 3/6 の dispatch 主体が「人手」から「node」に変わるだけ）。
+
+### 安全・cost 姿勢（不変条件）
+
+- **replay adapter は live 能力ゼロ**（sender 無し）。`WAREHOUSE_LIVE_ER` は立てない・不要（課金 gate は不変。paid live ER leg は従来どおり §7 の optional・human-gate）。
+- **fail-closed**: `er_offline_payload` の不在 path / malformed JSON / 非 object は起動拒否（0 cycle・0 dispatch。doc mode-x-er/08 §6）。
+- 安全機構（L3 R-26 / L2 Policy Gate / L1 / L0）は一切迂回しない（§5 の表がそのまま適用）。
+
+---
+
+## 追補 3 — G5 本番デモ振り付け v2（t1–t5 完了依存 DAG・2026-07-11 裁定適用）
+
+追補 2 までの赤箱/青箱 2 タスク形（t1/t2）は **機構検証ベースラインとしてそのまま残す**（v1 kit・CI oracle とも不変）。本追補は #342 G5 の**本番デモ振り付け v2**＝2 台・5 タスクの完了依存 DAG を確定する。規範は [doc02「クロスロボット依存トリガーの語彙（2026-07-11 裁定）」](../mode-x-er/02-l3-planning-core.md)（`docs/mode-x-er/02-l3-planning-core.md:364-408`・v1 規範 `:383-391`・早見表 `:397-404`）であり、本追補はその適用（運転仕様）。
+
+### 振り付け（t1–t5）
+
+| task | robot | 内容 | target（detections 内の id） | 到達先（snap） | after |
+|---|---|---|---|---|---|
+| t1 | bot1 | 赤箱へ | `red_box` pixel [420,310] | `shelf_1` | —（初回 cycle で dispatch） |
+| t2 | bot1 | 帰還 | `berth_A_marker` pixel [420,1060] | `berth_A` | `t1.completed` |
+| t3 | bot2 | 青箱へ | `blue_box` pixel [810,280] | `shelf_2` | —（t1 と並走） |
+| t4 | bot2 | 赤箱地点へ | `red_box`（t1 と同一 detection を再利用） | `shelf_1` | **`t2.completed`** |
+| t5 | bot2 | 帰還 | `berth_B_marker` pixel [810,1060] | `berth_B` | `t4.completed` |
+
+- **依存の根拠（doc02 裁定）**: `after` が表すのは**先行タスクの完了のみ**（`ws/src/warehouse_llm_bridge/warehouse_llm_bridge/robotics_planning_core/task_graph_executor/executor.py:137-146` `_dependencies_met`・「完了」= `succeeded` のみ `.../task_graph_executor/states.py:46`）。オペレーター指示「bot1 が赤箱の場所から**離れたら** bot2 が入る」は空間述語であり現行語彙では表現できない → **t4 を t2（bot1 の帰還タスク）の完了に `after` させる v1 近似**で実現する（doc02 v1 規範 `docs/mode-x-er/02-l3-planning-core.md:383-391`）。t3（bot2 自身の先行タスク）の完了では t4 は解放されない＝依存は robot ではなく task に付く。t2 が `failed` なら t4/t5 は永遠に pending（fail-closed・`executor.py:179-196`）。
+- **帰還先の写像（契約変更なし）**: ユーザー指示の「指定の箇所／所定の位置」は **start berth（`berth_A` / `berth_B`）に写像**する（`ws/src/warehouse_sim/warehouse_sim/layout.py:39-40` `SPAWN_LOCATIONS` = bot1→berth_A / bot2→berth_B と一致）。両名は凍結 `KNOWN_LOCATIONS` に既存（`ws/src/warehouse_interfaces/warehouse_interfaces/locations.py:11-23`）＝ **locations への追加は不要・`warehouse_interfaces` 非編集**。
+- **帰還 navigate の実現形（honest）**: x_lite MVP compiler は **`ResolutionResult` に居る resolved visual target のみ** compile する（`ws/src/warehouse_llm_bridge/warehouse_llm_bridge/robotics_planning_core/command_compiler/compiler.py:103-134`。detections に無い target は known-location 名でも skip = `compiler.py:123`。Validator は known-location 直 target を許す `.../validator/validator.py:219-240` が、その compile は x_lite MVP 未対応＝residual として明示）。よって帰還 navigate は canned envelope の **detections（berth marker pixel）経由**で resolver snap する: committed calibration（`deploy/dev/xer6/site_profiles/customer_a/site_01/calibration.json` の homography）の逆写像で berth_A(0.2, 0.8)→pixel [420,1060] / berth_B(0.7, 0.8)→[810,1060]（整数で厳密）。
+
+### G5 v2 で実際に効く安全網（正確な列挙・過大に言わない）
+
+1. **完了依存の構造保証（L3）**: bot2→shelf_1 の dispatch は t2（bot1 帰還）完了**後**にしか生成されない（executor の after gate・上記）。失敗は後続を解放しない（fail-closed）。
+2. **L2 Policy Gate `duplicate_destination`**（`ws/src/warehouse_mcp_server/warehouse_mcp_server/policy_gate.py:222-235`）: **別 robot が現在向かっている** destination への dispatch を拒否。予約は robot ごとの**最新 dispatch 先**（`policy_gate.py:400-409` の上書き。タスク完了ではエントリは消えず、次の dispatch が上書きする）。v2 の t4（shelf_1 再訪）は、t4 dispatch 時点で bot1 の予約が t2 により `berth_A` へ移っているため**誤発火しない**——並走で 2 台が同一地点へ収束する dispatch は従来どおり拒否される。両方向とも CI unit（`tests/unit/test_xer6_g5_choreography_v2.py`）で実挙動を固定済み。
+3. **L1 反射層 + L0**: collision_monitor / twist_mux / Emergency Guardian ＋ firmware ≤0.3 m/s クランプは §5 の表のまま常在（v1 と同一・迂回しない）。
+4. **非アクティブなもの（正直に）**: 本デモは `TRAFFIC_MODE=none`（§2）ゆえ **traffic 層の隘路排他ロック（Mode A/B の ≥0.15m 最小分離を作る機構）は動いていない**（出所の正確な整理は `docs/mode-x-er/02-l3-planning-core.md:391`。L2 Policy Gate に 0.15m 距離チェックは存在しない）。metric な最小分離の最終防衛は L1/L0 側。
+5. **rate limit 注記**: Policy Gate は robot あたり 0.5s の rate limit を持つ（`policy_gate.py:134,210-219`）。同一 robot の連続 dispatch（t3→t4→t5）は 0.5s 以上空く必要があるが、実 sim は nav 完了が十秒オーダーで自然に満たす。offline CI は fake clock を進めて再現する。
+
+### v2 実行 artifact（repo commit 済・`deploy/dev/xer6/`・v1 kit は不変）
+
+| ファイル | 役割 |
+|---|---|
+| `er_request.choreography_v2.json` | v2 指示文の `ErTaskRequest` fixture（`mode_x_er.request_fixture` に指す） |
+| `er_offline_payload.choreography_v2.json` | t1–t5（after 付き）の録画済み ER envelope（`mode_x_er.er_offline_payload` に指す。形式は v1 `direct_envelope()`（`robotics_planning_core/fixtures/red_blue_sequence.py`）と同一の Gemini `generateContent` 形＝新形式を発明しない） |
+| `run_manifest.yaml` | **v1 と共用**（run manifest は plan 内容を持たない zero-plugin baseline のため、v2 専用は作らない） |
+| `warehouse.dev-overlay.example.yaml` | v1↔v2 の切替＝`request_fixture` / `er_offline_payload` の **2 key の path 差し替えのみ**（同ファイル内コメントに v2 例を記載） |
+
+手順・安全境界・Go/No-Go は追補 2 / §5 / §6 をそのまま使う（自走 cycle が 2→最大 5 dispatch に増えるだけ。§6 の表の項目 2〜7 は t1–t5 の順序（t1/t3 並走 → t2 → t4 → t5）に読み替える）。CI oracle は `tests/unit/test_xer6_g5_choreography_v2.py`（committed v2 artifacts を実 factory で駆動し、並走 dispatch・t4 の解放エッジ（t3 完了では出ず t2 完了で出る）・t2 失敗時 fail-closed・duplicate_destination 相互作用・robot あたり in-flight ≤1 を pin）。

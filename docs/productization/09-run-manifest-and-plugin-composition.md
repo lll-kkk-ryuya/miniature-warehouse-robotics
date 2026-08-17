@@ -143,11 +143,11 @@ score_specs:
 `eval_observability` の `join_gap` / `artifact_missing` として扱う。
 
 `effective_composition.v1` は **任意の埋め込みブロック**も運べる: `site_profile`（version +
-content-hash・S3 由来）と `calibration_governance`（S3 の gate 判定）である。`EffectiveComposition`
-schema（`extra='forbid'`）はこの 2 slot を予約する必要がある。**RESIDUAL（未配線）**: S3↔S2 の
-埋め込みは現状未配線＝S3 は独立した `calibration_governance` ブロック（および
-`schema_version: effective_composition.site_profile.s3-proposal` 形の別提案）を出すが、S2 の
-`extra='forbid'` schema にはその slot が無い。S3 を run path に配線する slice で reconcile する
+content-hash・S3 由来）と `calibration_governance`（S3 の gate 判定）である。**解消済（PR #412
+2026-07-05・稼働 node への配線は PR #419 2026-07-07）**: `EffectiveComposition` schema
+（`extra='forbid'`）はこの 2 slot を optional field として予約し（`record.py`:121-122）、
+`build_effective_composition` が S3 の値を受けて埋め込む（`record.py`:145-146・`None` = block
+省略＝S3 を配線しない run は従来と byte-identical）。起動時の配線は `x_er_composition.py`:230-233
 （決定背景は [ADR-0003](../adr/0003-bridge-local-manifest-composition.md) の Consequences）。
 
 ### run_manifest.v1 schema（fail-closed）
@@ -271,7 +271,7 @@ plugins/
 ```
 
 利用者が 2 件以上になり、site profile だけで差し替えられることが確認できたら、
-`04` の分離基準に従って別 repo / package registry へ切り出す。
+`04` の分離基準に従って別 repo / package registry へ切り出す。**この layout の実体は repo-root `plugins/` に着地済（#451・`l3_zone_policy`＝status `draft`）**。
 
 ### Trust model と fail-closed granularity
 
@@ -399,7 +399,7 @@ needs_clarification > accepted`＝[mode-x-er/02](../mode-x-er/02-l3-planning-cor
 は決定的・順序非依存に解決し、両 finding を operator に残す。`permits_dispatch` /
 command candidates は composed status で gate する（double-guard）。
 
-### 2 種の manifest 取り込み（RESIDUAL・未配線）
+### 2 種の manifest 取り込み（解消済・配線済）
 
 composition が消費する manifest は **2 種類**に分かれる。**run manifest**（run ごとに何を
 有効化するか＝`id` + `version` + `profile`・emits は持たない・上記 [run_manifest.v1 schema](#run_manifestv1-schemafail-closed)）と、
@@ -410,10 +410,10 @@ declared-emits registry を建てる。run manifest の plugin `id` は plugin m
 突き合わせ（reconcile）、preflight が **run-declared == 登録済み hookimpls == plugin-manifest-present** を
 交差検査する。
 
-> **RESIDUAL（未配線）**: 現状のどの slice も per-plugin plugin manifest を **load しない**
-> （`PluginCodeRegistry.from_manifest_dicts` は seam として在るが呼ばれていない）。取り込み loader は
-> 将来 slice（S5 `x_er_bridge` か専用 loader lane）で配線する。決定背景は
-> [ADR-0003](../adr/0003-bridge-local-manifest-composition.md)（Consequences）。
+> **解消済（PR #411 2026-07-05 loader・PR #419 2026-07-07 稼働 node 配線）**: 取り込み loader は
+> `plugin_manifest.py`（`load_plugin_manifests` + `build_plugin_code_registry`）が提供し、`x_er_bridge`
+> 起動時に `x_er_composition.py`:162-166 が load して registry を建て、triple cross-check
+> （`x_er_composition.py`:95-116）を実行する。決定背景は [ADR-0003](../adr/0003-bridge-local-manifest-composition.md)（Consequences）。
 
 ## OSS の使いどころ
 
@@ -486,11 +486,67 @@ join key、score sink、汎用算術を安定提供し、どの box が有効か
 
 1. 本書の manifest 形を proposal として固定し、既存 docs から参照できるようにする。
 2. `out/runs/<run_id>/manifest.yaml` の最小 generator を WO または launch harness に追加する。
-3. `decision_events.jsonl` の envelope を Pydantic / JSON Schema で検証する。
-4. DuckDB で `audit.jsonl` / `decision_events.jsonl` / result export を join する offline report を作る。
-5. fail-closed composition 層（`run_manifest.v1` ＋ startup preflight ＋ 実効構成レコード ＋ typed `validate_plan` hookspec ＋ namespaced plugin code ＋ policy clamp）を **今すぐ標準として建てる**（spike ではなく本実装。[ADR-0003](../adr/0003-bridge-local-manifest-composition.md)）。`l3.zone_policy` fixture を 1 件添える。
+3. `decision_events.jsonl` の envelope を Pydantic / JSON Schema で検証する。**（済＝#453・`decision_event_envelope.py`＝unknown `schema_version` fail-closed）**
+4. DuckDB で `audit.jsonl` / `decision_events.jsonl` / result export を join する offline report を作る。**（済＝#453・`offline_join_report.py`＋`duckdb_join.py`＝join_gap / artifact_missing 検出・engine 等価 unit）**
+5. fail-closed composition 層（`run_manifest.v1` ＋ startup preflight ＋ 実効構成レコード ＋ typed `validate_plan` hookspec ＋ namespaced plugin code ＋ policy clamp）を **今すぐ標準として建てる**（spike ではなく本実装。[ADR-0003](../adr/0003-bridge-local-manifest-composition.md)）。`l3.zone_policy` fixture を 1 件添える。**（済＝composition 層は land〔:146-151 / :413-416 の解消済注記〕・`l3.zone_policy` fixture は #451 で repo-root `plugins/` incubator に実行可能 pair として着地）**
 6. `entry_points` 自動 discovery は **explicit-registry-first の後回し最適化**であり、composition 層を建てない理由にはしない。plugin package が 2 件以上になってから足す。
 7. OpenTelemetry Collector は Langfuse 以外の sink が必要になった時点で spike する。
 
 この順序なら、box / plugin の動的な追加・取り外しに備えつつ、初期実装は
 JSONL と manifest だけで小さく始められる。
+
+## 稼働 node の plugin factory seam（explicit registry・fail-closed）
+
+> 追記 2026-07-11。ここまでの本文は「composition 層そのもの」を定義した。本節は
+> **稼働 node（`x_er_bridge`）がどの factory を composition に渡すか**という最後の 1 hop
+> （production factory seam）を確定する。決定条件は [ADR-0003](../adr/0003-bridge-local-manifest-composition.md) を変えない。
+
+### 問題（gap）
+
+`build_x_er_runtime` は `plugin_factories`（`plugin_id -> zero-arg factory`）を受け、
+run manifest 宣言 plugin に factory が無ければ起動拒否する
+（[`x_er_composition.py`](../../ws/src/warehouse_llm_bridge/warehouse_llm_bridge/x_er_composition.py):138-141,174-182
+`XErCompositionError`・fail-closed）。しかし稼働 node の呼び出しは factory を一切渡さない
+（`XErBridge.__init__` の `build_x_er_runtime(cfg)` 呼び出し＝実装 seam・行 pin しない）ため、
+**plugin を 1 件でも宣言した run manifest は production node では常に起動拒否**になる。
+fail-closed としては正しい既定だが、factory 供給経路が無い＝plugin-bearing manifest を
+稼働させる正規の口が存在しない。spike harness だけが factory を注入している
+（[`spike/xer6-live-matrix/variants.py`](../../spike/xer6-live-matrix/variants.py):50）。
+
+### 設計（explicit-registry-first）
+
+- **bridge-local な明示 registry module**
+  `warehouse_llm_bridge/robotics/composition/factory_registry.py` を置く。中身は
+  `plugin_id -> zero-arg factory` の **explicit typed mapping** ＋ それを read-only で返す
+  resolve 関数（`production_plugin_factories()`）のみ。node（`x_er_bridge`）は起動時に
+  これを `build_x_er_runtime(cfg, plugin_factories=production_plugin_factories())` へ渡す。
+- **explicit-registry-first**: `entry_points` 自動 discovery は採らない
+  （実装順序 6 / [ADR-0003](../adr/0003-bridge-local-manifest-composition.md):58 のとおり
+  plugin package が 2 件以上になるまで後回し。registry は import 可能な factory を
+  **人が明示列挙**する）。
+- **registry は今日は空**でよい: production plugin はまだ存在しない
+  （repo 内 incubator `plugins/`＝:262-274 は **#451 で着地済**・別レーン。registry への配線は
+  incubator 側 plugin（`l3.zone_policy`＝status `draft`）が review gate を通ってから行う）。
+- **frozen contract 非追加**（:8 不変）: registry は bridge-local module であり
+  `warehouse_interfaces` へ昇格しない。
+
+### fail-closed が保たれること（ADR-0003 条件の保存）
+
+- **unknown declared plugin = 起動拒否のまま**: registry が空／未登録の plugin_id を
+  run manifest が宣言した場合、既存の missing-factory 拒否
+  （`XErCompositionError`・[`x_er_composition.py`](../../ws/src/warehouse_llm_bridge/warehouse_llm_bridge/x_er_composition.py):174-182）
+  がそのまま発火する。registry は `allow_unlisted` 相当の silent skip を**導入しない**。
+- **plugin-less manifest ＋ 空 registry = 現状と同一挙動**（surplus factory は無視＝
+  run manifest が意図の witness、[`x_er_composition.py`](../../ws/src/warehouse_llm_bridge/warehouse_llm_bridge/x_er_composition.py):138-141）。
+- preflight／三重突合（run-declared == registered == plugin-manifest-present・
+  [ADR-0003](../adr/0003-bridge-local-manifest-composition.md):27）・trust=ADVISORY（同:31）・
+  downward-only clamp（同:30）は本 seam の上流・下流で不変。
+
+### RESIDUAL（本節の未決・隠さない）
+
+- incubator plugin（:262-274・#451 で `l3.zone_policy` が status `draft` として着地済）を registry へ実配線する手順（review gate 通過後・別レーン）。
+- **lifecycle status gate 未強制**: [10](10-llm-assisted-rule-authoring.md):152-153 は
+  「`approved` 以上だけ run manifest で有効化」と定めるが、runtime は plugin manifest の
+  `status` を enablement 判定に使っていない（現状は運用規約のみ）。registry か preflight での
+  機械強制は follow-up。
+- `entry_points` discovery（実装順序 6 の条件を満たしてから）。

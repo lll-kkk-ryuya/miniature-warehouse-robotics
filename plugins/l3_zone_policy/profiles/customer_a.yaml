@@ -1,0 +1,19 @@
+# Plugin profile example for l3.zone_policy (doc10:82-104 proposal shape — NOT a frozen
+# schema, doc10:102). Separation of concerns:
+#   - reusable "reject when outside the zone" logic  -> plugin code (src/l3_zone_policy/)
+#   - zone geometry                                  -> site zone artifact zones/*.geojson
+#                                                       (geometry-only, doc10:218-220,263)
+#   - target -> zone binding + on_violation + reason -> THIS profile (doc10:102-104)
+# Only target_rules are present: the draft plugin implements the target rule row of the
+# Validator catalog (doc10:110-112) and declares only `target_out_of_zone` (plugin.yaml emits).
+# NOTE: profile -> plugin constructor wiring is not implemented yet (see README residuals);
+# this file documents the intended site-facing shape.
+profiles:
+  customer_a:
+    zone_artifacts:
+      zone_a: zones/zone_a.geojson
+    target_rules:
+      red_box:
+        must_be_inside: zone_a
+        on_violation: reject
+        reason_code: target_out_of_zone

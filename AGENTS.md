@@ -122,7 +122,8 @@ type syntax can fail during collection), and bare `pytest` may be absent from
 - Run tests: `.venv/bin/python -m pytest`
 - Lint/format like CI: `.venv/bin/ruff check .` / `.venv/bin/ruff format --check .`
 - Create the venv once if it is missing:
-  `python3.12 -m venv .venv && .venv/bin/python -m pip install -U ruff pytest pytest-cov "pydantic>=2" pyyaml`
+  `python3.12 -m venv .venv && .venv/bin/python -m pip install -U "ruff>=0.6,<0.16" pytest pytest-cov "pydantic>=2" pyyaml`
+  - ruff は **`<0.16`** に pin（0.16.0 が整形規則を変え、無指定 install だと CI が drift する）。正本は `pyproject.toml [tool.ruff] required-version`。上げるときは同一 PR で `ruff format .` 全体 sweep とセットで。
 - `.venv/` is gitignored — never commit it.
 - Tests that import `launch_ros` (Nav2 launch-introspection) and
   `user-docker-gated` e2e harnesses **SKIP** without ROS/Gazebo; skips are

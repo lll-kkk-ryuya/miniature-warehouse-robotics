@@ -1,0 +1,20 @@
+{
+  "request_id": "req-xer6-g5-red-blue",
+  "transcript": "bot1は赤い箱へ。到達したらbot2は青い箱へ。",
+  "calibration_id": "dev-sim-v1",
+  "known_robots": [
+    "bot1",
+    "bot2"
+  ],
+  "known_locations": [
+    "berth_A",
+    "berth_B",
+    "charging_station",
+    "retreat_A",
+    "retreat_B",
+    "shelf_1",
+    "shelf_2",
+    "shelf_3",
+    "shipping_station"
+  ]
+}

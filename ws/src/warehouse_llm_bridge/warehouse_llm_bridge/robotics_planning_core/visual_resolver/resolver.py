@@ -2,8 +2,10 @@
 
 Turns each ``RoboticsPlanDraft`` detection's image pixel into a map point via the calibration
 homography, checks it against the calibration's valid polygon and reprojection-error ceiling,
-and snaps it to the nearest frozen ``KNOWN_LOCATIONS`` key within the injected snap radius. A
-target that fails any gate is ``unresolved`` with ``destination=None`` — the 0-dispatch path
+and snaps it to the nearest frozen ``KNOWN_LOCATIONS`` key within the injected snap radius AND
+in object-class agreement with it (doc02:150 "距離と object class" conjunction; class info
+absent on either side => distance alone decides, per doc02's own class-less example :117-133).
+A target that fails any gate is ``unresolved`` with ``destination=None`` — the 0-dispatch path
 (doc02:151,68): an unresolved target NEVER yields a destination.
 
 bridge-local (発明), standalone offline core. It does NOT compile a ``Command`` and does NOT
@@ -110,9 +112,8 @@ def _nearest_known_location(
     ``location_coords`` is injected (policy.py) — config is not read here. Only names that are
     in the frozen ``KNOWN_LOCATIONS`` are considered, so no new location is invented (doc06 §1:52).
 
-    NOTE (doc02:150 partial): doc02:150 snaps by "距離 *and* object class"; this MVP slice snaps
-    by Euclidean distance ONLY and defers the object-class clause (the draft carries a usable
-    proxy in ``Detection.color``). See ``# TODO(object-class)`` in :meth:`VisualTaskResolver._resolve_one`.
+    This is the DISTANCE half of the doc02:150 snap conjunction ("距離と object class"); the
+    object-class half is the gate-4b agreement check in :meth:`VisualTaskResolver._resolve_one`.
     """
     best_name = ""
     best_dist = math.inf
@@ -151,7 +152,9 @@ class VisualTaskResolver:
           2. reprojection_error above the ceiling  -> REPROJECTION_ERROR_TOO_LARGE
           3a. pixel short / mapped point non-finite (line at infinity) -> OFF_MAP
           3b. finite mapped point outside the valid polygon            -> OUTSIDE_VALID_POLYGON
-          4. nearest known location beyond snap_radius   -> BEYOND_SNAP_RADIUS
+          4a. nearest known location beyond snap_radius  -> BEYOND_SNAP_RADIUS
+          4b. detection class disagrees with the class registered for that nearest location
+              (doc02:150 "距離と object class" conjunction)  -> OBJECT_CLASS_MISMATCH
         otherwise snap to the nearest ``KNOWN_LOCATIONS`` -> ``destination``,
         ``resolution=known_location``, composed confidence (doc02:159).
         """
@@ -188,15 +191,30 @@ class VisualTaskResolver:
         if not _point_in_polygon(x, y, calibration.valid_polygon):
             return self._unresolved(detection.id, UnresolvedReason.OUTSIDE_VALID_POLYGON)
 
-        # Gate 4: nearest known location within the injected snap radius (doc02:150, distance half).
-        # TODO(object-class, doc02:150): doc02:150 snaps by "距離 と object class"; this MVP slice
-        # implements the distance clause ONLY and DEFERS object-class matching (Detection.color is
-        # available as a proxy). Recorded as a deferral, not full :150 grounding (docs-first).
+        # Gate 4a: nearest known location within the injected snap radius (doc02:150 distance half).
         # Fail closed on a non-finite snap radius (NaN/inf): "dist > NaN" and "dist > inf" are
         # both False, so an arbitrarily-far point would otherwise snap with full confidence.
         name, dist = _nearest_known_location(x, y, dict(policy.location_coords))
         if not name or not math.isfinite(policy.snap_radius_m) or dist > policy.snap_radius_m:
             return self._unresolved(detection.id, UnresolvedReason.BEYOND_SNAP_RADIUS)
+
+        # Gate 4b: object-class agreement (doc02:150 class half — snap is judged by distance AND
+        # object class). Detection-side class = ``Detection.color`` (the draft's only class field,
+        # doc01:142-143,229; recorded proxy doc07:26,67); location-side expected class = the
+        # injected ``policy.location_classes`` (site snap rule, productization/03:31,39). The
+        # criterion is evaluated on the DISTANCE-CHOSEN nearest candidate only — a mismatch vetoes
+        # the snap (fail-closed 0-dispatch) and never redirects to a farther location (doc02:150
+        # licenses no search rule). If either side carries no class (color=None or unregistered
+        # location) the criterion is non-evaluable and distance alone decides: doc02's own example
+        # snaps a class-less detection (input :117 has no class field -> output :126-133 snaps),
+        # so absence must not block — only present-on-both-sides disagreement does.
+        expected_class = policy.location_classes.get(name)
+        if (
+            detection.color is not None
+            and expected_class is not None
+            and detection.color != expected_class
+        ):
+            return self._unresolved(detection.id, UnresolvedReason.OBJECT_CLASS_MISMATCH)
 
         # Snap. snap_quality in [0,1] (1 = dead-on, 0 = at the radius boundary). Confidence is
         # composed via the injected combiner (doc02:159), not inlined arithmetic.

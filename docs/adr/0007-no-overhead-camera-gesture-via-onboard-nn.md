@@ -54,6 +54,6 @@
 - [mode-x-er/09-hand-raise-summon.md](../mode-x-er/09-hand-raise-summon.md) — ジェスチャ司令の設計正本（INV-1/INV-2・状態機械・誤差定量 G-3）
 - [mode-x-er/02-l3-planning-core.md](../mode-x-er/02-l3-planning-core.md)（:149 calibration 5 field・homography/snap）/ [mode-x-er/06](../mode-x-er/06-unfrozen-contract-resolutions.md)（:127 coordinate goal DEFER）
 - [architecture/23-perception-and-localization.md](../architecture/23-perception-and-localization.md)（camera_link contract PR・S1/S2・原則 P1/P2）
-- [ADR-0005](0005-ros2-distro-humble-for-rosmaster-m1.md) / [ADR-0006](0006-single-bot-first.md)
+- [ADR-0008](0008-ros2-distro-humble-for-rosmaster-m1.md) / [ADR-0006](0006-single-bot-first.md)
 - `ws/src/warehouse_llm_bridge/warehouse_llm_bridge/robotics_planning_core/visual_resolver/resolver.py`（空 homography → `NO_CALIBRATION` → 0 dispatch の fail-closed）
 - lane-gesture-tech 調査（2026-08-09・MediaPipe aarch64 wheel / YOLO AGPL / SAM2 評価 / Isaac ROS 骨格不在。出典 URL は 09 References と同調査ログ）

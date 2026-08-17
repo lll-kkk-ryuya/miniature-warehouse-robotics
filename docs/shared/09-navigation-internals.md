@@ -166,7 +166,7 @@ DWB（Dynamic Window Approach）は、格子状に速度候補（約30個）を�
 
 #### MPPI（Phase 2後半以降で使用、推奨）
 
-MPPI（Model Predictive Path Integral）は、ランダムにノイズを加えた軌道候補を大量（1,000〜2,000本）生成し、各軌道のコストに基づく重み付き加重平均で最適速度を算出する。Nav2 に標準搭載されており、追加コスト・学習は不要（`nav2_mppi_controller` は Humble 1.1.20 / Jazzy 1.3.12 の両方にリリースあり。ADR-0005）。
+MPPI（Model Predictive Path Integral）は、ランダムにノイズを加えた軌道候補を大量（1,000〜2,000本）生成し、各軌道のコストに基づく重み付き加重平均で最適速度を算出する。Nav2 に標準搭載されており、追加コスト・学習は不要（`nav2_mppi_controller` は Humble 1.1.20 / Jazzy 1.3.12 の両方にリリースあり。ADR-0008）。
 
 > **注記（R-49, [07:264](07-research-notes.md)）**: 「yaml 1行で切替」は不正確。plugin 型指定は1行だが、**コントローラのパラメータブロック全体の差し替え＋再チューニング**が必要（DWB と MPPI でパラメータ体系が異なる）。実装は `warehouse_bringup/config/nav2_params.yaml`（MPPI 全ブロック + DWB 代替ブロックをコメントで併記）。
 

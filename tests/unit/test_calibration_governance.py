@@ -9,7 +9,7 @@ Pins the self-certification hole and its upstream fix:
   calibration lacking a finite, within-ceiling ``reprojection_error`` — unless an explicit,
   provenance-recorded waiver admits it.
 
-Wiring mirrors ``robotics/adapter_factory.py:77`` (config/profile -> constructed seam) and
+Wiring mirrors ``robotics/adapter_factory.py:130`` (config/profile -> constructed seam) and
 finally consumes the ``CalibrationLoader`` seam declared at ``validator/seams.py:39``.
 Offline: no ROS, no network, no config read.
 """

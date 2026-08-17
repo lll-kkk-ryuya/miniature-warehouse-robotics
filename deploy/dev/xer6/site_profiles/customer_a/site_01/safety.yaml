@@ -1,0 +1,2 @@
+calibration:
+  max_reprojection_error: 3.0

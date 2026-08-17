@@ -254,4 +254,4 @@ firmware/.pio/
 - `.claude/CLAUDE.md` — Model Policy / Code Conventions
 - `.claude/rules/code-style.md` — launch は .launch.py、YAML 2スペース
 - `.claude/rules/safety.md` — 速度上限 0.3 m/s 強制、認証情報非コミット
-- [ROS 2 Humble — Creating a package](https://docs.ros.org/en/humble/Tutorials/Beginner-Client-Libraries/Creating-Your-First-ROS2-Package.html) — 参照日: 2026-08-05（ADR-0005 で Humble へ）
+- [ROS 2 Humble — Creating a package](https://docs.ros.org/en/humble/Tutorials/Beginner-Client-Libraries/Creating-Your-First-ROS2-Package.html) — 参照日: 2026-08-05（ADR-0008 で Humble へ）

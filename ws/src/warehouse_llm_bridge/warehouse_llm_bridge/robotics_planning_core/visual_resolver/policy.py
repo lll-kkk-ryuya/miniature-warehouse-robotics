@@ -22,6 +22,13 @@ must not read config/warehouse.base.yaml (scope), and the frozen ``KNOWN_LOCATIO
 only names, no coordinates (locations.py:11-23). The caller supplies the name->(x,y) map; the
 resolver validates every supplied name against ``KNOWN_LOCATIONS`` so no new location is
 invented (doc06 §1:52). See CLAUDE.md "consume gap".
+
+``location_classes`` (doc02:150 object-class half of the snap rule) follows the same
+consume-gap pattern: the frozen ``KNOWN_LOCATIONS`` carries no per-location object class and
+no doc/config table defines one, so the expected class per location is part of the INJECTED
+site snap rule (productization/03:31,39 "snap rule — 現場ごと"; productization/05:143). The
+default is EMPTY = no location has a registered expected class = the class criterion is not
+evaluable anywhere = behaviour identical to the previous distance-only snap.
 """
 
 from __future__ import annotations
@@ -59,6 +66,16 @@ class VisualPolicy:
     ``location_coords`` maps a ``KNOWN_LOCATIONS`` name to its map (x, y). It is REQUIRED and
     injected by the caller (config is not read here, locations.py has no coordinates). The
     resolver rejects any name not in ``KNOWN_LOCATIONS`` (no new location invented, doc06 §1:52).
+
+    ``location_classes`` maps a ``KNOWN_LOCATIONS`` name to the object class expected at that
+    location — the object-class half of the doc02:150 snap conjunction ("距離と object class").
+    The detection-side class is ``Detection.color`` (the draft's only class-bearing field,
+    doc01:142-143,229; recorded proxy, doc07:26,67). OPTIONAL and default-empty: a location
+    with no registered class (or a detection with ``color=None``) makes the class criterion
+    non-evaluable and the snap falls back to distance-only — doc02's own worked example snaps a
+    class-less detection (input doc02:117 has no class field, output doc02:126-133 snaps to
+    shelf_1), so absence must NOT block the snap. Only a present-on-both-sides DISAGREEMENT
+    vetoes it (``object_class_mismatch``, fail-closed).
     """
 
     location_coords: Mapping[str, tuple[float, float]]
@@ -66,3 +83,5 @@ class VisualPolicy:
     max_reprojection_error: float = _DEFAULT_MAX_REPROJECTION_ERROR
     # Combine ER detection confidence with snap quality (doc02:159). Injected, not inlined.
     compose_confidence: Callable[[float, float], float] = field(default=_default_compose_confidence)
+    # Expected object class per KNOWN_LOCATIONS name (doc02:150 class half). Empty = distance-only.
+    location_classes: Mapping[str, str] = field(default_factory=dict)

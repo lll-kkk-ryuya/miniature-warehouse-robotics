@@ -1,0 +1,32 @@
+# l3.zone_policy plugin manifest (doc09:231-257 shape; schema:
+# ws/src/warehouse_llm_bridge/warehouse_llm_bridge/robotics/composition/plugin_manifest.py:122-181).
+# Promoted from spike/xer6-live-matrix/plugins/l3_zone_policy.plugin.yaml into the repo-root
+# incubator (doc09:262-271).
+#
+# status: draft — lifecycle doc09:216-218 / doc10:151-153: offline replay + review only.
+# Runtime enablement via a run manifest requires promotion to approved+ and is NOT in scope here.
+plugin_id: l3.zone_policy
+box: l3_validator
+kind: plugin
+version: 0.1.0
+status: draft
+hook_points:
+  - validate_plan
+emits:
+  box: l3_validator
+  reason_codes:
+    - target_out_of_zone
+requires:
+  artifacts:
+    - site_zone_polygon
+  profiles:
+    - customer_a
+# Replay fixture pair (doc09:251-253): input + expected_event, executable offline
+# (tests/unit/test_plugins_incubator_zone_policy.py). Paths are relative to this directory.
+fixtures:
+  - fixtures/red_box_out_of_zone.input.json
+  - fixtures/red_box_out_of_zone.expected_event.json
+# REQUIRED, no defaults (plugin_manifest.py:109-119): the boundary must be stated explicitly.
+safety_boundary:
+  may_dispatch_motion: false
+  may_write_cmd_vel: false

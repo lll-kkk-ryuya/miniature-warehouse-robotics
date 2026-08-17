@@ -9,7 +9,10 @@ Pins the doc02:109-159,251-252 behaviour, all OFFLINE (pure pydantic, no ROS/Her
 - threshold INJECTION: the SAME input + two snap radii flips known_location <-> unresolved,
   proving no magic number is hardcoded (doc02:98,150);
 - confidence COMPOSITION (doc02:159);
-- the 0-dispatch invariant: every `unresolved` target has `destination is None` (doc02:151,68).
+- the 0-dispatch invariant: every `unresolved` target has `destination is None` (doc02:151,68);
+- the object-class snap CONJUNCTION (doc02:150 "距離と object class"): agreement snaps,
+  either-criterion failure does not, absent class info falls back to distance-only
+  (doc02:117-133 example), and a mismatch vetoes without redirecting.
 
 Calibration is the LANDED validator/seams.py artifact (NOT redefined). Location coordinates are
 INJECTED via VisualPolicy (config is not read; KNOWN_LOCATIONS carries only names). All
@@ -378,3 +381,104 @@ def test_unresolved_model_rejects_destination():
         reason="off_map",
     )
     assert ok.destination is None
+
+
+# --- object-class snap conjunction (doc02:150 "距離と object class") -----------------------
+#
+# Snap now requires BOTH the distance criterion (unchanged threshold) AND object-class
+# agreement between Detection.color (the draft's class proxy, doc01:142-143; doc07:26,67) and
+# the class registered for the DISTANCE-NEAREST location in the injected
+# VisualPolicy.location_classes. Absent class info on either side => criterion non-evaluable
+# => distance alone decides (doc02's own worked example snaps a class-less detection:
+# input doc02:117 carries no class field, output doc02:126-133 snaps to shelf_1).
+#
+# Hand-computed oracle (independent of the implementation): with HOMOGRAPHY above,
+#   red_box (420, 310) -> exactly (0.20, 0.30) = shelf_1, distance 0.00 m (<= 0.25 radius)
+#   far_box (1500, 900) -> (1.58..., 0.69...), nearest shelf_3 (1.2, 0.3), distance
+#     hypot(0.38..., 0.39...) ~ 0.55 m (> 0.25 radius)
+# Mutation check (AND -> OR): tests 2 and 3 below each hold exactly one criterion true, so an
+# OR-snap would resolve them to a known location and turn both tests red.
+
+
+def test_snap_when_both_distance_and_class_agree():
+    # red_box maps dead-on shelf_1 (dist 0 <= 0.25) AND its class "red" matches the registered
+    # class for shelf_1 -> both halves of the doc02:150 conjunction hold -> snap.
+    policy = _policy(location_classes={"shelf_1": "red"})
+    target = _by_id(VisualTaskResolver(policy).resolve(_plan(RED_BOX), _calibration()))["red_box"]
+    assert target.resolution is Resolution.KNOWN_LOCATION
+    assert target.destination == "shelf_1"
+    assert target.reason == "snapped_to_shelf_1"
+
+
+def test_distance_ok_but_class_mismatch_does_not_snap():
+    # red_box maps dead-on shelf_1 (distance criterion HOLDS, dist 0) but shelf_1 is registered
+    # as class "blue" while the detection is "red" -> class criterion FAILS -> must NOT snap
+    # (doc02:150 is a conjunction). An OR-mutant would snap here (mutation canary).
+    policy = _policy(location_classes={"shelf_1": "blue"})
+    target = _by_id(VisualTaskResolver(policy).resolve(_plan(RED_BOX), _calibration()))["red_box"]
+    assert target.resolution is Resolution.UNRESOLVED
+    assert target.reason == UnresolvedReason.OBJECT_CLASS_MISMATCH.value
+    assert target.destination is None  # 0-dispatch invariant (doc02:151,68)
+
+
+def test_class_ok_but_distance_fail_does_not_snap():
+    # far_box's class "red" MATCHES the class registered for its nearest location shelf_3, but
+    # the distance is ~0.55 m > 0.25 m radius -> distance criterion FAILS -> must NOT snap.
+    # An OR-mutant would snap here (mutation canary). Reason stays the distance gate's.
+    far = Detection(id="far_box", color="red", pixel=[1500, 900], confidence=0.9)
+    policy = _policy(location_classes={"shelf_3": "red"})
+    target = _by_id(VisualTaskResolver(policy).resolve(_plan(far), _calibration()))["far_box"]
+    assert target.resolution is Resolution.UNRESOLVED
+    assert target.reason == UnresolvedReason.BEYOND_SNAP_RADIUS.value
+    assert target.destination is None
+
+
+def test_classless_detection_snaps_by_distance_only():
+    # Detection.color is None -> the class criterion is non-evaluable -> distance alone decides,
+    # EVEN with a class registered for the location. Licence: doc02's own example input (:117,
+    # {"id","pixel","confidence"} — no class field) snaps to shelf_1 in the output (:126-133).
+    classless = Detection(id="red_box", pixel=[420, 310], confidence=0.92)  # no color
+    policy = _policy(location_classes={"shelf_1": "blue"})
+    target = _by_id(VisualTaskResolver(policy).resolve(_plan(classless), _calibration()))["red_box"]
+    assert target.resolution is Resolution.KNOWN_LOCATION
+    assert target.destination == "shelf_1"
+
+
+def test_unregistered_location_class_snaps_by_distance_only():
+    # The detection carries a class but the nearest location has NO registered class (here: a
+    # non-empty map registering only a DIFFERENT location) -> non-evaluable -> distance decides.
+    # The default-empty map case is pinned by every pre-existing snap test in this file.
+    policy = _policy(location_classes={"shelf_2": "blue"})  # shelf_1 (the target) unregistered
+    target = _by_id(VisualTaskResolver(policy).resolve(_plan(RED_BOX), _calibration()))["red_box"]
+    assert target.resolution is Resolution.KNOWN_LOCATION
+    assert target.destination == "shelf_1"
+
+
+def test_same_input_two_class_maps_flip_resolution():
+    # Injection proof (mirrors test_same_input_two_snap_radii_flip_resolution): identical
+    # detection + calibration; ONLY the injected location_classes differs (doc02:98,150).
+    plan = _plan(RED_BOX)
+    calib = _calibration()
+
+    agreeing = VisualTaskResolver(_policy(location_classes={"shelf_1": "red"})).resolve(plan, calib)
+    disagreeing = VisualTaskResolver(_policy(location_classes={"shelf_1": "blue"})).resolve(
+        plan, calib
+    )
+
+    assert _by_id(agreeing)["red_box"].resolution is Resolution.KNOWN_LOCATION
+    assert _by_id(disagreeing)["red_box"].resolution is Resolution.UNRESOLVED
+    assert _by_id(disagreeing)["red_box"].reason == UnresolvedReason.OBJECT_CLASS_MISMATCH.value
+
+
+def test_class_mismatch_never_redirects_to_farther_matching_location():
+    # Veto semantics: the class check applies to the DISTANCE-CHOSEN nearest candidate only.
+    # red_box maps to (0.2, 0.3): nearest is shelf_1 (dist 0, class "blue" -> MISMATCH); shelf_2
+    # sits at (0.3, 0.3) (dist 0.1 <= 0.25 radius, class "red" -> would match). doc02:150
+    # licenses no search/redirect rule, so the mismatch fails closed (0-dispatch) instead of
+    # snapping to the farther agreeing location.
+    coords = {"shelf_1": (0.2, 0.3), "shelf_2": (0.3, 0.3)}
+    policy = _policy(location_coords=coords, location_classes={"shelf_1": "blue", "shelf_2": "red"})
+    target = _by_id(VisualTaskResolver(policy).resolve(_plan(RED_BOX), _calibration()))["red_box"]
+    assert target.resolution is Resolution.UNRESOLVED
+    assert target.reason == UnresolvedReason.OBJECT_CLASS_MISMATCH.value
+    assert target.destination is None
