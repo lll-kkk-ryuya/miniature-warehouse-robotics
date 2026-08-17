@@ -12,7 +12,8 @@ figure; the `.md` design docs stay the source of truth. Cite traceable `file:lin
 for every claim (docs-first).
 
 Worked examples: `docs/productization/box-taxonomy.html`, `docs/productization/layer-l4-detail.html`
-(rich component vocabulary — see §4), `docs/mode-x-er/mode-x-er-explainer.html` (per-mode explainer).
+(rich component vocabulary — see §4), `docs/mode-x-er/mode-x-er-explainer.html` (per-mode explainer),
+`docs/architecture/robot-architecture-tree.html` (directory-tree view — see §5).
 Template (copy this): `.claude/skills/html-explainer/template/dark-explainer.html`.
 
 ## Invariants
@@ -96,11 +97,30 @@ Checks (besides tag balance): no body hex (`grep '#[0-9a-fA-F]{6}'` after `</sty
 class defined in `<style>`; internal `href` resolve; for big revisions, adversarially verify citations
 against the source doc:line before declaring done.
 
+## 5. Directory-tree view (architecture tree)
+
+Draw the inventory map — "what exists / what we deliberately do NOT adopt" — as a monospace
+directory-style tree (`pre.tree`, `white-space:pre`, box-drawing `├── │ └──`, minimal inline
+flow `─▶ /topic`). Worked example: `docs/architecture/robot-architecture-tree.html`
+(structure reference; its palette predates the canonical `:root` — new pages map category
+colors onto the canonical accents: `.t1..t6` = accent vars, `.tx` ✗ rejected, `.td` dim note,
+`.tn` ★NEW/TARGET, `.tw` ⚠unsettled).
+
+Rules: top level = numbered "directories" (`01_Sensors/`…`08_…/`) matching the legend colors
+1:1; one line = one node + its source-of-truth doc (dim `.td` note); keep rejected items in
+place (`.tx` ✗ + one-line reason); fixed status markers only (★NEW/TARGET, ⚠unsettled/drift,
+✗rejected, `[virtual]/[external]`); cross-cutting layers (e.g. Observability) go in a separate
+card describing the key join — never nested into the tree; close with a 3-column diff table
+(textbook form / this repo's ruling / source doc); put a `.navbar` linking the companion flow
+HTML (tree = structure map, flow = runtime data flow — never both in one page). Verify column
+alignment under `white-space:pre` and give the tree card `overflow-x:auto`.
+
 ## References
 
 - Template: `.claude/skills/html-explainer/template/dark-explainer.html`
 - Examples: `docs/productization/box-taxonomy.html`, `layer-l4-detail.html` (rich vocabulary),
-  `layer-l3-detail.html`, `docs/mode-x-er/mode-x-er-explainer.html` (per-mode explainer)
-- Rich vocabulary & patterns: this doc §4
+  `layer-l3-detail.html`, `docs/mode-x-er/mode-x-er-explainer.html` (per-mode explainer),
+  `docs/architecture/robot-architecture-tree.html` (directory-tree view, §5)
+- Rich vocabulary & patterns: this doc §4; directory-tree view: this doc §5
 - Guidance: `.codex/guidance/docs-first.md`, `.codex/guidance/consistency-check.md`
-- Claude version: `.claude/skills/html-explainer/SKILL.md` (§4 matches this)
+- Claude version: `.claude/skills/html-explainer/SKILL.md` (§4–§5 match this)
