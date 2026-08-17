@@ -400,6 +400,13 @@ Autoware 系の localization 健全性監視の議論と同様、**localizer の
 
   **2026-08-17 追記（第1実装スライス着地・OQ-11 は「実装で塞いだ／sim 完走は未検証」へ）**: A-5③ の変位ゲートを `warehouse_safety` に実装し、上記 ① の **999 回避策を 5ファイル6箇所すべて削除**した（`.claude/local-memory.md` の2箇所は orchestrator 所有につき別途）。したがって**上記 ① の file:line は履歴**であり、現在の各行にその export は無い。実装の CURRENT 契約は [12-infrastructure-common.md 末尾【2026-08-17 追補】「freshness guard の変位ゲート」](12-infrastructure-common.md) が正本（新 config キー4つ・fail-closed・ラッチ内蔵・非緩和性の R-26 証明）。**未達 = 受け入れ条件の後半「既定 1.0s のまま sim full-stack 完走」は human gate（Docker/Gazebo 実走）で未実施**——本スライスが主張するのは offline R-26 unit（非緩和性・駐機・クリープ・fail-closed・ラッチ・境界＋手動 mutation 10/10 redden）までで、**sim 実走での確認は保留**。② の自己ラッチは変位の単調性で構造的に解消、③（L2 は防衛線でない）は不変。
 
+  **2026-08-17 追記②（sim ゲート実走・P1 PASS / P2 FAIL → 速度項の撤去）**: 上記スライスの受け入れ条件である sim full-stack を Gazebo で実走した（証跡: `scratchpad/sim-gate/evidence/`＝ローカル成果物・リポジトリ未追跡）。結果は**二分**した。
+  - **P1（駐機）PASS**: 16 分駐機で `pose_age ≈ 960s` に達しても `pose_stale` estop は **0 件**。同時に `/amcl_pose` の沈黙（AMCL が motion-gated である事実）も実測で確認＝**OQ-11 の前提と変位ゲートの駐機側は sim で実証**。
+  - **P2（走行/出発）FAIL**: 実装が A-5③ から逸脱し、変位項に **`|速度| > pose_freshness_speed_epsilon` を OR** していたことが根本原因。① **出発デッドロック**——駐機明けの最初の運動 tick（実測 変位 3.2mm・odom 34ms fresh）で速度項がゲートを開き、`pose_age`(960s) > 1.0s で即 estop → 速度 0 → AMCL の `update_min_d`(0.05m) に届かず pose が来ない → 無限反復（nav goal **5/5 キャンセル**）。② **ラッチ破れ**——AMCL 死亡下で速度項が自ら止めた速度と共に上下し、累積変位 0.023m（< `motion_epsilon` 0.10m）のまま **12 秒で estop 立ち上がり 17 回**。
+  - **A-5③ は元からこの形を禁じている**（本節上部 :349「速度のみのゲート＝estop→速度0→ゲート閉の fail-open limit cycle」＝許容は**変位ゲート形のみ**）。したがって修正は docs 側ではなく**コードを docs に合わせる**（速度項と config キー `pose_freshness_speed_epsilon` を削除。同キーは #524 で追加され他に消費者無し）。ゲートは `変位 > motion_epsilon ∨ |Δyaw| > angular_epsilon ∨ fail-closed` のみとなる。
+  - **受け入れられたトレード**: 速度項が担っていた「`v_eps` 以下の匍匐前進の発火上限 5.0s」は失われ、遅延は `motion_epsilon / v`＝**v→0 で非有界**になる（例 2mm/s で約 50s）。ジオラマ 1.8m×0.9m で「localizer 喪失下の 0.10m 走行」は有界かつ小さい一方、速度項はロボットを走行不能にした——ゆえに変位のみを採る。検出は**遅れるが失われない**（変位は単調＝必ずいつか超える）。R-26 unit で出発（estop 0 件）・ラッチ（立ち上がり 1 回のみ）・クリープ遅延を pin 済。
+  - **未達（PENDING）**: 本修正後の **sim gate 全体の再実走が最終受け入れ**。本 PR が主張するのは offline R-26 unit までで、P2 の sim 実証は再実走まで保留。
+
 ### A-11. Sources（外部一次情報・参照日 2026-08-10）
 
 - ISO 3691-4:2023 公式 preview（Clause 4 に localization 条項なし）: <https://cdn.standards.iteh.ai/samples/83545/a3d9d057a08d4f9c8e8e87cdc947583c/ISO-3691-4-2023.pdf>

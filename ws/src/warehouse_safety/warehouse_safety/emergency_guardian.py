@@ -71,9 +71,6 @@ class EmergencyGuardian(Node):
         self._gate_angular_eps = self.declare_parameter(
             "pose_freshness_angular_epsilon", cfg["safety"]["pose_freshness_angular_epsilon"]
         ).value
-        self._gate_speed_eps = self.declare_parameter(
-            "pose_freshness_speed_epsilon", cfg["safety"]["pose_freshness_speed_epsilon"]
-        ).value
         # Odom's own staleness window: past it the gate input is unknown -> fail-closed.
         self._odom_freshness_timeout = self.declare_parameter(
             "odom_freshness_timeout", cfg["safety"]["odom_freshness_timeout"]
@@ -166,11 +163,12 @@ class EmergencyGuardian(Node):
     def _on_odom(self, bot: str, msg: Odometry) -> None:
         # doc23 A-5③ gate input: marshal only. All accumulation / staleness /
         # non-finite handling lives in the rclpy-free gl.PoseGateTracker (R-26).
+        # The twist is NOT read: the gate is displacement-only (doc23:349) — an
+        # instantaneous-speed term deadlocked departures in the 2026-08-17 sim run.
         p = msg.pose.pose.position
         q = msg.pose.pose.orientation
-        v = msg.twist.twist.linear
         self._gate.on_odom(
-            bot, p.x, p.y, gl.yaw_from_quaternion(q.x, q.y, q.z, q.w), v.x, v.y, time.monotonic()
+            bot, p.x, p.y, gl.yaw_from_quaternion(q.x, q.y, q.z, q.w), time.monotonic()
         )
 
     def _on_battery(self, bot: str, msg: BatteryState) -> None:
@@ -195,7 +193,6 @@ class EmergencyGuardian(Node):
             pose_freshness_timeout=self._freshness_timeout,
             pose_gate_motion_epsilon=self._gate_motion_eps,
             pose_gate_angular_epsilon=self._gate_angular_eps,
-            pose_gate_speed_epsilon=self._gate_speed_eps,
         )
         # #126 edge-trigger: only NEWLY-active (bot, reason) alarms emit an
         # /emergency/event — a held condition must not re-spam the LLM-review stream
@@ -215,11 +212,9 @@ class EmergencyGuardian(Node):
         last_t = self._last_pose_t[bot]
         pose_age = None if last_t is None else now - last_t
         x, y = self._xy(bot)
-        # doc23 A-5③: None triple when odom is absent / stale -> gate fails closed.
-        disp, dyaw, speed = self._gate.snapshot(bot, now, stale_after=self._odom_freshness_timeout)
-        return gl.BotState(
-            bot, x, y, self._battery[bot], self._blocked[bot], pose_age, disp, dyaw, speed
-        )
+        # doc23 A-5③: None pair when odom is absent / stale -> gate fails closed.
+        disp, dyaw = self._gate.snapshot(bot, now, stale_after=self._odom_freshness_timeout)
+        return gl.BotState(bot, x, y, self._battery[bot], self._blocked[bot], pose_age, disp, dyaw)
 
     def _xy(self, bot: str) -> tuple[float | None, float | None]:
         p = self._pose[bot]
