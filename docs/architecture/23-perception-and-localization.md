@@ -360,7 +360,7 @@ Guardian 自身の**購読先を config（YAML）で切替**える。設定単�
 | **cuVSLAM**（`isaac_ros_visual_slam`・**旧** TARGET-1 候補＝B-1 で blocked・**履歴行**） | tracking loss で **odometry / TF 出力が完全停止** | **できる**（鮮度が真の loss 検出器になる） | `/visual_slam/status` の `vo_state`（1=Success / 2=Failed）＝カメラレートの正の heartbeat・`/diagnostics` の `localized_in_exist_map` | **300ms 級に締める**（下記の惰性窓） |
 
 - AMCL の motion-gated 挙動は upstream `nav2_amcl` の `amcl_node.cpp` で確認した。本プロジェクトの `update_min_d` は 0.05（`ws/src/warehouse_bringup/config/nav2_params.yaml:58`）。
-- cuVSLAM は tracking loss 時に出力が止まることを `visual_slam_impl.cpp` で確認した。ただし **`vo_state=1`（Success）のまま IMU / 等速外挿で約 0.5〜1s 惰性追従する窓**があり（upstream 未解決 issue #148）、この間は自己申告も鮮度も「正常」に見える。ゆえに odometry の鮮度閾値は 300ms 級に締め、惰性窓を跨がせない。
+- cuVSLAM は tracking loss 時に出力が止まることを `visual_slam_impl.cpp` で確認した。ただし **`vo_state=1`（Success）のまま IMU / 等速外挿で約 0.5〜1s 惰性追従する窓**があり（upstream 未解決 issue #148）、この間は自己申告も鮮度も「正常」に見える。ゆえに（cuVSLAM を将来復活させる場合は）odometry の鮮度閾値を 300ms 級に締め、惰性窓を跨がせない。
 
 **この表が「監視プロファイル」を必要とする証拠**である。同じ「pose が来ない」でも、AMCL では正常（駐機）、cuVSLAM では致命（loss）を意味する。閾値だけを config 化しても足りず、②③⑥ を含めて束ねなければソースを入れ替えられない。
 
@@ -394,7 +394,7 @@ Autoware 系の localization 健全性監視の議論と同様、**localizer の
 - **OQ-11: 駐機時の `pose_stale` 誤発火（検証中）** — A-6 の通り AMCL は motion-gated であり、`update_min_d: 0.05`（`ws/src/warehouse_bringup/config/nav2_params.yaml:58`）未満の静止が続くと `/amcl_pose` が沈黙する。一方 Guardian の `pose_freshness_timeout` は 1.0s（`config/warehouse.base.yaml:21`）。**駐機が 1.0s を超えると `pose_stale` estop が誤発火する疑い**がある（§6 V7「通常走行10分で `pose_stale` estop 0 件」は走行中の条件であり、駐機を測っていない）。検証タスクは**未起票**（本セッションで検証候補として提案済み・Issue 番号未付与。着手時に safety-state トラックで起票する）。誤発火が確認された場合の解は A-5 ③（静止ゲート＝変位ゲート形）または ②（TF を heartbeat にする）で、閾値を緩める方向には解かない（緩和は走行中の見逃しを増やす）。
 
   **2026-08-10 追記（設計調査の結果・OQ-11 は sim では実質確認済みへ昇格）**:
-  1. **fail-open 経路が既に存在する**: sim / live の全実行経路が回避策 `WAREHOUSE__SAFETY__POSE_FRESHNESS_TIMEOUT=999` を注入しており（`tests/e2e/README.md:88`・`deploy/dev/README.md:67`・`deploy/dev/run-mode-a-live.sh:282`・`scripts/slice3_live_precheck.sh:455`・`docs/dev/05-session-handoff.md:82`）、**freshness guard は現状事実上無効**。この回避策の存在自体が OQ-11 の sim 側の証拠（実機は未測）。第1実装スライスの受け入れ条件は **999 回避策 5 箇所の削除 ＋ 既定 1.0s のまま sim full-stack 完走**とする。
+  1. **fail-open 経路が既に存在する**: sim / live の全実行経路が回避策 `WAREHOUSE__SAFETY__POSE_FRESHNESS_TIMEOUT=999` を注入しており（`tests/e2e/README.md:88`・`deploy/dev/README.md:67`・`deploy/dev/run-mode-a-live.sh:282`・`scripts/slice3_live_precheck.sh:455`・`docs/dev/05-session-handoff.md:29,82`＝**5ファイル6箇所**。ほか `.claude/local-memory.md` のメモ2箇所も削除時に更新）、**freshness guard は現状事実上無効**。この回避策の存在自体が OQ-11 の sim 側の証拠（実機は未測）。第1実装スライスの受け入れ条件は **999 回避策の全削除（5ファイル6箇所）＋ 既定 1.0s のまま sim full-stack 完走**とする。
   2. **誤発火は自己ラッチする**: estop が運動を禁じ、運動が無いと AMCL は pose を出さず、回復証拠が構造的に得られない（doc12:511「pose 鮮度が回復すれば自動解除」は motion-gated ソースには成立しない。doc12 側の当該記述の訂正は実装スライスで行う）。
   3. **L2 Policy Gate は防衛線にならない**: L2 の 0.5s/2.0s は `StateSnapshot` の**書込 age**であり pose の**到着 age**ではない（State Cache が 100ms 毎に timestamp を更新するため、AMCL が死んでも snapshot は新鮮に見える）。**駐機・走行中の pose 途絶に対する防衛線は Guardian のみ**（未 localize だけは snapshot 不完全→`unknown_robot` で L2 が止める）。
 

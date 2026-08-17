@@ -54,7 +54,7 @@
 
 > ⚠️ **この移行は途中まで適用された状態で land させる**（オペレーター判断 2026-08-05）。どこまで進んでいるかを明示しておく。ADR 本体が `proposed` である点も変わらない。
 
-**適用済み（13 ファイル）**: `pyproject.toml`（`target-version` py312 → **py310**）／`deploy/dev/run-sim-cockpit.sh`（イメージ名 `mwr-sim:humble`）／`deploy/jetson/bin/ros-exec.sh`（`ROS_DISTRO` 既定 humble）／docs 各所（architecture 03 / 06 / 12 / 16、jetson 01、setup/jetson-deploy、shared 02 / 04 / 09、adr/README）。
+**適用済み（12 ファイル）**: `deploy/dev/run-sim-cockpit.sh`（イメージ名 `mwr-sim:humble`）／`deploy/jetson/bin/ros-exec.sh`（`ROS_DISTRO` 既定 humble）／docs 各所（architecture 03 / 06 / 12 / 16、jetson 01、setup/jetson-deploy、shared 02 / 04 / 09、adr/README）。
 
 **未適用（53 ファイル）**。特に **現時点で整合が壊れている組み合わせ**:
 
@@ -65,7 +65,7 @@
 | `firmware/platformio.ini` / `firmware/spike/**` | jazzy のまま | micro-ROS 側の distro 不一致 |
 | `README.md` / `AGENTS.md` / `.claude/CLAUDE.md` | jazzy のまま | 新規セッションが Jazzy 前提で判断してしまう |
 
-`# TODO(次スライス)` 上表を解消するまで **sim cockpit（Phase 0.5）と Jetson デプロイ経路は信頼できない**。`pyproject.toml` の py310 化だけが先行しているため、**lint の対象バージョンだけが黙って変わっている**点にも注意。`.claude/CLAUDE.md` は governance 所有のため、人間が別 PR で更新すること（`.claude/rules/parallel-workflow.md` §7.1）。
+`# TODO(次スライス)` 上表を解消するまで **sim cockpit（Phase 0.5）と Jetson デプロイ経路は信頼できない**。`pyproject.toml` の `target-version` は **py312 のまま**（一度 py310 化したが revert＝下記「追記（2026-08-17 その2）」参照。flip は PEP 695 一掃と同一 PR で行う）。`.claude/CLAUDE.md` は governance 所有のため、人間が別 PR で更新すること（`.claude/rules/parallel-workflow.md` §7.1）。
 
 ## References
 

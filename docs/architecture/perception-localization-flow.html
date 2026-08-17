@@ -10,7 +10,7 @@
     --bg: #0d1117; --panel: #161b22; --panel2: #1c2330; --line: #30363d;
     --txt: #e6edf3; --dim: #8b949e; --mono: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
     --sensor: #58a6ff;   /* センサ */
-    --gpu: #3fb950;      /* GPU 知覚 (nvblox/cuVSLAM) */
+    --gpu: #3fb950;      /* GPU 知覚 (nvblox) */
     --loc: #d29922;      /* 自己位置 (EKF/AMCL) */
     --nav: #bc8cff;      /* Nav2 planning */
     --safe: #f85149;     /* 安全チェーン (L1/L0) */
@@ -329,7 +329,7 @@
     <td>秒級 ＋ <b>静止ゲート必須</b></td>
   </tr>
   <tr>
-    <td><b>cuVSLAM</b><br><span class="cite">isaac_ros_visual_slam・TARGET-1 候補</span></td>
+    <td><b>cuVSLAM</b><br><span class="cite">isaac_ros_visual_slam・<b>旧</b> TARGET-1 候補＝blocked（履歴行・md A-6 と同期）</span></td>
     <td>tracking loss で odometry / TF 出力が<b>完全停止</b></td>
     <td><b>できる</b>（鮮度が真の loss 検出器になる）</td>
     <td><code>/visual_slam/status</code> の <code>vo_state</code>（1=Success / 2=Failed）・<code>/diagnostics</code> の <code>localized_in_exist_map</code></td>
