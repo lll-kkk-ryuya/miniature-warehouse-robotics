@@ -54,9 +54,9 @@
 
 > ⚠️ **この移行は途中まで適用された状態で land させる**（オペレーター判断 2026-08-05）。どこまで進んでいるかを明示しておく。ADR 本体が `proposed` である点も変わらない。
 
-**適用済み（12 ファイル）**: `deploy/dev/run-sim-cockpit.sh`（イメージ名 `mwr-sim:humble`）／`deploy/jetson/bin/ros-exec.sh`（`ROS_DISTRO` 既定 humble）／docs 各所（architecture 03 / 06 / 12 / 16、jetson 01、setup/jetson-deploy、shared 02 / 04 / 09、adr/README）。
+**適用済み（13 ファイル）**: `deploy/dev/run-sim-cockpit.sh`（イメージ名 `mwr-sim:humble`）／`deploy/jetson/bin/ros-exec.sh`（`ROS_DISTRO` 既定 humble）／**`pyproject.toml`（`target-version = "py310"`＝2026-08-17 に flip 済・下記「追記（2026-08-17 その3）」）**／docs 各所（architecture 03 / 06 / 12 / 16、jetson 01、setup/jetson-deploy、shared 02 / 04 / 09、adr/README）。
 
-**未適用（53 ファイル）**。特に **現時点で整合が壊れている組み合わせ**:
+**未適用（52 ファイル）**（旧 53 から `pyproject.toml` が適用済みへ移動）。特に **現時点で整合が壊れている組み合わせ**:
 
 | 箇所 | 状態 | 症状 |
 |---|---|---|
@@ -65,7 +65,7 @@
 | `firmware/platformio.ini` / `firmware/spike/**` | jazzy のまま | micro-ROS 側の distro 不一致 |
 | `README.md` / `AGENTS.md` / `.claude/CLAUDE.md` | jazzy のまま | 新規セッションが Jazzy 前提で判断してしまう |
 
-`# TODO(次スライス)` 上表を解消するまで **sim cockpit（Phase 0.5）と Jetson デプロイ経路は信頼できない**。`pyproject.toml` の `target-version` は **py312 のまま**（一度 py310 化したが revert＝下記「追記（2026-08-17 その2）」参照。flip は PEP 695 一掃と同一 PR で行う）。`.claude/CLAUDE.md` は governance 所有のため、人間が別 PR で更新すること（`.claude/rules/parallel-workflow.md` §7.1）。
+`# TODO(次スライス)` 上表を解消するまで **sim cockpit（Phase 0.5）と Jetson デプロイ経路は信頼できない**。~~`pyproject.toml` の `target-version` は **py312 のまま**（一度 py310 化したが revert＝下記「追記（2026-08-17 その2）」参照。flip は PEP 695 一掃と同一 PR で行う）。~~ → **【2026-08-17 解消】`target-version = "py310"` へ flip 済**（PEP 695 一掃を同一 PR で実施＝下記「追記（2026-08-17 その3）」）。`.claude/CLAUDE.md` は governance 所有のため、人間が別 PR で更新すること（`.claude/rules/parallel-workflow.md` §7.1）。
 
 ## References
 
@@ -88,4 +88,16 @@ Isaac ROS release-3.2 が **Orin + Humble 線の終点**であることを一次
 ## 追記（2026-08-17 その2）: ruff target-version flip の繰延と ADR 番号の変更
 
 - **本 ADR は 0005 → 0008 へ改番**した（main に別内容の [ADR-0005 L0 battery brownout floor](0005-l0-battery-brownout-floor.md) が先に land していた番号衝突のため。main の番号が正準）。
-- `pyproject.toml` の `target-version` は **py312 のまま維持**する（本ブランチが一度 py310 化したが、main に PEP 695 構文のコード（`robotics/composition/plugin_results.py` 等）が存在し repo 全体が ruff invalid-syntax になるため revert）。**py310 への flip は「PEP 695 構文の一掃 + `ruff format .` sweep」を伴う Humble 移行スライスで同一 PR として行う**（未適用 53 ファイルの Open に追加）。
+- ~~`pyproject.toml` の `target-version` は **py312 のまま維持**する（本ブランチが一度 py310 化したが、main に PEP 695 構文のコード（`robotics/composition/plugin_results.py` 等）が存在し repo 全体が ruff invalid-syntax になるため revert）。**py310 への flip は「PEP 695 構文の一掃 + `ruff format .` sweep」を伴う Humble 移行スライスで同一 PR として行う**（未適用 53 ファイルの Open に追加）。~~ → **【2026-08-17 その3 で解消】** 予告どおり同一 PR で flip + PEP 695 一掃を実施した（下記）。
+
+## 追記（2026-08-17 その3）: ruff `target-version = "py310"` へ flip 済み（PEP 695 一掃と同一 PR）
+
+「その2」で繰延した flip を実施した。`pyproject.toml` の `target-version` は **`py312` → `py310`**（`required-version = ">=0.6,<0.16"` の Ruff 版 pin は**無変更**）。
+
+**py312 専用構文の一掃（repo 全体で 1 箇所のみ）**: `clamp_finding` の PEP 695 ジェネリック（`def clamp_finding[F: _PluginFindingBase](...)`）を module-level `F = TypeVar("F", bound=_PluginFindingBase)` へ置換した（`ws/src/warehouse_llm_bridge/warehouse_llm_bridge/robotics/composition/plugin_results.py`）。bound・シグネチャ・戻り値の型変数は同一で、**公開挙動は不変**（変種 A/B とも clamp 後の具象クラスが保存され、天井以下の finding は同一オブジェクトを返す＝既存 unit を無改変で通過）。PEP 695 の `type` 別名・クラスジェネリックは repo 内に存在しなかった。
+
+**副次的に判明した真の py310 非互換（構文ではなく stdlib 可用性）**: `tests/unit/test_plugins_incubator_zone_policy.py` の `import tomllib` は **3.11+ でしか stdlib に無い**。py310 では ruff の isort が third-party 扱いに変わって `I001` が出たことで発覚した（lint はドリフトの検出器として機能した）。1 箇所の利用のみだったため、モジュール収集ごと壊さないよう `pytest.importorskip("tomllib")` を当該テスト内へ移した（前例: `tests/unit/test_duckdb_join.py:25`）。**Humble/py310 ではこの 1 アサーションだけが skip される**（他は不変）。`tomli` 等の新規依存は追加していない。
+
+**ゲート結果**: `ruff check .` = All checks passed / `ruff format --check .` = 367 files already formatted（**flip による format ドリフトは発生せず**、`ruff format .` の一括 sweep は不要だった）/ `pytest` = **2269 passed, 17 skipped**。
+
+**残（隠さない）**: ① `target-version` は **lint の対象構文を py310 に合わせるだけ**で、開発機の実行系は依然 Python 3.12（`.venv`）＝**実 py310 での実行検証ではない**。Humble コンテナ上での実走は未適用 52 ファイル側（`deploy/dev/Dockerfile` 等）の解消後。② `requires-python = ">=3.10"` は元から py310 を許容しており本 PR で変更なし。③ 上記 `tomllib` 以外に stdlib 可用性ベースの py310 非互換が残っていないかは、ruff が構文しか見ない以上 **実 py310 実行でしか確定できない**（現時点で既知のものは無い）。

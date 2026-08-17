@@ -30,7 +30,7 @@ dev = [
 # instead of silently reformatting — kept in lockstep with the `dev` extra and the
 # ci.yml install. Bump deliberately, with a full `ruff format .` sweep in the same PR.
 required-version = ">=0.6,<0.16"
-target-version = "py312"        # ROS 2 Jazzy / Ubuntu 24.04
+target-version = "py310"        # ROS 2 Humble / Ubuntu 22.04 (docs/adr/0008-ros2-distro-humble-for-rosmaster-m1.md)
 line-length = 100
 extend-exclude = ["ws/build", "ws/install", "ws/log", ".claude/worktrees"]
 
