@@ -1,8 +1,9 @@
 """Emergency Guardian — 50ms reflex safety node (doc12:95-151). LLM-independent.
 
 On a 50ms timer it estops on inter-robot proximity / critical battery / stale
-localization (``/amcl_pose`` older than ``pose_freshness_timeout`` -> precautionary
-stop, #126) and triggers a (low-harm) recovery event on blocked-timeout. An estop cancels Nav2
+localization (``/amcl_pose`` older than ``pose_freshness_timeout`` **while the
+odom displacement gate is open** -> precautionary stop, #126 + doc23 A-5③) and
+triggers a (low-harm) recovery event on blocked-timeout. An estop cancels Nav2
 goals, publishes a zero ``Twist`` to ``/{bot}/cmd_vel/emergency`` (twist_mux
 priority 100 — never ``/{bot}/cmd_vel`` directly, which races Nav2, doc15) and
 publishes a structured ``/emergency/event``. The Twist stop is re-asserted every
@@ -29,6 +30,7 @@ from datetime import UTC, datetime
 import rclpy
 from action_msgs.srv import CancelGoal
 from geometry_msgs.msg import PoseWithCovarianceStamped, Twist
+from nav_msgs.msg import Odometry
 from rclpy.client import Client
 from rclpy.node import Node
 from rclpy.publisher import Publisher
@@ -58,6 +60,24 @@ class EmergencyGuardian(Node):
         self._dist_threshold = self.declare_parameter("emergency_min_distance", dist).value
         self._blocked_timeout = self.declare_parameter("blocked_timeout", blocked).value
         self._freshness_timeout = self.declare_parameter("pose_freshness_timeout", freshness).value
+        # doc23 A-5③ displacement gate: AMCL is motion-gated, so a PARKED bot's
+        # /amcl_pose silence is normal and used to false-fire pose_stale (OQ-11,
+        # doc23:394-399). Independent wheel odom decides whether the bot could be
+        # moving. Hard-indexed (not .get) so a missing key fails the node LOUDLY at
+        # startup rather than silently reverting the guard's behaviour.
+        self._gate_motion_eps = self.declare_parameter(
+            "pose_freshness_motion_epsilon", cfg["safety"]["pose_freshness_motion_epsilon"]
+        ).value
+        self._gate_angular_eps = self.declare_parameter(
+            "pose_freshness_angular_epsilon", cfg["safety"]["pose_freshness_angular_epsilon"]
+        ).value
+        self._gate_speed_eps = self.declare_parameter(
+            "pose_freshness_speed_epsilon", cfg["safety"]["pose_freshness_speed_epsilon"]
+        ).value
+        # Odom's own staleness window: past it the gate input is unknown -> fail-closed.
+        self._odom_freshness_timeout = self.declare_parameter(
+            "odom_freshness_timeout", cfg["safety"]["odom_freshness_timeout"]
+        ).value
         # #44: explicit battery driver scale, shared with State Cache via
         # warehouse_interfaces.safety so this reflex and the snapshot never diverge.
         scale = cfg["safety"].get("battery_percentage_scale", BATTERY_PERCENTAGE_SCALE_DEFAULT)
@@ -71,6 +91,8 @@ class EmergencyGuardian(Node):
 
         self._seq = 0
         self._tracker = gl.BlockTracker()
+        # doc23 A-5③: accumulates odom travel since the last /amcl_pose arrival.
+        self._gate = gl.PoseGateTracker()
         # #126 edge-trigger: latch active (bot, reason) alarms so /emergency/event
         # fires on the rising edge only (the physical stop below stays level).
         self._latch = gl.EdgeLatch()
@@ -106,6 +128,15 @@ class EmergencyGuardian(Node):
                 lambda msg, b=bot: self._on_battery(b, msg),
                 sensor_qos,
             )
+            # doc23 A-5③ gate input. /{bot}/odom is an existing doc03:77 contract
+            # topic (nav_msgs/Odometry) — an INDEPENDENT source from AMCL, which is
+            # what makes it a valid witness that the bot is (not) moving.
+            self.create_subscription(
+                Odometry,
+                f"/{bot}/odom",
+                lambda msg, b=bot: self._on_odom(b, msg),
+                sensor_qos,
+            )
             # Stop goes to /cmd_vel/emergency (twist_mux prio 100), never /cmd_vel (doc15).
             self._cmd_pub[bot] = self.create_publisher(
                 Twist, f"/{bot}/cmd_vel/emergency", reliable_qos
@@ -130,6 +161,17 @@ class EmergencyGuardian(Node):
         self._pose[bot] = (p.x, p.y)
         self._last_pose_t[bot] = now  # #126 freshness: stamp arrival (wall-monotonic)
         self._blocked[bot] = self._tracker.update(bot, p.x, p.y, now)
+        self._gate.on_pose(bot)  # doc23 A-5③: pose arrived -> gate accumulators reset
+
+    def _on_odom(self, bot: str, msg: Odometry) -> None:
+        # doc23 A-5③ gate input: marshal only. All accumulation / staleness /
+        # non-finite handling lives in the rclpy-free gl.PoseGateTracker (R-26).
+        p = msg.pose.pose.position
+        q = msg.pose.pose.orientation
+        v = msg.twist.twist.linear
+        self._gate.on_odom(
+            bot, p.x, p.y, gl.yaw_from_quaternion(q.x, q.y, q.z, q.w), v.x, v.y, time.monotonic()
+        )
 
     def _on_battery(self, bot: str, msg: BatteryState) -> None:
         # #44: marshal via the rclpy-free, unit-tested gl.marshal_battery (single
@@ -151,6 +193,9 @@ class EmergencyGuardian(Node):
             distance_threshold=self._dist_threshold,
             blocked_timeout=self._blocked_timeout,
             pose_freshness_timeout=self._freshness_timeout,
+            pose_gate_motion_epsilon=self._gate_motion_eps,
+            pose_gate_angular_epsilon=self._gate_angular_eps,
+            pose_gate_speed_epsilon=self._gate_speed_eps,
         )
         # #126 edge-trigger: only NEWLY-active (bot, reason) alarms emit an
         # /emergency/event — a held condition must not re-spam the LLM-review stream
@@ -170,7 +215,11 @@ class EmergencyGuardian(Node):
         last_t = self._last_pose_t[bot]
         pose_age = None if last_t is None else now - last_t
         x, y = self._xy(bot)
-        return gl.BotState(bot, x, y, self._battery[bot], self._blocked[bot], pose_age)
+        # doc23 A-5③: None triple when odom is absent / stale -> gate fails closed.
+        disp, dyaw, speed = self._gate.snapshot(bot, now, stale_after=self._odom_freshness_timeout)
+        return gl.BotState(
+            bot, x, y, self._battery[bot], self._blocked[bot], pose_age, disp, dyaw, speed
+        )
 
     def _xy(self, bot: str) -> tuple[float | None, float | None]:
         p = self._pose[bot]

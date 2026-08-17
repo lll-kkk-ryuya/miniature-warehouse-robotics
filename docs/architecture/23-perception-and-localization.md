@@ -398,6 +398,8 @@ Autoware 系の localization 健全性監視の議論と同様、**localizer の
   2. **誤発火は自己ラッチする**: estop が運動を禁じ、運動が無いと AMCL は pose を出さず、回復証拠が構造的に得られない（doc12:511「pose 鮮度が回復すれば自動解除」は motion-gated ソースには成立しない。doc12 側の当該記述の訂正は実装スライスで行う）。
   3. **L2 Policy Gate は防衛線にならない**: L2 の 0.5s/2.0s は `StateSnapshot` の**書込 age**であり pose の**到着 age**ではない（State Cache が 100ms 毎に timestamp を更新するため、AMCL が死んでも snapshot は新鮮に見える）。**駐機・走行中の pose 途絶に対する防衛線は Guardian のみ**（未 localize だけは snapshot 不完全→`unknown_robot` で L2 が止める）。
 
+  **2026-08-17 追記（第1実装スライス着地・OQ-11 は「実装で塞いだ／sim 完走は未検証」へ）**: A-5③ の変位ゲートを `warehouse_safety` に実装し、上記 ① の **999 回避策を 5ファイル6箇所すべて削除**した（`.claude/local-memory.md` の2箇所は orchestrator 所有につき別途）。したがって**上記 ① の file:line は履歴**であり、現在の各行にその export は無い。実装の CURRENT 契約は [12-infrastructure-common.md 末尾【2026-08-17 追補】「freshness guard の変位ゲート」](12-infrastructure-common.md) が正本（新 config キー4つ・fail-closed・ラッチ内蔵・非緩和性の R-26 証明）。**未達 = 受け入れ条件の後半「既定 1.0s のまま sim full-stack 完走」は human gate（Docker/Gazebo 実走）で未実施**——本スライスが主張するのは offline R-26 unit（非緩和性・駐機・クリープ・fail-closed・ラッチ・境界＋手動 mutation 10/10 redden）までで、**sim 実走での確認は保留**。② の自己ラッチは変位の単調性で構造的に解消、③（L2 は防衛線でない）は不変。
+
 ### A-11. Sources（外部一次情報・参照日 2026-08-10）
 
 - ISO 3691-4:2023 公式 preview（Clause 4 に localization 条項なし）: <https://cdn.standards.iteh.ai/samples/83545/a3d9d057a08d4f9c8e8e87cdc947583c/ISO-3691-4-2023.pdf>

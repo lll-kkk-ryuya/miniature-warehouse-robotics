@@ -19,6 +19,14 @@ safety:
   # 既定 1.0s は R-39（doc07:249）の AMCL 5-10Hz=100-200ms 正常間隔の ~5×（正常 cadence で誤発火しない）。
   # 正本 = doc12 §「Emergency Guardian — pose freshness guard」。TODO: Phase 2 実機 AMCL レートで確定。
   pose_freshness_timeout: 1.0   # s
+  # OQ-11 / doc23 A-5③ 変位ゲート: AMCL は motion-gated（update_min_d/_a 未満の静止で沈黙）
+  # ゆえに「駐機中の沈黙」は正常。独立ソース（wheel odom）で「動きうるか」を判定し、
+  # 動いていないときだけ pose_stale を抑止する（走行中の発火時刻は CURRENT と一致＝非緩和）。
+  # odom 不明/stale/非有限は fail-closed（ゲート開＝CURRENT 挙動）。正本 = doc23 §A-5③。
+  pose_freshness_motion_epsilon: 0.10   # m, = 2 x nav2_params.yaml:58 update_min_d(0.05)
+  pose_freshness_angular_epsilon: 0.4   # rad, = 2 x nav2_params.yaml:57 update_min_a(0.2)
+  pose_freshness_speed_epsilon: 0.02   # m/s, BlockTracker epsilon(0.02m) と同オーダの静止判定
+  odom_freshness_timeout: 0.5   # s, これを超えた odom は不明扱い→ゲート fail-closed
   # #44: BatteryState.percentage の driver スケール。percent=0..100 / fraction=0..1(REP-147)。
   # 既定 percent は fail-safe（fraction ドライバを percent と読むと誤 estop=安全側、見逃しは起きない）。
   # State Cache・Emergency Guardian が共有 helper(warehouse_interfaces.safety.normalize_battery_percent)
