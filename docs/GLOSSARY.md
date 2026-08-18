@@ -125,7 +125,7 @@
 - **L2 Policy Profile（restrict-only）** — L2 Governance の案件差分を表す **data-only** profile。凍結値（battery `10`/`20`・`MAX_LINEAR_VELOCITY 0.3`）を floor とし **締める/止めるのみ・緩めない**（緩い値は起動拒否 fail-closed）。v1 で in-proc code plugin は不採用。L3 の自由 plugin 化（[adr/0003](adr/0003-bridge-local-manifest-composition.md)）と非対称。 — [productization/11 §2026-07-09 補足](productization/11-l2-contract-governance-traffic-box.md) / [adr/0004](adr/0004-l2-restrict-only-policy-profile.md)
 - **二段ゲート（L3 Validator ↔ L2 Policy Gate）** — 似て見える check の重複ではなく、同一事故を別入力・別時刻で止める2段。L3=「Command 候補になってよいか」（frozen 9-code [ValidationCode](../ws/src/warehouse_llm_bridge/warehouse_llm_bridge/robotics_planning_core/validator/report.py)）/ L2=「今この tool call を実行してよいか」（14 `policy_gate` code + live `StateSnapshot`）。 — [productization/11 §2026-07-09 補足](productization/11-l2-contract-governance-traffic-box.md) / [adr/0004](adr/0004-l2-restrict-only-policy-profile.md)
 
-## 11. 知覚・自己位置・ジェスチャ司令（2026-08-07 追補・2026-08-09 改訂・2026-08-10 追補・2026-08-17 追補）
+## 11. 知覚・自己位置・ジェスチャ司令（2026-08-07 追補・2026-08-09 改訂・2026-08-10 追補・2026-08-17 追補・2026-08-18 追補）
 
 - **単騎構成（single-bot-first）** — 今回のフェーズを robot 1台（`bot1`）のみで実装・検証・撮影する構成。2台系の設計 doc と実装資産は削除せず凍結保存し、凍結契約（`StateSnapshot.robots: dict[str, RobotState]`＝台数非依存）は変更しない。 — [adr/0006-single-bot-first.md](adr/0006-single-bot-first.md) / [schemas.py:104,130](../ws/src/warehouse_interfaces/warehouse_interfaces/schemas.py)（凍結）
 - **nvblox** — Isaac ROS の GPU 加速 3D マッピング（TSDF/ESDF）。本プロジェクトでは Nav2 costmap の **Nvblox Layer** として planning 側にのみ統合し、TF を配信せず、L1 反射経路（collision_monitor）には入れない（TARGET・スパイクゲート S1/S2 前提）。 — [architecture/23-perception-and-localization.md §1-2](architecture/23-perception-and-localization.md)

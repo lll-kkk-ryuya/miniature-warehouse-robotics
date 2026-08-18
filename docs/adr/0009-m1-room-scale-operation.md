@@ -1,6 +1,6 @@
 # M1 フェーズは部屋スケールで運用する（ジオラマは M1 では走行しない）
 
-**Status**: accepted（2026-08-18 オペレーター決定。部屋の範囲・撮影構図・room sim world の要否のみ Open）
+**Status**: accepted（2026-08-18 オペレーター決定。決定そのものは確定。部屋の範囲・撮影構図・room sim world の要否・**sim/実機の config 二重化・安全論証の再レビュー等**が Open ＝ §Open および末尾【2026-08-18 追補②】参照）
 
 単騎 M1（[ADR-0006](0006-single-bot-first.md)）の走行環境を、ミニチュア倉庫ジオラマ（1800×900mm）から**実際の部屋（room scale）**へ移す。ジオラマは M1 フェーズでは**走行に使わず凍結保存**する（sim の回帰環境としては現状維持・2台復帰フェーズの資産）。部屋デモの形は**倉庫設定を薄め、ジェスチャ召喚（手挙げ・指差し）を主役**にする。直前に land した [PR #530](https://github.com/lll-kkk-ryuya/miniature-warehouse-robotics/pull/530)（OQ-3 = 非円形 footprint の F 系列）は**破棄せず re-scope して生存**させる。
 
@@ -33,18 +33,18 @@
 
 ② **F 系列の scope を二分する。** 詳細は [23 末尾【2026-08-18 追補】G 系列](../architecture/23-perception-and-localization.md)。
    - **部屋でも生存（robot-intrinsic）**: 非円形 footprint polygon の採用そのもの（F-1）・`footprint:` 化と `consider_footprint: true` の同一 PR 制約（F-5-1/2・#67 教訓）・inflation を内接 0.1157 基準へ再調整すること（F-5-3 の**手法**）・R-26 safety unit の書き換え（F-5-6）・`FOOTPRINT_POLYGON` / `CIRCUMSCRIBED_RADIUS` の additive 追加（F-6）。**部屋にもドア開口・家具の隙間はあり、矩形車体を矩形として扱う価値は失われない。**
-   - **ジオラマ限定の歴史記録**: 280mm / 510mm / ≈367mm・420mm 角という**通路数値**（F-2 の下 3 行）・24.3mm/側 の直進クリアランスと ±14mm 低コスト帯（F-2 / F-5-3 の**具体値**）・(b) 拡幅案の却下理由（F-3）・レイアウト側制約 F-4 と [04](../shared/04-diorama-layout.md) F-L1〜F-L5 の全体・通路内 Spin recovery 抑止（F-5-4）。
+   - **ジオラマ限定の歴史記録**: 280mm / 510mm / **交差点セル寸法としての** ≈367mm 角という**通路数値**（出所は [04:128-130](../shared/04-diorama-layout.md) の 3 行＝M1 暫定試算表。[23](../architecture/23-perception-and-localization.md) F-2 の表はこのうち **280mm の 1 行**を引き写したもの）・≥ ~420mm 角の転回ポケット（F-4-2 / [04](../shared/04-diorama-layout.md) F-L2 由来）・24.3mm/側 の直進クリアランスと ±14mm 低コスト帯（F-2 / F-5-3 の**具体値**）・(b) 拡幅案の却下理由（F-3）・レイアウト側制約 F-4 と [04](../shared/04-diorama-layout.md) F-L1〜F-L5 の全体。**通路内 Spin recovery 抑止（F-5-4）は「ジオラマ限定」ではなく「手法は生存・発火条件は再評価」へ訂正**（[23 G-2 / G-10](../architecture/23-perception-and-localization.md)）。
    - F-2 のうち **M1 実寸 231.4×284.4mm / 外接 184mm / 内接 115.7mm は車体の性質**であり、環境に依らず生存する。
 
 ③ **OQ の再スコープ。** 「ジオラマの通路幾何から出た問い」と「車体・実装から出た問い」を分ける。
    - **OQ-19（280mm 通路の許容 yaw 誤差）/ OQ-21（±14mm 低コスト帯での MPPI 追従）= ジオラマ限定・凍結。** どちらも 280mm 通路という盤面数値から導かれた問いで、部屋では発火しない。**ただし背後の幾何的事実——矩形の有効掃引幅が `231.4·cosθ + 284.4·sinθ` で yaw とともに増える（[23:590](../architecture/23-perception-and-localization.md)）——は車体の性質として残る**ので、部屋で狭い開口（ドア等）を通す際に同じ形で再計算する。
    - **OQ-18（sim 車体と実寸の同時移行可否）= 性質が変わる。** sim がジオラマのまま・実機が部屋になるため、「sim の車体を M1 実寸へ倒すか」は**実機の可否を握らなくなり、sim 回帰の忠実度だけの問題**へ降格する（下記 ④）。
    - **OQ-20（`base_link` の前後非対称オフセット・[23:641](../architecture/23-perception-and-localization.md)）= そのまま LIVE。** 車体の回転中心という **robot-intrinsic** な量であり、環境を変えても消えない。Phase 1 実機実測で確定する。
-   - **⚠️ 別件として重要度が上がる残件: goal の yaw が落ちている。** `nav2_bridge.py:80` が `pose.pose.orientation.w = 1.0` を固定し、座標ゴールは yaw 非対応のまま通る（`warehouse_nav2_bridge/CLAUDE.md:17` / 同 `:42` の「#223 残 ②」・`core.py:38`）。**これは OQ-20 ではなく #223 の残件**である。ジオラマでは F-L3「通路端の goal は回転不要な向きで置く」で回避できていたが、**部屋では召喚の到達姿勢（人の方を向いて止まる）が絵の質に直結する**ため、重要度が上がる。yaw 対応は `_pose` の quaternion 化＝別変更（所有トラック判断）。
+   - **⚠️ 別件として重要度が上がる残件: goal の yaw が落ちている。** `nav2_bridge.py` の `_pose` が `orientation.w = 1.0` を固定し、座標ゴールは yaw 非対応のまま通る（＝`warehouse_nav2_bridge/CLAUDE.md` の「#223 残 ②」。impl は行 pin せずキーで指す＝[session-orchestration.md §8](../../.claude/rules/session-orchestration.md)）。**これは OQ-20 ではなく #223 の残件**である。ジオラマでは F-L3「通路端の goal は回転不要な向きで置く」で回避できていたが、**部屋では召喚の到達姿勢（人の方を向いて止まる）が絵の質に直結する**ため、重要度が上がる。yaw 対応は `_pose` の quaternion 化＝別変更（所有トラック判断）。
 
 ④ **sim はジオラマのまま（回帰環境）。** `map.pgm` と `warehouse_sim.layout` は変更せず、2D costmap 系の回帰を守る場として維持する（[23:629](../architecture/23-perception-and-localization.md) F-7「sim は CURRENT 2D costmap の回帰を守る場」）。**代償として、sim と実機の環境が乖離する**——sim で緑でも部屋での挙動を保証しない。**room-scale の sim world を作るかは Open**（下記）。
 
-⑤ **動画の撮影前提が崩れる＝再設計が要る（本 ADR では行わない）。** [05](../shared/05-video-storyboard.md) は 1800×900mm 盤面の俯瞰画を主素材とする構成であり、部屋走行では成立しない。**Open item として立て、本ラウンドでは storyboard を書き換えない。**
+⑤ **動画の「実機パート」の撮影前提が崩れる＝再設計が要る（本 ADR では行わない）。** [05](../shared/05-video-storyboard.md) は 1800×900mm 盤面の俯瞰画を主素材とする構成であり、**実機パートについては**部屋走行で成立しない（**sim パート＝先行リリース構成はジオラマのまま有効**＝帰結 ④）。**Open item として立て、本ラウンドでは storyboard を書き換えない。**
 
 ⑥ **Phase 1 は「部屋の SLAM 地図取得」を含む。** ジオラマ由来の暫定値——`locations` の 9 座標（[09:17](../mode-x-er/09-hand-raise-summon.md) P5「暫定値・ジオラマ再設計待ち」）・実機用の `map.pgm`・通路幅表——は **M1 実機については supersede** される（sim 側は ④ のとおり不変）。なお現行 doc06 では SLAM 地図生成は **Phase 2 前半**（[06:155](../architecture/06-implementation-phases.md)）にあり、Phase 1 のタスクには「ベースボード塗装・通路テープ貼り」（[06:132](../architecture/06-implementation-phases.md)）というジオラマ造作が含まれる。この対応関係の整理は [06 末尾追記](../architecture/06-implementation-phases.md)で行う。
 
@@ -59,7 +59,7 @@
 - **環境統制が効かなくなる。** 照明・床材の反射・人の往来・家具の移動は、閉じた盤面には無かった非統制変数。AMCL / MOLA-LO（[23 B-2](../architecture/23-perception-and-localization.md)）の再現性はジオラマより悪化しうる。一方で**走行面積が広がりクリアランスが緩む**ぶん、狭隘由来の失敗（#125 の「経路を commit できず停止」）からは解放される。
 - **sim の予測力が落ちる**（帰結 ④）。回帰は守れるが、部屋での失敗を sim が先に捕まえられなくなる。
 - **撮影素材の作り直しコスト**（帰結 ⑤）。
-- **安全論証の再構築コスト**（帰結 ⑦）。「人に到達できない」という強い構造的保証を失い、より弱い多層防御の論証へ置き換える。**これは実質的な安全性の低下ではなく論証形式の変更**だが、レビューし直さずに流用してはならない。
+- **安全論証の再構築コスト**（帰結 ⑦）。「人に到達できない」という強い構造的保証を失い、より弱い多層防御の論証へ置き換える。**【訂正 2026-08-18】これは構造的保証（幾何学的に不可能）から多層防御（緩和）への後退であり、同等性は主張しない**（旧文「実質的な安全性の低下ではなく論証形式の変更」は撤回）。**残余リスク評価は安全レビューで行う**（[09 R-8-1](../mode-x-er/09-hand-raise-summon.md)）。
 - **#530 の作業のうちレイアウト側（F-3 / F-4 / F-L1〜F-L5）は、当面使われない記録になる。** 破棄はしないが、投じた検討がすぐには実を結ばない。
 
 ## Considered Options / 却下
@@ -97,3 +97,44 @@
 - `ws/src/warehouse_nav2_bridge/warehouse_nav2_bridge/nav2_bridge.py`（`orientation.w = 1.0` 固定＝yaw 非対応・#223 残 ②。行 pin ではなくキーで指す＝[session-orchestration.md §8](../../.claude/rules/session-orchestration.md)）
 - [docs/GLOSSARY.md §11](../GLOSSARY.md) — **部屋スケール運用（room-scale operation）** の正準定義（本 ADR と同時追加・双方向）
 - [dev/03-retrospectives.md](../dev/03-retrospectives.md) — #165 末尾追記規律（本 ADR に伴う各 doc 改訂はすべて末尾追補）
+
+---
+
+## 【2026-08-18 追補②】二重監査の反映（§Open の追加項目・§帰結の訂正）
+
+本 ADR の初版に対する**二重独立監査**（いずれも FIX-FIRST）の指摘を反映する。**Status（accepted）と Decision 1〜4 は変更しない**——変わるのは「何が Open として残っているか」の正確さと、いくつかの帰結の言い方である。既存本文の行は動かさず（[#165 教訓](../dev/03-retrospectives.md)）、同一行内で訂正できたものは §帰結 ②（F-2 の帰属・≈367mm の限定）・③（impl 参照をキー指しへ）・⑤（実機パート限定）・§トレードオフ（安全論証の同等性主張の撤回）・Status に反映済で、その根拠が本節である。
+
+### 追加 Open ①: sim / 実機の config 二重化（Slice 1 の前提・最重要）
+
+**部屋でも `footprint:` 化は実施する**（帰結 ② の「生存」は不変）。しかし**どの config に入れるかが未決**であり、これは Slice 1 が land できるかを直接握る。
+
+- **`nav2_params.yaml` は env overlay を持たない単一ソース**（`config/dev|stg|prod/warehouse.yaml` は Nav2 params を上書きしない・2026-08-18 実査）。したがって M1 footprint 化（両 costmap の `robot_radius` → `footprint:` ＋ `FollowPath.CostCritic.consider_footprint` の flip）は、**実機（部屋）と同時に「ジオラマ map の sim 回帰」も変える**。帰結 ④ が「sim はジオラマのまま」と宣言した以上、両立方法を決めないと Slice 1 は着手できない。
+- **同居方法は未決 OQ**: (a) Nav2 params に env overlay を新設 / (b) sim 専用 params を分ける / (c) sim も M1 実寸化する（sim URDF・`robot_dimensions.py` の PROVISIONAL 群まで）。所有＝ sim / nav-traffic / bringup の調整事項。
+- **`config/warehouse.base.yaml` の `locations` も単一ソース**（env overlay に `locations` は無い・同上実査）。`tests/unit/test_known_locations_navigable.py` はこの base 値を**committed なジオラマ `map.pgm`** に対して検証しており、M1 内接 0.1157m では **9 点中 6 点が不成立**（[04:197](../shared/04-diorama-layout.md)）。すなわち **実機値 / sim 値の分離手段が未決**であり、**決め方によって当該テストのオラクル定義（どの map に対して何の内接半径で検証するか）が変わる**。
+- **⚠️ 帰結 ③ の OQ-18 に関する記述の訂正**: 初版は OQ-18（sim 車体と実寸の同時移行可否）を「実機の可否を握らなくなり、sim 回帰の忠実度だけの問題へ降格」としたが、**これは誤り**。上記のとおり OQ-18 は「**Slice 1 が land できるか・sim ゲートが緑を保てるか**」を握る**構成問題として LIVE** である。詳細と新規 OQ-22 の登録は [23 G-7](../architecture/23-perception-and-localization.md)（訂正は同 doc G-3 に同一行内で反映済）。
+
+### 追加 Open ②: C-3（collision_monitor）改訂は部屋運用の前提条件
+
+帰結 ⑦ の多層防御論証は「L1 collision_monitor が生きている」ことに依存するが、**CURRENT の `PolygonStop` は `radius: 0.09` で M1 の内接 0.1157 を下回る＝車体内部で発火し機能しない**。**C-3 改訂（外接 `CIRCUMSCRIBED_RADIUS` ≈0.184 + 反応余裕へ・別 PR・安全レビュー必須）の完了は、部屋で走らせる前提条件**とする（[23 G-8](../architecture/23-perception-and-localization.md) / [09 R-8-2](../mode-x-er/09-hand-raise-summon.md)）。未改訂のまま部屋運用に入ると、多層防御の 1 枚が名目上だけ存在する状態になる。
+
+### 追加 Open ③: 召喚レグの解決規則の再設計（安全レビュー対象）
+
+**召喚レグは snap 半径を持たない**（[09:111](../mode-x-er/09-hand-raise-summon.md)「人は盤外ゆえ snap 半径は課さず sanity bound 2.0m のみ」）。ジオラマでは正射影点が必ず盤外に落ちるため盤縁が構造的な壁として働いていたが、**部屋では正射影点が人の足元＝走行面の内側に落ちる**ため、「最寄り location」＝**操作者に最も近い waypoint** となり「操作者の足元へ向かう」動作になる。**snap 半径の導入 or 到達圏の制約が Phase-1 設計として必須**（[09 R-7](../mode-x-er/09-hand-raise-summon.md)）。**安全レビュー対象**に含める。
+
+### 追加 Open ④: nvblox dynamic 層「不採用」の再評価
+
+[23:74](../architecture/23-perception-and-localization.md) / [23:278](../architecture/23-perception-and-localization.md) の不採用根拠「走行面上に人はいない（ジオラマに人はいない）」は、**部屋では成立しない**。people segmentation の GPU コスト（S1 の 8GB 予算に直撃）vs 静的 TSDF に人が焼き付く問題、の裁定を**新規 OQ-23** として登録した。**ジオラマ体積前提のメモリ試算**（[23:212-214](../architecture/23-perception-and-localization.md)）も部屋では桁が変わるため同 OQ に含める（[23 G-9](../architecture/23-perception-and-localization.md)）。
+
+### 追加 Open ⑤: #223 座標ゴール seam を安全レビュー対象に含める
+
+Nav2 Bridge の `navigate` には**名前ゲートを経由しない座標ゴール経路**があり、**座標の範囲チェックを持たない**（`warehouse_nav2_bridge/CLAUDE.md` の「#223 残 ②/③」。operator tooling 専用）。ジオラマでは「人は盤外」という暗黙の覆いが最後の防波堤になっていたが、**部屋ではその覆いが無い**。帰結 ⑦ の安全レビュー項目に本 seam を含める（[09 R-8-3](../mode-x-er/09-hand-raise-summon.md)）。
+
+### Issue #519（Slice 1）への申し送り
+
+**Slice 1（F-5 の params 実装）は継続**（footprint polygon 採用は部屋でも生存＝帰結 ②）。ただし **F-5-3 の具体値（±14mm 低コスト帯・inflation ≈0.125-0.126）は G-2 で無効**（手法のみ生存）・**F-5-4 は「ジオラマ限定」ではなく発火条件の差し替え**・**着手前に [23](../architecture/23-perception-and-localization.md) の G 系列（G-1〜G-12）を必読**とし、**G-7 の config 二重化（OQ-22）を最初のステップ**とすること（正本は [23 G-11](../architecture/23-perception-and-localization.md)）。
+
+### 本追補の関連リンク（双方向）
+
+- [architecture/23-perception-and-localization.md](../architecture/23-perception-and-localization.md) 末尾【2026-08-18 追補②】**G-7〜G-12**
+- [mode-x-er/09-hand-raise-summon.md](../mode-x-er/09-hand-raise-summon.md) 末尾【2026-08-18 追補②】**R-7〜R-10**
+- [shared/00-project-overview.md](../shared/00-project-overview.md) / [shared/01-budget-and-procurement.md](../shared/01-budget-and-procurement.md) / [shared/02-hardware-design.md](../shared/02-hardware-design.md) 各末尾【2026-08-18 追記】（入口 doc からの back-link）
