@@ -131,11 +131,11 @@ M1（231.4 × 284.4mm）を前提に上の式を当てると、通路幅は現�
 
 `# TODO(発注前〜Phase 1)`: **この幅で盤面 1800×900mm に「棚3列 + 縦通路2本 + 横断通路1本 + バース2 + 出荷/充電ステーション」が収まるか未計算。** 収まらない場合の選択肢 = ①棚を2列に減らす ②盤面を広げる ③その場回転を諦めて交差点を小さくする（Nav2 の recovery 挙動に影響）。**ジオラマ着工前に必ず作図して確定させる。**
 
-> 関連: 車体側の作業項目は [02-hardware-design.md](02-hardware-design.md) §「決定（2026-08-05）: 車体寸法・既存コードは車種選定の制約にしない」の C-1〜C-3（`ROBOT_RADIUS` / costmap / collision_monitor を実寸へ改訂）。
+> 関連: 車体側の作業項目は [02-hardware-design.md](02-hardware-design.md) §「決定（2026-08-05）: 車体寸法・既存コードは車種選定の制約にしない」の C-1〜C-3（**【2026-08-17 改訂】済**: 非円形 footprint 化＝additive 定数追加へ。旧「実寸へ改訂」は同 doc 末尾追補の履歴参照）。
 
 ## TODO
 
-- [ ] **最優先**: 車種を確定し、その実寸に合わせて通路幅を最終決定（車体を通路に合わせるのではない。上記「決定（2026-08-05）」参照）
+- [ ] **最優先**: 車種を確定し、その実寸に合わせて通路幅を最終決定（車体を通路に合わせるのではない。上記「決定（2026-08-05）」＋**本 doc 末尾【2026-08-17 追補】OQ-3 決定に伴う通路制約が最新・そちらが正**）
 - [ ] 1:10スケールの棚STLをテスト印刷し、サイズ感を確認
 - [ ] レイアウト図をFigma or Excalidrawで清書する
 
@@ -166,3 +166,45 @@ M1（231.4 × 284.4mm）を前提に上の式を当てると、通路幅は現�
 - [Pallet Rack 1:10 — Printables.com](https://www.printables.com/model/567874) — 参照日: 2026-05-19
 - [Yahboom ESP32 MicroROS Robot Car — 公式](https://category.yahboom.net/products/microros-esp32) — 参照日: 2026-05-19（ロボットサイズ参照）
 - [Yahboom ROSMASTER M1 — 公式](https://category.yahboom.net/products/rosmaster-m1) — 参照日: 2026-08-05（車体寸法は公式 Product parameters 図 `Yahboom_ROSMASTER_M1_without_raspberry_pi_5_details_3_04.jpg` を実見）
+
+---
+
+## 【2026-08-17 追補】OQ-3 決定に伴う通路制約（(c) ハイブリッド・レイアウト側）
+
+> **決定正本**: OQ-3（M1 の非円形 footprint をどう扱うか）は **(c) ハイブリッド = 非円形 footprint を主機構とし、レイアウト側で回転制約を併せて課す**で決着した。決定の本体は [../architecture/23-perception-and-localization.md](../architecture/23-perception-and-localization.md) 末尾【2026-08-17 追補】**F 系列**（OQ-3 決定）が正本。本節はそのうち**レイアウト側の制約だけ**を本 doc に落としたもの。
+> **本節と上の M1 暫定試算表（`#### M1 採用時の暫定試算（2026-08-05・要検証）` の表）が食い違う場合、本節が正。** 表そのものは下流の `04-diorama-layout.md:NN` 参照を行ズレさせないため**編集せず**、本追補を改訂として扱う（doc23 の A-6 で採った「既存表は行安定のため編集せず、追補行を正とする」と同じ扱い）。
+> 起票: [Issue #519](https://github.com/lll-kkk-ryuya/miniature-warehouse-robotics/issues/519) Slice 0。
+
+### F-L1. すれ違い不可通路 ≈280mm は維持する（拡幅しない）＝ただし **直進専用**
+
+- 渋滞デモの意味論（2台が並走できない隘路）を保つため、**すれ違い不可通路は ≈280mm のまま**（車体幅 231.4 + 余裕 ≈50mm）。**拡幅しない。**
+- ただし M1 の**対角長 ≈367mm**（√(284.4² + 231.4²)）は **280mm を超える**ため、**通路内でのその場回転（in-place rotation）は物理的に不可能**。→ この通路は **直進専用（straight-through only）** として設計・運用する。
+- 直進時のクリアランス: **(280 − 231.4) / 2 ≈ 24.3mm/側**。これは現行の実証構成（真 200mm 隘路 × 車体幅 150mm ⇒ **25mm/側**。#124/#125 の live yield デモで走行実証）と**同水準**であり、新たに攻めた値ではない。**⚠️ ただし [07-research-notes.md](07-research-notes.md) R-41 は「安価 2D LiDAR の測距誤差 ±1-3cm がこの 25mm と同オーダー → AMCL 収束困難」という未解決リスク**として同じ値を挙げている（実証の裏付けではなく、逆側の警告）。矩形化で新たに生じる方位余裕の制約（yaw 誤差 ~10° でクリアランス 0）は [../architecture/23-perception-and-localization.md](../architecture/23-perception-and-localization.md) F-2 / OQ-19 参照。
+
+### F-L2. 交差点／転回ポケットは **≥ ~420mm 角**（≈367mm 角からの改訂）
+
+- 上の表の「交差点（その場回転を許す）= **≈367mm 角**」は、**対角回転円の直径ぴったり＝余裕ゼロ**であり、そのままでは採用できない（AMCL/odom 誤差・制御オーバーシュートを一切吸収できない）。
+- **改訂値: ≥ ~420mm 角**。内訳 = 対角 367mm ＋ 余裕 **~25mm/側**（367 + 50 ≈ 417 → 切り上げ **420**）。この 25mm/側 は F-L1 の**直進**クリアランス実証値（#124/#125）からの**援用＝暫定値**である——その場回転は x/y/yaw の 3 自由度誤差を同時に含み直進とは別種の量のため、`# TODO(Phase 1 実測)` 実機の回転で確定する。
+- **その場回転を許してよいのは、この ≥ ~420mm 角の交差点／転回ポケットだけ**。それ以外の通路上では回転を計画させない。
+
+### F-L3. 通路端の goal は「回転不要な向き」で置く
+
+- すれ違い不可通路（F-L1）の端に置く goal は、**その通路への進入方位のまま到達できる yaw** を与える。到着後に通路内で向き直す必要のある goal yaw を設定しない（通路内回転は F-L1 により不可）。
+- 向きを変える必要がある動線は、**転回を ≥ ~420mm 角の交差点／ポケット側へ寄せて**計画する。
+
+> **⚠️ W3: 現行 9 点（[PR #528](https://github.com/lll-kkk-ryuya/miniature-warehouse-robotics/pull/528)）は M1 では全点が再設計対象＝別スライス。** 上の §走行目標点で確定した 9 点は **sim 車体＝円形 `robot_radius` 0.075m 基準**での検証であり（内接ゲートは `tests/unit/test_known_locations_navigable.py` の `ROBOT_RADIUS + 1 cell = 0.085m`）、M1 実寸を当てると成立しない。committed `map.pgm` × `config/warehouse.base.yaml` から実測したクリアランス（上記テストと同じ独立オラクル方式・最近接占有 cell 中心までの距離）は **95.1〜125.1mm** で、
+> - **9 点すべてが外接円 184mm 未満** ＝ M1 ではどの点でも**その場回転ができない**（F-L2 の転回ポケットが要る）。
+> - **うち 6 点は内接 115.7mm すら下回る** ＝ goal としてそもそも不成立（berth_A/B 95.1 / shipping_station 110.7 / charging_station・retreat_A/B 115.1）。内接をクリアするのは shelf_1/2/3 の 125.1mm のみで、それも余裕 9.4mm。
+>
+> したがって **M1 実機マップ取得後に、F-L1〜F-L3（≈280mm は直進専用 / 交差点・転回ポケット ≥ ~420mm 角 / goal は回転不要な向き）の制約下で 9 点すべてを再設計する**。本 PR では行わない（**別スライス**）。その際 `test_known_locations_navigable.py` の内接ゲートは **footprint パラメータ化**（`ROBOT_RADIUS` 固定値ではなく `FOOTPRINT_POLYGON` 由来の内接半径を消費＝[../architecture/23-perception-and-localization.md](../architecture/23-perception-and-localization.md) F-6 の additive 定数）が要る。**これは「現行 map を M1 にそのまま持ち込むと壊れる」ことの記録であり、再設計値の予告ではない**（M1 レイアウト自体が未確定＝F-L4 の作図待ち）。
+
+### F-L4. 盤面 1800×900mm 収まり作図（既存 TODO）への接続
+
+- 上の `# TODO(発注前〜Phase 1)`（盤面 1800×900mm に「棚3列 + 縦通路2本 + 横断通路1本 + バース2 + 出荷/充電ステーション」が収まるか未計算）は、**本追補の改訂値＝交差点 ≥ ~420mm 角 / すれ違い不可 ≈280mm / すれ違い可 ≈510mm** で作図する。367mm 角では作図しない。
+- なお **420mm でも 2 台すれ違い（≈510mm 要）は成立しない**。したがって交差点を ≥ ~420mm へ広げても**渋滞デモの意味論は保たれる**（すれ違えないことは変わらない）。
+
+### F-L5. 関連リンク（双方向）
+
+- 決定正本: [../architecture/23-perception-and-localization.md](../architecture/23-perception-and-localization.md) 末尾【2026-08-17 追補】F 系列（OQ-3 = (c) ハイブリッド）。
+- 車体・コード側の対応: [02-hardware-design.md](02-hardware-design.md) の **C-1 / C-2**（【2026-08-17 改訂】済: `FOOTPRINT_POLYGON`＋`CIRCUMSCRIBED_RADIUS` を additive 追加・costmap `footprint:` 化。`ROBOT_RADIUS`(=0.075) は値も意味も据え置き）— 改訂の理由と旧文言の履歴は**同 doc 末尾 §【2026-08-17 追補】OQ-3 決定に伴う C-1 / C-2 の改訂（非円形 footprint への移行）**が正本（双方向・行 pin なし）。
+- 数値根拠（本節で使った値の出所）: 対角 **√(284.4² + 231.4²) ≈ 367mm**（M1 公式寸法 231.40 × 284.40mm・上の「参考実測値」行）／直進クリアランス **(280 − 231.4) / 2 ≈ 24.3mm/側**／実証水準 **25mm/側**（#124/#125・[07-research-notes.md](07-research-notes.md) R-41）。

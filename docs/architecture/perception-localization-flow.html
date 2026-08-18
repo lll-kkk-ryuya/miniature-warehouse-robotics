@@ -176,7 +176,7 @@
     <span class="cite">nav2_params.yaml:300 ／ doc23 §2</span>
   </div>
   <div class="box b-nav"><b>Controller Server</b>（MPPI・20Hz）
-    <div class="note">vx_max 0.3。⚠ 円形 footprint 前提は M1 で要改訂（184mm 半径 vs 通路 280mm = doc23 OQ-3）</div>
+    <div class="note">vx_max 0.3。OQ-3 解決済み（2026-08-17・#519）: 非円形 footprint 移行を決定（doc23 末尾 F 系列。CURRENT は円形のまま＝Slice 1 で実装）</div>
     <span class="cite">nav2_params.yaml:115,171-179</span>
   </div>
   <div class="box b-nav"><b>BT Navigator / Behavior / Waypoint</b>
@@ -355,7 +355,7 @@
   <tr><th>#</th><th>未決</th><th>影響</th></tr>
   <tr><td>OQ-1</td><td>cuVSLAM の入力要件（ステレオ必須か / RGB-D 可か）・HP60C の出力</td><td><b>解決済み（negative・2026-08-17）</b> — HP60C は IR/ステレオ不可 ＋ Humble 用 Isaac ROS 3.2 に depth 経路なし ＝ blocked-by-hardware。<b>TARGET-1 は MOLA-LO へ置換</b>（行は履歴として残置）</td></tr>
   <tr><td>OQ-2</td><td>nvblox と Open-RMF（Mode C）の 8GB 食い合い</td><td>載らなければ主方針レベルのユーザー判断</td></tr>
-  <tr><td>OQ-3</td><td><b>M1 外接円半径 184mm vs 通路 280mm</b>（円形 footprint では通路に入れない）</td><td>非円形 footprint 化が nvblox より優先</td></tr>
+  <tr><td>OQ-3</td><td><b>M1 外接円半径 184mm vs 通路 280mm</b>（円形 footprint では通路に入れない）</td><td><b>解決済み（2026-08-17・#519）</b> — (c) ハイブリッド採用: 非円形 footprint（矩形 231.4×284.4）を主機構＋レイアウト側制約（280mm 通路=直進専用・交差点 ≥~420mm 角）。決定と Slice 1 実装計画は doc23 末尾 F 系列が正</td></tr>
   <tr><td>OQ-8</td><td>nvblox costmap plugin の NO_INFORMATION 書き込み挙動</td><td>overwrite なら T3 止めが現実解</td></tr>
   <tr><td>OQ-9</td><td>LiDAR 型番ドリフト（T-mini Plus vs MS200 表記）</td><td>V 系検証の前に要反映</td></tr>
   <tr><td>OQ-11</td><td><b>駐機時の <code>pose_stale</code> 誤発火（検証中）</b> — AMCL は motion-gated（<code>update_min_d: 0.05</code>）で静止中は沈黙する一方、Guardian の鮮度は 1.0s</td><td>駐機が 1.0s を超えると estop 誤発火の疑い（§6 V7 は走行中のみ）。解は静止ゲート or TF を heartbeat 化＝<b>閾値を緩める方向には解かない</b>。検証タスクは未起票（doc23 追補 A-10）</td></tr>
