@@ -208,3 +208,38 @@ M1（231.4 × 284.4mm）を前提に上の式を当てると、通路幅は現�
 - 決定正本: [../architecture/23-perception-and-localization.md](../architecture/23-perception-and-localization.md) 末尾【2026-08-17 追補】F 系列（OQ-3 = (c) ハイブリッド）。
 - 車体・コード側の対応: [02-hardware-design.md](02-hardware-design.md) の **C-1 / C-2**（【2026-08-17 改訂】済: `FOOTPRINT_POLYGON`＋`CIRCUMSCRIBED_RADIUS` を additive 追加・costmap `footprint:` 化。`ROBOT_RADIUS`(=0.075) は値も意味も据え置き）— 改訂の理由と旧文言の履歴は**同 doc 末尾 §【2026-08-17 追補】OQ-3 決定に伴う C-1 / C-2 の改訂（非円形 footprint への移行）**が正本（双方向・行 pin なし）。
 - 数値根拠（本節で使った値の出所）: 対角 **√(284.4² + 231.4²) ≈ 367mm**（M1 公式寸法 231.40 × 284.40mm・上の「参考実測値」行）／直進クリアランス **(280 − 231.4) / 2 ≈ 24.3mm/側**／実証水準 **25mm/側**（#124/#125・[07-research-notes.md](07-research-notes.md) R-41）。
+
+---
+
+## 【2026-08-18 追補】M1 フェーズはジオラマを走行しない（ADR-0009）
+
+> **決定正本**: [../adr/0009-m1-room-scale-operation.md](../adr/0009-m1-room-scale-operation.md)（オペレーター決定 2026-08-18）。**M1（単騎・ADR-0006）は実際の部屋（room scale）を走り、本 doc が扱うミニチュアジオラマ 1800×900mm は M1 フェーズでは走行に使わない＝凍結保存**する（sim の回帰環境としては現状維持・2台復帰フェーズの資産）。
+> **本節と本 doc の他の全記述が食い違う場合、M1 フェーズについては本節が正。** 既存本文・表・F-L 系列は**編集しない**（下流の `04-diorama-layout.md:NN` 参照を行ズレさせないため＝:175 と同じ扱い・[#165 教訓](../dev/03-retrospectives.md)）。
+
+### R-1. scope 限定（本 doc のどこが、いつ有効か）
+
+本 doc の数値はすべて「**ジオラマを走行に使うとき**（＝ sim 回帰・2台復帰フェーズ）」に scope 限定される。M1 実機には適用しない:
+
+- **§M1 採用時の暫定試算（:122-132）の 3 行**（すれ違い不可 ≈280mm / すれ違い可 ≈510mm / 交差点 ≈367mm 角）
+- **§走行目標点（:142-159）で #528 が確定した 9 座標** — **sim（`map.pgm` × `config/warehouse.base.yaml`）では有効なまま**。supersede されるのは実機側の値のみ（ADR-0009 帰結 ④/⑥）
+- **【2026-08-17 追補】F-L1〜F-L5（:172-210）の全体** — 直進専用 ≈280mm / 交差点 ≥ ~420mm 角 / goal は回転不要な向き
+
+**車体側の数値（M1 実寸 231.40 × 284.40mm・:115／対角 ≈367mm・:119）は環境に依らず生存する**——これは盤面の性質ではなく車体の性質である。
+
+### R-2. W3（9 点再設計）は中止・宛先を差し替え
+
+F-L3 の W3 注記（:195-199）が予告した「M1 実機マップ取得後に 9 点すべてを再設計する別スライス」は、**ジオラマを走らないため中止**する。**`KNOWN_LOCATIONS` の 9 キーは凍結のまま（改名しない）**で、**値**が Phase 1 の**部屋** SLAM 地図取得後に実測 waypoint へ差し替わる（[ADR-0009](../adr/0009-m1-room-scale-operation.md) Decision 5）。W3 が記録した実測値（クリアランス 95.1〜125.1mm・9 点すべて外接 184mm 未満・6 点は内接 115.7mm 未満）は、**「現行ジオラマに M1 を載せると走行目標点が 1 点も成立しない」ことの記録**として残り、ジオラマ復帰フェーズで再び効く。
+
+### R-3. 未解決のまま凍結される項目
+
+- **`# TODO(発注前〜Phase 1)` 盤面 1800×900mm の収まり作図（:132 / F-L4 :201-204）は未計算のまま凍結**する。ジオラマ復帰フェーズで、F-L1〜F-L3 の制約（交差点 ≥ ~420mm 角）のもとに作図を再開する。
+- **南帯 140mm の歪み**（棚列が南壁に近すぎる・:159）も未解消のまま持ち越す。
+- 本ラウンドの並行レーンが作成した **M1 向け 9 点再設計案**は、ジオラマ復帰時の参考として保存する（保存先は ADR-0009 Open）。
+
+### R-4. 関連リンク（双方向）
+
+- **決定正本**: [../adr/0009-m1-room-scale-operation.md](../adr/0009-m1-room-scale-operation.md)
+- 知覚・Nav2 側の scope 注記: [../architecture/23-perception-and-localization.md](../architecture/23-perception-and-localization.md) 末尾【2026-08-18 追補】**G 系列**（F 系列の生存 / ジオラマ限定の二分）。**本節と双方向・行 pin なし**（同一 PR）
+- ジェスチャ司令の幾何前提: [../mode-x-er/09-hand-raise-summon.md](../mode-x-er/09-hand-raise-summon.md) 末尾【2026-08-18 追補】
+- Phase 定義: [../architecture/06-implementation-phases.md](../architecture/06-implementation-phases.md) 末尾追記（Phase 1 の部屋 SLAM 地図取得）
+- [docs/GLOSSARY.md §11](../GLOSSARY.md) — **部屋スケール運用（room-scale operation）** の正準定義

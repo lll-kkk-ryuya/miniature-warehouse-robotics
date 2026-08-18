@@ -653,3 +653,57 @@ OQ-3（[:244](23-perception-and-localization.md) M1 外接円 184mm vs 通路 28
 - [docs/GLOSSARY.md §11](../GLOSSARY.md) — **非円形 footprint（footprint polygon）** の正準定義（本追補と同時追加・双方向）。
 - [Issue #519](https://github.com/lll-kkk-ryuya/miniature-warehouse-robotics/issues/519) — 本決定の起票元（Slice 0 = 本追補 / Slice 1 = F-5 の params 実装）。
 - 外部一次情報（参照日 2026-08-17）: [navigation2 PR #3439](https://github.com/ros-planning/navigation2/pull/3439)（MPPI の Humble backport）/ navigation2 `humble` ブランチ MPPI README（ObstaclesCritic・CostCritic の `consider_footprint`・default false）。
+
+---
+
+## 【2026-08-18 追補】部屋スケール運用による F 系列の scope 限定（G 系列）
+
+Status: **scope 注記のみ**（決定の本体は [ADR-0009](../adr/0009-m1-room-scale-operation.md)）。本追補は **F 系列を revert しない**——footprint polygon 採用は部屋でも生存する。CURRENT の config / コードは本追補では**変更しない**。既存 §番号・§8 の項目番号は**改めず末尾に足す**（[#165 教訓](../dev/03-retrospectives.md)・本 doc :288 / :511 と同じ扱い）。
+
+> **系列記号の注記**: 本追補は **G 系列**を使う。A 系列＝【2026-08-10 追補】、B 系列＝【2026-08-17 追補】MOLA-LO、F 系列＝【2026-08-17 追補】OQ-3。**C は欠番**（[shared/02](../shared/02-hardware-design.md) の C-1〜C-8 と衝突・:569 と同じ理由）、D / E は未使用。
+
+### G-1. 何が変わったか（前提の差し替え）
+
+オペレーター決定（2026-08-18）により、**M1 は部屋（room scale）を走り、ミニチュアジオラマは M1 フェーズでは走行に使わない**（凍結保存・sim 回帰環境としては現状維持）。F 系列は「M1 をジオラマの 280mm 通路に通す」という問題設定の解であったため、**解そのものは生きるが、前提から出た数値は宛先を失う**。以下 G-2 で二分する。
+
+### G-2. F 系列の scope 二分（生存 / ジオラマ限定の歴史記録）
+
+| F 項目 | 内容 | 部屋での扱い |
+|---|---|---|
+| F-1 | (c) ハイブリッド採用＝**非円形 footprint polygon を主機構**にする決定 | **生存**（部屋にもドア開口・家具の隙間はあり、矩形車体を矩形として扱う価値は失われない） |
+| F-2 上段 | M1 実寸 231.4×284.4mm / 外接 ≈184mm / **内接 115.7mm** | **生存**（車体の性質＝robot-intrinsic） |
+| F-2 下段 | 280mm 通路 / 24.3mm 側クリアランス / 方位余裕 ~10° で 0 | **ジオラマ限定**。ただし掃引幅の式 `231.4·cosθ + 284.4·sinθ`（:590）は車体の性質として残り、**部屋で狭い開口を通す際に同じ形で再計算**する |
+| F-3 | (b)（通路を ≥420mm へ一律拡幅）を採らない理由 | **ジオラマ限定の歴史記録** |
+| F-4 / [04](../shared/04-diorama-layout.md) F-L1〜F-L5 | レイアウト側制約（直進専用・≥420mm 角ポケット・goal は回転不要な向き） | **ジオラマ限定の歴史記録**（ジオラマ復帰フェーズで再有効化） |
+| F-5-1 / F-5-2 | `footprint:` 化と `consider_footprint: true` の**同一 PR 制約**（#67 教訓） | **生存**（環境非依存の実装制約） |
+| F-5-3 | inflation を**内接 0.1157 基準へ再調整する手法** | **手法は生存**／ **±14mm 低コスト帯という具体値はジオラマ限定**（280mm 通路から導出） |
+| F-5-4 | 通路内 Spin recovery の抑止 | **ジオラマ限定**（「通路内で回転不可」が前提。部屋では一般に回転可＝抑止の必要性は再評価） |
+| F-5-6 | R-26 safety unit の書き換え（polygon 頂点・内接比較へ） | **生存** |
+| F-6 | `FOOTPRINT_POLYGON` / `CIRCUMSCRIBED_RADIUS` の **additive 追加**（`ROBOT_RADIUS` は値・意味とも据え置き） | **生存**（contract PR + 依存トラック予告も従来どおり必要） |
+| F-7 W3 | ジオラマ 9 点の全点再設計（別スライス） | **中止（cancelled）**＝G-4 |
+
+### G-3. OQ の再スコープ（F-8 の 4 件）
+
+- **OQ-18（sim 車体と実寸の同時移行可否）— 性質が変わる。** sim はジオラマのまま・実機は部屋になるため、本 OQ は**実機の可否を握らなくなり、sim 回帰の忠実度だけの問題**へ降格する。所有トラック（sim / nav-traffic）の判断事項である点は不変。
+- **OQ-19（280mm 通路での許容 yaw 誤差と MPPI 方位追従）— ジオラマ限定・凍結。** 280mm という盤面数値から出た問い。部屋では発火しない（背後の幾何的事実は G-2 のとおり残る）。
+- **OQ-20（`base_link` の前後非対称オフセット）— そのまま LIVE。** 車体の回転中心という **robot-intrinsic** な量で、環境を変えても消えない。Phase 1 実機実測で確定（:641 のまま）。
+- **OQ-21（±14mm 低コスト帯での MPPI 追従性）— ジオラマ限定・凍結。** 280mm 通路 × inflation から導出された帯幅のため。
+
+### G-4. W3（走行目標点 9 点の再設計）は中止し、宛先を差し替える
+
+:633（F-7 W3）と [04](../shared/04-diorama-layout.md) F-L3 の W3 注記が予告した「M1 実機マップ取得後にジオラマ 9 点を再設計する別スライス」は、**ジオラマを走らないため中止**する。**`KNOWN_LOCATIONS` の 9 キー自体は凍結のまま（改名しない）**で、**値**が Phase 1 の部屋 SLAM 地図取得後に実測 waypoint へ差し替わる（[ADR-0009](../adr/0009-m1-room-scale-operation.md) Decision 5）。`tests/unit/test_known_locations_navigable.py` の内接ゲートを **footprint パラメータ化**する必要（F-6 の additive 定数を消費）は**部屋でもそのまま残る**。
+
+**⚠️ 別件・重要度が上がる残件（OQ-20 ではない）**: 座標ゴールは yaw を落としている——`nav2_bridge.py` が `orientation.w = 1.0` を固定する（`warehouse_nav2_bridge/CLAUDE.md` の「#223 残 ②」・impl は行 pin せずキーで指す＝[session-orchestration.md §8](../../.claude/rules/session-orchestration.md)）。ジオラマでは F-L3「通路端の goal は回転不要な向きで置く」で回避できていたが、**部屋では召喚の到達姿勢（人の方を向いて止まる）が絵の質に直結する**ため重要度が上がる。yaw 対応は別変更・所有トラック判断。
+
+### G-5.【訂正】:562 の「別課題として起票する」は解決済み
+
+B-13 末尾 :562 の括弧書き（`KNOWN_LOCATIONS` の shelf_*/charging_station が `map.pgm` の障害物セル内＝Nav2 到達不能・「nav-traffic/bringup 所有の別課題として起票する」）は、**[PR #528](https://github.com/lll-kkk-ryuya/miniature-warehouse-robotics/pull/528) で既に解決済み**（走行目標点への改訂＝棚前 docking 点化・[04:142-159](../shared/04-diorama-layout.md)）。**:562 の本文は行安定のため編集せず、本項を訂正の正とする**（:511 と同じ扱い）。なお #528 が確定した座標は sim（ジオラマ）側では有効なまま——本 ADR-0009 が supersede するのは**実機（部屋）側の値**であり、sim 回帰用の `map.pgm` × 9 点は不変である（G-2 の「sim はジオラマのまま」）。
+
+### G-6. 関連リンク（双方向）
+
+- **決定正本**: [ADR-0009 M1 フェーズは部屋スケールで運用する](../adr/0009-m1-room-scale-operation.md)（本追補はその知覚・Nav2 側の scope 注記）
+- [shared/04-diorama-layout.md](../shared/04-diorama-layout.md) 末尾【2026-08-18 追補】— レイアウト側の scope 限定（F-L 系列の凍結）。**本追補と双方向・行 pin なし**（同一 PR）
+- [mode-x-er/09-hand-raise-summon.md](../mode-x-er/09-hand-raise-summon.md) 末尾【2026-08-18 追補】— ジェスチャ幾何前提の部屋での再検証（カメラ仰角・安全論証）
+- [architecture/06-implementation-phases.md](06-implementation-phases.md) 末尾追記 — Phase 1 の部屋 SLAM 地図取得
+- [docs/GLOSSARY.md §11](../GLOSSARY.md) — **部屋スケール運用（room-scale operation）** の正準定義（同一 PR で追加）
+- HTML companion（[perception-localization-flow.html](perception-localization-flow.html) / [robot-architecture-tree.html](robot-architecture-tree.html)）への反映は**本 PR ではスコープ外**（ADR-0009 Open）
