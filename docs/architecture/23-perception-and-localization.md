@@ -769,3 +769,7 @@ G-2 表の当初分類「ジオラマ限定」は誤りで、**手法は生存�
 - **決定正本**: [ADR-0009](../adr/0009-m1-room-scale-operation.md)（末尾【2026-08-18 追補②】に本節と対になる Open 追加項目）
 - 安全論証側: [mode-x-er/09](../mode-x-er/09-hand-raise-summon.md) 末尾【2026-08-18 追補②】R-7〜R-9（召喚レグの snap 免除・C-3 前提・scan 面の実論拠）
 - CURRENT 実体（impl-target は行 pin せずキーで指す＝[session-orchestration.md §8](../../.claude/rules/session-orchestration.md)）: `nav2_params.yaml` の両 costmap `robot_radius` / `FollowPath.CostCritic.consider_footprint` / `collision_monitor.yaml` の `PolygonStop.radius` / `config/warehouse.base.yaml` の `locations` / `tests/unit/test_known_locations_navigable.py` の内接ゲート
+
+### G-13. G-2 表の補完: F-5-5（対象 distro = Humble 整合）
+
+G-2 の二分表は F-5-1/2・F-5-3・F-5-4・F-5-6 を挙げたが、**F-5-5（対象 distro = [ADR-0008](../adr/0008-ros2-distro-humble-for-rosmaster-m1.md) Humble 整合。MPPI CostCritic 構成は Jazzy→Humble で書き換え不要＝F-1 の裏取り済）を落としていた**。**F-5-5 は環境非依存＝生存**する——distro の選択は車体（ROSMASTER M1 の閉ソース driver）と Isaac ROS 側の制約から出ており、走行環境がジオラマか部屋かに一切依存しない。したがって Slice 1 は**部屋でもそのまま Humble 前提で実装**してよい（G-11 の申し送りに含む）。
