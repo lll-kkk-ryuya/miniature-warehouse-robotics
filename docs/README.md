@@ -109,6 +109,7 @@ docs/
 | [deploy/hermes/er-audio-fork/](../deploy/hermes/er-audio-fork/) | **ER audio-via-Hermes `input_audio` fork パッケージ**（#357）＋ `hlf-g0-langfuse` Option-D（#360）の配備成果物。`apply-fork.sh` / `run-er-gateway.sh` / patch。**TARGET=default-Hermes**（fork 経由で audio も Hermes）／ **CURRENT（shipped）=audio は direct**（fork は未 productionize・direct は恒久 fallback。doc `mode-x-er/06` §5 補遺:263-271） |
 | [08-x-er-bridge-node-spec](mode-x-er/08-x-er-bridge-node-spec.md) | **XER6 `x_er_bridge` node 契約（設計正本）**: X-ER commander node の形・`mode_x_er:` config key 凍結（06 §3 RESOLVED と対）・composition 起動シーケンス・plugin gating（二重 validate）・dispatch seam・エラー方針・テスト 3 層 |
 | [09-hand-raise-summon](mode-x-er/09-hand-raise-summon.md) | **ジェスチャ司令（召喚・指差し）設計**（2026-08-09 全面改訂・ADR-0007）: 搭載 HP60C + ローカル骨格 NN で「肩より上=召喚」「腕を伸ばす=指差し」を決定論認識・ER バイパスで既存 L3/L2 ゲートを全通過（INV-1/INV-2）・時間窓多数決・到達点は KNOWN_LOCATIONS snap（coordinate goal は Phase 2 defer）・/goal_pose 直注入はしない・旧俯瞰+マーカー方式は §13 に降格保存 |
+| [10-room-scale-safety-review](mode-x-er/10-room-scale-safety-review.md) | **部屋スケール運用の安全レビュー（分析・2026-08-18）**: 人とロボットが同一走行平面に立つ構成（[ADR-0009](adr/0009-m1-room-scale-operation.md) 帰結⑦）の残余リスク評価。R-3 多層防御論証の柱ごと評価・OQ-20 召喚レグ再設計・C-3 停止ポリゴン要求仕様・#223 座標 seam 監査・OQ-21 L1 有効性・運用規律・waypoint 配置規律・Guardian 経路点検の 8 項目 ＋ **部屋運用開始の前提条件チェックリスト**。**分析であって運転許可ではない**（最終受け入れ＝オペレーターゲート） |
 
 ## mode-x-er-vla/ — Gemini Robotics-ER + VLA 統合モード（設計提案）
 
