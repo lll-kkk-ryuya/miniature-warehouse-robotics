@@ -653,3 +653,123 @@ OQ-3（[:244](23-perception-and-localization.md) M1 外接円 184mm vs 通路 28
 - [docs/GLOSSARY.md §11](../GLOSSARY.md) — **非円形 footprint（footprint polygon）** の正準定義（本追補と同時追加・双方向）。
 - [Issue #519](https://github.com/lll-kkk-ryuya/miniature-warehouse-robotics/issues/519) — 本決定の起票元（Slice 0 = 本追補 / Slice 1 = F-5 の params 実装）。
 - 外部一次情報（参照日 2026-08-17）: [navigation2 PR #3439](https://github.com/ros-planning/navigation2/pull/3439)（MPPI の Humble backport）/ navigation2 `humble` ブランチ MPPI README（ObstaclesCritic・CostCritic の `consider_footprint`・default false）。
+
+---
+
+## 【2026-08-18 追補】部屋スケール運用による F 系列の scope 限定（G 系列）
+
+Status: **scope 注記のみ**（決定の本体は [ADR-0009](../adr/0009-m1-room-scale-operation.md)）。本追補は **F 系列を revert しない**——footprint polygon 採用は部屋でも生存する。CURRENT の config / コードは本追補では**変更しない**。既存 §番号・§8 の項目番号は**改めず末尾に足す**（[#165 教訓](../dev/03-retrospectives.md)・本 doc :288 / :511 と同じ扱い）。
+
+> **系列記号の注記**: 本追補は **G 系列**を使う。A 系列＝【2026-08-10 追補】、B 系列＝【2026-08-17 追補】MOLA-LO、F 系列＝【2026-08-17 追補】OQ-3。**C は欠番**（[shared/02](../shared/02-hardware-design.md) の C-1〜C-8 と衝突・:569 と同じ理由）、D / E は未使用。
+
+### G-1. 何が変わったか（前提の差し替え）
+
+オペレーター決定（2026-08-18）により、**M1 は部屋（room scale）を走り、ミニチュアジオラマは M1 フェーズでは走行に使わない**（凍結保存・sim 回帰環境としては現状維持）。F 系列は「M1 をジオラマの 280mm 通路に通す」という問題設定の解であったため、**解そのものは生きるが、前提から出た数値は宛先を失う**。以下 G-2 で二分する。
+
+### G-2. F 系列の scope 二分（生存 / ジオラマ限定の歴史記録）
+
+| F 項目 | 内容 | 部屋での扱い |
+|---|---|---|
+| F-1 | (c) ハイブリッド採用＝**非円形 footprint polygon を主機構**にする決定 | **生存**（部屋にもドア開口・家具の隙間はあり、矩形車体を矩形として扱う価値は失われない） |
+| F-2 上段 | M1 実寸 231.4×284.4mm / 外接 ≈184mm / **内接 115.7mm** | **生存**（車体の性質＝robot-intrinsic） |
+| F-2 下段 | 280mm 通路 / 24.3mm 側クリアランス / 方位余裕 ~10° で 0 | **ジオラマ限定**。ただし掃引幅の式 `231.4·cosθ + 284.4·sinθ`（:590）は車体の性質として残り、**部屋で狭い開口を通す際に同じ形で再計算**する |
+| F-3 | (b)（通路を ≥420mm へ一律拡幅）を採らない理由 | **ジオラマ限定の歴史記録** |
+| F-4 / [04](../shared/04-diorama-layout.md) F-L1〜F-L5 | レイアウト側制約（直進専用・≥420mm 角ポケット・goal は回転不要な向き） | **ジオラマ限定の歴史記録**（ジオラマ復帰フェーズで再有効化） |
+| F-5-1 / F-5-2 | `footprint:` 化と `consider_footprint: true` の**同一 PR 制約**（#67 教訓） | **生存**（環境非依存の実装制約） |
+| F-5-3 | inflation を**内接 0.1157 基準へ再調整する手法** | **手法は生存**／ **±14mm 低コスト帯という具体値はジオラマ限定**（280mm 通路から導出） |
+| F-5-4 | 通路内 Spin recovery の抑止 | **【訂正 2026-08-18】手法は生存・発火条件は再評価**（旧「ジオラマ限定」は誤分類。幾何的な発火理由〔通路内で回転不可〕は消えるが、**部屋では「人の脚の横でその場回転する」という新しい抑止理由が立つ**＝G-10） |
+| F-5-6 | R-26 safety unit の書き換え（polygon 頂点・内接比較へ） | **生存** |
+| F-6 | **2 部構成**: ①`FOOTPRINT_POLYGON` / `CIRCUMSCRIBED_RADIUS` の **additive 追加**（`ROBOT_RADIUS` は値・意味とも据え置き） ②**C-3 collision_monitor（L1）の改訂** | **①②とも生存**（①は contract PR + 依存トラック予告が従来どおり必要／**②は部屋運用の前提条件**＝現行 `radius: 0.09` は M1 内接 0.1157 未満で車体内部発火＝機能しない。詳細は G-8） |
+| F-7 W3 | ジオラマ 9 点の全点再設計（別スライス） | **中止（cancelled）**＝G-4 |
+
+### G-3. OQ の再スコープ（F-8 の 4 件）
+
+- **OQ-18（sim 車体と実寸の同時移行可否）— 【訂正 2026-08-18】降格ではなく LIVE。** 「sim 回帰の忠実度だけの問題へ降格」は誤り——`nav2_params.yaml` は env overlay を持たない**単一ソース**であり、M1 footprint 化はジオラマ map の sim 回帰も同時に変える。したがって本 OQ は「**Slice 1 が land できるか・sim ゲートが緑を保てるか**」を握る**構成問題として LIVE** である（config 二重化の詳細＝G-7）。所有トラック（sim / nav-traffic）の判断事項である点は不変。
+- **OQ-19（280mm 通路での許容 yaw 誤差と MPPI 方位追従）— ジオラマ限定・凍結。** 280mm という盤面数値から出た問い。部屋では発火しない（背後の幾何的事実は G-2 のとおり残る）。
+- **OQ-20（`base_link` の前後非対称オフセット）— そのまま LIVE。** 車体の回転中心という **robot-intrinsic** な量で、環境を変えても消えない。Phase 1 実機実測で確定（:641 のまま）。
+- **OQ-21（±14mm 低コスト帯での MPPI 追従性）— ジオラマ限定・凍結。** 280mm 通路 × inflation から導出された帯幅のため。
+
+### G-4. W3（走行目標点 9 点の再設計）は中止し、宛先を差し替える
+
+:633（F-7 W3）と [04](../shared/04-diorama-layout.md) F-L3 の W3 注記が予告した「M1 実機マップ取得後にジオラマ 9 点を再設計する別スライス」は、**ジオラマを走らないため中止**する。**`KNOWN_LOCATIONS` の 9 キー自体は凍結のまま（改名しない）**で、**値**が Phase 1 の部屋 SLAM 地図取得後に実測 waypoint へ差し替わる（[ADR-0009](../adr/0009-m1-room-scale-operation.md) Decision 5）。`tests/unit/test_known_locations_navigable.py` の内接ゲートを **footprint パラメータ化**する必要（F-6 の additive 定数を消費）は**部屋でもそのまま残る**。
+
+**⚠️ 別件・重要度が上がる残件（OQ-20 ではない）**: 座標ゴールは yaw を落としている——`nav2_bridge.py` が `orientation.w = 1.0` を固定する（`warehouse_nav2_bridge/CLAUDE.md` の「#223 残 ②」・impl は行 pin せずキーで指す＝[session-orchestration.md §8](../../.claude/rules/session-orchestration.md)）。ジオラマでは F-L3「通路端の goal は回転不要な向きで置く」で回避できていたが、**部屋では召喚の到達姿勢（人の方を向いて止まる）が絵の質に直結する**ため重要度が上がる。yaw 対応は別変更・所有トラック判断。
+
+### G-5.【訂正】:562 の「別課題として起票する」は解決済み
+
+B-13 末尾 :562 の括弧書き（`KNOWN_LOCATIONS` の shelf_*/charging_station が `map.pgm` の障害物セル内＝Nav2 到達不能・「nav-traffic/bringup 所有の別課題として起票する」）は、**[PR #528](https://github.com/lll-kkk-ryuya/miniature-warehouse-robotics/pull/528) で既に解決済み**（走行目標点への改訂＝棚前 docking 点化・[04:142-159](../shared/04-diorama-layout.md)）。**:562 の本文は行安定のため編集せず、本項を訂正の正とする**（:511 と同じ扱い）。なお #528 が確定した座標は sim（ジオラマ）側では有効なまま——本 ADR-0009 が supersede するのは**実機（部屋）側の値**であり、sim 回帰用の `map.pgm` × 9 点は不変である（G-2 の「sim はジオラマのまま」）。
+
+### G-6. 関連リンク（双方向）
+
+- **決定正本**: [ADR-0009 M1 フェーズは部屋スケールで運用する](../adr/0009-m1-room-scale-operation.md)（本追補はその知覚・Nav2 側の scope 注記）
+- [shared/04-diorama-layout.md](../shared/04-diorama-layout.md) 末尾【2026-08-18 追補】— レイアウト側の scope 限定（F-L 系列の凍結）。**本追補と双方向・行 pin なし**（同一 PR）
+- [mode-x-er/09-hand-raise-summon.md](../mode-x-er/09-hand-raise-summon.md) 末尾【2026-08-18 追補】— ジェスチャ幾何前提の部屋での再検証（カメラ仰角・安全論証）
+- [architecture/06-implementation-phases.md](06-implementation-phases.md) 末尾追記 — Phase 1 の部屋 SLAM 地図取得
+- [docs/GLOSSARY.md §11](../GLOSSARY.md) — **部屋スケール運用（room-scale operation）** の正準定義（同一 PR で追加）
+- HTML companion（[perception-localization-flow.html](perception-localization-flow.html) / [robot-architecture-tree.html](robot-architecture-tree.html)）への反映は**本 PR ではスコープ外**（ADR-0009 Open）
+
+---
+
+## 【2026-08-18 追補②】二重監査の反映（G-7〜G-10・G-2/G-3 の補訂）
+
+Status: **scope 注記・訂正のみ**（CURRENT の config / コードは本追補でも**変更しない**）。同日の【2026-08-18 追補】G 系列（:659-）に対する二重独立監査（FIX-FIRST）の指摘を反映する。**既存 §番号・行は動かさず末尾に足す**（[#165 教訓](../dev/03-retrospectives.md)）。G-2 表の F-5-4 / F-6 行と G-3 の OQ-18 は**同一行内で訂正済**（行数不変）で、その根拠が本節である。
+
+### G-7. sim / 実機の config 二重化は未決 OQ（G-3 OQ-18 の実体）
+
+**部屋でも `footprint:` 化そのものは実施する**（G-2 の F-1 / F-5-1・robot-intrinsic）。しかし「どの環境の config に入れるか」が未決である。
+
+**① `nav2_params.yaml` は env overlay を持たない単一ソース**
+- 実体は [`ws/src/warehouse_bringup/config/nav2_params.yaml`](../../ws/src/warehouse_bringup/config/nav2_params.yaml) 1 本で、`config/dev|stg|prod/warehouse.yaml`（[environments.md](../../.claude/rules/environments.md) の base + overlay）は **Nav2 params を上書きしない**（overlay に `robot_radius` / `footprint` / nav2 系キーは存在しない・2026-08-18 実査）。
+- したがって **M1 footprint 化（`robot_radius`（local [:215](../../ws/src/warehouse_bringup/config/nav2_params.yaml) / global [:257](../../ws/src/warehouse_bringup/config/nav2_params.yaml)）→ `footprint:` ＋ `consider_footprint`（[:179](../../ws/src/warehouse_bringup/config/nav2_params.yaml)）の flip** は、**実機（部屋）と sim（ジオラマ map）の両方を同時に変える**。sim はジオラマのまま維持する（G-2）以上、これは「~150mm 車体 × ジオラマ」を前提にした 2D costmap 回帰の環境を M1 実寸へ倒すことを意味する。
+- **同居方法は未決**: (a) Nav2 params に env overlay を新設する / (b) sim 専用 params ファイルを分ける / (c) sim も M1 実寸化する（sim URDF・`robot_dimensions.py` の PROVISIONAL 群まで倒す）——いずれも所有トラック（sim / nav-traffic / bringup）の判断事項。**本追補では決めない。**
+
+**② `locations` も単一ソース＝テスト oracle が committed ジオラマ map に束縛されている**
+- 9 座標の実体は [`config/warehouse.base.yaml:47-56`](../../config/warehouse.base.yaml) のみ（env overlay に `locations` は無い・同上実査）。
+- [`tests/unit/test_known_locations_navigable.py:24-29`](../../tests/unit/test_known_locations_navigable.py) は `KNOWN_LOCATIONS` × `load_config()` の base 値を **committed な `warehouse_sim/maps/map.pgm`（ジオラマ）** に対して検証する。**M1 内接 0.1157m を当てると 9 点中 6 点が不成立**（[04:197](../shared/04-diorama-layout.md) の実測 95.1〜125.1mm）。
+- つまり **実機値（部屋の実測 waypoint）と sim 値（ジオラマ）を分離する手段が未決**であり、**決め方によってこのテストのオラクル定義そのものが変わる**（何を「正しい 9 点」とするか＝どの map に対して検証するか）。値だけを差し替えると sim ゲートが赤くなる。
+
+**③ 以上より OQ-18 は「sim 回帰の忠実度」問題ではなく構成問題**（G-3 で訂正済）。**Slice 1（F-5）の着手判断に直接効く**ため、Slice 1 の最初のステップは「①②の同居方法を決める docs 改訂」である。
+
+**④ 新規 OQ として登録**:
+- **OQ-22: sim / 実機の config 二重化の方式** — `nav2_params.yaml`（footprint）と `config/warehouse.base.yaml`（`locations`）の実機値 / sim 値の分離手段を決める。`test_known_locations_navigable.py` のオラクル定義（対象 map・内接半径の出どころ）を同時に確定させること。所有＝ sim / nav-traffic / bringup の調整事項。優先度 **最高**（Slice 1 の前提）。
+
+### G-8. F-6 の後半（C-3 collision_monitor 改訂）は部屋運用の前提条件
+
+G-2 の F-6 行は当初 additive 定数（[F-6](23-perception-and-localization.md) 前半）だけを「生存」と書いていたが、**F-6 は 2 部構成**である。後半＝**C-3 collision_monitor（L1）の改訂**が抜けていた。
+
+- CURRENT の `PolygonStop` は [`collision_monitor.yaml:63-68`](../../ws/src/warehouse_bringup/config/collision_monitor.yaml) で `type: "circle"` / **`radius: 0.09`**。これは旧 ~150mm 車体の内接 0.075 + 余裕という暫定値である。
+- **M1 では内接 115.7mm（0.1157）を下回る**ため、停止ポリゴンが**車体の内部に収まる**——障害物が車体に接触してからでないと polygon 内に入らず、**L1 反射が実質機能しない**。
+- L1 の正しい振る舞いは「実車体を必ず包含する保守側の円」（＝外接 `CIRCUMSCRIBED_RADIUS` ≈0.184 + 反応余裕。[02 §3 C-3 は外接円ベースのままで妥当](../shared/02-hardware-design.md)）であり、この改訂は **L1 = 反射経路ゆえ別 PR・安全レビュー必須**（L2 の costmap 変更と混ぜない＝F-6 の当初方針どおり）。
+- **⚠️ 部屋では前提条件になる**: ジオラマでは走行面上に人がおらず L1 の主対象は壁・棚・相手機だったが、**部屋では人が走行面上に立つ**（[ADR-0009](../adr/0009-m1-room-scale-operation.md) 帰結 ⑦）。安全論証が「L1 collision_monitor が生きている」ことに依存する以上（[09 R-3](../mode-x-er/09-hand-raise-summon.md) 柱 3）、**C-3 改訂の完了は部屋運用の前提条件**である。改訂前に部屋で走らせると、多層防御の 1 枚が名目上だけ存在する状態になる。
+
+### G-9. nvblox dynamic 層「不採用」の根拠が消滅＝再評価 OQ
+
+- [:74](23-perception-and-localization.md)（§2 表）の不採用理由は「**ジオラマに人はいない**」であり、[:278](23-perception-and-localization.md)（【2026-08-09 追補】）でこれを「**走行面上に動的障害物が無い**」＝人は盤外ゆえ結論不変、と言い換えていた。
+- **部屋では人が走行面上に立つ**ため、**この根拠は成立しない**。「結論は不変」という言い換えの前提そのものが消えた。
+- **再評価すべき対立**: (i) people segmentation を入れる＝**GPU メモリの固定コストが増える**（S1 の 8GB 予算に直撃。[:210](23-perception-and-localization.md) が「本構成は people segmentation を最初から持たない」ことを S1 の前提にしている）vs (ii) static TSDF only のままだと**歩いた人が static TSDF に焼き付く**（[:278](23-perception-and-localization.md) が挙げた人物 bbox depth マスク案は、人が盤外にいる前提での「視野に入る」対策であって、**走行面上を歩き回る人**には足りるか未検証）。
+- **メモリ試算も桁が変わる**: [:212-214](23-perception-and-localization.md) の TSDF 概算（ジオラマ 1.8×0.9×0.3m ＝ voxel 0.01m で ~486k voxel ≈ 数 MB〜10MB 台）は**ジオラマ体積前提**。部屋（例 4×4×2.5m 級）では体積が 2 桁増える。「map 範囲をジオラマ実寸に制限」というダイエット案（同 :211）も宛先を失う。
+- **新規 OQ として登録**:
+  - **OQ-23: 部屋での nvblox dynamic 層の再評価とメモリ再試算** — (a) people segmentation の GPU コスト vs (b) static TSDF に人が焼き付く問題、の裁定。**併せて部屋体積での TSDF/ESDF メモリ再試算**（:212-214 のジオラマ前提の置き換え）と、ダイエット案（:211）の宛先の再定義を含む。**S1 の Go/No-Go 判定条件（残 RAM ≥ 500MB）に直接効く**。所有＝知覚（本 doc）。優先度 **高**。
+  - なお [09 OQ-12](../mode-x-er/09-hand-raise-summon.md) 等が参照する「dynamic 層不採用の結論は不変」（:278）は、**本 OQ-23 の結論が出るまで保留**として読むこと。
+
+### G-10. F-5-4（通路内 Spin recovery 抑止）の再分類
+
+G-2 表の当初分類「ジオラマ限定」は誤りで、**手法は生存・発火条件が差し替わる**（同表は訂正済・行数不変）。
+
+- **旧・発火理由（ジオラマ限定）**: 280mm 通路では対角 367mm ゆえ**その場回転が幾何学的に不可能**（F-4-1）。だから通路内で Spin / BackUp recovery を発火させてはならなかった。**この理由は部屋では消える**（一般に回転できる広さがある）。
+- **新・発火理由（部屋固有・より強い）**: **人の脚の横でその場回転する**のは、幾何的に可能でも運用上・安全上望ましくない。メカナムのその場回転は車体四隅が掃引円を描き（外接 ≈184mm）、**立っている人の足元との距離が読めないまま旋回する**ことになる。加えて recovery は「詰まった＝周囲が近い」状況でしか発火しないため、**部屋では「人が近くにいる」場面と相関しやすい**。
+- **したがって抑止の手法（behavior_server / BT で Spin・BackUp を抑える＝F-5-4）はそのまま生存**し、**どの条件で抑えるか**（通路内 → 人の近傍 / recovery 全般）を Slice 1 で再設計する。**L1 反射（collision_monitor）と混同しない**——これは recovery 挙動の設計であり、反射停止の代替ではない（[layer-annotation.md](../../.claude/rules/layer-annotation.md): 本項は **L2**（Nav2 behavior）の話）。
+
+### G-11. Issue #519（Slice 1）への申し送り
+
+**[Issue #519](https://github.com/lll-kkk-ryuya/miniature-warehouse-robotics/issues/519) の Slice 1（F-5 の params 実装）は継続**する（footprint polygon 採用は部屋でも生存＝G-2）。ただし**着手前に本 doc の G 系列（G-1〜G-12）を必読**とし、次の差分を前提にすること: **F-5-3 の具体値（inflation ≈0.125-0.126 / ±14mm 低コスト帯）は 280mm 通路由来＝ジオラマ限定で無効**（手法＝内接 0.1157 基準への再調整のみ生存）・**F-5-4（Spin recovery 抑止）は発火条件が「通路内で回転不可」から「人の脚の横で回転しない」へ差し替わる**（G-10）・**G-7 の config 二重化（OQ-22）が Slice 1 の最初のステップ**。
+
+### G-12. 本追補の関連リンク（双方向）
+
+- **決定正本**: [ADR-0009](../adr/0009-m1-room-scale-operation.md)（末尾【2026-08-18 追補②】に本節と対になる Open 追加項目）
+- 安全論証側: [mode-x-er/09](../mode-x-er/09-hand-raise-summon.md) 末尾【2026-08-18 追補②】R-7〜R-9（召喚レグの snap 免除・C-3 前提・scan 面の実論拠）
+- CURRENT 実体（impl-target は行 pin せずキーで指す＝[session-orchestration.md §8](../../.claude/rules/session-orchestration.md)）: `nav2_params.yaml` の両 costmap `robot_radius` / `FollowPath.CostCritic.consider_footprint` / `collision_monitor.yaml` の `PolygonStop.radius` / `config/warehouse.base.yaml` の `locations` / `tests/unit/test_known_locations_navigable.py` の内接ゲート
+
+### G-13. G-2 表の補完: F-5-5（対象 distro = Humble 整合）
+
+G-2 の二分表は F-5-1/2・F-5-3・F-5-4・F-5-6 を挙げたが、**F-5-5（対象 distro = [ADR-0008](../adr/0008-ros2-distro-humble-for-rosmaster-m1.md) Humble 整合。MPPI CostCritic 構成は Jazzy→Humble で書き換え不要＝F-1 の裏取り済）を落としていた**。**F-5-5 は環境非依存＝生存**する——distro の選択は車体（ROSMASTER M1 の閉ソース driver）と Isaac ROS 側の制約から出ており、走行環境がジオラマか部屋かに一切依存しない。したがって Slice 1 は**部屋でもそのまま Humble 前提で実装**してよい（G-11 の申し送りに含む）。

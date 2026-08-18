@@ -166,6 +166,7 @@ hard-to-reverse な設計判断とその理由を `NNNN-slug.md` で記録する
 | ファイル | 内容 |
 |---------|------|
 | [adr/README](adr/README.md) | ADR 一覧・命名・いつ起こすか（3条件）・retrospectives との違い |
+| [0009-m1-room-scale-operation](adr/0009-m1-room-scale-operation.md) | M1 単騎フェーズは**実際の部屋（room scale）**を走り、ミニチュアジオラマは走行に使わず**凍結保存**（sim 回帰環境としては現状維持）。倉庫設定を薄め**ジェスチャ召喚を主役**に。PR #530 の非円形 footprint は re-scope して生存・ジオラマ通路数値は歴史記録へ・W3（9 点再設計）は中止し `KNOWN_LOCATIONS` は**キー凍結／値のみ**部屋 waypoint へ |
 | [0007-no-overhead-camera-gesture-via-onboard-nn](adr/0007-no-overhead-camera-gesture-via-onboard-nn.md) | ER/知覚入力に**俯瞰カメラを使わない**。搭載 HP60C + ローカル骨格 NN（MediaPipe 第1候補）でジェスチャ2種を決定論認識し既存 L3/L2 ゲートへ。homography 系は fail-closed で降格保存 |
 | [0006-single-bot-first](adr/0006-single-bot-first.md) | 今回のフェーズはロボット**1台（単騎構成）**で実装。2台系の設計 doc・実装資産は削除せず凍結保存し、交通管理・交渉・min-separation の実機実証は2台復帰フェーズへ繰延 |
 | [0008-ros2-distro-humble-for-rosmaster-m1](adr/0008-ros2-distro-humble-for-rosmaster-m1.md) | ROS 2 distro を Jazzy→**Humble** へ切替（Orin Nano の Isaac ROS は 3.x=Humble のみ・ROSMASTER M1 の Yahboom 資産が Humble 固定）。代償は Gazebo 公式ペア喪失 |

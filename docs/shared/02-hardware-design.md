@@ -517,3 +517,12 @@ Status: **決定の docs 反映のみ**（実装なし。CURRENT の `robot_dime
 
 - 本追補と C-1 / C-2 行の書き換えは **docs のみ**。`FOOTPRINT_POLYGON` の追加は `warehouse_description` に触れるため、C 表直後の注記どおり **`contract` ラベル PR ＋ 依存トラック予告**が要る（`.claude/rules/parallel-workflow.md` §4）。
 - Slice 1 の実装範囲・順序・検証（footprint polygon 反映 → `consider_footprint` flip → 通路 280mm を通過できることの sim 確認）は [Issue #519](https://github.com/lll-kkk-ryuya/miniature-warehouse-robotics/issues/519) と [23 末尾 F 系列](../architecture/23-perception-and-localization.md)を正とする。
+
+---
+
+## 【2026-08-18 追記】部屋スケール運用とハードウェアの関係（ADR-0009）
+
+M1 単騎フェーズは**実際の部屋（room scale）**を走り、ジオラマは走行に使わない（[ADR-0009](../adr/0009-m1-room-scale-operation.md)）。**車体側の数値は環境に依らず不変**——M1 実寸 231.40 × 284.40mm（:302）・外接 ≈184mm・内接 115.7mm・LiDAR 上面 147.50mm はすべて robot-intrinsic である。したがって §「ROSMASTER M1 採用検討時の残課題」の C 系列と【2026-08-17 追補】（C-1 / C-2 の非円形 footprint 化）は**そのまま有効**。ただし 2 点が変わる:
+
+- **C-3（collision_monitor）は「対象外の隣接スライス」から「部屋運用の前提条件」へ格上げ**。現行 `radius: 0.09` は M1 内接 0.1157 未満で**車体内部発火＝L1 が機能しない**。部屋では人が走行面上に立つため、**改訂完了が部屋で走らせる前提**となる（別 PR・安全レビュー必須＝[23 G-8](../architecture/23-perception-and-localization.md) / [mode-x-er/09 R-8-2](../mode-x-er/09-hand-raise-summon.md)）。上の §3「C-3 は外接円ベースのままで妥当」という判断自体は不変（保守側の外接円でよい）で、変わるのは**優先度と前提条件性**である。
+- **HP60C のカメラ仰角**: 部屋では操作者が床に立つため肩を見上げる仰角がおよそ倍になり、**水平固定では肩が画角に入らない公算**（[mode-x-er/09 R-2①](../mode-x-er/09-hand-raise-summon.md)）。固定の上向き取付角は static TF のままで契約を破らないため候補に残る。取付角の確定は S2 実測と同一セッション（ADR-0009 Open）。
