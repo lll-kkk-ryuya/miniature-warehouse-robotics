@@ -14,7 +14,7 @@ Status: **設計提案（未凍結）**。`warehouse_interfaces` は Phase 1 で
 | P2 | `bot1/camera_link`（＋光学 frame）TF | **camera_link は contract PR で landed**（`robot_dimensions.py:41` の `FROZEN_LINK_NAMES`。名前のみ・URDF は実測待ち）。**光学 frame 名は未凍結**＝OQ-4。[23 §4](../architecture/23-perception-and-localization.md) |
 | P3 | HP60C の FOV / 解像度 / fps / min range / depth-color alignment | **未裏取り**（公称 73.8°/0.2-4m のみ。[23 §7 S2](../architecture/23-perception-and-localization.md)） |
 | P4 | 単騎構成 bot1 のみ | 確定（ADR-0006） |
-| P5 | `config/warehouse.base.yaml:39-48` の 9 location 座標 | **暫定値**・ジオラマ再設計待ち（[04](../shared/04-diorama-layout.md)） |
+| P5 | `config/warehouse.base.yaml:47-56` の 9 location 座標 | **暫定値**・ジオラマ再設計待ち（[04](../shared/04-diorama-layout.md)） |
 
 **発明しないもの**: `/goal_pose` 直注入・standoff distance 独立パラメータ・新 location キー（Phase 1）・safety 閾値の緩和・角速度上限の新設。
 
@@ -41,8 +41,8 @@ Status: **設計提案（未凍結）**。`warehouse_interfaces` は Phase 1 で
 - **画角**: M1 車体上面 74.58mm にカメラ ≈ 板面上 0.09-0.13m。人（盤外・板面上の肩高 ≈0.6-0.75m）は**距離 1.2-1.5m なら肩・肘・手首が入るが 0.6m では切れる**（概算・S2 実測で確定）。近すぎ＝無検出（fail-closed）で安全側。立ち位置は床マーキングの運用規律で拘束する。
 - **G-1**: 「肩より上」判定に**頭は要らない**（参考実装の「頭より上」と違い、頭が画角外でも成立）。ユーザー指定の肩基準は画角制約と整合しており、明示的に維持する。
 - **チルト競合**: nvblox は下向き寄り・ジェスチャは水平〜上向き寄りを望む。**Phase 1 は水平固定**（nvblox は S1/S2 未通過の TARGET であり今は最適化の根拠が無い。パン/チルト雲台は `camera_link` が動的 TF になり [23 §5-2](../architecture/23-perception-and-localization.md) の static 契約を破るため不採用。2台目カメラは S1 結果次第で defer）。
-- **sentry pose（監視姿勢）**: 搭載カメラは egocentric なので、idle 時は既定 known location に停まり**操作者側長辺を向いて待つ**（Phase 1）。巡回中の常時検出は Phase 2。その場スキャン回転は不採用（動体ブラー・絵が悪い・角速度上限の発明が要る）。sentry の条件: 9 キー内・操作者側への視線・**召喚到達先になりにくいこと**（同一だと `duplicate_destination` reject で「呼んだのに動かない」）。暫定座標では `shelf_2`(0.7,0.3) が第一候補（ジオラマ再設計後に再選定）。
-- **Phase 1 の絵**: 召喚の近端到達先は暫定座標で `shipping_station`(0.2,0.1) / `charging_station`(1.2,0.1) の 2 点＝「**左に立てば左へ、右に立てば右へ**」が契約変更ゼロで成立。指差しは 9 点全部が対象。
+- **sentry pose（監視姿勢）**: 搭載カメラは egocentric なので、idle 時は既定 known location に停まり**操作者側長辺を向いて待つ**（Phase 1）。巡回中の常時検出は Phase 2。その場スキャン回転は不採用（動体ブラー・絵が悪い・角速度上限の発明が要る）。sentry の条件: 9 キー内・操作者側への視線・**召喚到達先になりにくいこと**（同一だと `duplicate_destination` reject で「呼んだのに動かない」）。暫定座標では `shelf_2`(0.7,0.57・棚前 docking 点＝doc04 §走行目標点) が第一候補（ジオラマ再設計後に再選定）。
+- **Phase 1 の絵**: 召喚の近端到達先は暫定座標で `shipping_station`(0.45, 0.12) / `charging_station`(1.5, 0.12) の 2 点（2026-08-17 改訂＝doc04 §走行目標点）＝「**左に立てば左へ、右に立てば右へ**」が契約変更ゼロで成立。指差しは 9 点全部が対象。
 
 ## 4. 層配置 — ER をバイパスする決定論ローカル経路
 

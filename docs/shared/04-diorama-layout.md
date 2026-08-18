@@ -139,6 +139,25 @@ M1（231.4 × 284.4mm）を前提に上の式を当てると、通路幅は現�
 - [ ] 1:10スケールの棚STLをテスト印刷し、サイズ感を確認
 - [ ] レイアウト図をFigma or Excalidrawで清書する
 
+## 走行目標点（LOCATIONS 座標の意味・2026-08-17 追補）
+
+**`locations` の全キー（doc08 §場所名→座標変換テーブル / `config/warehouse.base.yaml`）は Nav2 走行目標点であり、shipped sim map の free 空間に置く。** 2026-08-17 の sim gate で、旧暫定座標のうち 7/9 点が走行目標として不成立（Nav2 ABORTED: `NO_VALID_PATH` / `FAILED_TO_MAKE_PROGRESS`）であることを実走＋オフライン再現（map.pgm × 座標の cell cost 照合）で確認した:
+
+| 不成立クラス | 対象（旧座標） | 原因 |
+|---|---|---|
+| 障害物内 | shelf_1/2/3 (y=0.3) | 座標が**棚 box の中心**を兼ねていた（`warehouse_sim.layout` が同じ座標に棚を配置）＝goal が占有 cell |
+| inscribed 圏（<robot_radius 0.075m） | shipping/charging_station (y=0.1) | 棚列南面（y=0.15）〜南壁（y=0.01）の南帯が **140mm ＜ robot 径 150mm** で、棚直下の帯は物理的に進入不能 |
+| inscribed 圏 | retreat_A/B (y=0.85) | 北壁面（y=0.89）から 40mm ＜ robot 半径 75mm |
+
+**対処（暫定座標の改訂・棚 box 幾何は不変）**:
+- **shelf_N は「棚前 docking 点」**（棚 box 北面＋standoff 0.12m ＝ `warehouse_sim.layout.SHELF_STANDOFF`）とし、棚 box は docking 点から南側へ導出配置する（`centre_y = loc_y − 0.12 − 0.15`）。旧棚 box 位置（中心 y=0.30）は保存され **map.pgm はバイト同一**。goal を障害物中心に置く構造（改訂前）は定義として矛盾していた。
+- shipping_station は通路A南口 (0.45, 0.12)、charging_station は棚3東側オープン領域 (1.5, 0.12) へ移設（南帯 140mm 問題の回避）。retreat_A/B は y=0.78（北壁 inscribed 圏外）。
+- 検証は `tests/unit/test_known_locations_navigable.py`（committed map × config 座標の照合。占有 cell・inscribed 圏の goal・到達不能 pocket を CI で拒否）。
+- **berth_A/B (0.2/0.7, 0.8) は不変で成立**: 最近接占有 cell まで 0.095m ＞ `inflation_radius` 0.085（`ws/src/warehouse_bringup/config/nav2_params.yaml:245`）＝9点中最小マージンだが走行目標として可（#125 live デモも北側ステージング y≈0.8 を使用済）。`deploy/dev/README.md` 旧記載「berth goal は plan 不能」は本検証で supersede。
+- **既知の重なり（演出上の留意）**: `shipping_station` (0.45, 0.12) は #156 head_on preset の南側 staging（y=0.135・`warehouse_sim/scenarios.py`）と 0.015m 差＝`xy_goal_tolerance` 0.10 圏内で実質同一地点。head_on goal は名前無し座標のため契約衝突は無い。変更したくなったら preset か本座標のどちらかを nudge する。
+
+**注意**: これは doc23 §8 OQ-3（M1 外接円半径 184mm vs 通路 280mm）の顕在化**ではない**。上記は現行 sim パラメータ（`robot_radius 0.075`・150mm 想定車体）でも成立しない座標の問題。OQ-3（M1 実寸での footprint/通路再設計）は別途 C-1（[02-hardware-design.md](02-hardware-design.md)）で扱い、その際に本節の座標も実寸で再設定する。南帯 140mm（棚列が南壁に近すぎる）は M1 再レイアウト時に解消すべき既知の歪みとして残る（暫定座標のままでは通路C 200mm の設計値も満たしていない）。
+
 ---
 
 ## References

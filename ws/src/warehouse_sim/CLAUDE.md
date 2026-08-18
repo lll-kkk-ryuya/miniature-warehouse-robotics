@@ -23,6 +23,7 @@
 - `scenarios.py`（pure）: `head_on_spawn_poses(cfg)`（principals を aisle-A 中心線 retreat_A x に対向配置）・`head_on_goals(cfg)`（**DATA のみ**＝L1/L4 が Nav2 で駆動する goal列。sim は goal topic を publish しない＝契約発明なし, kickoff §3）・`aisle_a_channel(cfg)`/`segment_intersects_channel`。座標は (b) config/doc 例示（Phase 2 暫定、layout から導出）。goal列は **import 契約ではない**（cross-track import 禁止 parallel-workflow §2.1）＝documented coords が hand-off 面
 - 録画 RViz cfg: `rviz/record.rviz`（Fixed Frame=`map`〔full-stack capstone の map_server+AMCL 前提〕・占有 Map・両 RobotModel・両 scan・TF・Orbit 俯瞰）。`setup.py` で `share/warehouse_sim/rviz/` に install
 - `layout.py`: `WORLD_X=1.8`/`WORLD_Y=0.9` + 棚/通路/バース寸法 + `bottleneck_walls()`（通路A/B を `AISLE_BOTTLENECK_WIDTH=0.2` に絞る単一ソース。map・SDF 両系が消費＝drift なし）（単一定数、Phase 5 Isaac 参照）
+- `layout.SHELF_STANDOFF=0.12`（2026-08-17 sim gate 修正）: config `locations.shelf_N` は**棚前 docking 点**（Nav2 走行目標）であり棚 box 中心ではない。棚 box は `centre_y = loc_y − SHELF_STANDOFF − SHELF_SIZE[1]/2` で南側へ導出配置（doc04 §走行目標点）。全 KNOWN_LOCATIONS × committed map の goal 可否は `tests/unit/test_known_locations_navigable.py` が固定
 - `world_generator.build_world_sdf()` / `bridge.bridge_pairs()` / `map_generator.build_map()`（純関数・テスト可能）
 - スパイク成果物 `spike/`（環境スパイク GO の再現コード・証跡）
 

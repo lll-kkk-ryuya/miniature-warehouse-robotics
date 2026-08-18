@@ -99,12 +99,12 @@ controller_server:
       plugin: "nav2_controller::SimpleGoalChecker"
       # #125/#67: a goal near inflation (inflation_radius 0.10) made NavfnPlanner (tolerance
       # 0.05) fail to plan to the exact goal, and the controller never declared arrival.
-      # Coordinate xy_goal_tolerance with planner GridBased.tolerance + inflation_radius (all
-      # 0.10) so a goal at the inflated aisle edge is both reachable AND accepted as reached.
+      # Coordinate xy_goal_tolerance with planner GridBased.tolerance (0.10) + inflation_radius
+      # (0.085 since R-42, below) so a goal at the inflated aisle edge is reachable AND accepted.
       # NOTE: this loosens arrival for ALL goals to 0.10 m (not only aisle-edge ones). Safe
-      # here: the closest named-location pair is 0.20 m apart (warehouse.base.yaml shelf_1/
-      # shipping_station and shelf_3/charging_station), so the 0.10 m acceptance disks are at
-      # most tangent — no goal can satisfy two named locations.
+      # here: the closest named-location pairs are 0.23 m apart (warehouse.base.yaml berth_A/
+      # shelf_1 and berth_B/shelf_2; pinned by tests/unit/test_known_locations_navigable.py),
+      # so the 0.10 m acceptance disks stay disjoint — no goal satisfies two named locations.
       # TODO(Phase 2 実測): retune in the 2-bot Gazebo E2E once #124 lands the true 200mm aisle.
       xy_goal_tolerance: 0.10
       yaw_goal_tolerance: 0.10

@@ -43,17 +43,17 @@ cycle:
   mode_c_seconds: 5   # Mode C (open-rmf): コスト最小 → 待機 ~3s（doc08:128）
 
 # 倉庫レイアウト上の地点キー。キーは 08-llm-bridge-common.md の LOCATIONS と完全一致させる
-# （Policy Gate の known_locations 検証用）。座標は暫定値（Phase 2 地図確定後に実測で確定）。
+# （Policy Gate の known_locations 検証用）。座標は暫定値（Phase 2 地図確定後に実測で確定）。全キーは Nav2 走行目標点＝shipped map の free 空間に置く（tests/unit/test_known_locations_navigable.py が固定）。
 locations:
-  shelf_1: {x: 0.2, y: 0.3}
-  shelf_2: {x: 0.7, y: 0.3}
-  shelf_3: {x: 1.2, y: 0.3}
+  shelf_1: {x: 0.2, y: 0.57}   # 棚前 docking 点（棚 box 北面+0.12m。box 位置は layout.SHELF_STANDOFF で導出＝棚中心を goal にしない）
+  shelf_2: {x: 0.7, y: 0.57}   # 同上
+  shelf_3: {x: 1.2, y: 0.57}   # 同上
   berth_A: {x: 0.2, y: 0.8}
   berth_B: {x: 0.7, y: 0.8}
-  shipping_station: {x: 0.2, y: 0.1}
-  charging_station: {x: 1.2, y: 0.1}   # 2台共有・先着順
-  retreat_A: {x: 0.45, y: 0.85}        # 通路A yield 退避先（doc08 LOCATIONS と一致）
-  retreat_B: {x: 0.95, y: 0.85}        # 通路B yield 退避先
+  shipping_station: {x: 0.45, y: 0.12}   # 通路A南口（棚南帯 140mm は robot 径 150mm 未満＝棚直下は走行目標にできない）
+  charging_station: {x: 1.5, y: 0.12}    # 2台共有・先着順。棚3の東側オープン領域（同上の理由で棚直下から移設）
+  retreat_A: {x: 0.45, y: 0.78}        # 通路A yield 退避先（doc08 LOCATIONS と一致。北壁 inscribed 圏外）
+  retreat_B: {x: 0.95, y: 0.78}        # 通路B yield 退避先
 
 # Hermes Gateway 接続先（環境別に上書き必須）
 hermes:
