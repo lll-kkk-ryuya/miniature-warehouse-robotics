@@ -10,8 +10,8 @@ Safety boundary (doc09:276-291): every plugin here only REJECTS or ANNOTATES can
 exists precisely to show the policy clamp refusing a self-granted ``emergency_stop``.
 
 Geometry note (deterministic under live nondeterminism): the injected calibration homography
-(tests/unit/x_er_fixtures.py:93-98) maps the whole pixel domain [0,1000]^2 into roughly
-[-0.34, 0.94] x [0.09, 0.76] map metres. ``ZONE_EVERYWHERE`` strictly contains that footprint
+(tests/unit/x_er_fixtures.py:107-112) maps the whole 1700x1000 pixel frame into roughly
+[-0.34, 1.84] x [-0.31, 0.97] map metres. ``ZONE_EVERYWHERE`` strictly contains that footprint
 (any model-chosen pixel is in-zone); ``ZONE_NOWHERE`` is disjoint from it (any model output
 with a navigate task deterministically violates) — so the B-in / B-out verdicts do not depend
 on what the live model happens to see.

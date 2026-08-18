@@ -403,4 +403,4 @@ live persona は Slice 3（Hermes persona・human-gated・Phase 3、≈ #288）�
 - キャラLLM: [doc14:40-46](14-character-llm-negotiation.md)（実況）, :239-247（abort）, :255（Phase 4 Mode C 交渉）
 - 環境 / テスト / デプロイ: [doc19:5,56](19-environments-and-config.md)（コード1本・env は config）, :76（.env）, :94（git tag deploy）, :129（G1 残RAM≥500MB）, [doc20](20-dev-quality-and-testing.md), [doc16:84](16-repository-and-conventions.md)（命名）, :205（topic catalog 所有）, :188-200（branch 表）, [jetson-deploy](../setup/jetson-deploy.md)（5-unit systemd）
 - WO画面 / 撮影 / #187: [doc03:213-227](03-software-architecture.md)（WO画面=control）, [doc06:267-269](06-implementation-phases.md)（WO Bridge Phase4）, [doc05](../shared/05-video-storyboard.md)（撮影）, [doc07:243](../shared/07-research-notes.md)（#187 R-38 段階2 未通過）
-- config: `config/warehouse.base.yaml:29-31`（cycle）, :36-44（locations）, :71（nav2_bridge :8645）
+- config: `config/warehouse.base.yaml:41-43`（cycle）, :47-56（locations）, :92-93（nav2_bridge :8645）

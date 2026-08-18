@@ -30,12 +30,13 @@ from warehouse_rmf_adapter.nav2_router import (
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _BASE_YAML = _REPO_ROOT / "config" / "warehouse.base.yaml"
 
-# A self-contained coord map (mirrors config/warehouse.base.yaml:47-56 — provisional).
+# A self-contained coord map (a strict subset of config/warehouse.base.yaml:47-56 —
+# provisional coords; test_fixture_coords_mirror_base_config below keeps the mirror honest).
 _LOCATIONS = {
-    "shelf_2": {"x": 0.7, "y": 0.3},
+    "shelf_2": {"x": 0.7, "y": 0.57},
     "berth_A": {"x": 0.2, "y": 0.8},
-    "charging_station": {"x": 1.2, "y": 0.1},
-    "retreat_A": {"x": 0.45, "y": 0.85},
+    "charging_station": {"x": 1.5, "y": 0.12},
+    "retreat_A": {"x": 0.45, "y": 0.78},
 }
 
 
@@ -66,7 +67,7 @@ def test_resolve_known_location_to_goal() -> None:
         action_name="/bot1/navigate_to_pose",
         frame_id=MAP_FRAME,
         x=0.7,
-        y=0.3,
+        y=0.57,
         yaw=None,
     )
     assert goal.frame_id == "map"  # single shared map frame (robot_dimensions.py:7)
@@ -78,7 +79,7 @@ def test_resolve_yaw_is_none_offline() -> None:
     # offline goal has yaw=None. An undocumented yaw key is NOT read (no unfrozen key).
     resolver = LocationResolver(_LOCATIONS)
     assert resolver.resolve("bot2", "shelf_2").yaw is None
-    resolver_with_yaw = LocationResolver({"shelf_2": {"x": 0.7, "y": 0.3, "yaw": 1.57}})
+    resolver_with_yaw = LocationResolver({"shelf_2": {"x": 0.7, "y": 0.57, "yaw": 1.57}})
     assert resolver_with_yaw.resolve("bot1", "shelf_2").yaw is None
 
 
@@ -120,6 +121,22 @@ def test_every_frozen_location_has_coords_in_base_config() -> None:
     for name in KNOWN_LOCATIONS:
         goal = resolver.resolve("bot1", name)
         assert isinstance(goal.x, float) and isinstance(goal.y, float)
+
+
+@pytest.mark.unit
+def test_fixture_coords_mirror_base_config() -> None:
+    """``_LOCATIONS`` claims to mirror the config — hold it to that claim.
+
+    Without this, a coordinate move (2026-08-17 docking points) leaves the fixture asserting
+    goals the running system would never produce, while the suite stays green.
+    """
+    locations = yaml.safe_load(_BASE_YAML.read_text())["locations"]
+    drifted = {
+        name: (coords, locations.get(name))
+        for name, coords in _LOCATIONS.items()
+        if locations.get(name) != coords
+    }
+    assert not drifted, f"fixture coords no longer mirror base config: {drifted}"
 
 
 @pytest.mark.unit

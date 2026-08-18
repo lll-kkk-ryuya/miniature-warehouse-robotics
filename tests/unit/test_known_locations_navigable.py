@@ -93,7 +93,15 @@ def test_every_known_location_clears_the_inscribed_radius(shipped_map, locations
     # sitting exactly on the boundary cannot flap with rasterisation. NOTE: this floor
     # (0.075 + 0.01 = 0.085) currently COINCIDES with inflation_radius 0.085
     # (nav2_params.yaml:245,291) but is derived from the footprint, not that param —
-    # if inflation_radius is retuned upward, revisit this gate (berths clear by 0.010 m).
+    # if inflation_radius is retuned upward, revisit this gate.
+    #
+    # Honest margin (berth_A/B are the tightest pair, and they are TIGHT): this test measures
+    # from the location POINT to the nearest occupied cell CENTRE = 0.0951 m, i.e. 0.0101 m of
+    # slack. Nav2 does not evaluate the point — it evaluates the CELL containing the goal, and
+    # that cell's centre is 0.0900 m from the nearest occupied cell centre = only **0.0050 m**
+    # (half a cell) above inflation_radius. Everything else clears by >= 0.019 m. So a berth
+    # move of ~5 mm toward the north wall, a finer/coarser map resolution, or any inflation
+    # retune can push the berths into the inscribed band; treat them as the canary.
     occ, res, (ox, oy) = shipped_map
     centers = [((c + 0.5) * res + ox, (r + 0.5) * res + oy) for c, r in occ]
     min_clearance = ROBOT_RADIUS + res

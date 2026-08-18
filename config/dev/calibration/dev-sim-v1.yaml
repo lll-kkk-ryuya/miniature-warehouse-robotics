@@ -2,9 +2,12 @@
 # Shape: the 5 frozen fields of docs/mode-x-er/02-l3-planning-core.md:149 (verbatim in
 # docs/mode-x-er/08-x-er-bridge-node-spec.md §3 / 06-unfrozen-contract-resolutions.md:105).
 # Identity: file stem == camera_id == mode_x_er.calibration_id (doc08 §3 — one identifier).
-# Values: the VERIFIED red/blue fixture geometry (tests/unit/test_visual_resolver.py:106 /
-# tests/unit/test_l3_pipeline.py:159-169): red_box pixel (420,310) -> map (0.2,0.57) -> shelf_1,
-# blue_box pixel (810,280) -> map (0.7,0.5608) -> shelf_2 (docking points, doc04 §走行目標点). Pinned against the fixture builder by
+# Values: ONE square-pixel top-down camera (1.282 mm/px on both axes; image row grows downward
+# = map -y) fitted to the VERIFIED red/blue fixture pixels (tests/unit/test_visual_resolver.py:106
+# / tests/unit/test_l3_pipeline.py:159-169): red_box pixel (420,310) -> map (0.2,0.57) -> shelf_1,
+# blue_box pixel (810,280) -> map (0.7,0.6085) -> shelf_2 (docking points, doc04 §走行目標点),
+# berth_A/B (0.2/0.7, 0.8) <- pixel (420/810, 131). Derivation + anchor proof:
+# tests/unit/x_er_fixtures.py (_A/_C/_E/_F). Pinned against the fixture builder by
 # tests/unit/x_er_fixtures.py::test_checked_in_dev_calibration_artifact_matches_fixture_geometry.
 camera_id: dev-sim-v1
 map_frame: map
@@ -13,8 +16,8 @@ homography:
     - 0.0
     - -0.3384615384615384
   - - 0.0
-    - 0.0003066666666666668
-    - 0.47493333333333326
+    - -0.001282051282051282
+    - 0.9674358974358974
   - - 0.0
     - 0.0
     - 1.0

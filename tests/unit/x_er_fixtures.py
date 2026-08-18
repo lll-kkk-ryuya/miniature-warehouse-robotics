@@ -17,9 +17,9 @@ Contents (each mirrors a landed canonical usage — grounded, not invented):
 - :func:`dev_calibration_yaml` — the 5-field calibration artifact content (``camera_id /
   map_frame / homography(3x3) / reprojection_error / valid_polygon`` = doc02:149 / doc06:105 /
   doc08 §3), with the red/blue pixels lifted verbatim from
-  ``tests/unit/test_l3_pipeline.py:159-169`` and y-anchors re-derived for the docking-point
-  coordinates (doc04 §走行目標点): red_box pixel (420,310) -> (0.2,0.57) -> shelf_1; blue_box
-  pixel (810,280) -> (0.7,0.5608) -> shelf_2.
+  ``tests/unit/test_l3_pipeline.py:159-169`` and the homography re-derived as a SQUARE-PIXEL
+  top-down camera for the docking-point coordinates (doc04 §走行目標点): red_box pixel
+  (420,310) -> (0.2,0.57) -> shelf_1; blue_box pixel (810,280) -> (0.7,0.6085) -> shelf_2.
 - :func:`build_x_er_cfg` / :func:`write_x_er_cfg_tree` — the warehouse cfg dict with the frozen
   ``mode_x_er:`` block (doc08 §3) + the ``locations`` block copied from
   ``config/warehouse.base.yaml:47-56`` (self-checked against the real file below).
@@ -87,16 +87,27 @@ X_ER_PLUGIN_REASON_CODE = "target_out_of_zone"  # doc09:204 declared emit
 X_ER_CUSTOMER = "customer_a"
 X_ER_SITE = "site_01"
 
-# ── verified red/blue geometry (pixels VERBATIM from tests/unit/test_l3_pipeline.py:159-169) ─
-# y-anchors re-derived for the 2026-08-17 docking-point coordinates (doc04 §走行目標点):
-# red_box pixel (420,310) -> map (0.2, 0.57) == shelf_1 docking point (exact); blue_box pixel
-# (810,280) -> (0.7, 0.5608) -> within snap radius of shelf_2 (0.7, 0.57); the choreography-v2
-# berth markers (py=1060) must keep mapping to berth_A/B y=0.8 (unchanged), which pins _E/_F.
+# ── red/blue geometry (pixels VERBATIM from tests/unit/test_l3_pipeline.py:159-169) ─────────
+# Re-derived 2026-08-18 as ONE consistent synthetic top-down camera for the docking-point
+# coordinates (doc04 §走行目標点), instead of fitting each axis to a separate pair of anchors:
+#   * SQUARE PIXELS — the same ground sampling distance on both axes, _A = 0.5 m / 390 px =
+#     1.282 mm/px (pinned by red px 420 -> x 0.2 and blue px 810 -> x 0.7). A camera looking
+#     straight down has no per-axis scale; the previous two-anchor y fit made the y axis 4.18x
+#     finer than x (non-physical) and shrank the imageable band to 0.31 m of map height.
+#   * IMAGE-ROW-DOWN = MAP -y (``_E = -_A``) — the standard image convention on a right-handed
+#     floor frame: row 0 is the north (berth) edge, rows grow south.
+# Anchors that fall out of it (all verified in test_geometry_red_blue_snap_via_dev_calibration
+# and tests/unit/test_xer6_overhead_geometry.py):
+#   red_box  (420, 310)  -> (0.2, 0.57)     == shelf_1 docking point (exact)
+#   blue_box (810, 280)  -> (0.7, 0.6085)   -> 0.0385 m from shelf_2 (0.7, 0.57) => snaps
+#   berth_A  (0.2, 0.8)  <- pixel (420, 131), berth_B (0.7, 0.8) <- (810, 131): the integer
+#     preimages the choreography-v2 kit ships; the 0.6 px rounding costs 0.51 mm (<< snap
+#     0.25 m) and now lands INSIDE the rendered frame (the old py=1060 was off-image).
 
 _A = 0.5 / 390.0
 _C = 0.2 - 420 * _A
-_E = (0.80 - 0.57) / (1060 - 310)  # berth marker py=1060 -> 0.80; red py=310 -> shelf_1 0.57
-_F = 0.57 - 310 * _E
+_E = -_A  # square pixels, y flipped (image row grows downward = map y decreases)
+_F = 0.57 + 310 * _A  # red py=310 -> shelf_1 docking y 0.57
 HOMOGRAPHY: list[list[float]] = [[_A, 0.0, _C], [0.0, _E, _F], [0.0, 0.0, 1.0]]
 VALID_POLYGON: list[list[float]] = [[-0.5, -0.5], [2.0, -0.5], [2.0, 1.5], [-0.5, 1.5]]
 REPROJECTION_ERROR = 1.0
