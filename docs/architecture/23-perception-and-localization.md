@@ -773,3 +773,12 @@ G-2 表の当初分類「ジオラマ限定」は誤りで、**手法は生存�
 ### G-13. G-2 表の補完: F-5-5（対象 distro = Humble 整合）
 
 G-2 の二分表は F-5-1/2・F-5-3・F-5-4・F-5-6 を挙げたが、**F-5-5（対象 distro = [ADR-0008](../adr/0008-ros2-distro-humble-for-rosmaster-m1.md) Humble 整合。MPPI CostCritic 構成は Jazzy→Humble で書き換え不要＝F-1 の裏取り済）を落としていた**。**F-5-5 は環境非依存＝生存**する——distro の選択は車体（ROSMASTER M1 の閉ソース driver）と Isaac ROS 側の制約から出ており、走行環境がジオラマか部屋かに一切依存しない。したがって Slice 1 は**部屋でもそのまま Humble 前提で実装**してよい（G-11 の申し送りに含む）。
+
+### G-14. 部屋スケール安全レビュー（分析）への back-link
+
+G-8（C-3 = 部屋運用の前提条件）・G-10（Spin recovery の発火条件差し替え）・G-7（config 二重化 OQ-22）は、[ADR-0009 帰結 ⑦](../adr/0009-m1-room-scale-operation.md) が要求した安全レビューの入力である。その**分析レビューの実体**は [mode-x-er/10-room-scale-safety-review.md](../mode-x-er/10-room-scale-safety-review.md)（本 doc とは双方向・同一ラウンド）。本 doc に関係する結論のみ要約する:
+
+- **G-8（C-3）**: 改訂の要求仕様（包含条件 `radius ≥ CIRCUMSCRIBED_RADIUS + margin`・`margin = v_max × t_react` の導出式・R-26 受け入れ条件）を同 doc §5 が確定。**ただし `CIRCUMSCRIBED_RADIUS` は `robot_dimensions.py` に未存在**（2026-08-18 実査）＝**F-6① の additive contract PR が C-3 改訂の前提**という順序制約を同 §5-2 が新たに指摘した。`t_react` は docs に存在せず **PHASE-1-GATE**（測定手順は同 §7-2 の M-1〜M-5）。
+- **G-10（Spin/BackUp 抑止）**: recovery は現行配線で **collision_monitor を bypass** する（[12:559](12-infrastructure-common.md) の Open ⑥ 確定）ため、**C-3 を改訂してもこの窓は塞がらない**。抑止条件の差し替え（G-10）は安全上も要る、と同 doc §3 柱3 が結論（判定 = OPERATOR-GATE）。
+- **G-7（OQ-22）**: config 二重化は Slice 1 の前提であるだけでなく、**安全側 critical path の起点**でもある（同 doc §11 の依存グラフ `G-j → G-a → G-f → G-b`）。
+- **OQ-15（スキャン平面の実高さ）**: 立位の人に対する L1 有効性（[09 R-9](../mode-x-er/09-hand-raise-summon.md)）の前提として、同 doc §7-2 M-1 が測定手順を定義した（本 doc の OQ-15 と同一セッションで確定させる）。

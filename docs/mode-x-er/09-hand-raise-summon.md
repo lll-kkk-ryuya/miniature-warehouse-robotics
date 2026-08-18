@@ -324,3 +324,13 @@ R-8 は論証を弱める方向の訂正だが、**部屋のほうが有利な�
 - **決定正本**: [../adr/0009-m1-room-scale-operation.md](../adr/0009-m1-room-scale-operation.md) 末尾【2026-08-18 追補②】（Open の追加項目）
 - 知覚・Nav2 側: [../architecture/23-perception-and-localization.md](../architecture/23-perception-and-localization.md) 末尾【2026-08-18 追補②】**G-7〜G-12**（config 二重化 OQ-22 / C-3 前提 G-8 / dynamic 層再評価 OQ-23 / Spin recovery 再分類 G-10）
 - 安全ルール: [.claude/rules/safety.md](../../.claude/rules/safety.md)（R-26 独立オラクル）/ [.claude/rules/layer-annotation.md](../../.claude/rules/layer-annotation.md)（本節の対象 layer: R-7 = **L3** 候補生成規則・R-8-2 = **L1** 反射・R-8-3 = **L2→Nav2 Bridge** seam）
+
+---
+
+## 【2026-08-18 追補③】部屋スケール安全レビュー（分析）へのポインタ
+
+R-3 / R-7 / R-8 / R-9 が「安全レビューに掛ける」と宣言した**分析レビューの実体**は、新設 doc **[10-room-scale-safety-review.md](10-room-scale-safety-review.md)** が正本である（本節はポインタのみ・既存本文と R 系列の行は動かさない＝[#165 教訓](../dev/03-retrospectives.md)）。
+
+- 8 項目のハザード分析（ハザード × layer × 現行緩和 × 残余リスク × 判定）と、**部屋運用開始の前提条件チェックリスト**を同 doc §2 / §11 に置く。
+- **本 doc に対する主な追加分析**: ① R-7 の 3 案のうち **(i) snap 半径単独は召喚レグでは逆効果**（人の足元に近い waypoint を選んだときだけ dispatch を許すため）＝同 doc §4-2。② R-8-2 の C-3 改訂は **`CIRCUMSCRIBED_RADIUS` が `robot_dimensions.py` に未存在**のため additive contract PR が先行必要＝同 §5-2。③ R-3 柱 3 には C-3 とは別に **recovery が L1 を bypass する窓**がある（[12:559-560](../architecture/12-infrastructure-common.md)）＝同 §3 柱3。④ R-9 の「立位の人は `/scan` に写る」はスキャン平面高さの不確かさに対し**頑健＝支持**＝同 §7-1。
+- **本追補は運転許可ではない**。[ADR-0009 §Open :82](../adr/0009-m1-room-scale-operation.md) の `# TODO(安全レビュー)` を閉じるのはオペレーターの裁定であり、分析 doc はその入力である。
