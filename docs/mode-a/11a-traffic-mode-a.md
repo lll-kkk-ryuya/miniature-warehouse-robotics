@@ -475,3 +475,9 @@ Phase 3前半: TrafficManager + LLM Bridge + Claude統合
 
 - [Open-RMF — GitHub](https://github.com/open-rmf/rmf) — 参照日: 2026-05-22
 - [Programming Multiple Robots with ROS 2](https://osrf.github.io/ros2multirobotbook/) — 参照日: 2026-05-22
+
+---
+
+## 【2026-08-17 追補】§9.4 不変宣言の読み替え（OQ-3 決定・M1 非円形 footprint）
+
+§9.4 の「本機構は速度・footprint・inflation を変えない」「`inscribed_radius = ROBOT_RADIUS`（=0.075 R-42）は不変」は、**Traffic 機構自身が変えない**という主張としては引き続き正しいが、**footprint / inflation / 内接の値そのもの**は [architecture/23-perception-and-localization.md](../architecture/23-perception-and-localization.md) 末尾【2026-08-17 追補】**F 系列**（OQ-3 = M1 非円形 footprint 移行・[Issue #519](https://github.com/lll-kkk-ryuya/miniature-warehouse-robotics/issues/519)）が上書きする——M1 では costmap は `footprint:` polygon（内接 0.1157）となり、`ROBOT_RADIUS`(=0.075) は旧車体値として据え置かれる（`0.15m = 2*ROBOT_RADIUS` margin 等の traffic 系 consumer の M1 移行は 2 台復帰フェーズで個別に行う＝F-6）。速度上限 0.3 m/s は不変のまま。

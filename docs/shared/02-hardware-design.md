@@ -354,8 +354,8 @@ RPLiDAR A2（+10,000円）: 精度・回転速度が向上。予備費からの�
 
 | # | 書き換え対象 | 現在値（実ファイル） | M1 採用時 | layer |
 |---|---|---|---|---|
-| C-1 | `ROBOT_RADIUS` | `ws/src/warehouse_description/warehouse_description/robot_dimensions.py:66` = `0.075`（75mm） | 外接円半径 **≈184mm**（対角 367mm ÷ 2）へ改訂 | L2 |
-| C-2 | costmap `robot_radius` ×2 | `ws/src/warehouse_bringup/config/nav2_params.yaml:215` / `:257` = `0.075` | C-1 と同値へ同期（単一ソース維持・R-42） | L2 |
+| C-1 | `ROBOT_RADIUS` | `ws/src/warehouse_description/warehouse_description/robot_dimensions.py:66` = `0.075`（75mm） | **【2026-08-17 改訂】非円形へ移行（additive）**: `FOOTPRINT_POLYGON`（矩形 **231.4 × 284.4mm**）と `CIRCUMSCRIBED_RADIUS`（外接円 **≈184mm**＝対角 367mm ÷ 2）を**新定数として追加**。`ROBOT_RADIUS`(=0.075) は**値も意味も変えず**旧車体値のまま据え置く（内接前提の live consumer があるため意味の読み替え禁止＝23 末尾 F-6）。保守的用途（C-3 等）は `CIRCUMSCRIBED_RADIUS` を消費。**円形 184mm への単純改訂は不可**（直径 368mm > 通路 280mm で通路が全面 lethal）＝OQ-3 決定（→ 本 doc 末尾【2026-08-17 追補】/ [23 末尾 F 系列](../architecture/23-perception-and-localization.md)） | L2 |
+| C-2 | costmap `robot_radius` ×2 | `ws/src/warehouse_bringup/config/nav2_params.yaml:215` / `:257` = `0.075` | **【2026-08-17 改訂】**: `robot_radius` に C-1 同値を入れるのではなく **`footprint:` polygon へ移行**（C-1 の矩形・単一ソース維持 R-42）。MPPI `consider_footprint: true`（`nav2_params.yaml:179`）と**同一 PR で同時 flip**（片方だけだと controller_server が configure 失敗＝#67 E2E ゲート教訓 `:171-178`）（→ 本 doc 末尾【2026-08-17 追補】/ [23 末尾 F 系列](../architecture/23-perception-and-localization.md)） | L2 |
 | C-3 | collision_monitor PolygonStop | `ws/src/warehouse_bringup/config/collision_monitor.yaml:68` `radius: 0.09` | 車体外接 + 余裕へ改訂 | L1 |
 | C-4 | 速度クランプの**置き場所** | `firmware/include/safety_clamp.h:45`（ESP32 ファーム内） | **ホスト側シリアルドライバの送信直前（L0'）へ移設**（残課題 7） | L0' |
 
@@ -484,3 +484,36 @@ NVIDIA は Carrier Board Specification に**取付穴の位置を公開してい
 ## 【2026-08-09 追記】俯瞰カメラの用途切り分け（ADR-0007）
 
 §E 撮影機材の俯瞰カメラ（Logicool C922n）は**動画撮影専用**であり、**ER/知覚の画像入力には使わない**（[ADR-0007](../adr/0007-no-overhead-camera-gesture-via-onboard-nn.md)。ER/ジェスチャ入力は搭載 HP60C に一本化）。撮影用 C922n 自体の要否・「撮影用カメラを ER 入力に流用しない」運用の明文化は ADR-0007 Open。ジェスチャ認識の設計正本は [mode-x-er/09](../mode-x-er/09-hand-raise-summon.md)、HP60C の S2 スパイクゲートは [architecture/23 §7](../architecture/23-perception-and-localization.md)。
+
+---
+
+## 【2026-08-17 追補】OQ-3 決定に伴う C-1 / C-2 の改訂（非円形 footprint への移行）
+
+Status: **決定の docs 反映のみ**（実装なし。CURRENT の `robot_dimensions.py` / `nav2_params.yaml` / `collision_monitor.yaml` は本追補では変更しない＝実装は Slice 1 の別 PR）。決定正本は [23-perception-and-localization.md](../architecture/23-perception-and-localization.md) 末尾【2026-08-17 追補】**F 系列**、起票は [Issue #519](https://github.com/lll-kkk-ryuya/miniature-warehouse-robotics/issues/519)。本節は §「決定（2026-08-05）: 車体寸法・既存コードは車種選定の制約にしない」の **C-1 / C-2 行**（同 §「必須」表）を改訂した理由と旧文言の履歴を残すためのもの。
+
+### 1. 旧処方が自己矛盾だった理由
+
+- 旧 C-1 / C-2 は「`ROBOT_RADIUS` を外接円 **≈184mm** へ改訂 → costmap `robot_radius`（`nav2_params.yaml:215` / `:257`）を同値へ同期」だった。
+- しかしこれは **円形 footprint = 直径 368mm**（184 × 2）を意味し、[`04-diorama-layout.md:128`](04-diorama-layout.md)（通路幅表「すれ違い不可（渋滞誘発用）」= **≈280mm**）を **88mm 上回る**。inflation を語る以前に通路が全面 lethal になり、Nav2 は経路を生成できない（同 [`:130`](04-diorama-layout.md) の交差点 **≈367mm 角**も、円形前提では余裕がゼロになる）。
+- 実車体は **231.40 × 284.40mm の矩形**（本 doc `:302` 車体寸法・公式 Product parameters 図）で、**幅 231.4mm は通路 280mm に収まる**。矛盾の出所は寸法そのものではなく、**非円形の車体を円で近似したこと**にある。→ OQ-3（[23 §8 項目 3](../architecture/23-perception-and-localization.md)）。
+
+### 2. C-1 / C-2 の新旧対比（旧文言をここに履歴として保存）
+
+| 行 | 旧文言（2026-08-05） | 新（2026-08-17・本改訂） |
+|---|---|---|
+| C-1 | 「外接円半径 **≈184mm**（対角 367mm ÷ 2）へ改訂」 | `FOOTPRINT_POLYGON`（矩形 231.4 × 284.4mm）と `CIRCUMSCRIBED_RADIUS`（外接円 ≈184mm）を**新定数として additive 追加**。`ROBOT_RADIUS`（`robot_dimensions.py:66` = `0.075`）は**値も意味も変えず**旧車体値のまま据え置き（保守的用途 C-3 等は `CIRCUMSCRIBED_RADIUS` を消費） |
+| C-2 | 「C-1 と同値へ同期（単一ソース維持・R-42）」 | `robot_radius` へ同値を入れるのではなく **`footprint:` polygon へ移行**し、MPPI `consider_footprint: true` と**同一 PR で同時 flip** |
+
+- **同時 flip が必須な理由**: [`nav2_params.yaml:171-178`](../../ws/src/warehouse_bringup/config/nav2_params.yaml) のコメントが #67 E2E ゲートの実測教訓を記録している — `consider_footprint: true` は costmap が footprint polygon を publish していることを要求し、`robot_radius` のままだと `controller_server` の configure が失敗して lifecycle bringup ごと落ちる。逆に polygon だけ入れて [`:179`](../../ws/src/warehouse_bringup/config/nav2_params.yaml) `consider_footprint: false` を残すと、MPPI CostCritic は外接円相当の判定を続けるため矩形にした意味が出ない。**片側だけの変更はどちらの向きでも壊れる。**
+- **`ROBOT_RADIUS` を消さず・意味も変えない理由**: `ROBOT_RADIUS = 0.075` は旧 ~150mm 車体の**内接半径**であり、live consumer（`warehouse_traffic/virtual_scan_logic.py`・`traffic_manager.py` の `0.15m = 2*ROBOT_RADIUS` margin・`warehouse_sim/scenarios.py`・unit tests の `== 0.075` pin）が**内接前提**で読んでいる。名称を据え置いたまま「外接円 184mm」へ意味だけ倒すと、1 行も編集せずこれら全てを壊す（silent semantic break）。また 0.075 は M1 の内接 0.1157 すら下回り、そもそも外接円になり得ない。よって外接円は別名 `CIRCUMSCRIBED_RADIUS` の**新定数**とし、既存 consumer の M1 値への移行は 2 台復帰フェーズで**消費箇所ごとに明示的に**行う。単一ソース原則（R-42）は「同じ値を全箇所へ配る」ではなく「**用途ごとの定数を 1 箇所で定義する**」として維持する（polygon = `FOOTPRINT_POLYGON`、外接円 = `CIRCUMSCRIBED_RADIUS`、旧内接 = `ROBOT_RADIUS`）。
+
+### 3. C-3（collision_monitor）は外接円ベースのままで妥当
+
+- [`collision_monitor.yaml:64`](../../ws/src/warehouse_bringup/config/collision_monitor.yaml) `type: "circle"` / [`:68`](../../ws/src/warehouse_bringup/config/collision_monitor.yaml) `radius: 0.09`（現行は旧車体前提の暫定値）。ここは **L1 = 最後の物理的安全網**であり、「実車体を必ず包含する保守側の円」であることが正しい振る舞い（判断に迷う状況では止まる側へ倒れる）。
+- L2 の costmap（C-1 / C-2）は「**通れる経路を作る**」ために正確な形状を要するのに対し、L1 は「**当たりそうなら止める**」ための過剰包含でよい。両者が同じ数字を共有する必然はない（layer で要求が違う＝`.claude/rules/layer-annotation.md`）。
+- したがって C-3 は本改訂の対象外で、C-3 行の記述どおり「車体外接 + 余裕へ改訂」（実値は実機で再調整）のまま残る。
+
+### 4. 実装は Slice 1（別 PR・CURRENT 未変更）
+
+- 本追補と C-1 / C-2 行の書き換えは **docs のみ**。`FOOTPRINT_POLYGON` の追加は `warehouse_description` に触れるため、C 表直後の注記どおり **`contract` ラベル PR ＋ 依存トラック予告**が要る（`.claude/rules/parallel-workflow.md` §4）。
+- Slice 1 の実装範囲・順序・検証（footprint polygon 反映 → `consider_footprint` flip → 通路 280mm を通過できることの sim 確認）は [Issue #519](https://github.com/lll-kkk-ryuya/miniature-warehouse-robotics/issues/519) と [23 末尾 F 系列](../architecture/23-perception-and-localization.md)を正とする。

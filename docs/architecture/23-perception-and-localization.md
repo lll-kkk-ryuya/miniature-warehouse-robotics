@@ -241,11 +241,11 @@ T0 土台（camera_link contract PR・plugins 未登録記述・回帰ゼロ）�
 
 1. **cuVSLAM の入力要件（最重要・要外部裏取り）**: ステレオ（左右 rectified + camera_info）必須か、RGB-D 単眼で成立するか。**リポジトリ内一次情報ゼロ**。HP60C が左右 IR 画像を publish できるかも未確認（`ascamera` の実トピックは実機で `ros2 topic list` が最速）。満たせない場合の代替は RGB-D SLAM 系（RTAB-Map 等・例示に留め採否は決めない）。
 2. **nvblox と Open-RMF（Mode C）の 8GB 食い合い**: R-38 の段階1（Mac Docker 6GB）は Open-RMF 実体も GPU も未搭載。両方は載らない可能性があり、その場合「Mode C を諦めるか nvblox を諦めるか」は**主方針に関わるユーザー判断**。S1 測定順に Open-RMF を含める。
-3. **M1 外接円半径 184mm vs 通路 280mm（nvblox 以前の既存矛盾・優先度高）**: 円形 footprint（直径 368mm）では通路に入れない。非円形 footprint polygon への移行（`consider_footprint` 再有効化・`nav2_params.yaml:171-179` の #67 教訓に注意）が事実上必須で、**nvblox 統合より先**。担当トラックの確定が要る。
+3. **M1 外接円半径 184mm vs 通路 280mm（nvblox 以前の既存矛盾・優先度高）**: 円形 footprint（直径 368mm）では通路に入れない。非円形 footprint polygon への移行（`consider_footprint` 再有効化・`nav2_params.yaml:171-179` の #67 教訓に注意）が事実上必須で、**nvblox 統合より先**。担当トラックの確定が要る。 → **解決済み（2026-08-17）: (c) ハイブリッド採用**（非円形 footprint polygon を主機構とし、レイアウト側制約を明文化）・担当 = nav-traffic（[Issue #519](https://github.com/lll-kkk-ryuya/miniature-warehouse-robotics/issues/519)）。決定と Slice 1 実装計画は本 doc 末尾【2026-08-17 追補】**F 系列**が正。**上記本文は履歴として残す**。
 4. **Yahboom 工場イメージの ekf 設定の実体**: [ADR-0008](../adr/0008-ros2-distro-humble-for-rosmaster-m1.md) の一行のみが根拠。`robot_localization` の ekf.yaml か独自実装か、実機到着後に確認するまで「流用できる」を前提にしない。
 5. **ZUPT の実装場所と所有トラック**: 静止判定→0速度 Odometry 注入ノードの新設（robot_localization 標準機能に無い想定・要確認）。
 6. **pose_stale 時の nvblox integration 停止**: TSDF 汚染（§3）への対策として Guardian→nvblox の信号が要るか。Guardian を policy 層に留める方針（#126）との整合は所有トラック判断。
-7. **`camera_link` contract PR の切り方**（**解決済**: camera_link の**名前のみ**を単独先行で land し、C-1（ROBOT_RADIUS 改訂・OQ-3 依存）は分離した。URDF body/joint と光学 frame 名は実測・OQ-4 待ちで据え置き）。
+7. **`camera_link` contract PR の切り方**（**解決済**: camera_link の**名前のみ**を単独先行で land し、C-1（ROBOT_RADIUS 改訂・OQ-3 依存）は分離した。URDF body/joint と光学 frame 名は実測・OQ-4 待ちで据え置き）。 → **依存元の OQ-3 も解決済み（2026-08-17・末尾 F 系列）**。C-1 の最終形は **F-6**（`ROBOT_RADIUS` は値・意味とも据え置き、`FOOTPRINT_POLYGON` / `CIRCUMSCRIBED_RADIUS` を additive 追加）＝「ROBOT_RADIUS を 184mm へ改訂」という前提自体が撤回された。
 8. **nvblox costmap plugin の `NO_INFORMATION` 書き込み挙動**（overwrite か max か・要外部裏取り）。overwrite なら Global 追加（T4）は不可＝T3 止めが現実解。
 9. **車載 LiDAR 型番の既存ドリフト**: M1 は T-mini Plus（[02 §確認済み表](../shared/02-hardware-design.md)）だが doc03/doc09/`nav2_params.yaml:55`（`laser_max_range: 12.0 # MS200`）は MS200 のまま。AMCL のスキャンパラメータは LiDAR 依存＝V 系試験の前に反映が要る。
 10. **EKF 周波数と STM32 auto-report 25Hz の整合**（EKF `frequency` は 25Hz 近傍に合わせるのが妥当か、実測で決める）。
@@ -560,3 +560,96 @@ PR #525（速度項除去）後の Gazebo sim 再実行で **A-10 の受け入�
 - **OQ-17: ゲートの距離は経路長・AMCL の `update_min_d` は直線距離** — 振動・微動の累積で「経路長 99.3mm / 直線 2.3mm / Δyaw 0.014rad」が実測され、AMCL が理論上 republish できない量でゲートが開き得る（除去済み速度項と同クラス・ただし遥かに軽微: 直線離脱では 50mm 直線で AMCL が先に発火する）。加えて累積器は pose 到着でのみリセットされるため駐機を跨いで primed される（実測: 34.4mm 持ち込み）。解の候補: 累積を直線変位 max に変更 or 閾値の余裕拡大（tighten 側でない変更は A-5 restrict-only 裁定要）。
 
 （gate と独立の発見: `KNOWN_LOCATIONS` の shelf_*/charging_station が `map.pgm` の障害物セル内＝Nav2 到達不能。nav-traffic/bringup 所有の別課題として起票する）
+---
+
+## 【2026-08-17 追補】OQ-3 解消: 非円形 footprint 移行の決定（F 系列）
+
+Status: **決定の記録 ＋ Slice 1 実装計画**（実装なし。CURRENT の `nav2_params.yaml` / `collision_monitor.yaml` / `robot_dimensions.py` は本追補では**変更しない**）。数値・polygon 座標・config キーはすべて **TARGET 例示であり凍結契約ではない**（凍結側は `warehouse_description` の実体が正＝[docs-first.md](../../.claude/rules/docs-first.md)）。§8 項目 3（OQ-3）・項目 7 の「→ 末尾 F 系列」参照の実体が本節。
+
+> **系列記号の注記**: 本追補は **F 系列**（F-1, F-2 …）を使う。**C 系列は欠番**——[shared/02:355-372](../shared/02-hardware-design.md) の M1 採用時作業項目 C-1〜C-8 と衝突するため（C-1/C-2/C-3 は本追補が参照する既存記号として温存する）。A 系列＝【2026-08-10 追補】、B 系列＝【2026-08-17 追補】MOLA-LO。
+
+### F-1. 決定（2026-08-17・Issue #519）: (c) ハイブリッド採用
+
+OQ-3（[:244](23-perception-and-localization.md) M1 外接円 184mm vs 通路 280mm）に対し、**(c) ハイブリッド = 「(a) 非円形 footprint への移行を主機構」＋「レイアウト側制約の明文化」** を採用する。担当 = **nav-traffic**（[Issue #519](https://github.com/lll-kkk-ryuya/miniature-warehouse-robotics/issues/519)）。
+
+- **主機構 (a)**: 両 costmap の `robot_radius: 0.075`（[nav2_params.yaml:215](../../ws/src/warehouse_bringup/config/nav2_params.yaml)（local）/ [:257](../../ws/src/warehouse_bringup/config/nav2_params.yaml)（global））を **矩形 `footprint:`（M1 実寸 231.4 × 284.4mm）** へ置換し、MPPI `CostCritic.consider_footprint` を **`true` へ戻す**（現行 `false`＝[:179](../../ws/src/warehouse_bringup/config/nav2_params.yaml)）。**余裕（margin）は footprint に盛らない**——実寸 polygon を置き、余裕は inflation_layer と collision_monitor 側で持つ（余裕を二重計上すると通路 24.3mm/側 が消える）。
+- **⚠️ #67 教訓（最重要・同一 PR 制約）**: `footprint:` と `consider_footprint: true` は **必ず同一 PR で同時に flip** する。片方だけだと costmap が footprint polygon を publish せず、`controller_server` が configure に失敗（"Considering footprint ... but no robot footprint provided"）して **lifecycle bringup ごと abort** する（[nav2_params.yaml:171-179](../../ws/src/warehouse_bringup/config/nav2_params.yaml) の既存コメント＝#67 E2E ゲートでの実観測。同コメント末尾の `# TODO(Phase 2)` が指示する手順そのもの）。
+- **distro 整合（裏取り済・参照日 2026-08-17）**: MPPI は Humble へ backport 済（[navigation2 PR #3439](https://github.com/ros-planning/navigation2/pull/3439)・Humble バイナリ 1.1.19/1.1.20）で、navigation2 `humble` ブランチ README は ObstaclesCritic / CostCritic **両方に `consider_footprint`（default false）** を記載する。したがって [ADR-0008](../adr/0008-ros2-distro-humble-for-rosmaster-m1.md)（Jazzy→Humble pin）後も本決定はそのまま成立する。
+
+### F-2. 幾何（数値の出所・すべて既存 doc から）
+
+| 量 | 値 | 出所 |
+|---|---|---|
+| M1 全幅 × 全長 | **231.40 × 284.40mm** | [shared/02](../shared/02-hardware-design.md)（実寸正本）/ [shared/04:115](../shared/04-diorama-layout.md) |
+| 外接円半径（対角 ÷ 2） | ≈**184mm**（対角 ≈367mm） | [shared/02:357](../shared/02-hardware-design.md)（C-1）/ [shared/04:130](../shared/04-diorama-layout.md) |
+| **内接半径**（幅 ÷ 2） | **115.7mm** | 231.4 ÷ 2（本追補で導出） |
+| すれ違い不可通路（渋滞誘発用） | ≈**280mm** | [shared/04:128](../shared/04-diorama-layout.md)（車体幅 231.4 + 余裕 50） |
+| 直進クリアランス | (280 − 231.4)/2 ≈ **24.3mm/側** | 本追補で導出 |
+
+**24.3mm/側 は実証済み水準**: CURRENT は Ø150 車体を 200mm 通路で走らせ **25mm/側** で 2 台 live 走行に成功している（#125・[nav2_params.yaml:239-246](../../ws/src/warehouse_bringup/config/nav2_params.yaml) の inflation コメント）。**M1 での 24.3mm/側 は横方向クリアランスとしては既に通した難度と同じ**——これが (a) を主機構にできる根拠である。塞がるのは**直進**ではなく**その場回転**（対角 367mm > 280mm）。
+**⚠️ ただし等価なのは横方向のみ（円形に無かった新制約 = 方位余裕）**: 円形車体はどの yaw でも掃引幅が不変だが、矩形の有効掃引幅は `231.4·cosθ + 284.4·sinθ` で増える——yaw 誤差 1° で有効幅 ≈236mm（クリアランス 21.8mm/側）、2° で ≈241mm（19.4mm/側）、**~10° で 280mm に達しクリアランス 0**。`consider_footprint: true` 下では yaw の逸れた軌道が即 lethal になり、#125 で観測した「経路を commit できず停止」の再現リスクがある。許容 yaw 誤差と MPPI の方位追従は **OQ-19**（F-8）で sim 実測する。
+
+### F-3. (b)（通路を ≥420mm へ拡幅するだけ）を採らない理由
+
+- **盤面が持たない**: 280mm 時点で「棚3列 + 縦通路2本 + 横断通路1本 + バース2 + 出荷/充電ステーション」が 1800×900mm に収まるか **未計算のまま**（[shared/04:132](../shared/04-diorama-layout.md) の `# TODO(発注前〜Phase 1)`）。拡幅は未解決の収まり問題を悪化させる。
+- **実幅 231mm の車体を 368mm 幅として扱う浪費**: 円形近似のまま拡幅すると、通路も交差点も外接円基準で設計することになり盤面面積を二重に食う。
+- **公正な記録（(b) でも保てたもの）**: 420mm でも **2 台すれ違いには足りない**（すれ違い可 ≈510mm＝[shared/04:129](../shared/04-diorama-layout.md)）。つまり「すれ違い不可通路で渋滞を誘発する」という**デモの意味論は (b) でも成立していた**。(b) を退けたのは意味論の破綻ではなく**盤面収まりと設計の無駄**が理由である。
+- **(a) 側の工数が小さい**: 主機構 (a) は既存 config の書き換え（`footprint:` ＋ `consider_footprint` ＋ inflation 再調整＝F-5）で閉じ、横方向クリアランス 24.3mm/側 は #125 で**同難度を live 実証済み**（F-2）。盤面の物理再設計を伴う (b) とは工数の桁が違う。
+- **⚠️ 誤読防止（(b) 却下 ≠ 一切拡幅しない）**: ここで退けたのは「**通路を一律 ≥420mm へ拡幅するだけで済ませる**」という (b) 単独案である。**交差点／転回ポケットに限った部分的な拡幅（≥ ~420mm 角）は採用する**——対角 367mm > 280mm で通路内回転が不可能である以上、回転を許す場所は別途要るためである（本追補 F-4-2 / [shared/04](../shared/04-diorama-layout.md) F-L2）。**この「(a) 主機構 ＋ 部分拡幅」の組み合わせが (c) ハイブリッドの中身**であり、F-3 と F-L2 は矛盾しない。
+
+### F-4. レイアウト側制約（正本は shared/04・本 doc は forward link のみ）
+
+(c) の「レイアウト側」半分。**数値の正本は [shared/04](../shared/04-diorama-layout.md) 末尾 §【2026-08-17 追補】OQ-3 決定に伴う通路制約（(c) ハイブリッド・レイアウト側）の F-L1〜F-L5**（同一ラウンドで land・行 pin なし）。**以下は読解用の要約**であり、値の改訂は shared/04 側の PR で行う（本節と shared/04 が食い違えば shared/04 が正）。
+
+1. **280mm 通路 = 直進専用**。対角 367mm > 280mm ゆえ **その場回転（in-place rotation）は幾何学的に不可能**。
+2. **交差点 / 転回ポケットは ≥ ~420mm 角**。[shared/04:130](../shared/04-diorama-layout.md) の「≈367mm 角」は対角円がちょうど収まる値＝**余裕ゼロ**なので、実運用には上乗せが要る（≈420mm 角は本追補の TARGET 例示・shared/04 側で確定させる）。
+3. **通路端の goal は「回転不要な向き」で置く**。通路内で最終姿勢合わせの回転が必要な goal を置かない（KNOWN_LOCATIONS の向き設計の制約）。
+
+### F-5. Slice 1 実装計画（params・TARGET 例示）
+
+1. **両 costmap の `footprint:` 化** — [nav2_params.yaml:215](../../ws/src/warehouse_bringup/config/nav2_params.yaml) / [:257](../../ws/src/warehouse_bringup/config/nav2_params.yaml) の `robot_radius: 0.075` を、`base_link` 中心の矩形へ:
+   ```yaml
+   footprint: "[[0.1422, 0.1157], [0.1422, -0.1157], [-0.1422, -0.1157], [-0.1422, 0.1157]]"
+   ```
+   （半値は 284.4/2 = **0.1422**・231.4/2 = **0.1157** をそのまま使う。**丸めるなら常に外側（切り上げ）**——切り捨ては実車体を包含しない under-cover を作る。）
+   **`# TODO(Phase 1 実測)`: 上記は「車体中心 = base_link 原点」の前後対称仮定**。M1 の実際の回転中心オフセットは実機で実測し、非対称なら前後の値を分けて確定する。
+2. **MPPI `CostCritic.consider_footprint: true`** — [:179](../../ws/src/warehouse_bringup/config/nav2_params.yaml) を反転。**1. と同一 PR**（F-1 の #67 教訓）。コメントも同時更新: `consider_footprint` の「円形前提」説明（:171-179）に加え、**ファイル冒頭の「FOOTPRINT/INFLATION: robot_radius = 0.075 m — single source」ヘッダ（:27-29）と両 costmap の `= ROBOT_RADIUS (R-42)` 行内コメント（:215 / :257）も footprint 化で虚偽になる**ため、全て現行構成の説明へ書き換える。
+3. **inflation_layer 再調整** — 内接半径が 0.075 → **0.1157** に上がるため、CURRENT の `inflation_radius: 0.085`（[:245](../../ws/src/warehouse_bringup/config/nav2_params.yaml)）は内接未満になり無意味化する。#125 で確立したパターン（**inflation_radius = 内接 + 約 0.010**・steep `cost_scaling_factor: 10.0`＝[:239-246](../../ws/src/warehouse_bringup/config/nav2_params.yaml)）を踏襲すると **≈0.125–0.126**。280mm 通路では中心が壁から 0.140m なので中心付近に **±14mm の低コスト帯**が残る（#125 の 200mm 通路 / 0.085 では ±15mm＝**同水準**）。`cost_scaling_factor` は帯幅がこれだけ薄いため live で再調整する。
+4. **Spin recovery の通路内抑止** — 通路内でその場回転が不可能（F-4-1）である以上、behavior_server / BT の Spin・BackUp 系 recovery を通路内で発火させない設計が要る（**Phase 2 例示**。BT xml か behavior 設定かは Slice 1 で決める）。
+5. **対象 distro** — [ADR-0008](../adr/0008-ros2-distro-humble-for-rosmaster-m1.md)（Humble）整合。F-1 の裏取りにより **CostCritic 構成はそのまま持ち越し可**（Jazzy→Humble で書き換え不要）。
+6. **R-26 safety unit の更新（同一 PR・レビュー対象）** — `tests/unit/test_nav2_params_safety.py` は両 costmap の `robot_radius == ROBOT_RADIUS` を固定しており（:113-118）、`robot_radius` キー消滅で **KeyError で必ず赤**になる。また `inflation_radius >= ROBOT_RADIUS` ガード（:124-129）は footprint 化後は**内接半径（0.1157）との比較**でなければ検出力を失う。両テストを「polygon 頂点 == `FOOTPRINT_POLYGON`」「`inflation_radius >= 内接半径`」の不変へ書き換える。**安全 unit の書き換えは R-26（独立オラクル・mutation で赤）そのものがレビュー対象**（[.claude/rules/safety.md](../../.claude/rules/safety.md) / [doc20 §9](20-dev-quality-and-testing.md)）。
+
+### F-6. 隣接 Slice（本追補では言及のみ・所有トラック判断）
+
+- **collision_monitor C-3（L1）** — `PolygonStop` は現在 `type: "circle"` / `radius: 0.09`（[collision_monitor.yaml:63-68](../../ws/src/warehouse_bringup/config/collision_monitor.yaml)）。M1 では内接 0.1157 を下回り**車体内部で発火しない**ため要改訂（[shared/02:359](../shared/02-hardware-design.md) C-3）。**L1 は反射経路＝別 PR・安全レビュー必須**（L2 の costmap 変更と混ぜない）。
+- **`warehouse_description` 定数（contract PR・additive）** — `ROBOT_RADIUS = 0.075`（[robot_dimensions.py:66](../../ws/src/warehouse_description/warehouse_description/robot_dimensions.py)）は**値も意味も変えない**（旧 ~150mm 車体の内接半径・PROVISIONAL のまま据え置き）。**名称を据え置いたまま「外接円」へ意味だけ読み替えることはしない**——0.075 は M1 の内接 0.1157 すら下回り外接円になり得ないし、live consumer が**内接前提**で読んでいる（`warehouse_traffic/virtual_scan_logic.py`（相手機の仮想障害物化）・`traffic_manager.py`（`0.15m = 2*ROBOT_RADIUS` no-collision margin）・`warehouse_sim/scenarios.py`・unit tests の `== 0.075` pin）ため、意味の差し替えは**1 行も編集せず 5 箇所を壊す** silent semantic break になる。代わりに **`FOOTPRINT_POLYGON`（矩形実寸）と `CIRCUMSCRIBED_RADIUS`（外接円 ≈0.184）を additive に追加**し、C-3（collision_monitor）等の保守的用途は `CIRCUMSCRIBED_RADIUS` を消費する。既存 consumer の M1 値への移行は**2台復帰フェーズで消費箇所ごとに明示的に**行う（一括りの意味変更をしない）。旧 C-1 の「外接円半径 ≈184mm へ改訂」（2026-08-05 版・履歴は [shared/02](../shared/02-hardware-design.md) 末尾追補 §2 の対比表）は、本追補の (c) 採用により **単純な値差し替えではなく additive 化**に読み替える。**contract ラベル + 依存トラック予告が必要**（[parallel-workflow.md §4](../../.claude/rules/parallel-workflow.md)）。
+
+### F-7. 検証観点
+
+- **sim 回帰が本命の場**: 本件は **2D costmap 側の変更**であり、nvblox（[§7 S3:232-234](23-perception-and-localization.md)＝「sim は CURRENT 2D costmap の回帰を守る場・nvblox は Jetson + rosbag の場」）とは**場が分かれている**。すなわち OQ-3 の検証は **Mac/Gazebo の sim で回帰確認できる**（GPU 不要）。
+- 最低限の受け入れ: ① lifecycle bringup が abort しない（#67 の failure mode が再発しない）② costmap が footprint polygon を publish している ③ 280mm 相当通路の直進 goal が plan され走破する ④ 交差点でのみ回転が起きる ⑤ **F-5-6 で更新した safety unit** を含む 2D costmap 系テストが緑（更新前の `robot_radius` pin テストは F-5-6 の通り必ず赤になる＝「既存テストが緑のまま」ではない）。
+- **③ が落ちた場合の縮退（Slice 1 を止めないための逃げ道・いずれも docs 改訂を先行させる）**: 通路を 300mm 級へ微増（F-3 の (b) を部分適用）／ inflation の非対称化／ 通路区間のみ判定を緩める——のいずれかを **OQ-19/OQ-21**（方位余裕・横位置追従）の実測結果とともに shared/04 側で再裁定する。
+- **⚠️ 残る不整合（Slice 1 の着手判断に必要）**: sim の URDF / ジオラマは依然 **~150mm 車体前提**（`robot_dimensions.py` の PROVISIONAL 群・[shared/04:112](../shared/04-diorama-layout.md) の暫定通路幅）。params だけを M1 実寸へ倒すと **sim の車体と costmap footprint が食い違う**。Slice 1 では「sim 側も M1 実寸へ同時に倒す」か「sim は現行値のまま params を config 差分で切替える」かを**先に決める**こと（本追補では決めない）。
+- **⚠️ W3: 走行目標点 9 点も M1 では全点再設計（別スライス）** — PR #528 が確定した `locations` 9 点は **円形 `robot_radius` 0.075m 基準**の検証であり、M1 実寸では **9 点すべてが外接 184mm 未満（実測クリアランス 95.1〜125.1mm）＝その場回転不可**、うち **6 点は内接 115.7mm 未満＝goal として不成立**。M1 実機マップ取得後に F-4 / F-L1〜F-L3 の制約下で再設計し、`tests/unit/test_known_locations_navigable.py` の内接ゲートを **footprint パラメータ化**（F-6 の additive 定数を消費）する。実測値と詳細は **[shared/04](../shared/04-diorama-layout.md) 末尾 F-L3 の W3 注記が正本**（双方向）。
+
+### F-8. 新規 OQ（本追補由来）
+
+> **採番の注記（2026-08-17）**: 本追補の起草時点では OQ-16 / OQ-17 が空き番だったが、**同日 land した B-13（本 doc 直前節・PR #527）が OQ-16（odom ギャップ）/ OQ-17（経路長 vs 直線距離）を先に確定**させたため、本節は **OQ-18 以降**を使う（重複採番の回避）。以下は昇順。
+
+- **OQ-18: sim 車体と実寸の同時移行可否** — F-7 の残る不整合。所有トラック（sim / nav-traffic）の調整事項。
+- **OQ-19: 280mm 通路での許容 yaw 誤差と MPPI 方位追従** — F-2 の方位余裕（矩形化で新たに生じた制約: yaw ~10° でクリアランス 0）。`consider_footprint: true` 下で MPPI が通路内の方位を保てるか・AMCL の yaw 分散がどこまで許容されるかを sim で実測（OQ-21 の横位置と対になる縦軸）。
+- **OQ-20: `base_link` の前後非対称オフセット** — F-5-1 の前後対称仮定は実機実測で確定（Phase 1）。
+- **OQ-21: ±14mm 低コスト帯での MPPI 追従性** — F-5-3 の帯幅で MPPI が通路中心を維持できるか（`cost_scaling_factor` 再調整の要否）を sim で確認。
+
+### F-9. References（双方向）
+
+- [shared/02-hardware-design.md](../shared/02-hardware-design.md) — M1 実寸の正本 / C-1（:357 `ROBOT_RADIUS`）・C-2（:358 costmap ×2）・C-3（:359 collision_monitor）。本追補は C-1 を **additive 化**に読み替える（F-6）。**同 doc 末尾 §【2026-08-17 追補】OQ-3 決定に伴う C-1 / C-2 の改訂（非円形 footprint への移行）が C-1/C-2 側の正本**（本追補と双方向・行 pin なし＝同一ラウンド並行編集のため）。
+- [shared/04-diorama-layout.md](../shared/04-diorama-layout.md) — **レイアウト側制約の正本**（:115 実寸 / :119,:130 交差点対角円 / :128 280mm / :129 510mm / :132 盤面収まり未計算）。F-4 の値の改訂は shared/04 側で行う。**同 doc 末尾 §【2026-08-17 追補】OQ-3 決定に伴う通路制約（(c) ハイブリッド・レイアウト側）（F-L1〜F-L5）が F-4 の実体＝正本**（本追補と双方向・行 pin なし）。
+- `ws/src/warehouse_bringup/config/nav2_params.yaml` — CURRENT の引用は行 pin（:171-179 #67 教訓 / :215・:257 `robot_radius` / :239-246 #125 inflation）だが、**Slice 1（F-5）がまさにこれらの行を書き換える**ため、実装後は **キー名（両 costmap の `robot_radius`→`footprint:`・`FollowPath.CostCritic.consider_footprint`・`inflation_layer.inflation_radius`）で指す**こと（[session-orchestration.md §8](../../.claude/rules/session-orchestration.md) impl-target は契約で指す）。
+- [mode-a/11a-traffic-mode-a.md](../mode-a/11a-traffic-mode-a.md) §9.4「安全不変」 — 「`inscribed_radius = ROBOT_RADIUS`（=0.075 R-42）は不変」「本機構は速度・footprint・inflation を変えない」という**旧・不変宣言を F 系列が上書きする**（M1 footprint 化で内接は 0.1157 へ。doc11a 側にも末尾に forward pointer を追記済み・同一 PR）。
+- `ws/src/warehouse_bringup/config/collision_monitor.yaml`:63-68 — L1 `PolygonStop`（F-6）。
+- `ws/src/warehouse_description/warehouse_description/robot_dimensions.py`:66 — 凍結側 `ROBOT_RADIUS`（PROVISIONAL）。
+- [ADR-0008](../adr/0008-ros2-distro-humble-for-rosmaster-m1.md) — distro pin（F-1 の Humble 整合）。
+- [docs/GLOSSARY.md §11](../GLOSSARY.md) — **非円形 footprint（footprint polygon）** の正準定義（本追補と同時追加・双方向）。
+- [Issue #519](https://github.com/lll-kkk-ryuya/miniature-warehouse-robotics/issues/519) — 本決定の起票元（Slice 0 = 本追補 / Slice 1 = F-5 の params 実装）。
+- 外部一次情報（参照日 2026-08-17）: [navigation2 PR #3439](https://github.com/ros-planning/navigation2/pull/3439)（MPPI の Humble backport）/ navigation2 `humble` ブランチ MPPI README（ObstaclesCritic・CostCritic の `consider_footprint`・default false）。

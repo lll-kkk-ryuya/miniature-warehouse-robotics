@@ -115,7 +115,7 @@
 │   ├── bt_navigator / waypoint_follower
 │   ├── planner_server = NavfnPlanner   <span class="x">✗ SmacPlannerHybrid 不採用（メカナム=曲率制約が本質でない）</span>
 │   ├── controller_server = MPPI 20Hz・vx_max 0.3
-│   │     <span class="warn">⚠ 円形 footprint（半径184mm相当）vs 通路280mm ＝ 非円形化が要る（doc23 OQ-3）</span>
+│   │     <span class="warn">OQ-3 解決済み（2026-08-17・#519）: 非円形 footprint 移行を決定（(c) ハイブリッド・doc23 末尾 F 系列。CURRENT params は円形のまま＝Slice 1 で実装）</span>
 │   ├── behavior_server（recovery は collision_monitor を BYPASS＝#233 ⑥確定）
 │   └── costmap_2d/
 │        ├── global（map・0.01・全域）: static ◀ /map ／ <span class="g">nvblox_layer</span> <span class="new">★T4</span> ／ obstacle ◀ scan+virtual ／ inflation
