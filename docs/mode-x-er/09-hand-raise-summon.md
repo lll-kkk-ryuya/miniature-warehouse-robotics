@@ -332,5 +332,10 @@ R-8 は論証を弱める方向の訂正だが、**部屋のほうが有利な�
 R-3 / R-7 / R-8 / R-9 が「安全レビューに掛ける」と宣言した**分析レビューの実体**は、新設 doc **[10-room-scale-safety-review.md](10-room-scale-safety-review.md)** が正本である（本節はポインタのみ・既存本文と R 系列の行は動かさない＝[#165 教訓](../dev/03-retrospectives.md)）。
 
 - 8 項目のハザード分析（ハザード × layer × 現行緩和 × 残余リスク × 判定）と、**部屋運用開始の前提条件チェックリスト**を同 doc §2 / §11 に置く。
-- **本 doc に対する主な追加分析**: ① R-7 の 3 案のうち **(i) snap 半径単独は召喚レグでは逆効果**（人の足元に近い waypoint を選んだときだけ dispatch を許すため）＝同 doc §4-2。② R-8-2 の C-3 改訂は **`CIRCUMSCRIBED_RADIUS` が `robot_dimensions.py` に未存在**のため additive contract PR が先行必要＝同 §5-2。③ R-3 柱 3 には C-3 とは別に **recovery が L1 を bypass する窓**がある（[12:559-560](../architecture/12-infrastructure-common.md)）＝同 §3 柱3。④ R-9 の「立位の人は `/scan` に写る」はスキャン平面高さの不確かさに対し**頑健＝支持**＝同 §7-1。
+- **本 doc に対する主な追加分析**:
+  - ① R-7 の 3 案は等価ではない——**(i) snap 半径単独は「安全対策として無効」**（人の足元に近い waypoint を選ぶ危険ケースをそのまま残し、遠い waypoint しか無い安全ケースだけを削る）。dispatch 集合は CURRENT の真部分集合なので**有害ではない**が、H-1 のリスクを一切減らさないため「(i) を入れた＝対処した」と扱ってはならない。安全に効くのは (ii) 到達圏制約の成分のみ＝同 doc §4-2。
+  - ② R-8-2 の C-3 改訂は **`CIRCUMSCRIBED_RADIUS` が `robot_dimensions.py` に未存在**のため additive contract PR が先行必要＝同 §5-2。
+  - ③ R-3 柱 3 には C-3 とは別に **recovery が L1 を bypass する窓**があり、[12:559-560](../architecture/12-infrastructure-common.md) が bypass の安全床とする「ESP32 L0 近接停止 ＋ Guardian `near_collision`」は **M1 では両方不在**＝**bypass 中の物理保護は 0 層**＝同 §3 柱3。
+  - ④ R-9 の「立位の人は `/scan` に写る」はスキャン平面高さの不確かさに対し**頑健＝支持**（ただし [R-2(c) :247](09-hand-raise-summon.md) の「しゃがむ / 座る」案が採られたら再評価）＝同 §7-1。
+  - ⑤ **[ADR-0009 :53](../adr/0009-m1-room-scale-operation.md) が挙げる「残る保護 3 枚」のうち、現時点で機能しているのは語彙 gate の 1 枚のみ**——L1 は停止円が車体内部かつ `traffic_mode: open-rmf` の env（stg / prod）では node ごと未起動、L0' は `warehouse_m1_driver/setup.py` の `console_scripts` が空で**未結線**＝同 §2 冒頭・§12-1b。
 - **本追補は運転許可ではない**。[ADR-0009 §Open :82](../adr/0009-m1-room-scale-operation.md) の `# TODO(安全レビュー)` を閉じるのはオペレーターの裁定であり、分析 doc はその入力である。

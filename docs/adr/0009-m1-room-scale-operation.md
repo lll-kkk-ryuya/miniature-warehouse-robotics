@@ -138,3 +138,13 @@ Nav2 Bridge の `navigate` には**名前ゲートを経由しない座標ゴー
 - [architecture/23-perception-and-localization.md](../architecture/23-perception-and-localization.md) 末尾【2026-08-18 追補②】**G-7〜G-12**
 - [mode-x-er/09-hand-raise-summon.md](../mode-x-er/09-hand-raise-summon.md) 末尾【2026-08-18 追補②】**R-7〜R-10**
 - [shared/00-project-overview.md](../shared/00-project-overview.md) / [shared/01-budget-and-procurement.md](../shared/01-budget-and-procurement.md) / [shared/02-hardware-design.md](../shared/02-hardware-design.md) 各末尾【2026-08-18 追記】（入口 doc からの back-link）
+
+---
+
+## 【2026-08-18 追補③】§Open「`# TODO(安全レビュー)`」に対応する記録の所在
+
+帰結 ⑦（:51-53）と §Open の `# TODO(安全レビュー)`（:82）が要求した**安全レビューの分析部分**は、新設 doc **[mode-x-er/10-room-scale-safety-review.md](../mode-x-er/10-room-scale-safety-review.md)** に記録した（本追補はポインタのみ。**Status = accepted と Decision 1〜4、および既存本文の行は一切変更しない**＝追補② :105 と同じ扱い）。
+
+- 内容: 8 項目のハザード分析（ハザード × layer × 現行緩和 × 残余リスク × 判定）＋ **部屋運用開始の前提条件チェックリスト**。追加 Open ②（C-3）・③（召喚レグ）・⑤（#223 seam）はそれぞれ同 doc の S-3 / S-2 / S-4 に対応する。
+- **⚠️ 最も重要な所見**: 帰結 ⑦ :53 が「残る保護」として挙げた **①語彙 gate ②L1 collision_monitor ③L0' 0.3m/s クランプ** のうち、**実体を確認した結果、現時点で機能しているのは ① のみ**である（② は停止円が車体内部かつ `traffic_mode: open-rmf` の env では node ごと未起動、③ は serial driver node が未 land で未結線）。詳細は同 doc §2 冒頭 / §12-1b。
+- **本 ADR の Open 項目は本追補では閉じない。** 同 doc は**分析レビューであって運転許可ではなく**、`# TODO(安全レビュー)` を閉じるのはオペレーターの裁定である（同 doc §12-3）。閉じる場合の受け皿は同 doc §11 のチェックリスト充足を確認したうえでの本 ADR 末尾追補または後続 ADR。
