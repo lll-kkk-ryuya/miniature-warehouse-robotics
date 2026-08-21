@@ -390,7 +390,7 @@ RPLiDAR A2（+10,000円）: 精度・回転速度が向上。予備費からの�
 
 ### 購入確定（2026-08-05）と Orin 立ち上げ経路
 
-**発注済**: Amazon.co.jp 注文 `249-3401070-6986233`（2026-08-05・¥67,527）。商品名「Yahboom Jetson Nano B01搭載 ROS2ロボット …**Superior without Nano**」＝ `Superior-without / NANO 4GB SUB`（公式 sku 3000200910）。**着荷済（2026-08-19 開梱確認: T-mini Plus LiDAR・Nuwa-HP60C 同梱を実物確認）**。商品説明上は他に**音声モジュール・ゲームパッド等も同梱**とされるが実物での一次確認は上記 2 点のみ＝`# TODO(実物確認)`。
+**発注済**: Amazon.co.jp 注文 `249-3401070-6986233`（2026-08-05・¥67,527）。商品名「Yahboom Jetson Nano B01搭載 ROS2ロボット …**Superior without Nano**」＝ `Superior-without / NANO 4GB SUB`（公式 sku 3000200910）。**着荷済（2026-08-19 開梱確認: T-mini Plus LiDAR・Nuwa-HP60C 同梱を実物確認）**。紙説明書の Shipping List（[11-m1-assembly-manual.md](11-m1-assembly-manual.md) §1）上は他に**音声モジュール・ゲームパッド等も同梱**だが、実物での一次確認は上記 2 点のみ＝`# TODO(実物確認)`。
 
 #### Orin Nano Super Dev Kit の実ポート構成（公式 Hardware Layout 実見）
 
