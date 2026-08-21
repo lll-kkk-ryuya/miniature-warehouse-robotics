@@ -34,6 +34,7 @@ docs/
 | [07-research-notes](shared/07-research-notes.md) | 調査メモ・未検証事項（T1-T12） |
 | [09-navigation-internals](shared/09-navigation-internals.md) | AMCL・Nav2・SLAM内部設計 |
 | [10-system-qanda](shared/10-system-qanda.md) | システム設計Q&A |
+| [11-m1-assembly-manual](shared/11-m1-assembly-manual.md) | ROSMASTER M1 紙説明書の転記（同梱部品・組立手順・配線・音声フロー）＋開梱記録 |
 
 ## architecture/ — 共通基盤
 
