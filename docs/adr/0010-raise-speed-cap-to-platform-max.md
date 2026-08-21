@@ -19,7 +19,7 @@
 ## Decision / 決定
 
 1. **`MAX_LINEAR_VELOCITY`（凍結契約）＝プラットフォーム上限**へ意味を再定義する。値は実機 car_type のファーム clamp（**0x01 → 1.0 m/s / 0x02 → 0.7 m/s**）。pin は §Open 1 の実機確認後の **contract PR**（`contract` ラベル・[parallel-workflow §4](../../.claude/rules/parallel-workflow.md)）で行い、**本 ADR 時点でコードは 0.3 のまま**（docs 先行＝docs-first）。
-2. **運用速度は config が持つ**: `safety.max_linear_velocity`（≤ 契約上限・既存の検証機構 [config.py:101-104](../../ws/src/warehouse_interfaces/warehouse_interfaces/config.py) を無改造で流用）。環境/プロファイル毎に設定し、デモの最終運用値は **S-SPEED（段階増速実測・下記）** で「制御が破綻しない最高速」を測って決める。指カウント3帯ジェスチャはこの運用値を最速段（**1〜3本帯**）とし、帯割りは config 注入（コード定数禁止＝[mode-x-er/02:98](../mode-x-er/02-l3-planning-core.md) と同規律）。
+2. **運用速度は config が持つ**: `safety.max_linear_velocity`（≤ 契約上限・既存の検証機構 [config.py:101-105](../../ws/src/warehouse_interfaces/warehouse_interfaces/config.py) を無改造で流用）。環境/プロファイル毎に設定し、デモの最終運用値は **S-SPEED（段階増速実測・下記）** で「制御が破綻しない最高速」を測って決める。指カウント3帯ジェスチャはこの運用値を最速段（**1〜3本帯**）とし、帯割りは config 注入（コード定数禁止＝[mode-x-er/02:98](../mode-x-er/02-l3-planning-core.md) と同規律。ジェスチャ③の正準は [09 追補④](../mode-x-er/09-hand-raise-summon.md)）。
 3. **L0' クランプは廃止せず維持し、`m1_driver` serial driver slice で必ず結線する**（[mode-x-er/10 §10-2②/G-l](../mode-x-er/10-room-scale-safety-review.md) のとおり現状未結線）。存在理由を「①ファーム per-wheel clamp の方向破壊からの保護 ②暴走バグ（Nav2/上位全滅時）の最終バックストップ ③int16 溢れ→フレーム黙殺の手前で必ず有限値に絞る」へ更新する。**結線と R-26 pin（dispatch 経路が `clamp_body_velocity` を必ず通る）は契約値引き上げ PR の前提条件**。
 4. **ESP32 firmware（旧2台系・`firmware/`）は 0.3 のまま凍結**（[ADR-0006](0006-single-bot-first.md) の凍結資産。M1 経路と独立で、`platformio.ini` の `MAX_LINEAR_VELOCITY_MMPS=300` は変更しない）。
 5. **派生する再導出を義務化する**（contract PR の DoD）:
@@ -55,7 +55,7 @@
 - **STM32 ファームの clamp（±1000mm/s）自体を上げる**: 不可能。Yahboom 製バイナリでコンパイル時リテラル。ホストから変更手段なし（`FUNC_RESET_FLASH` でも不変）。
 - **`set_motor` 直接 PWM でファーム上限を回避**: 却下。car_type バイト無し＝逆運動学ミキサも速度 PID もバイパスし、メカナム逆運動学と odometry をホストが背負う（[02:328](../shared/02-hardware-design.md) の「過大」判断と矛盾）。同一 PWM で左右エンコーダ差 ~12% の実測報告あり＝直進しない。超低速用途の解であって高速化の解ではない。
 - **契約値を今すぐ 1.0 に書き換える**: 却下（本 PR では）。car_type が 0x02（clamp 0.7）の可能性が残り、誤った上限を凍結契約に書くのは docs-first 違反。実機確認（5分）を挟んでから contract PR で pin する。
-- **上限は変えず config 運用値だけ上げる**: 不可能。既存機構が `config ≤ MAX_LINEAR_VELOCITY` を強制しており（[config.py:101-104](../../ws/src/warehouse_interfaces/warehouse_interfaces/config.py)）、契約側を上げない限り 0.3 を超えられない（この fail-closed 構造自体は正しいので維持する）。
+- **上限は変えず config 運用値だけ上げる**: 不可能。既存機構が `config ≤ MAX_LINEAR_VELOCITY` を強制しており（[config.py:101-105](../../ws/src/warehouse_interfaces/warehouse_interfaces/config.py)）、契約側を上げない限り 0.3 を超えられない（この fail-closed 構造自体は正しいので維持する）。
 
 ## Open / 未決
 
@@ -71,5 +71,5 @@
 - [02-hardware-design §【2026-08-19 追記】](../shared/02-hardware-design.md) — 調査確定事実の正本（ファーム clamp・モータ表・速度の出し方・音声モジュール）
 - [ADR-0009](0009-m1-room-scale-operation.md)（部屋スケール運用）/ [ADR-0006](0006-single-bot-first.md)（凍結資産）/ [ADR-0005](0005-l0-battery-brownout-floor.md)（brownout floor）
 - [mode-x-er/10-room-scale-safety-review.md §5-3（margin 導出）/ §10-2（L0' 未結線）](../mode-x-er/10-room-scale-safety-review.md)
-- [safety.py:18](../../ws/src/warehouse_interfaces/warehouse_interfaces/safety.py) / [config.py:101-104](../../ws/src/warehouse_interfaces/warehouse_interfaces/config.py) / [policy_gate.py:43-46](../../ws/src/warehouse_mcp_server/warehouse_mcp_server/policy_gate.py) / [clamp.py](../../ws/src/warehouse_m1_driver/warehouse_m1_driver/clamp.py)
+- [safety.py:18](../../ws/src/warehouse_interfaces/warehouse_interfaces/safety.py) / [config.py:101-105](../../ws/src/warehouse_interfaces/warehouse_interfaces/config.py) / [policy_gate.py:43-46](../../ws/src/warehouse_mcp_server/warehouse_mcp_server/policy_gate.py) / [clamp.py](../../ws/src/warehouse_m1_driver/warehouse_m1_driver/clamp.py)
 - [docs/GLOSSARY.md §11](../GLOSSARY.md)（S-SPEED の正準用語）

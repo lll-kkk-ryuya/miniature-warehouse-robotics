@@ -61,7 +61,7 @@ persona の人格設定・発話の器は、既存の Mode A キャラLLM 設計
 |---|---|---|
 | キャラ人格（性格パラメータ・口調） | **流用する** | [14:144-156](../architecture/14-character-llm-negotiation.md) システムプロンプト方針（`性格: {personality}`） |
 | **0 actuation の書き込み権限境界** | **流用する（必須）** | [14:136](../architecture/14-character-llm-negotiation.md)「キャラLLMは `/character/speech` と `/negotiation/proposal` のみ publish。Nav2/MCP/cmd_vel には触れない」 |
-| 既存トピック `/character/speech`（`std_msgs/String` JSON・**L4**） | 流用候補 | [14:203](../architecture/14-character-llm-negotiation.md) トピック表 |
+| 既存トピック `/character/speech`（`std_msgs/String` JSON・**L4**） | 流用候補 | [14:204](../architecture/14-character-llm-negotiation.md) トピック表 |
 | bot 間交渉プロトコル（バトンパス・8ターン上限・稟議制） | **流用しない** | M1 は**単騎**（[ADR-0006](../adr/0006-single-bot-first.md)）＝相手 bot が存在しない。ただし「合意→司令官承認→実行」の稟議制の**形**は §4-2-2 の ✓ 記号（実行承認）で再利用する |
 
 > **layer 注記**: persona 音声返答層は **L4**（operator I/O・出力）であり、**0 actuation**（motion を一切持たない）。これは doc05 の L4 Operator Feedback Box の不変条件（[05:257](05-operator-feedback-and-voice-response.md) XER-OF2「reject fixture を流して motion 0 件」）と同型である。
@@ -115,7 +115,7 @@ Porcupine の不採用はライセンス理由であり、これは [09:13](09-h
 
 **音声入力源**: [shared/02-hardware-design.md:575](../shared/02-hardware-design.md) が確定したとおり、同梱モジュールは**通常の USB オーディオデバイスとして見え、`arecord` で生 wav が録れる**（ドライバ追加なし）。ウェイクワード / 拍手リスナーはこのストリームを読む。Yahboom の ASR 層（zh/en のみ）は使わない。
 
-> **layer 注記**: ウェイクワード / 拍手リスナーは **L4 知覚・publish-only・0 actuation**。[09 §4-1](09-hand-raise-summon.md) の `gesture_detector`（L4 知覚・publish-only）と同格に置き、**司令ノードから分離**する。トピック名・型は本書では決めない（doc03 契約カタログ追加を伴うため。§7 参照）。
+> **layer 注記**: ウェイクワード / 拍手リスナーは **L4 知覚・publish-only・0 actuation**。[09 §4-1](09-hand-raise-summon.md) の `gesture_detector`（L4 知覚・publish-only）と同格に置き、**司令ノードから分離**する。トピック名・型は本書では決めない（doc03 契約カタログ追加を伴うため＝**OQ-H9**）。
 
 ---
 
@@ -135,7 +135,7 @@ Porcupine の不採用はライセンス理由であり、これは [09:13](09-h
 
 Rosmaster 系の拡張ボードにライトバー制御 API（`set_colorful_lamps` 系）が存在することは知られているが、**M1 実機に実際にライトバーが載っているかは本 repo の docs に記述が無い**（`docs/` および `ws/` を grep して不在を確認した）。**開梱確認で決める**（**OQ-H1**）。
 
-これは [shared/02-hardware-design.md:578](../shared/02-hardware-design.md) の「要実機確認（6点）」と同じクラスの確認項目であり、実機は 2026-08-18 に到着済みである（同 :532 注記）。搭載が無ければ ③ は落とし、①②の二層で運用する（三層は望ましいが必須ではない）。
+これは [shared/02-hardware-design.md:578](../shared/02-hardware-design.md) の「要実機確認（6点）」と同じクラスの確認項目である（V-5 の音声モジュールは開梱実物で 2026-08-19 に確認済＝[同 :571](../shared/02-hardware-design.md)。ライトバーも同じ開梱確認で判定できる）。搭載が無ければ ③ は落とし、①②の二層で運用する（三層は望ましいが必須ではない）。
 
 ### 3-2. ④「前後の身震い」は保留（採用見送りではなく設計待ち・OQ-H3）
 
@@ -165,7 +165,7 @@ Rosmaster 系の拡張ボードにライトバー制御 API（`set_colorful_lamp
 
 ### 4-1. tier A（採用・即着手圏）
 
-§1-2（persona 音声返答）・§2（standby ＋ 2 入口）・§3（合図①②、③は OQ-H1 次第）。追加の凍結契約を要さない範囲で構成する。
+§1-2（persona 音声返答）・§2（standby ＋ 2 入口）・§3（合図①②、③は OQ-H1 次第）。凍結契約（`warehouse_interfaces`）には触れない。ただし wake/clap listener が publish する遷移イベントの topic 名・型は doc03 契約カタログへの additive 追加が要る（**OQ-H9**）。
 
 ### 4-2. tier B（採用・後続スライス）
 
@@ -224,7 +224,7 @@ Rosmaster 系の拡張ボードにライトバー制御 API（`set_colorful_lamp
 
 → hard-to-reverse（安全境界の変更）∧ surprising（「ジェスチャ機能の一種」に見えて実は別クラス）∧ real-trade-off（絵の強さ vs 安全網の迂回）の 3 条件が揃うため、**採否は ADR で裁定する**（[.claude/rules/docs-authoring-and-glossary.md](../../.claude/rules/docs-authoring-and-glossary.md) の ADR 3 条件）。
 
-- **[ADR-0010](../adr/0010-raise-speed-cap-to-platform-max.md) との複合リスク**: 速度上限はミニチュア安全値 0.3 m/s からプラットフォーム上限（実機 car_type により 1.0 または 0.7 m/s）へ再定義された。**直接操縦 × 上限引き上げ**の組合せは、危険度が線形以上に上がる。ボディミラーの裁定は、運用速度が S-SPEED で確定した後に行うのが順序として正しい。
+- **[ADR-0010](../adr/0010-raise-speed-cap-to-platform-max.md) との複合リスク**: 速度上限はミニチュア安全値 0.3 m/s からプラットフォーム上限（実機 car_type により 1.0 または 0.7 m/s）へ**再定義される**（ADR 採択済。ただしコードの契約 pin は car_type 実機確認後の後続 contract PR であり、現時点の実体は 0.3 のまま＝同 ADR Decision 1）。**直接操縦 × 上限引き上げ**の組合せは、危険度が線形以上に上がる。ボディミラーの裁定は、運用速度が S-SPEED で確定した後に行うのが順序として正しい。
 
 #### 4-3-2. 両手 X ポーズ緊急停止（未裁定）
 
@@ -245,7 +245,7 @@ Rosmaster 系の拡張ボードにライトバー制御 API（`set_colorful_lamp
 | **P0 standby（デフォルト）** | `m1_driver` ＋ ウェイク/拍手リスナー ＋ 合図（音・LED） | **常駐極小。全プロファイルの共通土台** |
 | **P1 召喚 ＋ 速度セレクタ** | P0 ＋ カメラ ＋ Pose/Hands ＋ Nav2/AMCL ＋ bridge | **主役デモ** |
 | **P2 ついてこい** | P0 ＋ カメラ ＋ Pose ＋ follow goal updater ＋ Nav2 | tier B（§4-2-1） |
-| **P3 エア描画** | P0 ＋ カメラ ＋ Hands 軌跡 ＋ Nav2 | tier B（§4-2-2） |
+| **P3 エア描画** | P0 ＋ カメラ ＋ Pose（手首軌跡）＋ Nav2 | tier B（§4-2-2）。Pose 手首キーポイントの再利用＝Hand Landmarker 不要（§4-2-2） |
 
 ### 5-1. どの組合せが 8GB に同居できるかは実測で決める（発明しない）
 
@@ -253,7 +253,7 @@ Rosmaster 系の拡張ボードにライトバー制御 API（`set_colorful_lamp
 
 - **合格ライン**: 「残 RAM ≥ 500MB **かつ** Open-RMF（Mode C）分の余地が残ること。`tegrastats` 10分負荷で throttle 無し」（[23:216](../architecture/23-perception-and-localization.md)）。
 - **測定順**: `idle → nvblox 単体 → +Nav2 → +Hermes/MCP`（各段の**差分**を記録）（[23:217](../architecture/23-perception-and-localization.md)）。[23:279](../architecture/23-perception-and-localization.md) が既に `+gesture NN` を 1 段追加している。
-- **本書からの申し送り**: 上記ラダーに **`+wake/clap listener`**（P0 の常駐分）と **`+Hands 軌跡`**（P3 分）の段を足して測ることを、知覚トラック（doc23 所有）へ申し送る。**本書は doc23 を編集しない**（単一所有・[.claude/rules/parallel-workflow.md](../../.claude/rules/parallel-workflow.md) §7.1）。
+- **本書からの申し送り**: 上記ラダーに **`+wake/clap listener`**（P0 の常駐分）の段を足して測ることを、知覚トラック（doc23 所有）へ申し送る。P3 のエア描画は Pose 手首キーポイントの再利用＝既存 `+gesture NN` 段に吸収され新段は不要。Hand Landmarker の段は P1 速度セレクタ分として [09 追補④ T-3](09-hand-raise-summon.md) が既存 OQ-1 へ `+hand NN` を申し送り済み。**本書は doc23 を編集しない**（単一所有・[.claude/rules/parallel-workflow.md](../../.claude/rules/parallel-workflow.md) §7.1）。
 - なお [23 OQ-23](../architecture/23-perception-and-localization.md):752 が「**部屋体積での TSDF/ESDF メモリ再試算**」を未決として挙げており、S1 の残 RAM 判定そのものがまだ動きうる点に注意する。
 
 ### 5-2. プロファイル切替は launch 構成の再起動である（確定・2026-08-21）
@@ -307,6 +307,7 @@ Rosmaster 系の拡張ボードにライトバー制御 API（`set_colorful_lamp
 | **OQ-H6** | **プロファイル切替機構（launch manager）** — ライフサイクルノード / launch の動的起動停止 / スーパーバイザのいずれか。本書では発明しない | 実装設計（所有トラック調整） | 中（§5-2） |
 | **OQ-H7** | **ウェイクワード・拍手の誤検出率実測** — armed 前の入口の false positive。[10 G-m](10-room-scale-safety-review.md)（ジェスチャ誤検出率）と同クラスの実測項目 | **PHASE-1-GATE**（実機・実環境） | 高（standby の効果を測る唯一の手段） |
 | **OQ-H8** | **【本書由来・追加】ついてこいモードの goal 更新が L2 Policy Gate を通るか** — Nav2 BT 内で更新すれば通らない / L3 側で再 dispatch すれば通る。**実装方式ではなく安全境界の選択**。併せて [09 R-3 柱1](09-hand-raise-summon.md):261「人を追尾する経路が生まれるわけではない」の**再評価**が要る | **安全レビュー ＋ オペレーターゲート**（[10](10-room-scale-safety-review.md) と同枠） | **高**（tier B の前提・既存安全論証に触れる） |
+| **OQ-H9** | **wake/clap listener の topic 名・型（doc03 契約カタログ追加）** — L4 リスナー（§2-3）が publish する standby→active 遷移イベントの契約。凍結契約 `warehouse_interfaces` ではなく doc03 トピック表への **additive** 追加 | 契約手順（[.claude/rules/parallel-workflow.md](../../.claude/rules/parallel-workflow.md) §4・additive-first） | 中（tier A 実装スライス着手時） |
 
 ---
 
@@ -322,7 +323,7 @@ Rosmaster 系の拡張ボードにライトバー制御 API（`set_colorful_lamp
 **同ディレクトリの正本**:
 
 - [09-hand-raise-summon.md](09-hand-raise-summon.md) — **ジェスチャ司令の正本**。INV-1(:25) / INV-2(:57) / 反射経路に NN を入れない(:143) / R-3 安全論証(:255-267) / 部屋での再検証(:211-)。**本書は 09 の判定ロジックを再定義しない**
-  - §5 の P1 プロファイル名「召喚 ＋ 速度セレクタ」が指すのは 09 の **【2026-08-21 追補④】ジェスチャ③ 速度セレクタ（右手指カウント3帯）**（同日の並行レーンが執筆）。**本書執筆時点で当該追補は同一ラウンドの未コミット変更ゆえ、行番号ではなく見出し文字列で指す**（land 後に file:line で re-pin すること）。速度帯の値そのものは [ADR-0010](../adr/0010-raise-speed-cap-to-platform-max.md) の運用値 ＋ S-SPEED 実測に従属し、**本書は速度値を持たない**
+  - §5 の P1 プロファイル名「召喚 ＋ 速度セレクタ」が指すのは 09 の **【2026-08-21 追補④】ジェスチャ③ 速度セレクタ（右手指カウント3帯）**（同日の並行レーンが執筆・**同一ラウンドで land 済**）。**行 pin は PR merge 後に re-pin する**（それまでは見出し文字列で指す）。速度帯の値そのものは [ADR-0010](../adr/0010-raise-speed-cap-to-platform-max.md) の運用値 ＋ S-SPEED 実測に従属し、**本書は速度値を持たない**
 - [10-room-scale-safety-review.md](10-room-scale-safety-review.md) — 部屋運用開始 gate G-a〜G-m（§11・全て未充足）。§6-3 で本書の機能群との関係を整理
 - [04-er-input-modalities-and-stt.md](04-er-input-modalities-and-stt.md) — ER の音声直入力（§2-3 の音声入力源と対）。ウェイクワードで起きた**後**の高情報量指示は ER 経路へ渡す（[09 §12](09-hand-raise-summon.md) の 2 段構想）
 - [05-operator-feedback-and-voice-response.md](05-operator-feedback-and-voice-response.md) — L4 Operator Feedback Box。決定論テンプレート原則(:109)・TTS が支配項(:182)・発話スコープ(:196)・0 dispatch(:257)。§1-2 の事前生成 wav はこの設計方針の下位互換な実装選択
