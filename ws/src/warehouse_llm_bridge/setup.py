@@ -42,6 +42,11 @@ setup(
             # Mode X-ER visual-task commander node (docs/mode-x-er/08 §2, XER6). Composed by
             # bringup.launch.py IFF mode_x_er.enabled (mutually exclusive with llm_bridge).
             "x_er_bridge = warehouse_llm_bridge.x_er_bridge:main",
+            # L4 Operator Feedback Box runtime subscriber (mode-x-er/05 §8.10 item 4):
+            # subscribes /operator/notice + /emergency/event and drives the offline box
+            # (render -> sink). SUBSCRIBE-ONLY = 0 actuation (R-26 / L4OF-G1). Launch
+            # composition is a follow-up (bringup.launch.py is nav-traffic-owned).
+            "operator_feedback = warehouse_llm_bridge.operator_feedback.notice_node:main",
         ],
     },
 )
