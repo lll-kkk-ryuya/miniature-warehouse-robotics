@@ -339,3 +339,109 @@ R-3 / R-7 / R-8 / R-9 が「安全レビューに掛ける」と宣言した**�
   - ④ R-9 の「立位の人は `/scan` に写る」はスキャン平面高さの不確かさに対し**頑健＝支持**（ただし [R-2(c) :247](09-hand-raise-summon.md) の「しゃがむ / 座る」案が採られたら再評価）＝同 §7-1。
   - ⑤ **[ADR-0009 :53](../adr/0009-m1-room-scale-operation.md) が挙げる「残る保護 3 枚」のうち、現時点で機能しているのは語彙 gate の 1 枚のみ**——L1 は停止円が車体内部かつ `traffic_mode: open-rmf` の env（stg / prod）では node ごと未起動、L0' は `warehouse_m1_driver/setup.py` の `console_scripts` が空で**未結線**＝同 §2 冒頭・§12-1b。
 - **本追補は運転許可ではない**。[ADR-0009 §Open :82](../adr/0009-m1-room-scale-operation.md) の `# TODO(安全レビュー)` を閉じるのはオペレーターの裁定であり、分析 doc はその入力である。
+
+---
+
+## 【2026-08-21 追補④】ジェスチャ③ 速度セレクタ（右手指カウント3帯）
+
+> **決定正本**: [../adr/0010-raise-speed-cap-to-platform-max.md](../adr/0010-raise-speed-cap-to-platform-max.md)（オペレーター決定 2026-08-19「本フェーズは安全面より速度を優先し、出せる限り出す」／指カウントの帯割りは 2026-08-21 改訂）。本追補は**ジェスチャ③そのものの正本**であり、ADR-0010 §Decision 2 が本節を運用値の消費側として参照する。
+> 既存本文・R 系列・§14 OQ 表は**一切編集しない**（下流参照の行ズレ回避＝[#165 教訓](../dev/03-retrospectives.md)）。本節の小節は **T 系列**（本 doc 内で未使用の接頭辞。[10](10-room-scale-safety-review.md) の S 系列・[02](../shared/02-hardware-design.md) の V 系列とは別物）。
+> **レイヤ帰属**（[.claude/rules/layer-annotation.md](../../.claude/rules/layer-annotation.md)）: 帯の検出・確定・publish は **L4 知覚**（`gesture_detector` と同居・publish-only・**0 actuation**＝:61）。帯が影響するのは **Nav2 の速度上限パラメータ**（L2 Policy Gate と L1 collision_monitor の間の運動生成層）であり、**L0' クランプの配下**にある。
+> **ADR-0010 の引用は §名で行う**（同 ADR は本追補と同一ラウンドで land 途上＝行 pin は land 後に再取得する。impl-target を行で固定しない規律の準用＝[session-orchestration.md §8](../../.claude/rules/session-orchestration.md)）。
+
+### T-1. 定義 — 第3のジェスチャ
+
+①召喚・②指差し（:29-37）に加え、**右手の指カウントで走行速度帯を選ぶ**第3のジェスチャを置く。**3帯**である。
+
+| 帯 | 右手の形 | 意味 | 速度 |
+|---|---|---|---|
+| **最遅段** | **0本（グー）** | 「ゆっくり来い」 | 最も遅い運用値 |
+| **最速段** | **1〜3本** | 「全力で来い」 | **ADR-0010 の運用値**（`safety.max_linear_velocity`。S-SPEED ゲート通過後に確定する最高速） |
+| **安定段** | **4〜5本（パー）** | 「安定して走れ」 | 中間・既定 |
+
+- **選ぶのは「速度上限」であって「走行可否」ではない**。走る／止まるの意思決定は既存の召喚（①）・タスク経路と安全層（L2/L1/L0'）が持ち続ける。ジェスチャ③は**単独では 1 台も動かさない**。
+- ジェスチャ①②が「**どこへ**」を決めるのに対し、③は「**どれだけの速さで**」を決める。直交する軸であり、①②の意味論は 1 行も変えない。
+
+### T-2. 経緯 — 6段階から 3帯へ（2026-08-19 → 2026-08-21）
+
+- **2026-08-19 初案は 6 段階**（指の本数 0〜5 をそのまま 6 段に写し、**グー＝最速**）だった。
+- **2026-08-21 ユーザー改訂で 3 帯に確定**した。**束ねる理由は知覚の信頼性**である——影・手の向き・指の相互オクルージョンで**指 1 本分の誤読**は現実に出る。6 段では 1 本の誤読が即 1 段の速度誤りになるが、3 帯なら帯の内側で吸収される。
+- **4 本の帰属が本改訂の要点**である。4 本を**安定段（4〜5本帯）側**に入れ、最速段を 1〜3 本に閉じた。理由は「**パーのつもりが最速**」事故の封じ込め——パーを出したつもりで親指が畳まれて 4 本と読まれても、行き先は安定段のままで、最速段には**跳ばない**。オペレーター確認済（「パーの際は 4〜5 本にしましょう」）。逆向きの誤読（3 本のつもりが 4 本）は**遅い側へ落ちる**＝安全側であり、非対称性は意図的である。
+- グー（0本）が最速から最遅へ反転した点も本改訂に含む。**握った手＝最遅**は「握って抑える」直感と一致し、初案の「グー＝最速」より誤操作時の帰結が軽い。
+
+### T-3. 知覚 — MediaPipe Hand Landmarker（L4・publish-only）
+
+- **NN 第1候補 = MediaPipe Hand Landmarker**（21 keypoints・**handedness 判定**で右手のみ有効化）。P1（:13）が骨格 NN の第1候補に据えた **MediaPipe Pose Landmarker と同一の MediaPipe Tasks 族**であり、[ADR-0007](../adr/0007-no-overhead-camera-gesture-via-onboard-nn.md) の「搭載 HP60C + ローカル NN で決定論認識・俯瞰カメラ不使用」方針の素直な延長である。
+- **`# TODO(実測)`: 21 keypoints・handedness・ライセンス・aarch64 wheel の各点は本 repo の docs 由来ではない外部仕様**であり、実装前に公式一次情報で再確認する（P1 :13 が Pose Landmarker に課したのと同じ but-verify 規律）。
+- **配置は `gesture_detector`（:61）と同じ L4 知覚・publish-only・0 actuation**。①②と**同一の骨格ストリーム／同一ノード**で扱うのが自然だが、package 配置は既存 **OQ-13**（:193）に合流する（本追補で新 package を発明しない）。
+- **8GB 予算への影響**: 骨格 NN は既に S1 の第 3 の競合者である（:143）。Hand を Pose と**同居**させた場合の実効 fps とメモリは既存 **OQ-1**（:181）の測定項目へ 1 段追加する（`+gesture NN` に `+hand NN` を足す形）。**本追補で新しい予算枠を主張しない。**
+- **fail-closed は不変**: keypoint confidence 不足・深度欠損・フレーム取得失敗では**判定しない**（:99 / :133）。手が写らないことと「グーを出した」ことを混同しない。
+
+### T-4. 信頼性 — §6 の時間窓多数決を帯遷移へ再利用する
+
+帯の遷移判定には、**§6（:117）で①②のために定めた機構をそのまま再利用**する（新しい信頼性機構を発明しない）:
+
+- `hold_duration_s`（意図的保持の最短・例示 1.2）／`min_frames_in_window`（例示 12・fps 低下時は確定させない＝fail-closed）／`enter/exit_ratio`（例示 0.80/0.50＝ヒステリシス）／`refractory_s`（例示 5.0＝連射防止）。
+- **値はすべて例示であり実測で確定する**（:117 と同じ but-verify）。とくに `refractory_s` は①②の「連射防止」用に置かれた値であり、**帯切替に 5.0s が適切とは限らない**（速度は走行中に何度も変えたくなりうる＝①②とは要求が違う）。帯遷移用の値は分けて実測する＝**OQ-23**。
+- **ヒステリシスは帯境界で特に効く**。3〜4 本の境界（＝最速段↔安定段の境界）は T-2 の非対称性が最も効く位置であり、`enter/exit_ratio` の非対称値で「最速段へ入るのは厳しく、出るのは緩く」する余地がある。方向依存の閾値化は**本追補では決めない**（OQ-23 に含める）。
+
+### T-5. 未検出時のデフォルト — 安定段へ復帰する（停止ではない）
+
+手が検出できない間の挙動を確定する:
+
+1. **保持窓の内側**: 直近に確定した帯を**ホールド**する（一過性のオクルージョン・手を下ろした瞬間で帯が暴れない）。
+2. **タイムアウト後**: **安定段（4〜5本帯）へ復帰**する。
+
+**停止しない理由**を明示する——ジェスチャ③は「**速度上限の選択**」であって「**走行可否**」ではない（T-1）。手が見えなくなったことを停止条件に写すと、①召喚で呼ばれて走行中のロボットが「操作者が手を下ろした」だけで止まることになり、これは **§7 の確定裁定「腕を下ろした（走行中）＝キャンセルしない」（:129）と正面から矛盾する**。走行可否・停止は既存の召喚／タスク経路と安全層（L2 Policy Gate・L1 collision_monitor・L0' クランプ・明示 `stop`）が持つ。
+
+**安定段が既定である理由**: 未検出時に最速段へ落ちるのは論外であり、最遅段へ落ちるのは「見えないと勝手に鈍る」挙動で①召喚の演出（:45 の「呼んだら来る」）を壊す。中間の安定段が唯一の妥当な既定である。
+
+### T-6. actuation への写像 — Nav2 の速度上限であって `cmd_vel` ではない
+
+**帯 → 速度の写像先は Nav2 の速度上限（`speed_limit` 相当）であり、`cmd_vel` を直接操作しない。** 帰結として:
+
+- **twist_mux の凍結契約に触れない**。[twist_mux.yaml:41-49](../../ws/src/warehouse_bringup/config/twist_mux.yaml) の**入力は `emergency`(prio100) と `nav2`(prio10) の 2 本のみ**であり、ジェスチャ③は**入力を増やさない**（3 本目の velocity producer を作らない）。emergency prio100 の override 意味論（同 :5-8 の FROZEN safety contract）は不変。
+- **契約上の天井は ADR-0010**。運用値は `safety.max_linear_velocity`（[config/warehouse.base.yaml:15](../../config/warehouse.base.yaml)）で、既存の fail-closed 検証（[config.py:101-105](../../ws/src/warehouse_interfaces/warehouse_interfaces/config.py)＝`cap > MAX_LINEAR_VELOCITY` で `ValueError`）が**契約上限超えを構造的に拒む**。契約値 [`safety.py:18`](../../ws/src/warehouse_interfaces/warehouse_interfaces/safety.py) は ADR-0010 §Decision 1 の通り**本追補時点では 0.3 のまま**で、プラットフォーム上限への pin は後続 contract PR が行う。
+- **L0' クランプは常に最後**。方向保存のホスト側ベクトルクランプ（[02 V-1 :539](../shared/02-hardware-design.md)＝STM32 ファームの**各輪独立 ±1000mm/s clamp は方向を保存しない**ため必要）は、どの帯であっても最終段に残る。ジェスチャ③はこの下流に置かない。
+- **帯の実値は config 注入**（コード定数禁止＝[02:98](02-l3-planning-core.md) / :99 と同規律。ADR-0010 §Decision 2 も同旨）。config キーは **§10（:157-159）と同じ additive / safe-OFF 方針**——既定 OFF・未設定なら従来挙動（＝単一の運用値）に落ちる形にする。**キー名（`mode_x_er.gesture.speed_bands.*` 等）は例示であり凍結契約ではない**。実追加は bringup/skeleton 所有 Issue へ予告のうえ末尾追記する（:159 の手順）。
+
+**⚠️ 正直な限界（本追補の実 Read で判明）— 走行中に速度上限を変える経路は CURRENT に存在しない。** 現行の速度上限は **launch 時に 1 回だけ**適用される: [nav2_bringup.launch.py:258-269](../../ws/src/warehouse_bringup/launch/nav2_bringup.launch.py) の `_operating_vx_max()` が config を読み、同 :92-101 の `RewrittenYaml` `param_rewrite` が MPPI `FollowPath` の `vx_max` を上書きする（在ファイル値 [nav2_params.yaml:122](../../ws/src/warehouse_bringup/config/nav2_params.yaml) は安全 default）。**Nav2 の runtime `speed_limit` 経路（`speed_limit_topic`）は本 repo に一切構成されていない**（2026-08-21 に `ws/src` / `docs` / `config` を grep して 0 件）。したがって「帯を切り替えると走行中の速度上限が変わる」ための ROS 経路は**未設計＝OQ-24** である。**本追補は帯の意味論を確定するが、この経路を発明しない。** 確定するときに満たすべき制約だけを、既存の凍結物から導いて置く:
+
+1. `config.py:101-105` の fail-closed 検証（≤ 契約上限）を**迂回しない**。
+2. twist_mux の 2 入力を**増やさない**（T-6 第1項）。
+3. **L0' クランプの下流に置かない**（クランプは常に最後）。
+4. 新しい actuation 経路を作らない（INV-2＝T-8）。
+
+### T-7. standby ゲーティング — active 遷移後のみ armed
+
+ジェスチャ③は **standby→active 遷移後のみ armed** とする。standby 中の手の形は帯として解釈しない（待機中の何気ない手の形で速度が変わらない）。**standby / HRI 機能の正本は [11-standby-and-hri-features.md](11-standby-and-hri-features.md)**（同一ラウンドで並行執筆中＝本追補の land 時点では未 land の可能性がある。リンク先が空なら doc11 の land を待つ）。本節は消費側であり、standby の状態定義・遷移条件を本節では定めない。
+
+### T-8. 不変条件の生存確認（INV-1 / INV-2）
+
+本 doc の 2 つの中核不変条件は、ジェスチャ③の追加後も**生存する**:
+
+- **INV-1（幾何は plan draft の外・:25）— 生存。** ジェスチャ③は**座標を一切扱わない**（指の本数 → 帯という離散写像のみ）。draft に載せうる新しい幾何が存在しないため、`handoff.py` の禁止キー gate（:23 の `_FORBIDDEN_KEY_RULES`）に対して**新しい表面を作らない**。
+- **INV-2（plan 経路を迂回しない・:57）— 生存。** 速度帯は **Nav2 のパラメータ**であって新しい task / command / actuation 経路ではない。`to_robotics_plan_draft` 以降のゲート列（L3 Validator → Visual Resolver → Task Graph Executor → Command Compiler → action_map → MCP → **L2 Policy Gate** → Nav2 Bridge REST → Nav2 → L1 → L0'）は**1 ステップも省略されない**。ジェスチャ③は「どこへ行くか」の決定に関与しないため、L2 の許可判断（location / freshness / battery / emergency / rate / duplicate）を**代替も迂回もしない**。
+
+> **ただし T-6 の OQ-24 が未決である以上、INV-2 の生存は「現在の設計意図として」であって「実装で pin 済み」ではない**。経路確定 PR は INV-2 を破らないことを R-26 相当の unit で pin すること（[.claude/rules/safety.md](../../.claude/rules/safety.md)）。
+
+### T-9. 新規 OQ（本追補由来）
+
+**⚠️ 採番 scoping**: 以下は**本 doc §14 の連番の続き**（§14 の表は行安定のため編集せず本節を正とする＝R-5 :273 と同方式）。本 doc の既使用は OQ-1〜15（§14）＋ OQ-16〜19（R-5）＋ OQ-20（R-7）＋ OQ-21（R-9）。**[23](../architecture/23-perception-and-localization.md) の OQ-22 / OQ-23 とは別物**である（doc23 は独自連番）。
+
+| # | 問い | 優先度 |
+|---|---|---|
+| **OQ-22** | **最速段（1〜3本帯）の実速度値**。ADR-0010 §S-SPEED の実測（ベンチ / 走行 / 制御）と、同 §Open 1 の車体確認（car_type → 契約 pin 値 0x01→1.0 / 0x02→0.7）待ち。**この 1 値が確定するまで 3 帯すべての実値が決まらない** | **最高（他の全帯が従属）** |
+| **OQ-23** | **最遅段・安定段の具体値または倍率**（絶対値 m/s か最速段比の倍率か）＋ **帯遷移用の時間窓パラメータ**（§6 :117 の `refractory_s` 5.0 は①②の連射防止値であり帯切替に妥当とは限らない）＋ 帯境界の方向依存ヒステリシス（T-4）の要否 | 高 |
+| **OQ-24** | **帯を走行中の Nav2 速度上限へ届ける ROS 経路**（T-6 の限界）。CURRENT は launch 時 `RewrittenYaml` の 1 回適用のみで runtime 経路が無い。T-6 の制約 1〜4 を満たす形を設計し、**L2 迂回が起きないことを unit で pin** する。ADR-0010 §Decision 5 の派生再導出（L2 鮮度窓・L1 停止円 margin）と同一の安全レビューに掛ける | 高 |
+| **OQ-25** | **①召喚・②指差しとの排他 / 同時成立**（§7 :125 の状態機械への合成）。③は走行中も常時受理するのか、特定状態でのみ受理するのか。①②が**排他判定**（:37）であるのに対し③は**直交軸**であり、「挙手しながら指を立てる」が①と③の同時成立になりうる。既存 **OQ-14**（:194・①②の同時成立 dead zone）と同じ測定セッションで扱う | 中 |
+| **OQ-26** | **左手の扱い**。本追補では **handedness 判定で右手のみ有効・左手は無効**（帯として解釈しない）と明記した。将来拡張（左手に別の意味を割り当てる）を残すか、恒久的に無効とするか。「無効＝何も起きない」は fail-closed であり、拡張しない着地も正当である | 中 |
+
+### T-10. 関連リンク（双方向）
+
+- **決定正本**: [../adr/0010-raise-speed-cap-to-platform-max.md](../adr/0010-raise-speed-cap-to-platform-max.md)（§Decision 2 が本節を参照＝双方向）／ [ADR-0007](../adr/0007-no-overhead-camera-gesture-via-onboard-nn.md)（搭載カメラ + ローカル NN でジェスチャを決定論認識する方針の正本＝ジェスチャ③もこの延長）
+- **M1 速度の一次事実**: [../shared/02-hardware-design.md 【2026-08-19 追記】](../shared/02-hardware-design.md) の **V-1（:536-541 ファーム clamp ±1000mm/s・方向非保存）/ V-2（:543-551 理論最高速度 1.13 m/s・電圧で約2割低下）/ V-3（:553-560 `set_car_motion` 採用の裁定）/ V-4（:562-569 スリップ・odom 品質・25Hz 報告・電源サグ）**
+- **本 doc 内**: §5 判定（:97-113）／§6 信頼性（:115-121）／§7 状態機械（:123-135）／§10 契約・config（:157-163）／INV-1（:25）・INV-2（:57）・`gesture_detector`（:61）
+- **standby / HRI**: [11-standby-and-hri-features.md](11-standby-and-hri-features.md)（T-7 の正本・同一ラウンドで land）
+- **安全側**: [10-room-scale-safety-review.md §5-3（:243-266 `margin = v_max × t_react`）/ §10-2（:449- L0' 未結線の記録）](10-room-scale-safety-review.md)——**速度上限を上げれば必要停止円は `margin ∝ v_max` で広がる**（ADR-0010 §Trade-offs）。ジェスチャ③は速度を**上げる方向にも下げる方向にも**効くため、C-3 停止円改訂は最速段の値で行う。
+- **用語**: [../GLOSSARY.md §11](../GLOSSARY.md)（:147 **S-SPEED** の正準定義／:135-137 ジェスチャ司令・手挙げ召喚・指差し／**速度セレクタ（3帯）**＝本節を定義正本とする 1 エントリを同一ラウンドで追補済＝双方向）。

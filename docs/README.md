@@ -111,6 +111,7 @@ docs/
 | [08-x-er-bridge-node-spec](mode-x-er/08-x-er-bridge-node-spec.md) | **XER6 `x_er_bridge` node 契約（設計正本）**: X-ER commander node の形・`mode_x_er:` config key 凍結（06 §3 RESOLVED と対）・composition 起動シーケンス・plugin gating（二重 validate）・dispatch seam・エラー方針・テスト 3 層 |
 | [09-hand-raise-summon](mode-x-er/09-hand-raise-summon.md) | **ジェスチャ司令（召喚・指差し）設計**（2026-08-09 全面改訂・ADR-0007）: 搭載 HP60C + ローカル骨格 NN で「肩より上=召喚」「腕を伸ばす=指差し」を決定論認識・ER バイパスで既存 L3/L2 ゲートを全通過（INV-1/INV-2）・時間窓多数決・到達点は KNOWN_LOCATIONS snap（coordinate goal は Phase 2 defer）・/goal_pose 直注入はしない・旧俯瞰+マーカー方式は §13 に降格保存 |
 | [10-room-scale-safety-review](mode-x-er/10-room-scale-safety-review.md) | **部屋スケール運用の安全レビュー（分析・2026-08-18）**: 人とロボットが同一走行平面に立つ構成（[ADR-0009](adr/0009-m1-room-scale-operation.md) 帰結⑦）の残余リスク評価。R-3 多層防御論証の柱ごと評価・OQ-20 召喚レグ再設計・C-3 停止ポリゴン要求仕様・#223 座標 seam 監査・OQ-21 L1 有効性・運用規律・waypoint 配置規律・Guardian 経路点検の 8 項目 ＋ **部屋運用開始の前提条件チェックリスト**。**分析であって運転許可ではない**（最終受け入れ＝オペレーターゲート） |
+| [11-standby-and-hri-features](mode-x-er/11-standby-and-hri-features.md) | **standby モードと HRI 機能群（2026-08-21 決定）**: persona **8号「はっちゃん」**（音声返答＝事前生成 wav を `aplay`・毎回 TTS しない）・**standby がデフォルト起動状態**でジェスチャ/音声は active 遷移後のみ armed（入口＝ウェイクワード「はっちゃん」＋**拍手**）・三層の入り確認合図（チャイム→音声→LED）・機能 tier（A=persona/standby/拍手 ／ B=**ついてこいモード**・**エア描画コマンド**（$1 recognizer・○/横棒/×/✓）／ C=**ボディミラー操縦**＝`twist_mux` 凍結契約に触れ **ADR 裁定待ち**）・8GB 起動プロファイル P0-P3（同居可否は [23 §7 S1](architecture/23-perception-and-localization.md) 実測で決定＝数値を発明しない）。**起動プロファイル（launch・十数秒）と standby⇄active（ms）の 2 軸を混同しない** |
 
 ## mode-x-er-vla/ — Gemini Robotics-ER + VLA 統合モード（設計提案）
 
@@ -168,6 +169,7 @@ hard-to-reverse な設計判断とその理由を `NNNN-slug.md` で記録する
 | ファイル | 内容 |
 |---------|------|
 | [adr/README](adr/README.md) | ADR 一覧・命名・いつ起こすか（3条件）・retrospectives との違い |
+| [0010-raise-speed-cap-to-platform-max](adr/0010-raise-speed-cap-to-platform-max.md) | 速度上限 0.3 m/s を**プラットフォーム上限へ再定義**（実機 car_type のファーム clamp = 1.0 or 0.7 m/s・実機確認後に contract PR で pin）。運用値は config・デモ最終値は **S-SPEED 段階増速実測**で確定。L0' は方向保存・暴走バックストップとして維持/結線 |
 | [0009-m1-room-scale-operation](adr/0009-m1-room-scale-operation.md) | M1 単騎フェーズは**実際の部屋（room scale）**を走り、ミニチュアジオラマは走行に使わず**凍結保存**（sim 回帰環境としては現状維持）。倉庫設定を薄め**ジェスチャ召喚を主役**に。PR #530 の非円形 footprint は re-scope して生存・ジオラマ通路数値は歴史記録へ・W3（9 点再設計）は中止し `KNOWN_LOCATIONS` は**キー凍結／値のみ**部屋 waypoint へ |
 | [0007-no-overhead-camera-gesture-via-onboard-nn](adr/0007-no-overhead-camera-gesture-via-onboard-nn.md) | ER/知覚入力に**俯瞰カメラを使わない**。搭載 HP60C + ローカル骨格 NN（MediaPipe 第1候補）でジェスチャ2種を決定論認識し既存 L3/L2 ゲートへ。homography 系は fail-closed で降格保存 |
 | [0006-single-bot-first](adr/0006-single-bot-first.md) | 今回のフェーズはロボット**1台（単騎構成）**で実装。2台系の設計 doc・実装資産は削除せず凍結保存し、交通管理・交渉・min-separation の実機実証は2台復帰フェーズへ繰延 |

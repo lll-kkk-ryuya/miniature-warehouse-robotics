@@ -529,6 +529,64 @@ M1 単騎フェーズは**実際の部屋（room scale）**を走り、ジオラ
 
 ---
 
+## 【2026-08-19 追記】M1 の速度性能・速度の出し方・AI 音声モジュール（agent-team 調査確定）
+
+> 2026-08-19 の3レーン並列調査（一次情報 = 公式 `Rosmaster_Lib` V3.3.9 ソース・工場 STM32 ファーム Rosmaster V3.5.1 C ソース・520 モータ公式パラメータ表・M1 公式コース PDF）の確定事実。速度上限引き上げの決定は [ADR-0010](../adr/0010-raise-speed-cap-to-platform-max.md) が正本。**本節の未確定項目は実機到着済み（2026-08-18）につき順次実測で潰す。**
+
+### V-1. 速度の真の上限（ファームウェア）
+
+- ホスト側 `Rosmaster_Lib.set_car_motion(vx, vy, wz)` に**値域 clamp は存在しない**（docstring の「X3: ±1.0」等はドキュメントであって強制ではない）。`struct.pack('h', int(v*1000))` の **int16 境界 ±32.767 m/s** を超えると `struct.error` → **bare except がフレームごと黙殺**（前回速度がラッチされたまま＝fail-safe ではない）。
+- **真の clamp は STM32 工場ファーム `Mecanum_Ctrl`（app_mecanum.c）の各輪 ±1000 mm/s**（car_type=`CAR_MECANUM` 0x01 のとき。`CAR_MECANUM_MAX` 0x02 は ±700）。この clamp は**4輪ミキシング後に各輪独立**で切るため、超過指令は**進行方向を歪める**（ベクトル比例縮小ではない）→ ホスト L0'（方向保存クランプ）維持の工学的根拠。
+- **M1 専用の car_type 値は存在しない**（ライブラリ/ファームとも X3/X3PLUS/X1/R2 の4種のみ）。第三者 M1 実機プロジェクトは 0x01（X3）で駆動。`FUNC_MOTION(0x12)` の payload 先頭は car_type バイト（`& 0x80` は yaw-adjust フラグ）＝自前ドライバ実装時に取りこぼさない。**⚠️ ネット上の `set_speed_limit(0x16)` / `set_imu_adjust(0x17)` は推測 API で、この版のファームに実装は無い＝採用禁止。**
+- `set_car_motion(0,0,0)` はファームの `Motion_Stop(STOP_BRAKE)` に落ちる＝**ゼロ送信は自由停止でなくブレーキ**。
+
+### V-2. 520 モータと理論最高速度（`v = RPM/60 × π × D`）
+
+| 減速比 / 無負荷RPM | 65mm 輪 | 80mm 輪 |
+|---|---|---|
+| 1:19 / 550 | 1.87 m/s | 2.30 m/s |
+| 1:30 / 333 | **1.13 m/s** | 1.40 m/s |
+| 1:56 / 205 | 0.70 m/s | 0.86 m/s |
+
+検算: R2（1:19/65mm）→1.87 ≈ docstring 1.8 ✓ / X3 PLUS（1:56/80mm）→0.86 vs ファーム clamp 0.7 ✓ / X3（1:30/65mm）→1.13 vs clamp 1.0 ✓（式の妥当性の傍証）。**M1 の輪径・ギア比・car_type は非公開＝実機5分で確定**: ①モータラベルの RPM 印字 ②ホイール径ノギス実測 ③シリアル疎通後に `get_car_type()` 問い合わせ（**0x02 なら上限 0.7**・最優先確認）。電圧依存: 無負荷回転数は電圧比例＝3S 12.6→9.6V で **80%**（12V 定格 1.13 → 電池終盤 ~0.91 m/s 相当）。
+
+### V-3. 速度の出し方（4案の裁定）
+
+| 案 | 裁定 | 理由 |
+|---|---|---|
+| (a) `set_car_motion` に大きい値 | **採用** | エンコーダ閉ループ PID 維持・ファーム clamp が上限。L0' が方向保存で手前を絞る |
+| (b) `set_motor` 直接 PWM | 却下（高速化用途） | car_type バイト無し＝逆運動学・速度 PID をバイパス。同一 PWM で左右差 ~12% 実測＝直進しない。odom 自前化。超低速の解であって上限の解ではない |
+| (c) `set_pid_param` | 上限に無関係 | 追従性のみ。PID 出力は 2000 パルスにクリップ。`forever=True` は Flash 書込でパケットロス源（公式明記） |
+| (d) ファーム clamp 自体の変更 | **不可能** | Yahboom 製バイナリのコンパイル時リテラル。ホストから変更手段なし |
+
+### V-4. 高速化の既知の問題（S-SPEED 実測の観点）
+
+| 問題 | 要点 |
+|---|---|
+| メカナムのスリップ | Yahboom 自身が振り子サス等をスリップ対策として設計説明。速度↑でスリップ↑＝odom 誤差↑ |
+| odometry の質 | 公式スタックは**ファーム速度報告（スリップ込み）の積分**で odom を作り 4輪エンコーダ差分を使っていない → **自前 `m1_driver` はエンコーダ差分（`FUNC_REPORT_ENCODER 0x0D`）で組む** |
+| 報告レート 25Hz 固定 | 1.0 m/s で1周期 40mm の未観測走行（0.3 の 3.3 倍）。L2 鮮度窓・L1 反応余裕の再導出が要る（[ADR-0010 Decision 5](../adr/0010-raise-speed-cap-to-platform-max.md)） |
+| 電源サグ | 12V レールは非安定化スルー（§残課題）＝全力加速のサグが Orin ブラウンアウト直結。S-SPEED で電圧を必ず記録 |
+
+### V-5. AI large model voice module（M1 同梱・開梱実物で確認 2026-08-19）
+
+同梱実物: AI 音声モジュール基板 / スピーカー / Side elbow Type-C ケーブル 25cm（Standard/Superior 共通同梱。公式ページの "optional" 表記は誤解を招くが unboxing blog の同梱リストと一致）。**旧 $19 ASR-TTS モジュール（CI1302）とは別物。**
+
+- **生 wav が録れる（最重要の確定）**: 公式 M1 コース PDF の実コード（`largemodel/asr.py`）が**ホスト側 PyAudio（=ALSA）でマイクストリームを直接開き wav に書き出している**＝通常の USB オーディオデバイスとして見える。`arecord` で録れる → **ER 音声直入力設計（[mode-x-er/04](../mode-x-er/04-er-input-modalities-and-stt.md)）にドライバ追加なしで接続可**。Yahboom の ASR 層（SenseVoiceSmall/Tongyi・zh/en のみ）は使わない＝日本語非対応は無関係。
+- 基板は**オーディオ + シリアル（CH340・`/dev/ttyUSB*`）の複合デバイス**。シリアル側は中国語ウェイクワード（"你好小雅"）通知専用＝**本プロジェクトでは未使用**。スピーカーは OS 標準再生（`aplay`）で任意 wav 再生可＝到着発話（[mode-x-er/09 §11](../mode-x-er/09-hand-raise-summon.md)）に流用可。
+- JetPack 6 / Ubuntu 22.04 で追加ドライバ不要の見込み（`snd-usb-audio` / `ch341` はカーネル標準。公式コースも Orin はネイティブ実行前提）。
+- **要実機確認（6点）**: ①USB ディスクリプタ（VID:PID・UAC版）②オーディオ/シリアルが同一 Type-C 配下か（内部ハブ推定・未証明）③マイク ch 数と実サンプルレート（コースは 1ch/16kHz 固定）④**基板 NS/AEC 前処理が掛かった音が来るか**（静音録音のノイズフロアで切り分け・ER へ渡す音質に直結）⑤チップ型番 ⑥スピーカーコネクタ。確認コマンド: `lsusb` → `lsusb -t` → `arecord -l` → `arecord -D plughw:N,0 -f S16_LE -r 16000 -c 1 -d 5 /tmp/mic_test.wav` → `aplay /tmp/mic_test.wav`。
+
+### V-6. 出典（一次情報）
+
+- Rosmaster_Lib V3.3.9: <https://github.com/Roblibs/Rosmaster_Lib> / M1 実機リポ <https://github.com/Zia-kr/rosmaster_m1_dev> / 公式 zip 検証 <https://github.com/AIRclub-UdeSA/physical_rosmaster>
+- 工場 STM32 ファーム V3.5.1 ソース: <https://github.com/Inouye165/Yahboom-Robot-Expansion-Board-V3.0>（app_mecanum.c / app_motion.h / protocol.h）
+- 520 モータ公式表: <https://www.yahboom.net/public/upload/upload-html/1742005967/0.520%20motor%20introduction%20and%20usage.html>
+- M1 音声コース PDF（asr.py 実コード転載）: <https://github.com/YahboomTechnology/ROSMASTER-M1>（`18.AI Large Model Basic Course` 配下）/ unboxing blog <https://category.yahboom.net/blogs/news/unboxing-and-reviewing-rosmaster-m1>
+- `set_motor` 実機 probe: <https://github.com/kirra-systems/kirra-runtime-sdk> / M1 PWM ブリッジ実装 <https://github.com/liuwenjing613-maker/qqqqqq>（参照日: すべて 2026-08-19）
+
+---
+
 【2026-08-21 追記】紙説明書の転記 doc（shared/11）と開梱で確定した補足
 
 - 同梱紙説明書（Shipping List・組立手順・配線・音声フロー）の転記と開梱記録は [11-m1-assembly-manual.md](11-m1-assembly-manual.md)（転記 doc・設計判断なし）。:393 の着荷記録と 1:1 同期。
