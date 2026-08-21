@@ -152,7 +152,7 @@ doc06:112、sim 範囲。実 bot E2E は sim track #8/#156）。→ F1-F3。**AR
 
 | 項目 | 期待（正本） | deploy/jetson 実装 | 判定 |
 |---|---|---|---|
-| prod=別マシン clone | doc17:88（Jetson は別途 `git clone`）/ doc19:6,:118（git タグ固定） | README:38-40・install.sh:12・jetson-deploy.md:43-51（`/opt/warehouse` clone・ExecStart 書換） | ◯ |
+| prod=別マシン clone | doc17:88（Jetson は別途 `git clone`）/ doc19:6 / doc19:118（git タグ固定） | README:38-40・install.sh:12・jetson-deploy.md:43-51（`/opt/warehouse` clone・ExecStart 書換） | ◯ |
 | prod runtime dir | doc19:18（`/run/warehouse` systemd `RuntimeDirectory`） | 各 data unit が `RuntimeDirectory=warehouse`+`Preserve=yes`（state-cache/safety/bridge） | ◯ |
 | 起動順 | doc02:138 ノード一覧・doc12 層構造 | microros → state-cache → safety → nav2 → bridge（`After=` 連鎖。nav2→safety は `BindsTo=`） | ◯ |
 | **安全トポロジ** | doc12:80-84（Guardian が motion を止める）/ safety.md | nav2 が safety を **`BindsTo=`(+`After=`)**＝guardian クラッシュで nav2 停止（`Requires=` 不採用の理由を unit コメントに明記） | ◯ |
