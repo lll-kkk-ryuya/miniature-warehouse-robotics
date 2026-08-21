@@ -43,7 +43,7 @@ guardian が**異常終了/クラッシュしても Nav2 を停止**する（`sy
 
 ## 2. リリース取得（git タグ）
 
-prod は **git タグ固定**（`v0.x`）を clone/checkout して実行（doc19:94 / doc17 §4.0 別マシン=clone）。
+prod は **git タグ固定**（`v0.x`）を clone/checkout して実行（doc19:6 / doc19:118 / doc17 §4.0 別マシン=clone）。
 規約パスは `/opt/warehouse`（`install.sh` は実 clone 先を自動検出するので別パスでも可）。
 
 ```bash
