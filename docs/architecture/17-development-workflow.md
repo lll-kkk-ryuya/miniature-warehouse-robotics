@@ -98,6 +98,8 @@ Jetson（実機, Phase 1〜）:
   別途 git clone  ← deploy/jetson を実行（別マシンなので clone）
 ```
 
+- 補足: Jetson 側の clone が checkout するのは **prod リリースの git タグ（`v0.x`）**。タグ運用の正本は [doc19:6 / doc19:118（§6 git とリリース）](19-environments-and-config.md) と [docs/setup/jetson-deploy.md:44-46（§2 リリース取得）](../setup/jetson-deploy.md)。
+
 ### Step 0: `feat/repo-skeleton`（逐次）
 
 このブランチの仕事の **8割は「契約の凍結」、2割がディレクトリ改名**。
