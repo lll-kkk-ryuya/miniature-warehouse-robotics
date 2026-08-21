@@ -191,9 +191,9 @@ web_bridge は base+overlay 解決済みの **browser-facing 値のみ**を返�
 
 **設計上の落とし穴**: 「全 ObsEvent に trace_id を打つ」は**不可能**。`Command` schema は `gen_id` を持たず（`schemas.py:187-196`）、`/llm/reasoning` は生 text、`/state_cache/snapshot` も gen_id を持たない。**gen_id を wire に載せているのは `/negotiation/start` と `/negotiation/proposal` のみ**（`negotiation_messages.py:49-53` / `schemas.py:210`）。
 
-- **v1 方針（軽量・推奨）**: gen_id を持つ negotiation event のみ trace_id を導出。reasoning/command/snapshot は「Langfuse join key 無し」と明記し、UI は deep-link を出さない。
-- trace seed: `seed_for(run_id, work_id) = f"{run_id}:{work_id}"`（`seed.py:33-42`、verbatim `:42`）→ `derive_trace_id`（`seed.py:70-85`）。**`create_trace_id` は seed.py に存在せず Langfuse SDK 由来**（None のとき fail-open）。`seed.py` は domain-free で env を読まない（`:16`）。`WAREHOUSE_RUN_ID` の実読込は呼び手 `llm_bridge.py:165`。
-- Langfuse タグ: `[provider, mode, "prompt:<name>", env=<v>]`（`llm_bridge.py:181-187`、最終順は `tracer.py:194`）。consumer は**タグ値で filter**（順序非依存。`tracer.py:70-71` は "normalize stored tag order" と述べる。※"alphabetical" はコード上未検証＝記憶ノートのみ。doc に "alphabetical" と断定しない）。
+- **v1 方針（軽量・推奨）**: gen_id を持つ negotiation event のみ trace_id を導出。reasoning/command/snapshot は「Langfuse join key 無し」と明記し、UI は deep-link を出さない。**導出レシピは trace owner ノブ（`WAREHOUSE_LANGFUSE_OWNER` env → `hermes.langfuse_owner` config → 既定 `bridge`）に従う**: Pattern A = `derive_trace_id(seed_for(run_id, gen_id))`、Option D(`hermes_plugin`) = `derive_plugin_trace_id`（`seed.py:108-126`）。不正値は Pattern A へ fail-safe。owner 解決は scorer 先例（`score_send.py:65-89`）を **import せずミラー**（web_bridge は `warehouse_interfaces` + `eval_sdk` のみに依存＝一方向）。**join の前提は「両脚が同じ run_id を seed する」こと**: `WAREHOUSE_RUN_ID`（§13 run boundary・`llm_bridge.py:179`）が未設定な run では Bridge 側が per-process session id へ fallback するため seed が一致しない。この場合 web_bridge は event を synthetic run_id で stamp しつつ（:303）**`trace_id` は null のまま**にする（誰も mint していない trace への deep-link を出さない＝:152 の no-link 状態）。scorer も同じ規則（`trace_id.py:49-50,79-87`＝run id 未設定なら trace を導出しない）。
+- trace seed: `seed_for(run_id, work_id) = f"{run_id}:{work_id}"`（`seed.py:33-42`、verbatim `:42`）→ `derive_trace_id`（`seed.py:70-85`）。**`create_trace_id` は seed.py に存在せず Langfuse SDK 由来**（None のとき fail-open）。`seed.py` は domain-free で env を読まない（`:16`）。`WAREHOUSE_RUN_ID` の実読込は呼び手 `llm_bridge.py:179`。
+- Langfuse タグ: `[provider, mode, "prompt:<name>", env=<v>]`（`llm_bridge.py:213-218`、最終順は `tracer.py:194`）。consumer は**タグ値で filter**（順序非依存。`tracer.py:70-71` は "normalize stored tag order" と述べる。※"alphabetical" はコード上未検証＝記憶ノートのみ。doc に "alphabetical" と断定しない）。
 - **より良い経路（additive・§14）**: `/llm/situation` publisher を新設すると、`Situation` は `gen_id` を持つ（`schemas.py:125-132`）ので bus に gen_id を載せられ、司令官判断パネルの Langfuse join が成立する。これは llm-bridge track の additive contract PR。
 
 ---
@@ -306,7 +306,7 @@ live persona は Slice 3（Hermes persona・human-gated・Phase 3、≈ #288）�
 | **S5**（LAN 公開・security hardening・opt-in） | token gate + CORS allowlist + `WEB_BRIDGE_TOKEN` + no-secret-on-wire 証明（§11） | 公開前レビュー |
 | **S6**（#187 budget 統合） | events.jsonl SSD path + retention 実測・`snapshot_hz` tuning・Jetson メモリゲート突合 | 実測値を #187 / STATUS へ |
 
-**run boundary（S2.5 の `/run/header`）**: run_id は per-run env `WAREHOUSE_RUN_ID`（`llm_bridge.py:165`）だが、購読トピックはどれも run_id を wire に載せない。`web_bridge` は long-lived なので、Bridge 起動時に `/run/header`（TRANSIENT_LOCAL depth1, latched）で `{run_id, mode, provider, scenario}` を publish し、`web_bridge` が (a) event stamp (b) events.jsonl roll (c) console reset (d) `/runs` 構築 に使う。これは UI でなく**欠落した producer-side contract**（llm-bridge track 所有・additive）。
+**run boundary（S2.5 の `/run/header`）**: run_id は per-run env `WAREHOUSE_RUN_ID`（`llm_bridge.py:179`）だが、購読トピックはどれも run_id を wire に載せない。`web_bridge` は long-lived なので、Bridge 起動時に `/run/header`（TRANSIENT_LOCAL depth1, latched）で `{run_id, mode, provider, scenario}` を publish し、`web_bridge` が (a) event stamp (b) events.jsonl roll (c) console reset (d) `/runs` 構築 に使う。これは UI でなく**欠落した producer-side contract**（llm-bridge track 所有・additive）。
 
 ---
 
@@ -324,7 +324,7 @@ live persona は Slice 3（Hermes persona・human-gated・Phase 3、≈ #288）�
 
 ## 15. 技術スタック
 
-- **gateway**: `ws/src/warehouse_web_bridge`（ament_python・rclpy + FastAPI + uvicorn + websockets）。共存パターン [doc12a:200-234](../mode-a/12a-integration-mode-a.md)。依存は原則 `warehouse_interfaces`（凍結 schema / `paths`）のみ。会話 decoder（`negotiation_messages`）の再利用は §16 の所有判断に従う。
+- **gateway**: `ws/src/warehouse_web_bridge`（ament_python・rclpy + FastAPI + uvicorn + websockets）。共存パターン [doc12a:200-234](../mode-a/12a-integration-mode-a.md)。依存は `warehouse_interfaces`（凍結 schema / `paths`）＋ `eval_sdk`（trace seed 導出のみ・§7。llm-bridge / orchestrator と同じ一方向 exec_depend）に限る。会話 decoder（`negotiation_messages`）の再利用は §16 の所有判断に従う。
 - **frontend**: `web/console`（**Next.js App Router・static export `output:'export'`（CSR SPA・§2.1）** + TypeScript(strict) + Tailwind + Zustand）。runtime に Node server を持たず、build 成果物 `out/` を web_bridge が配信。※"Next.js" は repo 未記載＝本設計が新規採用（既存 `web/e2e` は別目的の Playwright scaffold）。
   - **App Router 構成**（全て export 互換・runtime dynamic param なし）: `app/layout.tsx`（root に `<ConnectionProvider>`/`<ModeProvider>` を `'use client'` で**1回** mount＝navigation で破棄されない）／`/live`（既定の単一画面）／`/runs`（picker・`GET /runs`）／replay は **`/runs?run_id=...`（query param）**にして export の `generateStaticParams` 要件を回避（runs は runtime 発見のため）。`next.config`: `output:'export'` ＋ `images:{ unoptimized:true }`（next/image optimizer はサーバ必須＝SVG/plain `<img>`）。
   - **data 層**: live は `useWebSocket`（`GET /ws?since_seq`・再接続で last seq 再送 backfill→live・**drop policy は server をミラー**＝snapshot は drop-oldest / event は never-drop→overflow 切断時は `/events?since_seq` 再 sync）。状態は **Zustand**（`connection{status,lastSeq}` / `run{run_id,mode,provider,scenario}`〔`/run/header` 由来〕 / `snapshot` last-write-wins by robot / `negotiationsById` append by negotiation_id / `commanderLog`・`emergencies` append）。**seq が唯一の apply 順序**（§5）。**TanStack Query は live に使わない**＝`/runs`・`/events` 履歴 pagination・Langfuse 事後パネルのみ。
@@ -391,7 +391,7 @@ live persona は Slice 3（Hermes persona・human-gated・Phase 3、≈ #288）�
 - トピックカタログ: [docs/architecture/03-software-architecture.md:98-108](03-software-architecture.md), :113, :277-282
 - 会話 producer: `ws/src/warehouse_llm_bridge/warehouse_llm_bridge/negotiation_messages.py:88-101,49-53,10-17`（decode_abort `:131-141` は **lenient consumer**） / `character_session.py:89-90,103` / `character_node.py:15-17,91-94,154-156` / `persona.py:114-160`
 - abort producer（canonical）: `ws/src/warehouse_safety/warehouse_safety/guard_logic.py:181,191`（`build_abort`→`{reason, bot, event_id}`・[doc03:108](03-software-architecture.md)・doc14:241-247 R2）
-- 司令官 publisher: `ws/src/warehouse_llm_bridge/warehouse_llm_bridge/llm_bridge.py:132-133,165,181-187,231-235` / `scheduler.py:146(noop),187-188(callback配線),350(proposal注入),359-360(発火)`
+- 司令官 publisher: `ws/src/warehouse_llm_bridge/warehouse_llm_bridge/llm_bridge.py:143-144,150(create_publisher),165(negotiation_starter 配線),267-273,287(publish helper)` / `scheduler.py:151(_noop),178-179(既定 publish 配線),232-246(proposal 注入 API),302,334(cycle への attach),357(situation へ発火)`
 - 凍結契約: `ws/src/warehouse_interfaces/warehouse_interfaces/schemas.py`（Situation :125-132 / Command :187-196 / Proposal :209-214 / StateSnapshot :95,:104 / RobotState :38-61）
 - trace seed / paths: `ws/src/eval_sdk/eval_sdk/seed.py:16,33-42,70-85` / `tracer.py:70-71,194` / `ws/src/warehouse_interfaces/warehouse_interfaces/paths.py:22-30`
 - QoS / rate: `state_cache.py:43,59-61,124` / `emergency_guardian.py:117-122`
