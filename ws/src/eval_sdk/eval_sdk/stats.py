@@ -15,6 +15,12 @@ supplies the shortest ``lᵢ`` (planner geodesic) and actual ``pᵢ`` (``distanc
 distances; this module only does the arithmetic. Live wiring (Nav2 goal-reached + planner
 ``lᵢ``) is Phase 3a and out of scope here (doc21:245/:312).
 
+Phase-1.5b additions (doc21 §14 Step 1.5b / §6 :184-186, §13.2 :310): the Tier-1 aggregate
+arithmetic the warehouse KPI core composes — ``rate`` (intervention / rejection ratios),
+``jain_fairness_index`` (per-robot load fairness), ``makespan`` and ``throughput``. Same layer
+rule as above (doc21:178): the numbers are pre-selected by the domain, this module only divides
+them.
+
 Reuse origin (doc21 §12.1 / :406, with ``# adapted from …`` attribution at each site):
 ``spl_metric`` = allenai/allenact verbatim (MIT); ``success_rate``/``soft_spl`` = Habitat写経
 (facebookresearch/habitat-lab, MIT); ``sparc``/``ldlj``/``n_movement_units`` = siva82kb/smoothness
@@ -326,3 +332,76 @@ def n_movement_units(velocities: Sequence[float]) -> int:
             count += 1
         previous_sign = sign
     return count
+
+
+# ── Tier-1 aggregates: rate / fairness / makespan / throughput (doc21 §6 :184-186) ──
+#
+# doc21:178 splits the layers: the *arithmetic* lives here, the *definitions* (what counts as an
+# intervention, which per-robot load is the "fair" one, which tasks are inside the window) stay
+# in the domain (``warehouse_orchestrator.kpi``). These helpers therefore take pre-selected
+# numbers and know nothing about audit rows, robots or tasks.
+
+
+def rate(numerator: float, denominator: float) -> float | None:
+    """``numerator / denominator`` with a zero-denominator guard → ``None`` (doc21:184).
+
+    The generic ratio doc21:184 assigns to ``eval_sdk.stats`` (intervention rate, rejection
+    rate, …). ``None`` rather than ``0.0`` on an empty denominator keeps "no data" separable
+    from "measured zero" — the :func:`percentile` / :func:`success_rate` precedent above.
+    """
+    if denominator == 0:
+        return None
+    return numerator / denominator
+
+
+def jain_fairness_index(loads: Sequence[float]) -> float | None:
+    """Jain's fairness index ``J = (Σxᵢ)² / (n · Σxᵢ²)`` over per-entity loads (doc21:310).
+
+    Range ``[1/n, 1]``: ``1.0`` iff every load is equal, ``1/n`` iff one entity carries
+    everything. Scale-invariant (``J(c·x) == J(x)``) and order-independent, so the caller may
+    pass counts, metres or seconds in any order. Empty input → ``None``; an all-zero load vector
+    → ``None`` (``0/0`` is undefined — "nobody did anything" is not a fairness statement).
+    Negative loads raise ``ValueError``: the index is defined for non-negative shares only, and
+    a negative entry can push ``J`` outside ``[1/n, 1]`` and silently mis-rank runs.
+
+    # formula: Jain, Chiu & Hawe (1984), DEC-TR-301 "A Quantitative Measure Of Fairness And
+    # Discrimination For Resource Allocation In Shared Computer Systems" — own implementation.
+    """
+    if not loads:
+        return None
+    if any(load < 0 for load in loads):
+        raise ValueError("jain_fairness_index is undefined for negative loads")
+    total = sum(loads)
+    sum_of_squares = sum(load * load for load in loads)
+    if sum_of_squares == 0:
+        return None
+    return (total * total) / (len(loads) * sum_of_squares)
+
+
+def makespan(intervals: Sequence[tuple[float, float]]) -> float | None:
+    """Schedule span ``C_max = max(end) − min(start)`` over ``(start, end)`` pairs (doc21:185).
+
+    Empty input → ``None``. An interval whose ``end`` precedes its ``start`` raises
+    ``ValueError`` — a malformed pairing is a programming error, not a measurable span (the
+    fail-loud stance :func:`spl` takes on mismatched lengths); callers filter those upstream.
+    """
+    if not intervals:
+        return None
+    for start, end in intervals:
+        if end < start:
+            raise ValueError("makespan interval end precedes start")
+    return max(end for _, end in intervals) - min(start for start, _ in intervals)
+
+
+def throughput(count: int, duration: float | None) -> float | None:
+    """Completions per unit time ``count / duration`` (doc21:185).
+
+    ``duration`` is whatever elapsed window the caller chose (e.g. :func:`makespan`), so this
+    stays domain-free. ``None`` when ``duration`` is ``None`` or non-positive (an instantaneous
+    window has no defined rate); a negative ``count`` raises ``ValueError``.
+    """
+    if count < 0:
+        raise ValueError("throughput count must be non-negative")
+    if duration is None or duration <= 0:
+        return None
+    return count / duration
