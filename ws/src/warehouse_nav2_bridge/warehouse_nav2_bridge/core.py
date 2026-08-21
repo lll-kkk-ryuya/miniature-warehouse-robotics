@@ -35,7 +35,7 @@ DURATION_MAX_SEC: float = 30.0
 # An inline coordinate goal: (x, y) or (x, y, yaw). doc11a:455 — the aisle-A south demo
 # goal is a pinch-aligned coordinate, NOT a KNOWN_LOCATIONS name, so it cannot go through
 # ``_coord``. Any yaw (third element) is validated then DROPPED: ``backend.Pose`` is (x, y)
-# and ``nav2_bridge.py:80`` fixes ``orientation.w=1.0`` — yaw-aware goals are a separate change.
+# and ``nav2_bridge.py:84`` fixes ``orientation.w=1.0`` — yaw-aware goals are a separate change.
 GoalCoord = tuple[float, float] | tuple[float, float, float]
 
 # Task states surfaced as ``nav_status`` (doc12a:319-327). "navigating"/"waiting"
