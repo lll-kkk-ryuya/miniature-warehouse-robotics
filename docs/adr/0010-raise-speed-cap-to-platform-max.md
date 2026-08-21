@@ -2,7 +2,7 @@
 
 **Status**: accepted（2026-08-19 オペレーター決定「本フェーズは安全面より速度を優先し、出せる限り出す」。**最終値の pin は §Open の実機確認と S-SPEED 実測待ち**＝コードの契約値変更は本 ADR の後続 contract PR で行う）
 
-本フェーズ（M1 単騎・部屋スケール＝[ADR-0009](0009-m1-room-scale-operation.md)）では、凍結契約 `MAX_LINEAR_VELOCITY = 0.3 m/s`（[safety.py:18](../../ws/src/warehouse_interfaces/warehouse_interfaces/safety.py)）を**ミニチュアスケール由来の安全方針値から「プラットフォームが物理的・ファームウェア的に出せる上限」へ再定義**し、運用速度は config（`safety.max_linear_velocity` ≤ 契約上限）で段階的に引き上げる。ジェスチャ速度制御（右手の指カウント6段階・2026-08-19 ユーザー仕様）はこの運用値を最速段とする。
+本フェーズ（M1 単騎・部屋スケール＝[ADR-0009](0009-m1-room-scale-operation.md)）では、凍結契約 `MAX_LINEAR_VELOCITY = 0.3 m/s`（[safety.py:18](../../ws/src/warehouse_interfaces/warehouse_interfaces/safety.py)）を**ミニチュアスケール由来の安全方針値から「プラットフォームが物理的・ファームウェア的に出せる上限」へ再定義**し、運用速度は config（`safety.max_linear_velocity` ≤ 契約上限）で段階的に引き上げる。ジェスチャ速度制御（右手の指カウント**3帯**＝**0本（グー）＝最遅段／1〜3本＝最速段／4〜5本（パー）＝安定段**。2026-08-19 初案の6段階を 2026-08-21 に改訂。正準は [09【2026-08-21 追補④】ジェスチャ③ 速度セレクタ（右手指カウント3帯）](../mode-x-er/09-hand-raise-summon.md)）はこの運用値を**最速段（1〜3本帯）**とする。
 
 ## Context / 背景
 
@@ -19,7 +19,7 @@
 ## Decision / 決定
 
 1. **`MAX_LINEAR_VELOCITY`（凍結契約）＝プラットフォーム上限**へ意味を再定義する。値は実機 car_type のファーム clamp（**0x01 → 1.0 m/s / 0x02 → 0.7 m/s**）。pin は §Open 1 の実機確認後の **contract PR**（`contract` ラベル・[parallel-workflow §4](../../.claude/rules/parallel-workflow.md)）で行い、**本 ADR 時点でコードは 0.3 のまま**（docs 先行＝docs-first）。
-2. **運用速度は config が持つ**: `safety.max_linear_velocity`（≤ 契約上限・既存の検証機構 [config.py:101-104](../../ws/src/warehouse_interfaces/warehouse_interfaces/config.py) を無改造で流用）。環境/プロファイル毎に設定し、デモの最終運用値は **S-SPEED（段階増速実測・下記）** で「制御が破綻しない最高速」を測って決める。指カウント6段階ジェスチャはこの運用値を最速段（グー）とし、段割りは config 注入（コード定数禁止＝[mode-x-er/02:98](../mode-x-er/02-l3-planning-core.md) と同規律）。
+2. **運用速度は config が持つ**: `safety.max_linear_velocity`（≤ 契約上限・既存の検証機構 [config.py:101-104](../../ws/src/warehouse_interfaces/warehouse_interfaces/config.py) を無改造で流用）。環境/プロファイル毎に設定し、デモの最終運用値は **S-SPEED（段階増速実測・下記）** で「制御が破綻しない最高速」を測って決める。指カウント3帯ジェスチャはこの運用値を最速段（**1〜3本帯**）とし、帯割りは config 注入（コード定数禁止＝[mode-x-er/02:98](../mode-x-er/02-l3-planning-core.md) と同規律）。
 3. **L0' クランプは廃止せず維持し、`m1_driver` serial driver slice で必ず結線する**（[mode-x-er/10 §10-2②/G-l](../mode-x-er/10-room-scale-safety-review.md) のとおり現状未結線）。存在理由を「①ファーム per-wheel clamp の方向破壊からの保護 ②暴走バグ（Nav2/上位全滅時）の最終バックストップ ③int16 溢れ→フレーム黙殺の手前で必ず有限値に絞る」へ更新する。**結線と R-26 pin（dispatch 経路が `clamp_body_velocity` を必ず通る）は契約値引き上げ PR の前提条件**。
 4. **ESP32 firmware（旧2台系・`firmware/`）は 0.3 のまま凍結**（[ADR-0006](0006-single-bot-first.md) の凍結資産。M1 経路と独立で、`platformio.ini` の `MAX_LINEAR_VELOCITY_MMPS=300` は変更しない）。
 5. **派生する再導出を義務化する**（contract PR の DoD）:
@@ -39,7 +39,7 @@
 
 ## 得られるもの
 
-- 指カウント6段階の速度レンジが 0.3 m/s の頭打ちから解放され、「グー＝全力で来る」の絵が成立する。
+- 指カウント3帯の速度レンジが 0.3 m/s の頭打ちから解放され、「**1〜3本＝全力で来る**」の絵が成立する。
 - 上限の意味が「方針値」から「実測されたプラットフォーム真値」になり、以後の速度議論が事実基盤になる。
 - 変更は単一ソース1箇所＋config で済む構造（そのために単一ソース化してあった）が実証される。
 

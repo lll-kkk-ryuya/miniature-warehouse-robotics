@@ -134,3 +134,7 @@ Mode X-ER では VLA / OpenVLA を扱わない。VLA が L3 を代行・補助�
 ## 部屋スケール安全レビュー (index)
 
 > M1 単騎フェーズは**実際の部屋**を走る（[ADR-0009](../adr/0009-m1-room-scale-operation.md)・[GLOSSARY §11](../GLOSSARY.md) 部屋スケール運用）。**人とロボットが同一走行平面に立つのは本プロジェクトで初**であり、[09 R-3/R-7/R-8/R-9](09-hand-raise-summon.md) と ADR-0009 帰結 ⑦ が要求した安全レビューの**分析部分**の正本は [10-room-scale-safety-review](10-room-scale-safety-review.md)。8 項目のハザード分析（判定 = PASS / CONDITIONAL / OPERATOR-GATE / PHASE-1-GATE）＋ **部屋運用開始の前提条件チェックリスト**（§11）。**分析レビューであって運転許可ではない**——最終受け入れはオペレーターゲート。（#165 回避のため末尾追記）
+
+## standby と HRI 機能群 (index)
+
+> 主役デモ（[09](09-hand-raise-summon.md) ジェスチャ召喚）の**前後**にある HRI 機能群——persona **8号「はっちゃん」**の音声返答（事前生成 wav を `aplay` 再生＝毎回 TTS を生成しない）／**standby をデフォルト起動状態**とし、ジェスチャ・音声コマンドは **standby→active 遷移後のみ armed**（入口は「はっちゃん」ウェイクワードと**拍手**の 2 つ）／三層の入り確認合図（チャイム→音声→LED）／採用機能 tier（**A**=persona 音声・standby・拍手 ／ **B**=ついてこいモード・エア描画コマンド ／ **C**=ボディミラー操縦・両手 X ポーズ e-stop＝**ADR 裁定待ち**）／8GB 制約下の起動プロファイル P0-P3（同居可否は [23 §7 S1](../architecture/23-perception-and-localization.md) 実測で決め**数値を発明しない**）——の設計正本は [11-standby-and-hri-features](11-standby-and-hri-features.md)（2026-08-21 オペレーター決定の書き起こし・契約/config/topic 追加なし）。**「起動プロファイル切替（launch 構成・十数秒）」と「ランタイム状態 standby⇄active（ms）」の 2 軸を混同しない**のが本書の中核。**ついてこいモードは [09 R-3 柱1](09-hand-raise-summon.md):261「人を追尾する経路が生まれるわけではない」に触れる**ため安全論証の再評価が要る（同 doc OQ-H8）。（#165 回避のため末尾追記）
