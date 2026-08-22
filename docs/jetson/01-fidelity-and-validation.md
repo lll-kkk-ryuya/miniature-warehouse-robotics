@@ -103,7 +103,7 @@ doc06:112、sim 範囲。実 bot E2E は sim track #8/#156）。→ F1-F3。**AR
 | **G4 nav2/SLAM 性能（＋熱 R-09）** | CPU 版 Nav2×2 + AMCL + SLAM Toolbox の実時間追従（GPU 加速は任意）＋ `tegrastats` 熱クロック | Jetson 実機（G1 後・**持続負荷10分**） | 2台が経路追従・障害物回避を実時間で破綻なく（CPU で成立・GPU は載れば加点）。**10分持続負荷後もクロック throttle 無し**（熱定常で G3 jitter 維持） | 実時間割れ → 周期/解像度調整・GPU costmap 検討。throttle → ファン/ヘッドレス/省電力 mode | doc02:90,:138,:62-63 / doc06:100 / doc07:23,:177(R-09) |
 | **G5 実センサ精度** | MS200 測距誤差 / encoder / battery `percentage` 実スケール | Jetson+実機（Phase 1-2） | 測距誤差を実測→**地図解像度を誤差の2-3倍**へ。`safety.battery_percentage_scale` を実測で確定 | 余裕不足 → 通路幅/inflation 再設計（R-41/R-42）。scale 未確定は fail-fast（doc12:254） | doc07:251(R-41),:252(R-42) / doc12:254 |
 | **G6 WiFi 同時通信** | micro-ROS×2 + LLM API + Langfuse + LaserScan UDP の同時安定性 | Jetson+実機（Phase 1, T3 併せ） | 2台接続中に LLM 往復・scan 到達が断なく安定。DDS discovery 成立 | scan 欠落 → ダウンサンプル/USB。discovery 断 → Discovery Server/固定 `ROS_DOMAIN_ID` | doc07:155(R-08),:253(R-43),:258(R-48) / doc02:77-84 |
-| **G7 Hermes(GCP) 到達性 + E2E** | prod GCP Hermes へ Jetson Bridge が到達・司令官サイクル | Jetson 実機（G0-G2 後・撮影前リハ＝stg 相当） | `healthcheck.sh` で Hermes 到達 ◯。Bridge→Hermes 認証（`API_SERVER_KEY` 同値）で司令官サイクル成立 | 到達不可 → ネットワーク/Gateway 確認（secrets は触らない・read-only） | doc19:18,:86 / healthcheck.sh:61-70 / deploy/jetson |
+| **G7 Hermes(GCP) 到達性 + E2E** | prod GCP Hermes へ Jetson Bridge が到達・司令官サイクル | Jetson 実機（G0-G2 後・撮影前リハ＝stg 相当） | `healthcheck.sh` で Hermes 到達 ◯。Bridge→Hermes 認証（`API_SERVER_KEY` 同値）で司令官サイクル成立 | 到達不可 → ネットワーク/Gateway 確認（secrets は触らない・read-only） | doc19:18 / doc19:110 / healthcheck.sh:61-70 / deploy/jetson |
 
 > **ゲートと昇格の関係**: G0 は無条件必須。G1（メモリ Go/No-Go）が **Mode C 採否**を分岐する最大の🔴
 > （R-02/R-38）。G2-G6 は実機固有値の確定。G7 は撮影前リハ（stg 相当の最終確認）。**すべて PASS で
@@ -124,7 +124,7 @@ doc06:112、sim 範囲。実 bot E2E は sim track #8/#156）。→ F1-F3。**AR
 | **G1 メモリ** ★ | 全スタック（Nav2×2 + State Cache + Guardian + Bridge、+ Open-RMF）起動時の `free -h` 残RAM | プロセスを載せて測るだけ（入力は sim/rosbag/fake で可）。ユニファイド食合せは載せた時点で出る | §4 G1 / doc06:98 / doc07:243(R-38) |
 | G3 実時間性 jitter | Guardian 50ms / State Cache 100ms の周期ヒストグラム | 周期は OS スケジューラ依存でロボット非依存（`gc.disable()` 効果も） | §4 G3 / doc07:250(R-40) |
 | G4 nav2/SLAM 性能＋熱 | CPU 版 Nav2×2 + AMCL + SLAM を **実機センサ非依存の sim 入力（rosbag 再生・推奨／Mac sim から `/scan`・`/odom` をブリッジ）** で走らせ `tegrastats` 持続負荷 | 走行ロジック・CPU/GPU・発熱は sim 入力で測れる（実走精度は G5/G6 で別途）。**重い sim を Jetson 上で同時起動する場合は G1 残RAM と食合う**ため rosbag 再生が無難 | §4 G4 / doc07:177(R-09) |
-| G7 Hermes 到達/サイクル（撮影リハは実機後） | `healthcheck.sh` 到達確認・Bridge→Hermes 認証・LLM 司令官サイクルを **sim ロボット** に対し実走 | ネットワーク/API/サイクル成立はロボット非依存（**ただし §4 G7 は prod 撮影前リハとして G0-G2 後に置く**＝撮影リハ本体は実機後） | §4 G7 / doc19:18,:86 |
+| G7 Hermes 到達/サイクル（撮影リハは実機後） | `healthcheck.sh` 到達確認・Bridge→Hermes 認証・LLM 司令官サイクルを **sim ロボット** に対し実走 | ネットワーク/API/サイクル成立はロボット非依存（**ただし §4 G7 は prod 撮影前リハとして G0-G2 後に置く**＝撮影リハ本体は実機後） | §4 G7 / doc19:18 / doc19:110 |
 | 併走 de-risk | 残 Phase 0.5 の **LLM Bridge live E2E / Provider 切替**・**#88 Langfuse Phase-3 live**・**#202 latency 実測**・micro-ROS Agent 単体起動（loopback で `client_key` 挙動） | いずれも API キー/ネットワークのみ要・実ロボット不要 | doc06:109-110 / doc07:242(R-37 の Agent 側) |
 
 > **キーストーン**: robot-free のうち **G1（メモリ確定）が最重要**。段階1（Mac Docker 6GB）は GO-leaning 済（doc07:243）→ 段階2（Jetson 実機 `free -h`）が **Mode C(Open-RMF) 採否の最終 Go/No-Go** ＝ #180 RMF adapter 本実装を解錠する。**Jetson が単体で来たら最初に G1 を回す**。Mac の sim では原理的に出ない値（8GB ユニファイド食合せ・JetPack 常駐 2-2.5GB）だから実機が要る（doc06:100）。
@@ -157,7 +157,7 @@ doc06:112、sim 範囲。実 bot E2E は sim track #8/#156）。→ F1-F3。**AR
 | 起動順 | doc02:138 ノード一覧・doc12 層構造 | microros → state-cache → safety → nav2 → bridge（`After=` 連鎖。nav2→safety は `BindsTo=`） | ◯ |
 | **安全トポロジ** | doc12:80-84（Guardian が motion を止める）/ safety.md | nav2 が safety を **`BindsTo=`(+`After=`)**＝guardian クラッシュで nav2 停止（`Requires=` 不採用の理由を unit コメントに明記） | ◯ |
 | 安全ゲート | doc19:21（estop テスト通過後のみ）＋ doc16:221（安全機構 unit 必須） | `install.sh` は導入のみ＝**enable/start しない**。motion はゲート後手動 | ◯ |
-| Hermes は GCP（Jetson でない） | doc19:18,:86（`34.4.104.112`） | bridge unit/README/healthcheck が GCP を read-only 言及（Jetson に Hermes を置かない） | ◯ |
+| Hermes は GCP（Jetson でない） | doc19:18 / doc19:110（`34.4.104.112`） | bridge unit/README/healthcheck が GCP を read-only 言及（Jetson に Hermes を置かない） | ◯ |
 | micro-ROS transport | doc02:81（WiFi UDP）/ G2（distinct `client_key`） | microros unit が `udp4 --port ${MICROROS_PORT}`（既定 8888） | ◯（key 差は **ファーム側**で設定＝G2 で確認） |
 | traffic_mode 単一ソース | doc19:54（config 単一ソース）/ 11a:317（Mode C） | env.example が prod=`open-rmf` を `config/prod/warehouse.yaml:13` と同期せよと明記。`bringup.launch.py` は config を既定値に直読み（#75/PR#93・#156/PR#162 着地済） | ◯ |
 | **prod launch 引数（二重起動防止）** | prod=実機（gz 無し）＋ LLM は専用 unit `warehouse-bridge.service` | `warehouse-nav2.service:29` が `sim:=false llm:=false` を固定＝**nav2-only**（`bringup.launch.py` 既定 `sim:=true`/`llm:=true` は Mac capstone 用、:148-149,154-155） | ◯（#156 cross-lane→#127 で反映） |
