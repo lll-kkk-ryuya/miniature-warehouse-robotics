@@ -26,7 +26,7 @@ guardian が**異常終了/クラッシュしても nav2 を停止**する（`Re
 | `systemd/warehouse-state-cache.service` | State Cache（`/run/warehouse/state.json`, path 正本 doc19:18・paths.py:22-30・100ms 周期 doc12:477） |
 | `systemd/warehouse-safety.service` | Emergency Guardian（Layer 1, doc12:80-84） |
 | `systemd/warehouse-nav2.service` | Nav2 bring-up（`bringup.launch.py`・**prod は `sim:=false llm:=false` で nav2-only**・guardian を BindsTo） |
-| `systemd/warehouse-bridge.service` | LLM Bridge Node（→ GCP Hermes, doc19:18,86） |
+| `systemd/warehouse-bridge.service` | LLM Bridge Node（→ GCP Hermes, doc19:18 / doc19:110） |
 | `env/warehouse.env.example` | `/etc/warehouse/warehouse.env` の雛形（**secrets 無し**） |
 | `bin/ros-exec.sh` | ROS 2 underlay + workspace overlay を source して node を exec |
 | `bin/install.sh` | unit/env/サービスアカウント導入（enable/start しない） |
@@ -36,7 +36,7 @@ guardian が**異常終了/クラッシュしても nav2 を停止**する（`Re
 ## クイックスタート（prod・安全ゲート通過後）
 
 ```bash
-# 1. リリースタグを /opt/warehouse に clone（doc19:94）し colcon build
+# 1. リリースタグを /opt/warehouse に clone（doc19:6 / doc19:118）し colcon build
 # 2. secrets を配置（config/prod/.env + ~/.hermes/.env, doc19 §4）
 deploy/jetson/bin/preflight.sh --offline  # 到着前/導入前の静的検査
 sudo deploy/jetson/bin/install.sh          # 導入のみ
@@ -62,12 +62,12 @@ deploy/jetson/bin/healthcheck.sh
 
 | 項目 | 期待（正本） | 本 scaffold | 判定 |
 |---|---|:---:|:---:|
-| prod=別マシン clone | doc17:88 / doc19:94（git タグ） | `install.sh` が clone 先自動検出・ExecStart 書換 | ◯ |
+| prod=別マシン clone | doc17:88 / doc19:6 / doc19:118（git タグ） | `install.sh` が clone 先自動検出・ExecStart 書換 | ◯ |
 | prod runtime dir | doc19:18（`/run/warehouse`） | data unit が `RuntimeDirectory=warehouse`+`Preserve=yes` | ◯ |
 | 起動順 | doc02:138 / doc12 層構造 | microros→state-cache→safety→nav2→bridge | ◯ |
 | 安全トポロジ | doc12:80-84 / safety.md | nav2 が safety を **`BindsTo=`**（guardian クラッシュで nav2 停止） | ◯ |
 | 安全ゲート | doc16:216-219 / doc19:21 | `install.sh` は導入のみ（enable/start しない） | ◯ |
-| Hermes=GCP | doc19:18,86 | bridge/healthcheck が GCP を read-only 言及 | ◯ |
+| Hermes=GCP | doc19:18 / doc19:110 | bridge/healthcheck が GCP を read-only 言及 | ◯ |
 | prod launch 引数 | #156: `bringup.launch.py` 既定 `sim:=true`/`llm:=true`（Mac capstone, :148-149,154-155） | `nav2.service` が `sim:=false llm:=false` 固定＝nav2-only・gz/bridge 二重起動防止 | ◯ |
 
 ## 検証（実機なしでできる）
@@ -93,4 +93,4 @@ bash -n deploy/jetson/bin/*.sh && shellcheck deploy/jetson/bin/*.sh
 
 `warehouse_mcp_server` / `warehouse_nav2_bridge`（Mode A/B）/ WO Bridge は
 別トラック実装が揃い次第 unit 化（bridge unit のコメント参照）。**Hermes Gateway
-は prod では Jetson でなく GCP**（`34.4.104.112`, doc19:18,86）。
+は prod では Jetson でなく GCP**（`34.4.104.112`, doc19:18 / doc19:110）。
