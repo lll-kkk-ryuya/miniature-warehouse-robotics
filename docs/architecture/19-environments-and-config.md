@@ -122,7 +122,7 @@ deploy/dev/run-mode-a-live.sh --start-hermes
 
 ## 7. 実機投入前ゲート（dev/stg → prod 昇格・忠実度ギャップ）
 
-> **#127 の additive 追記**。**本節は §1-§6 の被参照行（`:18`/`:21`/`:54`/`:78`/`:86`/`:94` 等）を
+> **#127 の additive 追記**。**本節は §1-§6 の被参照行（`:18`/`:21`/`:54`/`:78`/`:110`/`:118` 等）を
 > 動かさないため末尾（References 直前）に置く**（[doc12:502](12-infrastructure-common.md) と同じ
 > line-drift 回避方針）。**詳細な忠実度ギャップ表・各ゲートの手順は新 doc
 > [docs/jetson/01-fidelity-and-validation.md](../jetson/01-fidelity-and-validation.md) を正本**とし、
@@ -154,7 +154,7 @@ stg を実機含みに再定義はしない（additive・既存契約不変）�
 | **G2 micro-ROS 2台** | 単一 Agent(:8888) で ESP32×2 を WiFi UDP 双方向 | 両機 distinct `client_key` で 2 session 独立・双方向 OK | key 差で不可 → USB 有線 | doc07:79,:242(R-37) / firmware/spike/RESULT.md |
 | **G3 実時間 jitter** | Guardian 50ms / State Cache 100ms 周期実測 | p99/max がデッドライン内（`gc.disable()` 後） | hot path を C++ `nav2_collision_monitor`+ESP32 へ委譲（#126） | doc07:250(R-40) / doc12:47,:481,:500-551 |
 | **G4 nav2/SLAM 性能（＋熱 R-09）** | CPU 版 Nav2×2 + AMCL + SLAM の実時間追従＋ `tegrastats` 熱クロック | 2台が実時間で破綻なく追従（GPU は載れば加点）。10分持続負荷で throttle 無し | 周期/解像度調整・GPU costmap・ファン/省電力 mode | doc02:90,:138,:62-63 / doc07:23,:177(R-09) |
-| **G7 Hermes(GCP) E2E** | prod GCP Hermes へ Bridge 到達・司令官サイクル | `healthcheck.sh` 到達 ◯・`API_SERVER_KEY` 同値で認証 | ネットワーク/Gateway 確認（**secrets は触らない**） | doc19:18,:86 |
+| **G7 Hermes(GCP) E2E** | prod GCP Hermes へ Bridge 到達・司令官サイクル | `healthcheck.sh` 到達 ◯・`API_SERVER_KEY` 同値で認証 | ネットワーク/Gateway 確認（**secrets は触らない**） | doc19:18 / doc19:110 |
 
 > 全 G0-G7（G5 実センサ・G6 WiFi 同時通信を含む全 7 ゲートは新 doc §4）PASS で prod へ昇格。
 > Jetson 到着前は合否基準を凍結し、到着後に値を埋める（実測＝ハードウェアゲート）。

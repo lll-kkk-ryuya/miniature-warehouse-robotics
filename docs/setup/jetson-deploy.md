@@ -63,7 +63,7 @@ cd /opt/warehouse/ws && colcon build && cd /opt/warehouse
 doc19 §4 / §4.1 の2ファイルに分けて配置（**リポジトリには置かない**。`.gitignore` で実体除外）:
 
 - `config/prod/.env` — ROS 側（`API_SERVER_KEY` = `~/.hermes/.env` と同値、Langfuse 観測キー）。
-- `~/.hermes/.env` — Hermes Gateway 側（各社プロバイダキー）。**prod Hermes は GCP**（`34.4.104.112`, doc19:18,86）なので Jetson 側 Bridge は `config/prod/.env` の `API_SERVER_KEY` のみで足りる。
+- `~/.hermes/.env` — Hermes Gateway 側（各社プロバイダキー）。**prod Hermes は GCP**（`34.4.104.112`, doc19:18 / doc19:110）なので Jetson 側 Bridge は `config/prod/.env` の `API_SERVER_KEY` のみで足りる。
 
 `/etc/warehouse/warehouse.env`（secrets 無し・パス/環境）は `install.sh` が雛形から生成
 （`env/warehouse.env.example` 参照）。生成後 **`WAREHOUSE_MAP` と `WAREHOUSE_TRAFFIC_MODE`** を確認。
@@ -157,7 +157,7 @@ runtime dir = `paths.runtime_dir()`）を共有・個別再起動でも保持。
 - `warehouse-mcp-server.service`（`warehouse_mcp_server`）/ `warehouse-nav2-bridge.service`
   （`warehouse_nav2_bridge`, Mode A/B）/ WO Bridge。LLM Bridge が稼働するには MCP Server が必要
   （bridge unit コメント参照）。
-- **Hermes Gateway は prod では Jetson に置かない**（GCP `34.4.104.112`, doc19:86）。
+- **Hermes Gateway は prod では Jetson に置かない**（GCP `34.4.104.112`, doc19:110）。
 
 ---
 
