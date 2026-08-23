@@ -151,7 +151,7 @@ Orin はコアモジュール脱着・network card 増設が無い分 B01 より
 
 初版転記は説明書ラベル末尾の丸数字を**本数**と誤読していた（`M2.5*22+6mm ... copper pillar⑥` → 「×6」等）。**丸数字は §1 の「Accessory package ⑤」等と同じ袋番号**であり、**説明書は本数を明記していない**。根拠（同梱紙説明書・撮影原本 `docs/assets/m1-manual/`・参照日 2026-08-23）:
 
-1. **Shipping List（p10）**: 「Jetson Orin Nano board (Optional)」行および「Jetson Nano B01 board (Optional)」行の *Accessory package* のイラストが、**ネジ袋に「6」と印字された図**になっている＝袋そのものに番号が振られている。
+1. **Shipping List（p10）**: 「Jetson Orin Nano board (Optional)」行および「Jetson Nano B01 board (Optional)」行の *Accessory package* が、**「6」と書かれたネジ袋の図**で描かれている＝説明書は袋を番号で識別している（**実物の袋に丸数字は印字されておらず**、中国語の品名＋バーコード＝ Q-3）。
 2. **p04「2. Install AI large model voice module and speaker」**: `M2.5*5mm round head screw⑤` / `M2.5*16+6mm single-pass copper pillar⑤` / `M2.5*5+6mm single-pass copper pillar⑤` と、**異なる3部品すべてに同じ⑤**。数量ならすべて偶然5本になる必要があり不自然。音声モジュールは §1.2 のとおり **Accessory package ⑤** 同梱。
 3. **p05「1. Install T-MINI PLUS LiDAR」**: `M3*6mm③` / `M2*8mm③` / `M2*10mm+4mm single-pass copper pillar③` と全て③。LiDAR は §1.3 のとおり **Accessory package ③** 同梱。
 4. **p06**: B01 の手順 5/6/7（cooling fan・board・patch antenna）が**すべて⑥**で、B01 は §1.3 のとおり **Accessory package ⑥** 同梱。Orin 手順1 も柱が⑥、ネジのみ①（①＝§1.1 の標準車体付属袋）。
@@ -173,12 +173,26 @@ p05 右上「6. Jetson Orin Nano board wiring diagram」下段の組立図で構
 ⚠️ **本プロジェクトではこの穴位置がそのまま使えるとは限らない**。搭載するのは Yahboom の「Jetson Orin Nano board」オプションではなく **NVIDIA Dev Kit（キャリア一体・103×90.5×34.8mm）** であり、`# TODO(Phase 1)` 取付板非互換の可能性と自作プレート前提が [02:322](02-hardware-design.md) / [02:414-420](02-hardware-design.md) に記録済み。キャリアボードの取付穴位置は NVIDIA が非公開（[02:416](02-hardware-design.md)）。
 `# TODO(要検討)` 3D プリントマウント（[02:418](02-hardware-design.md)・M3×4）を**この4本の銅柱の上に載せる**構成は、説明書が意図した高さ・HUB ボードとのクリアランスをそのまま引き継げるため有力だが、プリント品は汎用キャリアで柱ピッチ穴を持たない。柱ピッチの実測とプレート側の穴追加が必要かどうかは**現物合わせで決める**（本 doc は転記 doc のため、決定は [02](02-hardware-design.md) 側に書く）。
 
-### Q-3. 手元の実物（2026-08-23 オペレーター現物確認）
+### Q-3. 袋ラベルの実読で「袋⑥ 非同梱」問題が決着（2026-08-23 現物確認）
 
-Superior-without の同梱袋から、**単通銅柱（六角部のみで約22mm・オス側 +6mm ＝ `M2.5*22+6mm` 相当）** と **M2.5\*5mm なべネジ**、および**六角部約16mm の単通銅柱**を実物確認。
-- ネジの呼び `M2.5*5mm` の "5mm" は**軸（ねじ部）長で頭を含まない**——なべ頭の頭厚（M2.5 で概ね 1.7mm 前後）を足した全長ではない。測るときは軸だけ。
-- `# TODO(現物確認)` **本数が確定していない**（22mm 系を 4 本とする記録と 5 本とする記録が混在）。Q-1 のとおり説明書側に本数の記載が無いため、**必要数は Dev Kit 側の取付穴数を数えて決める**。
-- 🔴 `# TODO(現物確認)` **§1.3 開梱記録の「袋⑥は丸ごと非同梱」と矛盾する可能性**。`M2.5*22+6mm` は説明書上 **袋⑥**（Orin/B01 オプション）の部品だが、上記は without 構成の同梱物として出てきた。**袋に印字された番号を確認**すれば決着する（p10 のとおり袋には番号が印字されている）——「6」なら §1.3 の非同梱記述と [01:149](01-budget-and-procurement.md) を要修正、「1」なら袋①（標準車体）にも 22mm 柱が入っていることになり、これも記録価値がある。**どちらに転んでも「追加購入は不要」の結論は変わらない**（[01:149](01-budget-and-procurement.md)）。
+同梱ネジ袋の**外袋ラベルには丸数字が無い**。印字は「**適合機種名＋中国語の品名＋バーコード**」形式で、Superior-without から確認できたのは次の3袋（撮影原本 `docs/assets/m1-parts/`）:
+
+| 外袋ラベル（原文） | バーコード | 中身（説明書の対応） |
+|---|---|---|
+| `M3/A1/M1/DOFBOT/MUTO-英文AI大模型语音交互模块包(工厂)` | `3000400558` | 英語版 AI 音声対話モジュール**一式**（§1.2 = 本体＋スピーカー＋Type-C ケーブル＋**袋⑤**） |
+| `M3/A1/M1-B01主板配件包(工厂)` | `6000400559` | Jetson Nano B01 **主板用アクセサリ一式**（§1.3 B01 行の **袋⑥**） |
+| `ROSMASTER-A1&M1-雷达配件包(工厂)` | `6000400575` | T-MINI PLUS LiDAR **アクセサリ一式**（§1.3 LiDAR 行の **袋③**） |
+
+**`M3` `A1` `M1` `DOFBOT` `MUTO` は Yahboom の製品（機種）名であり、ネジの呼び径ではない**（`M3` は ROSMASTER **M3**。`ROSMASTER-A1&M1-…` の接頭辞が決定的）。1 袋を複数機種で共用するため機種名が並ぶ。
+
+**決着**: §1.3 開梱記録の「**Jetson Orin Nano board オプション列は丸ごと非同梱**」は**正しい**——Orin 用の袋は存在しない。一方 without 構成には **B01 主板配件包が同梱**されており、これが `M2.5*22+6mm` 単通銅柱の出所。
+
+そして **p07「Jetson Nano B01 board installation step / 1. Install HUB expansion board」は Orin の手順1（p06）と部品指定が同一**（`M2.5*22+6mm single-pass copper pillar⑥` ＋ `M2.5*5mm round head screw①`）。**HUB 拡張ボードの支柱は B01 と Orin で共通部品**であり、**B01 袋の銅柱はそのまま Orin 構成に使える**（[01:149](01-budget-and-procurement.md) を更新済）。
+
+- ネジ呼び `M2.5*5mm` の "5mm" は**軸（ねじ部）長で頭を含まない**。なべ頭の頭厚（M2.5 で概ね 1.7mm 前後）を足したものが全長。測るときは軸だけ。
+- `# TODO(現物確認)` 22+6mm 系の**本数が未確定**（4 本とする記録と 5 本とする記録が混在）。Q-1 のとおり説明書に本数の記載が無く、**必要数は載せる板の取付穴数で決まる**。
+- `# TODO(現物確認)` **B01 主板配件包の中身を全数列挙する**。§1.3 の B01 行は 4010 fan・パッチアンテナ・`DC5.5*2.1` ケーブルも含むため、銅柱以外に流用できる物が眠っている可能性がある。⚠️ ただし **B01 の DC バレルは 5.5×2.1、Orin は 5.5×2.5**（[02:307](02-hardware-design.md)）＝**この電源ケーブルが入っていても Orin には使えない**（給電は [02:320](02-hardware-design.md) の昇圧経路が正）。
+- ⚠️ **これで Orin Dev Kit の固定問題が解けたわけではない**。柱が担うのは「HUB ボードを跨いで板を渡す」ところまでで、Dev Kit 側の取付穴位置は NVIDIA 非公開（[02:416](02-hardware-design.md)）＝3D プリントマウント（[02:418](02-hardware-design.md)）は引き続き必要。
 
 ### Q-4. 取り違え防止（M2.5 系の単通銅柱が3種類ある）
 
