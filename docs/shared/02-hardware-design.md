@@ -319,7 +319,7 @@ RPLiDAR A2（+10,000円）: 精度・回転速度が向上。予備費からの�
 2. **【確定 2026-08-06 / 方針決定 2026-08-05】12V 出力は生バッテリ電圧のスルー（非安定化）**（出品者回答で確定。根拠は上表「12V 出力の性質」）。したがって **Orin が見る電圧は満充電 12.6V からブザー警報 9.6V まで下がり、Orin 下限 9V までの余裕は 0.6V しかない**。モータ加速時のサグが重なれば 9V 割れは現実的に起こりうる。出品者自身も「9V 未満で電圧降下が顕著・**9.5V 以上での運用を推奨**」と回答しており、マージンの薄さは vendor 公認。
    **→ 既定の構成を「昇圧 DC-DC 経由」とする**（12.6V→19V・連続 **≥45W**・出力 **5.5×2.5 センタープラス**）。**12V 直結は「実測①〜④で問題が無いと確認できた場合のみ選べる縮退案」へ格下げする。** 理由: Orin の電圧断は L1 緊急停止と外部通信ごと落とす安全事象であり、0.6V のマージンに賭ける設計は `.claude/rules/safety.md` の趣旨に反する。純正 Orin 版が 12V 直結ケーブルを同梱している事実（上表）は、Yahboom がこのマージンを許容していることを示すに留まり、**本プロジェクトの安全要件を満たす根拠にはならない**。
 3. **【解決 2026-08-06・出品者回答】XH2.54 2PIN ⇔ DC5.5×2.5 ケーブル（Orin 版同梱と同一品）は単品購入可**。ただし現行の既定構成はバッテリー直タップ＋昇圧 DC-DC（出力側は汎用 DC5.5×2.5 ケーブル）のため、このケーブルが必要なのは**縮退案（12V 直結）を選ぶ場合のみ**。縮退案の保険として購入するかは発注時に判断。
-4. `# TODO(Phase 1)` **マウント**: `without` 版の取付板は選択したボード用。Orin Dev Kit（キャリア一体・完成体 103×90.5×34.8mm）は**自作プレートで固定する前提**（3D プリント案は下記「Orin マウント」）。出品者回答（2026-08-06）: Orin Dev Kit 用取付板の単品販売は**手持ちボードの確認待ち**（「Orin Nano Developer Kit か Nano B01 か」への返信が必要）＋**現行キット付属品の一部は Orin Dev Kit に非互換の可能性**と注意あり。上段デッキとの高さ干渉は実物合わせ。
+4. `# TODO(Phase 1)` **マウント**: `without` 版の取付板は選択したボード用。Orin Dev Kit（キャリア一体・完成体 103×90.5×34.8mm）は**自作プレートで固定する前提**（3D プリント案は下記「Orin マウント」）。出品者回答（2026-08-06）: Orin Dev Kit 用取付板の単品販売は**手持ちボードの確認待ち**（「Orin Nano Developer Kit か Nano B01 か」への返信が必要）＋**現行キット付属品の一部は Orin Dev Kit に非互換の可能性**と注意あり。上段デッキとの高さ干渉は実物合わせ。（→ **末尾追記 P-5 で更新**: 公式 Orin 用組立動画の確認により**付属部品での直ネジ止めが第一候補**・自作プレートは fallback）
 5. **【解決】ソフト方針＝Yahboom スタックを使わず自前 ROS 2 ノードを書く。** 制御プロトコルは判明済（USB シリアル 115200 8N1・`HEAD=0xFF, DEVICE_ID=0xFC, LEN, FUNC, payload…, CHECKSUM`、`CHECKSUM=(sum+257-0xFC)&0xFF`、`FUNC_MOTION=0x12`・`FUNC_MOTOR=0x10`・`FUNC_REPORT_*` を MCU が **40ms 周期で auto-report**）。Yahboom の `Rosmaster_Lib` は `struct/time/serial/threading` のみ依存＝**アーキ非依存で aarch64 可**だが、ライセンスが Proprietary 表記・PyPI 未配布・配布が Google Drive のため、**判明済フレーム仕様から自前実装する方がクリーン**。デバイスは udev symlink `/dev/myserial` に固定。
 6. **【解決】メカナム逆運動学は STM32 ファーム側にある** → ホストは `/cmd_vel` の `(vx, vy, wz)` を投げるだけ（`set_car_motion` は body 速度を `int16(v*1000)` で送るのみ・4輪配分なし）。**よって凍結 URDF / Nav2 が diff-drive のままでも `linear.y = 0` で成立し、メカナム採用に契約変更は不要**。omni 化（AMCL Omni / `vy_max` > 0 / `motion_model: "Omni"` / `linear.y` の twist_mux→collision_monitor 通し）は**任意の後続拡張**として扱う。sim 側 diff_drive プラグインの差し替えも omni 化する場合のみ。
 7. **【方針決定 2026-08-05・M1 / Superior 構成】速度クランプは「ホスト側シリアルドライバ内の送信直前クランプ（L0'）」に置く。**
@@ -413,9 +413,9 @@ RPLiDAR A2（+10,000円）: 精度・回転速度が向上。予備費からの�
 
 #### マウント
 
-NVIDIA は Carrier Board Specification に**取付穴の位置を公開していない**（外形寸法のみ）。公式フォーラムでモデレータが「穴位置は **Download Center の Carrier Board Reference Design Files（PCB 設計ファイル・A04 / 2023-03-20）** から取れ」と回答している＝自作プレートを起こす場合の一次ソースはそこ。
+NVIDIA は Carrier Board Specification に**取付穴の位置を公開していない**（外形寸法のみ）。公式フォーラムでモデレータが「穴位置は **Download Center の Carrier Board Reference Design Files（PCB 設計ファイル・A04 / 2023-03-20）** から取れ」と回答している＝自作プレートを起こす場合の一次ソースはそこ。（→ **末尾追記 P-5**: 穴位置を含む **3D CAD STEP モデルが Download Center に公式提供**と判明・本文の「Spec に穴位置なし」自体は正）
 
-実用解は**既存の 3D プリントモデルを使い、穴位置を当てる作業そのものを回避する**こと: **MakerWorld `1074925` / Printables `1178594`「JETSON ORIN NANO CARRIER WITH DIN RAIL MOUNT」**（Nathan Litzinger・**CC BY 4.0**・Orin Nano Dev Kit キャリアボード専用と明記）。**Bambu Lab A1 mini のプロファイル同梱でワンクリック印刷可**（0.2mm / 壁2 / infill 15% / 3プレート約3.3h）。必要ネジは **M3 ×4**（DIN レール部の M4 は本用途では不要＝ベースのみ使う）。`# TODO(到着前)` DL 116・評価1件と**検証量が少ないため寸法不一致の可能性がある**。Orin は既に手元にあるので、ロボット到着を待たず**先に試し刷りしてフィットを確認**する。
+実用解は**既存の 3D プリントモデルを使い、穴位置を当てる作業そのものを回避する**こと: **MakerWorld `1074925` / Printables `1178594`「JETSON ORIN NANO CARRIER WITH DIN RAIL MOUNT」**（Nathan Litzinger・**CC BY 4.0**・Orin Nano Dev Kit キャリアボード専用と明記）。**Bambu Lab A1 mini のプロファイル同梱でワンクリック印刷可**（0.2mm / 壁2 / infill 15% / 3プレート約3.3h）。必要ネジは **M3 ×4**（DIN レール部の M4 は本用途では不要＝ベースのみ使う）。`# TODO(到着前)` DL 116・評価1件と**検証量が少ないため寸法不一致の可能性がある**。Orin は既に手元にあるので、ロボット到着を待たず**先に試し刷りしてフィットを確認**する。（→ **末尾追記 P-5 で fallback に格下げ**: 公式動画が付属部品での直ネジ止めを示した。試し刷りは必須でなく fallback 準備）
 
 > 混同注意: 検索で出る「M2.5 スペーサー（4.5mm 六角・6.57mm 長）」は **SoM をキャリアボードに留める**ためのもので、キャリアボードを筐体に留めるネジとは別物。
 
@@ -670,3 +670,29 @@ M1 単騎フェーズは**実際の部屋（room scale）**を走り、ジオラ
 `# TODO(期限あり)` **メーカー保証は初期不良のみ・商品到着後 1 週間**。着荷が 8/21–22 なら期限は **8/28–29 頃**。`:451` の①（Orin 非接続で出力を測る）は初期不良判定を兼ねるため、**この期間内に実施する**。
 
 > 出典: Amazon.co.jp 商品ページ `B01N3L2NY2`（NFJ・メーカー型番 `O242`）の商品説明・製品仕様（参照日 2026-08-23）。`# TODO(到着後)` メーカーが「入荷ロットにより外観・デザイン等が異なる場合がある」と明記しているため、現物の端子配列とボリューム位置は実物で確認する。
+
+## 【2026-08-23 追記 2】Orin マウント方針の変更（P-5）—「3D プリント前提」を撤回し公式直付けを第一候補へ
+
+### P-5. Yahboom 公式「M1 × Jetson ORIN NANO 組立動画」の発見と一次検証
+
+**一次情報**（参照日 2026-08-23）: Yahboom 公式 build ページ <https://www.yahboom.net/build/id/16900/cid/427> の「0. Assembly video」に、SBC 別の M1 組立動画が **4 本**存在する — Jetson NANO 4GB (`b8Dx1Mpsxmk`) / **Jetson ORIN NANO (`QdqYvkr8_Ag`・14:06・約 8 か月前公開)** / RDK X5 (`QkSBZeKa9Xc`) / Raspberry Pi (`YzhgxadNNls`)。紙説明書 p06 で撮影範囲外だった Orin board installation の手順 2〜5（`11-m1-assembly-manual.md` `:69`）は、この動画で全編視聴できる。
+
+**動画から読み取れた事実**（step 番号はオーバーレイ表記どおり）:
+
+1. **step 8「Install Jetson Orin Nano board」**の部品リストは `Jetson Orin Nano board *1`・`M2.5x5mm round head screw *4`・`Patch antenna acrylic board *1`・`M2.5x16+6mm single-pass copper pillar`（オーバーレイは ×2 に見えるが紙説明書 p06 は ×3。`# TODO(現物確認)`）・`Patch antenna`。**専用取付板・3D プリント部品・中間プレートは一切登場しない**——ボードは車体側に立てた銅柱へ **M2.5×5mm ネジ ×4 で直接ネジ止め**される。アクリル板は名称どおりパッチアンテナ用であり Orin の下敷きではない。
+2. 搭載ボードは**ファン付き・裏面に M.2 スロット 2 連＋ラベル**の外観で、**純正 Jetson Orin Nano Developer Kit と外観一致**（製品ページの選択肢名も「Orin NANO SUPER-8GB」= NVIDIA の Super Dev Kit 呼称。ただし**断定は現物合わせ**）。
+3. **step 9 = T-MINI PLUS LiDAR**（`T-MINI PLUS LiDAR adapter board *1`・M3×6mm ×3・M2×10+4mm 銅柱 ×2）、**step 12 = top cover 取り付けで完成**。つまり**公式構成では Orin を搭載したまま top cover が閉まる**＝`11-m1-assembly-manual.md` `:229` の 🔴 高さ干渉（34.8mm 厚）は**公式配置なら不発生の傍証**（最終確定は実物）。
+
+**NVIDIA 側の一次資料**（`:416` の補強）:
+
+- **3D CAD STEP モデルは公式提供あり**: 公式フォーラムでモデレータ cyato が「**Jetson Orin Nano Developer Kit 3D CAD STEP model** が Jetson Download Center にある」と回答（2025-01-15・thread `320208`）。穴位置の PCB 設計ファイル（Carrier Board Reference Design Files・A04）は `:416` 記載どおり（thread `339279`）。
+- Carrier Board Specification の PDF は **NVIDIA Developer ログイン無しで直接ダウンロード可能**を実測確認（2026-08-23: `developer.nvidia.com` → 302 → トークン付き CDN → 200 `application/pdf`）。STEP モデル・Reference Design Files 本体の DL に無料 Developer アカウントが要るかは**未確認**。
+
+**設計判断の更新**（`:322` / `:414-420` / `01:149` / `11-m1-assembly-manual.md` Q-6 と 1:1 同期）:
+
+1. **第一候補 = 公式手順どおり付属部品で直付け**。必要部材（`M2.5*22+6mm` 銅柱・`M2.5*5mm` ネジ ×4）は B01 主板配件包で**現物あり**（`01:149`）。
+2. **3D プリントマウント（`:418` MakerWorld 案）は fallback に格下げ**——現物合わせで穴が合わない場合のみ起こす。その場合の穴位置一次ソースは公式 STEP モデル（上記）が Reference Design Files より扱いやすい。試し刷りは必須タスクから外し**任意の fallback 準備**とする。
+3. 出品者への「純正取付板の単品販売」問い合わせ（`:322`）は**優先度低下**——公式手順に Orin 用の別売取付板は登場せず、直付けが正規の取り付け方である公算が大きい。
+4. `# TODO(Phase B 現物合わせ)` 組立時に確定する 3 点: ①車体側の柱位置と手元 Dev Kit の 4 穴が実際に合うか ②柱が HUB 拡張ボード上の 2 階建てか前デッキ直かの座席位置（動画の画角では断定せず・紙説明書 p06 と突き合わせ） ③パッチアンテナ柱の本数（×2 vs ×3）。
+
+> 出典: Yahboom build ページ＋YouTube `QdqYvkr8_Ag`（本文記載の step 8/9/12 フレームを 2026-08-23 に視聴確認）・NVIDIA Developer Forums thread `320208` / `339279`・`developer.nvidia.com` ダウンロード応答ヘッダ実測（同日）。
