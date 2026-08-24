@@ -254,3 +254,9 @@ Yahboom 公式配布の zip（`docs/assets/m1-vendor/instruction-manual-en/`・u
 - 一般手順: **LiDAR 矢印は前方向き**・受信機/U ディスクは SBC USB 直挿し・LiDAR/PTZ/深度カメラ/音声モジュールは HUB ボード側ポート。
 
 残 `# TODO(現物確認)`: 手持ち Dev Kit の純正 WiFi アンテナが撤去する台座に付いている場合の移設先（Yahboom パッチアンテナ袋は非同梱・[02](02-hardware-design.md) P-6c 手順3）。
+
+### Q-8.（2026-08-24 追記）NVIDIA Developer Kit CAD / P3768-A04 Reference Design を保存
+
+NVIDIA 公式の Developer Kit STEP と P3768-A04 Reference Design を `docs/assets/m1-vendor/cad/nvidia/`（untracked）へ保存し、assembly drawing PDF の top / bottom 両面をレンダリング確認した。これは**公式説明書の直付け手順を置き換えるものではなく**、5条件（4穴同時一致・裏面非接触・M2.5 ネジが自然に入る・SSD/アンテナ/ケーブル収容・cover 無荷重閉鎖）のいずれかが不合格だった場合の fallback 干渉解析用とする。
+
+`# TODO(Phase B 現物合わせ)`: 手持ちキャリア基板裏面の `P3768` / revision 印字を撮影する。保存資料は **A04** のため、実物 revision が異なる場合は A04 寸法だけで変換プレートを設計しない。Yahboom 車体 STEP は 2026-08-24 時点で Google Drive quota exceeded のため未取得であり、fallback が必要になった時点で再取得する。設計判断と取得 URL の正本は [02 P-7](02-hardware-design.md) とする。

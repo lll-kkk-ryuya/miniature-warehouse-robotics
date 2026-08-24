@@ -326,12 +326,12 @@ RPLiDAR A2（+10,000円）: 精度・回転速度が向上。予備費からの�
    現行方針は ESP32 自前ファーム内で 0.3 m/s をハードクランプする（`.claude/rules/safety.md`・`firmware/include/safety_clamp.h` の R-26 unit）。**M1 の STM32 ファームは Yahboom 製バイナリ**のため、MCU 内に同じ保証を置けない。一方で残課題 5 の通り**ホスト側シリアルドライバは自前実装**であり、`FUNC_MOTION=0x12` フレームを組む直前が**全 `cmd_vel` が必ず通る単一の絞り点**になる。ここでクランプすれば、Nav2 / Policy Gate / Emergency Guardian のいずれが壊れても wire に 0.3 m/s 超は出ない。
    - **採用**: ドライバの送信直前（body 速度を `int16(v*1000)` へ変換する直前）でクランプする。**R-26（独立オラクル unit ＋ mutation で赤くなること）の対象**とし、`warehouse_interfaces.safety.MAX_LINEAR_VELOCITY` を**単一ソースとして import**する（値の再定義を禁止＝`safety.py:19` の「hardcode するな」に従う）。
    - **却下**: STM32 ファームの自前差し替えによる L0 維持 — 残課題 6 の通り**メカナム逆運動学が STM32 側にある**ため、差し替えると 4輪配分の再実装まで背負う。Phase 1 のスコープに対して過大。
-   - **明記すべき限界**: L0' は**ホストプロセスが生きている間だけ**有効。ホスト停止・USB 断では MCU 側に最後の指令が残り、暴走しうる。→ `# TODO(Phase 1)` **MCU の通信タイムアウト停止（watchdog）の有無を実機で確認**する。無い場合は Emergency Guardian からの明示 stop フレーム送出＋電源系での縮退で補う。
+   - **明記すべき限界**: L0' は**ホストプロセスが生きている間だけ**有効。公式 STM32 ソース V3.6.5 には serial command timeout がなく、`ENABLE_IWDG=0`。IWDG を有効化しても feed は通常 app loop であり、通信受信とは結び付かない。したがってホスト停止・USB 断では最後の速度 setpoint が残りうる。→ Emergency Guardian の明示 stop フレームだけに依存せず、**独立した command-stream watchdog を MCU 側へ追加する G-g** を Phase 1 必須ゲートとして維持する（詳細は末尾 P-7c）。
    - `# TODO(採用時)` **doc 影響**: `.claude/rules/safety.md`「ロボット速度制限をコード内で強制する」の実施箇所と、[12-infrastructure-common.md](../architecture/12-infrastructure-common.md) の Layer マップ（L0 の定義）を M1 採用時に改訂する。
 8. `# TODO(発注前)` **Nuwa-HP60C 深度カメラ（Superior 版）の Jazzy 動作は未保証。** ROS 2 ドライバ `ascamera` は ament_cmake ＋ **閉ソースのプリビルド `.so`**（`libAngstrongCameraSdk.so` ほか）に静的リンク。aarch64 バイナリは同梱されるが、その `libs/lib/aarch64-linux-gnu/readme.md` は **「5.4.1 20170404 (Linaro GCC 5.4-2017.05)」＝2017 年 GCC 5.4 ビルド**。動作報告のある distro は Foxy(20.04) / Humble(22.04) のみで、**Jazzy / Ubuntu 24.04 の成功報告は無い**。割れてもソースが無く修正不能。
    **→ 2026-08-05 方針: distro 自体を Humble に寄せることで本項を構造的に解消する（[ADR-0008](../adr/0008-ros2-distro-humble-for-rosmaster-m1.md) proposed）。** retreat plan（Humble コンテナ隔離 / RealSense・Orbbec 等への置換）は ADR-0008 が却下扱いとして保持。
 9. `# TODO(Phase 1)` **LiDAR ドライバ**: T-mini Plus は YDLIDAR 製（model 151・baud 230400・12m）。`ydlidar_ros2_driver` は **OSS でソースビルド可＝aarch64 に障害なし**。**master は Jazzy でビルドが割れる**（upstream issue #72 / PR #66 が OPEN）が、`humble` ブランチが本来の対象のため **Humble 採用時は C++17 引き上げパッチ不要**（[ADR-0008](../adr/0008-ros2-distro-humble-for-rosmaster-m1.md)）。Jazzy を維持する場合のみ vendoring + パッチが要る。
-10. **【一部解決】小項目**: 公式パラメータ表の実見（2026-08-05）で **USB-serial = CH340**（→ udev は `1a86:7523`）・**IMU = ICM20948**・**通信 115200bps** が確定。残る実機確認は **M1 用 `car_type` 値**と、**MCU auto-report が 40ms=25Hz 固定**である点の Nav2 チューニング（`controller_frequency` / AMCL 更新レート）への影響。
+10. **【一部解決】小項目**: 公式パラメータ表の実見（2026-08-05）で **USB-serial = CH340**（→ udev は `1a86:7523`）・**IMU = ICM20948**・**通信 115200bps** が確定。公式 STM32 ソース V3.6.5 で **M1 用 `car_type=0x0A`** も確定した。残る実機確認は、搭載 FW が同版で `get_car_type_from_machine()` に `0x0A` を返すことと、**MCU auto-report が 40ms=25Hz 固定**である点の Nav2 チューニング（`controller_frequency` / AMCL 更新レート）への影響。
 
 ### 給電の実測手順（実機到着後）
 
@@ -531,13 +531,13 @@ M1 単騎フェーズは**実際の部屋（room scale）**を走り、ジオラ
 
 ## 【2026-08-19 追記】M1 の速度性能・速度の出し方・AI 音声モジュール（agent-team 調査確定）
 
-> 2026-08-19 の3レーン並列調査（一次情報 = 公式 `Rosmaster_Lib` V3.3.9 ソース・工場 STM32 ファーム Rosmaster V3.5.1 C ソース・520 モータ公式パラメータ表・M1 公式コース PDF）の確定事実。速度上限引き上げの決定は [ADR-0010](../adr/0010-raise-speed-cap-to-platform-max.md) が正本。**本節の未確定項目は実機到着済み（2026-08-18）につき順次実測で潰す。**
+> 2026-08-19 の調査を、2026-08-24 に Yahboom 公式配布の STM32 ファーム V3.6.5 と Python ライブラリ V3.3.9 で更新した確定事実。速度上限引き上げの決定は [ADR-0010](../adr/0010-raise-speed-cap-to-platform-max.md) が正本。**搭載 FW の版と実応答は実機で確認する。**
 
 ### V-1. 速度の真の上限（ファームウェア）
 
 - ホスト側 `Rosmaster_Lib.set_car_motion(vx, vy, wz)` に**値域 clamp は存在しない**（docstring の「X3: ±1.0」等はドキュメントであって強制ではない）。`struct.pack('h', int(v*1000))` の **int16 境界 ±32.767 m/s** を超えると `struct.error` → **bare except がフレームごと黙殺**（前回速度がラッチされたまま＝fail-safe ではない）。
-- **真の clamp は STM32 工場ファーム `Mecanum_Ctrl`（app_mecanum.c）の各輪 ±1000 mm/s**（car_type=`CAR_MECANUM` 0x01 のとき。`CAR_MECANUM_MAX` 0x02 は ±700）。この clamp は**4輪ミキシング後に各輪独立**で切るため、超過指令は**進行方向を歪める**（ベクトル比例縮小ではない）→ ホスト L0'（方向保存クランプ）維持の工学的根拠。
-- **M1 専用の car_type 値は存在しない**（ライブラリ/ファームとも X3/X3PLUS/X1/R2 の4種のみ）。第三者 M1 実機プロジェクトは 0x01（X3）で駆動。`FUNC_MOTION(0x12)` の payload 先頭は car_type バイト（`& 0x80` は yaw-adjust フラグ）＝自前ドライバ実装時に取りこぼさない。**⚠️ ネット上の `set_speed_limit(0x16)` / `set_imu_adjust(0x17)` は推測 API で、この版のファームに実装は無い＝採用禁止。**
+- 公式 V3.6.5 は **M1 専用 `CAR_MECANUM_M1=0x0A`** を実装する。M1 の真の上限は `CAR_M1_MAX_SPEED=700` で、`app_motion.c` の軸入力 clamp（X/Y）と `app_mecanum.c` の**4輪ミキシング後・各輪独立 clamp（±700 mm/s）**の二段。超過指令は後段で**進行方向を歪めうる**（ベクトル比例縮小ではない）→ ホスト L0'（方向保存クランプ）維持の工学的根拠。
+- `FUNC_MOTION(0x12)` の payload 先頭は car_type バイト（`& 0x80` は yaw-adjust フラグ）＝自前ドライバ実装時に取りこぼさない。`FUNC_REQUEST_DATA(0x50)` は `FUNC_CAR_TYPE(0x15)` を受け、`Motion_Send_Car_Type()` が `0x15` 応答を返す。公式 Python の `get_car_type_from_machine()` はこの経路を使う。**プロトコル V2 の request 一覧と car_type 表から M1 が抜けていたのは、ファームに機能が無いことを意味しなかった。**
 - `set_car_motion(0,0,0)` はファームの `Motion_Stop(STOP_BRAKE)` に落ちる＝**ゼロ送信は自由停止でなくブレーキ**。
 
 ### V-2. 520 モータと理論最高速度（`v = RPM/60 × π × D`）
@@ -548,7 +548,7 @@ M1 単騎フェーズは**実際の部屋（room scale）**を走り、ジオラ
 | 1:30 / 333 | **1.13 m/s** | 1.40 m/s |
 | 1:56 / 205 | 0.70 m/s | 0.86 m/s |
 
-検算: R2（1:19/65mm）→1.87 ≈ docstring 1.8 ✓ / X3 PLUS（1:56/80mm）→0.86 vs ファーム clamp 0.7 ✓ / X3（1:30/65mm）→1.13 vs clamp 1.0 ✓（式の妥当性の傍証）。**M1 の輪径・ギア比・car_type は非公開＝実機5分で確定**: ①モータラベルの RPM 印字 ②ホイール径ノギス実測 ③シリアル疎通後に `get_car_type()` 問い合わせ（**0x02 なら上限 0.7**・最優先確認）。電圧依存: 無負荷回転数は電圧比例＝3S 12.6→9.6V で **80%**（12V 定格 1.13 → 電池終盤 ~0.91 m/s 相当）。
+検算: R2（1:19/65mm）→1.87 ≈ docstring 1.8 ✓ / X3 PLUS（1:56/80mm）→0.86 vs ファーム clamp 0.7 ✓ / X3（1:30/65mm）→1.13 vs clamp 1.0 ✓（式の妥当性の傍証）。V3.6.5 の M1 定数は**車輪周長 251.327mm（直径80mm相当）・encoder circle 205・car_type 0x0A・clamp 0.7m/s**。理論無負荷 0.86m/s より stock FW 上限が先に効く。`# TODO(実機5分)` は ①モータラベル ②ホイール径 ③搭載 FW 版 ④ `get_car_type_from_machine()==0x0A` の確認に縮小する。電圧依存: 無負荷回転数は電圧比例＝3S 12.6→9.6V で約80%。
 
 ### V-3. 速度の出し方（4案の裁定）
 
@@ -557,7 +557,7 @@ M1 単騎フェーズは**実際の部屋（room scale）**を走り、ジオラ
 | (a) `set_car_motion` に大きい値 | **採用** | エンコーダ閉ループ PID 維持・ファーム clamp が上限。L0' が方向保存で手前を絞る |
 | (b) `set_motor` 直接 PWM | 却下（高速化用途） | car_type バイト無し＝逆運動学・速度 PID をバイパス。同一 PWM で左右差 ~12% 実測＝直進しない。odom 自前化。超低速の解であって上限の解ではない |
 | (c) `set_pid_param` | 上限に無関係 | 追従性のみ。PID 出力は 2000 パルスにクリップ。`forever=True` は Flash 書込でパケットロス源（公式明記） |
-| (d) ファーム clamp 自体の変更 | **不可能** | Yahboom 製バイナリのコンパイル時リテラル。ホストから変更手段なし |
+| (d) ファーム clamp 自体の変更 | 却下 | 公式 C ソース入手により技術的には可能。ただし custom FW fork と再検証を背負い、stock のプラットフォーム上限という契約意味も失う。ホストからの変更手段はない |
 
 ### V-4. 高速化の既知の問題（S-SPEED 実測の観点）
 
@@ -565,7 +565,7 @@ M1 単騎フェーズは**実際の部屋（room scale）**を走り、ジオラ
 |---|---|
 | メカナムのスリップ | Yahboom 自身が振り子サス等をスリップ対策として設計説明。速度↑でスリップ↑＝odom 誤差↑ |
 | odometry の質 | 公式スタックは**ファーム速度報告（スリップ込み）の積分**で odom を作り 4輪エンコーダ差分を使っていない → **自前 `m1_driver` はエンコーダ差分（`FUNC_REPORT_ENCODER 0x0D`）で組む** |
-| 報告レート 25Hz 固定 | 1.0 m/s で1周期 40mm の未観測走行（0.3 の 3.3 倍）。L2 鮮度窓・L1 反応余裕の再導出が要る（[ADR-0010 Decision 5](../adr/0010-raise-speed-cap-to-platform-max.md)） |
+| 報告レート 25Hz 固定 | M1 上限 0.7 m/s で1周期 28mm の未観測走行（0.3 の約2.3倍）。L2 鮮度窓・L1 反応余裕の再導出が要る（[ADR-0010 Decision 5](../adr/0010-raise-speed-cap-to-platform-max.md)） |
 | 電源サグ | 12V レールは非安定化スルー（§残課題）＝全力加速のサグが Orin ブラウンアウト直結。S-SPEED で電圧を必ず記録 |
 
 ### V-5. AI large model voice module（M1 同梱・開梱実物で確認 2026-08-19）
@@ -580,7 +580,8 @@ M1 単騎フェーズは**実際の部屋（room scale）**を走り、ジオラ
 ### V-6. 出典（一次情報）
 
 - Rosmaster_Lib V3.3.9: <https://github.com/Roblibs/Rosmaster_Lib> / M1 実機リポ <https://github.com/Zia-kr/rosmaster_m1_dev> / 公式 zip 検証 <https://github.com/AIRclub-UdeSA/physical_rosmaster>
-- 工場 STM32 ファーム V3.5.1 ソース: <https://github.com/Inouye165/Yahboom-Robot-Expansion-Board-V3.0>（app_mecanum.c / app_motion.h / protocol.h）
+- Yahboom 公式 Code/Firmware: <https://drive.google.com/drive/folders/1Ck8pcerFBARnowzlgdrMrgwJR1bvQdWL>（STM32 V3.6.5 `app_mecanum.c` / `app_motion.h` / `protocol.c` / `config.h`、Python V3.3.9。取得物は untracked `docs/assets/m1-vendor/code-firmware/`）
+- 旧 V3.5.1 mirror（履歴確認のみ）: <https://github.com/Inouye165/Yahboom-Robot-Expansion-Board-V3.0>
 - 520 モータ公式表: <https://www.yahboom.net/public/upload/upload-html/1742005967/0.520%20motor%20introduction%20and%20usage.html>
 - M1 音声コース PDF（asr.py 実コード転載）: <https://github.com/YahboomTechnology/ROSMASTER-M1>（`18.AI Large Model Basic Course` 配下）/ unboxing blog <https://category.yahboom.net/blogs/news/unboxing-and-reviewing-rosmaster-m1>
 - `set_motor` 実機 probe: <https://github.com/kirra-systems/kirra-runtime-sdk> / M1 PWM ブリッジ実装 <https://github.com/liuwenjing613-maker/qqqqqq>（参照日: すべて 2026-08-19）
@@ -712,7 +713,7 @@ M1 単騎フェーズは**実際の部屋（room scale）**を走り、ジオラ
 ### P-6b. 公式プロトコル V2 の確定事項（`§プロトコル` の逆算記述を公式仕様で検証）
 
 - **一致を確認**: 送信ヘッダ `0xFF 0xFC`／受信 `0xFF 0xFB`・checksum（Length〜check 直前の和 mod 256）・リトルエンディアン・`0x10` モータ PWM(±100)・`0x12` motion（car_type + X±1000, Y±1000, **Z±5000**・×1000 スケール）・`0x0D` エンコーダ int32×4・**40ms 自動レポート**（4 パケット×10ms）・`0x0A` に電池電圧（×10）・PID `0x13/0x14`（×1000）・FW 版取得 `0x50→0x51`。
-- **car_type**: `0x15` set car type の一覧は **X3=1, X3PLUS=2, X1=4, R2=5 のみで M1 の値は未記載**（シートは 2025-05-12 版）。さらに **car type を読み出すコマンドは 0x50 カタログに存在しない** → 「board から car_type を読む」実装は公式プロトコル上あり得ず、`get_car_type()` は lib 内部保持値と解すべき（`:546`/`:551` の矛盾はこの線で決着させる。`# TODO(実機)` M1 の car_type 値は Yahboom M1 ソースコード入手または実機 FW 応答で確定）。
+- **car_type（2026-08-24 訂正）**: プロトコル V2（2025-05-12）の `0x15` 表は **X3=1, X3PLUS=2, X1=4, R2=5 のみ**で、`0x50` request 一覧にも car type が無い。しかし公式 STM32 V3.6.5 には **M1=`0x0A`** と `0x50(request 0x15)→0x15` 応答が実装され、公式 Python の `get_car_type_from_machine()` もその経路を使う。したがって前版の「board からは読めず lib 内部値」は撤回する。**仕様書の一覧が実装に追随していない**のが正しい。
 - **公式プロトコルに watchdog / コマンドタイムアウトの機能は存在しない**（自動レポートの ON/OFF `0x01` はあるが受信途絶時の自動停止は未記載）→ L0'（ホスト送信直前クランプ）と G-g（MCU watchdog・PHASE-1-GATE）の設計上の重みが増した。**シリアル切断時に車輪が止まる保証はプロトコル仕様からは得られない**。
 - 既存記述の「**per-wheel クランプ ±1000/±700(car_type 依存)**」は公式シートに**現れない**（公式にあるのは 0x12 の軸速度 field range ±1000/±5000 のみ）→ 出所は STM32 FW/lib 内部。引用時は「公式 field range」と「FW 内部クランプ」を区別する。
 - 工場リセット: `0xA0` または **KEY1 長押し 10 秒**（PID 等を Flash 保存 `0x5F` で永続化している場合の復旧手段）。
@@ -731,3 +732,36 @@ M1 単騎フェーズは**実際の部屋（room scale）**を走り、ジオラ
 **P-5 の TODO ② close**: 座席は **HUB ボード上の2階建て**（M1-11 下段図で長柱4本の上に Orin・下に HUB ボードを確認）。一般手順側の確定事項: **LiDAR の矢印は車体前方向き**・ワイヤレス受信機/U ディスクは **SBC の USB 直挿し**・LiDAR / PTZ / 深度カメラ / 音声モジュールは HUB ボードのポートへ。
 
 > 出典: `docs/assets/m1-vendor/`（README に sha256）。回路図 = `ERF01v3.0-en.pdf`（1枚・2025/5/9）、プロトコル = `ROSMASTER_control_board_protocol_V2.xlsx` Serial/CAN 両シート、説明書 = `instruction-manual-en/ROSMASTER M1-9..12.jpg`（いずれも 2026-08-23 実読）。
+
+## 【2026-08-24 追記】公式 Code/Firmware・CAD・JetPack ダウンロード調査（P-7）
+
+> 全 zip は実行せず、central directory の一覧、path traversal / symlink の不在、`unzip -t` 成功を確認して scratchpad へ展開した。取得物は `docs/assets/m1-vendor/` に意図的 untracked で保存し、README に sha256 を記録した。
+
+### P-7a. 公式 STM32 V3.6.5 で更新された確定事項
+
+- `app_motion.h`: **`CAR_MECANUM_M1=0x0A`**。`CHANGELOG.md` も V3.6 で M1 configuration 追加を記録する。
+- `app_mecanum.h`: **`CAR_M1_MAX_SPEED=700`**、M1 wheel circumference `251.327mm`（直径80mm相当）、軸距離パラメータ `189.5mm`。`app_motion.c` は encoder circle `205` を選ぶ。
+- `app_motion.c` は M1 の X/Y 入力を ±700mm/s に、`app_mecanum.c` はミキシング後の各輪を再度 ±700mm/s に clamp する。よって stock FW の契約候補は **0.7m/s**であり、ADR-0010 の旧 0x01/0x02 二択を supersede する。ただし搭載 FW の版と実応答を確認するまでは、凍結契約値 0.3m/s を変更しない。
+- `protocol.c` の `FUNC_REQUEST_DATA(0x50)` は `FUNC_CAR_TYPE(0x15)` を受理し、`Motion_Send_Car_Type()` が応答する。公式 Python V3.3.9 の `get_car_type_from_machine()` はこの route を使う。プロトコル V2 spreadsheet の request/car_type catalog は **M1追加前のまま更新漏れ**と判断する。
+
+### P-7b. ダウンロード先と保存判断
+
+| 資料 | 公式 URL | 2026-08-24 結果 |
+|---|---|---|
+| Yahboom Code/Firmware | <https://drive.google.com/drive/folders/1Ck8pcerFBARnowzlgdrMrgwJR1bvQdWL> | STM32 source V3.6.5 と Python V3.3.9 を取得・実読。Orin `Rosmaster.zip` は Google Drive quota exceeded |
+| Yahboom Hardware Info | <https://drive.google.com/drive/folders/1AkGiIfpRojsVClGLW51FWqRttD8cy_Zj> | P-6 の回路図・protocol 等を取得済み |
+| Yahboom 3D Model | <https://drive.google.com/drive/folders/1idT8tPHoAcHPtpX7RnRd1YWu9I8bdgMi> | `ROSMASTER M1-V1.0.STEP` は quota exceeded。再取得 TODO |
+| Yahboom GitHub | <https://github.com/YahboomTechnology/ROSMASTER-M1> | `main` commit `8ee5179` snapshot を保存 |
+| NVIDIA Developer Kit STEP | <https://developer.nvidia.com/downloads/assets/embedded/secure/jetson/orin_nano/docs/jetson_orin_nano_devkit_3d_step_model.zip/> | 取得・保存 |
+| NVIDIA P3768-A04 Reference Design | <https://developer.nvidia.com/downloads/assets/embedded/secure/jetson/orin_nano/docs/jetson_orin_nano_devkit_carrier_board_reference_design_files_a04_20230320.zip/> | 取得・assembly drawing PDF をレンダリング確認。fallback の干渉・穴照合用 |
+| JetPack 6.2.1 SD image | <https://developer.nvidia.com/downloads/embedded/L4T/r36_Release_v4.4/jp62-r1-orin-nano-sd-card-image.zip> | 11,725,610,175 bytes（約10.9GiB）を HEAD で確認。Phase A 当日に版と QSPI/UEFI 状態を再確認して取得 |
+
+### P-7c. 通信途絶安全のソース確認
+
+公式 V3.6.5 の release configuration は **`ENABLE_IWDG=0`**。また UART/USB の最終受信時刻を監視して `Motion_Stop()` を呼ぶ command timeout は存在せず、最後の motion setpoint は明示的な zero/reset/低電圧/SBUS timeout 等まで保持される。IWDG の feed は通常 app loop にあり、仮に有効化しても serial command watchdog にはならない。したがって P-6b の「仕様書に保証が無い」から一段進み、**この stock source には通信途絶停止が無い**と確定した。
+
+Phase 1 は次を別々に扱う:
+
+1. L0' host clamp: 送信値域と方向を守るが、host/USB 断には無効。
+2. Emergency Guardian の zero frame: host が動作している故障には有効だが、断線には送れない。
+3. **G-g MCU command-stream watchdog**: 最終有効 motion frame からの期限超過で独立に brake/stop する実装・host test・実機 USB 抜線試験を必須とする。
