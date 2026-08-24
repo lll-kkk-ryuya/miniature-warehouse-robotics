@@ -548,7 +548,7 @@ M1 単騎フェーズは**実際の部屋（room scale）**を走り、ジオラ
 | 1:30 / 333 | **1.13 m/s** | 1.40 m/s |
 | 1:56 / 205 | 0.70 m/s | 0.86 m/s |
 
-検算: R2（1:19/65mm）→1.87 ≈ docstring 1.8 ✓ / X3 PLUS（1:56/80mm）→0.86 vs ファーム clamp 0.7 ✓ / X3（1:30/65mm）→1.13 vs clamp 1.0 ✓（式の妥当性の傍証）。V3.6.5 の M1 定数は**車輪周長 251.327mm（直径80mm相当）・encoder circle 205・car_type 0x0A・clamp 0.7m/s**。理論無負荷 0.86m/s より stock FW 上限が先に効く。`# TODO(実機5分)` は ①モータラベル ②ホイール径 ③搭載 FW 版 ④ `get_car_type_from_machine()==0x0A` の確認に縮小する。電圧依存: 無負荷回転数は電圧比例＝3S 12.6→9.6V で約80%。
+検算: R2（1:19/65mm）→1.87 ≈ docstring 1.8 ✓ / X3 PLUS（1:56/80mm）→0.86 vs ファーム clamp 0.7 ✓ / X3（1:30/65mm）→1.13 vs clamp 1.0 ✓（式の妥当性の傍証）。V3.6.5 の M1 定数は**車輪周長 251.327mm（直径80mm相当）・encoder circle 205・car_type 0x0A・clamp 0.7m/s**。理論無負荷 0.86m/s より stock FW 上限が先に効く。`# TODO(実機5分)` は ①モータラベル ②ホイール径 ③搭載 FW 版 ④ `get_car_type_from_machine()==0x0A` の確認に縮小する。電圧依存: 無負荷回転数は電圧比例＝3S 12.6→9.6V で約80%。（encoder は定数名 `ENCODER_CIRCLE_205` で実値 **2464.0 counts/車輪1回転**。205 はカウント数ではない→ P-7d）
 
 ### V-3. 速度の出し方（4案の裁定）
 
@@ -740,7 +740,7 @@ M1 単騎フェーズは**実際の部屋（room scale）**を走り、ジオラ
 ### P-7a. 公式 STM32 V3.6.5 で更新された確定事項
 
 - `app_motion.h`: **`CAR_MECANUM_M1=0x0A`**。`CHANGELOG.md` も V3.6 で M1 configuration 追加を記録する。
-- `app_mecanum.h`: **`CAR_M1_MAX_SPEED=700`**、M1 wheel circumference `251.327mm`（直径80mm相当）、軸距離パラメータ `189.5mm`。`app_motion.c` は encoder circle `205` を選ぶ。
+- `app_mecanum.h`: **`CAR_M1_MAX_SPEED=700`**、M1 wheel circumference `251.327mm`（直径80mm相当）、軸距離パラメータ `189.5mm`。`app_motion.c` は encoder circle `205` を選ぶ。（`ENCODER_CIRCLE_205=2464.0f` counts/車輪1回転。205 は定数名でカウント数ではない）
 - `app_motion.c` は M1 の X/Y 入力を ±700mm/s に、`app_mecanum.c` はミキシング後の各輪を再度 ±700mm/s に clamp する。よって stock FW の契約候補は **0.7m/s**であり、ADR-0010 の旧 0x01/0x02 二択を supersede する。ただし搭載 FW の版と実応答を確認するまでは、凍結契約値 0.3m/s を変更しない。
 - `protocol.c` の `FUNC_REQUEST_DATA(0x50)` は `FUNC_CAR_TYPE(0x15)` を受理し、`Motion_Send_Car_Type()` が応答する。公式 Python V3.3.9 の `get_car_type_from_machine()` はこの route を使う。プロトコル V2 spreadsheet の request/car_type catalog は **M1追加前のまま更新漏れ**と判断する。
 
@@ -748,7 +748,7 @@ M1 単騎フェーズは**実際の部屋（room scale）**を走り、ジオラ
 
 | 資料 | 公式 URL | 2026-08-24 結果 |
 |---|---|---|
-| Yahboom Code/Firmware | <https://drive.google.com/drive/folders/1Ck8pcerFBARnowzlgdrMrgwJR1bvQdWL> | STM32 source V3.6.5 と Python V3.3.9 を取得・実読。Orin `Rosmaster.zip` は Google Drive quota exceeded |
+| Yahboom Code/Firmware | <https://drive.google.com/drive/folders/1Ck8pcerFBARnowzlgdrMrgwJR1bvQdWL> | STM32 source V3.6.5 と Python V3.3.9 を取得・実読。Orin `Rosmaster.zip` は Google Drive quota exceeded |→ **同日後刻に解消**: `Rosmaster.zip` 含む計7本を取得済（P-7d）
 | Yahboom Hardware Info | <https://drive.google.com/drive/folders/1AkGiIfpRojsVClGLW51FWqRttD8cy_Zj> | P-6 の回路図・protocol 等を取得済み |
 | Yahboom 3D Model | <https://drive.google.com/drive/folders/1idT8tPHoAcHPtpX7RnRd1YWu9I8bdgMi> | `ROSMASTER M1-V1.0.STEP` は quota exceeded。再取得 TODO |
 | Yahboom GitHub | <https://github.com/YahboomTechnology/ROSMASTER-M1> | `main` commit `8ee5179` snapshot を保存 |
@@ -765,3 +765,10 @@ Phase 1 は次を別々に扱う:
 1. L0' host clamp: 送信値域と方向を守るが、host/USB 断には無効。
 2. Emergency Guardian の zero frame: host が動作している故障には有効だが、断線には送れない。
 3. **G-g MCU command-stream watchdog**: 最終有効 motion frame からの期限超過で独立に brake/stop する実装・host test・実機 USB 抜線試験を必須とする。
+
+### P-7d.（2026-08-24 後刻）Orin 向け code 一式 7 本の取得完了と独立再検証
+
+- 15:38–15:44 に **`~/Developer/mwr-vendor-code-cache-20260824/`**（dir `700` / file `600`）へ 7 本を取得: `OrinNano-Rosmaster.zip`(340.6MB) / `OrinNano-ultralytics.zip`(592.6MB) / `OrinNano-ros2_kilted.zip` / `OrinNano-ros2_ws.zip` / `ROS-Driver-Board-FW-master.zip` / `py_install_V3.3.9.zip` / `rosmaster_V3.6.5.hex`。**`:751` の quota exceeded は解消**（未取得は Yahboom `ROSMASTER M1-V1.0.STEP` のみ＝`:753` の TODO 継続）。
+- **独立再検証済**（取得セッションと別のセッションが同日実施）: 全 zip `unzip -t` 合格・path traversal 0 件・P-7a の全確定値（`CAR_MECANUM_M1=0x0A` / `CAR_M1_MAX_SPEED=700` の X/Y 入力クランプ＋各輪再クランプの二段 / `MECANUM_M1_CIRCLE_MM=251.327f` / `MECANUM_M1_APB=189.5f` / `ENABLE_IWDG=0` / `FUNC_CAR_TYPE(0x15)` request で `Motion_Send_Car_Type()` 応答 / CHANGELOG「V3.6 增加麦轮小车M1的配置文件」/ Python V3.3.9 `get_car_type_from_machine()`）を**ソース実 Read で一致確認**。
+- 取り扱い注意: ① zip 内に **`ultralytics/ultralytics/data/.env`（63B）が存在**——中身は読まない・公開/commit 禁止（safety.md）。② Ultralytics 本体は **AGPL-3.0**、Yahboom 配布物（モデル・データセット含む）はライセンス個別確認まで**再配布・コード流用不可**。③ `Rosmaster/auto_drive/yolov5_auto.py` は検出結果から **`set_car_motion()` を直接呼ぶ**（L76-123 で確認）＝安全レイヤ（L0'/L1/L2）迂回の参考実装——**知覚の参考としてのみ扱い、制御経路にコードを持ち込まない**。
+- 保管方針（三層）: ベンダー Drive＝入手元として保持 / 重要原本のみユーザー所有の非公開クラウドへ複製（**実施はユーザー承認後**）/ Git にはバイナリを置かず本台帳（`docs/assets/m1-vendor/README.md` の sha256）のみ。`docs/assets/m1-vendor/` が worktree と main checkout の**両方に重複展開**されている点は要整理（どちらも untracked・実害なし）。
