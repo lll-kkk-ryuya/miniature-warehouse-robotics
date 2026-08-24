@@ -45,7 +45,7 @@
 | **Jetson Nano B01 board** | B01 本体、WiFi/Bluetooth network card、4010 fan、Patch antenna acrylic plate + PCB patch antenna ×2、U disk、Accessory package ⑥ + Double-elbow DC5.5\*2.1 power cable |
 | **Jetson Orin Nano board** | Orin Nano 本体、**SSD**、Patch antenna acrylic plate、PCB patch antenna ×2、**DC5.5\*2.5 to XH2.54 power cable 2PIN**、Accessory package ⑥ |
 
-**開梱記録（2026-08-19・実物確認）**: 本プロジェクト購入の Superior-without には **T-mini Plus LiDAR と Nuwa-HP60C 深度カメラが同梱されていた**（[02:393](02-hardware-design.md) と 1:1 同期）。Jetson Orin Nano board オプション列（SSD・パッチアンテナ・DC5.5×2.5⇔XH2.54 ケーブル・袋⑥）は**丸ごと非同梱**——SSD は別売購入の KIOXIA 1TB を充当し、給電は §4 の通り説明書の直結ケーブルを使わない（[02:320-321](02-hardware-design.md)）。**Orin 固定用のネジ・銅柱（袋⑥相当）が手元に無い可能性**に注意（マウント自体は 3D プリント・M3×4 = [02:414-420](02-hardware-design.md)）。
+**開梱記録（2026-08-19・実物確認）**: 本プロジェクト購入の Superior-without には **T-mini Plus LiDAR と Nuwa-HP60C 深度カメラが同梱されていた**（[02:393](02-hardware-design.md) と 1:1 同期）。Jetson Orin Nano board オプション列（SSD・パッチアンテナ・DC5.5×2.5⇔XH2.54 ケーブル・袋⑥）は**丸ごと非同梱**——SSD は別売購入の KIOXIA 1TB を充当し、給電は §4 の通り説明書の直結ケーブルを使わない（[02:320-321](02-hardware-design.md)）。**Orin 固定用のネジ・銅柱（袋⑥相当）が手元に無い可能性**に注意（マウント: → **Q-6/Q-7 で直付けに更新**・銅柱は Q-3 の B01 袋流用で解決済）。
 
 ## 2. 組立手順（Installation Steps (Generally)・転記）
 
@@ -92,7 +92,7 @@ Orin はコアモジュール脱着・network card 増設が無い分 B01 より
 | ハブ | USB HUB board | Upper-elbow USB → Orin |
 | センサ | T-MINI PLUS LiDAR | LiDAR cable → HUB 下段（driver は `ydlidar_ros2_driver` = [02:333](02-hardware-design.md)） |
 | センサ | Nuwa-HP60C depth camera | Side elbow Type-C → HUB |
-| UI | OLED display | OLED-I2C 配線（接続先ヘッダは推定・説明書のボード図参照） |
+| UI | OLED display | OLED-I2C 配線（→ **Q-7 で確定**: Orin では 40pin ヘッダへ接続＝[02](02-hardware-design.md) P-6c 手順6） |
 | UI | AI voice module + Speaker | Side elbow Type-C → HUB |
 | その他 | 2DOF PTZ ／ Handle receiver ／ Cooling fan | PTZ/カメラ/音声は HUB 下段、receiver は Orin 直挿し |
 
@@ -215,7 +215,7 @@ p05 右上「6. Jetson Orin Nano board wiring diagram」下段の組立図で構
 | `M2.5*5mm` なべネジ ほか | 上記の締結 | ✅ 使える | 同上 |
 | `M2.5*16+6mm` 単通銅柱 ×3 | パッチアンテナの支柱 | 🟡 アンテナを使う場合のみ | p06 手順7 |
 | **RTL8822CE 無線カード**（M.2 2230 A+E キー・WiFi ac 2×2 + BT） | **B01 に無線が載っていないための追加カード** | ❌ **不要** | [02:401](02-hardware-design.md)「M.2 Key-E 2230 = 無線モジュール実装済（同梱）／WiFi/BT の買い足し不要」 |
-| PCB パッチアンテナ ×2 ＋ アクリル板（U.FL） | 上記カードのアンテナ | 🟡 **流用候補** | `# TODO(現物確認)` Orin 側モジュールのアンテナ同梱有無が未確認（Phase A の開封確認項目） |
+| PCB パッチアンテナ ×2 ＋ アクリル板（U.FL） | 上記カードのアンテナ | 🟡 **流用候補** | `# TODO(現物確認)` Orin 側モジュールのアンテナ同梱有無が未確認（**P-6c 手順3 の台座撤去で純正アンテナが孤立する場合の代替としても有力**。Phase A の開封確認項目） |
 | 4010 ファン（40mm 角・4ピン） | B01 のヒートシンクへ後付け | ❌ 不要 | Dev Kit はファン一体の完成体（[02:322](02-hardware-design.md)） |
 | 両端 L 字 DC ケーブル `5.5*2.1` | 拡張ボード 12V → B01 | ❌ **物理的に挿さらない**＋方式としても非採用 | Orin は **5.5×2.5**（[02:405](02-hardware-design.md)）／12V 直結は縮退案（[02:320](02-hardware-design.md)） |
 
