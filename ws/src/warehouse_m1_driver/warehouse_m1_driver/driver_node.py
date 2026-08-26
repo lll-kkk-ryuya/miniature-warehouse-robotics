@@ -28,7 +28,11 @@ import rclpy
 from geometry_msgs.msg import Twist
 from rclpy.node import Node
 
-from warehouse_m1_driver.driver_core import DEFAULT_CMD_TIMEOUT_S, M1DriverCore
+from warehouse_m1_driver.driver_core import (
+    DEFAULT_CMD_TIMEOUT_S,
+    M1DriverCore,
+    _positive_or_default,
+)
 
 
 class M1DriverNode(Node):
@@ -48,7 +52,9 @@ class M1DriverNode(Node):
 
         bot = str(self.get_parameter("bot").value)
         timeout = float(self.get_parameter("cmd_vel_timeout_s").value)
-        period = float(self.get_parameter("watchdog_period_s").value)
+        # Same hardening as the core's timeout: a 0/negative/NaN period would
+        # break the timer (or hot-spin) and silently disarm W-1.
+        period = _positive_or_default(float(self.get_parameter("watchdog_period_s").value), 0.1)
 
         if backend is None:
             from warehouse_m1_driver.backend import RosmasterBackend

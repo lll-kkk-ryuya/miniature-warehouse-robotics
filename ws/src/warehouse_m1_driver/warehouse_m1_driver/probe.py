@@ -31,22 +31,33 @@ def main() -> None:
     bot.create_receive_threading()
     time.sleep(0.5)  # let the 25Hz auto-report stream arrive
 
+    def read(*method_names: str) -> object:
+        # Vendor lib versions differ; a missing/failing getter must not kill
+        # the whole read-only probe (each line is an independent fact).
+        for name in method_names:
+            fn = getattr(bot, name, None)
+            if callable(fn):
+                try:
+                    return fn()
+                except Exception as exc:  # noqa: BLE001 - report, keep probing
+                    return f"<error: {exc}>"
+        return f"<unavailable: {'/'.join(method_names)}>"
+
     print("== M1 read-only probe (docs/mode-m1/03 §2) ==")
-    car_type = bot.get_car_type_from_machine()
+    car_type = read("get_car_type_from_machine", "get_car_type")
     print(
         f"car_type            : {car_type}  "
         f"(0x01 -> clamp 1.0 m/s / 0x02 -> clamp 0.7 m/s = ADR-0010 Open 1)"
     )
-    print(f"firmware version    : {bot.get_version()}  (compare vs V3.5.1 = U-5)")
-    print(f"battery voltage [V] : {bot.get_battery_voltage()}")
+    print(f"firmware version    : {read('get_version')}  (compare vs V3.5.1 = U-5)")
+    print(f"battery voltage [V] : {read('get_battery_voltage')}")
 
     print(f"encoder samples x{args.samples} (int32 M1..M4, 1s apart):")
     prev = None
     for i in range(args.samples):
-        counts = bot.get_motor_encoder()
-        delta = (
-            tuple(c - p for c, p in zip(counts, prev, strict=True)) if prev is not None else None
-        )
+        counts = read("get_motor_encoder")
+        both_ok = isinstance(counts, (tuple, list)) and isinstance(prev, (tuple, list))
+        delta = tuple(c - p for c, p in zip(counts, prev, strict=True)) if both_ok else None
         print(f"  [{i}] counts={counts}" + (f" delta={delta}" if delta else ""))
         prev = counts
         if i < args.samples - 1:
