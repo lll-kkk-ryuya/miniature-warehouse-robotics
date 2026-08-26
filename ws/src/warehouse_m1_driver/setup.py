@@ -19,9 +19,13 @@ setup(
     ),
     license="Apache-2.0",
     tests_require=["pytest"],
-    # No console_scripts yet: this slice ships the pure L0' clamp only. The serial
-    # driver node entry point lands with the FUNC_MOTION framing slice.
     entry_points={
-        "console_scripts": [],
+        "console_scripts": [
+            # G-l: the executable that wires clamp_body_velocity into the
+            # dispatch path (docs/mode-m1/02 §2).
+            "m1_driver = warehouse_m1_driver.driver_node:main",
+            # Read-only on-robot probe (docs/mode-m1/03 §2). No motion.
+            "m1_probe = warehouse_m1_driver.probe:main",
+        ],
     },
 )

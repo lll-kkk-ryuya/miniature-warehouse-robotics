@@ -87,3 +87,32 @@ Yahboom ROSMASTER M1 の STM32 制御ボードは**ベンダ製バイナリ**の
 - [`docs/adr/0008-ros2-distro-humble-for-rosmaster-m1.md`](../../../docs/adr/0008-ros2-distro-humble-for-rosmaster-m1.md) — distro（Humble）決定
 - [`docs/architecture/12-infrastructure-common.md`](../../../docs/architecture/12-infrastructure-common.md) — Layer マップ（L0 の定義。M1 採用に伴う改訂が `# TODO(採用時)` として残っている）
 - `.claude/rules/safety.md` / `.claude/rules/docs-first.md` / `.claude/rules/parallel-workflow.md`
+
+## 【2026-08-26 追記】serial driver node スライス（G-l 実体化・console_scripts 解消）
+
+設計正本: [docs/mode-m1/02-m1-driver-and-watchdog.md](../../../docs/mode-m1/02-m1-driver-and-watchdog.md)（W-1〜W-4 の多層停止・G-g 手順）/ [docs/mode-m1/03](../../../docs/mode-m1/03-joystick-teleop-bringup.md)（M0/M1/M2 ゲート・プローブ）。
+
+### 提供 (produce) — 本スライスで追加
+
+- console_script **`m1_driver`**（`driver_node.py`）— `/{bot}/cmd_vel`（`geometry_msgs/Twist`・doc03:88）を購読し、**`clamp_body_velocity` 必経（L0'）** → backend（vendor `Rosmaster_Lib`）へ dispatch。**publish なし・TF なし**（odom は幾何実測後の後続スライス。`odom→base_link` は ekf 単一所有＝doc23:163）。
+  - **W-1**: `cmd_vel_timeout_s`（ROS param・既定 `DEFAULT_CMD_TIMEOUT_S=0.5`＝twist_mux.yaml:44 と整合）超過で毎 tick brake。非有限/非正の param は既定へ fail-safe。
+  - **W-2**: atexit + SIGINT/SIGTERM + finally で `stop_brake()`（=`set_car_motion(0,0,0)`）→ `reset_state()`（=`FUNC_RESET_STATE 0x0F`）の**二重停止・冪等**。
+- console_script **`m1_probe`**（`probe.py`）— **read-only** 実機プローブ（car_type / version / battery / encoder×4。**motion 送信なし**）。
+- `backend.MotionBackend`（Protocol）+ `RosmasterBackend` — serial 実装の注入 seam（doc16 §11 fake seam。**フレーミングは自作しない**＝wire プロトコルは docs の凍結範囲外・vendor lib に委譲）。
+- `driver_core.M1DriverCore` — rclpy 非依存の中核（unit の対象）。
+
+### 消費 (consume) — 追加分
+
+- `Rosmaster_Lib`（vendor・robot イメージのみ・**lazy import**。dev host の unit は import 不要）
+- rclpy / geometry_msgs（package.xml exec_depend 追加済）
+
+### テスト（R-26）
+
+- `tests/unit/test_m1_driver_core.py`（16 関数）— fake backend + fake clock・**spec 由来の独立オラクル**（clamp 内部を読まない）。dispatch cap / 方向保存 / 非有限→ゼロフレーム / W-1 境界・repeat / W-2 順序・冪等。
+- **mutation 4 本全 KILLED**（2026-08-26 実測・個別適用）: ①clamp bypass→6 fail ②軸独立クランプ→5 fail ③W-1 disarm→7 fail ④W-2 片肺→2 fail。クリーン 0 fail。
+
+### 前提・未確定 (TODO)
+
+- `# TODO(Phase 1)` `cmd_vel_timeout_s` の運用値は実機で確定（doc mode-m1/02 §3 W-1）。
+- `# TODO(Phase 1)` odom スライス（`get_motor_encoder` 差分 + M1 実測幾何。X3 幾何のファーム報告は使わない＝mode-m1/02 §1-3）。
+- `# TODO(Phase 1)` 実機ファーム版と調査ソース V3.5.1 の一致確認（U-5・`m1_probe`）。
