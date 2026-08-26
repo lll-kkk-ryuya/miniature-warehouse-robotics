@@ -142,3 +142,5 @@ Orin はコアモジュール脱着・network card 増設が無い分 B01 より
 - [adr/0009-m1-room-scale-operation.md](../adr/0009-m1-room-scale-operation.md) — 部屋スケール運用（Phase 1 = 部屋 SLAM）
 - [setup/jetson-deploy.md](../setup/jetson-deploy.md) / [jetson/01-fidelity-and-validation.md](../jetson/01-fidelity-and-validation.md) — 実機 deploy・ゲート
 - 原本: Yahboom ROSMASTER M1 同梱紙説明書（Quick Start Tutorials / Shipping List / Installation Steps。参照日: 2026-08-19）
+
+【2026-08-26 追記】組立後の bring-up 手順（M0/M1/M2 ゲート・joystick・§6 handle 未決への答え）は [mode-m1/03-joystick-teleop-bringup.md](../mode-m1/03-joystick-teleop-bringup.md) が正本（§6 の「handle 経路が L0' を通るか」= 公式 joy node のままでは通らない → 自前経路で必経にする、の裁定を含む）。

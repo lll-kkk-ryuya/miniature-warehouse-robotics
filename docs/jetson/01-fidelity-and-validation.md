@@ -210,3 +210,8 @@ doc06:112、sim 範囲。実 bot E2E は sim track #8/#156）。→ F1-F3。**AR
 ## 【2026-08-07 追記】ADR-0006（単騎構成）によるゲート読み替え
 
 [ADR-0006](../adr/0006-single-bot-first.md) の 1台先行では、**G2「micro-ROS 2台」・G6「WiFi 同時通信（micro-ROS×2 + LLM API）」は本フェーズ N/A**（ゲート定義は削除せず、2台復帰フェーズで再有効化）。G4「Nav2×2 の実時間追従」は **Nav2×1** に読み替える。nvblox / MOLA-LO（旧 cuVSLAM は blocked）を載せる場合の実機ゲートは [architecture/23 §7 スパイクゲート S1-S3](../architecture/23-perception-and-localization.md) を併用する。
+
+## 【2026-08-26 追記】M1 実行モード docs（mode-m1/）への forward
+
+- M1 単騎・部屋スケールの**実行構成・bring-up の正本ルート**は [docs/mode-m1/](../mode-m1/README.md)（境界/traffic = [mode-m1/01](../mode-m1/01-mode-boundary-and-traffic.md) / driver+watchdog = [mode-m1/02](../mode-m1/02-m1-driver-and-watchdog.md) / joystick bring-up M0-M2 = [mode-m1/03](../mode-m1/03-joystick-teleop-bringup.md)）。
+- 本 doc の G0-G7 には旧世界（ESP32×2 / MS200 / Nav2×2 / 「MCU がクランプ」）前提の記述が残る。**M1 への読み替え（特に G0 の主体 = MCU → L0' ホストクランプ）は別 PR で行う**（§2 表 `:52-57`・§4 表 `:97-113` は他 doc から行 pin されているため行数保存が必要 = 中段挿入禁止）。本追記はその予告と forward リンクのみ。

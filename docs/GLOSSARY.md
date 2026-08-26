@@ -155,3 +155,4 @@
 ---
 
 > 未登録の canonical anchor（正本 doc がまだ無い語）を見つけたら、**発明せず**に code file:line を暫定 anchor にし、正本 doc 化を doc PR で提案する（[docs-first.md](../.claude/rules/docs-first.md)）。
+- **Mode M1（M1 実行モード）**〔別名: mode-m1〕 — ROSMASTER M1 単騎・部屋スケールフェーズの**実行構成モード**（2026-08-26 新設）。traffic_mode 軸（Mode A/B/C）から独立し、Open-RMF・SimpleTrafficManager を持ち込まず、**collision_monitor が起動する構成（`traffic_mode != 'open-rmf'`・既定 `none`）を必須条件**とする（[mode-x-er/10 §11 G-k](mode-x-er/10-room-scale-safety-review.md) の構造的解決）。司令軸（Mode X-ER / ジェスチャ司令）とは直交。 — [mode-m1/01-mode-boundary-and-traffic.md](mode-m1/01-mode-boundary-and-traffic.md)（境界の正本）/ [mode-m1/README.md](mode-m1/README.md)（索引）

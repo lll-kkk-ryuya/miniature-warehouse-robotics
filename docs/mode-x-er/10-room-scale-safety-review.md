@@ -587,3 +587,12 @@ G-c / G-d / G-i / G-h / G-m ───────────────┘
 - [09-hand-raise-summon.md](09-hand-raise-summon.md) 末尾【2026-08-18 追補③】
 - [architecture/23-perception-and-localization.md](../architecture/23-perception-and-localization.md) 末尾 G-14
 - [docs/README.md](../README.md) mode-x-er 表 / [mode-x-er/README.md](README.md) 末尾索引
+
+---
+
+## 【2026-08-26 追記】§11 ゲートの設計・実装ホーム（mode-m1/ 新設に伴う backlink）
+
+- **G-k** の構造的解決（Mode M1 の必須条件 = collision_monitor が起動する構成）: [mode-m1/01-mode-boundary-and-traffic.md](../mode-m1/01-mode-boundary-and-traffic.md)
+- **G-l / G-g** の設計ホーム（L0' driver node・W-1〜W-4 多層停止・G-g 実機 5 分手順・MCU watchdog 不在のソース調査）: [mode-m1/02-m1-driver-and-watchdog.md](../mode-m1/02-m1-driver-and-watchdog.md)
+- bring-up の成功ゲート（M0/M1/M2・実機プローブ）: [mode-m1/03-joystick-teleop-bringup.md](../mode-m1/03-joystick-teleop-bringup.md)
+- §11 表の**状態列の更新はゲートを閉じた PR が行う**（本追記はリンクのみ・判定不変）。
