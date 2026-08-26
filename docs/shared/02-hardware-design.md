@@ -591,3 +591,9 @@ M1 単騎フェーズは**実際の部屋（room scale）**を走り、ジオラ
 
 - 同梱紙説明書（Shipping List・組立手順・配線・音声フロー）の転記と開梱記録は [11-m1-assembly-manual.md](11-m1-assembly-manual.md)（転記 doc・設計判断なし）。:393 の着荷記録と 1:1 同期。
 - Shipping List の構成上、**「Jetson Orin Nano board」オプション列の同梱物（SSD・パッチアンテナ・DC5.5×2.5⇔XH2.54 ケーブル・Accessory package ⑥）は Superior-without には付かない**。帰結: ① :447 の「キット余りを先に確認」する M3 ネジは **Orin 用ネジ袋（⑥）が存在しない前提**で確認する（標準袋①/⑤の余りの範囲） ② :321 の縮退案ケーブル（XH2.54⇔DC5.5×2.5）は同梱されず単品購入時のみ、の再確認。
+
+【2026-08-26 追記】M1 実行モード docs（mode-m1/）の新設と MCU watchdog 調査の所在
+
+- M1 単騎・部屋スケールの**実行構成（Mode A/B/C から独立の Mode M1）・bring-up・driver 設計**の正本ルートは [docs/mode-m1/](../mode-m1/README.md) に新設（2026-08-26 オペレーター指示）。
+- `:329` の `# TODO(Phase 1)`（MCU の通信タイムアウト停止 = watchdog の有無）は、工場ファームソース調査で**「無し」が濃厚**と判明（調査記録と出典 = [mode-m1/02 §1-2](../mode-m1/02-m1-driver-and-watchdog.md)。停止経路 `FUNC_RESET_STATE 0x0F` の存在も同所）。**実機確認（G-g・手順 = 同 doc §4）で確定するまで `:329` の TODO は維持**する。
+- ファームのメカナム幾何定数が X3 値ハードコードである件（odom は `0x0D` エンコーダ差分で組む根拠の強化・`wz` 補正係数の要否）は [mode-m1/02 §1-3](../mode-m1/02-m1-driver-and-watchdog.md)。

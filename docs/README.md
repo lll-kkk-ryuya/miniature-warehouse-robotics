@@ -15,6 +15,7 @@ docs/
 ├── jetson/          Jetson 忠実度ギャップ・実機投入前ゲート（dev/stg→prod de-risk・#127）
 ├── mode-a/          Mode A/B: LLM単独交通管理（Open-RMFなし）
 ├── mode-c/          Mode C: LLM + Open-RMF（主方針）
+├── mode-m1/         Mode M1: ROSMASTER M1 単騎・部屋スケール実行モード（bring-up / driver / joystick）
 ├── mode-x-er/       Mode X-ER: Gemini Robotics-ER 視覚タスク司令（設計提案）
 ├── mode-x-er-vla/   Mode X-ER-VLA: Gemini Robotics-ER + VLA 統合モード
 └── mode-x/          旧 Mode X 互換参照（新規設計は mode-x-er / mode-x-er-vla）
@@ -93,6 +94,15 @@ docs/
 | [08c-llm-bridge-mode-c](mode-c/08c-llm-bridge-mode-c.md) | LLM Bridge Mode C固有（situation JSON, system prompt, 3アクション） |
 | [11c-traffic-mode-c](mode-c/11c-traffic-mode-c.md) | 交通管理 Mode C（RMFTrafficManager, Open-RMF） |
 | [12c-integration-mode-c](mode-c/12c-integration-mode-c.md) | システム統合 Mode C（Fleet Adapter, Open-RMF連携） |
+
+## mode-m1/ — ROSMASTER M1 単騎・部屋スケール実行モード
+
+| ファイル | 内容 |
+|---------|------|
+| [README](mode-m1/README.md) | Mode M1 の位置づけ・境界（Mode A/B/C から独立・オペレーター指示 2026-08-26）・索引 |
+| [01-mode-boundary-and-traffic](mode-m1/01-mode-boundary-and-traffic.md) | traffic_mode 裁定（collision_monitor 常時起動 = G-k の構造的解決）・stg/prod config とのギャップ |
+| [02-m1-driver-and-watchdog](mode-m1/02-m1-driver-and-watchdog.md) | m1_driver serial node 設計（L0' 結線 = G-l）＋ watchdog 多層停止設計（STM32 watchdog 不在・G-g 手順） |
+| [03-joystick-teleop-bringup](mode-m1/03-joystick-teleop-bringup.md) | joystick 手動走行 bring-up（M0/M1/M2 成功ゲート・実機プローブ・joy 経路） |
 
 ## mode-x-er/ — Gemini Robotics-ER 視覚タスク司令（設計提案）
 
