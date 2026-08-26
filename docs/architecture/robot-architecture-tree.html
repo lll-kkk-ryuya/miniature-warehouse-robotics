@@ -47,6 +47,9 @@
 <div class="sub">
   「何があるか・何を採らないか」の全体地図。データの流れ（Runtime Data Flow）は companion の
   <code>perception-localization-flow.html</code> 側。正本は各 md（各ノードに併記）。行番号は 2026-08-09 時点。
+  実行モード（Mode M1 = A/B/C から独立・2026-08-26 新設）と bring-up / driver 設計の正本ルートは
+  <a href="../mode-m1/README.md"><code>docs/mode-m1/</code></a>（06_Control の L0' 実装設計 =
+  <a href="../mode-m1/02-m1-driver-and-watchdog.md"><code>mode-m1/02</code></a>）。
 </div>
 <div class="navbar">
   <a class="here" href="robot-architecture-tree.html">① Architecture Tree（本頁）</a>
@@ -123,7 +126,7 @@
 │        └── local（odom・rolling 3×3m）: <span class="g">nvblox_layer</span> <span class="new">★T3=主戦場（ここで止める判断も正当）</span> ／ obstacle ／ inflation
 │              <span class="x">✗ static_layer（rolling に無意味）／✗ voxel_layer</span>
 │
-├── <span class="r">06_Control/</span>                    <span class="d">正本: doc12 §cmd_vel トポロジ（凍結）/ 02-hardware §残課題5-7</span>
+├── <span class="r">06_Control/</span>                    <span class="d">正本: doc12 §cmd_vel トポロジ（凍結）/ 02-hardware §残課題5-7 / driver 設計=<a href="../mode-m1/02-m1-driver-and-watchdog.md">mode-m1/02</a></span>
 │   ├── <span class="r">safety_chain/ ★凍結トポロジ＝1 バイトも変えない（原則 P2）</span>
 │   │     <span class="r">＝不変の床（pose 非依存・凍結・入れ替え対象外）</span> <span class="d">localization がどれだけ間違っても機能する（doc23 追補 A-2）</span>
 │   │     controller ─▶ /bot1/cmd_vel/nav2_raw
