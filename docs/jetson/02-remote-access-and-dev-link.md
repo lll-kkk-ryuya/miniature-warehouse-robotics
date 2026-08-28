@@ -113,7 +113,7 @@ restrict,port-forwarding,permitlisten="127.0.0.1:2222" ssh-ed25519 <Jetsonの公
 ssh -i ~/.ssh/mwr_jetson -p 2222 ruyuya@127.0.0.1
 ```
 
-**撤去**: Jetson で `pkill -f mwr-tunnel.sh`、Mac の `authorized_keys` から
+**撤去**: Jetson で `sudo systemctl disable --now mwr-tunnel`、Mac の `authorized_keys` から
 `mwr-jetson-tunnel` の行を削除する。
 
 ## 4. ssh 直結の手順（A が解決したときの形）
@@ -195,8 +195,9 @@ deploy/dev/jetson-link/send.sh 'free -h'
 
 - `# TODO(未解決)` **§3-A（ローカルネットワーク権限）が直らない**。ON ＋ アプリ再起動後も
   Mac → Jetson の直接接続は不通のまま（ゲートウェイのみ到達）。**§3-B のトンネルで運用中**。
-- `# TODO` **トンネルはブートで消える**（`nohup` 常駐・systemd 未登録）。Jetson 再起動後は
-  張り直しが要る＝恒久化するなら systemd 化を別途決める。**pull 型 agent（§5）も同様**。
+- **トンネルは systemd 化済み**（再起動で自動復帰・実測確認済み）。一方 **pull 型 agent（§5）は
+  systemd 登録していない**＝ブートで消える。これは意図的（agent は開発機から任意コマンドを
+  root 実行するため、常時有効にしない）。トンネルが使えないときだけ手動で起動する。
 - `# TODO(次)` **NVMe SSD への rootfs 移行が未実施**。SSD は装着・認識済（931.5GB・生ディスク）だが
   起動は microSD のまま。**環境を作り込む前に決着させる**（後からやると作業のやり直しになる）。
   手順は Mac のみの環境（SDK Manager 不可 = [shared/02:409](../shared/02-hardware-design.md)）で
@@ -207,6 +208,25 @@ deploy/dev/jetson-link/send.sh 'free -h'
 - `# TODO` **Super 化（`nvpmodel -m 2`）未実施**。性能実測（G3/G4）の前に適用する。
 - `# TODO` **IP が DHCP のまま**（`192.168.11.12`）。DHCP 予約 or 固定化するまで再接続のたびに IP 確認が要る。
 - [01-fidelity-and-validation.md](01-fidelity-and-validation.md) の **G0-G7 は旧世界（ESP32×2 / MS200 / 2台）前提**のまま＝M1 単騎への rescope は別 PR（[mode-m1/README.md:25](../mode-m1/README.md)）。本 doc の §6 はその rescope 後に読み替えが要る。
+
+## 8. 運用上の注意：電源の切り方
+
+**電源ケーブルを抜いて止めない。必ずシャットダウンしてから抜く。**
+
+```bash
+sudo poweroff        # ターミナルから（GUI なら 右上メニュー → 電源オフ）
+```
+
+理由: Linux はディスクへの書き込みをいったんメモリに溜め、シャットダウン時にまとめて書き出す。
+通電のまま切ると、この書き出しの途中で電源が落ち、**ファイルシステムと microSD 内部の管理情報が
+壊れる**ことがある（摩耗とは別の壊れ方で、新品でも起こる）。Raspberry Pi / Jetson で
+「SD が突然死んだ」と言われる故障の主因はこれ（§6 の microSD 依存と合わせて読む）。
+
+- **完全に停止したことを確認してから**ケーブルを抜く（ファンが止まる）。
+- 走行フェーズでは**バッテリー切れによる電源断**が同じ事故を起こす＝
+  [ADR-0005](../adr/0005-l0-battery-brownout-floor.md)（battery brownout floor）と地続きの問題。
+- 開発中は **Jetson 上の変更をこまめに commit / push** する。Remote-SSH で実機を直接編集する
+  構成では「実機にしか存在しないコード」が生じるため、ストレージ故障が作業損失に直結する。
 
 ## References
 
