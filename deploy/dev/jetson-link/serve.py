@@ -35,7 +35,10 @@ cat > /usr/local/bin/mwr-agent <<'INNER'
 #!/bin/sh
 MAC={host_ip}
 PORT={port}
-LAST=""
+# Adopt whatever command is currently posted WITHOUT running it, so that
+# (re)starting the agent never replays the previous command. Only commands
+# posted after the agent came up are executed.
+LAST=$(curl -s -m 8 "http://{host_ip}:{port}/cmd" 2>/dev/null | head -1)
 while true; do
   C=$(curl -s -m 8 "http://$MAC:$PORT/cmd" 2>/dev/null)
   ID=$(printf '%s' "$C" | head -1)
