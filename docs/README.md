@@ -12,7 +12,7 @@ docs/
 ├── productization/  商用再利用 Box 設計（L4/L3/下位ROS/安全/evalの独立部品化）
 ├── dev/             開発プロセス（並列開発 playbook・オペレーター手順・教訓ログ）
 ├── setup/           デプロイ手順（Jetson prod 常駐化・systemd / 監視）
-├── jetson/          Jetson 忠実度ギャップ・実機投入前ゲート（dev/stg→prod de-risk・#127）
+├── jetson/          Jetson 実機: 忠実度ギャップ・投入前ゲート（#127）＋ 開発機↔実機アクセス経路
 ├── mode-a/          Mode A/B: LLM単独交通管理（Open-RMFなし）
 ├── mode-c/          Mode C: LLM + Open-RMF（主方針）
 ├── mode-m1/         Mode M1: ROSMASTER M1 単騎・部屋スケール実行モード（bring-up / driver / joystick）
@@ -151,6 +151,7 @@ docs/
 | ファイル | 内容 |
 |---------|------|
 | [01-fidelity-and-validation](jetson/01-fidelity-and-validation.md) | Jetson 忠実度ギャップ・dev/stg→prod de-risk（#127） |
+| [02-remote-access-and-dev-link](jetson/02-remote-access-and-dev-link.md) | 開発機（Mac）↔ Jetson のアクセス経路（ssh 直結 / pull 型 agent fallback・初回ブート実測ベースライン） |
 
 ## モード切替
 

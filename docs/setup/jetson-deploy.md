@@ -170,3 +170,13 @@ runtime dir = `paths.runtime_dir()`）を共有・個別再起動でも保持。
 - env 解決（`paths.runtime_dir()` prod=`/run/warehouse`）は既存 unit テストで回帰カバー
   （`tests/unit/test_*` の `WAREHOUSE_ENV=prod`）。
 - **実機投入は Phase 1**（Jetson 到着後、§0 安全ゲート通過後）。
+
+---
+
+## 【2026-08-28 追記】作業用アクセス経路は jetson/02
+
+本書は **prod 常駐化（systemd）** の正本。bring-up 中に開発機（Mac）から Jetson を操作するための
+**接続経路（ssh 直結 / pull 型 agent fallback）と実機の同定情報**は
+[jetson/02-remote-access-and-dev-link.md](../jetson/02-remote-access-and-dev-link.md) を参照する。
+**接続できることと §0 安全ゲートを通過したことは別**であり、`systemctl enable --now` の条件は本書 `:26` が正本。
+

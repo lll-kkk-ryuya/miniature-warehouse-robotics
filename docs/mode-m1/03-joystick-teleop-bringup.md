@@ -64,3 +64,4 @@ m1_driver（clamp_body_velocity 必経 = L0'）→ FUNC_MOTION 0x12 → STM32
 - [shared/02-hardware-design.md](../shared/02-hardware-design.md)（給電・フラッシュ経路・V-1〜V-5）/ [shared/11-m1-assembly-manual.md](../shared/11-m1-assembly-manual.md)（組立・§6 handle 未決）
 - [jetson/01-fidelity-and-validation.md](../jetson/01-fidelity-and-validation.md)（G0-G7。M1 向け rescope は別 PR）
 - [ADR-0010](../adr/0010-raise-speed-cap-to-platform-max.md)（S-SPEED は M2 達成後の別ゲート）
+- [jetson/02-remote-access-and-dev-link.md](../jetson/02-remote-access-and-dev-link.md)（Phase A で確立した開発機↔Jetson のアクセス経路・初回ブート実測ベースライン）
