@@ -101,3 +101,22 @@ Isaac ROS release-3.2 が **Orin + Humble 線の終点**であることを一次
 **ゲート結果**: `ruff check .` = All checks passed / `ruff format --check .` = 367 files already formatted（**flip による format ドリフトは発生せず**、`ruff format .` の一括 sweep は不要だった）/ `pytest` = **2269 passed, 17 skipped**。
 
 **残（隠さない）**: ① `target-version` は **lint の対象構文を py310 に合わせるだけ**で、開発機の実行系は依然 Python 3.12（`.venv`）＝**実 py310 での実行検証ではない**。Humble コンテナ上での実走は未適用 52 ファイル側（`deploy/dev/Dockerfile` 等）の解消後。② `requires-python = ">=3.10"` は元から py310 を許容しており本 PR で変更なし。③ 上記 `tomllib` 以外に stdlib 可用性ベースの py310 非互換が残っていないかは、ruff が構文しか見ない以上 **実 py310 実行でしか確定できない**（現時点で既知のものは無い）。
+
+## 追記（2026-08-28）: NVIDIA 公式 Quick Start の「JetPack 7.2 ISO インストール」は**採用不可**
+
+実機（Orin Nano Super・**L4T R36.4.4 / Ubuntu 22.04.5 / JetPack 6.2 系**）を起動し、SSD への移行手順を
+一次情報で確認する過程で判明した**罠**を記録する。
+
+**現行の [Orin Nano Developer Kit Quick Start](https://docs.nvidia.com/jetson/orin-nano-devkit/user-guide/latest/quick_start.html)（参照日 2026-08-28）は、
+x86 ホスト／SDK Manager 不要の導入経路として「Jetson ISO installation method（**JetPack 7.2 以降**で利用可能）」を案内している。**
+Mac しか持たない本プロジェクトにとって一見“正解”に見えるが、**採用してはならない**:
+
+- JetPack 7 系は **Ubuntu 24.04** ＝ 本 ADR の決定（**Humble / Ubuntu 22.04 を全系の既定**・`:16`）と正面から矛盾する。
+- Orin で Isaac ROS を使う唯一の経路は **Isaac ROS 3.x（Humble ＋ JetPack 6.x）** であり（`:10`）、JetPack 7 へ上げると
+  **Orin はサポート表から外れる**（4.x は Jetson Thor 専用）。決定要因①を自ら壊す。
+- Yahboom driver 資産（HP60C の閉ソース `.so` 等）も **Humble / 22.04 固定**（`:5`）。
+
+**帰結**: Mac 単独環境での SSD 移行は、公式 ISO 方式ではなく **JetPack 6 のまま実機上で rootfs をクローンする**方式を採る
+（手順と実測は [jetson/02-remote-access-and-dev-link.md](../jetson/02-remote-access-and-dev-link.md)）。
+**公式ドキュメントが新しい JetPack 世代を前提に書き換わっている**点に注意し、
+バージョンを確認せずに公式手順をなぞらないこと。

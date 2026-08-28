@@ -200,7 +200,10 @@ deploy/dev/jetson-link/send.sh 'free -h'
 - `# TODO(次)` **NVMe SSD への rootfs 移行が未実施**。SSD は装着・認識済（931.5GB・生ディスク）だが
   起動は microSD のまま。**環境を作り込む前に決着させる**（後からやると作業のやり直しになる）。
   手順は Mac のみの環境（SDK Manager 不可 = [shared/02:409](../shared/02-hardware-design.md)）で
-  成立する方法を一次情報で確認してから実施する。
+  成立する方法を採る。**公式 Quick Start の「JetPack 7.2 ISO インストール」は採用不可**（Ubuntu 24.04 =
+  ADR-0008 と矛盾＝[ADR-0008 追記（2026-08-28）](../adr/0008-ros2-distro-humble-for-rosmaster-m1.md)）。
+  UEFI の `BootOrder` は**すでに SSD が最優先**（`Boot0008` = KIOXIA・`Boot0001` = SD）＝
+  ブート順の変更は不要で、**microSD を無傷で残せる**ため失敗時は SD に戻せる。
 - `# TODO` **Super 化（`nvpmodel -m 2`）未実施**。性能実測（G3/G4）の前に適用する。
 - `# TODO` **IP が DHCP のまま**（`192.168.11.12`）。DHCP 予約 or 固定化するまで再接続のたびに IP 確認が要る。
 - [01-fidelity-and-validation.md](01-fidelity-and-validation.md) の **G0-G7 は旧世界（ESP32×2 / MS200 / 2台）前提**のまま＝M1 単騎への rescope は別 PR（[mode-m1/README.md:25](../mode-m1/README.md)）。本 doc の §6 はその rescope 後に読み替えが要る。
