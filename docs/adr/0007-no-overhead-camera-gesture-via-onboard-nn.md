@@ -57,3 +57,7 @@
 - [ADR-0008](0008-ros2-distro-humble-for-rosmaster-m1.md) / [ADR-0006](0006-single-bot-first.md)
 - `ws/src/warehouse_llm_bridge/warehouse_llm_bridge/robotics_planning_core/visual_resolver/resolver.py`（空 homography → `NO_CALIBRATION` → 0 dispatch の fail-closed）
 - lane-gesture-tech 調査（2026-08-09・MediaPipe aarch64 wheel / YOLO AGPL / SAM2 評価 / Isaac ROS 骨格不在。出典 URL は 09 References と同調査ログ）
+
+---
+
+**【2026-08-28 追補】ジェスチャは 2 種 → 3 種**: 本 ADR 後の [ADR-0010](0010-raise-speed-cap-to-platform-max.md)（2026-08-19。3 帯への改訂は 2026-08-21）で**第3のジェスチャ＝③右手指カウント 3 帯の速度セレクタ**が追加された（定義の正準: [mode-x-er/09 【2026-08-21 追補④】T-1 :352](../mode-x-er/09-hand-raise-summon.md)・知覚: [同 T-3 :372](../mode-x-er/09-hand-raise-summon.md)）。本文の「ジェスチャ2種」は決定当時（2026-08-09）の記述として保存する。③も本 ADR の決定どおり**搭載 HP60C + ローカル NN（MediaPipe Hand Landmarker 候補・①②と同一の L4 知覚・publish-only・0 actuation）**で認識し、本 ADR の決定 1〜4 と矛盾しない（Hand NN 同居の 8GB 影響は 09 T-3 の `# TODO(実測)` 扱い）。
