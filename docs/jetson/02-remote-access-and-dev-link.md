@@ -71,15 +71,52 @@ Claude Code のサンドボックス（`dangerouslyDisableSandbox` でも同じ�
 > Claude Code のサンドボックスを無効化して除外したつもりだったが、**それはアプリ層のサンドボックスであり
 > OS の TCC 権限とは別物**。教訓 = **「送信側で 1ms で失敗する」ものはネットワークではなくホストを疑う**。
 
-## 3. 対処（権限を許可する）
+## 3. 対処（2 通り。**現状の実働は B**）
+
+### A. 権限を許可する（正攻法・ただし本環境では未解決）
 
 1. **システム設定 → プライバシーとセキュリティ → ローカルネットワーク**
 2. コマンドを実行するアプリ（**Claude Code**・使うターミナル）を **ON**
-3. **アプリを再起動する**——ON 直後は反映されないことを実測（トグルだけでは不十分）
+3. **アプリを再起動する**
 
-> 一覧にアプリが出てこない場合は、そのアプリから一度 LAN 上の機器へ接続を試みると項目が現れる。
+> `# TODO(未解決)` **本環境では ON ＋ アプリ再起動後も回復しなかった**（2026-08-28 実測）。
+> 一覧に出るアプリ名と、実際に通信するプロセスが一致していない可能性がある（`Claude` / `node` /
+> ターミナル名など類似項目が併存する）。**未解決のまま B で運用中**。
 
-## 4. ssh 直結の手順（§3 の権限を通した後の正攻法）
+### B. 逆 SSH トンネル（**実働・推奨**）
+
+Jetson → Mac 方向は権限の影響を受けないため、**Jetson から Mac へトンネルを張り、
+開発機側は `127.0.0.1:2222`（ループバック）へ繋ぐ**。ループバックは
+ローカルネットワーク権限の対象外なので、A が直らなくても確実に動く。
+
+```
+Mac                                        Jetson
+  sshd(:22) ←── ssh -R 127.0.0.1:2222:localhost:22 ── mwr-tunnel.sh（常駐・自動復旧）
+  ssh -p 2222 ruyuya@127.0.0.1 ──────────────────────→ Jetson の sshd(:22)
+```
+
+**前提**: Mac の **リモートログインが有効**（システム設定 → 一般 → 共有）。
+
+**Mac 側**: `~/.ssh/authorized_keys` に Jetson の公開鍵を**用途限定**で 1 行追加する。
+シェルを取らせず、このポート転送だけを許可する:
+
+```
+restrict,port-forwarding,permitlisten="127.0.0.1:2222" ssh-ed25519 <Jetsonの公開鍵> mwr-jetson-tunnel
+```
+
+**Jetson 側**: `~/mwr-tunnel.sh`（`ssh -N -R` を張り直し続けるループ）を `nohup` で常駐させる。
+**ブートでは復活しない**（systemd 登録はしていない）＝再起動後は張り直しが要る（§7）。
+
+**接続**:
+
+```bash
+ssh -i ~/.ssh/mwr_jetson -p 2222 ruyuya@127.0.0.1
+```
+
+**撤去**: Jetson で `pkill -f mwr-tunnel.sh`、Mac の `authorized_keys` から
+`mwr-jetson-tunnel` の行を削除する。
+
+## 4. ssh 直結の手順（A が解決したときの形）
 
 ```bash
 # 1) 開発機で鍵を1本作る（初回のみ・パスフレーズ無し = 自動化用）
@@ -143,7 +180,8 @@ deploy/dev/jetson-link/send.sh 'free -h'
 | L4T | `R36.4.4`（`/etc/nv_tegra_release`） | JetPack **6.2 系**＝[shared/02:412](../shared/02-hardware-design.md) の想定どおり |
 | OS | Ubuntu **22.04.5 LTS (jammy)** | ✅ [ADR-0008:16](../adr/0008-ros2-distro-humble-for-rosmaster-m1.md)（Humble ネイティブ）と整合 |
 | bootloader / QSPI | `Current version: 36.4.4`・slot B | ✅ **36.0 以降＝更新不要**（[shared/02:409](../shared/02-hardware-design.md)） |
-| 起動デバイス | **`/dev/mmcblk0p1`（microSD 59.5GB）** | ⚠️ **SSD 未移行**。`lsblk` に `nvme` デバイスが**出ない**＝NVMe 未装着 or 未認識（[mode-m1/03:54](../mode-m1/03-joystick-teleop-bringup.md) Phase A が未完） |
+| 起動デバイス | **`/dev/mmcblk0p1`（microSD 59.5GB・22G 使用）** | ⚠️ **SSD 未移行**（[mode-m1/03:54](../mode-m1/03-joystick-teleop-bringup.md) Phase A が未完） |
+| NVMe SSD | **`nvme0n1` 931.5GB `KIOXIA-EXCERIA PLUS G3`**（`lspci`: `0004:01:00.0 Non-Volatile memory controller`） | ✅ **装着・認識済**。ただし**パーティション/FS 無しの生ディスク**＝rootfs 移行が未実施 |
 | 電力モード | `NV Power Mode: 25W`（mode **1**） | ⚠️ **Super 化未実施**（`nvpmodel -m 2` = [shared/02:150](../shared/02-hardware-design.md)） |
 | メモリ | total 7.4Gi / available 5.0Gi / zram swap 3.7Gi | G1 メモリゲートの基準線（スタック未起動時の値） |
 | ROS | `/opt/ros` 無し＝**未インストール** | Humble 導入がこの次 |
@@ -155,8 +193,14 @@ deploy/dev/jetson-link/send.sh 'free -h'
 
 ## 7. 残課題・未決（隠さない）
 
-- `# TODO(検証)` **権限 ON ＋ アプリ再起動後の ssh 直結が未確認**（本 doc 執筆時点で再起動前）。
-- `# TODO(到着後)` **NVMe SSD が見えていない**。物理装着の有無から確認が要る（未装着なら装着 → JetPack 移行）。microSD 起動のまま環境を作り込むと移行時にやり直しになる。
+- `# TODO(未解決)` **§3-A（ローカルネットワーク権限）が直らない**。ON ＋ アプリ再起動後も
+  Mac → Jetson の直接接続は不通のまま（ゲートウェイのみ到達）。**§3-B のトンネルで運用中**。
+- `# TODO` **トンネルはブートで消える**（`nohup` 常駐・systemd 未登録）。Jetson 再起動後は
+  張り直しが要る＝恒久化するなら systemd 化を別途決める。**pull 型 agent（§5）も同様**。
+- `# TODO(次)` **NVMe SSD への rootfs 移行が未実施**。SSD は装着・認識済（931.5GB・生ディスク）だが
+  起動は microSD のまま。**環境を作り込む前に決着させる**（後からやると作業のやり直しになる）。
+  手順は Mac のみの環境（SDK Manager 不可 = [shared/02:409](../shared/02-hardware-design.md)）で
+  成立する方法を一次情報で確認してから実施する。
 - `# TODO` **Super 化（`nvpmodel -m 2`）未実施**。性能実測（G3/G4）の前に適用する。
 - `# TODO` **IP が DHCP のまま**（`192.168.11.12`）。DHCP 予約 or 固定化するまで再接続のたびに IP 確認が要る。
 - [01-fidelity-and-validation.md](01-fidelity-and-validation.md) の **G0-G7 は旧世界（ESP32×2 / MS200 / 2台）前提**のまま＝M1 単騎への rescope は別 PR（[mode-m1/README.md:25](../mode-m1/README.md)）。本 doc の §6 はその rescope 後に読み替えが要る。
