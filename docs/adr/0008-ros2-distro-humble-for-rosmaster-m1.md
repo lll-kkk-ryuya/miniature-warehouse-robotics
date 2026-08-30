@@ -100,7 +100,7 @@ Isaac ROS release-3.2 が **Orin + Humble 線の終点**であることを一次
 
 **ゲート結果**: `ruff check .` = All checks passed / `ruff format --check .` = 367 files already formatted（**flip による format ドリフトは発生せず**、`ruff format .` の一括 sweep は不要だった）/ `pytest` = **2269 passed, 17 skipped**。
 
-**残（隠さない）**: ① `target-version` は **lint の対象構文を py310 に合わせるだけ**で、開発機の実行系は依然 Python 3.12（`.venv`）＝**実 py310 での実行検証ではない**。Humble コンテナ上での実走は未適用 52 ファイル側（`deploy/dev/Dockerfile` 等）の解消後。② `requires-python = ">=3.10"` は元から py310 を許容しており本 PR で変更なし。③ 上記 `tomllib` 以外に stdlib 可用性ベースの py310 非互換が残っていないかは、ruff が構文しか見ない以上 **実 py310 実行でしか確定できない**（現時点で既知のものは無い）。
+**残（隠さない）**: ① `target-version` は **lint の対象構文を py310 に合わせるだけ**で、開発機の実行系は依然 Python 3.12（`.venv`）＝**実 py310 での実行検証ではない**。Humble コンテナ上での実走は未適用 52 ファイル側（`deploy/dev/Dockerfile` 等）の解消後。② `requires-python = ">=3.10"` は元から py310 を許容しており本 PR で変更なし。③ 上記 `tomllib` 以外に stdlib 可用性ベースの py310 非互換が残っていないかは、ruff が構文しか見ない以上 **実 py310 実行でしか確定できない**（現時点で既知のものは無い）。→【2026-08-30 追記: ③が実機で的中（StrEnum / typing.Self / datetime.UTC）→ compat shim + AST 床ガード unit で解消】
 
 ## 追記（2026-08-28）: NVIDIA 公式 Quick Start の「JetPack 7.2 ISO インストール」は**採用不可**
 
@@ -131,3 +131,53 @@ docker data-root / repo clone / 地図・録画置き場）として決着し（
 載ったため移行の便益も縮小した。決着の記録と provisioning 手順は
 [jetson/02 §9.6](../jetson/02-remote-access-and-dev-link.md)。Humble 本体は同日 apt ネイティブ導入済み
 （実機 Ubuntu 22.04.5 で本 ADR の決定どおり）。
+
+## 追記（2026-08-30）: 残③の的中 — 実 py3.10（Jetson 実機）で StrEnum / typing.Self / datetime.UTC 非互換が顕在化（#563）
+
+「その3」の残③（stdlib 可用性ベースの py310 非互換は実 py310 実行でしか確定できない）が Jetson 実機
+（Ubuntu 22.04.5 / Python 3.10.12）で的中した。`colcon build` は 16 pkg 全緑（ament_python は import を
+実行しないため検出不能）だが、`enum.StrEnum`（py3.11+）を import する **11 ファイル**
+（warehouse_interfaces 1 + warehouse_llm_bridge 10）と `typing.Self`（py3.11+・
+`visual_resolver/models.py` の runtime import＝`from __future__ import annotations` でも死ぬ）が
+ImportError となり、契約ハブごと import 不能だった。
+
+**解消（contract PR / #563）**: `warehouse_interfaces/compat.py` に**単一共有 `StrEnum`**
+（py3.11+ = stdlib re-export / py3.10 = `class StrEnum(str, Enum): __str__ = str.__str__`。
+CPython 3.10–3.13 実測で観測同等・`__format__` 追加は不要・`auto()` は禁止＝shim では "1" に化ける）
+を新設し、11 ファイルを compat 経由へ sweep。`typing.Self` は `typing_extensions.Self`
+（pydantic v2 の推移的依存＝全実行環境に既存。`warehouse_llm_bridge/setup.py` に `>=4` を明示宣言）へ置換。
+str() 意味論依存 3 箇所（`conversation_events` の verdict 再パース / `x_er_cycle`・`pipeline` の
+0-dispatch reasoning f-string）は独立オラクル unit（`tests/unit/test_py310_compat.py`）で固定し、
+`from enum import StrEnum` の再流入・`auto()` 混入は同 unit の source-scan で恒久ブロックする。
+
+**残（隠さない）**: ① CI は py3.12 のみ（`.github/workflows/ci.yml` の `python-version` pin）のため
+`requires-python = ">=3.10"` の床は依然 CI 未検証 — `python-quality` job の matrix 化（3.10/3.12）を
+governance 別 PR で追う。② 実 py3.10 での最終確定は Jetson 上の pytest（真の runtime ゲート・#563 DoD）。
+③ pydantic 実体は board では pip `--user` の v2（apt `python3-pydantic` は v1.8.2 で不適合）＝
+`package.xml` の `python3-pydantic` exec_depend（2 pkg）との宣言不一致（同族: `typing_extensions` も rosdep 宣言なし＝jammy apt 3.10.0.2 は `Self` 非搭載・pip の pydantic v2 推移的依存で充足）は未解決の残として本追記に記録する（distro ドリフト台帳とは別軸）。④ AST 床ガードは **import 名の面のみ** — 3.11+ 構文（py3.12 の parse では素通り）・メソッド/挙動差（`Task.cancelling()`・`datetime.fromisoformat` の 3.11 拡張受理 等）は捕捉できず、**py3.10 実走（CI matrix ①＋ボード pytest ②）が唯一のオラクル**。
+
+**追加発見（同日・実 py3.10 pre-verify）**: dev Mac に uv で py3.10 venv（CI `python-quality` job と
+同一パッケージ集合）を作り全 suite を実行したところ、`datetime.UTC`（py3.11+ の `timezone.utc` alias）
+の import が 4 ファイル（`warehouse_safety/emergency_guardian.py`・`warehouse_state/state_cache.py`・
+`warehouse_llm_bridge/robotics/composition/record.py`・`tests/unit/test_composition_record.py`）で
+18 テストモジュールの collection を落とすことが判明（StrEnum と同クラス＝「実 py310 でしか出ない」第 2 波）。
+同じ機構で解消: `compat.UTC`（3.11+ = `datetime.UTC` re-export / 3.10 = `timezone.utc`＝**同一 singleton・
+identity で不変**）を追加し 4 ファイルを sweep、`from datetime import UTC` / `datetime.UTC` の直書きも
+source-scan で恒久禁止。L2 安全系 2 ファイル（Emergency Guardian / State Cache）は **import 行のみ**の
+変更で挙動不変（既存 R-26 unit が検証）。影響トラックは llm-bridge に加え **safety-state** へも予告。
+
+**第 3 波（挙動修正 1 件・同 PR）**: `scheduler.py` の LLM 応答タイムアウト捕捉を
+`(TimeoutError, asyncio.TimeoutError)` へ拡大した。py3.10 では `asyncio.wait_for` が builtin
+`TimeoutError` を**継承しない**別クラスを投げるため捕捉が素通りし、doc08:140 の
+keep-previous fallback が実機で無言死していた（3.11 で両者統合済み＝3.11+ は同一クラスの
+重複で完全 no-op）。赤化オラクルは **py3.10 実行時**の scheduler timeout 系 unit 4 本のみ
+（py3.12 では構造的に恒久緑）。同族のテスト側 3.11+ API（`Task.cancelling()`）は
+`test_perception_lanes` で version-guard 化した（py3.10 は一 tick 後の `cancelled()` リーク検査が担う）。
+
+**第 4 波（ボード実走で検出・同 PR）**: ① `scripts/slice3_live_precheck.sh` の `python_cmd()` が
+**py>=3.11 を自前で強制**しており（ADR 以前の stale 床・shell 内ゲートは AST 床ガードの射程外）、
+ボードで precheck 由来の e2e 7 本が FAIL → 床を pyproject `requires-python`（>=3.10）に整合。
+② `test_web_views` の mtime 順序が Linux の kernel-tick 粒度（数 ms）でタイになりボードで FAIL →
+`os.utime` の明示順序化で決定化（board 露出の既存 flake・shim 無関係）。
+**実 py3.10 実走でしか出ない層が 2 面増えた**: (a) shell スクリプト内の版数ゲート
+(b) OS/ファイルシステム粒度差。いずれもボード pytest（残②）が検出器として機能した実例。

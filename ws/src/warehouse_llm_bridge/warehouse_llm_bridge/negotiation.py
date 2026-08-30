@@ -32,9 +32,9 @@ import time
 from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import dataclass, field
-from enum import StrEnum
 
 from pydantic import ValidationError
+from warehouse_interfaces.compat import StrEnum
 from warehouse_interfaces.schemas import AgreedAction, Proposal, TranscriptLine
 
 from warehouse_llm_bridge.persona import Persona, build_character_prompt, parse_turn

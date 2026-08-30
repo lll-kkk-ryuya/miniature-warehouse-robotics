@@ -37,7 +37,7 @@ import time
 import urllib.parse
 import urllib.request
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import NamedTuple
 
@@ -296,7 +296,7 @@ def _build_report(
         "condition": condition,  # fairness-off | default | unknown (doc08:307-313 / R-36)
         "model": HERMES_MODEL,
         "gateway_host": host,
-        "run_utc": datetime.now(UTC).isoformat(timespec="seconds"),
+        "run_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "n_requested": n_req,
         "n_ok": len(latencies),
         "n_err": n_err,

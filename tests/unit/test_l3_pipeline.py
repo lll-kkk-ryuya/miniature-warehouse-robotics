@@ -262,7 +262,11 @@ def test_compile_rejected_plan_zero_dispatch_end_to_end():
         context=ctx,
     )
     assert cmd.commands == []
-    assert "status=" in cmd.reasoning  # reject status surfaced in the audit reasoning
+    # #563: the enum must render as its RAW value in the operator-facing reasoning —
+    # "validation status=emergency_stop", never "ValidationStatus.EMERGENCY_STOP"
+    # (py3.10 StrEnum-shim regression guard through the REAL pipeline f-string).
+    assert "validation status=emergency_stop" in cmd.reasoning
+    assert "ValidationStatus" not in cmd.reasoning
 
 
 def test_compile_rejected_plan_never_reaches_the_compiler():
