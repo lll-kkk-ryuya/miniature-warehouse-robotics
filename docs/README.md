@@ -181,6 +181,7 @@ hard-to-reverse な設計判断とその理由を `NNNN-slug.md` で記録する
 | ファイル | 内容 |
 |---------|------|
 | [adr/README](adr/README.md) | ADR 一覧・命名・いつ起こすか（3条件）・retrospectives との違い |
+| [0012-speed-band-no-l2-best-effort](adr/0012-speed-band-no-l2-best-effort.md) | 速度帯（ジェスチャ速度セレクタの runtime 経路）は **L2 Policy Gate 非経由**の best-effort 制御面（**最小安全方針の docs 初出**・mode-m1/04 §6 OQ-R1〜R7 一括裁定・クランプ天井 = ①起動基準値・20Hz 周期送出・hard 安全床は不変） |
 | [0010-raise-speed-cap-to-platform-max](adr/0010-raise-speed-cap-to-platform-max.md) | 速度上限 0.3 m/s を**プラットフォーム上限へ再定義**（実機 car_type のファーム clamp = 1.0 or 0.7 m/s・実機確認後に contract PR で pin）。運用値は config・デモ最終値は **S-SPEED 段階増速実測**で確定。L0' は方向保存・暴走バックストップとして維持/結線 |
 | [0009-m1-room-scale-operation](adr/0009-m1-room-scale-operation.md) | M1 単騎フェーズは**実際の部屋（room scale）**を走り、ミニチュアジオラマは走行に使わず**凍結保存**（sim 回帰環境としては現状維持）。倉庫設定を薄め**ジェスチャ召喚を主役**に。PR #530 の非円形 footprint は re-scope して生存・ジオラマ通路数値は歴史記録へ・W3（9 点再設計）は中止し `KNOWN_LOCATIONS` は**キー凍結／値のみ**部屋 waypoint へ |
 | [0007-no-overhead-camera-gesture-via-onboard-nn](adr/0007-no-overhead-camera-gesture-via-onboard-nn.md) | ER/知覚入力に**俯瞰カメラを使わない**。搭載 HP60C + ローカル骨格 NN（MediaPipe 第1候補）でジェスチャ2種を決定論認識し既存 L3/L2 ゲートへ。homography 系は fail-closed で降格保存 |
