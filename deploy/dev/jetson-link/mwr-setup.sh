@@ -75,9 +75,20 @@ mwr_safe_stop() {
     echo "ros2 processes are running and no stop routine is wired up yet"
     return 1
   fi
-  if command -v docker >/dev/null 2>&1 && [ -n "$(docker ps -q 2>/dev/null)" ]; then
-    echo "docker containers are running and no stop routine is wired up yet"
-    return 1
+  if command -v docker >/dev/null 2>&1; then
+    # An empty answer and a FAILED query look identical through $(...) alone,
+    # and this is the one function that may not guess: a daemon that cannot be
+    # asked might be restarting around live containers.  Ask, and treat
+    # "could not ask" as "could not prove standstill" -> refuse.
+    if ids=$(docker ps -q 2>/dev/null); then
+      if [ -n "$ids" ]; then
+        echo "docker containers are running and no stop routine is wired up yet"
+        return 1
+      fi
+    else
+      echo "docker is present but not queryable - cannot prove a standstill"
+      return 1
+    fi
   fi
   return 0
 }
@@ -157,7 +168,8 @@ fi
 
 echo
 log "done.  Summary:"
-echo "    tunnel   : $(systemctl is-enabled mwr-tunnel 2>/dev/null || echo removed)"
+tun=$(systemctl is-enabled mwr-tunnel 2>/dev/null)
+echo "    tunnel   : ${tun:-removed}"
 echo "    mwr-agent: $([ -e /usr/local/bin/mwr-agent ] && echo STILL PRESENT || echo removed)"
 echo "    journal  : $([ -d /var/log/journal ] && echo persistent || echo volatile)"
 echo "    sudoers  : $([ -f /etc/sudoers.d/10-mwr ] && echo installed || echo MISSING)"

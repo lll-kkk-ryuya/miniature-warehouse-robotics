@@ -113,8 +113,15 @@ Mac                                        Jetson
 restrict,port-forwarding,permitlisten="127.0.0.1:2222" ssh-ed25519 <Jetsonの公開鍵> mwr-jetson-tunnel
 ```
 
-**Jetson 側**: `~/mwr-tunnel.sh`（`ssh -N -R` を張り直し続けるループ）を `nohup` で常駐させる。
-**ブートでは復活しない**（systemd 登録はしていない）＝再起動後は張り直しが要る（§7）。
+**Jetson 側**: `/usr/local/bin/mwr-tunnel`（mDNS → LAN IP の順に Mac を解決して `ssh -N -R` を張る
+keeper。写し＝[`deploy/dev/jetson-link/mwr-tunnel`](../../deploy/dev/jetson-link/mwr-tunnel)）を
+`mwr-tunnel.service`（`Restart=always`）で常駐させる。**ブート後も自動復帰する**（2026-08-28 実測）。
+現在は `mwr-setup.sh` step 1 で **disable 済み**＝復活は `sudo systemctl enable --now mwr-tunnel`。
+Mac 側は `~/.ssh/config` に `Host jetson-tunnel`（`HostName 127.0.0.1` / `Port 2222`）を足し、
+`JETSON_HOST=jetson-tunnel JETSON_TUNNEL_ADDR=127.0.0.1 JETSON_TUNNEL_PORT=2222` で CLI を向ける
+（ssh の実接続は `JETSON_HOST` に従うため、probe 用 2 変数だけでは切り替わらない）。
+なお keeper は `StrictHostKeyChecking=no`＋`UserKnownHostsFile=/dev/null` で host key 検証を
+落としている（LAN 内前提）——復活させる際はこの性質を了解の上で使う。
 
 **接続**:
 
@@ -175,8 +182,8 @@ ssh -i ~/.ssh/mwr_jetson ruyuya@<IP>
 
 ## 7. 残課題・未決（隠さない）
 
-- `# TODO(未解決)` **§3-A（ローカルネットワーク権限）が直らない**。ON ＋ アプリ再起動後も
-  Mac → Jetson の直接接続は不通のまま（ゲートウェイのみ到達）。**§3-B のトンネルで運用中**。
+- ~~§3-A（ローカルネットワーク権限）が直らない~~ → **解決（2026-08-30 実測・§3-A）**。
+  Mac → Jetson の直接 ssh が通り、実働は mDNS 直結（§9）。
 - ~~トンネル / pull 型 agent の常駐整理~~ → **決着（2026-08-30）**: トンネルは dormant fallback（§3-B）、
   pull 型 agent は恒久廃止（§5）。実働は mDNS 直結＋常時通電（§9）。
 - `# TODO(次)` **NVMe SSD への rootfs 移行が未実施**。SSD は装着・認識済（931.5GB・生ディスク）だが
@@ -208,6 +215,8 @@ jetson halt          # Mac から（正準・§9。安全停止ラッパー経�
 「SD が突然死んだ」と言われる故障の主因はこれ（§6 の microSD 依存と合わせて読む）。
 
 - **完全に停止したことを確認してから**ケーブルを抜く（ファンが止まる）。
+- **例外＝人身安全**: 安全レビュー（[mode-x-er/10 M-5/P-1](../mode-x-er/10-room-scale-safety-review.md)）の
+  緊急電源断はこの限りではない（人身安全がファイルシステムより優先）。
 - 走行フェーズでは**バッテリー切れによる電源断**が同じ事故を起こす＝
   [ADR-0005](../adr/0005-l0-battery-brownout-floor.md)（battery brownout floor）と地続きの問題。
 - 開発中は **Jetson 上の変更をこまめに commit / push** する。Remote-SSH で実機を直接編集する
@@ -221,9 +230,9 @@ jetson halt          # Mac から（正準・§9。安全停止ラッパー経�
 Orin Nano に BMC は無く、スマートプラグは不採用。halt 後の復帰は **DC ジャックの物理的な抜き挿しのみ**
 （挿しっぱなしのままでは soft-off から起動しない）。
 
-→ **決定: 常時通電**。アイドル実測 約5W・CPU/GPU 48-49°C・ファン PWM 66/255（2026-08-30）。
+→ **決定: 常時通電**。アイドル実測 DC 入力 約5W（INA3221・壁側は PSU 損失込みで 5–7W 程度）・CPU/GPU 48-49°C・ファン PWM 66/255（2026-08-30）。
 sleep/suspend は事故防止のため **mask**（スリープ＝Mac から見ると halt と同じ到達不能）。
-電気代（月 約5kWh）と引き換えに、電源への物理操作を日常から排除する。
+電気代（月 4–5kWh 程度）と引き換えに、電源への物理操作を日常から排除する。
 
 ### 9.2 経路: mDNS 直結
 
@@ -259,6 +268,17 @@ ControlMaster は VS Code Remote-SSH（1 window = 2 接続）と `jetson ssh` �
 | `jetson reboot` | 安全停止 → 再起動。**両縁検証**（落ちたこと＋戻ったこと） | 再投入 | 不要 |
 | `jetson halt` | 真の電源断。TTY では `YES` 入力必須・非 TTY は `--yes` 必須 | 切る | **復帰に DC 抜き挿し** |
 | `jetson status` | 状態のみ・副作用なし | 触らない | 不要 |
+| `jetson ssh [cmd]` | シェル / 単発コマンド（リンク事前検証つき） | 触らない | 不要 |
+
+リンク状態は **6 値**: `up` / `down` / `stale` / `auth` / **`nolink`** / **`noname`**。
+- `nolink` = **Mac 側に LAN が無い**（デフォルトルート不在等・断定的にローカル故障）。ボードについて
+  何も主張しない（exit 2）。`halt`/`reboot` の完了証拠として扱わない（「halt 中に Mac の Wi-Fi が
+  落ちる → shutdown 完了と誤報」の穴を閉じる）。
+- `noname` = **Mac にネットワークはあるが名前が引けない**。mDNS はボードと共に死ぬため、これは
+  「**ボードが停止/起動中**」（halt 後の再通電では avahi が上がるまで ~60s 引けない）と「Mac が別
+  ネットワークに居る」の**両義**。`on` はこの状態を**待つ**（名前は avahi 復帰と同時に戻る）。
+  `halt` は逆に「もう落ちている」と断定しない（fail-closed）。clean な halt は mDNS goodbye で
+  名前が先に消えるため、`noname` は shutdown 完了待ちでは「落ちた」側に数える。
 
 exit code: `0` ok / `1` down / `2` unknown（fail-closed: 不確かなら down と**言わない**）/
 `3` shutdown 拒否 / `4` timeout / `5` ローカル前提欠落 / `64` usage。
@@ -268,7 +288,7 @@ exit code: `0` ok / `1` down / `2` unknown（fail-closed: 不確かなら down �
 ### 9.4 ボード側セットアップ（`mwr-setup.sh`・idempotent）
 
 正本: [`deploy/dev/jetson-link/mwr-setup.sh`](../../deploy/dev/jetson-link/mwr-setup.sh)。
-ボードへ `scp` して `sudo sh mwr-setup.sh`（再実行安全・適用済み項目は skip 表示）。2026-08-30 適用済み:
+ボードのホームへ `scp` して `sudo sh ~/mwr-setup.sh`（再実行安全・適用済み項目は skip 表示）。2026-08-30 適用済み:
 
 | # | 内容 | 目的 |
 |---|---|---|
@@ -290,13 +310,19 @@ ruyuya ALL=(root) NOPASSWD: /usr/local/sbin/mwr-reboot ""
 ruyuya ALL=(root) NOPASSWD: /usr/sbin/nvpmodel -q
 ```
 
+`jetson status`/`on` の readiness は同一 SSH 往復で **wtmp（`last -x reboot shutdown`）** も読み、
+**直前ブートが shutdown 記録なしで終わっていれば警告**する（電源瞬断 / brownout / 熱 / panic ＝
+microSD 書き込み中の電源断の疑い）。意図的な `jetson reboot`/`halt` は記録を書くため無音・履歴不足は
+UNKNOWN と表示（clean と断定しない）。警告は `JETSON_UPTIME_WARN`（既定 86400s）以内の新しい
+再起動のみ・それより古い unclean は情報表示に格下げ（未対応の古い事象が warning を恒久に汚さない）。
+
 安全停止ラッパーは `mwr_safe_stop()`（[`mwr-setup.sh`](../../deploy/dev/jetson-link/mwr-setup.sh) 内
 `mwr-stop-common`）が **ros2 プロセス / docker コンテナ稼働中なら停止を拒否**する。モーター系が
 載ったらこの関数に実停止ルーチンを足す（fail-closed の蝶番はここ 1 箇所）。
 
 ### 9.5 復旧手順（到達不能になったら）
 
-1. `jetson status` — fail-closed の切り分け（down / stale / auth を区別して表示）
+1. `jetson status` — fail-closed の切り分け（down / stale / auth / **nolink**＝Mac 側 LAN 断 / **noname**＝名前が引けない を区別して表示）
 2. `ping minicar.local` — mDNS ごと死んでいるか
 3. ルーターの DHCP クライアント一覧 — 新しいアドレスで生きていないか
 4. それでも駄目なら物理確認: ファン・LED。halt 済みなら DC 抜き挿し 10 秒（§8 の注意を読んでから）

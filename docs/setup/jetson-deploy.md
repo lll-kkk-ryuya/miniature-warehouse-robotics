@@ -176,7 +176,7 @@ runtime dir = `paths.runtime_dir()`）を共有・個別再起動でも保持。
 ## 【2026-08-28 追記】作業用アクセス経路は jetson/02
 
 本書は **prod 常駐化（systemd）** の正本。bring-up 中に開発機（Mac）から Jetson を操作するための
-**接続経路（ssh 直結 / pull 型 agent fallback）と実機の同定情報**は
+**接続経路（mDNS 直結 `minicar.local`＋常時通電運用・`jetson` CLI＝02 §9。旧 pull 型 agent は恒久廃止）と実機の同定情報**は
 [jetson/02-remote-access-and-dev-link.md](../jetson/02-remote-access-and-dev-link.md) を参照する。
 **接続できることと §0 安全ゲートを通過したことは別**であり、`systemctl enable --now` の条件は本書 `:26` が正本。
 
