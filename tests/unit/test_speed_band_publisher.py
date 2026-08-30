@@ -117,6 +117,48 @@ def test_node_publishes_only_speed_limit_topic() -> None:
     assert publisher_topics == ["speed_limit"]  # 相対名 1 本のみ（決定 11）
 
 
+def _node_assignments_to_attr(attr: str) -> list[ast.Assign]:
+    """node モジュールの `<何か>.<attr> = ...` 代入を AST で拾う。"""
+    tree = ast.parse(_NODE_SOURCE.read_text(encoding="utf-8"))
+    return [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Assign)
+        and any(isinstance(t, ast.Attribute) and t.attr == attr for t in node.targets)
+    ]
+
+
+# --------------------------------------------------- ①の構造版: クランプ必経（迂回不能）
+def test_published_speed_limit_always_comes_from_the_clamp() -> None:
+    """`msg.speed_limit` に載る値は必ず `compute_speed_limit(...)` の戻り値。
+
+    値ベースの ① は「クランプを通した値」が正しいことしか言えない。publisher が
+    クランプを迂回して帯値を直接載せるリファクタ（`table.value_for(band)` を代入する
+    等）はそれをすり抜けるため、**代入元**を AST で pin する（決定 3 の構造的担保）。
+    """
+    assignments = _node_assignments_to_attr("speed_limit")
+    assert len(assignments) == 1, "outgoing speed_limit を書く代入は 1 本だけ"
+    assigned = assignments[0].value
+    assert isinstance(assigned, ast.Call), f"クランプ呼び出しでない: {ast.dump(assigned)}"
+    callee = assigned.func
+    assert isinstance(callee, ast.Name) and callee.id == "compute_speed_limit", (
+        f"speed_limit は compute_speed_limit(...) 由来でなければならない: {ast.dump(callee)}"
+    )
+
+
+# -------------------------------------------------------- 決定 8: percentage=false 固定
+def test_node_never_switches_to_percentage_mode() -> None:
+    """`percentage = False`（絶対 m/s）を静かに % モードへ戻さない（ADR-0012 決定 8）。
+
+    `percentage=true` は①比のスケールで、①より大きい帯値を送れば①を超える
+    （doc04 §2-2）。単位が契約・config・S-SPEED と揃う絶対値に固定する。
+    """
+    assignments = _node_assignments_to_attr("percentage")
+    assert len(assignments) == 1
+    value = assignments[0].value
+    assert isinstance(value, ast.Constant) and value.value is False
+
+
 # ------------------------------------------------------- ④ 単調性・⑤ ①超え・⑥ 除算安全
 def test_validation_rejects_non_monotonic_tables() -> None:
     with pytest.raises(BandConfigError):

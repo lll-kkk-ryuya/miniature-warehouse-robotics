@@ -134,3 +134,20 @@ mode_x_er:
 policy_gate:
   stale_after_s: 0.5         # s: robot_stale（dispatch 拒否・cancel/charging は許可）。上限=既定・より小のみ可
   unavailable_after_s: 2.0   # s: robot_unavailable（全コマンド拒否）。上限=既定・より小のみ可
+
+# runtime 速度帯（三層モデルの層② = docs/mode-m1/04-runtime-speed-limiter.md §2・裁定 = ADR-0012）。
+# additive / safe-OFF・既定 OFF＝未設定なら従来挙動（①起動基準値のみ）に落ちる（doc09:406 と同規律。
+# キー名は凍結契約ではない）。enabled=false のとき nav2_bringup.launch.py は speed_band_publisher を
+# 起動しない（subscription も publisher も作らない）。キー名は node の param 名と 1:1。
+# ⚠️ 帯の実値（m/s）は **ここで発明しない**: 最速段は S-SPEED 実測待ち（doc09:434 OQ-T1）、最遅段/
+# 安定段と保持窓は OQ-T2（同 :435）、v_floor は ADR-0012 §Open が未決。下のキーは実測確定後に env
+# overlay（config/<env>/warehouse.yaml）で供給する **プレースホルダ**でありコメントアウトのまま残す。
+# enabled=true で帯値/保持窓が欠けていれば node が起動時に BandConfigError で落ちる（fail-closed）。
+speed_bands:
+  enabled: false             # true にする前に 3 帯すべての実値と hold_timeout_s を overlay で与えること
+  # band_slowest_mps: <OQ-T2 実測>   # 最遅段（0本・グー）。v_floor 以上・stable 以下
+  # band_stable_mps:  <OQ-T2 実測>   # 安定段（4〜5本・パー）= 未検出時の既定（doc09 T-5）
+  # band_fastest_mps: <OQ-T1 実測>   # 最速段（1〜3本）。①以下（publisher が min でクランプ）
+  # v_floor_mps: 0.05                # 例示値（ADR-0012 §Open）。実測の「動く最遅速度」で確定
+  # publish_rate_hz: 20.0            # 20Hz 周期送出（ADR-0012 決定 5）。node 既定と同値
+  # hold_timeout_s: <OQ-T2 実測>     # T-5 保持窓。node 既定 0.0 は fail-closed（必ず与える）

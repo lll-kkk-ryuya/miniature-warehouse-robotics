@@ -199,7 +199,7 @@ controller_server:
         cost_weight: 2.0
         offset_from_furthest: 4
         threshold_to_consider: 0.5
-
+      reset_period: 1.0   # Humble MPPI: idle > this => Optimizer::reset() DROPS the runtime speed band back to vx_max (docs/mode-m1/04-runtime-speed-limiter.md §2-1 (4)). Made EXPLICIT per ADR-0012 decision 5; the VALUE is still the Humble default and stays open (ADR-0012 §Open). Line kept NET-ZERO: the blank line was consumed so the nav2_params.yaml:215/221/245/258/262/274/300 doc pins do not drift (#165).
 local_costmap:
   local_costmap:
     ros__parameters:

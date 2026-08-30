@@ -1,6 +1,6 @@
 # 04 — runtime speed limiter（走行中速度上限の動的変更・OQ-T3 設計解）
 
-> **Status**: 設計 doc → **実装スライス 1 着手（2026-08-30）**: publisher node（`warehouse_perception.speed_band_node`・safe-OFF 既定・0 cmd_vel）と R-26 unit は実装済（tests/unit/・mutation 検出確認済）。**残スライスは追補②末尾の統一リスト**（bringup 配線・帯 config 実値・過渡実測回帰）＝pkg CLAUDE.md の TODO と同期。
+> **Status**: 設計 doc → **実装スライス 2 まで（2026-08-30）**: publisher node（`warehouse_perception.speed_band_node`・safe-OFF 既定・0 cmd_vel）＋ R-26 unit（スライス 1）に加え、**bringup 配線・`reset_period` 明示・帯 config キー**（スライス 2 = 追補③）を実装済。**残スライスは追補③末尾の統一リスト**（帯 config 実値・過渡実測回帰）＝pkg CLAUDE.md の TODO と同期。
 > **layer**（[.claude/rules/layer-annotation.md](../../.claude/rules/layer-annotation.md)・正準表 = [productization/01:180-188](../productization/01-commercial-box-map.md)）:
 > - Nav2 `controller_server` / `nav2_params.yaml` = **L1 自律走行・安全**（[productization/01:185](../productization/01-commercial-box-map.md)）。本 doc が動かす主対象。
 > - **L0'**（ホスト側シリアルドライバ送信直前クランプ・[mode-m1/02:4](02-m1-driver-and-watchdog.md)）= 不変。正準表への `warehouse_m1_driver`（L0'）行は **#555 で追記済**（[productization/01:187](../productization/01-commercial-box-map.md)・GLOSSARY §3 の正準エントリは #556）。
@@ -237,4 +237,34 @@ M1 の distro は **Humble**（[ADR-0008 §Decision :16](../adr/0008-ros2-distro
 
 (a)〜(d) はいずれも ① ≤ 凍結契約値と ③ L0' に包絡され、**安全床は破れない**——破れうるのは「帯」という運用上の約束のみ（＝帯を安全機構と呼ばない理由）。あわせて**単一 publisher 規律**（`/bot{n}/speed_limit` は帯 publisher 1 本・costmap `filters` に SpeedFilter を入れない・`nav2_route` AdjustSpeedLimit 不使用・相対名維持）を実装スライスの起動時アサート対象とする（ADR-0012 決定 11）。
 
-**【2026-08-30 追補②】帯イベントの wire 形式（additive）と実装スライス 1**: `gesture_detector`（未実装）→ 帯 publisher 間の帯イベントは、既存の `/perception/gesture_events`（`std_msgs/String` JSON・additive 契約 = [09:160](../mode-x-er/09-hand-raise-summon.md)）に判別キーを足した **additive な 1 形式**で運ぶ: `{"event": "speed_band", "band": "slowest" | "stable" | "fastest"}`（`slowest`=最遅段〔0本〕・`stable`=安定段〔4〜5本〕・`fastest`=最速段〔1〜3本〕＝[T-1 :352](../mode-x-er/09-hand-raise-summon.md) の 3 帯の英語識別子）。この形式に合致しないメッセージ（①②の召喚/指差しイベント・非 JSON・未知 band 値）は帯 publisher が**無視**する（fail-closed・現在帯を保持。①②封筒の設計 = 09:160 は不変更で、`gesture_detector` 実装時に本形式へ合流する）。実装スライス 1（2026-08-30）: 新 package `ws/src/warehouse_perception/`（[OQ-13 裁定](../mode-x-er/09-hand-raise-summon.md)）に `speed_band_core.py`（純ロジック: 起動時 fail-closed 検証・`min(帯値, ①, MAX_LINEAR_VELOCITY)`・T-5 hold-then-stable・イベント parse）と `speed_band_node.py`（rclpy 殻: 相対名 `speed_limit`・QoS 10・20Hz＋帯遷移時即時・`percentage=false`・`enabled=false` 既定の safe-OFF）を追加し、R-26 unit（`tests/unit/test_speed_band_publisher.py`・仕様のみから・独立オラクル・mutation 3 種検出確認・cmd_vel 非 publish は AST pin）で固定した。**残スライス（統一リスト・本行が正本）**: ①**bringup 配線**（① CLI override 値の `operating_vx_max` param への受け渡し・単一 publisher 起動時アサート＝決定 11・`reset_period` の `nav2_params.yaml` 明示設定＝決定 5）②**帯 config 実値**（OQ-T1/T2・`V_FLOOR` 実測）③**帯遷移過渡の実測回帰**（cmd_vel 記録）。なお `/perception/gesture_events` の [doc03](../architecture/03-software-architecture.md) カタログ追記（[09:157](../mode-x-er/09-hand-raise-summon.md) の約束）は **producer（`gesture_detector`）land 時に一括**で行う（所有トラック経由・沈黙 defer にしない明示）。
+**【2026-08-30 追補②】帯イベントの wire 形式（additive）と実装スライス 1**: `gesture_detector`（未実装）→ 帯 publisher 間の帯イベントは、既存の `/perception/gesture_events`（`std_msgs/String` JSON・additive 契約 = [09:160](../mode-x-er/09-hand-raise-summon.md)）に判別キーを足した **additive な 1 形式**で運ぶ: `{"event": "speed_band", "band": "slowest" | "stable" | "fastest"}`（`slowest`=最遅段〔0本〕・`stable`=安定段〔4〜5本〕・`fastest`=最速段〔1〜3本〕＝[T-1 :352](../mode-x-er/09-hand-raise-summon.md) の 3 帯の英語識別子）。この形式に合致しないメッセージ（①②の召喚/指差しイベント・非 JSON・未知 band 値）は帯 publisher が**無視**する（fail-closed・現在帯を保持。①②封筒の設計 = 09:160 は不変更で、`gesture_detector` 実装時に本形式へ合流する）。実装スライス 1（2026-08-30）: 新 package `ws/src/warehouse_perception/`（[OQ-13 裁定](../mode-x-er/09-hand-raise-summon.md)）に `speed_band_core.py`（純ロジック: 起動時 fail-closed 検証・`min(帯値, ①, MAX_LINEAR_VELOCITY)`・T-5 hold-then-stable・イベント parse）と `speed_band_node.py`（rclpy 殻: 相対名 `speed_limit`・QoS 10・20Hz＋帯遷移時即時・`percentage=false`・`enabled=false` 既定の safe-OFF）を追加し、R-26 unit（`tests/unit/test_speed_band_publisher.py`・仕様のみから・独立オラクル・mutation 3 種検出確認・cmd_vel 非 publish は AST pin）で固定した。**残スライス（統一リスト・①は実装スライス 2 で完了＝正本は追補③末尾へ移動）**: ①~~**bringup 配線**（① CLI override 値の `operating_vx_max` param への受け渡し・単一 publisher アサート＝決定 11・`reset_period` の `nav2_params.yaml` 明示設定＝決定 5）~~ **完了（追補③）**②**帯 config 実値**（OQ-T1/T2・`V_FLOOR` 実測）③**帯遷移過渡の実測回帰**（cmd_vel 記録）。なお `/perception/gesture_events` の [doc03](../architecture/03-software-architecture.md) カタログ追記（[09:157](../mode-x-er/09-hand-raise-summon.md) の約束）は **producer（`gesture_detector`）land 時に一括**で行う（所有トラック経由・沈黙 defer にしない明示）。
+
+**【2026-08-30 追補③】実装スライス 2: bringup 配線・帯 config キー・`reset_period` 明示**（ADR-0012 決定 3 / 5 / 11 の充足分）。スライス 1（追補②）が残した「配線」を確定する。
+
+**(1) config キー（`speed_bands.*`・additive / safe-OFF・凍結契約ではない）** — キー名は publisher node の param 名と **1:1**（config → launch → param の写像で名前を変えない＝読み替え表を作らない）:
+
+| config キー（`config/warehouse.base.yaml`） | node param | 既定 | 意味・出所 |
+|---|---|---|---|
+| `speed_bands.enabled` | `enabled` | **`false`** | safe-OFF。false なら launch は node を**起動しない**（doc09:406 の additive / 既定 OFF 規律） |
+| `speed_bands.band_slowest_mps` | `band_slowest_mps` | 未設定 | 最遅段（0本・グー）。**実値は未決** = [09 OQ-T2 :435](../mode-x-er/09-hand-raise-summon.md) |
+| `speed_bands.band_stable_mps` | `band_stable_mps` | 未設定 | 安定段（4〜5本・パー）= 未検出時の既定（[T-5 :392-397](../mode-x-er/09-hand-raise-summon.md)）。**未決** = OQ-T2 |
+| `speed_bands.band_fastest_mps` | `band_fastest_mps` | 未設定 | 最速段（1〜3本）。**未決** = [09 OQ-T1 :434](../mode-x-er/09-hand-raise-summon.md)（S-SPEED 実測待ち） |
+| `speed_bands.v_floor_mps` | `v_floor_mps` | node 既定 `0.05` | `V_FLOOR`。**例示値**（[ADR-0012 §Open](../adr/0012-speed-band-no-l2-best-effort.md)）＝「実際に動く最遅速度」の実測で確定 |
+| `speed_bands.publish_rate_hz` | `publish_rate_hz` | node 既定 `20.0` | 周期送出（[ADR-0012 決定 5](../adr/0012-speed-band-no-l2-best-effort.md)）。`reset_period` より十分短いこと |
+| `speed_bands.hold_timeout_s` | `hold_timeout_s` | 未設定（node 既定 `0.0` = fail-closed） | T-5 保持窓。**未決** = OQ-T2 |
+
+- **帯実値は base.yaml に置かない**（コメントアウトのプレースホルダのまま）。実測確定後に env overlay（`config/<env>/warehouse.yaml`）で供給する。`enabled: true` にして表が欠けていれば node が `BandConfigError` で**起動失敗**する（決定 4 の fail-closed。launch は欠けたキーを**転送しない**＝launch 側で既定値を発明しない）。
+- `operating_vx_max` は **config キーを持たない**。①は launch が MPPI へ注入する解決値そのものであり、config から二度目に読み直すと真実の源が 2 つになる（決定 3）。
+
+**(2) launch 配線**（`nav2_bringup.launch.py`・実装 anchor は §7 同様**行 pin しない**）: `_speed_bands()` が config ブロックを読み、`_speed_band_group(robot, use_sim_time, vx_max)` が `enabled` のときだけ per-bot の `GroupAction([PushRosNamespace(robot), SetParameter("use_sim_time", …), Node(package="warehouse_perception", executable="speed_band_publisher")])` を返す。要点:
+
+- **①の受け渡し（決定 3）**: `operating_vx_max` には `RewrittenYaml` の `param_rewrites{"vx_max": …}` に渡すのと**同一の substitution オブジェクト**（`min(float(max_linear_velocity), MAX_LINEAR_VELOCITY)` の `PythonExpression`）を `ParameterValue(…, value_type=float)` で包んで渡す。`max_linear_velocity:=0.1` のような LOWER-only override も同じ経路で効く。**型指定は必須**——launch_ros は substitution 値を str に評価するため、double 宣言の param が起動時に型不一致で落ちる。
+- **`source_topic` を明示注入**: `/perception/gesture_events`（絶対名＝namespace を跨ぐ大域トピック。追補②の帯イベント形式）。node 既定の `""` は「購読しない」なので、配線側が明示しない限り帯は届かない。
+- **Nav2 サーバ群とは別の `GroupAction`**: 帯 publisher は control-plane であって Nav2 スタックの一部ではなく、gating も独立。`_per_robot_group` の内側に入れず末尾で合成することで、既存の `nav2_bringup.launch.py:NN` 行 pin を 1 つも動かさずに済む（[#165 教訓](../dev/03-retrospectives.md)）。
+- **`cmd_vel` に一切触れない**（remap も持たない）＝ twist_mux の 2 入力は不変（§4 制約 2）。
+
+**(3) `reset_period` の明示設定（決定 5）**: `nav2_params.yaml` の `controller_server.ros__parameters.FollowPath.reset_period: 1.0` を**明示**した（§2-1 ④: 無活動が超えると `Optimizer::reset()` が帯を①へ戻す）。**値は Humble 既定のまま**で、延長するか否かは未決（ADR-0012 §Open）。20Hz 送出（0.05s）が reset 窓の内側であることは手計算で確認できる。追記は**行数 net-zero**（直後の空行を消費）で行い、`nav2_params.yaml:215/221/245/258/262/274/300` の下流 pin を割っていない。
+
+**(4) 決定 11 の機械化 — ⚠️ 「起動時アサート」ではなく静的 lint である（正直な差分）**: ADR-0012 決定 11 は「実装スライスで**起動時アサート**」と書くが、本スライスが入れたのは `tests/unit/test_speed_band_bringup_wiring.py` の**静的 config lint**（`nav2_params.yaml` に `SpeedFilter` / costmap `filters:` / `nav2_route` が無いこと）である。runtime アサートは publisher node 本体の変更を要し、本スライスの編集境界の外にある。**したがって「config で第 2 の publisher を作る」経路は CI で塞がるが、`ros2 run` で外部 publisher を手起動する経路は塞がっていない**（Nav2 は last-writer-wins で調停しない）。これは残件として下記リストに残す。
+
+**残スライス（統一リスト・本行が正本。追補②の①は完了）**: ①**帯 config 実値**（OQ-T1 / OQ-T2 ・`V_FLOOR` 実測）②**帯遷移過渡の実測回帰**（`/bot{n}/cmd_vel` 記録で帯遷移直後 5 サイクルの超過率）③**単一 publisher の runtime アサート**（上記 (4)。現状は静的 lint のみ）④**`gesture_detector`（帯イベント producer）**——未実装ゆえ配線しても帯は動かない（`ros2 topic pub` で手検証は可能）。多台構成での**帯の per-robot 振り分け**も未決（現状は大域トピックを全 bot が購読＝同じ帯に追従）。
