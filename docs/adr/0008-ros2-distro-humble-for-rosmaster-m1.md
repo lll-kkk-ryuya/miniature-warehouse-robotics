@@ -165,3 +165,11 @@ governance 別 PR で追う。② 実 py3.10 での最終確定は Jetson 上の
 identity で不変**）を追加し 4 ファイルを sweep、`from datetime import UTC` / `datetime.UTC` の直書きも
 source-scan で恒久禁止。L2 安全系 2 ファイル（Emergency Guardian / State Cache）は **import 行のみ**の
 変更で挙動不変（既存 R-26 unit が検証）。影響トラックは llm-bridge に加え **safety-state** へも予告。
+
+**第 3 波（挙動修正 1 件・同 PR）**: `scheduler.py` の LLM 応答タイムアウト捕捉を
+`(TimeoutError, asyncio.TimeoutError)` へ拡大した。py3.10 では `asyncio.wait_for` が builtin
+`TimeoutError` を**継承しない**別クラスを投げるため捕捉が素通りし、doc08:140 の
+keep-previous fallback が実機で無言死していた（3.11 で両者統合済み＝3.11+ は同一クラスの
+重複で完全 no-op）。赤化オラクルは **py3.10 実行時**の scheduler timeout 系 unit 4 本のみ
+（py3.12 では構造的に恒久緑）。同族のテスト側 3.11+ API（`Task.cancelling()`）は
+`test_perception_lanes` で version-guard 化した（py3.10 は一 tick 後の `cancelled()` リーク検査が担う）。
