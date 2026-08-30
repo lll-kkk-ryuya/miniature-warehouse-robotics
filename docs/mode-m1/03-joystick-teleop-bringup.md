@@ -1,6 +1,6 @@
 # joystick 手動走行 bring-up（成功の 3 段ゲート M0 / M1 / M2）
 
-> **Status**: オペレーター指示 2026-08-26「物理的な起動はまず joystick ベースの手動走行を目標にする」の設計 doc。実装は未着手。
+> **Status**: オペレーター指示 2026-08-26「物理的な起動はまず joystick ベースの手動走行を目標にする」の設計 doc。実装は land 済（driver = #550 `m1_driver` ／ joy 変換 = #551 `warehouse_teleop`）。**M0/M1/M2 ゲートの実機実施は未実施**（§1 に実施記録なし・2026-08-30 時点）。
 > **layer**: 経路は L4/L3/L2 を通らない bring-up 構成（joy → 変換 node → **L0'** driver）。安全は L0' クランプ + [02 §3](02-m1-driver-and-watchdog.md) watchdog 層 + W-4 運用が担う。
 
 ## 1. 成功の 3 段定義（混ぜない — 壊れ方が違う）
@@ -12,7 +12,7 @@
 | **M2 ROS 走行** | joystick → `/bot1/cmd_vel` → **m1_driver（`clamp_body_velocity` 必経）** → 実走。**かつ上限超指令を投げても wire に上限超が出ない**（negative test） | 実装（driver / 変換 node） |
 
 - **M2 が本体**。negative test を入れることでデモではなく**ゲート**になる = [mode-x-er/10:491 G-l](../mode-x-er/10-room-scale-safety-review.md) のクローズと同時達成。
-- 速度は**契約値 0.3 m/s のまま**行う（上限引き上げは car_type 実測後の contract PR = [ADR-0010:21](../adr/0010-raise-speed-cap-to-platform-max.md)。bring-up に速度の話を混ぜない）。
+- 速度は**契約値 0.3 m/s のまま**行う（上限引き上げは car_type 実測後の contract PR = [ADR-0010:22](../adr/0010-raise-speed-cap-to-platform-max.md)。bring-up に速度の話を混ぜない）。
 
 ## 2. 実機プローブ（M1 ゲート内・5 分・[02 §4](02-m1-driver-and-watchdog.md) G-g と同一セッション）
 

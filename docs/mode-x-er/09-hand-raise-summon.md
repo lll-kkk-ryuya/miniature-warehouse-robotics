@@ -337,7 +337,7 @@ R-3 / R-7 / R-8 / R-9 が「安全レビューに掛ける」と宣言した**�
   - ② R-8-2 の C-3 改訂は **`CIRCUMSCRIBED_RADIUS` が `robot_dimensions.py` に未存在**のため additive contract PR が先行必要＝同 §5-2。
   - ③ R-3 柱 3 には C-3 とは別に **recovery が L1 を bypass する窓**があり、[12:559-560](../architecture/12-infrastructure-common.md) が bypass の安全床とする「ESP32 L0 近接停止 ＋ Guardian `near_collision`」は **M1 では両方不在**＝**bypass 中の物理保護は 0 層**＝同 §3 柱3。
   - ④ R-9 の「立位の人は `/scan` に写る」はスキャン平面高さの不確かさに対し**頑健＝支持**（ただし [R-2(c) :247](09-hand-raise-summon.md) の「しゃがむ / 座る」案が採られたら再評価）＝同 §7-1。
-  - ⑤ **[ADR-0009 :53](../adr/0009-m1-room-scale-operation.md) が挙げる「残る保護 3 枚」のうち、現時点で機能しているのは語彙 gate の 1 枚のみ**——L1 は停止円が車体内部かつ `traffic_mode: open-rmf` の env（stg / prod）では node ごと未起動、L0' は `warehouse_m1_driver/setup.py` の `console_scripts` が空で**未結線**＝同 §2 冒頭・§12-1b。
+  - ⑤ **[ADR-0009 :53](../adr/0009-m1-room-scale-operation.md) が挙げる「残る保護 3 枚」のうち、レビュー時点（2026-08-18）で機能していたのは語彙 gate の 1 枚のみ**——L1 は停止円が車体内部かつ `traffic_mode: open-rmf` の env（stg / prod）では node ごと未起動（依然未解消）、L0' は当時 `console_scripts` が空で未結線だったが **2026-08-26 の #550（`93bfc93`）で結線済み＝G-l land**（実機動作確認〔M2 / G-g〕は未実施）＝同 §2 冒頭・§12-1b。
 - **本追補は運転許可ではない**。[ADR-0009 §Open :82](../adr/0009-m1-room-scale-operation.md) の `# TODO(安全レビュー)` を閉じるのはオペレーターの裁定であり、分析 doc はその入力である。
 
 ---
@@ -443,5 +443,5 @@ R-3 / R-7 / R-8 / R-9 が「安全レビューに掛ける」と宣言した**�
 - **M1 速度の一次事実**: [../shared/02-hardware-design.md 【2026-08-19 追記】](../shared/02-hardware-design.md) の **V-1（:536-541 ファーム clamp ±1000mm/s・方向非保存）/ V-2（:543-551 理論最高速度 1.13 m/s・電圧で約2割低下）/ V-3（:553-560 `set_car_motion` 採用の裁定）/ V-4（:562-569 スリップ・odom 品質・25Hz 報告・電源サグ）**
 - **本 doc 内**: §5 判定（:97-113）／§6 信頼性（:115-121）／§7 状態機械（:123-135）／§10 契約・config（:157-163）／INV-1（:25）・INV-2（:57）・`gesture_detector`（:61）
 - **standby / HRI**: [11-standby-and-hri-features.md](11-standby-and-hri-features.md)（T-7 の正本・同一ラウンドで land）。※ 同 doc の**ついてこいモード**は本 doc R-3 柱1（:261「人を追尾する経路が生まれるわけではない」）に触れる＝安全論証の再評価が要る（doc11 OQ-H8）
-- **安全側**: [10-room-scale-safety-review.md §5-3（:243-266 `margin = v_max × t_react`）/ §10-2（:449- L0' 未結線の記録）](10-room-scale-safety-review.md)——**速度上限を上げれば必要停止円は `margin ∝ v_max` で広がる**（ADR-0010 §Trade-offs）。ジェスチャ③は速度を**上げる方向にも下げる方向にも**効くため、C-3 停止円改訂は最速段の値で行う。
+- **安全側**: [10-room-scale-safety-review.md §5-3（:243-266 `margin = v_max × t_react`）/ §10-2（:449- L0' 結線経緯の記録）](10-room-scale-safety-review.md)——**速度上限を上げれば必要停止円は `margin ∝ v_max` で広がる**（ADR-0010 §Trade-offs）。ジェスチャ③は速度を**上げる方向にも下げる方向にも**効くため、C-3 停止円改訂は最速段の値で行う。
 - **用語**: [../GLOSSARY.md §11](../GLOSSARY.md)（:147 **S-SPEED** の正準定義／:135-137 ジェスチャ司令・手挙げ召喚・指差し／**速度セレクタ（3帯）**＝本節を定義正本とする 1 エントリを同一ラウンドで追補済＝双方向）。

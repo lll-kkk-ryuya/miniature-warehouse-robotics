@@ -43,7 +43,7 @@ ADR 本体は [docs/adr/](../adr/README.md) の `NNNN-slug.md` 連番が**正準
 
 ## Status / 残件（隠さない）
 
-- 新設: 2026-08-26（オペレーター指示・docs 先行 = docs-first）。実装（driver node / joy 変換 node）は未着手。
+- 新設: 2026-08-26（オペレーター指示・docs 先行 = docs-first）。実装は land 済 — driver node（`m1_driver`・#550 `93bfc93`）／ joy 変換 node（`warehouse_teleop`・#551 `db46aaf`）。**実機 M0-M2・G-g は未実施**（[03 §1](03-joystick-teleop-bringup.md) に実施記録なし）。
 - `config/stg` / `config/prod` の `traffic_mode: open-rmf` は**未変更**（[01 §2](01-mode-boundary-and-traffic.md)。prod config 変更は安全レビュー必須の別 PR = [.claude/rules/environments.md](../../.claude/rules/environments.md)）。
 - [jetson/01](../jetson/01-fidelity-and-validation.md) の G0-G7 は旧世界（ESP32×2 / MS200 / 2台）前提の記述が残る — rescope は別 PR（調査済み・改訂対象は特定済み）。
 - ros2_control 採否（ADR-0011）は**未裁定** — [02 §5](02-m1-driver-and-watchdog.md)。

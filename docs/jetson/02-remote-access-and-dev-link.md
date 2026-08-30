@@ -199,6 +199,9 @@ ssh -i ~/.ssh/mwr_jetson ruyuya@<IP>
 - ~~Super 化未実施~~ → **完了（2026-08-30・`mwr-setup.sh` step 8）**。再起動後も MAXN_SUPER 維持を実測。
 - `# TODO` **IP が DHCP のまま**（`192.168.11.12`）。ただし §9 の mDNS 直結（`minicar.local`）により**再接続のたびの IP 確認は不要になった**。DHCP 予約（MAC `50:2e:91:95:9c:23`）は mDNS 不調時の保険として依然推奨。
 - [01-fidelity-and-validation.md](01-fidelity-and-validation.md) の **G0-G7 は旧世界（ESP32×2 / MS200 / 2台）前提**のまま＝M1 単騎への rescope は別 PR（[mode-m1/README.md:25](../mode-m1/README.md)）。本 doc の §6 はその rescope 後に読み替えが要る。
+- `# TODO` **初回 `v0.1.0` タグ未発行**（bring-up は main HEAD 暫定＝§9.6 表 row5 に記録済）。発行は
+  [setup/jetson-deploy.md §5→§6](../setup/jetson-deploy.md)（unit 導入 → systemd enable = prod 昇格）の**前**に
+  行う（doc19 のタグ pin 規約を昇格時点から満たす。軽い運用でよい＝過剰な儀式化はしない）。
 
 ## 8. 運用上の注意：電源の切り方
 
