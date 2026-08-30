@@ -12,7 +12,7 @@
 | **M2 ROS 走行** | joystick → `/bot1/cmd_vel` → **m1_driver（`clamp_body_velocity` 必経）** → 実走。**かつ上限超指令を投げても wire に上限超が出ない**（negative test） | 実装（driver / 変換 node） |
 
 - **M2 が本体**。negative test を入れることでデモではなく**ゲート**になる = [mode-x-er/10:491 G-l](../mode-x-er/10-room-scale-safety-review.md) のクローズと同時達成。
-- 速度は**契約値 0.3 m/s のまま**行う（上限引き上げは car_type 実測後の contract PR = [ADR-0010:21](../adr/0010-raise-speed-cap-to-platform-max.md)。bring-up に速度の話を混ぜない）。
+- 速度は**契約値 0.3 m/s のまま**行う（上限引き上げは car_type 実測後の contract PR = [ADR-0010:22](../adr/0010-raise-speed-cap-to-platform-max.md)。bring-up に速度の話を混ぜない）。
 
 ## 2. 実機プローブ（M1 ゲート内・5 分・[02 §4](02-m1-driver-and-watchdog.md) G-g と同一セッション）
 

@@ -50,7 +50,7 @@ agent-team 調査（一次情報 = 工場 STM32 ファーム Rosmaster V3.5.1 C 
 └─────────────────────────────────────────┘
 ```
 
-- 上限値は `warehouse_interfaces.safety.MAX_LINEAR_VELOCITY` を**単一ソース import**（[02:327](../shared/02-hardware-design.md)。現契約値 0.3 のまま = [ADR-0010:21](../adr/0010-raise-speed-cap-to-platform-max.md) の docs 先行原則）。
+- 上限値は `warehouse_interfaces.safety.MAX_LINEAR_VELOCITY` を**単一ソース import**（[02:327](../shared/02-hardware-design.md)。現契約値 0.3 のまま = [ADR-0010:22](../adr/0010-raise-speed-cap-to-platform-max.md) の docs 先行原則）。
 - **TF は出さない**（`odom→base_link` は ekf_node 単一所有 = [23:163](../architecture/23-perception-and-localization.md)。odom は topic publish のみ）。
 - 採用禁止: `set_speed_limit(0x16)` / `set_imu_adjust(0x17)` は推測 API・実装なし（[02 V-1 :536](../shared/02-hardware-design.md)）。
 - R-26: 「dispatch 経路が `clamp_body_velocity` を必ず通る」を独立オラクル unit + mutation で pin（= [mode-x-er/10:491 G-l](../mode-x-er/10-room-scale-safety-review.md) の条件 (ii)）。unit は `tests/unit/` に置く（CI 可視性 = [warehouse_m1_driver/CLAUDE.md](../../ws/src/warehouse_m1_driver/CLAUDE.md) の教訓）。
