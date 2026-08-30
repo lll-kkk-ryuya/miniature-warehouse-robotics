@@ -1,6 +1,6 @@
 # 速度帯は L2 非経由の best-effort 制御面とする（最小安全方針の適用・OQ-R1〜R7 一括裁定）
 
-**Status**: accepted（2026-08-30 オペレーター決定。実装は未着手）
+**Status**: accepted（2026-08-30 オペレーター決定。実装スライス 1 済＝`warehouse_perception` publisher node + R-26 unit。bringup 配線・帯 config 実値は未）
 
 ジェスチャ速度セレクタ（3帯）の runtime 経路（[mode-m1/04](../mode-m1/04-runtime-speed-limiter.md) の②）は、帯の引き上げ（安定段→最速段 = loosen）を含めて **L2 Policy Gate を通さない**。帯は「承認済み速度 envelope の内側で動く **best-effort の運用制御面**」であって安全機構ではない——hard な安全床は従来どおり **①起動基準値（launch が MPPI へ注入する解決値）＋凍結契約 `MAX_LINEAR_VELOCITY`＋L0' クランプ**が持ち、本決定はそれを一切変更しない。[mode-m1/04 §6](../mode-m1/04-runtime-speed-limiter.md) の OQ-R1〜R7 を一括裁定する。
 
@@ -51,7 +51,7 @@
 
 ## Open / 未決
 
-- OQ-T1（最速段実値＝S-SPEED 実測待ち）／OQ-T2（帯遷移の時間窓・方向依存ヒステリシス）／OQ-13（package 名）——本 ADR は先取りしない。
+- OQ-T1（最速段実値＝S-SPEED 実測待ち）／OQ-T2（帯遷移の時間窓・方向依存ヒステリシス）——本 ADR は先取りしない。OQ-13（package 名）は実装スライス 1 で **`warehouse_perception`** に裁定済（2026-08-30・[09:193](../mode-x-er/09-hand-raise-summon.md)）。
 - `V_FLOOR` の具体値（例示 0.05 m/s・「実際に動く最遅速度」を実測で確定）。
 - **帯遷移過渡の実測回帰**（`/bot{n}/cmd_vel` 記録で帯遷移直後 5 サイクルの超過率）——実装スライスの DoD に含める。
 - `reset_period` の明示設定値（既定 1.0s のままか延長するか）。

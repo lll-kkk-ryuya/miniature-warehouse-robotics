@@ -24,6 +24,7 @@ ESP32 ファームウェア（PlatformIO、colcon 対象外）はリポジトリ
 | `warehouse_web_bridge` | ament_python | Web 観測 gateway（observe-only consumer: ObsEvent 正規化＋events.jsonl／S2 で rclpy subscriber + FastAPI・doc22） | 3 |
 | `warehouse_m1_driver` | ament_python | ROSMASTER M1 ホスト側シリアルドライバ。**L0' 速度クランプ**（線速度をベクトル大きさで 0.3 m/s 制限・非有限は stop）。シリアルフレーム層は実機到着後 | 1 |
 | `eval_sdk` | ament_python | ドメイン非依存 embodied-AI 評価コア（`seed`/`tracer`/`sink`/`stats`/`cost`）。**意図的に非 `warehouse_*`**＝ROS/warehouse 依存ゼロ・langfuse は optional pip extra（doc21） | 0.5→4 |
+| `warehouse_perception` | ament_python | L4 知覚の置き場（`gesture_detector` 予定地・OQ-13 裁定 2026-08-30）。初代入居 = **speed band publisher**（帯→`nav2_msgs/SpeedLimit` 20Hz・safe-OFF 既定・0 cmd_vel＝ADR-0012） | 1 |
 
 > 各パッケージは `package.xml` / `setup.py` を備えて実体化済み（`colcon build` 対象）。Phase 4 で `warehouse_interfaces` に構造化 `.msg` を導入する際に同パッケージのみ ament_cmake へ移行（doc16 §2/§3）。
 > 生成物 `ws/build` `ws/install` `ws/log` は `.gitignore` 対象。

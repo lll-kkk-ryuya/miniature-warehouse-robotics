@@ -1,6 +1,6 @@
 # 04 — runtime speed limiter（走行中速度上限の動的変更・OQ-T3 設計解）
 
-> **Status**: 設計 doc（docs 先行）。**実装は未着手＝本 doc に伴うコード変更はゼロ**。publisher node・Nav2 側配線・R-26 unit はすべて後続の実装スライス。
+> **Status**: 設計 doc → **実装スライス 1 着手（2026-08-30）**: publisher node（`warehouse_perception.speed_band_node`・safe-OFF 既定・0 cmd_vel）と R-26 unit は実装済（tests/unit/・mutation 検出確認済）。**残スライスは追補②末尾の統一リスト**（bringup 配線・帯 config 実値・過渡実測回帰）＝pkg CLAUDE.md の TODO と同期。
 > **layer**（[.claude/rules/layer-annotation.md](../../.claude/rules/layer-annotation.md)・正準表 = [productization/01:180-188](../productization/01-commercial-box-map.md)）:
 > - Nav2 `controller_server` / `nav2_params.yaml` = **L1 自律走行・安全**（[productization/01:185](../productization/01-commercial-box-map.md)）。本 doc が動かす主対象。
 > - **L0'**（ホスト側シリアルドライバ送信直前クランプ・[mode-m1/02:4](02-m1-driver-and-watchdog.md)）= 不変。正準表への `warehouse_m1_driver`（L0'）行は **#555 で追記済**（[productization/01:187](../productization/01-commercial-box-map.md)・GLOSSARY §3 の正準エントリは #556）。
@@ -187,7 +187,7 @@ M1 の distro は **Humble**（[ADR-0008 §Decision :16](../adr/0008-ros2-distro
 
 ## 6. 未決事項（新規 OQ・接頭辞 `OQ-R*`）
 
-> **採番 scoping**: 接頭辞 `OQ-R*`（**R**untime speed limiter）は本 doc 固有。採用前に `grep -rn "OQ-R" docs/` で **0 件**（2026-08-28 確認）＝衝突なし。[09 の `OQ-T*`](../mode-x-er/09-hand-raise-summon.md) / [11 の `OQ-H*`](../mode-x-er/11-standby-and-hri-features.md) と同じ回避策。／**【2026-08-30】OQ-R1〜R7 は [ADR-0012](../adr/0012-speed-band-no-l2-best-effort.md) で一括裁定済**（各行に行内追記。残る未決は OQ-T1/OQ-T2/OQ-13/`V_FLOOR`/過渡実測回帰＝ADR-0012 §Open）。
+> **採番 scoping**: 接頭辞 `OQ-R*`（**R**untime speed limiter）は本 doc 固有。採用前に `grep -rn "OQ-R" docs/` で **0 件**（2026-08-28 確認）＝衝突なし。[09 の `OQ-T*`](../mode-x-er/09-hand-raise-summon.md) / [11 の `OQ-H*`](../mode-x-er/11-standby-and-hri-features.md) と同じ回避策。／**【2026-08-30】OQ-R1〜R7 は [ADR-0012](../adr/0012-speed-band-no-l2-best-effort.md) で一括裁定済**（各行に行内追記。残る未決は OQ-T1/OQ-T2/`V_FLOOR`/過渡実測回帰＝ADR-0012 §Open。OQ-13 は同日 `warehouse_perception` で裁定済＝[09:193](../mode-x-er/09-hand-raise-summon.md)）。
 
 | # | 問い | 優先度 |
 |---|---|---|
@@ -236,3 +236,5 @@ M1 の distro は **Humble**（[ADR-0008 §Decision :16](../adr/0008-ros2-distro
 - (d) **ConstraintCritic は帯を見ない**（initialize 時の param キャッシュ・`settings_.constraints` 非参照）＝帯値を①から下げるほど MPPI の軌道評価と実行速度の乖離が増える（保守側の誤差）。帯値の下限目安は実装時に実測で決める。
 
 (a)〜(d) はいずれも ① ≤ 凍結契約値と ③ L0' に包絡され、**安全床は破れない**——破れうるのは「帯」という運用上の約束のみ（＝帯を安全機構と呼ばない理由）。あわせて**単一 publisher 規律**（`/bot{n}/speed_limit` は帯 publisher 1 本・costmap `filters` に SpeedFilter を入れない・`nav2_route` AdjustSpeedLimit 不使用・相対名維持）を実装スライスの起動時アサート対象とする（ADR-0012 決定 11）。
+
+**【2026-08-30 追補②】帯イベントの wire 形式（additive）と実装スライス 1**: `gesture_detector`（未実装）→ 帯 publisher 間の帯イベントは、既存の `/perception/gesture_events`（`std_msgs/String` JSON・additive 契約 = [09:160](../mode-x-er/09-hand-raise-summon.md)）に判別キーを足した **additive な 1 形式**で運ぶ: `{"event": "speed_band", "band": "slowest" | "stable" | "fastest"}`（`slowest`=最遅段〔0本〕・`stable`=安定段〔4〜5本〕・`fastest`=最速段〔1〜3本〕＝[T-1 :352](../mode-x-er/09-hand-raise-summon.md) の 3 帯の英語識別子）。この形式に合致しないメッセージ（①②の召喚/指差しイベント・非 JSON・未知 band 値）は帯 publisher が**無視**する（fail-closed・現在帯を保持。①②封筒の設計 = 09:160 は不変更で、`gesture_detector` 実装時に本形式へ合流する）。実装スライス 1（2026-08-30）: 新 package `ws/src/warehouse_perception/`（[OQ-13 裁定](../mode-x-er/09-hand-raise-summon.md)）に `speed_band_core.py`（純ロジック: 起動時 fail-closed 検証・`min(帯値, ①, MAX_LINEAR_VELOCITY)`・T-5 hold-then-stable・イベント parse）と `speed_band_node.py`（rclpy 殻: 相対名 `speed_limit`・QoS 10・20Hz＋帯遷移時即時・`percentage=false`・`enabled=false` 既定の safe-OFF）を追加し、R-26 unit（`tests/unit/test_speed_band_publisher.py`・仕様のみから・独立オラクル・mutation 3 種検出確認・cmd_vel 非 publish は AST pin）で固定した。**残スライス（統一リスト・本行が正本）**: ①**bringup 配線**（① CLI override 値の `operating_vx_max` param への受け渡し・単一 publisher 起動時アサート＝決定 11・`reset_period` の `nav2_params.yaml` 明示設定＝決定 5）②**帯 config 実値**（OQ-T1/T2・`V_FLOOR` 実測）③**帯遷移過渡の実測回帰**（cmd_vel 記録）。なお `/perception/gesture_events` の [doc03](../architecture/03-software-architecture.md) カタログ追記（[09:157](../mode-x-er/09-hand-raise-summon.md) の約束）は **producer（`gesture_detector`）land 時に一括**で行う（所有トラック経由・沈黙 defer にしない明示）。
