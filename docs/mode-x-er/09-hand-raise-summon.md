@@ -190,7 +190,7 @@ is_point = straightness ≥ th and angle(d, unit(W-E)) ≤ 12° and -d.z ≥ sin
 | OQ-10 | 充電中・低バッテリー時に召喚を受けるか（sentry=charging_station 案と衝突） | 中 |
 | OQ-11 | **ジオラマ再設計の location 配置制約「間隔 ≥ 2×交点誤差 ≈0.5m」**（doc04 へ申し送り） | 高 |
 | OQ-12 | [23](../architecture/23-perception-and-localization.md) の「ジオラマに人はいない」の言い換え（「走行面上に動的障害物が無い」）＝dynamic 層不採用の結論は不変・追補済み ⚠️**【2026-08-18 訂正】部屋では人が走行面上に立つため本行の前提が消滅** → [23 G-9 の OQ-23](../architecture/23-perception-and-localization.md)（再評価）を指す | 中 |
-| OQ-13 | `gesture_detector` の所有トラック / package 配置（bridge に GPU 依存を入れない→新 package `warehouse_perception`（仮）か） | 高 |
+| OQ-13 | `gesture_detector` の所有トラック / package 配置（bridge に GPU 依存を入れない→新 package `warehouse_perception`（仮）か）。**【2026-08-30 追記】`speed_limit` 帯 publisher も同パッケージに同居**（[ADR-0012 決定 6](../adr/0012-speed-band-no-l2-best-effort.md) の条件付き裁定＝package 名は本 OQ の決着に従属） | 高 |
 | OQ-14 | ①②の同時成立 dead zone（「斜め上を指す」の分布を OQ-7 実測で確認） | 中 |
 | OQ-15 | (b) coordinate goal を解凍する具体デモ要件が本当に出るか（「出ない＝恒久 defer」も正当な着地） | 中 |
 
@@ -423,7 +423,7 @@ R-3 / R-7 / R-8 / R-9 が「安全レビューに掛ける」と宣言した**�
 - **INV-1（幾何は plan draft の外・:25）— 生存。** ジェスチャ③は**座標を一切扱わない**（指の本数 → 帯という離散写像のみ）。draft に載せうる新しい幾何が存在しないため、`handoff.py` の禁止キー gate（:23 の `_FORBIDDEN_KEY_RULES`）に対して**新しい表面を作らない**。
 - **INV-2（plan 経路を迂回しない・:57）— 生存。** 速度帯は **Nav2 のパラメータ**であって新しい task / command / actuation 経路ではない。`to_robotics_plan_draft` 以降のゲート列（L3 Validator → Visual Resolver → Task Graph Executor → Command Compiler → action_map → MCP → **L2 Policy Gate** → Nav2 Bridge REST → Nav2 → L1 → L0'）は**1 ステップも省略されない**。ジェスチャ③は「どこへ行くか」の決定に関与しないため、L2 の許可判断（location / freshness / battery / emergency / rate / duplicate）を**代替も迂回もしない**。
 
-> **ただし T-6 の OQ-T3 が未決である以上、INV-2 の生存は「現在の設計意図として」であって「実装で pin 済み」ではない**。経路確定 PR は INV-2 を破らないことを R-26 相当の unit で pin すること（[.claude/rules/safety.md](../../.claude/rules/safety.md)）。
+> **ただし T-6 の OQ-T3 が未決である以上、INV-2 の生存は「現在の設計意図として」であって「実装で pin 済み」ではない**。経路確定 PR は INV-2 を破らないことを R-26 相当の unit で pin すること（[.claude/rules/safety.md](../../.claude/rules/safety.md)）。**【2026-08-30】[ADR-0012 決定 2](../adr/0012-speed-band-no-l2-best-effort.md) が本判定（生存）を確定として維持**——`speed_limit` は plan draft を経ない control-plane 信号で INV-2 の**文面射程外**（射程外 ⟹ 非侵害）。unit 要求は同決定 7（R-26 6 本・とくに③ `cmd_vel` 非 publish）が受ける。
 
 ### T-9. 新規 OQ（本追補由来）
 
@@ -433,7 +433,7 @@ R-3 / R-7 / R-8 / R-9 が「安全レビューに掛ける」と宣言した**�
 |---|---|---|
 | **OQ-T1** | **最速段（1〜3本帯）の実速度値**。ADR-0010 §S-SPEED の実測（ベンチ / 走行 / 制御）と、同 §Open 1 の搭載 FW / 応答確認待ち。公式 V3.6.5 の候補は **car_type 0x0A / 0.7m/s**。**この 1 値が確定するまで 3 帯すべての実値が決まらない** | **最高（他の全帯が従属）** |
 | **OQ-T2** | **最遅段・安定段の具体値または倍率**（絶対値 m/s か最速段比の倍率か）＋ **帯遷移用の時間窓パラメータ**（§6 :117 の `refractory_s` 5.0 は①②の連射防止値であり帯切替に妥当とは限らない）＋ 帯境界の方向依存ヒステリシス（T-4）の要否 | 高 |
-| **OQ-T3** | **帯を走行中の Nav2 速度上限へ届ける ROS 経路**（T-6 の限界）。CURRENT は launch 時 `RewrittenYaml` の 1 回適用のみで runtime 経路が無い。T-6 の制約 1〜4 を満たす形を設計し、**L2 迂回が起きないことを unit で pin** する。ADR-0010 §Decision 5 の派生再導出（L2 鮮度窓・L1 停止円 margin）と同一の安全レビューに掛ける → **経路の設計解のみ [mode-m1/04-runtime-speed-limiter.md](../mode-m1/04-runtime-speed-limiter.md) で確定（2026-08-28）**: 経路 = Nav2 `speed_limit_topic`・三層モデル・実装未着手。**OQ-T3 自体は未クローズ**（unit pin=04 OQ-R3・安全レビュー=04 OQ-R1 が残る） | 高 |
+| **OQ-T3** | **帯を走行中の Nav2 速度上限へ届ける ROS 経路**（T-6 の限界）。CURRENT は launch 時 `RewrittenYaml` の 1 回適用のみで runtime 経路が無い。T-6 の制約 1〜4 を満たす形を設計し、**L2 迂回が起きないことを unit で pin** する。ADR-0010 §Decision 5 の派生再導出（L2 鮮度窓・L1 停止円 margin）と同一の安全レビューに掛ける → **経路の設計解のみ [mode-m1/04-runtime-speed-limiter.md](../mode-m1/04-runtime-speed-limiter.md) で確定（2026-08-28）**: 経路 = Nav2 `speed_limit_topic`・三層モデル・実装未着手。**OQ-T3 自体は未クローズ**（unit pin=04 OQ-R3・安全レビュー=04 OQ-R1 が残る）→ **【2026-08-30】OQ-R1（L2 裁定）と安全レビュー相当は [ADR-0012](../adr/0012-speed-band-no-l2-best-effort.md) で消化**（L2 非経由・帯＝best-effort 制御面。残クローズ条件＝実装＋R-26 unit 6 本＋帯遷移過渡の実測回帰） | 高 |
 | **OQ-T4** | **①召喚・②指差しとの排他 / 同時成立**（§7 :125 の状態機械への合成）。③は走行中も常時受理するのか、特定状態でのみ受理するのか。①②が**排他判定**（:37）であるのに対し③は**直交軸**であり、「挙手しながら指を立てる」が①と③の同時成立になりうる。既存 **OQ-14**（:194・①②の同時成立 dead zone）と同じ測定セッションで扱う | 中 |
 | **OQ-T5** | **左手の扱い**。本追補では **handedness 判定で右手のみ有効・左手は無効**（帯として解釈しない）と明記した。将来拡張（左手に別の意味を割り当てる）を残すか、恒久的に無効とするか。「無効＝何も起きない」は fail-closed であり、拡張しない着地も正当である | 中 |
 

@@ -181,13 +181,13 @@ hard-to-reverse な設計判断とその理由を `NNNN-slug.md` で記録する
 | ファイル | 内容 |
 |---------|------|
 | [adr/README](adr/README.md) | ADR 一覧・命名・いつ起こすか（3条件）・retrospectives との違い |
+| [0012-speed-band-no-l2-best-effort](adr/0012-speed-band-no-l2-best-effort.md) | 速度帯（ジェスチャ速度セレクタの runtime 経路）は **L2 Policy Gate 非経由**の best-effort 制御面（**最小安全方針の docs 初出**・mode-m1/04 §6 OQ-R1〜R7 一括裁定・クランプ天井 = ①起動基準値・20Hz 周期送出・hard 安全床は不変） |
 | [0010-raise-speed-cap-to-platform-max](adr/0010-raise-speed-cap-to-platform-max.md) | 速度上限 0.3 m/s を**プラットフォーム上限へ再定義**（実機 car_type のファーム clamp = 1.0 or 0.7 m/s・実機確認後に contract PR で pin）。運用値は config・デモ最終値は **S-SPEED 段階増速実測**で確定。L0' は方向保存・暴走バックストップとして維持/結線 |
 | [0009-m1-room-scale-operation](adr/0009-m1-room-scale-operation.md) | M1 単騎フェーズは**実際の部屋（room scale）**を走り、ミニチュアジオラマは走行に使わず**凍結保存**（sim 回帰環境としては現状維持）。倉庫設定を薄め**ジェスチャ召喚を主役**に。PR #530 の非円形 footprint は re-scope して生存・ジオラマ通路数値は歴史記録へ・W3（9 点再設計）は中止し `KNOWN_LOCATIONS` は**キー凍結／値のみ**部屋 waypoint へ |
 | [0007-no-overhead-camera-gesture-via-onboard-nn](adr/0007-no-overhead-camera-gesture-via-onboard-nn.md) | ER/知覚入力に**俯瞰カメラを使わない**。搭載 HP60C + ローカル骨格 NN（MediaPipe 第1候補）でジェスチャ2種を決定論認識し既存 L3/L2 ゲートへ。homography 系は fail-closed で降格保存 |
 | [0006-single-bot-first](adr/0006-single-bot-first.md) | 今回のフェーズはロボット**1台（単騎構成）**で実装。2台系の設計 doc・実装資産は削除せず凍結保存し、交通管理・交渉・min-separation の実機実証は2台復帰フェーズへ繰延 |
 | [0008-ros2-distro-humble-for-rosmaster-m1](adr/0008-ros2-distro-humble-for-rosmaster-m1.md) | ROS 2 distro を Jazzy→**Humble** へ切替（Orin Nano の Isaac ROS は 3.x=Humble のみ・ROSMASTER M1 の Yahboom 資産が Humble 固定）。代償は Gazebo 公式ペア喪失 |
 | [0005-l0-battery-brownout-floor](adr/0005-l0-battery-brownout-floor.md) | L0 の battery brownout floor は percent 3段 policy と別名・別機構の voltage-based MCU floor として将来 phase に持つ方針（現行 L0 は cutoff 無し・percent policy は L1 所有・cutoff 電圧は Phase-1 実測）。凍結 percent `battery_is_critical(pct)` とは非対称 |
-
 | [0004-l2-restrict-only-policy-profile](adr/0004-l2-restrict-only-policy-profile.md) | L2 Governance は自由 plugin 化せず data-only restrict-only policy profile に閉じる（凍結値=floor・緩い値は起動拒否・v1 code plugin 不採用）。ADR-0003（L3）と対 |
 | [0003-bridge-local-manifest-composition](adr/0003-bridge-local-manifest-composition.md) | bridge-local run manifest + fail-closed plugin composition を A案で標準化（manifest resolution 層／namespaced plugin code〔9-enum 非改変〕／advisory trust／ISOLATE_PLUGIN／safety-critical profile hash gate）。実装 = offline spike 済・配線 XER6 pending |
 | [0002-er-in-hermes-standard](adr/0002-er-in-hermes-standard.md) | ER-in-Hermes を標準 transport に採用（fork gateway 8644 一本で全 modality／`direct`=緊急 fallback／Langfuse Pattern A 現行・Pattern B は HLF gate 後）。実装は TARGET |
