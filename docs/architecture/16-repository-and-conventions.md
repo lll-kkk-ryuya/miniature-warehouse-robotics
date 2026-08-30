@@ -248,6 +248,7 @@ firmware/.pio/
 | パッケージ | ビルド | 責務 | 担当 | Phase |
 |---|---|---|---|---|
 | `warehouse_m1_driver` | ament_python | ROSMASTER M1 ホスト側シリアルドライバ。本スライスは **L0' 速度クランプ**のみ（線速度を**ベクトルの大きさ**で 0.3 m/s に制限・非有限入力は stop・角速度は契約未定義のため未クランプ）。シリアルフレーム層は実機到着後の後続スライス | hw/rosmaster-m1 | 1 |
+| `warehouse_perception` | ament_python | L4 知覚の置き場（`gesture_detector` 予定地・[09 OQ-13](../mode-x-er/09-hand-raise-summon.md) 裁定 2026-08-30）。初代入居 = **speed band publisher**（帯→`nav2_msgs/SpeedLimit` 相対名 `speed_limit`・20Hz・safe-OFF 既定・0 cmd_vel。[ADR-0012](../adr/0012-speed-band-no-l2-best-effort.md)・[mode-m1/04](../mode-m1/04-runtime-speed-limiter.md)） | feat/speed-band-publisher | 1 |
 
 ## References
 
