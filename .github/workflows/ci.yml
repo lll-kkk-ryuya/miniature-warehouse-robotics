@@ -14,11 +14,18 @@ jobs:
   python-quality:
     name: Ruff + pytest
     runs-on: ubuntu-latest
+    strategy:
+      # py3.10 = the Jetson board floor (pyproject requires-python ">=3.10" / ADR-0008
+      # 追記 2026-08-30): the StrEnum/UTC board break (#563) shipped precisely because
+      # only 3.12 ever executed in CI — this matrix makes the floor execution-verified
+      # on every PR. py3.12 = the dev/.venv interpreter.
+      matrix:
+        python-version: ["3.10", "3.12"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python-version }}
       - name: Install dev tools
         # pydantic + pyyaml: runtime deps of warehouse_interfaces (contract schemas
         # + config loader). See pyproject [project].dependencies. Needed for pytest.
