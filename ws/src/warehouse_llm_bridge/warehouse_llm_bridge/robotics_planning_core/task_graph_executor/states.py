@@ -15,7 +15,7 @@ promoted to a wire schema. Each invented name is flagged ``# bridge-local (発�
 
 from __future__ import annotations
 
-from enum import StrEnum
+from warehouse_interfaces.compat import StrEnum
 
 # ``TaskStatus`` # bridge-local (発明), not frozen.
 # Literals are the FULL 6-state lifecycle from doc02:178-182

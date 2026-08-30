@@ -14,10 +14,10 @@ still validated. Extending these models is a contract change (rules §4).
 """
 
 import uuid
-from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from warehouse_interfaces.compat import StrEnum
 from warehouse_interfaces.locations import KNOWN_LOCATIONS
 
 

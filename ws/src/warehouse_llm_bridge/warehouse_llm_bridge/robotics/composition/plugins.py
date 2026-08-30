@@ -30,11 +30,11 @@ PROFILE composition, not to this runtime aggregation.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from enum import StrEnum
 from typing import Any
 
 import pluggy
 from pydantic import ConfigDict, Field, ValidationError
+from warehouse_interfaces.compat import StrEnum
 
 from warehouse_llm_bridge.robotics.composition.plugin_results import (
     MALFORMED_FINDING_REASON_CODE,

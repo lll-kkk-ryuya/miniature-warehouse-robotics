@@ -120,3 +120,27 @@ Mac しか持たない本プロジェクトにとって一見“正解”に見�
 （手順と実測は [jetson/02-remote-access-and-dev-link.md](../jetson/02-remote-access-and-dev-link.md)）。
 **公式ドキュメントが新しい JetPack 世代を前提に書き換わっている**点に注意し、
 バージョンを確認せずに公式手順をなぞらないこと。
+
+## 追記（2026-08-30）: 残③の的中 — 実 py3.10（Jetson 実機）で StrEnum / typing.Self 非互換が顕在化（#563）
+
+「その3」の残③（stdlib 可用性ベースの py310 非互換は実 py310 実行でしか確定できない）が Jetson 実機
+（Ubuntu 22.04.5 / Python 3.10.12）で的中した。`colcon build` は 16 pkg 全緑（ament_python は import を
+実行しないため検出不能）だが、`enum.StrEnum`（py3.11+）を import する **11 ファイル**
+（warehouse_interfaces 1 + warehouse_llm_bridge 10）と `typing.Self`（py3.11+・
+`visual_resolver/models.py` の runtime import＝`from __future__ import annotations` でも死ぬ）が
+ImportError となり、契約ハブごと import 不能だった。
+
+**解消（contract PR / #563）**: `warehouse_interfaces/compat.py` に**単一共有 `StrEnum`**
+（py3.11+ = stdlib re-export / py3.10 = `class StrEnum(str, Enum): __str__ = str.__str__`。
+CPython 3.10–3.13 実測で観測同等・`__format__` 追加は不要・`auto()` は禁止＝shim では "1" に化ける）
+を新設し、11 ファイルを compat 経由へ sweep。`typing.Self` は `typing_extensions.Self`
+（pydantic v2 の推移的依存＝全実行環境に既存。`warehouse_llm_bridge/setup.py` に `>=4` を明示宣言）へ置換。
+str() 意味論依存 3 箇所（`conversation_events` の verdict 再パース / `x_er_cycle`・`pipeline` の
+0-dispatch reasoning f-string）は独立オラクル unit（`tests/unit/test_py310_compat.py`）で固定し、
+`from enum import StrEnum` の再流入・`auto()` 混入は同 unit の source-scan で恒久ブロックする。
+
+**残（隠さない）**: ① CI は py3.12 のみ（`.github/workflows/ci.yml` の `python-version` pin）のため
+`requires-python = ">=3.10"` の床は依然 CI 未検証 — `python-quality` job の matrix 化（3.10/3.12）を
+governance 別 PR で追う。② 実 py3.10 での最終確定は Jetson 上の pytest（真の runtime ゲート・#563 DoD）。
+③ pydantic 実体は board では pip `--user` の v2（apt `python3-pydantic` は v1.8.2 で不適合）＝
+`package.xml` の `python3-pydantic` exec_depend（2 pkg）との宣言不一致は本 ADR ドリフト台帳の未解決項として残す。
