@@ -1,7 +1,7 @@
 # 04 — runtime speed limiter（走行中速度上限の動的変更・OQ-T3 設計解）
 
 > **Status**: 設計 doc（docs 先行）。**実装は未着手＝本 doc に伴うコード変更はゼロ**。publisher node・Nav2 側配線・R-26 unit はすべて後続の実装スライス。
-> **layer**（[.claude/rules/layer-annotation.md](../../.claude/rules/layer-annotation.md)・正準表 = [productization/01:180-187](../productization/01-commercial-box-map.md)）:
+> **layer**（[.claude/rules/layer-annotation.md](../../.claude/rules/layer-annotation.md)・正準表 = [productization/01:180-188](../productization/01-commercial-box-map.md)）:
 > - Nav2 `controller_server` / `nav2_params.yaml` = **L1 自律走行・安全**（[productization/01:185](../productization/01-commercial-box-map.md)）。本 doc が動かす主対象。
 > - **L0'**（ホスト側シリアルドライバ送信直前クランプ・[mode-m1/02:4](02-m1-driver-and-watchdog.md)）= 不変。正準表への `warehouse_m1_driver`（L0'）行は **#555 で追記済**（[productization/01:187](../productization/01-commercial-box-map.md)・GLOSSARY §3 の正準エントリは #556）。
 > - 帯の知覚（`gesture_detector`）= **L4 知覚・publish-only・0 actuation**（[mode-x-er/09:61](../mode-x-er/09-hand-raise-summon.md)）。
@@ -191,7 +191,7 @@ M1 の distro は **Humble**（[ADR-0008 §Decision :16](../adr/0008-ros2-distro
 | # | 問い | 優先度 |
 |---|---|---|
 | **OQ-R1** | **帯の引き上げ（安定段 → 最速段 = loosen）を L2 Policy Gate 経由にすべきか。** 引き下げ（tighten）は無条件で可としてよい（より安全な向き・[ADR-0004](../adr/0004-l2-restrict-only-policy-profile.md) の restrict-only と同じ向き）。引き上げは「より危険な状態への遷移」であり、[ADR-0010 §Decision 5 :25-28](../adr/0010-raise-speed-cap-to-platform-max.md) の三段（L2 鮮度窓 / L1 停止円 margin / 期待値の cap 相対化）と整合する裁定が要る。**本丸** | **最高** |
-| **OQ-R2** | **publisher node の パッケージ / layer 帰属。** 「control-plane であって velocity producer ではない」ことだけが確定。候補（`warehouse_m1_driver` は L0' 純度を汚すので不適・帯の出所は L4 `gesture_detector`・適用先は L1）と、[productization/01:180-187](../productization/01-commercial-box-map.md) 対応表への 1 行追記を同一 PR で行う義務（[layer-annotation.md](../../.claude/rules/layer-annotation.md)） | 高 |
+| **OQ-R2** | **publisher node の パッケージ / layer 帰属。** 「control-plane であって velocity producer ではない」ことだけが確定。候補（`warehouse_m1_driver` は L0' 純度を汚すので不適・帯の出所は L4 `gesture_detector`・適用先は L1）と、[productization/01:180-188](../productization/01-commercial-box-map.md) 対応表への 1 行追記を同一 PR で行う義務（[layer-annotation.md](../../.claude/rules/layer-annotation.md)） | 高 |
 | **OQ-R3** | **R-26 unit の設計**（[09:426](../mode-x-er/09-hand-raise-summon.md) の要求「INV-2 を破らないことを R-26 相当の unit で pin」）。最低限: ① publisher が `min(帯値, config 運用値, MAX_LINEAR_VELOCITY)` を必ず通る ② `0.0` を publish しない ③ `/speed_limit` publish が `cmd_vel` 系トピックへの publish を伴わない（velocity producer 化していない）。独立オラクル + mutation（[.claude/rules/safety.md:7](../../.claude/rules/safety.md) / [architecture/20 §9](../architecture/20-dev-quality-and-testing.md)）。unit は `tests/unit/` に置く（CI 可視性 = [mode-m1/02:56](02-m1-driver-and-watchdog.md) と同じ教訓） | 高 |
 | **OQ-R4** | **未検出時の publish 方針の確定**（§3-3 の (a) 能動 publish を推すが未確定）＋ **送出 cadence**（QoS(10) は latch しないため、遷移時のみか周期送出か・`controller_server` の lifecycle 起動後の再送をどう保証するか）＋ **`0.0` 禁止の実装レベル保証** | 高 |
 | **OQ-R5** | **`percentage=false`（絶対 m/s）と `percentage=true`（%）のどちらを採るか。** 絶対値は単位が契約・config・S-SPEED と揃うが **①を超えうる（fail-open・§2-2）**。% は ratio ≤ 1 なら**構造的に①を超えられない**が、帯の値が「①比の%」になり S-SPEED の m/s から一段変換が挟まる。安全構造と可読性のトレードオフ | 中 |
@@ -209,7 +209,7 @@ M1 の distro は **Humble**（[ADR-0008 §Decision :16](../adr/0008-ros2-distro
 - [adr/0008-ros2-distro-humble-for-rosmaster-m1.md](../adr/0008-ros2-distro-humble-for-rosmaster-m1.md) — distro = Humble（[:16](../adr/0008-ros2-distro-humble-for-rosmaster-m1.md)）。裏取りを humble ブランチで行う根拠。[:25](../adr/0008-ros2-distro-humble-for-rosmaster-m1.md) MPPI Humble リリース（本 doc §2-1 ④で再確認・一致）
 - [mode-m1/02-m1-driver-and-watchdog.md](02-m1-driver-and-watchdog.md) — L0'（[:45](02-m1-driver-and-watchdog.md) 必経 / [:53](02-m1-driver-and-watchdog.md) 単一ソース import / [:55](02-m1-driver-and-watchdog.md) `set_speed_limit(0x16)` 採用禁止 / [:56](02-m1-driver-and-watchdog.md) R-26 / [§3 :58-68](02-m1-driver-and-watchdog.md) watchdog）
 - [mode-m1/03-joystick-teleop-bringup.md](03-joystick-teleop-bringup.md) — joy 経路（[§3 :28-50](03-joystick-teleop-bringup.md)・C-8 [:48](03-joystick-teleop-bringup.md)・standalone [:50](03-joystick-teleop-bringup.md)）／[mode-m1/01-mode-boundary-and-traffic.md](01-mode-boundary-and-traffic.md)（`traffic_mode: none`）
-- [.claude/rules/safety.md](../../.claude/rules/safety.md)（速度上限の強制・R-26 の質）／[.claude/rules/layer-annotation.md](../../.claude/rules/layer-annotation.md)（layer 注記）／[productization/01:180-187](../productization/01-commercial-box-map.md)（正準 layer 対応表）
+- [.claude/rules/safety.md](../../.claude/rules/safety.md)（速度上限の強制・R-26 の質）／[.claude/rules/layer-annotation.md](../../.claude/rules/layer-annotation.md)（layer 注記）／[productization/01:180-188](../productization/01-commercial-box-map.md)（正準 layer 対応表）
 - 実装側 anchor（**行 pin しない**＝churn するため契約の形で指す）: `nav2_bringup.launch.py` の `_operating_vx_max()` / `RewrittenYaml` `param_rewrites {"vx_max": …}`・`nav2_params.yaml` の `FollowPath.vx_max`・`twist_mux.yaml` の `emergency`/`nav2` 2 入力・`warehouse_interfaces.safety.MAX_LINEAR_VELOCITY`・`warehouse_m1_driver.clamp.clamp_body_velocity`
 - **Nav2 一次情報（すべて参照日 2026-08-28・humble ブランチ）**:
   - <https://raw.githubusercontent.com/ros-navigation/navigation2/humble/nav2_controller/src/controller_server.cpp>（`speed_limit_topic` 既定 `"speed_limit"` / QoS(10) 購読 / controller への fan-out）
