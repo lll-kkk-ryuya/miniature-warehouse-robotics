@@ -1,14 +1,14 @@
 # m1_driver serial node と watchdog 多層停止設計（L0' 結線 = G-l / G-g）
 
-> **Status**: 設計 doc（docs 先行）。実装は未着手 — `warehouse_m1_driver` は `clamp.py` のみで **`console_scripts: []`（実行体ゼロ）**（[setup.py:24-26](../../ws/src/warehouse_m1_driver/setup.py)）。
+> **Status**: 設計 doc。§2 ①②③＋§3 W-1/W-2 は PR #550（`93bfc93`・2026-08-26 merge）で land — [setup.py](../../ws/src/warehouse_m1_driver/setup.py) の `console_scripts` に `m1_driver` / `m1_probe` を結線・全 dispatch が `clamp_body_velocity` 必経（`M1DriverCore.on_cmd_vel`・R-26 unit = `tests/unit/test_m1_driver_core.py`）。**§2 ④⑤は vendor `Rosmaster_Lib` 委譲（backend seam）・⑥ encoder odom は後続スライス＝未実装。実機動作確認（M0-M2 ゲート・G-g 抜線試験）も未実施**（[03 §1](03-joystick-teleop-bringup.md) に実施記録なし・2026-08-30 時点）。
 > **layer**: **L0'**（ホスト側シリアルドライバ送信直前クランプ）。L1/L2/L3/L4 の契約には触れない。
 > **オペレーター指示（2026-08-26）**: 「watchdog は必ず入れる」— §3 がその設計。
 
 ## 1. 前提事実（裏取り済）
 
-### 1-1. L0' クランプは実装済・未結線
+### 1-1. L0' クランプは実装済・結線済み（#550・2026-08-26）
 
-- `clamp_body_velocity(vx, vy, wz)` は実装済（ベクトルクランプ・方向保存・非有限 fail-safe）・R-26 unit + mutation 済（[warehouse_m1_driver/CLAUDE.md](../../ws/src/warehouse_m1_driver/CLAUDE.md)）。**呼ぶ実行体が無い**のが現状（[mode-x-er/10:491 G-l](../mode-x-er/10-room-scale-safety-review.md) = 未 land）。
+- `clamp_body_velocity(vx, vy, wz)` は実装済（ベクトルクランプ・方向保存・非有限 fail-safe）・R-26 unit + mutation 済（[warehouse_m1_driver/CLAUDE.md](../../ws/src/warehouse_m1_driver/CLAUDE.md)）。**呼ぶ実行体 `m1_driver` も PR #550 で land 済**（[mode-x-er/10:491 G-l](../mode-x-er/10-room-scale-safety-review.md) = land 済。dispatch 必経は `M1DriverCore.on_cmd_vel` ＋ `tests/unit/test_m1_driver_core.py` で pin）。
 - 方向保存が必須な理由: 軸独立クランプは対角 √(0.3²+0.3²)=0.424 m/s で上限 41% 超過（C-8 = [02:373](../shared/02-hardware-design.md)）。
 
 ### 1-2. STM32 側に communication watchdog は無い（ソース調査・2026-08-26）
@@ -44,9 +44,9 @@ agent-team 調査（一次情報 = 工場 STM32 ファーム Rosmaster V3.5.1 C 
 │  ① 非有限 → (0,0,0) fail-safe            │
 │  ② clamp_body_velocity(vx, vy, wz) 必経  │ ← L0'（迂回経路を作らない）
 │  ③ W-1 freshness timeout（§3）           │
-│  ④ int16(v*1000) 変換 → FUNC_MOTION 0x12 │ （payload 先頭 = car_type バイト）
+│  ④ int16(v*1000) 変換 → FUNC_MOTION 0x12 │ （payload 先頭 = car_type バイト。#550 は vendor `Rosmaster_Lib` へ委譲＝自前フレーミングしない）
 │  ⑤ serial write（CH340 115200 8N1）      │
-│  ⑥ 0x0D 受信 → エンコーダ差分 odom        │ （M1 実測幾何・X3 定数を使わない）
+│  ⑥ 0x0D 受信 → エンコーダ差分 odom        │ （M1 実測幾何・X3 定数を使わない。#550 では未実装＝後続スライス）
 └─────────────────────────────────────────┘
 ```
 
@@ -59,8 +59,8 @@ agent-team 調査（一次情報 = 工場 STM32 ファーム Rosmaster V3.5.1 C 
 
 | 層 | 機構 | 守る故障 | 状態 |
 |---|---|---|---|
-| **W-1** | driver 内 **cmd_vel freshness timeout**: 上流からの最終受信から T 秒で自発的にゼロ送出（brake） | 上流（Nav2 / teleop / joy）の沈黙・ハング | 設計。T は config 注入・`# TODO(Phase 1 実測)`（twist_mux の timeout 0.5s = [twist_mux.yaml:44](../../ws/src/warehouse_bringup/config/twist_mux.yaml)（凍結契約）との整合を実測で決める。値を本 doc で発明しない） |
-| **W-2** | **atexit / SIGINT / SIGTERM handler で stop フレーム必送**: `0x12` ゼロ + `0x0F` の**二重送出** | driver の正常・準正常終了（Ctrl-C・例外死） | 設計。R-26 対象 |
+| **W-1** | driver 内 **cmd_vel freshness timeout**: 上流からの最終受信から T 秒で自発的にゼロ送出（brake） | 上流（Nav2 / teleop / joy）の沈黙・ハング | **実装済（#550）**: T は ROS param 注入・既定 0.5s（`DEFAULT_CMD_TIMEOUT_S`＝[twist_mux.yaml:44](../../ws/src/warehouse_bringup/config/twist_mux.yaml)（凍結契約）整合・非正/非有限 param は既定へ fail-safe）。運用値の実機確定は `# TODO(Phase 1 実測)` 継続 |
+| **W-2** | **atexit / SIGINT / SIGTERM handler で stop フレーム必送**: `0x12` ゼロ + `0x0F` の**二重送出** | driver の正常・準正常終了（Ctrl-C・例外死） | **実装済（#550）**: `M1DriverCore.shutdown_sequence`（冪等・一度だけ）＋ `driver_node` の atexit / SIGINT / SIGTERM 配線。R-26 unit 済（`tests/unit/test_m1_driver_core.py`） |
 | **W-3** | MCU 側 communication watchdog | ホスト kernel 死・USB 断（W-1/W-2 が動けない故障） | **不在が濃厚（§1-2）= この層は埋められない**。G-g 実機確認（§4）で確定 |
 | **W-4** | **運用**: 実施者がバッテリー主電源カットオフに手を掛けたまま実施・初回試験は車輪を完全に浮かせる | 全層失敗（W-3 不在の代替） | [mode-x-er/10:376 P-1](../mode-x-er/10-room-scale-safety-review.md)（物理停止手段の到達性）を**必須化**する根拠が §1-2 で確定 |
 

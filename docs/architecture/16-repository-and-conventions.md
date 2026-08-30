@@ -247,7 +247,7 @@ firmware/.pio/
 
 | パッケージ | ビルド | 責務 | 担当 | Phase |
 |---|---|---|---|---|
-| `warehouse_m1_driver` | ament_python | ROSMASTER M1 ホスト側シリアルドライバ。本スライスは **L0' 速度クランプ**のみ（線速度を**ベクトルの大きさ**で 0.3 m/s に制限・非有限入力は stop・角速度は契約未定義のため未クランプ）。シリアルフレーム層は実機到着後の後続スライス | hw/rosmaster-m1 | 1 |
+| `warehouse_m1_driver` | ament_python | ROSMASTER M1 ホスト側シリアルドライバ。**L0' 速度クランプ**（線速度を**ベクトルの大きさ**で 0.3 m/s に制限・非有限入力は stop・角速度は契約未定義のため未クランプ）＋ #550 で serial driver node（`m1_driver`・clamp 必経・W-1/W-2 watchdog 停止・wire フレーミングは vendor `Rosmaster_Lib` 委譲）を結線。encoder odom は後続スライス | hw/rosmaster-m1 | 1 |
 
 ## References
 

@@ -70,17 +70,17 @@ Status: **分析レビュー（analysis review）**。**本書は部屋運用の
 
 ## 2. ハザード分析表（総覧）
 
-> ## ⚠️ 本レビュー最大の所見: 「残る保護 3 枚」のうち現時点で機能しているのは **1 枚だけ**
+> ## ⚠️ 本レビュー最大の所見: 「残る保護 3 枚」のうちレビュー時点（2026-08-18）で機能していたのは **1 枚だけ**（③ L0' は 2026-08-26 の #550 で結線済み＝G-l land。② は依然未充足）
 >
-> [ADR-0009 帰結⑦ :53](../adr/0009-m1-room-scale-operation.md) は、構造的保証を失った後に「残る保護」として **①到達集合を 9 waypoint に限定する語彙 gate ②L1 collision_monitor ③L0' 0.3m/s クランプ** の 3 枚を挙げる。**実体を 2026-08-18 に実 Read した結果、現時点で機能しているのは ① のみ**である:
+> [ADR-0009 帰結⑦ :53](../adr/0009-m1-room-scale-operation.md) は、構造的保証を失った後に「残る保護」として **①到達集合を 9 waypoint に限定する語彙 gate ②L1 collision_monitor ③L0' 0.3m/s クランプ** の 3 枚を挙げる。**実体を 2026-08-18 に実 Read した結果、当時機能していたのは ① のみ**であった（2026-08-30 追記: ③ は #550〔`93bfc93`〕で結線済み。実機動作確認〔M2 / G-g〕は未実施＝[mode-m1/03 §1](../mode-m1/03-joystick-teleop-bringup.md)）:
 >
 > | 保護 | 現状 | 根拠（実 Read） |
 > |---|---|---|
 > | ① 語彙 gate（**L3/L2**） | **機能している** | `handoff.py:66-90` の fail-closed reject ＋ `schemas.py:157-161` の validator。ただし**選択規則（H-1）と座標 seam（H-4）の穴あり**（S-1 柱1） |
 > | ② L1 collision_monitor（**L1**） | **二重に無機能** | (a) 停止円 `radius: 0.09` < M1 内接 0.1157 ＝**車体内部発火**（[collision_monitor.yaml:68](../../ws/src/warehouse_bringup/config/collision_monitor.yaml)）。(b) **`traffic_mode: open-rmf` の env では node ごと起動しない**——`config/stg/warehouse.yaml:12` / `config/prod/warehouse.yaml:13` が `open-rmf`（`config/dev/warehouse.yaml:21` のみ `none`）で、[nav2_bringup.launch.py:126](../../ws/src/warehouse_bringup/launch/nav2_bringup.launch.py) の `collision_active` が node（:211）と lifecycle manager（:222）の**両方**を gate する（H-11） |
-> | ③ L0' 0.3m/s クランプ（**L0'**） | **未結線** | `clamp_body_velocity` は実装済・R-26 unit 済だが、`ws/src/warehouse_m1_driver/setup.py:24-26` は **`console_scripts: []`**（「serial driver node entry point は FUNC_MOTION framing スライスで land」）。**クランプを呼ぶ実行体が存在しない**＝現時点の消費者は unit test のみ（H-9 / S-8） |
+> | ③ L0' 0.3m/s クランプ（**L0'**） | **結線済み（#550・2026-08-26）** | レビュー時点は `console_scripts: []` で実行体不在だったが、**#550（`93bfc93`）で `m1_driver` が land**——`setup.py` の `console_scripts` に entry point・全 dispatch が `clamp_body_velocity` 必経（`M1DriverCore.on_cmd_vel`・`tests/unit/test_m1_driver_core.py` で pin）。**実機動作確認（M2 negative test / W-1 brake 実測・G-g）は未実施**（H-9 / S-8） |
 >
-> **したがって本書の 8 項目のうち S-3（C-3 改訂）・S-8（L0' 結線）は「改善提案」ではなく「欠落の補填」である。** この 3 行が §11 チェックリストの G-b / G-k / G-l に対応する。
+> **したがって本書の 8 項目のうち S-3（C-3 改訂）・S-8（L0' 結線）は「改善提案」ではなく「欠落の補填」である**（後者の結線は #550 で補填済み）。この 3 行が §11 チェックリストの G-b / G-k / G-l に対応する。
 
 「部屋転換で**新しく生じた／性質が変わった**ハザード」を列挙する。ジオラマでも部屋でも同じハザード（壁への衝突・棚への接触など）は、部屋転換の評価軸ではないため本表に載せない。
 
@@ -94,7 +94,7 @@ Status: **分析レビュー（analysis review）**。**本書は部屋運用の
 | **H-6** | スキャン面より低い物体・身体が検知されない（低く差し出された手／**這う乳幼児・小型ペット・床に座る/寝ている人**） | **L1**（水平 2D スキャン面の原理的限界） | 限界として明示済（[09:142](09-hand-raise-summon.md) / [09 R-3 柱4 :264](09-hand-raise-summon.md)）。3D 検知は nvblox の TARGET 機能で S1/S2 未通過 | **ジオラマとは性質が変わる**——盤上の「低い手」は一時的・意図的な動作だったが、部屋の床には**スキャン面より低い身体が持続的に存在しうる**（乳幼児・ペット・床座）。技術的緩和は無く**入室管理でしか塞げない**（S-6 P-2） | **OPERATOR-GATE**（→ S-6 P-2。**旧判定 PASS から格下げ**） |
 | **H-7** | 操作者の常在位置がそのまま waypoint になり、召喚が「人のいる場所へ行く」動作になる | **L3**（候補集合）／値の所在は **L2 Contract**（`config/warehouse.base.yaml` の `locations`） | 規律として宣言済（[09 R-3 柱2 :262](09-hand-raise-summon.md)）。検証可能な形にはなっていない | 部屋 waypoint 9 点の値は**未確定**（Phase 1 SLAM 後）。規律が受け入れ条件として機械化されていない | **PHASE-1-GATE**（形式化案は S-7） |
 | **H-8** | 第三者・ペット・撮影者など**運用規律の外にいる人**が走行面上に入る | 全層に対して**層外**（＝運用でしか塞げない） | 非統制変数として ADR が明記（[ADR-0009 :59](../adr/0009-m1-room-scale-operation.md)「人の往来」） | 規律群が未合意。docs に根拠のある規律と本書の提案が混在 | **OPERATOR-GATE**（→ S-6） |
-| **H-9** | ホストプロセス死・USB 断で MCU に最後の指令が残り**暴走**する | **L0'**（ホストクランプ）の限界／本来は **L0** deadman の責務 | L0' は設計上「全 `cmd_vel` の単一絞り点」（[02:325-328](../shared/02-hardware-design.md)）。**ただし CURRENT では未結線**——`warehouse_m1_driver/setup.py:24-26` が `console_scripts: []` で serial driver node が存在せず、`clamp_body_velocity` の消費者は unit test のみ。加えて結線後も**ホストが生きている間だけ有効**（[02 P-7c](../shared/02-hardware-design.md)） | 公式 STM32 V3.6.5 に serial command timeout がなく `ENABLE_IWDG=0` と確定。L0 heartbeat deadman は「実 enforcement は Phase 1」（[12:79](../architecture/12-infrastructure-common.md)） | **PHASE-1-GATE**（→ S-8） |
+| **H-9** | ホストプロセス死・USB 断で MCU に最後の指令が残り**暴走**する | **L0'**（ホストクランプ）の限界／本来は **L0** deadman の責務 | L0' は設計上「全 `cmd_vel` の単一絞り点」（[02:325-328](../shared/02-hardware-design.md)）。**結線は #550（`93bfc93`・2026-08-26）で完了**——`m1_driver` が land し全 dispatch が `clamp_body_velocity` 必経（`M1DriverCore.on_cmd_vel`・R-26 pin 済）。ただし結線後も**ホストが生きている間だけ有効**（[02 P-7c](../shared/02-hardware-design.md)） | 公式 STM32 V3.6.5 に serial command timeout がなく `ENABLE_IWDG=0` と確定。L0 heartbeat deadman は「実 enforcement は Phase 1」（[12:79](../architecture/12-infrastructure-common.md)） | **PHASE-1-GATE**（→ S-8） |
 | **H-10** | 到達点で**人の方を向かずに**停止する（yaw が落ちる）＝絵の問題だが、人との相対姿勢が設計不能 | **L1 入口**（`nav2_bridge` の `_pose` が `orientation.w=1.0` 固定） | ジオラマでは「goal は回転不要な向きで置く」で回避（[04 F-L3](../shared/04-diorama-layout.md)） | 部屋では回避手段が消える（[09 R-4 :269-271](09-hand-raise-summon.md)）。**安全ハザードとしては軽微**（停止位置は変わらない）だが、S-7 の配置規律と S-2 の到達圏設計に影響する | **PASS**（安全上の残余リスクは軽微・設計課題として S-7 へ送る） |
 | **H-11** | **stg / prod では collision_monitor が起動せず、L1 反射が丸ごと不在**になる | **L1**（launch gating） | `collision_active = traffic_mode != 'open-rmf'`（[nav2_bringup.launch.py:126](../../ws/src/warehouse_bringup/launch/nav2_bringup.launch.py)）が node（:211）と lifecycle manager（:222）の両方を gate。Mode C では Open-RMF が交通調停を持つ前提（[12:550](../architecture/12-infrastructure-common.md) / [collision_monitor.yaml:22-25](../../ws/src/warehouse_bringup/config/collision_monitor.yaml)） | **その前提は「相手ロボットとの交通」の話であって「人」の話ではない**。`config/stg/warehouse.yaml:12` / `config/prod/warehouse.yaml:13` は `open-rmf`（`config/dev/warehouse.yaml:21` のみ `none`）＝**実機寄りの env ほど L1 が消える**。部屋デモをどの env / launch 引数で回すかが安全を直接左右する | **CONDITIONAL**（条件: 部屋デモの構成で `traffic_mode != open-rmf` を確認＝§11 G-k） |
 | **H-12** | **誰も呼んでいないのに発進する**（骨格 NN の false positive → 語彙 gate は全通過） | 検出 **L4**（`gesture_detector`）／ 以降 **L3→L2→L1** は「正当な司令」として通す | 時間窓多数決・ヒステリシス・不応期（`hold_duration_s 1.2` / `min_frames_in_window 12` / `enter/exit_ratio 0.80/0.50` / `refractory_s 5.0`＝[09:117](09-hand-raise-summon.md)）と confidence 閾値 plugin（[09:118](09-hand-raise-summon.md)） | **語彙 gate も L2 も「誤検出」を検出できない**（形式的に正当な navigate に見える）。上記しきい値は**すべて例示値・未実測**（[09:117](09-hand-raise-summon.md) が「すべて例示値・実測で確定」と明記）。加えて `gesture_detector` は **`ws/` に未実装**（2026-08-18 grep）＝FP 率の実測手段がまだ無い | **PHASE-1-GATE**（受け入れ条件のみ定義可＝S-6 8-3 / §11 G-m） |
@@ -149,7 +149,7 @@ Status: **分析レビュー（analysis review）**。**本書は部屋運用の
 
 3. **recovery は L1 を bypass する**（H-3）。[12:559](../architecture/12-infrastructure-common.md) が「⑥ = BYPASS」を確定済みで、その根拠は「monitor 経由にすると stop polygon 自身が recovery を 0 化して自己ラッチ deadlock する」——**この根拠はジオラマの 200mm 隘路（R-42）由来**である。部屋では隘路 deadlock の圧力が下がる一方、「人の脚の横で旋回する」という新しい抑止理由が立つ（[23 G-10 :757-759](../architecture/23-perception-and-localization.md)）。**C-3 を直しても bypass 窓は塞がらない**点が重要で、これは S-3 とは独立の裁定を要する。
    - **⚠️ さらに、bypass の安全床として挙げられた 2 つが M1 では両方不在**（本レビューで実査）。[12:559](../architecture/12-infrastructure-common.md) は bypass の安全性を「twist_mux emergency prio100 ＋ **ESP32 Layer0（≤0.3 m/s クランプ＋近接停止）が最終床**」で、[12:560](../architecture/12-infrastructure-common.md) は残留リスクを「bypass 中の物理近接ガードは **ESP32 proximity stop ＋ Guardian `amcl_pose near_collision`** に限定される」で説明している。しかし M1 では:
-     - **ESP32 自前ファームが存在しない**。M1 の公式 STM32 source は入手済みだが、stock FW に本プロジェクトの近接停止・command-stream watchdog は無く、custom fork への置換も未実施（[02 P-7](../shared/02-hardware-design.md)）。代替の L0' は**さらに未結線**（§2 冒頭・S-8）。
+     - **ESP32 自前ファームが存在しない**。M1 の公式 STM32 source は入手済みだが、stock FW に本プロジェクトの近接停止・command-stream watchdog は無く、custom fork への置換も未実施（[02 P-7](../shared/02-hardware-design.md)）。代替の L0'（クランプ側）はレビュー時点で未結線だったが **#550（2026-08-26）で結線済み**（§2 冒頭・S-8）。**近接停止側の代替は依然無い**。
      - **Guardian `near_collision` は人を見ない**（入力は `/{bot}/amcl_pose`・しきい値は 2 台間＝[config/warehouse.base.yaml:16](../../config/warehouse.base.yaml)。S-8 10-2①）。[12:561](../architecture/12-infrastructure-common.md) が「粗い backup として RETAIN」と決めた当のガードが、人に対しては存在しないに等しい。
      - **帰結: 部屋で recovery が発火している間、人に対する物理保護は 0 層**。残るのは Nav2 の bounded / 低速 / 短時間という性質と、運用規律 D-1 のみ。
    - 選択肢: **(A)** F-5-4 の抑止条件を「通路内で回転不可」から「人の近傍では recovery を発火させない」へ差し替える（[23 G-10 :761](../architecture/23-perception-and-localization.md) が Slice 1 で再設計せよと言っている線）／ **(B)** recovery 中のみ slowdown polygon 化・monitor 有効化（[12:560](../architecture/12-infrastructure-common.md) の Phase-2 再訪トリガ側の案）／ **(C)** 現状維持 ＋ 運用規律（走行中は進路に立ち入らない＝S-6 D-1）で覆う。
@@ -433,7 +433,7 @@ W-a（waypoint は操作者常在位置から `d_min` 以上離す）は、**物
 
 ## 10. S-8 — E-stop / Guardian 経路の部屋での妥当性確認（点検結果）
 
-**想定は「影響なし」**であったが、**点検の結果 5 件の限定が見つかり、うち 1 件（L0' 未結線）は「限定」ではなく欠落**であった。
+**想定は「影響なし」**であったが、**点検の結果 5 件の限定が見つかり、うち 1 件（L0' 未結線）は「限定」ではなく欠落**であった（同欠落は 2026-08-26 の #550 で結線済み＝解消。10-2②）。
 
 ### 10-1. 点検した経路と結果
 
@@ -442,17 +442,17 @@ W-a（waypoint は操作者常在位置から `d_min` 以上離す）は、**物
 | **twist_mux emergency prio100（FROZEN）** | **L1** | **失わない（が部分故障モードあり）** | 環境非依存の優先度契約。collision_monitor は `cmd_vel/nav2` のみに書き prio100 を迂回しない（[collision_monitor.yaml:55](../../ws/src/warehouse_bringup/config/collision_monitor.yaml)（`cmd_vel_out_topic`）/ [12:545](../architecture/12-infrastructure-common.md)）。**PASS**（ただし 10-2④ の Guardian 単独死モード） |
 | **Emergency Guardian の pose freshness guard ＋ 変位ゲート** | **L1** | **失わない** | ゲートの根拠は AMCL が motion-gated であること（`update_min_d 0.05` / `update_min_a 0.2`）＝**車体とアルゴリズムの性質**であり環境に依らない（[12 末尾追補](../architecture/12-infrastructure-common.md) / [config/warehouse.base.yaml:26-29](../../config/warehouse.base.yaml)）。**PASS** |
 | **Guardian の `near_collision`（2 台間近接監視）** | **L1** | **前提を失ってはいないが、寄与がゼロ** | しきい値は `emergency_min_distance: 0.3 # m（2台間）`（[config/warehouse.base.yaml:16](../../config/warehouse.base.yaml)）で、入力は `/{bot}/amcl_pose`。**単騎では相手機が無く沈黙**し、**人は AMCL pose を持たないので Guardian からは見えない**。→ **「Guardian は人に対して構造的に無力」**（下記 10-2①） |
-| **L0' 0.3 m/s ベクトルクランプ** | **L0'** | **⚠️ 前提以前に未結線** | 設計上は全 `cmd_vel` の単一絞り点（[02:325-328](../shared/02-hardware-design.md)）で、純関数 `clamp_body_velocity` は実装済・R-26 unit 済（`warehouse_m1_driver` の `clamp.py`）。値は単一ソース `MAX_LINEAR_VELOCITY = 0.3`（[safety.py:18](../../ws/src/warehouse_interfaces/warehouse_interfaces/safety.py)）。**しかし `ws/src/warehouse_m1_driver/setup.py:24-26` は `console_scripts: []`**（「No console_scripts yet: this slice ships the pure L0' clamp only. The serial driver node entry point lands with the FUNC_MOTION framing slice.」）＝**クランプを呼ぶ実行体が無い**（消費者は unit test のみ）。→ **CONDITIONAL**（10-2②） |
+| **L0' 0.3 m/s ベクトルクランプ** | **L0'** | **⚠️ レビュー時点は前提以前に未結線 → #550 で結線済み** | 設計上は全 `cmd_vel` の単一絞り点（[02:325-328](../shared/02-hardware-design.md)）で、純関数 `clamp_body_velocity` は実装済・R-26 unit 済（`warehouse_m1_driver` の `clamp.py`）。値は単一ソース `MAX_LINEAR_VELOCITY = 0.3`（[safety.py:18](../../ws/src/warehouse_interfaces/warehouse_interfaces/safety.py)）。レビュー時点（2026-08-18）は `setup.py` が `console_scripts: []` で**クランプを呼ぶ実行体が無かった**が、**#550（`93bfc93`・2026-08-26）で `m1_driver` が land し全 dispatch が必経に**（`M1DriverCore.on_cmd_vel`・`tests/unit/test_m1_driver_core.py` で pin）。**実機動作確認（M2 negative test / W-1 brake 実測）は未実施**（[mode-m1/03 §1](../mode-m1/03-joystick-teleop-bringup.md)）。→ **CONDITIONAL 解消（10-2②の条件 (i)(ii) 充足＝G-l land 済）** |
 | **L0 heartbeat / watchdog deadman** | **L0** | **stock FW には存在しない** | [12:79](../architecture/12-infrastructure-common.md) が Layer 0 の責務としつつ「**実 enforcement は Phase 1**」。公式 STM32 V3.6.5 は serial command timeout を持たず、`ENABLE_IWDG=0`。→ G-g で command-stream watchdog の実装・host test・USB 抜線試験が必要（[02 P-7c](../shared/02-hardware-design.md)） |
 | **物理 E-stop ボタン** | — | **そもそも docs に記述が無い** | 2026-08-18 に `docs/shared/02` / `docs/architecture/12` / `.claude/rules/safety.md` を grep した範囲で、物理 E-stop ボタンの設計記述は見当たらない。→ S-6 P-1 の提案根拠 |
 
-### 10-2. 記録すべき 3 件の限定
+### 10-2. 記録すべき 5 件の限定
 
 1. **Guardian は人に対して寄与ゼロ。** これは欠陥ではなく設計どおり（Guardian の近接監視は AMCL pose を持つ**ロボット同士**の距離監視である）。しかし [ADR-0009 帰結⑦ :53](../adr/0009-m1-room-scale-operation.md) の「残る保護は語彙 gate ＋ L1 collision_monitor ＋ L0' クランプ」という列挙は正確であり、**Guardian をこの列挙に足してはならない**（人に対する保護としては数えられない）。本書はこの点を明示的に記録する。
-2. **⚠️ L0' は「限界が重い」以前に、まだ結線されていない。** ESP32 自前ファームの世界では「上位が全滅しても MCU が止める」（[12:112](../architecture/12-infrastructure-common.md)）が成立したが、M1 では最終防衛線が **L0'（ホスト側 driver 送信直前クランプ）** へ移った（[02:325-328](../shared/02-hardware-design.md)）。本レビューで実体を確認したところ:
+2. **⚠️ L0' は「限界が重い」以前に、レビュー時点では結線されていなかった（2026-08-26 の #550 で結線済み）。** ESP32 自前ファームの世界では「上位が全滅しても MCU が止める」（[12:112](../architecture/12-infrastructure-common.md)）が成立したが、M1 では最終防衛線が **L0'（ホスト側 driver 送信直前クランプ）** へ移った（[02:325-328](../shared/02-hardware-design.md)）。本レビューで実体を確認したところ:
    - `clamp_body_velocity`（純関数・非有限→停止・`hypot` ベクトルクランプ）は**実装済で R-26 unit も通っている**。
-   - **しかし `ws/src/warehouse_m1_driver/setup.py:24-26` の `console_scripts` は空**で、serial driver node は「FUNC_MOTION framing スライスで land」と明記されている。すなわち **`/cmd_vel` を受けて `FUNC_MOTION` フレームを送る実行体そのものがまだ存在せず、クランプは呼ばれない**。
-   - **帰結: [ADR-0009 :53](../adr/0009-m1-room-scale-operation.md) の「残る保護」3 枚目は、現時点で紙の上にしかない**（§2 冒頭の表）。判定を **PASS → CONDITIONAL** へ降格する。条件 = **(i) m1_driver の serial driver node スライスが land し、(ii) その dispatch 経路が `clamp_body_velocity` を必ず通ることを R-26 unit で pin する**（＝§11 G-l）。
+   - **レビュー時点は `setup.py` の `console_scripts` が空**で、`/cmd_vel` を受けて `FUNC_MOTION` フレームを送る実行体が存在しなかった。**#550（`93bfc93`・2026-08-26）で `m1_driver` / `m1_probe` が land**（`setup.py` `console_scripts`）し、**全 dispatch が `clamp_body_velocity` を必経**（`M1DriverCore.on_cmd_vel`・`tests/unit/test_m1_driver_core.py` で pin）。
+   - **帰結: [ADR-0009 :53](../adr/0009-m1-room-scale-operation.md) の「残る保護」3 枚目は、レビュー時点では紙の上にしかなかった**（§2 冒頭の表）。判定を **PASS → CONDITIONAL** へ降格した。条件 = **(i) m1_driver の serial driver node スライスが land し、(ii) その dispatch 経路が `clamp_body_velocity` を必ず通ることを R-26 unit で pin する**（＝§11 G-l）。**→ (i)(ii) とも #550 で充足＝CONDITIONAL 解消（G-l land 済）。実機での動作確認（M2 negative test / W-1 brake 実測）は別ゲート＝未実施**（[mode-m1/03 §1](../mode-m1/03-joystick-teleop-bringup.md)）。
    - **結線後も残る限界**は従来どおり: L0' は**ホストプロセスが生きている間だけ有効**（[02 P-7c](../shared/02-hardware-design.md)）。stock FW に通信途絶停止が無いことは source で確定したため、**G-g の MCU command-stream watchdog を実装・host test・実機 USB 抜線試験で閉じる**。それまでは Guardian zero frame（断線時には無効）と S-6 P-1 を縮退手段として組み合わせる（＝§11 G-g / H-9）。
 3. **pose_stale は「人検知」ではない。** [GLOSSARY §11 :142](../GLOSSARY.md) の **operational stop（運用停止）** の定義どおり、localization ロストは運用停止であって protective stop ではない。部屋で人が増えても pose_stale の意味は変わらず、**人に対する protective は L1（S-3）と L0'（速度上限）が担う**。変位ゲートの唯一の残留（匍匐前進で発火が遅れる・v→0 で非有界＝[12 末尾追補](../architecture/12-infrastructure-common.md)）も、人保護とは別系統なので部屋転換で悪化しない。
 
@@ -462,12 +462,12 @@ W-a（waypoint は操作者常在位置から `d_min` 以上離す）は、**物
    - **部屋転換で新しく生じた問題ではない**（ジオラマでも同じ）。しかし**人が走行面上に立つ構成では帰結の重大さが変わる**ため、本レビューで記録する。**塞ぐなら L1（C-3 改訂後の collision_monitor は Guardian と独立に動く）と L0'（結線後）が受け皿**になる——すなわち②③が埋まるほどこの窓の危険度も下がる、という依存関係にある。
    - 本書は対処を提案しない（`warehouse_safety` / `twist_mux.yaml` 所有トラックの判断）。**記録と、S-8 の PASS をこの点に限定して弱めることに留める。**
 
-5. **`warehouse_m1_driver` / L0' が正準レイヤ対応表に載っていない。** [productization/01 §レイヤ annotation 対応表 :180-187](../productization/01-commercial-box-map.md) の L0 行は `firmware/src/main.cpp` / `safety_clamp.h` / `kinematics.h` のみを挙げ、**`warehouse_m1_driver` の記載が無い**（2026-08-18 grep で 0 件）。M1 単騎構成では L0' がクランプの実体である以上、対応表に 1 行要る。**本 PR では追記しない**（`docs/productization/**` は別トラック所有＝[.claude/rules/layer-annotation.md](../../.claude/rules/layer-annotation.md) の「対応表に無い新規 component は同じ PR で追記」は実装 PR 側の義務）。**申し送りとして記録する。**
+5. **`warehouse_m1_driver` / L0' が正準レイヤ対応表に載っていない。** [productization/01 §レイヤ annotation 対応表 :180-187](../productization/01-commercial-box-map.md) の L0 行は `firmware/src/main.cpp` / `safety_clamp.h` / `kinematics.h` のみを挙げ、**`warehouse_m1_driver` の記載が無い**（2026-08-18 grep で 0 件）。M1 単騎構成では L0' がクランプの実体である以上、対応表に 1 行要る。**本 PR では追記しない**（`docs/productization/**` は別トラック所有＝[.claude/rules/layer-annotation.md](../../.claude/rules/layer-annotation.md) の「対応表に無い新規 component は同じ PR で追記」は実装 PR 側の義務）。**申し送りとして記録する**（→ 解消済み: [productization/01 :187](../productization/01-commercial-box-map.md) に **L0'** 行が #555〔`9d93e8b`〕で追記された）。
 
-### S-8 判定: **PASS → 限定付き（L0' 行のみ CONDITIONAL）**
+### S-8 判定: **PASS → 限定付き（L0' 行のみ CONDITIONAL・2026-08-26 の #550 で解消）**
 
 - **PASS と言えるのは**「twist_mux prio100・Guardian freshness guard + 変位ゲート・pose_stale の意味論は、**部屋転換によって前提を失っていない**」という点に限る。
-- **PASS と言えないもの**: **L0' は未結線（CONDITIONAL＝§11 G-l）**・stock MCU の command watchdog は不在（**PHASE-1-GATE**＝§11 G-g）・Guardian は人に寄与ゼロ（記録）・Guardian 単独死の 0.5s 窓（記録）・対応表の欠落（申し送り）。
+- **PASS と言えないもの（レビュー時点）**: **L0' は未結線（CONDITIONAL＝§11 G-l。→ #550 で結線済み＝解消・実機 M2/G-g 実測は未実施）**・stock MCU の command watchdog は不在（**PHASE-1-GATE**＝§11 G-g・継続）・Guardian は人に寄与ゼロ（記録）・Guardian 単独死の 0.5s 窓（記録）・対応表の欠落（申し送り → #555 で解消）。
 
 ---
 
@@ -488,7 +488,7 @@ W-a（waypoint は操作者常在位置から `d_min` 以上離す）は、**物
 | **G-i** | **recovery bypass 窓の裁定**（推奨 (A) 抑止条件の差し替え + (C) 運用規律） | OPERATOR-GATE → L2（Nav2 behavior）実装 | G-b とは独立（C-3 を直しても塞がらない） | [12:559-560](../architecture/12-infrastructure-common.md) / [23 G-10 :755-761](../architecture/23-perception-and-localization.md) / 本書 S-1 柱3 | 未裁定 |
 | **G-j** | **sim / 実機の config 二重化（OQ-22）の方式決定** | OPERATOR / 所有トラック調整 | **G-e（`locations` の実機値 / sim 値の分離）の land 可否を握る**。**G-a / G-b の前提ではない** | [23 G-7 :717-734](../architecture/23-perception-and-localization.md) / [ADR-0009 追加Open① :107-114](../adr/0009-m1-room-scale-operation.md)。**⚠️ OQ-22 の対象は `nav2_params.yaml`（footprint）と `config/warehouse.base.yaml`（`locations`）の 2 つで、`collision_monitor.yaml` を含まない**（[23 G-7 :734](../architecture/23-perception-and-localization.md) の OQ-22 定義を実 Read で確認）。C-3 改訂を sim / 実機で分けるべきかは**本書の新規提起**であり OQ-22 の既存スコープ外＝下記「⚠️ G-j に付随する新規提起」 | 未決 |
 | **G-k** | **部屋デモの env / launch 構成で `traffic_mode != 'open-rmf'`（＝collision_monitor が起動する）ことを確認** | 構成確認（実行前チェック） | **G-b の効果が出るための必要条件**（起動しなければ改訂した停止円も存在しない） | 本書 S-1 柱3 穴2 / H-11。実体 = `config/{dev,stg,prod}/warehouse.yaml` と [nav2_bringup.launch.py:126](../../ws/src/warehouse_bringup/launch/nav2_bringup.launch.py) | **未確認**（dev のみ条件を満たす） |
-| **G-l** | **`warehouse_m1_driver` の serial driver node スライスが land し、dispatch 経路が `clamp_body_velocity` を必ず通ることを R-26 unit で pin** | 実装 PR（L0'・安全レビュー対象） | **「残る保護」3 枚目の実体化**。G-g（MCU watchdog）とは別物（こちらはホスト側の存在そのもの） | 本書 S-8 10-2② / H-9。実体 = `ws/src/warehouse_m1_driver/setup.py:24-26` の `console_scripts: []` | 未 land |
+| **G-l** | **`warehouse_m1_driver` の serial driver node スライスが land し、dispatch 経路が `clamp_body_velocity` を必ず通ることを R-26 unit で pin** | 実装 PR（L0'・安全レビュー対象） | **「残る保護」3 枚目の実体化**。G-g（MCU watchdog）とは別物（こちらはホスト側の存在そのもの） | 本書 S-8 10-2② / H-9。実体 = `warehouse_m1_driver` の `console_scripts` `m1_driver` ＋ `M1DriverCore.on_cmd_vel` の必経 clamp（`tests/unit/test_m1_driver_core.py` で pin） | **land 済**（#550・`93bfc93`・2026-08-26。**実機動作確認〔M2 negative test / W-1 brake 実測・G-g〕は未実施**＝[mode-m1/03 §1](../mode-m1/03-joystick-teleop-bringup.md)） |
 | **G-m** | **ジェスチャ誤検出（false positive）率の実測と hold window しきい値の確定** | PHASE-1-GATE | `gesture_detector` の実装 land が前提（現在 `ws/` に存在しない） | 本書 H-12 / [09 §6 :117](09-hand-raise-summon.md)（しきい値はすべて例示値・実測で確定と明記） | 未実施（実装も未着手） |
 
 **依存グラフ（訂正版）**:
@@ -527,7 +527,7 @@ G-c / G-d / G-i / G-h / G-m ───────────────┘
 | S-5 OQ-21 L1 有効性 | **PHASE-1-GATE** | 「**立位の**人は `/scan` に写る」は平面高さの不確かさに対し**頑健＝支持**（[09 R-2(c) :247](09-hand-raise-summon.md) のしゃがむ案が採られたら再評価）。ただし止まれるかは S-3 従属。M-1〜M-5 を定義 |
 | S-6 運用規律 | **OPERATOR-GATE** | D-1〜D-5（docs 根拠あり）＋ P-1〜P-4（本書の提案）。**物理 E-stop は docs に記述が無い** |
 | S-7 waypoint 配置規律 | **PHASE-1-GATE** | W-a〜W-e として形式化。**W-b'（C-3 の停止円との両立）は本書の新規指摘**。W-a の実装形は S-2 と同じ裁定の表裏 |
-| S-8 E-stop / Guardian | **PASS（限定付き）／ L0' 行のみ CONDITIONAL** | twist_mux prio100・freshness guard + 変位ゲート・pose_stale 意味論は前提を失っていない。**ただし L0' は未結線＝CONDITIONAL（G-l）**・stock MCU の command watchdog は不在（G-g）・**Guardian の人への寄与はゼロ**・**Guardian 単独死で 0.5s 後に走行再開する部分故障モード**（[12:511](../architecture/12-infrastructure-common.md) / `twist_mux.yaml:42-45`）|
+| S-8 E-stop / Guardian | **PASS（限定付き）／ L0' 行のみ CONDITIONAL** | twist_mux prio100・freshness guard + 変位ゲート・pose_stale 意味論は前提を失っていない。**ただし L0' はレビュー時点で未結線＝CONDITIONAL（G-l。→ #550〔2026-08-26〕で結線済み＝解消・実機 M2/G-g 実測は未実施）**・stock MCU の command watchdog は不在（G-g）・**Guardian の人への寄与はゼロ**・**Guardian 単独死で 0.5s 後に走行再開する部分故障モード**（[12:511](../architecture/12-infrastructure-common.md) / `twist_mux.yaml:42-45`）|
 
 ### 12-1b. 「残る保護 3 枚」の現況（本レビュー最大の所見の再掲）
 
@@ -535,9 +535,9 @@ G-c / G-d / G-i / G-h / G-m ───────────────┘
 |---|---|---|---|
 | ① | 到達集合を 9 waypoint に限定する語彙 gate（**L3/L2**） | **機能している**（ただし選択規則 H-1 と座標 seam H-4 の穴あり） | G-c / G-d |
 | ② | L1 collision_monitor（**L1**） | **無機能**（車体内部発火 ＋ stg/prod では未起動） | G-a → G-b ＋ G-k |
-| ③ | L0' 0.3 m/s クランプ（**L0'**） | **未結線**（`console_scripts: []`） | G-l |
+| ③ | L0' 0.3 m/s クランプ（**L0'**） | **結線済み**（#550・`93bfc93`・2026-08-26。dispatch 必経を R-26 unit で pin 済・**実機動作確認〔M2 / G-g〕は未実施**） | G-l **land 済** |
 
-**現時点で機能している保護は 3 枚中 1 枚（①のみ）。** これは部屋転換が壊したものではなく、**部屋転換によって「壊れていたことが安全上重大になった」**ものである（ジオラマでは人が走行面上にいなかったため ②③ の欠落が顕在化しなかった）。
+**レビュー時点（2026-08-18）で機能していた保護は 3 枚中 1 枚（①のみ）。③ は #550（2026-08-26）の結線でコード実体としては 2 枚目に復帰した（実機実走での確認は M0-M2・G-g 待ち）。② は依然無機能。** これは部屋転換が壊したものではなく、**部屋転換によって「壊れていたことが安全上重大になった」**ものである（ジオラマでは人が走行面上にいなかったため ②③ の欠落が顕在化しなかった）。
 
 ### 12-2. 未決・本書が自信を持てない箇所（隠さない）
 
@@ -578,7 +578,7 @@ G-c / G-d / G-i / G-h / G-m ───────────────┘
 - `ws/src/warehouse_nav2_bridge/` の `navigate` 座標 `goal` seam と `_pose`（L1 入口・S-4 / H-10）
 - `ws/src/warehouse_llm_bridge/.../robotics_planning_core/handoff.py` の `_FORBIDDEN_KEY_RULES`（L3・S-1 柱1）
 - `ws/src/warehouse_interfaces/warehouse_interfaces/schemas.py` の KNOWN_LOCATIONS validator / `safety.py` の `MAX_LINEAR_VELOCITY`（L2 Contract / L0'）
-- `ws/src/warehouse_m1_driver/warehouse_m1_driver/clamp.py`（L0' ベクトルクランプ・S-8）
+- `ws/src/warehouse_m1_driver/warehouse_m1_driver/` の `clamp.py`（L0' ベクトルクランプ）＋結線実体 `M1DriverCore`（clamp 必経の単一絞り点・W-1/W-2）/ `driver_node.py` / `backend.py`（#550・S-8）
 - `config/warehouse.base.yaml` の `safety.*` / `locations`（S-7 / S-8）
 - `tests/unit/test_known_locations_navigable.py`（S-7 W-b の拡張先）
 
