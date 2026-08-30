@@ -1,51 +1,51 @@
 # ハードウェア設計
 
 作成日: 2026-05-21
-更新日: 2026-08-21
+更新日: 2026-08-30
 
-## A. ロボット — Yahboom MicroROS ESP32 Car
+## A. ロボット — Yahboom ROSMASTER M1（メカナム4輪・Orin 直結シリアル）
+
+> **【2026-08-30 改訂】現行実機はこれ。** 旧「MicroROS ESP32 Car ×2」前提の記述は本節末に履歴として保存する（改訂根拠 = [ADR-0006 単騎構成](../adr/0006-single-bot-first.md) / [ADR-0009 部屋スケール](../adr/0009-m1-room-scale-operation.md)。実測・裏取りの正本は `:292` 以降と末尾追記 P / Q / V 系列）。
 
 ### 仕様
 
 | 項目 | 内容 |
 |------|------|
-| 台数 | 2台（予備費で+1台追加の可能性あり） |
-| 価格 | 約30,000円/台 |
-| 駆動 | 310エンコーダモーター × 4（4輪スキッドステアリング、左右2チャンネル制御） |
-| LiDAR | ORBBEC MS200 dToF LiDAR（360°全方位, 0.03〜12m, 4500Hz, 角度分解能0.4°） |
-| IMU | 6軸IMU（加速度3軸 + ジャイロ3軸、姿勢推定用） |
-| バッテリー | 7.4V リポバッテリー |
-| 通信 | WiFi UDP（micro-ROS経由） |
-| ROS 2対応 | micro-ROS公式サポート → ROS 2 Humble/Jazzy（Jazzy対応確認済み 2026-05-22） |
-| サイズ | 約15cm幅（※未検証、公式スペック要確認） |
+| 台数 | **1台**（単騎。ADR-0006 / ADR-0009。旧「2台」は ESP32 Car 前提） |
+| 購入 | `Superior-without / NANO 4GB SUB`（公式 sku 3000200910・ASIN B0G495C65Q・¥67,527）。2026-08-05 発注 → **2026-08-18 着荷**（`:391`） |
+| 駆動 | **520 エンコーダモーター × 4**（メカナム4輪）。**逆運動学は STM32 ファーム側**＝ホストは `(vx, vy, wz)` を送るだけ（`:324` / 末尾追記 V-2） |
+| 車体寸法 | 231.40 × 284.40 × 181.40mm（外接 ≈184mm / 内接 115.7mm。`:302` / C-1 `:357`） |
+| LiDAR | **YDLIDAR T-mini Plus**（model 151・230400bps・12m。`:333`） |
+| 深度カメラ | **Nuwa-HP60C**（Superior 同梱。ER / ジェスチャ入力の唯一の目＝[ADR-0007](../adr/0007-no-overhead-camera-gesture-via-onboard-nn.md)。`:331`） |
+| IMU | **ICM-20948 9軸**（拡張ボード実装。`:310` ＋ ERF01 回路図＝末尾追記 P-6） |
+| 制御ボード | **YB-ERF01-V3.0**／MCU STM32F103RCT6／USB-serial **CH340**（udev `1a86:7523`）（`:310`） |
+| バッテリー | **12.6V 6000mAh（3S）**。保管 11.1–11.7V・**9.6V でブザー警報**（`:303`）。12V 出力は**非安定化スルー**のため Orin へは昇圧 DC-DC 12.6→19V 経由（`:320`） |
+| 通信 | **USB シリアル 115200 8N1 直結**（`/dev/myserial`）。**micro-ROS / WiFi UDP は使わない**（`:323`） |
+| ROS 2 | **Humble へ寄せる方針**（[ADR-0008](../adr/0008-ros2-distro-humble-for-rosmaster-m1.md) proposed。HP60C `ascamera` が閉ソース `.so` で Jazzy 実績なし＝`:331`） |
+| 音声 | AI large model voice module 同梱（末尾追記 V-5） |
 
 ### センサー詳細
 
 | センサー | 型番 | 用途 | ROS 2トピック |
 |---------|------|------|-------------|
-| dToF LiDAR | ORBBEC MS200 | AMCL自己位置推定・障害物検知・SLAM | `/bot{n}/scan` |
-| 6軸IMU | （基板内蔵） | 姿勢推定・旋回検出 | `/bot{n}/imu`（※要確認 / sim 未橋渡し: #43 は `scan`/`odom`/`cmd_vel` のみ bridge） |
-| エンコーダ | 310モーター内蔵 ×4 | オドメトリ（移動量計算） | `/bot{n}/odom` |
+| dToF LiDAR | YDLIDAR T-mini Plus | 部屋 SLAM・自己位置推定・障害物検知 | `/bot1/scan` |
+| 深度カメラ | Nuwa-HP60C | ER 視覚入力・ジェスチャ召喚・nvblox | （正本 = [architecture/23](../architecture/23-perception-and-localization.md)） |
+| 9軸IMU | ICM-20948（ERF01 実装） | 姿勢推定・EKF 入力 | `/bot1/imu` |
+| エンコーダ | 520モーター内蔵 ×4 | オドメトリ（`0x0D` エンコーダ差分で組む） | `/bot1/odom` |
 
-**ORBBEC MS200**: dToF（Direct Time of Flight）方式の360°スキャンLiDAR。サイズ54.3×47.0×35.0mmと超小型でminicarに搭載可能。CLASS 1アイセーフティ認証済み。このLiDARにより、minicar単体でAMCLによる自己位置推定が可能。
+**知覚スタックの設計正本は [architecture/23](../architecture/23-perception-and-localization.md)**（nvblox / MOLA-LO / robot_localization EKF・S1/S2 スパイクゲート）。TF `odom→base_link` は ekf_node 単一所有で、driver は odom を topic publish するのみ（[mode-m1/02](../mode-m1/02-m1-driver-and-watchdog.md)）。
 
 ### 選定理由
 
-- ROS 2 + Nav2 + RViz が箱出しで動作確認可能
-- micro-ROS公式サポートにより開発工数を削減
-- ROS 2エコシステムに乗っているため長期拡張が容易（SLAM、マルチロボット協調等）
-- **360° LiDAR搭載**により、追加センサーなしでAMCL自己位置推定が可能
+- 手持ちの Orin Nano Super Dev Kit をそのまま司令塔として載せられる（公式 Orin 版キットが存在し、**直ネジ止め**手順が公式動画で確認済＝末尾追記 P-5）
+- 制御プロトコルが公開・実読済（`0xFF/0xFC/LEN/FUNC/CHECKSUM`・`FUNC_MOTION=0x12`・40ms auto-report）＝**Yahboom スタックに依存せず自前 ROS 2 ノードで完結できる**（`:323` / 末尾追記 P-7e）
+- 360° LiDAR ＋ 深度カメラ搭載で、部屋スケールの SLAM とジェスチャ召喚が追加センサーなしで成立（ADR-0009）
+- メカナムでも**契約変更が不要**（逆運動学が STM32 側 → `linear.y = 0` で凍結 URDF / Nav2 の diff-drive のまま成立。`:324`）
+- **安全の帰結**: stock FW の M1 上限は **0.7 m/s**・**通信途絶停止なし**（`ENABLE_IWDG=0`）＝MCU 内 L0 が使えない → **ホスト側シリアル送信直前の L0' クランプ**（0.3 m/s・方向保存）と G-g watchdog が必須（`:325` / `:371` / 末尾追記 P-7a・P-7c。実装 = [`ws/src/warehouse_m1_driver/`](../../ws/src/warehouse_m1_driver/CLAUDE.md)）
 
-### 改造計画
+### 旧構成（履歴・2026-08-05 まで）
 
-- 上面に荷物トレイを3Dプリントで追加（Bambu Lab A1 miniで製作）
-- トレイサイズ: 約80×60mm、パレット形状
-- 固定方法: M3ネジ or 結束バンド
-
-### 代替案（コスト重視の場合）
-
-自作構成（ESP32-S3 + Yahboom 2WDシャーシ）× 2台 = 約30,000円。
-micro-ROS実装に2-3週間の追加工数が必要。予算が厳しい場合のフォールバック。
+Yahboom **MicroROS ESP32 Car ×2台**（約30,000円/台・310エンコーダモーター×4・ORBBEC MS200 dToF LiDAR〔0.03〜12m・4500Hz・0.4°〕・6軸IMU・7.4V リポ・**WiFi UDP / micro-ROS 経由**・約15cm幅）を 2 台並走させ、上面へ 80×60mm の荷物トレイを 3D プリントで足す前提だった。コスト重視のフォールバックとして自作構成（ESP32-S3 + Yahboom 2WD シャーシ ×2 = 約30,000円・micro-ROS 実装に 2-3 週間）も併記していた。**2026-08-05 の車種選定（`:349` / `:379`）と ADR-0006 で置換済**。ESP32 ファーム（`firmware/`）の L0 クランプ資産は M1 でも思想として継承している（`:325`）。
 
 ---
 
@@ -476,7 +476,7 @@ NVIDIA は Carrier Board Specification に**取付穴の位置を公開してい
 
 ## 【2026-08-07 追記】台数と知覚スタックの現行方針
 
-- **台数**: §A 仕様表の「2台」は ESP32 Car 旧前提。現行実機は **ROSMASTER M1 1台 + Orin 直結シリアル（micro-ROS 経路不使用）**＝[ADR-0006 単騎構成](../adr/0006-single-bot-first.md)。§「ROSMASTER M1 採用検討時の残課題」以降が実機の正本。
+- **台数**: 現行実機は **ROSMASTER M1 1台 + Orin 直結シリアル（micro-ROS 経路不使用）**＝[ADR-0006 単騎構成](../adr/0006-single-bot-first.md)。§「ROSMASTER M1 採用検討時の残課題」以降が実機の正本。（**2026-08-30 追補**: 本項の指摘どおり §A を M1 仕様へ全面改訂した。旧 ESP32 Car ×2 の記述は §A 末尾「旧構成（履歴）」に保存）
 - **知覚・自己位置**: HP60C 深度・T-mini Plus・IMU/エンコーダを使う TARGET スタック（nvblox / MOLA-LO〔旧 cuVSLAM は blocked〕/ robot_localization EKF）は [architecture/23](../architecture/23-perception-and-localization.md) が設計正本（スパイクゲート S1=8GB メモリ・S2=HP60C 互換が前提）。固定 RPLiDAR A1 の「外部トラッキング補正」→ **ground truth 取得装置**への役割変更は同 doc §5-5 の**提案**（doc09 所有トラック承認待ち）。
 
 ---
@@ -754,7 +754,9 @@ M1 単騎フェーズは**実際の部屋（room scale）**を走り、ジオラ
 
 | 資料 | 公式 URL | 2026-08-24 結果 |
 |---|---|---|
-| Yahboom Code/Firmware | <https://drive.google.com/drive/folders/1Ck8pcerFBARnowzlgdrMrgwJR1bvQdWL> | STM32 source V3.6.5 と Python V3.3.9 を取得・実読。Orin `Rosmaster.zip` は Google Drive quota exceeded |→ **同日後刻に解消**: `Rosmaster.zip` 含む計7本を取得済（P-7d）
+| Yahboom Code/Firmware（親フォルダ） | <https://drive.google.com/drive/folders/1Ck8pcerFBARnowzlgdrMrgwJR1bvQdWL> | STM32 source V3.6.5 と Python V3.3.9 を取得・実読。Orin `Rosmaster.zip` は当初 quota exceeded → **同日後刻に解消**（計7本取得済＝P-7d） |
+| └ **STM32 firmware for expansion board**（子・2026-08-30 追加 pin） | <https://drive.google.com/drive/folders/1zLskw-L2vQNCdZMmIJ8vEMICQJerRSKg> | `ROS-Driver-Board-FW-master.zip`(879KB) / `rosmaster_V3.6.5.hex`(245KB)。**両方取得済**（P-7e 表） |
+| └ **OrinNano**（子・2026-08-30 追加 pin） | <https://drive.google.com/drive/folders/1axNuIMpj9FRrqm_lWq9_55TRFhx-gQdX> | 全8本中 **4本取得 / 4本を意図的に非取得**（判断は P-7e） |
 | Yahboom Hardware Info | <https://drive.google.com/drive/folders/1AkGiIfpRojsVClGLW51FWqRttD8cy_Zj> | P-6 の回路図・protocol 等を取得済み |
 | Yahboom 3D Model | <https://drive.google.com/drive/folders/1idT8tPHoAcHPtpX7RnRd1YWu9I8bdgMi> | `ROSMASTER M1-V1.0.STEP` は quota exceeded。再取得 TODO |
 | Yahboom GitHub | <https://github.com/YahboomTechnology/ROSMASTER-M1> | `main` commit `8ee5179` snapshot を保存 |
@@ -778,3 +780,59 @@ Phase 1 は次を別々に扱う:
 - **独立再検証済**（取得セッションと別のセッションが同日実施）: 全 zip `unzip -t` 合格・path traversal 0 件・P-7a の全確定値（`CAR_MECANUM_M1=0x0A` / `CAR_M1_MAX_SPEED=700` の X/Y 入力クランプ＋各輪再クランプの二段 / `MECANUM_M1_CIRCLE_MM=251.327f` / `MECANUM_M1_APB=189.5f` / `ENABLE_IWDG=0` / `FUNC_CAR_TYPE(0x15)` request で `Motion_Send_Car_Type()` 応答 / CHANGELOG「V3.6 增加麦轮小车M1的配置文件」/ Python V3.3.9 `get_car_type_from_machine()`）を**ソース実 Read で一致確認**。
 - 取り扱い注意: ① zip 内に **`ultralytics/ultralytics/data/.env`（63B）が存在**——中身は読まない・公開/commit 禁止（safety.md）。② Ultralytics 本体は **AGPL-3.0**、Yahboom 配布物（モデル・データセット含む）はライセンス個別確認まで**再配布・コード流用不可**。③ `Rosmaster/auto_drive/yolov5_auto.py` は検出結果から **`set_car_motion()` を直接呼ぶ**（L76-123 で確認）＝安全レイヤ（L0'/L1/L2）迂回の参考実装——**知覚の参考としてのみ扱い、制御経路にコードを持ち込まない**。
 - 保管方針（三層）: ベンダー Drive＝入手元として保持 / 重要原本のみユーザー所有の非公開クラウドへ複製（**実施はユーザー承認後**）/ Git にはバイナリを置かず本台帳（`docs/assets/m1-vendor/README.md` の sha256）のみ。`docs/assets/m1-vendor/` が worktree と main checkout の**両方に重複展開**されている点は要整理（どちらも untracked・実害なし）。
+
+---
+
+## 【2026-08-30 追記】ベンダー配布コードの所在・必要性の裁定・参照手順（P-7e）
+
+> 契機: オペレーターから Drive の 2 URL（`1zLskw-…` / `1axNuIM-…`）が提示され、「これらを見て答えられる状態にしておけ」との指示。
+> 本節は **入手元 URL の恒久 pin ＋ どのコードが要る/要らないかの裁定 ＋ 後続セッションが実際に読む手順** を 1 か所に閉じる。取得済みバイナリ本体は **repo に置かない**（P-7d の三層方針）。
+
+### P-7e-1. Drive フォルダの実体（2026-08-30 に直接取得して照合）
+
+`:757` の Code/Firmware フォルダは 2 つの子フォルダを持つ。両方を `:758` / `:759` に pin した。
+
+| 子フォルダ | ファイル | サイズ | 取得 | 本プロジェクトでの位置づけ |
+|---|---|---|---|---|
+| STM32 firmware for expansion board | `ROS-Driver-Board-FW-master.zip` | 879KB | ✅ | **仕様の一次ソース**。`car_type=0x0A` / `CAR_M1_MAX_SPEED=700` / `ENABLE_IWDG=0` の確定根拠（P-7a・P-7c） |
+| 〃 | `rosmaster_V3.6.5.hex` | 245KB | ✅ | 搭載 FW 版の照合用。**書き込まない**（stock FW 置換は現行方針で不採用＝`:328`） |
+| OrinNano | `Rosmaster.zip` | 324.8MB | ✅ | 公式 Python lib（`Rosmaster_Lib`）の実体。**参照のみ**（`:323` により実装には使わない） |
+| 〃 | `ros2_kilted.zip` | 13.9MB | ✅ | 参考（distro 差分の確認用） |
+| 〃 | `ros2_ws.zip` | 17.2MB | ✅ | 汎用 ROS 2 学習 workspace。M1 固有ドライバではない（P-7d で保存対象外と判定済） |
+| 〃 | `ultralytics.zip` | 565.1MB | ✅ | 知覚の参考のみ。**AGPL-3.0・zip 内に `.env` あり**（P-7d の取り扱い注意） |
+| 〃 | `dify-1.6.0.zip` | 542MB | ❌ 非取得 | LLM オーケストレーション基盤。本プロジェクトは Hermes Gateway ＋ 自作 LLM Bridge で完結（doc13 / doc08）＝不要 |
+| 〃 | `software.zip` | 389.7MB | ❌ 非取得 | Windows 側ツール類。Mac / Jetson 運用では使わない |
+| 〃 | `yahboom_ws.zip` | 1.97GB | ❌ 非取得 | Yahboom 製 ROS 2 workspace 一式。`:323` の自前実装方針では**依存にしない**（RDK X5 / Pi 版と同名重複も多い） |
+| 〃 | `yahboomcar_ws.zip` | 2.35GB | ❌ 非取得 | 同上 |
+
+### P-7e-2. 「どのコードが必要か」の裁定（`:323` の再確認）
+
+**結論は変わらない**——ベンダーの ROS 2 スタック（`yahboom_ws` / `yahboomcar_ws` / `Rosmaster_Lib`）は**実装の依存物にしない**。理由:
+
+1. **ライセンス**: `Rosmaster_Lib` は Proprietary 表記・PyPI 未配布・配布経路が Google Drive。`ultralytics` は AGPL-3.0。**再配布・コード流用は個別確認まで不可**（P-7d）。
+2. **安全レイヤと非互換**: 公式サンプル（例 `Rosmaster/auto_drive/yolov5_auto.py`）は検出結果から `set_car_motion()` を直接呼ぶ＝ **L0' / L1 / L2 を迂回する**構造。本プロジェクトは全 `/cmd_vel` を L0' の単一絞り点に通す（`:325`）。
+3. **代替が成立している**: プロトコルは公式 xlsx とソースで完全に判明済（`0xFF/0xFC/LEN/FUNC/CHECKSUM`・`FUNC_MOTION=0x12`・40ms auto-report＝`:323` / P-6b）。自前 ROS 2 ノード（[`ws/src/warehouse_m1_driver/`](../../ws/src/warehouse_m1_driver/CLAUDE.md)）で足りる。
+
+**したがってベンダーコードの役割は「実装の依存」ではなく「仕様の裏取り資料」**。取得済み 4 本 ＋ FW 2 本は *読むため* に置いてある。非取得 4 本（計 5.2GB）は、この裁定が覆らない限り**取りに行かない**。
+
+### P-7e-3. 後続セッションが実際に参照する手順
+
+キャッシュ実体（**untracked・repo 外**）: `~/Developer/mwr-vendor-code-cache-20260824/`（dir `700` / file `600`）
+
+| ファイル | 実体名 |
+|---|---|
+| STM32 ソース | `ROS-Driver-Board-FW-master.zip` |
+| STM32 バイナリ | `rosmaster_V3.6.5.hex` |
+| Python lib | `py_install_V3.3.9.zip` |
+| Orin 一式 | `OrinNano-Rosmaster.zip` / `OrinNano-ultralytics.zip` / `OrinNano-ros2_kilted.zip` / `OrinNano-ros2_ws.zip` |
+
+読み方（**展開先は scratchpad・repo 内に展開しない**）:
+
+```bash
+unzip -l ~/Developer/mwr-vendor-code-cache-20260824/ROS-Driver-Board-FW-master.zip | grep -i 'app_mecanum\|app_motion\|protocol\|config.h'
+unzip -p ~/Developer/mwr-vendor-code-cache-20260824/ROS-Driver-Board-FW-master.zip '*/app_mecanum.c' | grep -n 'CAR_M1_MAX_SPEED\|0x0A'
+```
+
+守ること: ① 実行しない・展開前に `unzip -t` と path traversal 検査（P-7d） ② `ultralytics` 内の `.env` は**読まない・commit しない**（`.claude/rules/safety.md`） ③ 引用は必ず zip 内 path と行で残す（docs-first） ④ **repo へバイナリを置かない**——台帳は [`docs/assets/m1-vendor/README.md`](../assets/m1-vendor/README.md)（untracked・sha256 付き）。
+
+`# TODO(未取得)` Yahboom `ROSMASTER M1-V1.0.STEP`（`:761` の 3D Model フォルダ・約67.8MB）は quota exceeded のまま。fallback マウント設計が必要になった時点で再取得する（Q-8）。
