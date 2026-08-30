@@ -148,3 +148,14 @@ Nav2 Bridge の `navigate` には**名前ゲートを経由しない座標ゴー
 - 内容: 8 項目のハザード分析（ハザード × layer × 現行緩和 × 残余リスク × 判定）＋ **部屋運用開始の前提条件チェックリスト**。追加 Open ②（C-3）・③（召喚レグ）・⑤（#223 seam）はそれぞれ同 doc の S-3 / S-2 / S-4 に対応する。
 - **⚠️ 最も重要な所見**: 帰結 ⑦ :53 が「残る保護」として挙げた **①語彙 gate ②L1 collision_monitor ③L0' 0.3m/s クランプ** のうち、**実体を確認した結果、現時点で機能しているのは ① のみ**である（② は停止円が車体内部かつ `traffic_mode: open-rmf` の env では node ごと未起動、③ は serial driver node が未 land で未結線）。詳細は同 doc §2 冒頭 / §12-1b。
 - **本 ADR の Open 項目は本追補では閉じない。** 同 doc は**分析レビューであって運転許可ではなく**、`# TODO(安全レビュー)` を閉じるのはオペレーターの裁定である（同 doc §12-3）。閉じる場合の受け皿は同 doc §11 のチェックリスト充足を確認したうえでの本 ADR 末尾追補または後続 ADR。
+
+---
+
+## 【2026-08-30 追補④】追補③の「③ L0' 未結線」は #550 で解消（Status・Decision・既存本文の行は不変）
+
+追補③の「現時点で機能しているのは ① のみ」（:149）は **2026-08-18 レビュー時点**の実体であり、当時の記述として保存する（追補③冒頭 :146 の規律どおり既存行は変更しない）。その後の変化のみ記録する:
+
+- **③ L0' 0.3m/s クランプは PR #550（`93bfc93`・2026-08-26 merge）で結線済み＝[10 §11 G-l](../mode-x-er/10-room-scale-safety-review.md) は land 済**。`warehouse_m1_driver` の `console_scripts` に `m1_driver` が入り、全 dispatch が `clamp_body_velocity` を必経（`M1DriverCore.on_cmd_vel`・R-26 unit = `tests/unit/test_m1_driver_core.py` で pin）。
+- **「結線済み」≠「実機確認済み」**: 実機動作確認（[mode-m1/03](../mode-m1/03-joystick-teleop-bringup.md) の M0-M2 ゲート・M2 negative test・W-1 brake 実測）と G-g（USB 抜線試験）は**未実施**（2026-08-30 時点で実施記録なし）。③の復帰はコード実体の話に留まる。
+- **② L1 collision_monitor は依然無機能**（停止円が車体内部＋`traffic_mode: open-rmf` の stg/prod では node ごと未起動）＝追加 Open ②（C-3 改訂）は未充足のまま。
+- **§Open の `# TODO(安全レビュー)`（:82）は本追補でも閉じない**（追補③ :150 と同じ。閉じるのはオペレーター裁定＝[10 §12-3](../mode-x-er/10-room-scale-safety-review.md)）。詳細の同期先は [10 §2 冒頭 / §10-2② / §12-1b](../mode-x-er/10-room-scale-safety-review.md) と [09 追補③ ⑤ :340](../mode-x-er/09-hand-raise-summon.md)（いずれも本追補と同一 PR で「結線済み・実機未確認」へ更新済）。
