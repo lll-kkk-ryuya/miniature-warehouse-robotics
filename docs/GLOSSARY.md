@@ -99,6 +99,7 @@
 - **contract PR** — 凍結契約 `warehouse_interfaces` に触れる PR。`contract` ラベル必須＋マージ前に依存全トラックへ予告し合意を得る（最小・後方互換優先）。 — [.claude/rules/parallel-workflow.md:140](../.claude/rules/parallel-workflow.md)（§4 契約変更プロトコル）
 - **x_er_bridge（X-ER commander node）** — XER6 の背骨となる Mode X-ER 司令 rclpy node（`warehouse_llm_bridge/x_er_bridge.py`・#419 で offline Slice A land 済）。ER adapter → L3 → dispatch を稼働 cycle で鎖にし connectivity hops ⓪③④⑤ を閉じる。起動 gate＝`llm:=true`∧`mode_x_er.enabled`（Slice B・`llm:=false`＝commander 一切なし）・Mode A commander と相互排他。 — [mode-x-er/08-x-er-bridge-node-spec.md](mode-x-er/08-x-er-bridge-node-spec.md)（node 契約正本）
 - **常時通電運用（always-on dev link）** — Jetson minicar を常時通電のまま維持し、日常操作（`jetson on`=作業開始 / `jetson off`=ワークロード停止のみ）から電源を切り離す運用（2026-08-30 確定）。根拠=Wi-Fi のみで WoL 不可・BMC 無し・スマートプラグ不採用のため poweroff は一方通行（復帰に DC 抜き挿し）。接続は mDNS 直結 `minicar.local`。真の電源断は `jetson halt`（YES 確認・fail-closed ラッパー経由）のみ。 — [jetson/02-remote-access-and-dev-link.md](jetson/02-remote-access-and-dev-link.md) §9（正本）
+- **Tailscale 経路（off-LAN fallback route）** — 自宅 LAN 外（カフェ Wi-Fi / スマホテザリング）から Jetson minicar へ届かせる第 2 経路（2026-08-30・個人 Free プラン＝費用ゼロ・ポート開放不要）。`jetson` CLI が mDNS 不達時のみ tailnet IP へ自動 retarget（stderr に `route = tailscale` 表示・peer Offline なら切替えず「board 自体が down」の診断のみ）。遠隔経路の `jetson halt` は down 断定を拒否（fail-closed）。board 鍵は管理画面で **Disable key expiry 必須**（既定 180 日で無言脱落）。 — [jetson/02-remote-access-and-dev-link.md](jetson/02-remote-access-and-dev-link.md) §9.7（正本）
 
 ## 9. run manifest・plugin composition（bridge-local）
 
