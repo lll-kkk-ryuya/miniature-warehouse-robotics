@@ -5,7 +5,7 @@
 > - Nav2 `controller_server` / `nav2_params.yaml` = **L1 自律走行・安全**（[productization/01:185](../productization/01-commercial-box-map.md)）。本 doc が動かす主対象。
 > - **L0'**（ホスト側シリアルドライバ送信直前クランプ・[mode-m1/02:4](02-m1-driver-and-watchdog.md)）= 不変。正準表への `warehouse_m1_driver`（L0'）行は **#555 で追記済**（[productization/01:187](../productization/01-commercial-box-map.md)・GLOSSARY §3 の正準エントリは #556）。
 > - 帯の知覚（`gesture_detector`）= **L4 知覚・publish-only・0 actuation**（[mode-x-er/09:61](../mode-x-er/09-hand-raise-summon.md)）。
-> - **新設する `/speed_limit` publisher の layer / パッケージ帰属は未定**（断定しない = **OQ-R2**）。control-plane であって velocity producer ではないという性質だけが確定している（§4）。
+> - **新設する `speed_limit` publisher の layer / パッケージ帰属は未定**（断定しない = **OQ-R2**）。control-plane であって velocity producer ではないという性質だけが確定している（§4）。
 > - L2 Traffic（`warehouse_traffic`）は Mode M1 では**非アクティブ**（`traffic_mode: none` = [mode-m1/01:14-16](01-mode-boundary-and-traffic.md)）。本 doc の安全論証を traffic 層に頼らない。
 
 ## 0. 位置づけ
@@ -14,7 +14,7 @@
 
 本 doc が**する**こと: (a) 使う ROS 機構を Nav2 公式の `speed_limit_topic` / `nav2_msgs/SpeedLimit` に確定する（一次情報で裏取り = §2）／ (b) 起動時・runtime・物理限界の**三層モデル**を定義する（§2）／ (c) [09 T-6 の制約 1〜4（:410-413）](../mode-x-er/09-hand-raise-summon.md) との照合を 1 行ずつ行う（§4）／ (d) 一次情報の実読で判明した**罠**（`speed_limit=0.0` の意味・絶対値指定の fail-open 性）を明記する（§3）。
 
-本 doc が**しない**こと: 帯の具体 m/s 値の決定（**S-SPEED 実測と contract pin 待ち** = [ADR-0010 §S-SPEED :30-38](../adr/0010-raise-speed-cap-to-platform-max.md) / [§Open 1-2 :62-63](../adr/0010-raise-speed-cap-to-platform-max.md)）・publisher node の実装・Nav2 params の実編集・新しい contract の凍結。
+本 doc が**しない**こと: 帯の具体 m/s 値の決定（**S-SPEED 実測と contract pin 待ち** = [ADR-0010 §S-SPEED :31-39](../adr/0010-raise-speed-cap-to-platform-max.md) / [§Open 1-2 :63-64](../adr/0010-raise-speed-cap-to-platform-max.md)）・publisher node の実装・Nav2 params の実編集・新しい contract の凍結。
 
 ## 1. 問題の構造（CURRENT）— 速度上限は launch 時 1 回しか適用されない
 
@@ -35,7 +35,7 @@ MPPI FollowPath.vx_max  … nav2_params.yaml:122（在ファイル値 0.3 = 安�
 
 - この経路は **`generate_launch_description()` 評価時に 1 回だけ**走る。走行開始後に帯が変わっても、`vx_max` を書き換える手段は本 repo に無い。
 - **`speed_limit` / `SpeedLimit` は本 repo の `ws/` `config/` に 1 件も存在しない**（2026-08-28 再 grep で確認。[09:408](../mode-x-er/09-hand-raise-summon.md) の 2026-08-21 grep 結果は今も有効）。
-- 混同注意: Rosmaster ファームの **`set_speed_limit(0x16)` は別物であり採用禁止**（推測 API・実装なし = [mode-m1/02:55](02-m1-driver-and-watchdog.md) / [shared/02 V-1 :536](../shared/02-hardware-design.md)）。本 doc の `speed_limit` は **Nav2 の topic 名**であって、このシリアルコマンドとは無関係。
+- 混同注意: Rosmaster ファームの **`set_speed_limit(0x16)` は別物であり採用禁止**（推測 API・実装なし = [mode-m1/02:55](02-m1-driver-and-watchdog.md)。※同行が併記する shared/02 旧 V-1 の記述は #559 系の V-1 改訂で削除済＝**出典失効**・裁定自体は 02:55 が保持）。本 doc の `speed_limit` は **Nav2 の topic 名**であって、このシリアルコマンドとは無関係。
 
 ## 2. 三層モデル（本 doc の核心）
 
@@ -44,7 +44,7 @@ MPPI FollowPath.vx_max  … nav2_params.yaml:122（在ファイル値 0.3 = 安�
 | 層 | 実体 | 適用時刻 | 役割 | 本 doc での扱い |
 |---|---|---|---|---|
 | **① 起動基準値** | config → `_operating_vx_max()` → `RewrittenYaml` → MPPI `vx_max`（§1） | 起動時 1 回 | **基準上限**。`config.py:101-105` の fail-closed 検証を通る唯一の入口。MPPI 内部では `base_constraints.vx_max` としてラッチされ、②のスケール基準になる | **廃止しない・不変**。②を足しても①は残す |
-| **② runtime 帯上限** | `/speed_limit`（`nav2_msgs/SpeedLimit`）→ `controller_server` → 各 controller plugin の `setSpeedLimit()` → MPPI `Optimizer::setSpeedLimit` | 走行中・任意 | **運用の動的上限**。帯（最遅段/最速段/安定段）を走行中に反映する | **本 doc で新規に確定する層** |
+| **② runtime 帯上限** | `speed_limit`（`nav2_msgs/SpeedLimit`）→ `controller_server` → 各 controller plugin の `setSpeedLimit()` → MPPI `Optimizer::setSpeedLimit` | 走行中・任意 | **運用の動的上限**。帯（最遅段/最速段/安定段）を走行中に反映する | **本 doc で新規に確定する層** |
 | **③ L0' 最終クランプ** | `clamp_body_velocity(vx, vy, wz)`（方向保存ベクトルクランプ）= [mode-m1/02:45](02-m1-driver-and-watchdog.md) | 送信直前・全指令 | **安全限界（safety envelope）**。上位が何を言おうと wire に上限超が出ない | **不変・廃止禁止**。②の下流に置く（②を L0' の下流に置かない） |
 
 > **役割分担の一文**: ①＝**起動時の基準値**、②＝**運用の動的上限**、③＝**安全限界**。②は①を上書きするのではなく①を基準にスケールし、③は①②の正しさに依存しない最終防衛である。
@@ -56,8 +56,8 @@ M1 の distro は **Humble**（[ADR-0008 §Decision :16](../adr/0008-ros2-distro
 1. **`controller_server` の `speed_limit_topic` パラメータ（既定 `"speed_limit"`）が存在する。**
    - source（一次）: `declare_parameter("speed_limit_topic", rclcpp::ParameterValue("speed_limit"));`
      <https://raw.githubusercontent.com/ros-navigation/navigation2/humble/nav2_controller/src/controller_server.cpp>
-   - 公式 docs の説明文（型 `string` / 既定 `"speed_limit"` / 「Speed limiting topic name to subscribe. This could be published by Speed Filter … **You can also use this without the Speed Filter as well if you provide an external server to publish these messages.**」）は、`docs.nav2.org` の HTML が本作業の取得ツールに **404 を返した**ため、同内容を掲載するミラー <https://ros.ncnynl.com/en/nav2/configuration/packages/configuring-controller-server.html> で確認した（**[公式 HTML は未取得＝ミラー確認]**。ただしパラメータ名・型・既定値は上記 source で一次確認済み）。
-   - **帰結**: Speed Filter（costmap filter + マスク画像）は**不要**。外部ノードが `/speed_limit` を publish するだけで公式に成立する。
+   - 公式 docs の説明文（型 `string` / 既定 `"speed_limit"` / 「Speed limiting topic name to subscribe. This could be published by Speed Filter … **You can also use this without the Speed Filter as well if you provide an external server to publish these messages.**」）は **docs.nav2.org リポジトリの `sphinx_docs` ブランチ（Humble 期の原文・一次）**で確認: <https://raw.githubusercontent.com/ros-navigation/docs.nav2.org/sphinx_docs/configuration/packages/configuring-controller-server.rst>（旧 `docs.nav2.org` の HTML は mkdocs 移行で 404。2026-08-30 に一次確認し、初稿のミラー確認 <https://ros.ncnynl.com/en/nav2/configuration/packages/configuring-controller-server.html> は一次ソースに置換済）。
+   - **帰結**: Speed Filter（costmap filter + マスク画像）は**不要**。外部ノードが `speed_limit` を publish するだけで公式に成立する。**⚠️ トピック名は相対名（2026-08-30 訂正）**: 本 repo の `controller_server` は `/bot{n}` namespace 配下・relative topic 運用（[nav2_bringup.launch.py:11-13](../../ws/src/warehouse_bringup/launch/nav2_bringup.launch.py)）のため、解決後の実名は **`/bot{n}/speed_limit`**（bot1 なら `/bot1/speed_limit`）。絶対名 `/speed_limit` へ publish しても届かない。publisher は同 namespace で相対名を使うこと。
 2. **`nav2_msgs/msg/SpeedLimit` のフィールド**（humble・全文）:
    ```
    std_msgs/Header header
@@ -83,8 +83,9 @@ M1 の distro は **Humble**（[ADR-0008 §Decision :16](../adr/0008-ros2-distro
      }
      ```
    - ⚠️ **QoS は `rclcpp::QoS(10)`（transient_local ではない）**＝**latch しない**。publisher が `controller_server` より先に 1 回だけ出した値は届かない → publisher は「帯遷移時の送出」に加えて**周期送出または lifecycle 起動後の再送**が要る（設計要件・§6 OQ-R4 に含める）。
-   - ⚠️ 配布先は **`controller_server` が保持する controller plugin 群のみ**。`behavior_server`（recovery 挙動。本 repo では controller_server と**同じ** `cmd_vel/nav2` へ合流 = [twist_mux.yaml:16-19](../../ws/src/warehouse_bringup/config/twist_mux.yaml)「Nav2 controller_server AND behavior_server (recoveries) -> /bot{n}/cmd_vel/nav2」）が `speed_limit_topic` を見るという記述は**確認していない＝[未裏取り]**。したがって **recovery 中の速度は②で縛れない可能性がある**（③ L0' が担保する）。
-4. **MPPI（`nav2_mppi_controller`）は `setSpeedLimit` を実装し constraints を更新する**。かつ **Humble にリリースがある**:
+   - ⚠️ 配布先は **`controller_server` が保持する controller plugin 群のみ**。`behavior_server`（recovery 挙動。本 repo では controller_server と**同じ** `cmd_vel/nav2` へ合流 = [twist_mux.yaml:16-19](../../ws/src/warehouse_bringup/config/twist_mux.yaml)「Nav2 controller_server AND behavior_server (recoveries) -> /bot{n}/cmd_vel/nav2」）には**効かないことをソースで確認済（2026-08-30 追補）**: `nav2_core::Behavior` IF（<https://raw.githubusercontent.com/ros-navigation/navigation2/humble/nav2_core/include/nav2_core/behavior.hpp>）は configure/cleanup/activate/deactivate のみで **`setSpeedLimit` を持たず**、`behavior_server.cpp` にも speed limit 購読は無い（recovery 速度は各 plugin 固有 param 例 `max_rotational_vel`）。**recovery 中の速度は②で構造的に縛れない**（③ L0' が担保する）。`nav2_velocity_smoother` にも `speed_limit` 購読は無い。
+4. **⚠️ MPPI の `Optimizer::reset()` は適用済みの②を黙って破棄する（2026-08-30 追補・第3の罠）。** `reset()` は `settings_.constraints = settings_.base_constraints;` で①へ戻す＝**②が消える**。到達経路は 3 本（いずれも humble ソースで確認）: (i) **無活動タイムアウト** — `computeVelocityCommands` 冒頭で `now - last_time_called_ > reset_period_`（既定 **1.0s**・**Humble 固有 param**）なら `reset()`。goal 間に 1 秒以上空くのは通常運転＝**新しい goal のたびに帯上限が①へ戻る**。(ii) `Optimizer::fallback()`（soft-reset 失敗時）＝**走行中でも消える**。(iii) 動的 param 変更の post-callback。消える向きが**速い①への復帰**＝危険側。この事実により **周期 re-publish は「cadence の好み」ではなく安全要件**であり、周期は `reset_period` より十分短いこと（または `nav2_params.yaml` で `reset_period` を併せて明示設定）が必須 → **OQ-R4 に反映**。
+5. **MPPI（`nav2_mppi_controller`）は `setSpeedLimit` を実装し constraints を更新する**。かつ **Humble にリリースがある**:
    - `nav2_mppi_controller/src/controller.cpp` → `optimizer_.setSpeedLimit(speed_limit, percentage);`
      <https://raw.githubusercontent.com/ros-navigation/navigation2/humble/nav2_mppi_controller/src/controller.cpp>
    - `nav2_mppi_controller/src/optimizer.cpp`（**重要・§3 の根拠**）:
@@ -114,9 +115,9 @@ M1 の distro は **Humble**（[ADR-0008 §Decision :16](../adr/0008-ros2-distro
 ### 2-2. ② が①を上書きする形（source から導いた事実・設計に効く）
 
 - MPPI の `base_constraints` は params から読まれる値＝**①が注入した `vx_max`**。②は常に**①を基準にスケール**する。
-- `percentage = true`（`speed_limit` ≤ 100）なら **構造的に①を超えられない**（`base × ratio`, ratio ≤ 1）。
+- `percentage = true` も**上限クランプは無い**（`ratio = speed_limit / 100.0` をそのまま乗算＝`speed_limit=150` なら `ratio=1.5` で①を超える。2026-08-30 ソース再確認）。「①を超えない」性質は **publisher 側クランプ（OQ-R3）が担う**のであって % モード自体の性質ではない——ただし `speed_limit ≤ 100` を publisher が保証する限り `base × ratio ≤ base` は成立する。
 - `percentage = false`（絶対値 m/s）は `ratio = speed_limit / base_vx_max` → `constraints.vx_max = speed_limit` **そのもの**。**上限クランプが無い**＝`speed_limit` に①より大きい値を publish すれば **`vx_max` は①を超えて上がる**（fail-open）。
-- 副作用: どちらの分岐でも **`vx_min` / `vy` / `wz` が同率でスケール**する。絶対値 m/s を「linear だけの制限」と読むと誤り——**角速度 `wz` も同時に縮む/伸びる**。[ADR-0010 §Open 6 :67](../adr/0010-raise-speed-cap-to-platform-max.md)（wz 上限は新設しない）とは矛盾しないが（凍結契約に wz は無い）、挙動として明記しておく。
+- 副作用: どちらの分岐でも **`vx_min` / `vy` / `wz` が同率でスケール**する。絶対値 m/s を「linear だけの制限」と読むと誤り——**角速度 `wz` も同時に縮む/伸びる**。[ADR-0010 §Open 6 :68](../adr/0010-raise-speed-cap-to-platform-max.md)（wz 上限は新設しない）とは矛盾しないが（凍結契約に wz は無い）、挙動として明記しておく。
 
 ## 3. 帯 → `SpeedLimit` 写像
 
@@ -124,7 +125,7 @@ M1 の distro は **Humble**（[ADR-0008 §Decision :16](../adr/0008-ros2-distro
 
 - **`percentage = false`（absolute・m/s）を既定とする。** 理由: 契約上限（`safety.py:18`）・config 運用値（`safety.max_linear_velocity`）・[ADR-0010](../adr/0010-raise-speed-cap-to-platform-max.md) の S-SPEED 実測値が**すべて m/s** であり、同一単位で語れることが誤解を減らす。ただし §2-2 の fail-open 性ゆえ **publisher 側クランプが必須**（§4 制約 1）。`percentage = true` は「構造的に①を超えられない」利点があるため**捨てない** → **OQ-R5**。
 - 帯は [09 T-1（:352-）](../mode-x-er/09-hand-raise-summon.md) の **3 帯**（**0本（グー）＝最遅段 / 1〜3本＝最速段 / 4〜5本（パー）＝安定段**）。
-- **帯の実値（m/s）は本 doc で発明しない。** `config` 注入（**コード定数禁止** = [ADR-0010 §Decision 2 :22](../adr/0010-raise-speed-cap-to-platform-max.md) / [09 T-6 :406](../mode-x-er/09-hand-raise-summon.md) と同規律）。最速段の値は [ADR-0010 §Open 1-2 :62-63](../adr/0010-raise-speed-cap-to-platform-max.md)（car_type 実機確認 → contract pin）と **S-SPEED 実測**の後にしか決まらない（= [09 OQ-T1 :434](../mode-x-er/09-hand-raise-summon.md)）。config キー名も**凍結契約ではない**（additive / safe-OFF・既定 OFF = [09 T-6 :406](../mode-x-er/09-hand-raise-summon.md)）。
+- **帯の実値（m/s）は本 doc で発明しない。** `config` 注入（**コード定数禁止** = [ADR-0010 §Decision 2 :23](../adr/0010-raise-speed-cap-to-platform-max.md) / [09 T-6 :406](../mode-x-er/09-hand-raise-summon.md) と同規律）。最速段の値は [ADR-0010 §Open 1-2 :63-64](../adr/0010-raise-speed-cap-to-platform-max.md)（car_type 実機確認 → contract pin）と **S-SPEED 実測**の後にしか決まらない（= [09 OQ-T1 :434](../mode-x-er/09-hand-raise-summon.md)）。config キー名も**凍結契約ではない**（additive / safe-OFF・既定 OFF = [09 T-6 :406](../mode-x-er/09-hand-raise-summon.md)）。
 
 | 帯（[09 T-1](../mode-x-er/09-hand-raise-summon.md)） | `percentage` | `speed_limit` | 出所 |
 |---|---|---|---|
@@ -146,10 +147,10 @@ M1 の distro は **Humble**（[ADR-0008 §Decision :16](../adr/0008-ros2-distro
 | 案 | 形 | 評価 |
 |---|---|---|
 | (a) **安定段値を能動 publish** | タイムアウト時に安定段の m/s を送る | T-5 の意味論と 1:1。②の状態が publisher 側の意図と常に一致する。**推し**（ただし確定は実装スライス） |
-| (b) publish 停止（最終値ラッチ依存） | 送るのをやめる。Nav2 は最後の値を保持 | 「タイムアウト後は安定段」を**満たさない**（直前が最速段なら最速段のまま残る）。**T-5 と矛盾するので単独では不可** |
+| (b) publish 停止（最終値ラッチ依存） | 送るのをやめる。Nav2 は最後の値を保持 | 「タイムアウト後は安定段」を**満たさない**うえ、**依存する「最終値ラッチ」自体が永続しない**（§2-1 ④: MPPI `reset()` が②を破棄・無活動 1.0s で発火）。**T-5 と矛盾し、かつ前提が崩れているので不可** |
 | (c) `0.0` を送る | — | **禁止**（§3-2。制限解除になる） |
 
-- 補足: 確認した humble の `controller_server` コールバックは受け取った値を配るだけで、**`speed_limit` の失効（timeout）機構は見当たらなかった**（`speedLimitCallback` の実装範囲で確認。失効機構が他所に無いことまでは網羅確認していない＝**[部分裏取り]**）。したがって「送らない＝安全側に戻る」は**成立しない**前提で設計する。
+- 補足: `controller_server` 側に `speed_limit` の失効（timeout）機構は無い（`speedLimitCallback` は配るだけ）が、**MPPI 側には §2-1 ④ の `reset()` 経路があり、失効は「安全側へ」ではなく「①＝速い側へ」起きる**（2026-08-30 追補・[部分裏取り]を解消）。したがって「送らない＝安全側に戻る」は**二重に成立しない**前提で設計する。
 - **確定は実装スライス** = **OQ-R4**。本 doc は選択肢と禁止事項までを固定する。
 
 ## 4. [09 T-6 の制約 1〜4（:410-413）](../mode-x-er/09-hand-raise-summon.md) との照合
@@ -159,7 +160,7 @@ M1 の distro は **Humble**（[ADR-0008 §Decision :16](../adr/0008-ros2-distro
 | # | 制約（[09:410-413](../mode-x-er/09-hand-raise-summon.md) 原文） | 本経路がどう満たすか |
 |---|---|---|
 | **1** | 「`config.py:101-105` の fail-closed 検証（≤ 契約上限）を**迂回しない**」 | ①は従来どおり `load_config` → `_validate_safety`（[config.py:101-105](../../ws/src/warehouse_interfaces/warehouse_interfaces/config.py)）を通る。②は Nav2 内部で `base_constraints` を**スケール**する経路であり、§2-2 のとおり `percentage=false` では **①を超えうる（fail-open）** → **publisher 側で `min(帯値, config 運用値, MAX_LINEAR_VELOCITY)` の契約上限クランプを必須化**する。これは検証の迂回ではなく**同じ不変条件の二重化**であり、R-26 で pin する（OQ-R3） |
-| **2** | 「twist_mux の 2 入力を**増やさない**」 | `/speed_limit` は **control-plane（制約の宣言）**であって `cmd_vel` 系の velocity producer ではない。[twist_mux.yaml:41-49](../../ws/src/warehouse_bringup/config/twist_mux.yaml) の `emergency`(prio100) / `nav2`(prio10) の 2 入力は**不変**、[同 :5-8](../../ws/src/warehouse_bringup/config/twist_mux.yaml) の FROZEN safety contract（prio100 override 意味論）にも触れない。**3 本目の velocity producer を作らない** |
+| **2** | 「twist_mux の 2 入力を**増やさない**」 | `speed_limit` は **control-plane（制約の宣言）**であって `cmd_vel` 系の velocity producer ではない。[twist_mux.yaml:41-49](../../ws/src/warehouse_bringup/config/twist_mux.yaml) の `emergency`(prio100) / `nav2`(prio10) の 2 入力は**不変**、[同 :5-8](../../ws/src/warehouse_bringup/config/twist_mux.yaml) の FROZEN safety contract（prio100 override 意味論）にも触れない。**3 本目の velocity producer を作らない** |
 | **3** | 「**L0' クランプの下流に置かない**（クランプは常に最後）」 | ②の効果は Nav2 controller が出す `cmd_vel` の中身に現れる＝**L0' の上流**。L0'（[mode-m1/02:45](02-m1-driver-and-watchdog.md) `clamp_body_velocity` 必経）は②の有無に関係なく最終段に残る。②が壊れても③が wire 上限を守る（[mode-m1/03:12](03-joystick-teleop-bringup.md) の M2 negative test と同じ担保） |
 | **4** | 「新しい actuation 経路を作らない（INV-2 ＝ T-8）」 | §4-1 で個別に論じる（**単純な YES とは書かない**） |
 
@@ -168,14 +169,14 @@ M1 の distro は **Humble**（[ADR-0008 §Decision :16](../adr/0008-ros2-distro
 [INV-2 の原文（09:57）](../mode-x-er/09-hand-raise-summon.md) は「gesture 経路は ER 呼び出しだけを省略し、**`to_robotics_plan_draft` 以降は 1 ステップも迂回しない**」であり、列挙されたゲート列は `handoff` 禁止キー gate → L3 Validator → Visual Resolver → Task Graph Executor → Command Compiler → action_map → MCP → **L2 Policy Gate** → Nav2 Bridge REST → Nav2 → L1 → L0'。
 [T-8（09:424）](../mode-x-er/09-hand-raise-summon.md) はこれを受けて「速度帯は **Nav2 のパラメータ**であって新しい task / command / actuation 経路ではない」と判定している。
 
-- **文面上の整合**: `/speed_limit` は `Command` を生まず、目的地（どこへ行くか）を一切決めない。L2 Policy Gate の許可判断（location / freshness / battery / emergency / rate / duplicate）を**代替も迂回もしない**——判断対象そのものが存在しないため。この点で T-8 の「Nav2 のパラメータ」という性格づけは**そのまま生きる**。
+- **文面上の整合**: `speed_limit` は `Command` を生まず、目的地（どこへ行くか）を一切決めない。L2 Policy Gate の許可判断（location / freshness / battery / emergency / rate / duplicate）を**代替も迂回もしない**——判断対象そのものが存在しないため。この点で T-8 の「Nav2 のパラメータ」という性格づけは**そのまま生きる**。
 - **ただし曖昧さが残る**: INV-2 の文面は「`to_robotics_plan_draft` **以降**のゲート列」を対象にしており、**plan draft を経ない control-plane 信号**を想定していない。②は「actuation を新設しない」が「**ゲート列の外側から走行の物理量に影響を与える**」という新種であり、これが INV-2 の精神（＝ゲート列を回避した影響経路を作らない）に触れるか否かは**文面だけでは決まらない**。とくに**上限の引き上げ（安定段 → 最速段 = loosen）**は「より危険な状態への遷移」であり、L2 が restrict-only（[ADR-0004](../adr/0004-l2-restrict-only-policy-profile.md)）で扱ってきた向きと逆である。
 - したがって本 doc は**断定しない**。この裁定を **OQ-R1**（引き上げを L2 経由にすべきか）として明示し、[09:426](../mode-x-er/09-hand-raise-summon.md) の要求どおり **R-26 相当 unit で「L2 迂回が起きない」を pin する**設計（OQ-R3）を実装スライスの DoD に置く。
-- 参考: [ADR-0010 §Decision 5 :25-28](../adr/0010-raise-speed-cap-to-platform-max.md) は速度上限の引き上げに **L2 鮮度窓の物理論証の再導出**と **L1 停止円 margin（`margin = v_max × t_react`）の再導出**を義務づけている。②で**走行中に**上限が変わるということは、**その瞬間に L2/L1 の前提が変わる**ということ——OQ-T3 が「ADR-0010 §Decision 5 の派生再導出と同一の安全レビューに掛ける」と書いている（[09:436](../mode-x-er/09-hand-raise-summon.md)）のはこの意味である。**本 doc は経路を選定しただけで、この安全レビューを済ませてはいない。**
+- 参考: [ADR-0010 §Decision 5 :26-29](../adr/0010-raise-speed-cap-to-platform-max.md) は速度上限の引き上げに **L2 鮮度窓の物理論証の再導出**と **L1 停止円 margin（`margin = v_max × t_react`）の再導出**を義務づけている。②で**走行中に**上限が変わるということは、**その瞬間に L2/L1 の前提が変わる**ということ——OQ-T3 が「ADR-0010 §Decision 5 の派生再導出と同一の安全レビューに掛ける」と書いている（[09:436](../mode-x-er/09-hand-raise-summon.md)）のはこの意味である。**本 doc は経路を選定しただけで、この安全レビューを済ませてはいない。**
 
 ## 5. teleop（joystick）には効かない — そこに穴が無いことの明示
 
-**`/speed_limit` は Nav2 の `controller_server` にしか効かない**（§2-1 ③のファンアウト先は controller plugin 群）。joystick 手動走行（[mode-m1/03 §3](03-joystick-teleop-bringup.md)）は Nav2 を経由しない（`joy_node` → 自前変換 node → `/bot1/cmd_vel` → m1_driver = [mode-m1/03:30-41](03-joystick-teleop-bringup.md)）ため、②はこの経路に**一切影響しない**。
+**`speed_limit` は Nav2 の `controller_server` にしか効かない**（§2-1 ③のファンアウト先は controller plugin 群）。joystick 手動走行（[mode-m1/03 §3](03-joystick-teleop-bringup.md)）は Nav2 を経由しない（`joy_node` → 自前変換 node → `/bot1/cmd_vel` → m1_driver = [mode-m1/03:30-41](03-joystick-teleop-bringup.md)）ため、②はこの経路に**一切影響しない**。
 
 穴が無い理由:
 
@@ -190,13 +191,13 @@ M1 の distro は **Humble**（[ADR-0008 §Decision :16](../adr/0008-ros2-distro
 
 | # | 問い | 優先度 |
 |---|---|---|
-| **OQ-R1** | **帯の引き上げ（安定段 → 最速段 = loosen）を L2 Policy Gate 経由にすべきか。** 引き下げ（tighten）は無条件で可としてよい（より安全な向き・[ADR-0004](../adr/0004-l2-restrict-only-policy-profile.md) の restrict-only と同じ向き）。引き上げは「より危険な状態への遷移」であり、[ADR-0010 §Decision 5 :25-28](../adr/0010-raise-speed-cap-to-platform-max.md) の三段（L2 鮮度窓 / L1 停止円 margin / 期待値の cap 相対化）と整合する裁定が要る。**本丸** | **最高** |
-| **OQ-R2** | **publisher node の パッケージ / layer 帰属。** 「control-plane であって velocity producer ではない」ことだけが確定。候補（`warehouse_m1_driver` は L0' 純度を汚すので不適・帯の出所は L4 `gesture_detector`・適用先は L1）と、[productization/01:180-188](../productization/01-commercial-box-map.md) 対応表への 1 行追記を同一 PR で行う義務（[layer-annotation.md](../../.claude/rules/layer-annotation.md)） | 高 |
-| **OQ-R3** | **R-26 unit の設計**（[09:426](../mode-x-er/09-hand-raise-summon.md) の要求「INV-2 を破らないことを R-26 相当の unit で pin」）。最低限: ① publisher が `min(帯値, config 運用値, MAX_LINEAR_VELOCITY)` を必ず通る ② `0.0` を publish しない ③ `/speed_limit` publish が `cmd_vel` 系トピックへの publish を伴わない（velocity producer 化していない）。独立オラクル + mutation（[.claude/rules/safety.md:7](../../.claude/rules/safety.md) / [architecture/20 §9](../architecture/20-dev-quality-and-testing.md)）。unit は `tests/unit/` に置く（CI 可視性 = [mode-m1/02:56](02-m1-driver-and-watchdog.md) と同じ教訓） | 高 |
-| **OQ-R4** | **未検出時の publish 方針の確定**（§3-3 の (a) 能動 publish を推すが未確定）＋ **送出 cadence**（QoS(10) は latch しないため、遷移時のみか周期送出か・`controller_server` の lifecycle 起動後の再送をどう保証するか）＋ **`0.0` 禁止の実装レベル保証** | 高 |
-| **OQ-R5** | **`percentage=false`（絶対 m/s）と `percentage=true`（%）のどちらを採るか。** 絶対値は単位が契約・config・S-SPEED と揃うが **①を超えうる（fail-open・§2-2）**。% は ratio ≤ 1 なら**構造的に①を超えられない**が、帯の値が「①比の%」になり S-SPEED の m/s から一段変換が挟まる。安全構造と可読性のトレードオフ | 中 |
-| **OQ-R6** | **`behavior_server`（recovery 挙動）に②が効くか未確認**（§2-1 ③の [未裏取り]）。効かない場合、recovery 中は①の基準値まで出る＝帯が無効になる区間が存在する。実挙動の確認と、効かない場合の許容/対策（③ L0' 依存で足りるかの裁定） | 中 |
-| **OQ-R7** | **②が `wz`（角速度）も同率でスケールする副作用の許容**（§2-2）。凍結契約に wz 上限は無い（[ADR-0010 §Open 6 :67](../adr/0010-raise-speed-cap-to-platform-max.md)）ため契約違反ではないが、最遅段で旋回が鈍る/最速段で旋回が速くなる挙動をデモ上許容するかは未裁定 | 中 |
+| **OQ-R1** | **帯の引き上げ（安定段 → 最速段 = loosen）を L2 Policy Gate 経由にすべきか。** 引き下げ（tighten）は無条件で可としてよい（より安全な向き・[ADR-0004](../adr/0004-l2-restrict-only-policy-profile.md) の restrict-only と同じ向き）。引き上げは「より危険な状態への遷移」であり、[ADR-0010 §Decision 5 :26-29](../adr/0010-raise-speed-cap-to-platform-max.md) の三段（L2 鮮度窓 / L1 停止円 margin / 期待値の cap 相対化）と整合する裁定が要る。**本丸** | **最高** |
+| **OQ-R2** | **publisher node の パッケージ / layer 帰属。** 「control-plane であって velocity producer ではない」ことだけが確定。候補（`warehouse_m1_driver` は L0' 純度を汚すので不適・帯の出所は L4 `gesture_detector`・適用先は L1）と、[productization/01:180-188](../productization/01-commercial-box-map.md) 対応表への 1 行追記を同一 PR で行う義務（[layer-annotation.md](../../.claude/rules/layer-annotation.md)）。**[09 OQ-13 :193](../mode-x-er/09-hand-raise-summon.md)（`gesture_detector` の package 配置）とは別ノードだが、同時に裁定する**（別々の答えへの着地を防ぐ） | 高 |
+| **OQ-R3** | **R-26 unit の設計**（[09:426](../mode-x-er/09-hand-raise-summon.md) の要求「INV-2 を破らないことを R-26 相当の unit で pin」）。最低限: ① publisher が `min(帯値, config 運用値, MAX_LINEAR_VELOCITY)` を必ず通る ② `0.0` を publish しない ③ `speed_limit` publish が `cmd_vel` 系トピックへの publish を伴わない（velocity producer 化していない）。加えて ④ `percentage=false` は Nav2 内部で `speed_limit / base_constraints.vx_max` の除算を通るため、①が 0/負にならないことは config fail-closed が守るが oracle にも 1 行置く。独立オラクル + mutation（[.claude/rules/safety.md:7](../../.claude/rules/safety.md) / [architecture/20 §9](../architecture/20-dev-quality-and-testing.md)）。unit は `tests/unit/` に置く（CI 可視性 = [mode-m1/02:56](02-m1-driver-and-watchdog.md) と同じ教訓） | 高 |
+| **OQ-R4** | **未検出時の publish 方針の確定**（§3-3 の (a) 能動 publish を推すが未確定）＋ **送出 cadence の確定＝安全要件**（QoS(10) 非 latch に加え、§2-1 ④ の MPPI `reset()` が無活動 **1.0s**（`reset_period` 既定・Humble 固有）で②を破棄するため、**周期送出は必須**で周期は `reset_period` より margin をもって短いこと。または `nav2_params.yaml` で `reset_period` を併せ明示設定）＋ **`0.0` 禁止の実装レベル保証** | **最高（安全要件化・2026-08-30）** |
+| **OQ-R5** | **`percentage=false`（絶対 m/s）と `percentage=true`（%）のどちらを採るか。** **どちらのモードも Nav2 側に上限クランプは無く**（§2-2・2026-08-30 確認）、①超過の防止は**両モードとも publisher 側クランプ（OQ-R3）が担う**。真のトレードオフは可読性のみ——絶対値は単位が契約・config・S-SPEED と揃い、% は「①比」への一段変換が挟まる。**[09 OQ-T2 :435](../mode-x-er/09-hand-raise-summon.md)（絶対値 m/s か最速段比の倍率か）と同じ選択の別面だが分母が違う**（SpeedLimit の % は①起動基準値比・OQ-T2 の倍率は最速段比。一致するのは最速段=①のときのみ）＝OQ-T2 の決着を無検証で流用しない | 中 |
+| **OQ-R6** | ~~`behavior_server` に②が効くか未確認~~ → **効かないことをソースで確認済（2026-08-30・§2-1 ③追補）**: `nav2_core::Behavior` IF に `setSpeedLimit` が無い＝構造的に不達。残る問いは**裁定のみ**——recovery 中は①の基準値まで出る（帯が無効な区間が確実に存在する）ことを ③ L0' 依存で許容するか、対策（recovery 側 param の連動設定等）を足すか | 中 |
+| **OQ-R7** | **②が `wz`（角速度）も同率でスケールする副作用の許容**（§2-2）。凍結契約に wz 上限は無い（[ADR-0010 §Open 6 :68](../adr/0010-raise-speed-cap-to-platform-max.md)）ため契約違反ではないが、最遅段で旋回が鈍る/最速段で旋回が速くなる挙動をデモ上許容するかは未裁定 | 中 |
 
 **残件（OQ ではない作業）**: ~~[productization/01](../productization/01-commercial-box-map.md) の対応表に `warehouse_m1_driver`（L0'）の行が無い~~ → **解消済（2026-08-28〜30）**: 所有トラック側の [#555](https://github.com/lll-kkk-ryuya/miniature-warehouse-robotics/pull/555) が対応表へ L0' 行を追加（[productization/01:187](../productization/01-commercial-box-map.md)）、[#556](https://github.com/lll-kkk-ryuya/miniature-warehouse-robotics/pull/556) が GLOSSARY §3 へ正準エントリを追加。本 doc 起草時（2026-08-28）の残件記述は履歴として取り消し線で保存。
 
@@ -205,7 +206,7 @@ M1 の distro は **Humble**（[ADR-0008 §Decision :16](../adr/0008-ros2-distro
 **forward（本 doc → 正本）**:
 
 - [mode-x-er/09-hand-raise-summon.md 【2026-08-21 追補④】](../mode-x-er/09-hand-raise-summon.md) — 帯の意味論の正本。とくに [T-6 :399-413](../mode-x-er/09-hand-raise-summon.md)（写像先と制約 1〜4）/ [:408](../mode-x-er/09-hand-raise-summon.md)（正直な限界）/ [T-5 :388-397](../mode-x-er/09-hand-raise-summon.md)（未検出時）/ [T-8 :419-426](../mode-x-er/09-hand-raise-summon.md)（INV-1 / INV-2 の生存確認と R-26 要求）/ [OQ-T3 :436](../mode-x-er/09-hand-raise-summon.md)（本 doc が受ける問い）/ [INV-1 :25](../mode-x-er/09-hand-raise-summon.md)・[INV-2 :57](../mode-x-er/09-hand-raise-summon.md)
-- [adr/0010-raise-speed-cap-to-platform-max.md](../adr/0010-raise-speed-cap-to-platform-max.md) — 速度値の正本（[§Decision 1-2 :21-22](../adr/0010-raise-speed-cap-to-platform-max.md) 契約再定義と config 注入 / [§Decision 3 :23](../adr/0010-raise-speed-cap-to-platform-max.md) L0' 維持 / [§Decision 5 :25-28](../adr/0010-raise-speed-cap-to-platform-max.md) 派生再導出 / [§S-SPEED :30-38](../adr/0010-raise-speed-cap-to-platform-max.md) / [§Open :62-67](../adr/0010-raise-speed-cap-to-platform-max.md)）
+- [adr/0010-raise-speed-cap-to-platform-max.md](../adr/0010-raise-speed-cap-to-platform-max.md) — 速度値の正本（[§Decision 1-2 :22-23](../adr/0010-raise-speed-cap-to-platform-max.md) 契約再定義と config 注入 / [§Decision 3 :24](../adr/0010-raise-speed-cap-to-platform-max.md) L0' 維持 / [§Decision 5 :26-29](../adr/0010-raise-speed-cap-to-platform-max.md) 派生再導出 / [§S-SPEED :31-39](../adr/0010-raise-speed-cap-to-platform-max.md) / [§Open :61-68](../adr/0010-raise-speed-cap-to-platform-max.md)）
 - [adr/0008-ros2-distro-humble-for-rosmaster-m1.md](../adr/0008-ros2-distro-humble-for-rosmaster-m1.md) — distro = Humble（[:16](../adr/0008-ros2-distro-humble-for-rosmaster-m1.md)）。裏取りを humble ブランチで行う根拠。[:25](../adr/0008-ros2-distro-humble-for-rosmaster-m1.md) MPPI Humble リリース（本 doc §2-1 ④で再確認・一致）
 - [mode-m1/02-m1-driver-and-watchdog.md](02-m1-driver-and-watchdog.md) — L0'（[:45](02-m1-driver-and-watchdog.md) 必経 / [:53](02-m1-driver-and-watchdog.md) 単一ソース import / [:55](02-m1-driver-and-watchdog.md) `set_speed_limit(0x16)` 採用禁止 / [:56](02-m1-driver-and-watchdog.md) R-26 / [§3 :58-68](02-m1-driver-and-watchdog.md) watchdog）
 - [mode-m1/03-joystick-teleop-bringup.md](03-joystick-teleop-bringup.md) — joy 経路（[§3 :28-50](03-joystick-teleop-bringup.md)・C-8 [:48](03-joystick-teleop-bringup.md)・standalone [:50](03-joystick-teleop-bringup.md)）／[mode-m1/01-mode-boundary-and-traffic.md](01-mode-boundary-and-traffic.md)（`traffic_mode: none`）
@@ -218,7 +219,9 @@ M1 の distro は **Humble**（[ADR-0008 §Decision :16](../adr/0008-ros2-distro
   - <https://raw.githubusercontent.com/ros-navigation/navigation2/humble/nav2_mppi_controller/src/controller.cpp> / <https://raw.githubusercontent.com/ros-navigation/navigation2/humble/nav2_mppi_controller/src/optimizer.cpp>（MPPI 実装・constraints スケール）
   - <https://raw.githubusercontent.com/ros-navigation/navigation2/humble/nav2_costmap_2d/include/nav2_costmap_2d/costmap_filters/filter_values.hpp>（`NO_SPEED_LIMIT = 0.0`）
   - <https://index.ros.org/p/nav2_mppi_controller/>（Humble 1.1.20）
-  - <https://ros.ncnynl.com/en/nav2/configuration/packages/configuring-controller-server.html>（Controller Server 設定表の**ミラー**。`docs.nav2.org` の公式 HTML は本作業のツールで 404＝**未取得**）
+  - <https://raw.githubusercontent.com/ros-navigation/docs.nav2.org/sphinx_docs/configuration/packages/configuring-controller-server.rst>（Controller Server 設定表の **Humble 期一次原文**（`sphinx_docs` ブランチ）。参照日 2026-08-30。旧 HTML は mkdocs 移行で 404・初稿のミラー確認は本 URL へ置換済）
+  - <https://raw.githubusercontent.com/ros-navigation/navigation2/humble/nav2_core/include/nav2_core/behavior.hpp>（`Behavior` IF に `setSpeedLimit` 無し＝recovery へ②不達の根拠。参照日 2026-08-30）
+  - `optimizer.cpp` `Optimizer::reset()`（`settings_.constraints = settings_.base_constraints` で②破棄）/ `controller.cpp` `reset_period_` 既定 1.0s（Humble 固有）— URL は上記 nav2_mppi_controller の 2 本と同一。参照日 2026-08-30
 - [docs/GLOSSARY.md §11](../GLOSSARY.md) — **runtime speed limit（走行中速度上限）** の 1 エントリを本 doc と双方向で追補済
 
 **backlink**: `docs/mode-m1/README.md`（ファイル表・§関連 ADR・Status）と `docs/README.md`（mode-m1 表）の索引行は**同一ラウンドで整備済**。[09:436 の OQ-T3 行](../mode-x-er/09-hand-raise-summon.md) と [09:408](../mode-x-er/09-hand-raise-summon.md) には本 doc への行内リンクを追加済（行の増減なし）。
