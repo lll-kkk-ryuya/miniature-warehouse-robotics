@@ -173,3 +173,11 @@ keep-previous fallback が実機で無言死していた（3.11 で両者統合�
 重複で完全 no-op）。赤化オラクルは **py3.10 実行時**の scheduler timeout 系 unit 4 本のみ
 （py3.12 では構造的に恒久緑）。同族のテスト側 3.11+ API（`Task.cancelling()`）は
 `test_perception_lanes` で version-guard 化した（py3.10 は一 tick 後の `cancelled()` リーク検査が担う）。
+
+**第 4 波（ボード実走で検出・同 PR）**: ① `scripts/slice3_live_precheck.sh` の `python_cmd()` が
+**py>=3.11 を自前で強制**しており（ADR 以前の stale 床・shell 内ゲートは AST 床ガードの射程外）、
+ボードで precheck 由来の e2e 7 本が FAIL → 床を pyproject `requires-python`（>=3.10）に整合。
+② `test_web_views` の mtime 順序が Linux の kernel-tick 粒度（数 ms）でタイになりボードで FAIL →
+`os.utime` の明示順序化で決定化（board 露出の既存 flake・shim 無関係）。
+**実 py3.10 実走でしか出ない層が 2 面増えた**: (a) shell スクリプト内の版数ゲート
+(b) OS/ファイルシステム粒度差。いずれもボード pytest（残②）が検出器として機能した実例。
