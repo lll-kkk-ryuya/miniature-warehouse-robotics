@@ -8,6 +8,7 @@ hard-to-reverse な設計判断と**その理由**を記録する場所。フォ
 - **いつ起こすか（3条件すべて）**: ①hard to reverse ②surprising without context ③real trade-off。1つでも欠けたら起こさない。
 - **retrospectives との違い**: ADR = **前向きの決定＋トレードオフ**、[docs/dev/03-retrospectives.md](../dev/03-retrospectives.md) = **事後の教訓・インシデント**。重複させず相互リンクする。
 - **索引**: 各 ADR は本 README と（load-bearing なら）[docs/README.md](../README.md) に 1 行 back-link を張る（双方向リンク＝[docs-authoring](../../.claude/skills/docs-authoring/SKILL.md)）。
+- **分野別ビュー**: M1（ROSMASTER 単騎フェーズ）関連 ADR の索引は [docs/mode-m1/README.md](../mode-m1/README.md) §関連 ADR。
 
 ## 一覧（新しい順）
 

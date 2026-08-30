@@ -103,6 +103,7 @@ docs/
 | [01-mode-boundary-and-traffic](mode-m1/01-mode-boundary-and-traffic.md) | traffic_mode 裁定（collision_monitor 常時起動 = G-k の構造的解決）・stg/prod config とのギャップ |
 | [02-m1-driver-and-watchdog](mode-m1/02-m1-driver-and-watchdog.md) | m1_driver serial node 設計（L0' 結線 = G-l）＋ watchdog 多層停止設計（STM32 watchdog 不在・G-g 手順） |
 | [03-joystick-teleop-bringup](mode-m1/03-joystick-teleop-bringup.md) | joystick 手動走行 bring-up（M0/M1/M2 成功ゲート・実機プローブ・joy 経路） |
+| [04-runtime-speed-limiter](mode-m1/04-runtime-speed-limiter.md) | OQ-T3 設計解: Nav2 speed_limit_topic による走行中速度上限の動的変更（三層モデル・実装未着手） |
 
 ## mode-x-er/ — Gemini Robotics-ER 視覚タスク司令（設計提案）
 

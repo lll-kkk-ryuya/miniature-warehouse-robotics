@@ -18,7 +18,7 @@
 
 | # | 測るもの | 決まるもの |
 |---|---|---|
-| 1 | `get_car_type()`（**最優先**） | ファーム clamp 上限（0x01→1.0 / 0x02→**0.7** m/s）= [ADR-0010 §Open 1](../adr/0010-raise-speed-cap-to-platform-max.md) の pin 値 |
+| 1 | `get_car_type()`（**最優先**） | ファーム clamp 上限（公式 V3.6.5 の M1 = `0x0A`→**0.7** m/s）= [ADR-0010 §Open 1](../adr/0010-raise-speed-cap-to-platform-max.md) の pin 値 |
 | 2 | モータラベルの RPM 印字 + ホイール径ノギス実測 | 理論最高速度・エンコーダ→距離換算（`ENCODER_CIRCLE_*` の選択 = [02 V-2 :543](../shared/02-hardware-design.md)） |
 | 3 | トレッド / ホイールベース実測 → `(W+L)/2` | ファーム X3 幾何（`MECANUM_APB 164.555`）とのズレ量 → `wz` 補正係数の要否（[02 §1-3](02-m1-driver-and-watchdog.md)） |
 | 4 | G-g watchdog 試験（[02 §4](02-m1-driver-and-watchdog.md)） | W-3 層の有無の確定 |
