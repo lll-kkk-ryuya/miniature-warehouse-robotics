@@ -9,6 +9,8 @@
 
   <!-- Frozen contract only (MAX_LINEAR_VELOCITY). No other track's internals. -->
   <exec_depend>warehouse_interfaces</exec_depend>
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
 
   <test_depend>python3-pytest</test_depend>
 

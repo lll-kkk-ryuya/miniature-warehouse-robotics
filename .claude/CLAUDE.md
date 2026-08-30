@@ -87,6 +87,7 @@
 - `docs/mode-c/` - Mode C設計（LLM + Open-RMF、主方針）
 - `.claude/local-memory.md` - Claude Code向けの短期 handoff / 再開メモ
 - `docs/mode-x-er/` - Mode X-ER 設計（Gemini Robotics-ER 視覚タスク司令官）
+- `docs/mode-m1/` - Mode M1（ROSMASTER M1 単騎・部屋スケール実行モード）の正本ルート。境界/traffic 裁定・driver+watchdog 設計・joystick bring-up（M0/M1/M2 ゲート）
 - `docs/dev/07-mode-x-er-live-e2e-runbook.md` - ER 専用 Hermes 起動→ER→L3→Langfuse の turnkey live runbook（gateway 8643; 音声主線=direct ER・音声 fork 8644 は §2.5 spike）
 - `deploy/hermes/er-audio-fork/` - ER 音声 leg 用 fork gateway（`input_audio`・#357。標準 Mode A の 8642 とは別）
 - `docs/GLOSSARY.md` - 正準用語集（単語帳）。`docs/README.md` から索引
