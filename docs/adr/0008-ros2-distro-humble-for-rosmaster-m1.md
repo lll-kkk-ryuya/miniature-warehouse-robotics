@@ -100,7 +100,7 @@ Isaac ROS release-3.2 が **Orin + Humble 線の終点**であることを一次
 
 **ゲート結果**: `ruff check .` = All checks passed / `ruff format --check .` = 367 files already formatted（**flip による format ドリフトは発生せず**、`ruff format .` の一括 sweep は不要だった）/ `pytest` = **2269 passed, 17 skipped**。
 
-**残（隠さない）**: ① `target-version` は **lint の対象構文を py310 に合わせるだけ**で、開発機の実行系は依然 Python 3.12（`.venv`）＝**実 py310 での実行検証ではない**。Humble コンテナ上での実走は未適用 52 ファイル側（`deploy/dev/Dockerfile` 等）の解消後。② `requires-python = ">=3.10"` は元から py310 を許容しており本 PR で変更なし。③ 上記 `tomllib` 以外に stdlib 可用性ベースの py310 非互換が残っていないかは、ruff が構文しか見ない以上 **実 py310 実行でしか確定できない**（現時点で既知のものは無い）。
+**残（隠さない）**: ① `target-version` は **lint の対象構文を py310 に合わせるだけ**で、開発機の実行系は依然 Python 3.12（`.venv`）＝**実 py310 での実行検証ではない**。Humble コンテナ上での実走は未適用 52 ファイル側（`deploy/dev/Dockerfile` 等）の解消後。② `requires-python = ">=3.10"` は元から py310 を許容しており本 PR で変更なし。③ 上記 `tomllib` 以外に stdlib 可用性ベースの py310 非互換が残っていないかは、ruff が構文しか見ない以上 **実 py310 実行でしか確定できない**（現時点で既知のものは無い）。→【2026-08-30 追記: ③が実機で的中（StrEnum / typing.Self / datetime.UTC）→ compat shim + AST 床ガード unit で解消】
 
 ## 追記（2026-08-28）: NVIDIA 公式 Quick Start の「JetPack 7.2 ISO インストール」は**採用不可**
 
@@ -143,4 +143,14 @@ str() 意味論依存 3 箇所（`conversation_events` の verdict 再パース 
 `requires-python = ">=3.10"` の床は依然 CI 未検証 — `python-quality` job の matrix 化（3.10/3.12）を
 governance 別 PR で追う。② 実 py3.10 での最終確定は Jetson 上の pytest（真の runtime ゲート・#563 DoD）。
 ③ pydantic 実体は board では pip `--user` の v2（apt `python3-pydantic` は v1.8.2 で不適合）＝
-`package.xml` の `python3-pydantic` exec_depend（2 pkg）との宣言不一致は本 ADR ドリフト台帳の未解決項として残す。
+`package.xml` の `python3-pydantic` exec_depend（2 pkg）との宣言不一致（同族: `typing_extensions` も rosdep 宣言なし＝jammy apt 3.10.0.2 は `Self` 非搭載・pip の pydantic v2 推移的依存で充足）は未解決の残として本追記に記録する（distro ドリフト台帳とは別軸）。
+
+**追加発見（同日・実 py3.10 pre-verify）**: dev Mac に uv で py3.10 venv（CI `python-quality` job と
+同一パッケージ集合）を作り全 suite を実行したところ、`datetime.UTC`（py3.11+ の `timezone.utc` alias）
+の import が 4 ファイル（`warehouse_safety/emergency_guardian.py`・`warehouse_state/state_cache.py`・
+`warehouse_llm_bridge/robotics/composition/record.py`・`tests/unit/test_composition_record.py`）で
+18 テストモジュールの collection を落とすことが判明（StrEnum と同クラス＝「実 py310 でしか出ない」第 2 波）。
+同じ機構で解消: `compat.UTC`（3.11+ = `datetime.UTC` re-export / 3.10 = `timezone.utc`＝**同一 singleton・
+identity で不変**）を追加し 4 ファイルを sweep、`from datetime import UTC` / `datetime.UTC` の直書きも
+source-scan で恒久禁止。L2 安全系 2 ファイル（Emergency Guardian / State Cache）は **import 行のみ**の
+変更で挙動不変（既存 R-26 unit が検証）。影響トラックは llm-bridge に加え **safety-state** へも予告。

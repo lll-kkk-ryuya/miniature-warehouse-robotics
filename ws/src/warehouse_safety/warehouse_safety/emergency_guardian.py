@@ -25,7 +25,7 @@ import contextlib
 import gc
 import json
 import time
-from datetime import UTC, datetime
+from datetime import datetime
 
 import rclpy
 from action_msgs.srv import CancelGoal
@@ -37,6 +37,7 @@ from rclpy.publisher import Publisher
 from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import BatteryState
 from std_msgs.msg import String
+from warehouse_interfaces.compat import UTC
 from warehouse_interfaces.config import load_config
 from warehouse_interfaces.safety import BATTERY_PERCENTAGE_SCALE_DEFAULT, validate_battery_scale
 

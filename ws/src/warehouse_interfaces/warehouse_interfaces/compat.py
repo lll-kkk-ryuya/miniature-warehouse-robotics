@@ -1,11 +1,12 @@
 """Python-version compatibility shims for the frozen-contract packages (#563).
 
-``enum.StrEnum`` exists only on Python >= 3.11; the Jetson prod board runs
-Ubuntu 22.04 / Python 3.10 (ADR-0008). On 3.11+ this module re-exports the
-stdlib class unchanged, so every existing environment keeps byte-identical
-behaviour; on 3.10 it provides ``_StrEnumShim``, verified observationally
-identical to the stdlib class across str()/f-string/format()/json/pydantic-v2
-on CPython 3.10-3.13 (#563).
+``enum.StrEnum`` and ``datetime.UTC`` exist only on Python >= 3.11; the Jetson
+prod board runs Ubuntu 22.04 / Python 3.10 (ADR-0008). On 3.11+ this module
+re-exports the stdlib objects unchanged, so every existing environment keeps
+byte-identical behaviour; on 3.10 it provides ``_StrEnumShim`` (verified
+observationally identical to the stdlib class across str()/f-string/format()/
+json/pydantic-v2 on CPython 3.10-3.13) and ``UTC = timezone.utc`` (the very
+object 3.11+ aliases) (#563).
 
 This must stay the SINGLE shared ``StrEnum`` for the whole workspace: a stray
 per-module shim would break ``isinstance(value, StrEnum)`` JSON serialization
@@ -36,9 +37,15 @@ class _StrEnumShim(str, Enum):
 
 
 if sys.version_info >= (3, 11):
+    from datetime import UTC
     from enum import StrEnum
 else:  # Python 3.10 (Jetson / Humble, ADR-0008)
+    from datetime import timezone
+
     StrEnum = _StrEnumShim
+    # datetime.UTC (3.11+) is documented as an alias of timezone.utc — the SAME
+    # singleton object, so this branch is identity-equal, not merely equivalent.
+    UTC = timezone.utc
 
 
-__all__ = ["StrEnum"]
+__all__ = ["UTC", "StrEnum"]
