@@ -121,6 +121,17 @@ Mac しか持たない本プロジェクトにとって一見“正解”に見�
 **公式ドキュメントが新しい JetPack 世代を前提に書き換わっている**点に注意し、
 バージョンを確認せずに公式手順をなぞらないこと。
 
+## 追記（2026-08-30）: SSD の当面の役割 = データディスク（rootfs 移行は任意作業へ降格）
+
+上記クローン方式は**実施するときの方式**として維持するが、実施自体を急がない判断に更新した。
+2026-08-30 の board provisioning は **NVMe を `/ssd` データディスク**（GPT+ext4・`nofail`・
+docker data-root / repo clone / 地図・録画置き場）として決着し（B案）、**rootfs は microSD のまま**。
+理由 = rootfs 移行は boot 構成を触る＝失敗時に物理アクセス必須で、常時通電・遠隔運用
+（[jetson/02 §9.1](../jetson/02-remote-access-and-dev-link.md)）と衝突する。重い I/O は `/ssd` に
+載ったため移行の便益も縮小した。決着の記録と provisioning 手順は
+[jetson/02 §9.6](../jetson/02-remote-access-and-dev-link.md)。Humble 本体は同日 apt ネイティブ導入済み
+（実機 Ubuntu 22.04.5 で本 ADR の決定どおり）。
+
 ## 追記（2026-08-30）: 残③の的中 — 実 py3.10（Jetson 実機）で StrEnum / typing.Self 非互換が顕在化（#563）
 
 「その3」の残③（stdlib 可用性ベースの py310 非互換は実 py310 実行でしか確定できない）が Jetson 実機

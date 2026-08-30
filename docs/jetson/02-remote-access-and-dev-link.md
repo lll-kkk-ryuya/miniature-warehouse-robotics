@@ -1,11 +1,13 @@
 # 開発機（Mac）↔ Jetson 実機のアクセス経路（dev link）
 
 作成日: 2026-08-28 ／ 改訂: 2026-08-30（**§9 追加＝現行の正本**。mDNS 直結・常時通電運用・`jetson` CLI。
-§3-B トンネルは dormant fallback へ退役、§5 pull 型 agent はセキュリティ理由で恒久廃止）
+§3-B トンネルは dormant fallback へ退役、§5 pull 型 agent はセキュリティ理由で恒久廃止。
+同日 §9.6 board 基盤 provisioning（NVMe `/ssd`＝B案・ROS 2 Humble・repo clone）と §9.7 外出先
+Tailscale 経路を追記）
 
 > **目的**: bring-up 中に「**Mac から Jetson を操作する**」ための経路を正本化する。初回接続で
 > **Mac → Jetson の新規接続だけが届かない**問題に当たり（原因 = macOS のローカルネットワーク権限）、
-> その切り分けと対処・動作実績のある fallback をここに固定する。**次回以降は本 doc の §4 か §5 をなぞるだけで再接続できる**状態にする。
+> その切り分けと対処・動作実績のある fallback をここに固定する。**次回以降は本 doc の §9 をなぞるだけで再接続できる**状態にする。
 >
 > **本 doc のスコープ**: 開発時アクセス（ssh / コマンド実行）に閉じる。**prod 常駐化は
 > [setup/jetson-deploy.md](../setup/jetson-deploy.md)**、**実機投入前ゲート G0-G7 は
@@ -138,7 +140,7 @@ ssh -i ~/.ssh/mwr_jetson -p 2222 ruyuya@127.0.0.1
 # 1) 開発機で鍵を1本作る（初回のみ・パスフレーズ無し = 自動化用）
 ssh-keygen -t ed25519 -N '' -C 'mwr-mac->jetson' -f ~/.ssh/mwr_jetson
 
-# 2) Jetson 側へ公開鍵を入れる（Jetson の端末で1回・§5 の /a スクリプトと同等）
+# 2) Jetson 側へ公開鍵を入れる（Jetson の端末で1回）
 #    ssh が通る環境なら ssh-copy-id -i ~/.ssh/mwr_jetson.pub ruyuya@<IP> でよい
 
 # 3) 接続
@@ -169,11 +171,11 @@ ssh -i ~/.ssh/mwr_jetson ruyuya@<IP>
 | L4T | `R36.4.4`（`/etc/nv_tegra_release`） | JetPack **6.2 系**＝[shared/02:412](../shared/02-hardware-design.md) の想定どおり |
 | OS | Ubuntu **22.04.5 LTS (jammy)** | ✅ [ADR-0008:16](../adr/0008-ros2-distro-humble-for-rosmaster-m1.md)（Humble ネイティブ）と整合 |
 | bootloader / QSPI | `Current version: 36.4.4`・slot B | ✅ **36.0 以降＝更新不要**（[shared/02:409](../shared/02-hardware-design.md)） |
-| 起動デバイス | **`/dev/mmcblk0p1`（microSD 59.5GB・22G 使用）** | ⚠️ **SSD 未移行**（[mode-m1/03:54](../mode-m1/03-joystick-teleop-bringup.md) Phase A が未完） |
-| NVMe SSD | **`nvme0n1` 931.5GB `KIOXIA-EXCERIA PLUS G3`**（`lspci`: `0004:01:00.0 Non-Volatile memory controller`） | ✅ **装着・認識済**。ただし**パーティション/FS 無しの生ディスク**＝rootfs 移行が未実施 |
+| 起動デバイス | **`/dev/mmcblk0p1`（microSD 59.5GB・22G 使用）** | 当時 ⚠️ → **2026-08-30 B案で決着＝rootfs は microSD のまま**（§9.6・§7） |
+| NVMe SSD | **`nvme0n1` 931.5GB `KIOXIA-EXCERIA PLUS G3`**（`lspci`: `0004:01:00.0 Non-Volatile memory controller`） | 当時は生ディスク → **2026-08-30 `/ssd` データディスク化済**（GPT+ext4・§9.6） |
 | 電力モード | `NV Power Mode: 25W`（mode **1**） | ⚠️ 当時未実施 → **2026-08-30 適用済**（mode 2 = MAXN_SUPER・再起動後も維持を実測・§9） |
 | メモリ | total 7.4Gi / available 5.0Gi / zram swap 3.7Gi | G1 メモリゲートの基準線（スタック未起動時の値） |
-| ROS | `/opt/ros` 無し＝**未インストール** | Humble 導入がこの次 |
+| ROS | `/opt/ros` 無し＝**未インストール** | 当時 → **2026-08-30 Humble 導入済**（§9.6） |
 | USB | Realtek hub ×2 / IMC Bluetooth / Logitech receiver | 拡張ボード（CH340）・LiDAR・HP60C は**未接続** |
 | ディスク | `/` 57G 中 22G 使用（41%） | microSD 上 |
 
@@ -186,13 +188,14 @@ ssh -i ~/.ssh/mwr_jetson ruyuya@<IP>
   Mac → Jetson の直接 ssh が通り、実働は mDNS 直結（§9）。
 - ~~トンネル / pull 型 agent の常駐整理~~ → **決着（2026-08-30）**: トンネルは dormant fallback（§3-B）、
   pull 型 agent は恒久廃止（§5）。実働は mDNS 直結＋常時通電（§9）。
-- `# TODO(次)` **NVMe SSD への rootfs 移行が未実施**。SSD は装着・認識済（931.5GB・生ディスク）だが
-  起動は microSD のまま。**環境を作り込む前に決着させる**（後からやると作業のやり直しになる）。
-  手順は Mac のみの環境（SDK Manager 不可 = [shared/02:409](../shared/02-hardware-design.md)）で
-  成立する方法を採る。**公式 Quick Start の「JetPack 7.2 ISO インストール」は採用不可**（Ubuntu 24.04 =
-  ADR-0008 と矛盾＝[ADR-0008 追記（2026-08-28）](../adr/0008-ros2-distro-humble-for-rosmaster-m1.md)）。
-  UEFI の `BootOrder` は**すでに SSD が最優先**（`Boot0008` = KIOXIA・`Boot0001` = SD）＝
-  ブート順の変更は不要で、**microSD を無傷で残せる**ため失敗時は SD に戻せる。
+- ~~`# TODO(次)` NVMe SSD への rootfs 移行が未実施~~ → **決着（2026-08-30・B案＝データディスク）**:
+  **rootfs は microSD のまま維持し、NVMe は `/ssd` データディスク**として provisioning 済（§9.6）。
+  理由 = rootfs 移行は boot 構成を触る作業で、失敗時に**物理アクセスが必須**になり、常時通電・
+  物理操作ゼロ運用（§9.1）と正面衝突する。重い I/O（repo/ws build・docker・地図・録画）は `/ssd` に
+  載せたため移行の便益も減った。**移行は物理立会いのある日の任意作業へ降格**。実施する場合の方式は
+  実機上 rootfs クローン（[ADR-0008 追記（2026-08-30）](../adr/0008-ros2-distro-humble-for-rosmaster-m1.md)。
+  公式 JetPack 7.2 ISO は Ubuntu 24.04 ゆえ採用不可＝同 2026-08-28 追記）。UEFI `BootOrder` は
+  すでに SSD 最優先（`Boot0008` = KIOXIA）で、microSD を無傷で残したまま試せる。
 - ~~Super 化未実施~~ → **完了（2026-08-30・`mwr-setup.sh` step 8）**。再起動後も MAXN_SUPER 維持を実測。
 - `# TODO` **IP が DHCP のまま**（`192.168.11.12`）。ただし §9 の mDNS 直結（`minicar.local`）により**再接続のたびの IP 確認は不要になった**。DHCP 予約（MAC `50:2e:91:95:9c:23`）は mDNS 不調時の保険として依然推奨。
 - [01-fidelity-and-validation.md](01-fidelity-and-validation.md) の **G0-G7 は旧世界（ESP32×2 / MS200 / 2台）前提**のまま＝M1 単騎への rescope は別 PR（[mode-m1/README.md:25](../mode-m1/README.md)）。本 doc の §6 はその rescope 後に読み替えが要る。
@@ -327,6 +330,70 @@ UNKNOWN と表示（clean と断定しない）。警告は `JETSON_UPTIME_WARN`
 3. ルーターの DHCP クライアント一覧 — 新しいアドレスで生きていないか
 4. それでも駄目なら物理確認: ファン・LED。halt 済みなら DC 抜き挿し 10 秒（§8 の注意を読んでから）
 
+### 9.6 board 基盤 provisioning（`mwr-provision.sh`・2026-08-30 適用・再起動またぎ実証済）
+
+正本: [`deploy/dev/jetson-link/mwr-provision.sh`](../../deploy/dev/jetson-link/mwr-provision.sh)（idempotent・
+どの時点で中断しても再実行で収束する。破壊操作は「**空の** NVMe の初期化」1 点のみで、実行時に lsblk を
+表示して `FORMAT` をタイプするまで何も書かないゲート付き。ホスト名 `minicar`・rootfs=microSD の
+二重ガードで別マシン誤爆を拒否）。配布は `scp` → `ssh -t jetson 'sudo sh ~/mwr-provision.sh'`。
+
+| # | 内容 | 検証済み事実（2026-08-30 実測） |
+|---|---|---|
+| 1 | NVMe 931.5GB → GPT + ext4 **`/ssd`**（fstab UUID + `nofail` + device-timeout 30s） | 再起動またぎで自動マウント。`nofail`＝SSD 死亡でも boot は人質にならない |
+| 2 | `/ssd/{warehouse,maps,recordings,bags}`（`ruyuya` 所有）+ `/ssd/docker`（root） | recordings は [doc22 未決 #7](../architecture/22-web-observability.md) の SSD 置き場に対応 |
+| 3 | docker data-root → `/ssd/docker` ＋ `docker.service` に `RequiresMountsFor=/ssd` drop-in | **fail-closed**: SSD 不在なら docker は起動しない（microSD への silent 書込みを構造的に排除）。boot 順序実測: `ssd.mount` → **+8s** → `docker.service` |
+| 4 | **ROS 2 Humble**（`ros-humble-ros-base` + `ros-dev-tools` + `ros-humble-joy` + `python3-serial`・公式 ros2-apt-source 方式） | 実機 Ubuntu 22.04.5 jammy ＝ [ADR-0008:16](../adr/0008-ros2-distro-humble-for-rosmaster-m1.md) と一致。systemd/udev 先行 upgrade + `apt --no-remove` で nvidia-l4t 系の削除カスケードを遮断 |
+| 5 | repo clone `/ssd/warehouse` → symlink **`/opt/warehouse`**（規約パス＝[setup/jetson-deploy.md:47](../setup/jetson-deploy.md)） | `v0.x` タグ未発行のため **main SHA 固定が暫定**（タグ発行後にタグ固定へ）。ws **16 pkg `colcon build` 成功**・`ros2 pkg list` で warehouse 15 pkg 可視・`clamp_body_velocity`（L0'）import 確認 |
+| 6 | `/etc/warehouse/warehouse.env`（`ROS_DISTRO=humble`） | 雛形 [env.example の `jazzy` 記述](../../deploy/jetson/env/warehouse.env.example) を踏まない。`TRAFFIC_MODE` / `MAP` は**未決マークのまま**（prod traffic 変更は安全レビュー PR＝[mode-m1/01](../mode-m1/01-mode-boundary-and-traffic.md)） |
+
+補足: `ruyuya` へ `input` / `dialout` グループ付与（joy の `/dev/input/event*`・M1 シリアルの
+`/dev/ttyUSB*` 用・次ログインから有効）。G1 ベースライン = idle available RAM **6179MB**（スタック
+未起動・本計測は G1 ゲートで実施）。systemd unit は **install も enable もしていない**
+（[setup/jetson-deploy.md:26](../setup/jetson-deploy.md) の安全ゲート準拠・actuation 経路なし）。
+
+### 9.7 外出先経路: Tailscale 自動フォールバック（off-LAN route・2026-08-30）
+
+mDNS（§9.2）は link-local のため**自宅 LAN 限定**。外出先（カフェ Wi-Fi・スマホテザリング）からは
+**Tailscale**（WireGuard メッシュ VPN）で届かせる。個人 Free プランで**費用ゼロ**・ポート開放不要・
+CGNAT/テザリング可（直結不能時は DERP リレーへ自動フォールバック）。
+
+- **セットアップ**: board 側 = [`deploy/dev/jetson-link/mwr-tailscale-setup.sh`](../../deploy/dev/jetson-link/mwr-tailscale-setup.sh)
+  （idempotent・公式 apt 方式・`tailscale up --hostname=minicar --operator=ruyuya --timeout=5m`。
+  認証 URL を Mac のブラウザで承認する。**再実行しても hostname/operator が `tailscale set` で収束**）。
+  Mac 側 = `brew install --cask tailscale-app` → アプリでサインイン。
+- **`jetson` CLI の自動切替**: mDNS probe 不達のときだけ `tailscale status --json` を **5s 上限**で読み、
+  `BackendState=Running` ∧ peer `minicar` が Online の場合のみ **tailnet IP へ retarget**する
+  （probe は IP＝MagicDNS 非依存・ssh は FQDN＝`~/.ssh/config` の `Host minicar.*.ts.net` が鍵を供給）。
+  切替時は **stderr** に `route = tailscale (...)` を表示（`jetson ssh <cmd>` の stdout を汚さない）。
+  peer が **Offline** なら経路は切り替えず「board 自体が落ちている」とより鋭い診断を出す。
+  ノブ: `JETSON_TS_NAME`（既定 minicar）/ `JETSON_TS_FALLBACK=0`（無効化）/
+  `JETSON_TS_PROBE_TIMEOUT`（既定 8s＝WireGuard/DERP の cold path 用）。明示の
+  `JETSON_HOST` / `JETSON_TUNNEL_ADDR` / `JETSON_TUNNEL_PORT` ピンは常にフォールバックより優先。
+- **halt は遠隔経路で厳格化**: tailscale route 上の `down` は cold handshake と区別できないため、
+  `jetson halt` は「already down」と**断定せず拒否**する（§9.3 の fail-closed と同思想。
+  外出先から「落ちてる」と誤certifyして自宅の誰かに電源を抜かせる事故を封じる）。
+- **`~/.ssh/config` の形**（**`Host *` より上に置く**こと。ssh_config(5) は first-obtained-value 勝ちで、
+  下に置くと keepalive 設定が `Host *` に食われ無効化される＝実測）:
+
+```
+Host minicar.*.ts.net
+  User ruyuya
+  IdentityFile ~/.ssh/mwr_jetson
+  UserKnownHostsFile ~/.ssh/known_hosts_jetson
+  StrictHostKeyChecking accept-new
+  ServerAliveInterval 15
+  ServerAliveCountMax 4
+  ControlMaster auto
+  ControlPath ~/.ssh/cm-%C
+  ControlPersist 10m
+```
+
+  パターンを `minicar.` に限定（他の tailnet デバイスへ鍵・ユーザー名を配らない）。`ControlPath %C`＝
+  固定長ハッシュ（FQDN 入りの `%h` は macOS の unix socket path 104 byte 上限を踏み得る）。
+- **鍵期限（重要）**: 管理画面 [Machines](https://login.tailscale.com/admin/machines) で minicar の
+  **Disable key expiry を必ず実施**。既定 180 日で**無言で tailnet から脱落**する（実例: 同 tailnet の
+  iphone173 が Expired）。常時通電の無人 board には必須の一手。
+
 ## References
 
 - [01-fidelity-and-validation.md](01-fidelity-and-validation.md)（実機投入前ゲート G0-G7・robot-free / robot-gated 分類）
@@ -334,6 +401,6 @@ UNKNOWN と表示（clean と断定しない）。警告は `JETSON_UPTIME_WARN`
 - [mode-m1/03-joystick-teleop-bringup.md](../mode-m1/03-joystick-teleop-bringup.md)（物理手順の順序 `:54`・M0/M1/M2 ゲート）
 - [shared/02-hardware-design.md](../shared/02-hardware-design.md)（`:150` Super 化 / `:409` QSPI / `:412` JetPack 6.2 系）
 - [ADR-0008](../adr/0008-ros2-distro-humble-for-rosmaster-m1.md)（`:16` Humble / Ubuntu 22.04 を全系の既定 distro）
-- 実装: [`deploy/dev/jetson-link/jetson`](../../deploy/dev/jetson-link/jetson)（Mac CLI）/ [`mwr-setup.sh`](../../deploy/dev/jetson-link/mwr-setup.sh)（ボード側）/ [`mwr-tunnel.service`](../../deploy/dev/jetson-link/mwr-tunnel.service)＋[`mwr-tunnel`](../../deploy/dev/jetson-link/mwr-tunnel)（dormant fallback 写し）
+- 実装: [`deploy/dev/jetson-link/jetson`](../../deploy/dev/jetson-link/jetson)（Mac CLI）/ [`mwr-setup.sh`](../../deploy/dev/jetson-link/mwr-setup.sh)（ボード側 §9.4）/ [`mwr-provision.sh`](../../deploy/dev/jetson-link/mwr-provision.sh)（基盤 §9.6）/ [`mwr-tailscale-setup.sh`](../../deploy/dev/jetson-link/mwr-tailscale-setup.sh)（外出先経路 §9.7）/ [`mwr-tunnel.service`](../../deploy/dev/jetson-link/mwr-tunnel.service)＋[`mwr-tunnel`](../../deploy/dev/jetson-link/mwr-tunnel)（dormant fallback 写し）
 - [.claude/rules/safety.md](../../.claude/rules/safety.md)（鍵・secrets 非コミット）/ [.claude/rules/environments.md](../../.claude/rules/environments.md)
 - [GLOSSARY.md](../GLOSSARY.md) §8「常時通電運用（always-on dev link）」（正準用語・双方向）

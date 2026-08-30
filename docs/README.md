@@ -152,7 +152,7 @@ docs/
 | ファイル | 内容 |
 |---------|------|
 | [01-fidelity-and-validation](jetson/01-fidelity-and-validation.md) | Jetson 忠実度ギャップ・dev/stg→prod de-risk（#127） |
-| [02-remote-access-and-dev-link](jetson/02-remote-access-and-dev-link.md) | 開発機（Mac）↔ Jetson のアクセス経路（**mDNS 直結・常時通電運用・`jetson` CLI**＝§9 正本・初回ブート実測ベースライン） |
+| [02-remote-access-and-dev-link](jetson/02-remote-access-and-dev-link.md) | 開発機（Mac）↔ Jetson のアクセス経路（**mDNS 直結・常時通電運用・`jetson` CLI**＝§9 正本・board 基盤 provisioning＝§9.6・**外出先は Tailscale 自動フォールバック**＝§9.7・初回ブート実測ベースライン） |
 
 ## モード切替
 
