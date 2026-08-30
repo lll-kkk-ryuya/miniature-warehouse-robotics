@@ -36,12 +36,20 @@ setopt no_unset
 # board, add a "Host jetson-tunnel" block to ~/.ssh/config (HostName 127.0.0.1,
 # Port 2222 -- the ssh calls follow JETSON_HOST, not the two probe vars), then
 #   JETSON_HOST=jetson-tunnel JETSON_TUNNEL_ADDR=127.0.0.1 JETSON_TUNNEL_PORT=2222
+# Capture which route vars the caller pinned BEFORE the defaults land: the
+# tailscale fallback below must never override an explicit choice.  :+ (not +)
+# so that an exported-but-EMPTY var, which the := defaults below overwrite
+# anyway, does not read as a pin and silently disable the fallback.
+_MWR_ADDR_PINNED=${JETSON_TUNNEL_ADDR:+x}
+_MWR_HOST_PINNED=${JETSON_HOST:+x}
+_MWR_PORT_PINNED=${JETSON_TUNNEL_PORT:+x}
+_MWR_ROUTE=lan                  # flips to 'ts' when ts_fallback retargets
 : ${JETSON_HOST:=jetson}                                # ssh_config(5) alias
 : ${JETSON_TUNNEL_ADDR:=minicar.local}
 : ${JETSON_TUNNEL_PORT:=22}
 : ${JETSON_SHUTDOWN_CMD:=/usr/local/sbin/mwr-shutdown}  # root-owned safety wrapper
 : ${JETSON_REBOOT_CMD:=/usr/local/sbin/mwr-reboot}      # same wrapper, reboot edge
-: ${JETSON_REPO:=miniature-warehouse-robotics}
+: ${JETSON_REPO:=/opt/warehouse}   # canonical clone path (docs/setup/jetson-deploy.md §2); relative = under $HOME
 : ${JETSON_BOOT_TIMEOUT:=240}   # generous: you may still be reaching for the plug
 : ${JETSON_HALT_TIMEOUT:=90}
 : ${JETSON_POLL_INTERVAL:=3}
@@ -50,6 +58,9 @@ setopt no_unset
 : ${JETSON_DISK_WARN:=90}       # rootfs % full before we complain
 : ${JETSON_UPTIME_WARN:=86400}  # a 24/7 board up less than this restarted
 : ${JETSON_CLEAR_STALE:=0}      # tunnel-only; meaningless on the direct route
+: ${JETSON_TS_NAME:=minicar}    # the board's machine name on the tailnet
+: ${JETSON_TS_FALLBACK:=1}      # 0 disables the automatic tailscale fallback
+: ${JETSON_TS_PROBE_TIMEOUT:=8} # tailnet probes cross WireGuard/DERP, not a LAN
 
 # Absolute paths on purpose: Raycast invokes this from a non-login shell that
 # only appends /usr/local/bin to a minimal PATH.
@@ -158,7 +169,12 @@ link_state() {
   # Keep nc's stderr instead of discarding it: it is the only thing that says
   # WHY the connect failed, and on the failure path that is the whole question.
   local nerr nrc why
-  nerr=$("$NC" -z -G 2 -w 2 "$JETSON_TUNNEL_ADDR" "$JETSON_TUNNEL_PORT" 2>&1)
+  # 2s fits a ~6ms LAN hop; a cold tailnet path may need a WireGuard/DERP
+  # handshake first, and calling that "down" is finding-someone-guilty-of-
+  # being-far-away.  Route-dependent budget.
+  local probe_t=2
+  [[ $_MWR_ROUTE == ts ]] && probe_t=$JETSON_TS_PROBE_TIMEOUT
+  nerr=$("$NC" -z -G "$probe_t" -w "$probe_t" "$JETSON_TUNNEL_ADDR" "$JETSON_TUNNEL_PORT" 2>&1)
   nrc=$?
   if (( nrc != 0 )); then
     # Before blaming the board: is this Mac even on its network?  Identical
@@ -316,7 +332,8 @@ readiness() {
 set -u
 kv() { printf '%s=%s\n' "$1" "$2"; }
 wrapper_path=${1:-/usr/local/sbin/mwr-shutdown}
-repo_dir=${2:-miniature-warehouse-robotics}
+repo_dir=${2:-/opt/warehouse}
+case "$repo_dir" in /*) : ;; *) repo_dir="$HOME/$repo_dir" ;; esac
 
 kv host "$(hostname 2>/dev/null || echo unknown)"
 if [ -r /proc/uptime ]; then kv uptime "$(cut -d. -f1 /proc/uptime)"; else kv uptime unknown; fi
@@ -369,8 +386,10 @@ kv ros "$ros"
 
 if [ -x "$wrapper_path" ]; then kv wrapper yes; else kv wrapper no; fi
 
-if [ -d "$HOME/$repo_dir/.git" ]; then
-  kv repo "$(cd "$HOME/$repo_dir" && git rev-parse --short HEAD 2>/dev/null || echo present)"
+if [ -d "$repo_dir/.git" ]; then
+  # -c safe.directory: a root-owned clone under /opt would otherwise trip
+  # git's dubious-ownership guard and silently degrade the SHA to "present"
+  kv repo "$(cd "$repo_dir" && git -c safe.directory="$repo_dir" rev-parse --short HEAD 2>/dev/null || echo present)"
 else
   kv repo none
 fi
@@ -478,8 +497,11 @@ PROBE
   [[ $wrapper == yes ]] && say "  safe-off ${JETSON_SHUTDOWN_CMD}" \
                         || warn "${JETSON_SHUTDOWN_CMD} is missing - 'jetson halt' and 'jetson reboot' will refuse to run (fix: sudo sh ~/mwr-setup.sh on the board)"
 
-  [[ $repo == none ]] && say "  repo     not cloned yet (~/${JETSON_REPO})" \
-                      || say "  repo     ~/${JETSON_REPO} @ ${repo}"
+  # mirror the remote probe's relative-path normalization for the display
+  local repo_disp=$JETSON_REPO
+  [[ $repo_disp != /* ]] && repo_disp="~/${repo_disp}"
+  [[ $repo == none ]] && say "  repo     not cloned yet (${repo_disp})" \
+                      || say "  repo     ${repo_disp} @ ${repo}"
   return 0
 }
 
@@ -701,9 +723,23 @@ cmd_reboot() {
 }
 
 cmd_halt() {
+  # Argument validation FIRST: a typo must be reported as a typo, not spend
+  # seconds probing networks and then vanish into an "already down" exit 0.
+  (( $# > 1 )) && die 64 "'jetson halt' takes at most --yes"
+  [[ -n ${1:-} && ${1:-} != --yes ]] && die 64 "'jetson halt' accepts only --yes, got '${1}'"
+
   link_state
   case $LINK in
     (down)
+      if [[ $_MWR_ROUTE == ts ]]; then
+        # Over the tailnet a dead probe can be a cold WireGuard path or a
+        # relay stall, and every LAN-side disambiguator (nolink/noname/stale)
+        # is unreachable from here.  "already down" is exactly the lie that
+        # gets a live rootfs unplugged -- refuse to certify it from afar.
+        die 2 "the tailscale route stopped answering, so the board's state is UNKNOWN.
+  It may well be running. Do NOT have anyone pull the plug on this word alone;
+  verify from the board's own LAN (or its LED) first."
+      fi
       say "jetson: already down."
       clear_stale
       return 0 ;;
@@ -731,14 +767,15 @@ cmd_halt() {
   before touching power; 'jetson status' will say NONAME while this lasts." ;;
   esac
 
-  (( $# > 1 )) && die 64 "'jetson halt' takes at most --yes"
-  [[ -n ${1:-} && ${1:-} != --yes ]] && die 64 "'jetson halt' accepts only --yes, got '${1}'"
-
   # A halt cannot be undone from here, so make the caller say so explicitly.
   # `[[ -t 0 ]]` distinguishes a human at a terminal from Raycast or a script,
   # which must never trip a one-way door by accident.
   if [[ ${1:-} != --yes ]]; then
     if [[ -t 0 ]]; then
+      [[ $_MWR_ROUTE == ts ]] && \
+      say "jetson: you are on the REMOTE (tailscale) route - by definition not on the"
+      [[ $_MWR_ROUTE == ts ]] && \
+      say "        board's LAN. The recovery replug will need someone AT the board."
       say "jetson: HALT is one-way. Wi-Fi has no Wake-on-LAN and there is no BMC,"
       say "        so after this the ONLY way back is to unplug the DC jack, wait"
       say "        10s and plug it in again. 'jetson reboot' is the remote-safe one."
@@ -839,7 +876,75 @@ environment (defaults shown)
   JETSON_POLL_INTERVAL=${JETSON_POLL_INTERVAL}     JETSON_SSH_TIMEOUT=${JETSON_SSH_TIMEOUT}
   JETSON_SKEW_WARN=${JETSON_SKEW_WARN}       JETSON_DISK_WARN=${JETSON_DISK_WARN}
   JETSON_UPTIME_WARN=${JETSON_UPTIME_WARN}    under this uptime a restart is called out
-  JETSON_CLEAR_STALE=${JETSON_CLEAR_STALE}          (tunnel route only; never acts on port 22)"
+  JETSON_CLEAR_STALE=${JETSON_CLEAR_STALE}          (tunnel route only; never acts on port 22)
+  JETSON_TS_NAME=${JETSON_TS_NAME}           board's machine name on the tailnet
+  JETSON_TS_FALLBACK=${JETSON_TS_FALLBACK}              0 = never auto-switch to the tailscale route"
+}
+
+# ---------------------------------------------------- tailscale fallback ---
+# Off the home LAN (cafe Wi-Fi, tethering), minicar.local cannot resolve --
+# mDNS is link-local.  If a tailnet exists and the board is online on it,
+# transparently retarget every probe and ssh call at the board's MagicDNS
+# name; ~/.ssh/config's "Host *.ts.net" block carries the key and options.
+# Explicit JETSON_HOST / JETSON_TUNNEL_ADDR pins always win, and when the
+# tailnet cannot vouch for the board either, the normal nolink/noname
+# diagnosis stands untouched.
+ts_fallback() {
+  [[ $JETSON_TS_FALLBACK == 1 ]] || return 0
+  [[ -n $_MWR_ADDR_PINNED || -n $_MWR_HOST_PINNED || -n $_MWR_PORT_PINNED ]] && return 0
+  # Cheap pre-test: is the mDNS route alive?  ~ms at home.  Away, nc's -G/-w
+  # bound only the connect -- the .local lookup itself belongs to
+  # mDNSResponder and can add a few seconds before giving up.
+  "$NC" -z -G 2 -w 2 "$JETSON_TUNNEL_ADDR" "$JETSON_TUNNEL_PORT" >/dev/null 2>&1 && return 0
+  local ts pick
+  for ts in ${commands[tailscale]:-} /usr/local/bin/tailscale /opt/homebrew/bin/tailscale \
+            /Applications/Tailscale.app/Contents/MacOS/Tailscale; do
+    [[ -x $ts ]] && break
+  done
+  [[ -x $ts ]] || return 0
+  # The whole query runs under python with a hard 5s deadline: a wedged
+  # tailscaled must never hang 'jetson status', whose contract is "instant".
+  # BackendState must be Running -- a disconnected client keeps a stale
+  # netmap whose peers still read Online.  The peer is then addressed by
+  # tailnet IP (probes need no DNS, MagicDNS or not) while ssh gets the FQDN
+  # so the "Host minicar.*.ts.net" block carries the key.
+  # TAILSCALE_BE_CLI: the macOS binary guesses GUI-vs-CLI mode from TERM/PS1;
+  # force CLI so this also works from Raycast's non-interactive shell.
+  pick=$(/usr/bin/python3 -c '
+import json, os, subprocess, sys
+try:
+    out = subprocess.run([sys.argv[1], "status", "--json"],
+                         capture_output=True, timeout=5,
+                         env=dict(os.environ, TAILSCALE_BE_CLI="1")).stdout
+    st = json.loads(out)
+except Exception:
+    sys.exit(0)
+if st.get("BackendState") != "Running":
+    sys.exit(0)
+want = sys.argv[2].lower()
+for p in (st.get("Peer") or {}).values():
+    if p.get("HostName", "").lower() == want:
+        if not p.get("Online"):
+            print("offline")
+        else:
+            ips = p.get("TailscaleIPs") or []
+            fqdn = p.get("DNSName", "").rstrip(".")
+            if ips and fqdn:
+                print(ips[0] + " " + fqdn)
+        break
+' "$ts" "$JETSON_TS_NAME" 2>/dev/null)
+  [[ -n $pick ]] || return 0
+  if [[ $pick == offline ]]; then
+    # Sharper than the mDNS guesswork: the tailnet control plane itself says
+    # the BOARD is offline.  Do not switch routes; do surface the fact.
+    print -ru2 -- "jetson: (tailscale says '${JETSON_TS_NAME}' is offline - the board is down, or off the internet)"
+    return 0
+  fi
+  JETSON_TUNNEL_ADDR=${pick%% *}
+  JETSON_HOST=${pick##* }
+  _MWR_ROUTE=ts
+  # stderr on purpose: `jetson ssh <cmd>` stdout must stay byte-clean for pipes
+  print -ru2 -- "jetson: route = tailscale (${JETSON_HOST}) - minicar.local is not reachable from here"
 }
 
 # --------------------------------------------------------------- dispatch ---
@@ -847,6 +952,11 @@ environment (defaults shown)
 # shift is guarded -- otherwise bare `jetson` prints a spurious shell error.
 sub=${1:-status}
 (( $# )) && shift
+
+# Every subcommand that talks to the board gets the route decision first.
+# require_local runs before it: ts_fallback dereferences $NC, and announcing
+# a route only to die on a missing prerequisite would be a lie with a flourish.
+case $sub in (on|off|reboot|halt|status|ssh) require_local; ts_fallback ;; esac
 
 case $sub in
   (on)     (( $# )) && die 64 "'jetson on' takes no arguments";     require_local; cmd_on ;;

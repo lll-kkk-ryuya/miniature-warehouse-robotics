@@ -218,7 +218,7 @@ doc06:112、sim 範囲。実 bot E2E は sim track #8/#156）。→ F1-F3。**AR
 
 ## 【2026-08-28 追記】開発機からのアクセス経路（02）への forward
 
-Jetson 実機へ **Mac から接続して作業する経路**（**mDNS 直結 `minicar.local`＋常時通電運用・`jetson` CLI**＝02 §9。旧 pull 型 agent は恒久廃止＝02 §5）と、
+Jetson 実機へ **Mac から接続して作業する経路**（**mDNS 直結 `minicar.local`＋常時通電運用・`jetson` CLI**＝02 §9。外出先は Tailscale 自動フォールバック＝02 §9.7。旧 pull 型 agent は恒久廃止＝02 §5）と、
 **初回ブートの実測ベースライン**（L4T / 起動デバイス / 電力モード / メモリ）は
 [02-remote-access-and-dev-link.md](02-remote-access-and-dev-link.md) を正本とする。本 doc の G0-G7 は
 **合否基準**の正本であり続け、02 は**その値を測るための接続手段と初期実測値**を持つ（役割分担・重複させない）。
