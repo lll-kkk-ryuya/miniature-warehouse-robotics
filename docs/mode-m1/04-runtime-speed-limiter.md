@@ -3,7 +3,7 @@
 > **Status**: 設計 doc（docs 先行）。**実装は未着手＝本 doc に伴うコード変更はゼロ**。publisher node・Nav2 側配線・R-26 unit はすべて後続の実装スライス。
 > **layer**（[.claude/rules/layer-annotation.md](../../.claude/rules/layer-annotation.md)・正準表 = [productization/01:180-187](../productization/01-commercial-box-map.md)）:
 > - Nav2 `controller_server` / `nav2_params.yaml` = **L1 自律走行・安全**（[productization/01:185](../productization/01-commercial-box-map.md)）。本 doc が動かす主対象。
-> - **L0'**（ホスト側シリアルドライバ送信直前クランプ・[mode-m1/02:4](02-m1-driver-and-watchdog.md)）= 不変。正準表の L0 行は ESP32 firmware のみを列挙しており（[productization/01:186](../productization/01-commercial-box-map.md)）、`warehouse_m1_driver` の行は**未追記**（残件 = §6 末尾）。
+> - **L0'**（ホスト側シリアルドライバ送信直前クランプ・[mode-m1/02:4](02-m1-driver-and-watchdog.md)）= 不変。正準表への `warehouse_m1_driver`（L0'）行は **#555 で追記済**（[productization/01:187](../productization/01-commercial-box-map.md)・GLOSSARY §3 の正準エントリは #556）。
 > - 帯の知覚（`gesture_detector`）= **L4 知覚・publish-only・0 actuation**（[mode-x-er/09:61](../mode-x-er/09-hand-raise-summon.md)）。
 > - **新設する `/speed_limit` publisher の layer / パッケージ帰属は未定**（断定しない = **OQ-R2**）。control-plane であって velocity producer ではないという性質だけが確定している（§4）。
 > - L2 Traffic（`warehouse_traffic`）は Mode M1 では**非アクティブ**（`traffic_mode: none` = [mode-m1/01:14-16](01-mode-boundary-and-traffic.md)）。本 doc の安全論証を traffic 層に頼らない。
@@ -198,7 +198,7 @@ M1 の distro は **Humble**（[ADR-0008 §Decision :16](../adr/0008-ros2-distro
 | **OQ-R6** | **`behavior_server`（recovery 挙動）に②が効くか未確認**（§2-1 ③の [未裏取り]）。効かない場合、recovery 中は①の基準値まで出る＝帯が無効になる区間が存在する。実挙動の確認と、効かない場合の許容/対策（③ L0' 依存で足りるかの裁定） | 中 |
 | **OQ-R7** | **②が `wz`（角速度）も同率でスケールする副作用の許容**（§2-2）。凍結契約に wz 上限は無い（[ADR-0010 §Open 6 :67](../adr/0010-raise-speed-cap-to-platform-max.md)）ため契約違反ではないが、最遅段で旋回が鈍る/最速段で旋回が速くなる挙動をデモ上許容するかは未裁定 | 中 |
 
-**残件（OQ ではない作業）**: [productization/01:186](../productization/01-commercial-box-map.md) の L0 行は ESP32 firmware のみを列挙しており、**`warehouse_m1_driver`（L0'）の行が対応表に無い**。本 doc は `.claude/**` / `docs/productization/**` を編集境界に含まないため未追記＝所有トラック（governance / productization）側で解消すること。
+**残件（OQ ではない作業）**: ~~[productization/01](../productization/01-commercial-box-map.md) の対応表に `warehouse_m1_driver`（L0'）の行が無い~~ → **解消済（2026-08-28〜30）**: 所有トラック側の [#555](https://github.com/lll-kkk-ryuya/miniature-warehouse-robotics/pull/555) が対応表へ L0' 行を追加（[productization/01:187](../productization/01-commercial-box-map.md)）、[#556](https://github.com/lll-kkk-ryuya/miniature-warehouse-robotics/pull/556) が GLOSSARY §3 へ正準エントリを追加。本 doc 起草時（2026-08-28）の残件記述は履歴として取り消し線で保存。
 
 ## 7. References（双方向リンク）
 
