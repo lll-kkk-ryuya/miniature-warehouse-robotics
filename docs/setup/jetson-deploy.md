@@ -51,6 +51,12 @@ sudo git clone --branch v0.x https://github.com/lll-kkk-ryuya/miniature-warehous
 cd /opt/warehouse
 ```
 
+> **補足（bring-up 暫定・2026-08-30）**: `v0.x` タグは**未発行**で、bring-up 中のボードは main HEAD
+> 直 clone（`/ssd/warehouse` → `/opt/warehouse` symlink）で運用している（暫定であることは
+> [jetson/02 §9.6 表 row5](../jetson/02-remote-access-and-dev-link.md) に記録済）。**初回 `v0.1.0` の発行は
+> §6 起動（= systemd enable・prod 昇格）前の必須タスク**とし、発行後に本節のタグ固定運用へ切替える。
+> タグは「壊れた時に戻れる印」程度の軽い運用でよい（過剰な儀式化はしない＝capability-first 方針）。
+
 ## 3. ビルド
 
 ```bash
@@ -83,6 +89,10 @@ deploy/jetson/bin/preflight.sh --arrival
 `preflight.sh` は読み取り専用で、`systemctl enable/start/restart/stop` は実行しない。`--offline` は
 到着前にも実行できる静的検査、`--arrival` は Jetson 到着後の `/etc/warehouse/warehouse.env`・
 ROS underlay/workspace・コマンド存在確認を追加する。
+
+> **現況（2026-08-30・意図的 defer）**: bring-up ボードは本節を**未実施**のまま運用中（unit 導入・
+> サービスアカウント作成を保留）。G0–G7 ゲートが旧世界（2 台構成）前提で M1 単騎への rescope 未了のため
+> （[jetson/02 §7 残課題](../jetson/02-remote-access-and-dev-link.md)）、rescope 後に **§5 → v0.1.0 発行 → §6** の順で進める。
 
 ## 6. 起動（安全ゲート通過後のみ）
 
