@@ -423,7 +423,7 @@ R-3 / R-7 / R-8 / R-9 が「安全レビューに掛ける」と宣言した**�
 - **INV-1（幾何は plan draft の外・:25）— 生存。** ジェスチャ③は**座標を一切扱わない**（指の本数 → 帯という離散写像のみ）。draft に載せうる新しい幾何が存在しないため、`handoff.py` の禁止キー gate（:23 の `_FORBIDDEN_KEY_RULES`）に対して**新しい表面を作らない**。
 - **INV-2（plan 経路を迂回しない・:57）— 生存。** 速度帯は **Nav2 のパラメータ**であって新しい task / command / actuation 経路ではない。`to_robotics_plan_draft` 以降のゲート列（L3 Validator → Visual Resolver → Task Graph Executor → Command Compiler → action_map → MCP → **L2 Policy Gate** → Nav2 Bridge REST → Nav2 → L1 → L0'）は**1 ステップも省略されない**。ジェスチャ③は「どこへ行くか」の決定に関与しないため、L2 の許可判断（location / freshness / battery / emergency / rate / duplicate）を**代替も迂回もしない**。
 
-> **ただし T-6 の OQ-T3 が未決である以上、INV-2 の生存は「現在の設計意図として」であって「実装で pin 済み」ではない**。経路確定 PR は INV-2 を破らないことを R-26 相当の unit で pin すること（[.claude/rules/safety.md](../../.claude/rules/safety.md)）。
+> **ただし T-6 の OQ-T3 が未決である以上、INV-2 の生存は「現在の設計意図として」であって「実装で pin 済み」ではない**。経路確定 PR は INV-2 を破らないことを R-26 相当の unit で pin すること（[.claude/rules/safety.md](../../.claude/rules/safety.md)）。**【2026-08-30】[ADR-0012 決定 2](../adr/0012-speed-band-no-l2-best-effort.md) が本判定（生存）を確定として維持**——`speed_limit` は plan draft を経ない control-plane 信号で INV-2 の**文面射程外**（射程外 ⟹ 非侵害）。unit 要求は同決定 7（R-26 6 本・とくに③ `cmd_vel` 非 publish）が受ける。
 
 ### T-9. 新規 OQ（本追補由来）
 
