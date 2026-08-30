@@ -8,8 +8,8 @@ so every compiled command and every skipped (0-dispatch) task traces back to a s
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import StrEnum
 
+from warehouse_interfaces.compat import StrEnum
 from warehouse_interfaces.schemas import Command
 
 

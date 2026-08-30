@@ -12,7 +12,7 @@ unit-testable without ROS (doc16 §11); this node only marshals ROS messages.
 
 import contextlib
 import json
-from datetime import UTC, datetime
+from datetime import datetime
 
 import rclpy
 from geometry_msgs.msg import PoseWithCovarianceStamped
@@ -21,6 +21,7 @@ from rclpy.node import Node
 from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import BatteryState, LaserScan
 from std_msgs.msg import String
+from warehouse_interfaces.compat import UTC
 from warehouse_interfaces.config import load_config
 from warehouse_interfaces.safety import BATTERY_PERCENTAGE_SCALE_DEFAULT
 from warehouse_interfaces.stores import FileStateStore

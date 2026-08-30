@@ -7,6 +7,7 @@ the transcript is published to the sink (+ skeleton tracer), and an STT failure 
 """
 
 import asyncio
+import sys
 
 from warehouse_llm_bridge.robotics import (
     InMemoryTranscriptSink,
@@ -167,7 +168,10 @@ def test_er_lane_failure_cancels_orphan_stt_task(monkeypatch):
         # The stt_task that run_perception_lanes created must have been cancelled (not leaked).
         assert created, "run_perception_lanes should have created the STT task"
         stt_task = created[0]
-        assert stt_task.cancelling() or stt_task.cancelled() or stt_task.done()
+        # Task.cancelling() is py3.11+ — unavailable on the py3.10 board (ADR-0008 / #563),
+        # where the leak check below (cancelled after one loop tick) carries the assertion.
+        if sys.version_info >= (3, 11):
+            assert stt_task.cancelling() or stt_task.cancelled() or stt_task.done()
         # Let the loop process the cancellation, then confirm it finished as cancelled.
         await asyncio.sleep(0)
         assert stt_task.cancelled()
