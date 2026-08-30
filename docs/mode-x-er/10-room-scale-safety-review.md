@@ -527,7 +527,7 @@ G-c / G-d / G-i / G-h / G-m ───────────────┘
 | S-5 OQ-21 L1 有効性 | **PHASE-1-GATE** | 「**立位の**人は `/scan` に写る」は平面高さの不確かさに対し**頑健＝支持**（[09 R-2(c) :247](09-hand-raise-summon.md) のしゃがむ案が採られたら再評価）。ただし止まれるかは S-3 従属。M-1〜M-5 を定義 |
 | S-6 運用規律 | **OPERATOR-GATE** | D-1〜D-5（docs 根拠あり）＋ P-1〜P-4（本書の提案）。**物理 E-stop は docs に記述が無い** |
 | S-7 waypoint 配置規律 | **PHASE-1-GATE** | W-a〜W-e として形式化。**W-b'（C-3 の停止円との両立）は本書の新規指摘**。W-a の実装形は S-2 と同じ裁定の表裏 |
-| S-8 E-stop / Guardian | **PASS（限定付き）／ L0' 行のみ CONDITIONAL** | twist_mux prio100・freshness guard + 変位ゲート・pose_stale 意味論は前提を失っていない。**ただし L0' はレビュー時点で未結線＝CONDITIONAL（G-l。→ #550〔2026-08-26〕で結線済み＝解消・実機 M2/G-g 実測は未実施）**・stock MCU の command watchdog は不在（G-g）・**Guardian の人への寄与はゼロ**・**Guardian 単独死で 0.5s 後に走行再開する部分故障モード**（[12:511](../architecture/12-infrastructure-common.md) / `twist_mux.yaml:42-45`）|
+| S-8 E-stop / Guardian | **PASS（限定付き）／ L0' 行は #550 で CONDITIONAL 解消** | twist_mux prio100・freshness guard + 変位ゲート・pose_stale 意味論は前提を失っていない。**ただし L0' はレビュー時点で未結線＝CONDITIONAL（G-l。→ #550〔2026-08-26〕で結線済み＝解消・実機 M2/G-g 実測は未実施）**・stock MCU の command watchdog は不在（G-g）・**Guardian の人への寄与はゼロ**・**Guardian 単独死で 0.5s 後に走行再開する部分故障モード**（[12:511](../architecture/12-infrastructure-common.md) / `twist_mux.yaml:42-45`）|
 
 ### 12-1b. 「残る保護 3 枚」の現況（本レビュー最大の所見の再掲）
 
