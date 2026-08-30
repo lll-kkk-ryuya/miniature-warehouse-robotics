@@ -132,7 +132,7 @@ docker data-root / repo clone / 地図・録画置き場）として決着し（
 [jetson/02 §9.6](../jetson/02-remote-access-and-dev-link.md)。Humble 本体は同日 apt ネイティブ導入済み
 （実機 Ubuntu 22.04.5 で本 ADR の決定どおり）。
 
-## 追記（2026-08-30）: 残③の的中 — 実 py3.10（Jetson 実機）で StrEnum / typing.Self 非互換が顕在化（#563）
+## 追記（2026-08-30）: 残③の的中 — 実 py3.10（Jetson 実機）で StrEnum / typing.Self / datetime.UTC 非互換が顕在化（#563）
 
 「その3」の残③（stdlib 可用性ベースの py310 非互換は実 py310 実行でしか確定できない）が Jetson 実機
 （Ubuntu 22.04.5 / Python 3.10.12）で的中した。`colcon build` は 16 pkg 全緑（ament_python は import を
@@ -154,7 +154,7 @@ str() 意味論依存 3 箇所（`conversation_events` の verdict 再パース 
 `requires-python = ">=3.10"` の床は依然 CI 未検証 — `python-quality` job の matrix 化（3.10/3.12）を
 governance 別 PR で追う。② 実 py3.10 での最終確定は Jetson 上の pytest（真の runtime ゲート・#563 DoD）。
 ③ pydantic 実体は board では pip `--user` の v2（apt `python3-pydantic` は v1.8.2 で不適合）＝
-`package.xml` の `python3-pydantic` exec_depend（2 pkg）との宣言不一致（同族: `typing_extensions` も rosdep 宣言なし＝jammy apt 3.10.0.2 は `Self` 非搭載・pip の pydantic v2 推移的依存で充足）は未解決の残として本追記に記録する（distro ドリフト台帳とは別軸）。
+`package.xml` の `python3-pydantic` exec_depend（2 pkg）との宣言不一致（同族: `typing_extensions` も rosdep 宣言なし＝jammy apt 3.10.0.2 は `Self` 非搭載・pip の pydantic v2 推移的依存で充足）は未解決の残として本追記に記録する（distro ドリフト台帳とは別軸）。④ AST 床ガードは **import 名の面のみ** — 3.11+ 構文（py3.12 の parse では素通り）・メソッド/挙動差（`Task.cancelling()`・`datetime.fromisoformat` の 3.11 拡張受理 等）は捕捉できず、**py3.10 実走（CI matrix ①＋ボード pytest ②）が唯一のオラクル**。
 
 **追加発見（同日・実 py3.10 pre-verify）**: dev Mac に uv で py3.10 venv（CI `python-quality` job と
 同一パッケージ集合）を作り全 suite を実行したところ、`datetime.UTC`（py3.11+ の `timezone.utc` alias）

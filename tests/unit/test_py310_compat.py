@@ -14,6 +14,12 @@ semantics test on ANY interpreter (not only 3.10).
 The AST floor guard below is the standing replacement for "grep and hope": it enforces
 the declared ``requires-python = ">=3.10"`` floor (pyproject.toml:8) against the known
 3.11+/3.12+ stdlib names, in every python file the repo can execute.
+
+Guard limits (deliberate — the guard AIDS, it does not replace, real py3.10 runs):
+import-NAME surface only. 3.11+/3.12+ *syntax* (``except*``, PEP 695) parses fine under
+the 3.12 interpreter's ``ast`` and passes; method/behaviour deltas (``Task.cancelling()``,
+3.11's widened ``datetime.fromisoformat``) are invisible to any import scan. The real
+oracles are the py3.10 CI matrix (ADR-0008 残①, governance PR) and on-board pytest.
 """
 
 import ast
@@ -27,8 +33,17 @@ from warehouse_interfaces.compat import UTC, StrEnum, _StrEnumShim
 REPO_ROOT = Path(__file__).resolve().parents[2]
 _SELF = Path(__file__).resolve()
 
-# Directory names never executed by the repo's own gates (vendored/derived trees).
-_EXCLUDED_DIR_NAMES = {".git", ".venv", "node_modules", "__pycache__", ".claude", ".pytest_cache"}
+# Directory names never executed by the repo's own gates (vendored/derived/tooling trees).
+_EXCLUDED_DIR_NAMES = {
+    ".git",
+    ".venv",
+    "node_modules",
+    "__pycache__",
+    ".claude",
+    ".codex",
+    ".agents",
+    ".pytest_cache",
+}
 
 # (module, name) -> replacement. Names that do not exist on Python 3.10 (the Jetson
 # board floor, ADR-0008). Extend when a new floor break is discovered.
@@ -36,15 +51,37 @@ _BANNED_STDLIB_IMPORTS = {
     ("enum", "StrEnum"): "warehouse_interfaces.compat.StrEnum",
     ("enum", "ReprEnum"): "py3.11+ only — restructure without it",
     ("enum", "verify"): "py3.11+ only — restructure without it",
+    ("enum", "member"): "py3.11+ only — restructure without it",
+    ("enum", "nonmember"): "py3.11+ only — restructure without it",
+    ("enum", "global_enum"): "py3.11+ only — restructure without it",
+    ("enum", "EnumCheck"): "py3.11+ only — restructure without it",
+    ("enum", "FlagBoundary"): "py3.11+ only — restructure without it",
     ("datetime", "UTC"): "warehouse_interfaces.compat.UTC (or datetime.timezone.utc)",
     ("typing", "Self"): "typing_extensions.Self",
     ("typing", "assert_never"): "typing_extensions.assert_never",
     ("typing", "assert_type"): "typing_extensions.assert_type",
+    ("typing", "LiteralString"): "typing_extensions.LiteralString",
+    ("typing", "Never"): "typing_extensions.Never (or typing.NoReturn)",
+    ("typing", "Required"): "typing_extensions.Required",
+    ("typing", "NotRequired"): "typing_extensions.NotRequired",
+    ("typing", "Unpack"): "typing_extensions.Unpack",
+    ("typing", "TypeVarTuple"): "typing_extensions.TypeVarTuple",
+    ("typing", "dataclass_transform"): "typing_extensions.dataclass_transform",
+    ("typing", "override"): "typing_extensions.override (3.12+)",
+    ("typing", "TypeAliasType"): "typing_extensions.TypeAliasType (3.12+)",
     ("asyncio", "timeout"): "asyncio.wait_for",
+    ("asyncio", "timeout_at"): "asyncio.wait_for",
     ("asyncio", "TaskGroup"): "explicit tasks + asyncio.gather",
     ("asyncio", "Runner"): "asyncio.run",
+    ("asyncio", "Barrier"): "py3.11+ only — restructure without it",
+    ("asyncio", "eager_task_factory"): "py3.12+ only — restructure without it",
     ("contextlib", "chdir"): "os.chdir + try/finally",
     ("itertools", "batched"): "manual slicing (3.12+)",
+    ("hashlib", "file_digest"): "read + hashlib.new (3.11+)",
+    ("math", "exp2"): "2**x (3.11+)",
+    ("math", "cbrt"): "x ** (1/3) (3.11+)",
+    ("inspect", "getmembers_static"): "py3.11+ only — restructure without it",
+    ("sys", "exception"): "sys.exc_info()[1] (3.11+)",
 }
 _BANNED_STDLIB_MODULES = {
     "tomllib": 'pytest.importorskip("tomllib") inside the test body (3.11+ stdlib)',
@@ -52,20 +89,31 @@ _BANNED_STDLIB_MODULES = {
 _BANNED_MODULE_NAMES = {module for module, _ in _BANNED_STDLIB_IMPORTS}
 
 
-def _scan_py_files():
-    """Every python file the repo can execute on the py3.10 floor.
+# Allowlisted roots the repo's own gates execute on the py3.10 floor. An allowlist (not a
+# repo-wide walk) so a stray venv/, vendored tree or incubator can never false-offend:
+# plugins/ in particular declares its OWN floor (plugins/l3_zone_policy/pyproject.toml
+# pins requires-python >= 3.12 and never runs on the board).
+_SCAN_ROOTS = ("ws/src", "tests", "scripts", "spike", "deploy")
+_SCAN_EXTRA_FILES = ("conftest.py",)
 
-    ws/src and tests/ run on the board; scripts/, spike/ and the root conftest are host /
-    board harnesses under the same declared floor. Excludes vendored/derived dirs, colcon
-    artifacts (ws/* other than ws/src), compat.py (the version-guarded shim itself) and
-    this file (it deliberately contains banned patterns as probes).
+
+def _scan_py_files():
+    """Every python file the repo's own gates can execute on the py3.10 floor.
+
+    ws/src and tests/ run on the board; scripts/, spike/, deploy/ and the root conftest
+    are host / board harnesses under the same declared floor. Excludes vendored/derived
+    dirs, compat.py (the version-guarded shim itself) and this file (it deliberately
+    contains banned patterns as probes).
     """
-    for path in sorted(REPO_ROOT.rglob("*.py")):
+    candidates = [REPO_ROOT / name for name in _SCAN_EXTRA_FILES]
+    for root in _SCAN_ROOTS:
+        candidates.extend(sorted((REPO_ROOT / root).rglob("*.py")))
+    for path in candidates:
+        if not path.is_file():
+            continue
         parts = path.relative_to(REPO_ROOT).parts
         if any(part in _EXCLUDED_DIR_NAMES for part in parts):
             continue
-        if parts[0] == "ws" and (len(parts) < 2 or parts[1] != "src"):
-            continue  # ws/build, ws/install, ws/log — colcon artifacts
         if path.resolve() == _SELF:
             continue
         if path.name == "compat.py" and path.parent.name == "warehouse_interfaces":
@@ -182,6 +230,14 @@ def test_no_py311_only_stdlib_imports_anywhere():
         except SyntaxError as exc:
             offenders.append(f"{rel}: unparseable ({exc})")
             continue
+        # First pass: module aliases, so `import datetime as dt` + `dt.UTC` is caught too.
+        module_aliases = {}
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    root = alias.name.split(".")[0]
+                    if root in _BANNED_MODULE_NAMES or root in _BANNED_STDLIB_MODULES:
+                        module_aliases[alias.asname or alias.name] = root
         for node in ast.walk(tree):
             if isinstance(node, ast.ImportFrom) and node.level == 0:
                 if node.module in _BANNED_STDLIB_MODULES:
@@ -203,7 +259,8 @@ def test_no_py311_only_stdlib_imports_anywhere():
                     if alias.name in _BANNED_STDLIB_MODULES:
                         offenders.append(f"{rel}:{node.lineno} import {alias.name}")
             elif isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
-                if (node.value.id, node.attr) in _BANNED_STDLIB_IMPORTS:
+                mod = module_aliases.get(node.value.id, node.value.id)
+                if (mod, node.attr) in _BANNED_STDLIB_IMPORTS:
                     offenders.append(f"{rel}:{node.lineno} {node.value.id}.{node.attr}")
     assert offenders == [], "\n".join(offenders)
 
