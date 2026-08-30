@@ -7,11 +7,11 @@
 
 ## 責務
 
-Yahboom ROSMASTER M1 の STM32 制御ボードは**ベンダ製バイナリ**のため、自前 ESP32 ファーム（`firmware/include/safety_clamp.h`）と同じ MCU 内クランプ（L0）を置けない。代わりに
+Yahboom ROSMASTER M1 の公式 STM32 source V3.6.5 は入手済みだが、stock FW の M1 clamp は 0.7m/s で、本プロジェクトの凍結契約 0.3m/s や command-stream watchdog を実装しない。custom FW fork へ置換しない現行方針では、自前 ESP32 ファーム（`firmware/include/safety_clamp.h`）と同じ MCU 内クランプ（L0）を置けない。代わりに
 **ホスト側シリアルドライバの送信直前（L0'）** — body 速度を `int16(v*1000)` へ変換して `FUNC_MOTION=0x12` フレームを組む直前 — で 0.3 m/s をハードクランプする。ここが全 `/cmd_vel` が必ず通る**単一の絞り点**であり、Nav2 / Policy Gate / Emergency Guardian のいずれが壊れても wire に上限超は出ない。
 
 - 正本: [`docs/shared/02-hardware-design.md:325`](../../../docs/shared/02-hardware-design.md)（残課題 7・方針決定 2026-08-05）
-- L0' の限界: [`docs/shared/02-hardware-design.md:329`](../../../docs/shared/02-hardware-design.md) — ホストプロセスが生きている間だけ有効。`# TODO(Phase 1)` MCU 側 watchdog の有無を実機確認。
+- L0' の限界: [`docs/shared/02-hardware-design.md` P-7c](../../../docs/shared/02-hardware-design.md) — ホストプロセスが生きている間だけ有効。stock FW に通信途絶停止が無いため、`# TODO(Phase 1)` G-g MCU command-stream watchdog の実装・抜線試験が必要。
 - ベクトルクランプの必然性: [`docs/shared/02-hardware-design.md:371`](../../../docs/shared/02-hardware-design.md)（C-8）— 軸独立クランプでは対角 √(0.3²+0.3²)=**0.424 m/s** で上限を 41% 超過する。
 - distro / 決定記録: [`docs/adr/0008-ros2-distro-humble-for-rosmaster-m1.md:50`](../../../docs/adr/0008-ros2-distro-humble-for-rosmaster-m1.md)
 
@@ -75,7 +75,7 @@ Yahboom ROSMASTER M1 の STM32 制御ボードは**ベンダ製バイナリ**の
 
 - `# TODO(contract)` **角速度 `wz` の上限が未定義**。凍結契約 `warehouse_interfaces.safety` に角速度定数が無く、`.claude/rules/docs-first.md` は docs に無いしきい値の発明を禁じている。既存の唯一の数値は `firmware/include/config.h:10` `MAX_ANGULAR_VELOCITY = 2.0f`（それ自体が「Phase 1 実測」placeholder ＋ ESP32 build flag スコープ）。→ **実測後に contract PR で `warehouse_interfaces.safety` へ昇格させるか要決定**（`.claude/rules/parallel-workflow.md` §4）。昇格したら `clamp_body_velocity` で `wz` もクランプする。
 - `# TODO(hand-off)` **配置の暫定性**: `02-hardware-design.md:371`（C-8）は「(vx, vy) の大きさでクランプする関数」を **`warehouse_interfaces` 側に追加**する想定で書かれている（contract PR 対象）。本スライスは L0'（残課題 7）に従い**ドライバ package-local に実装**した。共有化が必要になった時点で `warehouse_interfaces.safety` へ移管する（`.claude/rules/implementation-and-dependencies.md` §5・移管時は本 package-local 版を削除して二重定義を残さない）。
-- `# TODO(Phase 1)` **MCU 通信タイムアウト停止（watchdog）の有無**を実機確認。無ければ Emergency Guardian からの明示 stop フレーム送出で補う（`02-hardware-design.md:329`）。
+- `# TODO(Phase 1)` **G-g MCU command-stream watchdog** を追加し、host test と実機 USB 抜線試験で停止を確認する。stock V3.6.5 に通信途絶停止が無いことは source で確定済み。Emergency Guardian の明示 stop は host/USB 断では送れないため代替にならない（`02-hardware-design.md` P-7c）。
 - `# TODO(Phase 1)` **シリアル層は未実装**: `FUNC_MOTION=0x12` フレーム組立（`HEAD=0xFF, DEVICE_ID=0xFC, LEN, FUNC, payload…, CHECKSUM=(sum+257-0xFC)&0xFF`）・udev symlink `/dev/myserial`・CH340（`1a86:7523`）・115200 8N1・MCU auto-report 40ms は `02-hardware-design.md` 残課題 5 / 10 に記載済で、後続スライス。
 - **`linear.y` は既定 0.0**（メカナム逆運動学は STM32 側にあり、diff-drive 契約のまま成立＝`02-hardware-design.md:364`）。omni 化は任意の後続拡張。
 
