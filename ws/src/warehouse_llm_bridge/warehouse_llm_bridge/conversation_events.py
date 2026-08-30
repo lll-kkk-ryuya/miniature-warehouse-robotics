@@ -17,10 +17,10 @@ import time
 import uuid
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
-from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
+from warehouse_interfaces.compat import StrEnum
 from warehouse_interfaces.paths import runtime_dir
 
 CONVERSATION_EVENT_LOG_ENV = "WAREHOUSE_CONVERSATION_EVENT_LOG_PATH"

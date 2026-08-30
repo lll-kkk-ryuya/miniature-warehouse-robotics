@@ -117,12 +117,14 @@ For the full stack: export WAREHOUSE__HERMES__BASE_URL=http://host.docker.intern
 }
 
 python_cmd() {
+  # Floor = pyproject requires-python (>=3.10): the Jetson board runs py3.10 (ADR-0008
+  # 追記 2026-08-30). Prefer python3.12 when present (dev machines), accept >=3.10.
   if have python3.12; then
     printf '%s\n' "python3.12"
   elif have python3; then
     if python3 - <<'PY'
 import sys
-raise SystemExit(0 if sys.version_info >= (3, 11) else 1)
+raise SystemExit(0 if sys.version_info >= (3, 10) else 1)
 PY
     then
       printf '%s\n' "python3"
@@ -365,7 +367,7 @@ run_static_checks() {
 
   local py
   if ! py="$(python_cmd)"; then
-    fail "python3.12 or python>=3.11 is required"
+    fail "python3.12 or python>=3.10 is required"
     return
   fi
   pass "python selected: ${py}"

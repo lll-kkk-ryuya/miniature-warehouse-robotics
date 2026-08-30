@@ -64,6 +64,7 @@
 - net: Hermes Gateway `/v1/chat/completions`（OpenAI 互換, langfuse.openai 経由）
 - pip: `langfuse>=4.9,<5` + `openai>=1.0,<2`（lazy・setup.py 宣言。rosdep でない＝CI pytest は fake で非依存）
 - **pkg `eval_sdk`（doc21 Phase 1・一方向依存・`package.xml` exec_depend）**: `tracing.py` が domain 非依存の Tracer seam を import — `Tracer`/`NoopTracer`/`LangfuseTracer`←`eval_sdk.tracer`、`resolve_run_id`/`seed_for`←`eval_sdk.seed`。`trace_seed(run_id,gen_id)` は `eval_sdk.seed.seed_for` へ委譲（#6 `trace_id.seed_for` と統合した**唯一の join key**＝重複 f-string を 1 本化）。`build_session_id`（session ラベル形）は Bridge 固有で本 module に残置。**外部 import 面は不変**（再 export）。
+- **py3.10 互換（#563・ADR-0008 追記 2026-08-30）**: `warehouse_interfaces.compat.StrEnum`（単一共有 shim・py3.11+ は stdlib re-export＝挙動不変）を bridge 内 10 ファイルが、`compat.UTC`（py3.11+ は `datetime.UTC` 同一 singleton）を `robotics/composition/record.py` が import。`from enum import StrEnum`・`from datetime import UTC` の直 import と `auto()` は `tests/unit/test_py310_compat.py` の source-scan で恒久禁止。`typing_extensions>=4`（`visual_resolver/models.py` の `Self`・setup.py 宣言・pydantic v2 の推移的依存＝新規重量ゼロ）。
 
 ## 排他3層（A+B-3+C, doc08:161-179 / doc15§2）
 - **A** = `wait_for(2.5s)` の client-side cancel のみ。明示 `/v1/runs/{id}/stop` は **#54 で撤回**（stateless chat/completions に run_id 無し＋ tool dispatch は Bridge in-process でサーバー側 tool 実行が無く /stop 不要。R-35A 解消, doc08:173-179）。安全主担保は B-3+C。
