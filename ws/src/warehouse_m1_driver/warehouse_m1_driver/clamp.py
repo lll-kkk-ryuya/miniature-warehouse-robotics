@@ -1,18 +1,19 @@
 """L0' velocity clamp for the ROSMASTER M1 host-side serial driver (pure, ROS-free).
 
-The M1's STM32 control board runs a VENDOR BINARY, so the 0.3 m/s hard cap cannot
-live inside the MCU the way ``firmware/include/safety_clamp.h`` enforces it for the
-self-written ESP32 firmware. The adopted placement is therefore **L0' = the host
+The M1's STM32 control board runs stock vendor firmware. Its official V3.6.5 source
+is available, but this project does not replace it with a custom fork, so the 0.3 m/s
+hard cap cannot live inside the MCU the way ``firmware/include/safety_clamp.h``
+enforces it for the self-written ESP32 firmware. The adopted placement is **L0' = the host
 serial driver, immediately before the ``FUNC_MOTION`` (0x12) frame is assembled**
 (``docs/shared/02-hardware-design.md:325`` 残課題 7). That point is the single
 choke point every ``/cmd_vel`` must pass through, so a broken Nav2 / Policy Gate /
 Emergency Guardian still cannot put >0.3 m/s on the wire.
 
 Known limit of L0' (documented, not solved here): it only holds while the host
-process is alive. A host crash or USB disconnect leaves the last command latched in
-the MCU. ``# TODO(Phase 1)`` verify on real hardware whether the MCU has a comms
-watchdog stop; if not, compensate with an explicit stop frame from the Emergency
-Guardian (``docs/shared/02-hardware-design.md:329``).
+process is alive. The official STM32 V3.6.5 source has no serial-command timeout,
+so a host crash or USB disconnect can leave the last command latched in the MCU.
+``# TODO(Phase 1)`` G-g adds an MCU command-stream watchdog and verifies it with a
+real USB-disconnect test (``docs/shared/02-hardware-design.md`` P-7c).
 
 Why the linear clamp is on the VECTOR MAGNITUDE and not per axis: the M1 is mecanum,
 so ``vy`` can be non-zero. Clamping each axis independently to 0.3 m/s lets the
