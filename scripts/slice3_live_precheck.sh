@@ -118,19 +118,19 @@ For the full stack: export WAREHOUSE__HERMES__BASE_URL=http://host.docker.intern
 
 python_cmd() {
   # Floor = pyproject requires-python (>=3.10): the Jetson board runs py3.10 (ADR-0008
-  # 追記 2026-08-30). Prefer python3.12 when present (dev machines), accept >=3.10.
-  if have python3.12; then
-    printf '%s\n' "python3.12"
-  elif have python3; then
-    if python3 - <<'PY'
+  # 追記 2026-08-30). Prefer the ACTIVE python3 — it carries the environment's installed
+  # deps (venv / CI setup-python + pip). A bare python3.12 is only a FALLBACK for hosts
+  # whose default python3 is below the floor: preferring it unconditionally made the CI
+  # py3.10 matrix leg pick the dep-less SYSTEM python3.12 on ubuntu-24.04 (pydantic
+  # ModuleNotFoundError inside the seed heredocs) while pip had installed into 3.10.
+  if have python3 && python3 - <<'PY'
 import sys
 raise SystemExit(0 if sys.version_info >= (3, 10) else 1)
 PY
-    then
-      printf '%s\n' "python3"
-    else
-      return 1
-    fi
+  then
+    printf '%s\n' "python3"
+  elif have python3.12; then
+    printf '%s\n' "python3.12"
   else
     return 1
   fi
