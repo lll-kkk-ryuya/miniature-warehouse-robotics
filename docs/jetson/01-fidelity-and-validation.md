@@ -215,3 +215,11 @@ doc06:112、sim 範囲。実 bot E2E は sim track #8/#156）。→ F1-F3。**AR
 
 - M1 単騎・部屋スケールの**実行構成・bring-up の正本ルート**は [docs/mode-m1/](../mode-m1/README.md)（境界/traffic = [mode-m1/01](../mode-m1/01-mode-boundary-and-traffic.md) / driver+watchdog = [mode-m1/02](../mode-m1/02-m1-driver-and-watchdog.md) / joystick bring-up M0-M2 = [mode-m1/03](../mode-m1/03-joystick-teleop-bringup.md)）。
 - 本 doc の G0-G7 には旧世界（ESP32×2 / MS200 / Nav2×2 / 「MCU がクランプ」）前提の記述が残る。**M1 への読み替え（特に G0 の主体 = MCU → L0' ホストクランプ）は別 PR で行う**（§2 表 `:52-57`・§4 表 `:97-113` は他 doc から行 pin されているため行数保存が必要 = 中段挿入禁止）。本追記はその予告と forward リンクのみ。
+
+## 【2026-08-28 追記】開発機からのアクセス経路（02）への forward
+
+Jetson 実機へ **Mac から接続して作業する経路**（**mDNS 直結 `minicar.local`＋常時通電運用・`jetson` CLI**＝02 §9。旧 pull 型 agent は恒久廃止＝02 §5）と、
+**初回ブートの実測ベースライン**（L4T / 起動デバイス / 電力モード / メモリ）は
+[02-remote-access-and-dev-link.md](02-remote-access-and-dev-link.md) を正本とする。本 doc の G0-G7 は
+**合否基準**の正本であり続け、02 は**その値を測るための接続手段と初期実測値**を持つ（役割分担・重複させない）。
+

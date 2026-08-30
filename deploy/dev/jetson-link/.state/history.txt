@@ -1,0 +1,162 @@
+
+===== 2026-08-28T20:18:47 =====
+### boot-check
+AGENT ALIVE: root@minicar 2026年  8月 28日 金曜日 20:18:47 JST
+
+===== 2026-08-28T20:18:56 =====
+### cmd-1787915934
+REPO TOOLING OK: minicar 20:18:56
+NV Power Mode: 25W
+1
+
+===== 2026-08-28T20:22:38 =====
+### cmd-1787916155
+SSID: Buffalo-5G-F000
+IP: 192.168.11.12 172.17.0.1 2408:210:2d03:c900:1128:63a5:c4a4:9418 2408:210:2d03:c900:e36:54eb:9385:a873 
+wlP1p1s0         UP             192.168.11.12/24 2408:210:2d03:c900:1128:63a5:c4a4:9418/64 2408:210:2d03:c900:e36:54eb:9385:a873/64 fe80::fbda:421b:c121:4e7/64 
+
+===== 2026-08-28T20:29:24 =====
+### cmd-1787916562
+LISTEN 0      5            0.0.0.0:8080      0.0.0.0:*          
+test server up on 192.168.11.12:8080 for 300s
+
+===== 2026-08-28T20:39:11 =====
+### cmd-1787917149
+agent alive: minicar 20:39:11
+
+===== 2026-08-28T20:40:15 =====
+### cmd-1787917213
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEdWvCQpzJDvK8CF2moHdIb3RFxN1qfVlfrFN7BedzDh mwr-jetson-tunnel
+
+===== 2026-08-28T20:41:54 =====
+### cmd-1787917310
+Warning: Permanently added '192.168.11.11' (ED25519) to the list of known hosts.
+24631 ssh -N -f -R 127.0.0.1:2222:localhost:22 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 kawaguchiryuya@192.168.11.11
+
+===== 2026-08-28T20:49:47 =====
+### cmd-1787917786
+=== NVMe パーティションテーブル ===
+Error: /dev/nvme0n1: unrecognised disk label
+Model: KIOXIA-EXCERIA PLUS G3 SSD (nvme)
+Disk /dev/nvme0n1: 1000GB
+Sector size (logical/physical): 512B/512B
+Partition Table: unknown
+Disk Flags: 
+--- wipefs (非破壊・署名検出) ---
+--- 先頭512Bが全ゼロか ---
+0000000 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+*
+--- SMART 電源投入時間/書込量 ---
+percentage_used				: 0%
+data_units_written			: 0
+power_on_hours				: 1
+
+=== UEFI ブートエントリ ===
+BootCurrent: 0001
+Timeout: 5 seconds
+BootOrder: 0008,0001,0004,0003,0002,0005,0000,0006,0007
+Boot0000* Enter Setup
+Boot0001* UEFI SD Device
+Boot0002* UEFI PXEv4 (MAC:AC3AE2123EC8)
+Boot0003* UEFI PXEv6 (MAC:AC3AE2123EC8)
+Boot0004* UEFI HTTPv4 (MAC:AC3AE2123EC8)
+Boot0005* UEFI HTTPv6 (MAC:AC3AE2123EC8)
+Boot0006* BootManagerMenuApp
+Boot0007* UEFI Shell
+Boot0008* UEFI KIOXIA-EXCERIA PLUS G3 SSD ZFMKS1PBZ4KA 1
+
+===== 2026-08-28T23:35:03 =====
+### cmd-1787927696
+=== tunnel keeper 生存確認 ===
+(keeper 死亡)
+(tunnel 死亡)
+=== 再起動（setsid で完全に切り離す） ===
+42535 /bin/sh /home/ruyuya/mwr-tunnel.sh
+42536
+
+===== 2026-08-28T23:35:31 =====
+### cmd-1787927717
+=== / の使用量 ===
+/dev/mmcblk0p1   57G   22G   33G  41% /
+=== ルート直下 内訳（大きい順 上位10） ===
+22G	/
+15G	/usr
+6.5G	/var
+1.4G	/opt
+79M	/boot
+31M	/home
+19M	/etc
+552K	/data
+520K	/root
+384K	/tmp
+=== /usr 内訳 ===
+15G	/usr
+7.1G	/usr/lib
+4.4G	/usr/local
+1.3G	/usr/share
+510M	/usr/bin
+479M	/usr/src
+=== /var 内訳 ===
+6.5G	/var
+2.2G	/var/l4t-cuda-tegra-repo-ubuntu2204-12-6-local
+1.7G	/var/lib
+1.5G	/var/cache
+778M	/var/cudnn-local-tegra-repo-ubuntu2204-9.3.0
+419M	/var/nv-tensorrt-local-tegra-repo-ubuntu2204-10.3.0-cuda-12.5
+=== /home 内訳 ===
+31M	/home/ruyuya
+30M	/home/ruyuya/.cache
+668K	/home/ruyuya/.local
+152K	/home/ruyuya/.config
+28K	/home/ruyuya/Desktop
+16K	/home/ruyuya/snap
+=== CUDA/TensorRT など Jetson 固有 ===
+0	/usr/local/cuda
+0	/usr/local/cuda-12
+4.4G	/usr/local/cuda-12.6
+0	/usr/lib/aarch64-linux-gnu/tegra
+1.5M	/usr/lib/aarch64-linux-gnu/tegra-egl
+
+===== 2026-08-28T23:52:52 =====
+### cmd-1787928769
+=== Jetson から Mac の名前解決が効くか ===
+192.168.11.11   MacBook-Pro-5.local
+PING MacBook-Pro-5.local (192.168.11.11) 56(84) bytes of data.
+64 bytes from 192.168.11.11 (192.168.11.11): icmp_seq=1 ttl=64 time=2.85 ms
+=== avahi 有無 ===
+active
+
+===== 2026-08-28T23:53:19 =====
+### cmd-1787928791
+Created symlink /etc/systemd/system/multi-user.target.wants/mwr-tunnel.service → /etc/systemd/system/mwr-tunnel.service.
+enabled
+activating
+
+===== 2026-08-28T23:53:46 =====
+### cmd-1787928826
+=== 実行中の ssh -R プロセス ===
+42536 ssh -N -R 127.0.0.1:2222:localhost:22 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 kawaguchiryuya@192.168.11.11
+=== service 状態 ===
+● mwr-tunnel.service - MWR reverse SSH tunnel to the dev machine
+     Loaded: loaded (/etc/systemd/system/mwr-tunnel.service; enabled; vendor preset: enabled)
+     Active: activating (auto-restart) (Result: exit-code) since Fri 2026-08-28 23:53:42 JST; 4s ago
+    Process: 44700 ExecStart=/usr/local/bin/mwr-tunnel (code=exited, status=255/EXCEPTION)
+   Main PID: 44700 (code=exited, status=255/EXCEPTION)
+        CPU: 45ms
+
+===== 2026-08-28T23:54:07 =====
+### cmd-1787928837
+=== state ===
+active
+     Active: active (running) since Fri 2026-08-28 23:54:00 JST; 6s ago
+   Main PID: 44757 (ssh)
+=== ssh -R プロセス ===
+44757 ssh -N -R 127.0.0.1:2222:localhost:22 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 kawaguchiryuya@MacBook-Pro-5.local
+
+===== 2026-08-28T23:54:25 =====
+### cmd-1787928862
+rebooting for verification
+
+===== 2026-08-29T00:46:30 =====
+### cmd-1787928862
+rebooting for verification
