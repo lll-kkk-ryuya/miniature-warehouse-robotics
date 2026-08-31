@@ -1,0 +1,14 @@
+[Unit]
+Description=MWR reverse SSH tunnel to the dev machine
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ruyuya
+ExecStart=/usr/local/bin/mwr-tunnel
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

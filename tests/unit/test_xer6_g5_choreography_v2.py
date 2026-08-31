@@ -331,13 +331,14 @@ def test_committed_v2_payload_is_the_pinned_t1_to_t5_plan() -> None:
         ("t4", "bot2", "navigate", "red_box", "t2.completed"),  # the v1-approximation edge
         ("t5", "bot2", "navigate", "berth_B_marker", "t4.completed"),
     ]
-    # Canonical v1 pixels kept; berth markers are the exact homography preimages of the
-    # committed calibration for berth_A(0.2, 0.8) / berth_B(0.7, 0.8) (dev/08 追補 3).
+    # Canonical v1 pixels kept; berth markers are the integer homography preimages of the
+    # committed calibration for berth_A(0.2, 0.8) / berth_B(0.7, 0.8) (dev/08 追補 3, re-derived
+    # 2026-08-18 with the square-pixel calibration: y preimage 130.6 -> 131, error 0.51 mm).
     assert {d["id"]: d["pixel"] for d in inner["detections"]} == {
         "red_box": [420, 310],
         "blue_box": [810, 280],
-        "berth_A_marker": [420, 1060],
-        "berth_B_marker": [810, 1060],
+        "berth_A_marker": [420, 131],
+        "berth_B_marker": [810, 131],
     }
 
 

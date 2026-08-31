@@ -13,6 +13,7 @@
 - `safety.py` — **安全定数の単一ソース（ハードキャップ）**（`MAX_LINEAR_VELOCITY=0.3` / battery 閾値 / `clamp_velocity`（非有限値→0.0 stop）/ `battery_allows_new_task` / `battery_is_critical` / **`normalize_battery_percent(raw, scale)`＋`BATTERY_PERCENTAGE_SCALES`/既定 `percent`＝#44 battery スケール単一正規化**）。**Policy Gate(L1) と Emergency Guardian(L2) が共用**。config の `safety.max_linear_velocity` は環境 tunable で、`load_config` が **(int|float) 型かつ有限かつ `0 < cap ≤ ハードキャップ`** を検証し非数値/非正/非有限/超過は拒否（#169/#175/#44）。ハードコード禁止。
 - `config.py` — `load_config()`：`warehouse.base.yaml` + `config/<env>/warehouse.yaml` を deep-merge し、`WAREHOUSE__SECTION__KEY` 環境変数で上書き（doc19 §3 後勝ち）。`safety.max_linear_velocity` を **(int|float) 型かつ有限かつ `0 < cap ≤ MAX_LINEAR_VELOCITY`** に検証（#169: 非正/非有限を fail-loud 拒否＝負 cap 素通し穴の根治／#175: 非数値・bool を `ValueError` で型拒否＝raw TypeError 回避・各キー独立検証）＋`safety.battery_percentage_scale` を `BATTERY_PERCENTAGE_SCALES` に検証（#44）。
 - `schemas.py` の `StateSnapshot`/`RobotSnapshot` — State Cache(L2) が書く生状態（`obstacle_distance` は Situation の `RobotState` と同名・`battery` は 0–100 検証）。LLM Bridge(L1) が読む。
+- `compat.py` — **py3.10 互換 shim（#563・ADR-0008 追記 2026-08-30）**: 単一共有 `StrEnum`（py3.11+ = stdlib re-export＝挙動不変 / py3.10 = `str,Enum` + `__str__ = str.__str__`）と `UTC`（py3.11+ = `datetime.UTC` re-export / py3.10 = `timezone.utc`＝同一 singleton・identity 不変）。全 pkg はここから import する（`from enum import StrEnum`・`from datetime import UTC` の直 import と `auto()` は `tests/unit/test_py310_compat.py` の source-scan で恒久禁止＝Jetson/Humble ボードで ImportError / isinstance 破壊を防ぐ）。
 
 ## 依存
 - stdlib + **pydantic>=2** + **pyyaml** のみ（rclpy 非依存 → MCP Server からも import 可）。
@@ -20,7 +21,7 @@
 ## テスト
 - `tests/unit/test_schemas.py` / `test_stores.py` / `test_safety.py` / `test_state_snapshot.py` / `test_config.py`（pure-python、CIで実行）。
 - `tests/unit/test_safety_contracts.py` は `KNOWN_LOCATIONS` / `is_known_location` を本パッケージから import（単一ソース化）。
-- Ruff(py312/line100/double-quote) + pytest 緑を維持（CI が検証）。
+- Ruff(py310/line100/double-quote) + pytest 緑を維持（CI が検証。target py310 = ADR-0008 追記 2026-08-17 その3）。
 
 ## 確定事項 / 未了
 - gen_id は現行 単調比較（B-3, doc08/15）。**UUID 冪等key を契約に追加済**（R-35 C 層）: `CommandItem.idempotency_key` + `IdempotencyStore`/`FileIdempotencyStore` + `idempotency_store_path()`。doc08/15 へ反映済（rules §4 準拠の `contract` PR）。**凍結はマージ後**（DRAFT PR レビュー中＝設計合意を得てから確定）。

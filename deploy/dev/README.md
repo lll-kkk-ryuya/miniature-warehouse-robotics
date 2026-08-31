@@ -64,7 +64,8 @@ export DISPLAY=:1 XAUTHORITY=/home/ubuntu/.Xauthority      # else RViz: "could n
 export LIBGL_ALWAYS_SOFTWARE=1 GALLIUM_DRIVER=llvmpipe      # software GL (no GPU in Docker-on-Mac)
 source /opt/ros/jazzy/setup.bash && source /ws/ws/install/setup.bash
 export WAREHOUSE_CONFIG_DIR=/ws/config WAREHOUSE_ENV=dev
-export WAREHOUSE__SAFETY__POSE_FRESHNESS_TIMEOUT=999        # sim: AMCL only republishes on motion
+# pose_freshness_timeout stays at its 1.0s default: the odom displacement gate absorbs a parked
+# bot's AMCL silence (doc23 A-5③), so no freshness override is needed here any more.
 ros2 launch warehouse_bringup bringup.launch.py sim:=true llm:=false traffic_mode:=none rviz:=true rviz_config:=record
 # then (separate exec, after lifecycle active): seed AMCL to the spawn, drive with Nav2 goals:
 cd /ws && SCENARIO=default scripts/slice3_seed_initialpose.sh
@@ -151,10 +152,10 @@ deploy/dev/check-hermes-live.sh --chat        # optional provider call
 - **AMCL seed timing**: `slice3_seed_initialpose.sh` publishes `initialpose` once per bot; if a
   bot's AMCL hasn't subscribed yet it stays unlocalized — just re-run the seed (idempotent).
 - **Tight map (R-42)** — this is real, not a bug. `maps/map.pgm` is 180×90 @ 1cm; with robot
-  footprint + costmap inflation the only wide free lane is the **east-west corridor at y≈0.57–0.77**
-  (x≈0.14–1.68). Two facts follow:
-  - **Berth goals (y=0.8) and shelf goals (y=0.3) fail to plan** — too close to the top wall
-    (`worldToMap failed … size 180,90`) or inside a shelf block. Aim goals into the free corridor.
+  footprint + costmap inflation the wide free areas are the **east-west corridor at y≈0.57–0.77**,
+  the full-height east block (x≳1.29), and the south band reached via the aisle mouths. Two facts follow:
+  - **Named-location goals sit in free space since 2026-08-17** (shelf docking points y=0.57 in this
+    corridor; stations/retreats re-sited — doc04 §走行目標点). The old y=0.3 shelf-centre goals aborted.
   - **`emergency_guardian` e-stops at 0.3 m** (`emergency_min_distance`, [safety.md](../../.claude/rules/safety.md)).
     Two robots cannot pass within 0.3 m in this miniature map, so a **head-on cross is stopped by design** —
     exactly why the project needs the **LLM commander to coordinate yielding** (a robot retreats,

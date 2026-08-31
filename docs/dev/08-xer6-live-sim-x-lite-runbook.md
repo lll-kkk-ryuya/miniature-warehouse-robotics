@@ -258,14 +258,14 @@ CI 側の裏取り: `tests/unit/test_xer6_g5_replay_artifacts.py` が **commit �
 | task | robot | 内容 | target（detections 内の id） | 到達先（snap） | after |
 |---|---|---|---|---|---|
 | t1 | bot1 | 赤箱へ | `red_box` pixel [420,310] | `shelf_1` | —（初回 cycle で dispatch） |
-| t2 | bot1 | 帰還 | `berth_A_marker` pixel [420,1060] | `berth_A` | `t1.completed` |
+| t2 | bot1 | 帰還 | `berth_A_marker` pixel [420,131] | `berth_A` | `t1.completed` |
 | t3 | bot2 | 青箱へ | `blue_box` pixel [810,280] | `shelf_2` | —（t1 と並走） |
 | t4 | bot2 | 赤箱地点へ | `red_box`（t1 と同一 detection を再利用） | `shelf_1` | **`t2.completed`** |
-| t5 | bot2 | 帰還 | `berth_B_marker` pixel [810,1060] | `berth_B` | `t4.completed` |
+| t5 | bot2 | 帰還 | `berth_B_marker` pixel [810,131] | `berth_B` | `t4.completed` |
 
 - **依存の根拠（doc02 裁定）**: `after` が表すのは**先行タスクの完了のみ**（`ws/src/warehouse_llm_bridge/warehouse_llm_bridge/robotics_planning_core/task_graph_executor/executor.py:137-146` `_dependencies_met`・「完了」= `succeeded` のみ `.../task_graph_executor/states.py:46`）。オペレーター指示「bot1 が赤箱の場所から**離れたら** bot2 が入る」は空間述語であり現行語彙では表現できない → **t4 を t2（bot1 の帰還タスク）の完了に `after` させる v1 近似**で実現する（doc02 v1 規範 `docs/mode-x-er/02-l3-planning-core.md:383-391`）。t3（bot2 自身の先行タスク）の完了では t4 は解放されない＝依存は robot ではなく task に付く。t2 が `failed` なら t4/t5 は永遠に pending（fail-closed・`executor.py:179-196`）。
-- **帰還先の写像（契約変更なし）**: ユーザー指示の「指定の箇所／所定の位置」は **start berth（`berth_A` / `berth_B`）に写像**する（`ws/src/warehouse_sim/warehouse_sim/layout.py:39-40` `SPAWN_LOCATIONS` = bot1→berth_A / bot2→berth_B と一致）。両名は凍結 `KNOWN_LOCATIONS` に既存（`ws/src/warehouse_interfaces/warehouse_interfaces/locations.py:11-23`）＝ **locations への追加は不要・`warehouse_interfaces` 非編集**。
-- **帰還 navigate の実現形（honest）**: x_lite MVP compiler は **`ResolutionResult` に居る resolved visual target のみ** compile する（`ws/src/warehouse_llm_bridge/warehouse_llm_bridge/robotics_planning_core/command_compiler/compiler.py:103-134`。detections に無い target は known-location 名でも skip = `compiler.py:123`。Validator は known-location 直 target を許す `.../validator/validator.py:219-240` が、その compile は x_lite MVP 未対応＝residual として明示）。よって帰還 navigate は canned envelope の **detections（berth marker pixel）経由**で resolver snap する: committed calibration（`deploy/dev/xer6/site_profiles/customer_a/site_01/calibration.json` の homography）の逆写像で berth_A(0.2, 0.8)→pixel [420,1060] / berth_B(0.7, 0.8)→[810,1060]（整数で厳密）。
+- **帰還先の写像（契約変更なし）**: ユーザー指示の「指定の箇所／所定の位置」は **start berth（`berth_A` / `berth_B`）に写像**する（`ws/src/warehouse_sim/warehouse_sim/layout.py:47-48` `SPAWN_LOCATIONS` = bot1→berth_A / bot2→berth_B と一致）。両名は凍結 `KNOWN_LOCATIONS` に既存（`ws/src/warehouse_interfaces/warehouse_interfaces/locations.py:11-23`）＝ **locations への追加は不要・`warehouse_interfaces` 非編集**。
+- **帰還 navigate の実現形（honest）**: x_lite MVP compiler は **`ResolutionResult` に居る resolved visual target のみ** compile する（`ws/src/warehouse_llm_bridge/warehouse_llm_bridge/robotics_planning_core/command_compiler/compiler.py:103-134`。detections に無い target は known-location 名でも skip = `compiler.py:123`。Validator は known-location 直 target を許す `.../validator/validator.py:219-240` が、その compile は x_lite MVP 未対応＝residual として明示）。よって帰還 navigate は canned envelope の **detections（berth marker pixel）経由**で resolver snap する: committed calibration（`deploy/dev/xer6/site_profiles/customer_a/site_01/calibration.json` の homography）の逆写像で berth_A(0.2, 0.8)→pixel [420,131] / berth_B(0.7, 0.8)→[810,131]（x は整数で厳密、y は逆像 130.6 を整数丸め＝**誤差 0.51 mm**・snap 0.25 m に対し無視できる。2026-08-18 の square-pixel 再導出前は [420,1060] / [810,1060] で、当時の 1000px フレームの**外側**を指していた）。
 
 ### G5 v2 で実際に効く安全網（正確な列挙・過大に言わない）
 

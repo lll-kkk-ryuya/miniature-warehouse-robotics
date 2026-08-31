@@ -241,9 +241,18 @@ firmware/.pio/
 
 ---
 
+## 追加パッケージ（§2 一覧へ未統合）
+
+> `# TODO(governance)` 下表は本来 **§2 のディレクトリツリー（`:24-54`）と一覧表（`:67`〜）へ統合すべき**もの。しかし中段に行を足すと、本 doc を `path:行` で参照している **`.claude/rules/docs-first.md:47`（`:191`）と `.github/workflows/ci.yml:185`（`:218`）** の行ピンが割れる（[#165 の行ドリフト事故](../dev/03-retrospectives.md)）。この2ファイルは **governance（`track:docs`）所有で feature ブランチから編集できない**ため、**両者を同時に再ピンできる governance PR のタイミングで §2 へ統合する**。それまでの暫定登録として末尾に置く（`scripts/check_consistency.py` の `B5-package-registry` は本表で充足する）。
+
+| パッケージ | ビルド | 責務 | 担当 | Phase |
+|---|---|---|---|---|
+| `warehouse_m1_driver` | ament_python | ROSMASTER M1 ホスト側シリアルドライバ。**L0' 速度クランプ**（線速度を**ベクトルの大きさ**で 0.3 m/s に制限・非有限入力は stop・角速度は契約未定義のため未クランプ）＋ #550 で serial driver node（`m1_driver`・clamp 必経・W-1/W-2 watchdog 停止・wire フレーミングは vendor `Rosmaster_Lib` 委譲）を結線。encoder odom は後続スライス | hw/rosmaster-m1 | 1 |
+| `warehouse_perception` | ament_python | L4 知覚の置き場（`gesture_detector` 予定地・[09 OQ-13](../mode-x-er/09-hand-raise-summon.md) 裁定 2026-08-30）。初代入居 = **speed band publisher**（帯→`nav2_msgs/SpeedLimit` 相対名 `speed_limit`・20Hz・safe-OFF 既定・0 cmd_vel。[ADR-0012](../adr/0012-speed-band-no-l2-best-effort.md)・[mode-m1/04](../mode-m1/04-runtime-speed-limiter.md)） | feat/speed-band-publisher | 1 |
+
 ## References
 
 - `.claude/CLAUDE.md` — Model Policy / Code Conventions
 - `.claude/rules/code-style.md` — launch は .launch.py、YAML 2スペース
 - `.claude/rules/safety.md` — 速度上限 0.3 m/s 強制、認証情報非コミット
-- [ROS 2 Jazzy — Creating a package](https://docs.ros.org/en/jazzy/Tutorials/Beginner-Client-Libraries/Creating-Your-First-ROS2-Package.html) — 参照日: 2026-05-29
+- [ROS 2 Humble — Creating a package](https://docs.ros.org/en/humble/Tutorials/Beginner-Client-Libraries/Creating-Your-First-ROS2-Package.html) — 参照日: 2026-08-05（ADR-0008 で Humble へ）

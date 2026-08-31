@@ -22,9 +22,9 @@ Shape (doc02:60-66, kept unchanged — doc02:314): ``status`` / ``errors[]`` / `
 from __future__ import annotations
 
 from collections.abc import Iterable
-from enum import StrEnum
 
 from pydantic import ConfigDict, Field
+from warehouse_interfaces.compat import StrEnum
 
 from warehouse_llm_bridge.robotics_planning_core.models.base import _BridgeModel
 

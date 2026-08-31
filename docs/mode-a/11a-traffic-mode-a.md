@@ -452,7 +452,7 @@ Phase 3前半: TrafficManager + LLM Bridge + Claude統合
 - route の2端点が **shelf 行を南北に挟み**、かつ隘路 X の中心列を通るなら、その route は `[<key_X>]` を含む。
 - **#125 デモ**: 北側ステージング（y≈0.8）↔ 通路A 南端（x≈0.45, y≈0.12）の**対向2タスクはともに `["route_A"]`** を返す ＝ 同一ロックを争う。先着が確保し、後着の `submit_task` は `{"status":"waiting","wait_for":"route_A"}` を返す（§3:103-107）。
 
-> **ゴール到達性（#144 live 知見）**: 凍結 `KNOWN_LOCATIONS` の南側地点（`shipping_station` / `charging_station`, y=0.1）は shelf 直下で **robot 中心が置けず到達不能**。デモの南端ゴールは**隘路整列座標**（x≈0.45/0.95, y≈0.12・名前付き location では無い）を使う。名前付き地点の再配置は location 座標所有（skeleton / #124）の Phase-2 survey 案件で、本トラックは触らない。
+> **ゴール到達性（#144 live 知見・2026-08-17 座標改訂で一部解消）**: 旧座標の南側地点（`shipping_station` / `charging_station`, y=0.1）は shelf 直下で **robot 中心が置けず到達不能**だった。2026-08-17 の座標改訂（doc04 §走行目標点）で `shipping_station` は通路A 南口の隘路整列座標 (0.45, 0.12) へ、`charging_station` は棚3東側オープン領域 (1.5, 0.12) へ移設され**到達可能**になった。**通路B 南端の整列座標（x≈0.95, y≈0.12）は引き続き名前付き location では無い**ため、通路B 側デモの南端ゴールは inline 座標を使う（12a §座標ゴール）。
 
 ### 9.3 lock 解放トリガ（A 主 + C 副 = §3:118-122 の推奨を本デモで確定）
 
@@ -475,3 +475,9 @@ Phase 3前半: TrafficManager + LLM Bridge + Claude統合
 
 - [Open-RMF — GitHub](https://github.com/open-rmf/rmf) — 参照日: 2026-05-22
 - [Programming Multiple Robots with ROS 2](https://osrf.github.io/ros2multirobotbook/) — 参照日: 2026-05-22
+
+---
+
+## 【2026-08-17 追補】§9.4 不変宣言の読み替え（OQ-3 決定・M1 非円形 footprint）
+
+§9.4 の「本機構は速度・footprint・inflation を変えない」「`inscribed_radius = ROBOT_RADIUS`（=0.075 R-42）は不変」は、**Traffic 機構自身が変えない**という主張としては引き続き正しいが、**footprint / inflation / 内接の値そのもの**は [architecture/23-perception-and-localization.md](../architecture/23-perception-and-localization.md) 末尾【2026-08-17 追補】**F 系列**（OQ-3 = M1 非円形 footprint 移行・[Issue #519](https://github.com/lll-kkk-ryuya/miniature-warehouse-robotics/issues/519)）が上書きする——M1 では costmap は `footprint:` polygon（内接 0.1157）となり、`ROBOT_RADIUS`(=0.075) は旧車体値として据え置かれる（`0.15m = 2*ROBOT_RADIUS` margin 等の traffic 系 consumer の M1 移行は 2 台復帰フェーズで個別に行う＝F-6）。速度上限 0.3 m/s は不変のまま。

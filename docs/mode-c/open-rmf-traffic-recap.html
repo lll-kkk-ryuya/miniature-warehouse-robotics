@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Open-RMF / SimpleTraffic 実装状態の振り返り</title>
+<style>
+  :root{
+    color-scheme: dark;
+    --bg:#1a1a1a; --bg2:#141414; --card:#222222; --card2:#262626; --surface:#2d2d2d;
+    --ink:#ededed; --muted:#c4c4c4; --faint:#8f8f8f; --line:#3a3a3a; --code:#141414;
+    --badge-ink:#1a1a1a; --head:#dcdcdc;
+    --box:#7aa2f7; --box-bg:rgba(122,162,247,.13);
+    --sub:#9ece6a; --sub-bg:rgba(158,206,106,.12);
+    --seam:#e0af68; --seam-bg:rgba(224,175,104,.12);
+    --plugin:#bb9af7; --plugin-bg:rgba(187,154,247,.12);
+    --demoted:#9a9a9a; --demoted-bg:rgba(154,154,154,.10);
+    --red:#f7768e; --yellow:#e0c07a; --teal:#7dcfff;
+    --Lt1:rgba(122,162,247,.05); --Lt2:rgba(158,206,106,.05); --Lt3:rgba(224,175,104,.05);
+    --Lt4:rgba(187,154,247,.06); --Lt5:rgba(125,207,255,.05);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Noto Sans JP",Meiryo,sans-serif;
+    line-height:1.7;font-size:15px;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1120px;margin:0 auto;padding:32px 20px 80px}
+  header.top{border-bottom:3px solid var(--box);padding-bottom:18px;margin-bottom:8px}
+  h1{font-size:27px;margin:0 0 6px}
+  h2{font-size:21px;margin:44px 0 14px;padding-left:10px;border-left:5px solid var(--box)}
+  h3{font-size:16px;margin:26px 0 10px;color:var(--head)}
+  p{margin:10px 0}
+  a{color:var(--box);text-decoration:none}
+  a:hover{text-decoration:underline}
+  code{background:var(--code);padding:1px 6px;border-radius:4px;font-size:.9em;
+    font-family:"SF Mono",Menlo,Consolas,monospace;color:var(--ink)}
+  .lead{color:var(--muted);font-size:14px}
+  .dref{color:var(--teal);font-size:.82em;font-family:"SF Mono",Menlo,monospace;white-space:nowrap}
+  .meta{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 16px;font-size:13px;color:var(--muted);margin:14px 0}
+  .note{background:var(--seam-bg);border:1px solid rgba(224,175,104,.4);border-radius:8px;padding:12px 16px;margin:16px 0;font-size:14px}
+  .safe{background:var(--sub-bg);border:1px solid rgba(158,206,106,.4);border-radius:8px;padding:12px 16px;margin:16px 0;font-size:14px}
+  .warn{background:rgba(247,118,142,.08);border:1px solid rgba(247,118,142,.42);border-radius:8px;padding:12px 16px;margin:16px 0;font-size:14px}
+  .badge{display:inline-block;font-size:11px;font-weight:700;padding:2px 9px;border-radius:999px;color:var(--badge-ink);letter-spacing:.3px;vertical-align:middle}
+  .b-box{background:var(--box)} .b-sub{background:var(--sub)} .b-seam{background:var(--seam)}
+  .b-plugin{background:var(--plugin)} .b-demoted{background:var(--demoted);color:var(--ink)}
+  .legend{display:flex;flex-wrap:wrap;gap:10px;margin:16px 0}
+  .legend .item{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 14px;flex:1 1 185px;min-width:185px}
+  .legend .item b{display:block;margin-bottom:3px}
+  .legend .item small{color:var(--muted);font-size:12.5px}
+  .node{border-radius:10px;padding:10px 12px;border:2px solid;background:var(--card);font-size:13.5px}
+  .node .t{font-weight:700;font-size:14px}
+  .node .s{color:var(--muted);font-size:12px;margin-top:2px}
+  .n-box{border-color:var(--box);background:var(--box-bg)}
+  .n-sub{border-color:var(--sub);background:var(--sub-bg)}
+  .n-seam{border-color:var(--seam);background:var(--seam-bg);border-style:dashed}
+  .n-plugin{border-color:var(--plugin);background:var(--plugin-bg)}
+  .n-demoted{border-color:var(--demoted);background:var(--demoted-bg);color:var(--muted)}
+  .n-demoted .t{text-decoration:line-through;text-decoration-color:var(--faint)}
+  .layer{border-radius:12px;padding:12px 14px;margin:10px 0;border:1px solid var(--line)}
+  .layer .lh{font-size:12px;font-weight:700;color:var(--head);letter-spacing:.5px;margin-bottom:8px;display:flex;justify-content:space-between;gap:12px;align-items:center}
+  .layer .lh .rt{font-weight:500;color:var(--muted);font-size:11px}
+  .row{display:flex;flex-wrap:wrap;gap:10px}
+  .row .node{flex:1 1 170px}
+  .Lt1{background:var(--Lt1)} .Lt2{background:var(--Lt2)} .Lt3{background:var(--Lt3)}
+  .Lt4{background:var(--Lt4)} .Lt5{background:var(--Lt5)}
+  .arrow-down{text-align:center;color:var(--faint);font-size:18px;line-height:1;margin:-2px 0}
+  .flow{display:flex;flex-wrap:wrap;align-items:stretch;gap:6px;margin:14px 0}
+  .flow .node{flex:1 1 118px;min-width:118px;display:flex;flex-direction:column;justify-content:center}
+  .flow .arr{display:flex;align-items:center;color:var(--faint);font-weight:700;font-size:18px;padding:0 1px}
+  .compare{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:14px 0}
+  .panel{border-radius:12px;padding:14px;border:1px solid var(--line);background:var(--card)}
+  .panel.bad{border-color:rgba(247,118,142,.45);background:rgba(247,118,142,.07)}
+  .panel.good{border-color:rgba(158,206,106,.45);background:rgba(158,206,106,.07)}
+  .panel.mid{border-color:rgba(224,175,104,.45);background:rgba(224,175,104,.07)}
+  .panel h4{margin:0 0 10px;font-size:14px}
+  table{border-collapse:collapse;width:100%;margin:14px 0;font-size:13px;background:var(--card)}
+  th,td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
+  th{background:var(--surface);font-size:12.5px;color:var(--head)}
+  tr:nth-child(even) td{background:rgba(255,255,255,.02)}
+  td code{font-size:.85em}
+  .impl-yes{color:var(--sub);font-weight:700}
+  .impl-partial{color:var(--yellow);font-weight:700}
+  .impl-no{color:var(--red);font-weight:700}
+  ul.tight{margin:8px 0;padding-left:22px}
+  ul.tight li{margin:5px 0}
+  .mini{font-size:12.5px;color:var(--muted)}
+  footer{margin-top:50px;padding-top:18px;border-top:1px solid var(--line);color:var(--muted);font-size:12.5px}
+  @media(max-width:760px){.compare{grid-template-columns:1fr}.flow .arr{display:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <h1>Open-RMF / SimpleTraffic 実装状態の振り返り</h1>
+  <p class="lead">今回PJの交通管理は「SimpleTraffic は稼働実装あり、Open-RMF は offline core まで、live 配線は R-38 memory gate 後」という状態で読む。</p>
+</header>
+
+<div class="meta">
+  正本:
+  <a href="11c-traffic-mode-c.md"><code>docs/mode-c/11c-traffic-mode-c.md</code></a>,
+  <a href="../productization/11-l2-contract-governance-traffic-box.md"><code>docs/productization/11-l2-contract-governance-traffic-box.md</code></a>,
+  <code>ws/src/warehouse_traffic</code>,
+  <code>ws/src/warehouse_rmf_adapter</code>。
+  本HTMLは補足図解であり、契約やしきい値を新設しない。
+</div>
+
+<h2>0. 読み方</h2>
+<div class="legend">
+  <div class="item"><b><span class="badge b-box">稼働</span></b><small>ROS node / pure Python core として現時点で実装済み。</small></div>
+  <div class="item"><b><span class="badge b-sub">offline</span></b><small>ROS/RMFなしの host unit で検証済み。live 実証ではない。</small></div>
+  <div class="item"><b><span class="badge b-seam">seam</span></b><small>境界・注入面。後段で real port / adapter に差し替える場所。</small></div>
+  <div class="item"><b><span class="badge b-plugin">将来候補</span></b><small>Gate 後に詳細設定や依存追加を決める対象。</small></div>
+  <div class="item"><b><span class="badge b-demoted">不採用</span></b><small>今回構成ではそのまま採用しない。</small></div>
+</div>
+
+<div class="note">
+  <b>結論:</b>
+  Open-RMF の中核は Traffic Schedule / Conflict Negotiation であり、free_fleet はその上に載る Fleet Adapter 実装の一つ。
+  今回PJは free_fleet をそのまま使わず、同じ EasyFullControl 層を自作 adapter で使う方針。
+  <span class="dref">docs/mode-c/11c-traffic-mode-c.md:197-199</span>
+  <span class="dref">docs/mode-c/11c-traffic-mode-c.md:211-214</span>
+  <span class="dref">docs/mode-c/11c-traffic-mode-c.md:245-256</span>
+</div>
+
+<h2>1. 現状の実装境界</h2>
+<div class="layer Lt4">
+  <div class="lh"><span>L4 / L3: 指示・候補生成</span><span class="rt">交通の実行可否や経路制御は持たない</span></div>
+  <div class="row">
+    <div class="node n-box">
+      <div class="t">Claude / LLM Bridge</div>
+      <div class="s">WHAT を決める。Mode C では TrafficManager の調整中に介入しない。</div>
+      <div class="s"><span class="dref">docs/mode-c/11c-traffic-mode-c.md:299-324</span></div>
+    </div>
+    <div class="node n-seam">
+      <div class="t">Command candidate</div>
+      <div class="s">L2 の accepted-motion gate を通るまで実行ではない。</div>
+      <div class="s"><span class="dref">docs/productization/11-l2-contract-governance-traffic-box.md:150-160</span></div>
+    </div>
+  </div>
+</div>
+<div class="arrow-down">▼</div>
+<div class="layer Lt3">
+  <div class="lh"><span>L2: Governance / Traffic Box</span><span class="rt">position goal だけを下流へ渡す</span></div>
+  <div class="row">
+    <div class="node n-box">
+      <div class="t">NoTrafficManager <span class="badge b-box">稼働</span></div>
+      <div class="s">排他制御なし。dropoff を Nav2 Bridge へ送るだけ。</div>
+      <div class="s"><span class="dref">ws/src/warehouse_traffic/warehouse_traffic/traffic_logic.py:115-132</span></div>
+    </div>
+    <div class="node n-box">
+      <div class="t">SimpleTrafficManager <span class="badge b-box">稼働</span></div>
+      <div class="s">route の aisle lock。占有中は waiting、空けば lock して Nav2 へ送る。</div>
+      <div class="s"><span class="dref">ws/src/warehouse_traffic/warehouse_traffic/traffic_logic.py:141-188</span></div>
+    </div>
+    <div class="node n-sub">
+      <div class="t">warehouse_rmf_adapter offline core</div>
+      <div class="s">location 解決、namespacing、single-writer は実装済み。ただし RMF/rclpy live ではない。</div>
+      <div class="s"><span class="dref">ws/src/warehouse_rmf_adapter/README.md:6-13</span></div>
+    </div>
+    <div class="node n-demoted">
+      <div class="t">RMFTrafficManager live</div>
+      <div class="s">R-38 memory gate 後。現状 `open-rmf` は gate 待ちが明示される。</div>
+      <div class="s"><span class="dref">docs/productization/11-l2-contract-governance-traffic-box.md:136-145</span></div>
+    </div>
+  </div>
+</div>
+<div class="arrow-down">▼</div>
+<div class="layer Lt2">
+  <div class="lh"><span>L1: Nav2 / collision_monitor / twist_mux</span><span class="rt">速度生成と安全mux</span></div>
+  <div class="row">
+    <div class="node n-box">
+      <div class="t">Nav2 Bridge / Fleet Adapter</div>
+      <div class="s">L2 から受けるのは position goal。velocity / trajectory / cmd_vel は出さない。</div>
+      <div class="s"><span class="dref">docs/productization/11-l2-contract-governance-traffic-box.md:162-166</span></div>
+    </div>
+    <div class="node n-seam">
+      <div class="t">twist_mux safety chain</div>
+      <div class="s">Emergency Guardian と Nav2 系の cmd_vel を優先度で一本化。</div>
+      <div class="s"><span class="dref">docs/productization/11-l2-contract-governance-traffic-box.md:168-178</span></div>
+    </div>
+  </div>
+</div>
+<div class="arrow-down">▼</div>
+<div class="layer Lt1">
+  <div class="lh"><span>L0: firmware clamp</span><span class="rt">ROS/OS非依存の最終防衛線</span></div>
+  <div class="row">
+    <div class="node n-box">
+      <div class="t">ESP32 / Layer-0 clamp</div>
+      <div class="s">0.3m/s上限と非有限値停止を下位で強制する。RMF velocity は planning 入力に限る。</div>
+      <div class="s"><span class="dref">docs/mode-c/11c-traffic-mode-c.md:507-514</span></div>
+    </div>
+  </div>
+</div>
+
+<h2>2. `open-rmf` mode は今どう動くか</h2>
+<div class="compare">
+  <div class="panel good">
+    <h4>実装済み: `warehouse_traffic` の none / simple</h4>
+    <ul class="tight">
+      <li><code>MODE_NONE</code>, <code>MODE_SIMPLE</code>, <code>MODE_OPEN_RMF</code> の mode 文字列は存在する。<span class="dref">ws/src/warehouse_traffic/warehouse_traffic/traffic_logic.py:32-36</span></li>
+      <li><code>simple</code> は route planner を注入し、route_A などの lock key を使って waiting / sent を返す。<span class="dref">ws/src/warehouse_traffic/warehouse_traffic/traffic_logic.py:173-188</span></li>
+      <li>yield demo node は二つのタスクを同じ <code>route_A</code> に写像し、片方を保持する。<span class="dref">ws/src/warehouse_traffic/warehouse_traffic/traffic_manager.py:51-55</span></li>
+    </ul>
+  </div>
+  <div class="panel mid">
+    <h4>Gate待ち: `open-rmf` live</h4>
+    <ul class="tight">
+      <li><code>make_traffic_manager("open-rmf")</code> は <code>NotImplementedError</code> を返す設計。<span class="dref">ws/src/warehouse_traffic/warehouse_traffic/traffic_logic.py:226-247</span></li>
+      <li>ROS node 側も <code>open-rmf</code> なら Mode C track 所有として idle する。<span class="dref">ws/src/warehouse_traffic/warehouse_traffic/traffic_manager.py:114-122</span></li>
+      <li>unit test でも <code>open-rmf</code> 未実装を固定している。<span class="dref">tests/unit/test_traffic_manager.py:136-140</span></li>
+    </ul>
+  </div>
+</div>
+
+<div class="warn">
+  <b>注意:</b>
+  <code>config/warehouse.base.yaml</code> には <code>traffic_mode</code> と <code>rmf.enabled</code> があるが、
+  これは「切替入口」であって、Open-RMF の live stack が現在立ち上がるという意味ではない。
+  <span class="dref">config/warehouse.base.yaml:5-6</span>
+  <span class="dref">config/warehouse.base.yaml:87-89</span>
+</div>
+
+<h2>3. free_fleet と今回PJの関係</h2>
+<div class="compare">
+  <div class="panel bad">
+    <h4>そのまま採用しない: free_fleet runtime</h4>
+    <p class="lead">
+      free_fleet は EasyFullControl Fleet Adapter と robot ごとの Zenoh bridge を使う。
+      各ロボット側に非 namespaced Nav2 stack がある分散構成を想定する。
+    </p>
+    <ul class="tight">
+      <li>free_fleet そのものは No-Go と記録済み。<span class="dref">docs/mode-c/11c-traffic-mode-c.md:207-215</span></li>
+      <li>今回PJは中央 Jetson 上の <code>/bot1</code> / <code>/bot2</code> namespaced Nav2 なので前提が逆。<span class="dref">docs/mode-c/11c-traffic-mode-c.md:217-239</span></li>
+      <li>GitHub README でも robot の navigation stack は non-namespaced、Zenoh bridge 側で robot name namespace を付ける前提。<span class="dref">open-rmf/free_fleet README:260-265</span></li>
+    </ul>
+  </div>
+  <div class="panel good">
+    <h4>採用方針: 自作 EasyFullControl adapter</h4>
+    <p class="lead">
+      Open-RMF core の Traffic Schedule / Negotiation はそのまま使う。Nav2 への接続だけ、Zenohを外して自作adapterで直接つなぐ。
+    </p>
+    <ul class="tight">
+      <li>第一候補は <code>rmf_fleet_adapter</code> EasyFullControl API で自作し、<code>/bot{n}</code> Nav2 を直接駆動。<span class="dref">docs/mode-c/11c-traffic-mode-c.md:245-256</span></li>
+      <li>Fleet Adapter は <code>navigate</code> / <code>stop</code> / <code>execute_action</code> と <code>RobotState</code> 更新を実装する想定。<span class="dref">ws/src/warehouse_rmf_adapter/warehouse_rmf_adapter/fleet_adapter.py:46-62</span></li>
+      <li>公式 tutorial でも fleet adapter は robot position 更新、task response、vendor robot control を担う。<span class="dref">OSRF Fleet Adapter Tutorial:24-40</span></li>
+    </ul>
+  </div>
+</div>
+
+<h2>4. Open-RMF adapter の実装済み部分</h2>
+<div class="flow">
+  <div class="node n-sub">
+    <div class="t">config / location</div>
+    <div class="s">9つの既知 location と暫定座標</div>
+    <div class="s"><span class="dref">config/warehouse.base.yaml:47-56</span></div>
+  </div>
+  <div class="arr">▶</div>
+  <div class="node n-sub">
+    <div class="t">LocationResolver</div>
+    <div class="s">destination を検証して <code>Nav2Goal</code> へ</div>
+    <div class="s"><span class="dref">ws/src/warehouse_rmf_adapter/warehouse_rmf_adapter/nav2_router.py:119-149</span></div>
+  </div>
+  <div class="arr">▶</div>
+  <div class="node n-sub">
+    <div class="t">RobotDriver</div>
+    <div class="s">1 robot = 1 namespace = 1 writer</div>
+    <div class="s"><span class="dref">ws/src/warehouse_rmf_adapter/warehouse_rmf_adapter/robot_driver.py:49-92</span></div>
+  </div>
+  <div class="arr">▶</div>
+  <div class="node n-sub">
+    <div class="t">WarehouseFleet</div>
+    <div class="s">config から 2 namespace を構築</div>
+    <div class="s"><span class="dref">ws/src/warehouse_rmf_adapter/warehouse_rmf_adapter/fleet.py:36-101</span></div>
+  </div>
+  <div class="arr">▶</div>
+  <div class="node n-demoted">
+    <div class="t">EasyFullControl live</div>
+    <div class="s">現状は docstring + NotImplementedError</div>
+    <div class="s"><span class="dref">ws/src/warehouse_rmf_adapter/warehouse_rmf_adapter/fleet_adapter.py:77-90</span></div>
+  </div>
+</div>
+
+<table>
+  <thead><tr><th>モジュール</th><th>状態</th><th>何を保証しているか</th><th>根拠</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><code>nav2_router.py</code></td>
+      <td class="impl-yes">実装済み</td>
+      <td>robot id から namespace / action 名を作り、known location から <code>Nav2Goal</code> を作る。未知地点や座標欠落は fail-closed。</td>
+      <td><span class="dref">ws/src/warehouse_rmf_adapter/warehouse_rmf_adapter/nav2_router.py:63-77</span><br><span class="dref">tests/unit/test_rmf_adapter_router.py:42-148</span></td>
+    </tr>
+    <tr>
+      <td><code>robot_driver.py</code></td>
+      <td class="impl-yes">実装済み</td>
+      <td>namespace 不一致の port を拒否し、送信前に destination を解決する。invalid destination は何も送らない。</td>
+      <td><span class="dref">ws/src/warehouse_rmf_adapter/warehouse_rmf_adapter/robot_driver.py:49-92</span><br><span class="dref">tests/unit/test_rmf_adapter_fleet.py:102-123</span></td>
+    </tr>
+    <tr>
+      <td><code>fleet.py</code></td>
+      <td class="impl-yes">実装済み</td>
+      <td>1プロセスで <code>/bot1</code> と <code>/bot2</code> を振り分け、重複 namespace を拒否する。</td>
+      <td><span class="dref">ws/src/warehouse_rmf_adapter/warehouse_rmf_adapter/fleet.py:36-101</span><br><span class="dref">tests/unit/test_rmf_adapter_fleet.py:58-88</span></td>
+    </tr>
+    <tr>
+      <td><code>fleet_adapter.py</code></td>
+      <td class="impl-partial">設計スキャフォールド</td>
+      <td>EasyFullControl の責務と委譲先を docstring 化しているが、全メソッドは gate 前の <code>NotImplementedError</code>。</td>
+      <td><span class="dref">ws/src/warehouse_rmf_adapter/warehouse_rmf_adapter/fleet_adapter.py:1-5</span><br><span class="dref">ws/src/warehouse_rmf_adapter/warehouse_rmf_adapter/fleet_adapter.py:90-139</span></td>
+    </tr>
+    <tr>
+      <td><code>rmf_*</code> dependencies</td>
+      <td class="impl-no">未有効化</td>
+      <td><code>rmf_fleet_adapter</code>, <code>rmf_fleet_adapter_python</code>, <code>rmf_task_ros2</code> は package.xml 上でも TODO コメント内。</td>
+      <td><span class="dref">ws/src/warehouse_rmf_adapter/package.xml:26-32</span></td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>5. SimpleTrafficManager は何をしているか</h2>
+<div class="flow">
+  <div class="node n-box">
+    <div class="t">task</div>
+    <div class="s"><code>robot, pickup, dropoff</code></div>
+  </div>
+  <div class="arr">▶</div>
+  <div class="node n-seam">
+    <div class="t">route_planner</div>
+    <div class="s">route_A などの lock key list へ</div>
+  </div>
+  <div class="arr">▶</div>
+  <div class="node n-box">
+    <div class="t">lock check</div>
+    <div class="s">他 robot が保持中なら waiting</div>
+  </div>
+  <div class="arr">▶</div>
+  <div class="node n-box">
+    <div class="t">lock + dispatch</div>
+    <div class="s">空いていれば lock し、Nav2 Bridge へ</div>
+  </div>
+</div>
+
+<div class="safe">
+  <b>SimpleTraffic の本質:</b>
+  経路確率や最適化ではなく、通路 key の mutex。現状の default planner は route topology が未定義なので空 list を返し、
+  デモ時だけ <code>table_route_planner</code> で <code>route_A</code> に写像する。
+  <span class="dref">ws/src/warehouse_traffic/warehouse_traffic/traffic_logic.py:65-89</span>
+  <span class="dref">tests/unit/test_traffic_manager.py:179-201</span>
+</div>
+
+<h2>6. どこまで詳細設定できるか</h2>
+<table>
+  <thead><tr><th>領域</th><th>今設定・変更できるもの</th><th>詳細設定の余地</th><th>現時点の制約</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><code>traffic_mode</code></td>
+      <td><code>none</code> / <code>simple</code> / <code>open-rmf</code> の入口。</td>
+      <td>env overlay や環境変数で切替可能。</td>
+      <td><code>open-rmf</code> は live 未配線。<span class="dref">config/warehouse.base.yaml:5-6</span> <span class="dref">ws/src/warehouse_traffic/warehouse_traffic/traffic_logic.py:242-247</span></td>
+    </tr>
+    <tr>
+      <td>SimpleTraffic route</td>
+      <td>デモでは <code>route_A</code> に写像する table を node 内で持つ。</td>
+      <td>route planner を注入すれば、通路 key と lock 範囲は変えられる。</td>
+      <td><code>route_A</code> / timeout 30s は非凍結。<span class="dref">ws/src/warehouse_traffic/warehouse_traffic/traffic_manager.py:51-55</span> <span class="dref">docs/productization/11-l2-contract-governance-traffic-box.md:218-226</span></td>
+    </tr>
+    <tr>
+      <td>Open-RMF Navigation Graph</td>
+      <td>まだ repo 内の凍結 artifact ではない。</td>
+      <td>Gate 後は waypoint / lane / traffic profile / robot footprint / vicinity などを詳細に設計できる。</td>
+      <td>9 locations と Gazebo 地図への整合は未決。waypoint/lane を frozen contract に発明しない。<span class="dref">docs/mode-c/11c-traffic-mode-c.md:273-284</span></td>
+    </tr>
+    <tr>
+      <td>Open-RMF fleet config</td>
+      <td>現PJではまだ未凍結。</td>
+      <td>公式 tutorial の fleet config は linear/angular limits, footprint/vicinity, battery, task capabilities, robot update frequency などを持つ。</td>
+      <td>実値は R-38 後の sim / 実機で確定。速度は planning 入力で、下流 clamp を上書きしない。<span class="dref">OSRF Fleet Adapter Tutorial:69-161</span> <span class="dref">docs/mode-c/11c-traffic-mode-c.md:503-523</span></td>
+    </tr>
+    <tr>
+      <td>Nav2 writer</td>
+      <td>Mode A/B は Nav2 Bridge、Mode C は将来 Fleet Adapter が writer。</td>
+      <td>topic <code>/bot{n}/goal_pose</code> と <code>NavigateToPose</code> action の対応は Gate 後に確定。</td>
+      <td>L2 は velocity / trajectory / cmd_vel を出さない。<span class="dref">docs/productization/11-l2-contract-governance-traffic-box.md:162-166</span> <span class="dref">docs/mode-c/11c-traffic-mode-c.md:477-483</span></td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>7. Open-RMF が確率的ではない理由</h2>
+<div class="compare">
+  <div class="panel bad">
+    <h4>誤読: 確率で通す</h4>
+    <p class="lead">
+      「衝突しそうだが多分大丈夫」という確率判定を motion に直接使う設計ではない。
+      速度やモータ指令を RMF から直接出すことも不採用。
+    </p>
+    <p class="mini">
+      <span class="dref">docs/productization/07-layer-tool-decision-matrix.md:57</span>
+      <span class="dref">docs/productization/11-l2-contract-governance-traffic-box.md:58-62</span>
+    </p>
+  </div>
+  <div class="panel good">
+    <h4>正しい理解: 予定軌道と時間の調停</h4>
+    <p class="lead">
+      各 fleet adapter が予定 itinerary を Traffic Schedule に出し、schedule が未来の意図の衝突を検出する。
+      conflict があれば fleet manager どうしが itinerary を提案し、judge が組み合わせを選ぶ。
+    </p>
+    <p class="mini">
+      <span class="dref">OSRF RMF Core Overview:33-46</span>
+      <span class="dref">docs/mode-c/11c-traffic-mode-c.md:59-63</span>
+    </p>
+  </div>
+</div>
+
+<h2>8. 残課題</h2>
+<ul class="tight">
+  <li>R-38 memory gate 後に、自作 EasyFullControl adapter の live 実装、2台 Open-RMF E2E、Jetson memory 実測を行う。<span class="dref">docs/mode-c/11c-traffic-mode-c.md:273-284</span></li>
+  <li>RMF Navigation Graph と 9つの known location / Gazebo 地図の対応を決める。ただし <code>warehouse_interfaces.locations</code> に waypoint/lane を勝手に足さない。<span class="dref">docs/mode-c/11c-traffic-mode-c.md:444-467</span></li>
+  <li>1.8m x 0.9m、200mm隘路、0.3m/s上限で RMF デコンフリクトが実際に価値を出すか sim で検証する。<span class="dref">docs/mode-c/11c-traffic-mode-c.md:516-520</span></li>
+  <li><code>traffic</code> 状態 dict、<code>route_A</code> / <code>route_B</code>、aisle lock timeout 30s は非凍結のまま。Product contract に昇格するなら owner doc と contract PR が必要。<span class="dref">docs/productization/11-l2-contract-governance-traffic-box.md:218-227</span></li>
+</ul>
+
+<h2>9. Source Map</h2>
+<table>
+  <thead><tr><th>主張</th><th>参照</th></tr></thead>
+  <tbody>
+    <tr><td>Mode C は Traffic Schedule / Conflict Negotiation を使い、Task Dispatcher は無効化する。</td><td><span class="dref">docs/mode-c/11c-traffic-mode-c.md:193-199</span></td></tr>
+    <tr><td>Nav2 への経路は Fleet Adapter が唯一の制御パス。</td><td><span class="dref">docs/mode-c/11c-traffic-mode-c.md:59-63</span></td></tr>
+    <tr><td>free_fleet そのまま採用は No-Go、自作 EasyFullControl 直駆動が第一候補。</td><td><span class="dref">docs/mode-c/11c-traffic-mode-c.md:207-256</span></td></tr>
+    <tr><td>Open-RMF live は R-38 gate 待ち、offline core は実装済み。</td><td><span class="dref">docs/mode-c/11c-traffic-mode-c.md:430-456</span></td></tr>
+    <tr><td>L2 は position goal のみを渡し、cmd_vel / velocity / trajectory を出さない。</td><td><span class="dref">docs/productization/11-l2-contract-governance-traffic-box.md:162-166</span></td></tr>
+    <tr><td>SimpleTraffic は route lock であり、Open-RMF ではない。</td><td><span class="dref">ws/src/warehouse_traffic/warehouse_traffic/traffic_logic.py:141-188</span></td></tr>
+    <tr><td>RMF-free offline core の import-clean / NotImplemented gate は unit test で固定。</td><td><span class="dref">tests/unit/test_rmf_adapter_offline_imports.py:52-78</span></td></tr>
+  </tbody>
+</table>
+
+<footer>
+  <p>このページは <code>docs/mode-c/open-rmf-traffic-recap.html</code>。一次ソースは関連 .md / code / official docs。</p>
+  <p>検証対象: HTML parse、body hex check、<code>python3 scripts/check_consistency.py</code>。</p>
+</footer>
+
+</div>
+</body>
+</html>

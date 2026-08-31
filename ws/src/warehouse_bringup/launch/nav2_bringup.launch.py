@@ -366,4 +366,81 @@ def generate_launch_description() -> LaunchDescription:
             robot, params_file, map_yaml, use_sim_time, autostart, traffic_mode, vx_max
         ):
             ld.add_action(action)
+        for action in _speed_band_group(robot, use_sim_time, vx_max):
+            ld.add_action(action)
     return ld
+
+
+def _speed_bands() -> dict:
+    """Runtime speed-band block from config (additive / safe-OFF, doc09:406).
+
+    The band VALUES are deliberately absent from ``config/warehouse.base.yaml``: the
+    fastest band is blocked on the S-SPEED measurement (doc09:434 OQ-T1) and the other two
+    on OQ-T2 (doc09:435), so this launch neither invents nor defaults them. It forwards
+    whatever an env overlay supplied and lets ``speed_band_publisher`` fail loudly at
+    startup on an incomplete table (ADR-0012 Decision 4).
+    """
+    block = load_config().get("speed_bands", {})
+    return block if isinstance(block, dict) else {}
+
+
+def _speed_band_group(robot: str, use_sim_time, vx_max) -> list:
+    """The per-bot speed band publisher (runtime speed limiter (2)), or [] when OFF.
+
+    L4 CONTROL PLANE, not a velocity producer: it publishes the relative Nav2
+    ``speed_limit`` (nav2_msgs/SpeedLimit, absolute m/s) that controller_server fans out
+    to the controller plugins, and never touches cmd_vel — so twist_mux keeps exactly its
+    two inputs (doc09 T-6 constraint 2, pinned by the R-26 AST unit).
+
+    ``operating_vx_max`` receives the SAME resolved ``vx_max`` substitution the
+    RewrittenYaml injects into MPPI FollowPath (ADR-0012 Decision 3: one source of truth,
+    so a LOWER-only ``max_linear_velocity:=`` override cannot be exceeded by a band).
+    Composed here rather than inside ``_per_robot_group`` because this is not part of the
+    Nav2 server stack; it carries its own namespace push and is gated independently.
+    """
+    # Local import: `vx_max` is a Substitution, and a plain dict value would reach the node
+    # as a STRING (launch_ros evaluates substitution params to str), which the node's
+    # double-typed `operating_vx_max` would reject at declare time.
+    from launch_ros.parameter_descriptions import ParameterValue
+
+    speed_bands = _speed_bands()
+    if not bool(speed_bands.get("enabled", False)):
+        return []
+
+    band_params = {
+        "enabled": True,
+        # Un-namespaced band events: one perception producer feeds every bot (doc04
+        # addendum (2) / doc09:157 pin the topic as /perception/gesture_events).
+        # TODO(gesture_detector): per-robot band routing is undecided — with 2 bots both
+        # publishers would follow the same band.
+        "source_topic": "/perception/gesture_events",
+        "operating_vx_max": ParameterValue(vx_max, value_type=float),
+    }
+    for key in (
+        "band_slowest_mps",
+        "band_stable_mps",
+        "band_fastest_mps",
+        "v_floor_mps",
+        "publish_rate_hz",
+        "hold_timeout_s",
+    ):
+        # Absent keys stay UNSET so the node aborts at startup on its own declared default
+        # (fail-closed, ADR-0012 Decision 4) instead of the launch inventing a value.
+        if key in speed_bands:
+            band_params[key] = float(speed_bands[key])
+
+    return [
+        GroupAction(
+            [
+                PushRosNamespace(robot),
+                SetParameter("use_sim_time", use_sim_time),
+                Node(
+                    package="warehouse_perception",
+                    executable="speed_band_publisher",
+                    name="speed_band_publisher",
+                    output="screen",
+                    parameters=[band_params],
+                ),
+            ]
+        )
+    ]

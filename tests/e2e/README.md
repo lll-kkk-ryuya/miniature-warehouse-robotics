@@ -84,8 +84,7 @@ scripts/slice3_live_precheck.sh --offline
 # 1) slice1 health（upstream 不要・今すぐ可能。DoD step1）
 export WAREHOUSE_CONFIG_DIR=/ws/config
 export WAREHOUSE_ENV=dev
-# sim 録画限定: AMCL が初期 pose 以外を継続 publish しないことがあるため freshness を緩和する。
-export WAREHOUSE__SAFETY__POSE_FRESHNESS_TIMEOUT=999
+# freshness の緩和は不要（既定 1.0s のまま）。駐機中の AMCL 沈黙は odom 変位ゲートが吸収する（doc23 A-5③）。
 ros2 launch warehouse_bringup bringup.launch.py llm:=false sim:=true
 #   → Nav2 lifecycle 全 bot active / state_cache が state.json を 100ms 書出 /
 #     guardian 50ms reflex / llm:=false でも起動（Hermes 無し fallback）を確認。

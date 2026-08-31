@@ -449,12 +449,20 @@ def _resolve_doc_path(captured: str, referencing: Path) -> Path | None:
 
 def _iter_ref_source_files():
     """Text files under docs/ .claude/ ws/ that may CONTAIN doc-line refs
-    (skipping build artifacts)."""
+    (skipping build artifacts and agent worktrees)."""
     for root in (DOCS, ROOT / ".claude", ROOT / "ws"):
         if not root.exists():
             continue
         for dirpath, dirnames, filenames in os.walk(root):
-            dirnames[:] = [d for d in dirnames if d not in _SCAN_SKIP_DIRS]
+            # .claude/worktrees/ holds full repo copies (Claude Code subagent
+            # isolation) whose files duplicate every B4 ref → spurious WARNs.
+            # Mirrors pyproject.toml [tool.ruff] extend-exclude.
+            dirnames[:] = [
+                d
+                for d in dirnames
+                if d not in _SCAN_SKIP_DIRS
+                and not (d == "worktrees" and Path(dirpath).name == ".claude")
+            ]
             for fn in filenames:
                 p = Path(dirpath) / fn
                 if p.suffix in _SCAN_EXTS:

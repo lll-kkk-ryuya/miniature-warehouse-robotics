@@ -64,7 +64,7 @@ _F = 0.30 - 310 * _E
 _HOMOGRAPHY = [[_A, 0.0, _C], [0.0, _E, _F], [0.0, 0.0, 1.0]]
 _VALID_POLYGON = [[-0.5, -0.5], [2.0, -0.5], [2.0, 1.5], [-0.5, 1.5]]
 
-# `locations` block in the config/warehouse.base.yaml:39-48 shape ({name: {x, y}}).
+# `locations` block in the config/warehouse.base.yaml:47-56 shape ({name: {x, y}}).
 _LOCATIONS_CFG: dict[str, dict[str, float]] = {
     "shelf_1": {"x": 0.2, "y": 0.3},
     "shelf_2": {"x": 0.7, "y": 0.3},

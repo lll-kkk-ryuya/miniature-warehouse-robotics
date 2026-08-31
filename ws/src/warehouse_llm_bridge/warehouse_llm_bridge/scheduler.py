@@ -309,7 +309,12 @@ class BridgeScheduler:
                 response = await asyncio.wait_for(
                     self._llm.decide(situation), timeout=self._cycle_timeout_sec
                 )
-            except TimeoutError:
+            # py3.10 (Jetson board, ADR-0008 / #563): asyncio.wait_for raises
+            # asyncio.TimeoutError, a DISTINCT class from builtin TimeoutError until
+            # 3.11 unified them — catching only the builtin lets the timeout escape the
+            # cycle on the board and kills the doc08:140 keep-previous fallback. On
+            # 3.11+ both names are the same class, so the tuple is a harmless no-op.
+            except (TimeoutError, asyncio.TimeoutError):
                 self._on_timeout(gen)
                 return False
             except LLMUnavailableError as exc:

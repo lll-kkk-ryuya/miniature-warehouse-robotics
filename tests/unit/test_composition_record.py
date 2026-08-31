@@ -7,12 +7,13 @@ repo-relative out/runs/<run_id>/{manifest.yaml,effective_composition.json}, giti
 """
 
 import json
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 
 import pytest
 import yaml
 from pydantic import ValidationError
+from warehouse_interfaces.compat import UTC
 from warehouse_llm_bridge.robotics.composition.calibration_gate import build_calibration_loader
 from warehouse_llm_bridge.robotics.composition.loader import load_run_manifest
 from warehouse_llm_bridge.robotics.composition.manifest import RunManifest

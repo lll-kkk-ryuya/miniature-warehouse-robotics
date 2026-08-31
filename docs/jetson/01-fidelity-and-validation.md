@@ -25,7 +25,7 @@
 
 - **追い風（忠実度が高い側）**: CPU アーキは **Mac M4 も Jetson Orin Nano Super も ARM64**（doc06:91
   「Mac M4 と Jetson はどちらも ARM64」）で、tiryoh コンテナも **ARM64-native**（doc03:263）、Jetson は
-  **ROS 2 Jazzy / Ubuntu 24.04**（doc03:271）・micro-ROS も Jazzy 対応確認済（doc07:22）で揃う。
+  **ROS 2 Humble / Ubuntu 22.04**（doc03:271・ADR-0008）・micro-ROS も Humble 対応済（doc07:22）で揃う。
   x86 dev マシンより**命令セット・依存ビルドの忠実度が高い**。ROS ノードロジック・凍結契約・launch 合成・
   pytest はこの一致のおかげで Mac で高忠実に検証できる。
 - **逆風（原理的に近似不可な側）**: 一方、以下は **Mac/Docker では原理的に検証できない**。実 Jetson でしか
@@ -50,7 +50,7 @@
 | # | 領域 | dev(Mac) | 近似不可の理由（実機固有） | 確定する場所 | 合否基準 / 根拠 doc |
 |---|---|:---:|---|---|---|
 | F1 | ROS ノードロジック・凍結契約・launch 合成 | ◯ | arm64 一致＋偽トピック/偽 `state.json` で完全独立検証可（doc16:219-222） | dev（pytest/CI） | unit/CI 緑。`scripts/check_consistency.py` 0 ERROR |
-| F2 | config overlay（`WAREHOUSE_ENV`・base+prod） | ◯ | パス解決は純 Python（`paths.py`）。prod=`/run/warehouse` は env 解決で再現可 | dev（unit） | `WAREHOUSE_ENV=prod` で `/run/warehouse` 解決（doc19:18 / jetson-deploy.md:157-158） |
+| F2 | config overlay（`WAREHOUSE_ENV`・base+prod） | ◯ | パス解決は純 Python（`paths.py`）。prod=`/run/warehouse` は env 解決で再現可 | dev（unit） | `WAREHOUSE_ENV=prod` で `/run/warehouse` 解決（doc19:18 / jetson-deploy.md:100） |
 | F3 | 2台 Gazebo 自律走行 E2E | ◯ | headless `gz sim`＋`ros_gz_bridge` 環境成立（spike GO, doc06:112）。tiryoh は ARM64-native（doc03:263）。実 bot1/bot2 E2E は sim track #8/#156 で進行（doc06:112） | dev（tiryoh Docker） | 2台が衝突せず巡回（sim。実機性能は別） |
 | F4 | **GPU / CUDA**（Isaac ROS・GPU 加速 Nav2/SLAM・GPU costmap） | ✕ | **Mac に CUDA 無し**。Isaac ROS は Jetson 専用、release-3.x は未検証（doc07:23 / doc02:90） | **実機ゲート G4**（Jetson） | CPU 版 Nav2×2 で巡回が実時間成立。GPU 利用は載れば加点（doc06:100 ユニファイド食合せ計測） |
 | F5 | **実時間性**（50ms Guardian / 100ms State Cache の jitter） | ✕ | Docker Desktop は Mac 上 VM 経由でスケジューラが別物。R-40（doc07:250）GC/GIL スパイク＝最悪応答有界でない。doc12:483 が非ハードRT明記 | **実機ゲート G3**（Jetson） | §4 G3 の jitter 合否（p99 / max・stale 検出）。最終防衛は Layer0(doc12:75-78) |
@@ -103,7 +103,7 @@ doc06:112、sim 範囲。実 bot E2E は sim track #8/#156）。→ F1-F3。**AR
 | **G4 nav2/SLAM 性能（＋熱 R-09）** | CPU 版 Nav2×2 + AMCL + SLAM Toolbox の実時間追従（GPU 加速は任意）＋ `tegrastats` 熱クロック | Jetson 実機（G1 後・**持続負荷10分**） | 2台が経路追従・障害物回避を実時間で破綻なく（CPU で成立・GPU は載れば加点）。**10分持続負荷後もクロック throttle 無し**（熱定常で G3 jitter 維持） | 実時間割れ → 周期/解像度調整・GPU costmap 検討。throttle → ファン/ヘッドレス/省電力 mode | doc02:90,:138,:62-63 / doc06:100 / doc07:23,:177(R-09) |
 | **G5 実センサ精度** | MS200 測距誤差 / encoder / battery `percentage` 実スケール | Jetson+実機（Phase 1-2） | 測距誤差を実測→**地図解像度を誤差の2-3倍**へ。`safety.battery_percentage_scale` を実測で確定 | 余裕不足 → 通路幅/inflation 再設計（R-41/R-42）。scale 未確定は fail-fast（doc12:254） | doc07:251(R-41),:252(R-42) / doc12:254 |
 | **G6 WiFi 同時通信** | micro-ROS×2 + LLM API + Langfuse + LaserScan UDP の同時安定性 | Jetson+実機（Phase 1, T3 併せ） | 2台接続中に LLM 往復・scan 到達が断なく安定。DDS discovery 成立 | scan 欠落 → ダウンサンプル/USB。discovery 断 → Discovery Server/固定 `ROS_DOMAIN_ID` | doc07:155(R-08),:253(R-43),:258(R-48) / doc02:77-84 |
-| **G7 Hermes(GCP) 到達性 + E2E** | prod GCP Hermes へ Jetson Bridge が到達・司令官サイクル | Jetson 実機（G0-G2 後・撮影前リハ＝stg 相当） | `healthcheck.sh` で Hermes 到達 ◯。Bridge→Hermes 認証（`API_SERVER_KEY` 同値）で司令官サイクル成立 | 到達不可 → ネットワーク/Gateway 確認（secrets は触らない・read-only） | doc19:18,:86 / healthcheck.sh:61-70 / deploy/jetson |
+| **G7 Hermes(GCP) 到達性 + E2E** | prod GCP Hermes へ Jetson Bridge が到達・司令官サイクル | Jetson 実機（G0-G2 後・撮影前リハ＝stg 相当） | `healthcheck.sh` で Hermes 到達 ◯。Bridge→Hermes 認証（`API_SERVER_KEY` 同値）で司令官サイクル成立 | 到達不可 → ネットワーク/Gateway 確認（secrets は触らない・read-only） | doc19:18 / doc19:110 / healthcheck.sh:61-70 / deploy/jetson |
 
 > **ゲートと昇格の関係**: G0 は無条件必須。G1（メモリ Go/No-Go）が **Mode C 採否**を分岐する最大の🔴
 > （R-02/R-38）。G2-G6 は実機固有値の確定。G7 は撮影前リハ（stg 相当の最終確認）。**すべて PASS で
@@ -124,7 +124,7 @@ doc06:112、sim 範囲。実 bot E2E は sim track #8/#156）。→ F1-F3。**AR
 | **G1 メモリ** ★ | 全スタック（Nav2×2 + State Cache + Guardian + Bridge、+ Open-RMF）起動時の `free -h` 残RAM | プロセスを載せて測るだけ（入力は sim/rosbag/fake で可）。ユニファイド食合せは載せた時点で出る | §4 G1 / doc06:98 / doc07:243(R-38) |
 | G3 実時間性 jitter | Guardian 50ms / State Cache 100ms の周期ヒストグラム | 周期は OS スケジューラ依存でロボット非依存（`gc.disable()` 効果も） | §4 G3 / doc07:250(R-40) |
 | G4 nav2/SLAM 性能＋熱 | CPU 版 Nav2×2 + AMCL + SLAM を **実機センサ非依存の sim 入力（rosbag 再生・推奨／Mac sim から `/scan`・`/odom` をブリッジ）** で走らせ `tegrastats` 持続負荷 | 走行ロジック・CPU/GPU・発熱は sim 入力で測れる（実走精度は G5/G6 で別途）。**重い sim を Jetson 上で同時起動する場合は G1 残RAM と食合う**ため rosbag 再生が無難 | §4 G4 / doc07:177(R-09) |
-| G7 Hermes 到達/サイクル（撮影リハは実機後） | `healthcheck.sh` 到達確認・Bridge→Hermes 認証・LLM 司令官サイクルを **sim ロボット** に対し実走 | ネットワーク/API/サイクル成立はロボット非依存（**ただし §4 G7 は prod 撮影前リハとして G0-G2 後に置く**＝撮影リハ本体は実機後） | §4 G7 / doc19:18,:86 |
+| G7 Hermes 到達/サイクル（撮影リハは実機後） | `healthcheck.sh` 到達確認・Bridge→Hermes 認証・LLM 司令官サイクルを **sim ロボット** に対し実走 | ネットワーク/API/サイクル成立はロボット非依存（**ただし §4 G7 は prod 撮影前リハとして G0-G2 後に置く**＝撮影リハ本体は実機後） | §4 G7 / doc19:18 / doc19:110 |
 | 併走 de-risk | 残 Phase 0.5 の **LLM Bridge live E2E / Provider 切替**・**#88 Langfuse Phase-3 live**・**#202 latency 実測**・micro-ROS Agent 単体起動（loopback で `client_key` 挙動） | いずれも API キー/ネットワークのみ要・実ロボット不要 | doc06:109-110 / doc07:242(R-37 の Agent 側) |
 
 > **キーストーン**: robot-free のうち **G1（メモリ確定）が最重要**。段階1（Mac Docker 6GB）は GO-leaning 済（doc07:243）→ 段階2（Jetson 実機 `free -h`）が **Mode C(Open-RMF) 採否の最終 Go/No-Go** ＝ #180 RMF adapter 本実装を解錠する。**Jetson が単体で来たら最初に G1 を回す**。Mac の sim では原理的に出ない値（8GB ユニファイド食合せ・JetPack 常駐 2-2.5GB）だから実機が要る（doc06:100）。
@@ -152,12 +152,12 @@ doc06:112、sim 範囲。実 bot E2E は sim track #8/#156）。→ F1-F3。**AR
 
 | 項目 | 期待（正本） | deploy/jetson 実装 | 判定 |
 |---|---|---|---|
-| prod=別マシン clone | doc17:88（Jetson は別途 `git clone`）/ doc19:94（git タグ固定） | README:38-40・install.sh:12・jetson-deploy.md:43-51（`/opt/warehouse` clone・ExecStart 書換） | ◯ |
+| prod=別マシン clone | doc17:88（Jetson は別途 `git clone`）/ doc19:6 / doc19:118（git タグ固定） | README:38-40・install.sh:12・jetson-deploy.md:43-51（`/opt/warehouse` clone・ExecStart 書換） | ◯ |
 | prod runtime dir | doc19:18（`/run/warehouse` systemd `RuntimeDirectory`） | 各 data unit が `RuntimeDirectory=warehouse`+`Preserve=yes`（state-cache/safety/bridge） | ◯ |
 | 起動順 | doc02:138 ノード一覧・doc12 層構造 | microros → state-cache → safety → nav2 → bridge（`After=` 連鎖。nav2→safety は `BindsTo=`） | ◯ |
 | **安全トポロジ** | doc12:80-84（Guardian が motion を止める）/ safety.md | nav2 が safety を **`BindsTo=`(+`After=`)**＝guardian クラッシュで nav2 停止（`Requires=` 不採用の理由を unit コメントに明記） | ◯ |
 | 安全ゲート | doc19:21（estop テスト通過後のみ）＋ doc16:221（安全機構 unit 必須） | `install.sh` は導入のみ＝**enable/start しない**。motion はゲート後手動 | ◯ |
-| Hermes は GCP（Jetson でない） | doc19:18,:86（`34.4.104.112`） | bridge unit/README/healthcheck が GCP を read-only 言及（Jetson に Hermes を置かない） | ◯ |
+| Hermes は GCP（Jetson でない） | doc19:18 / doc19:110（`34.4.104.112`） | bridge unit/README/healthcheck が GCP を read-only 言及（Jetson に Hermes を置かない） | ◯ |
 | micro-ROS transport | doc02:81（WiFi UDP）/ G2（distinct `client_key`） | microros unit が `udp4 --port ${MICROROS_PORT}`（既定 8888） | ◯（key 差は **ファーム側**で設定＝G2 で確認） |
 | traffic_mode 単一ソース | doc19:54（config 単一ソース）/ 11a:317（Mode C） | env.example が prod=`open-rmf` を `config/prod/warehouse.yaml:13` と同期せよと明記。`bringup.launch.py` は config を既定値に直読み（#75/PR#93・#156/PR#162 着地済） | ◯ |
 | **prod launch 引数（二重起動防止）** | prod=実機（gz 無し）＋ LLM は専用 unit `warehouse-bridge.service` | `warehouse-nav2.service:29` が `sim:=false llm:=false` を固定＝**nav2-only**（`bringup.launch.py` 既定 `sim:=true`/`llm:=true` は Mac capstone 用、:148-149,154-155） | ◯（#156 cross-lane→#127 で反映） |
@@ -204,3 +204,22 @@ doc06:112、sim 範囲。実 bot E2E は sim track #8/#156）。→ F1-F3。**AR
 - [doc02 ハードウェア](../shared/02-hardware-design.md)（Jetson Orin Nano Super / センサ）
 - [docs/setup/jetson-deploy.md](../setup/jetson-deploy.md)（prod デプロイ正本手順）/ [deploy/jetson/](../../deploy/jetson/)（実装）
 - `.claude/rules/safety.md`（速度上限・estop・secrets 非コミット）
+
+---
+
+## 【2026-08-07 追記】ADR-0006（単騎構成）によるゲート読み替え
+
+[ADR-0006](../adr/0006-single-bot-first.md) の 1台先行では、**G2「micro-ROS 2台」・G6「WiFi 同時通信（micro-ROS×2 + LLM API）」は本フェーズ N/A**（ゲート定義は削除せず、2台復帰フェーズで再有効化）。G4「Nav2×2 の実時間追従」は **Nav2×1** に読み替える。nvblox / MOLA-LO（旧 cuVSLAM は blocked）を載せる場合の実機ゲートは [architecture/23 §7 スパイクゲート S1-S3](../architecture/23-perception-and-localization.md) を併用する。
+
+## 【2026-08-26 追記】M1 実行モード docs（mode-m1/）への forward
+
+- M1 単騎・部屋スケールの**実行構成・bring-up の正本ルート**は [docs/mode-m1/](../mode-m1/README.md)（境界/traffic = [mode-m1/01](../mode-m1/01-mode-boundary-and-traffic.md) / driver+watchdog = [mode-m1/02](../mode-m1/02-m1-driver-and-watchdog.md) / joystick bring-up M0-M2 = [mode-m1/03](../mode-m1/03-joystick-teleop-bringup.md)）。
+- 本 doc の G0-G7 には旧世界（ESP32×2 / MS200 / Nav2×2 / 「MCU がクランプ」）前提の記述が残る。**M1 への読み替え（特に G0 の主体 = MCU → L0' ホストクランプ）は別 PR で行う**（§2 表 `:52-57`・§4 表 `:97-113` は他 doc から行 pin されているため行数保存が必要 = 中段挿入禁止）。本追記はその予告と forward リンクのみ。
+
+## 【2026-08-28 追記】開発機からのアクセス経路（02）への forward
+
+Jetson 実機へ **Mac から接続して作業する経路**（**mDNS 直結 `minicar.local`＋常時通電運用・`jetson` CLI**＝02 §9。外出先は Tailscale 自動フォールバック＝02 §9.7。旧 pull 型 agent は恒久廃止＝02 §5）と、
+**初回ブートの実測ベースライン**（L4T / 起動デバイス / 電力モード / メモリ）は
+[02-remote-access-and-dev-link.md](02-remote-access-and-dev-link.md) を正本とする。本 doc の G0-G7 は
+**合否基準**の正本であり続け、02 は**その値を測るための接続手段と初期実測値**を持つ（役割分担・重複させない）。
+
