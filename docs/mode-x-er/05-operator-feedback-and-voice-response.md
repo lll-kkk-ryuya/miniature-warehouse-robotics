@@ -452,4 +452,3 @@ plugin composition（Variant B 採用＝`docs/productization/09-run-manifest-and
 - [shared/02 V-5](../shared/02-hardware-design.md) — ハード一次確認の正本
 - [04-er-input-modalities-and-stt.md](04-er-input-modalities-and-stt.md) 末尾追補 — 同モジュールの**マイク**（ER 音声直入力）側の裁定
 - [11-standby-and-hri-features.md](11-standby-and-hri-features.md) — persona 返答の事前生成 wav 方針（同じスピーカーを使う別経路）
-</invoke>
