@@ -7,9 +7,13 @@ Runtime wiring only: the request logic + task state live in the pure
 runs rclpy in a background thread while uvicorn serves the API on the main thread
 (the ROS-recommended rclpy+asyncio coexistence pattern, doc12a:200-219).
 
-Heavy deps (rclpy, ``nav2_simple_commander``, uvicorn, fastapi) are imported at
-module load — that is fine because nothing imports this module except ``main()`` at
-runtime; the unit tests import only ``core`` / ``backend`` (no ROS).
+``rclpy`` is the one dep imported at module load — it has to be, since
+:class:`Nav2BridgeNode` subclasses ``rclpy.node.Node`` at class-definition time; the rosdep-
+provided ``nav2_simple_commander`` is imported lazily inside
+:meth:`BasicNavigatorBackend.__init__`, and so are the **pip** deps (uvicorn, fastapi,
+pydantic), so ``main()`` can run :func:`~warehouse_nav2_bridge.preflight.require_runtime_deps`
+first and fail with an actionable provisioning hint rather than a bare ``ModuleNotFoundError``
+in an image whose pip block never installed them (#283, ``deploy/dev/Dockerfile:41-48``).
 
 ⚠️ doc12:459 / doc16 risk: two ``BasicNavigator`` instances in one process is a
 namespacing/singleton hazard, and the FastAPI thread (``go_to``) and the rclpy timer
@@ -23,7 +27,6 @@ import threading
 from urllib.parse import urlparse
 
 import rclpy
-import uvicorn
 from geometry_msgs.msg import PoseStamped
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
@@ -33,6 +36,7 @@ from warehouse_interfaces.config import load_config
 from warehouse_nav2_bridge.app import create_app
 from warehouse_nav2_bridge.backend import NavigatorBackend, Pose
 from warehouse_nav2_bridge.core import Nav2BridgeCore
+from warehouse_nav2_bridge.preflight import require_runtime_deps
 
 # doc12a:222 — REST bound to loopback (MCP Server is co-located; not externally
 # exposed, mirroring the Hermes Gateway loopback rule, rules/safety.md). doc12a:219
@@ -143,6 +147,12 @@ def _resolve_bind(config: dict) -> tuple[str, int]:
 
 def main() -> None:
     """Run the Nav2 Bridge: rclpy spin in a thread, uvicorn API on the main thread."""
+    # #283: check the pip deps FIRST — before rclpy.init() / BasicNavigator / any thread —
+    # so an unprovisioned image exits with one actionable line instead of dying on a bare
+    # import error halfway through startup. Both pip deps stay lazy so this hint can win.
+    require_runtime_deps()
+    import uvicorn
+
     rclpy.init()
     config = load_config()
     robots = [r["id"] for r in (config.get("robots") or []) if "id" in r] or ["bot1", "bot2"]

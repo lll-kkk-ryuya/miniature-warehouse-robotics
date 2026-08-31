@@ -53,7 +53,7 @@ def _xy(goal: GoalData) -> Coord:
     """Take the ``(x, y)`` of a head_on_goals ``(x, y[, yaw])`` entry — yaw is dropped.
 
     yaw is irrelevant here because ``backend.Pose`` is ``(x, y)`` and the bridge fixes the
-    goal orientation (nav2_bridge.py:80); carrying it would be dead data.
+    goal orientation (nav2_bridge.py:84); carrying it would be dead data.
     """
     seq = list(goal)
     if len(seq) < 2:
