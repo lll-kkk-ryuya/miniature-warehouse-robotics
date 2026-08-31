@@ -141,7 +141,7 @@
 │   ├── <span class="r">m1_serial_driver</span>（自前・115200 8N1・/dev/myserial）
 │   │     └ <span class="r">L0' 送信直前クランプ ≤0.3 m/s</span> ─ FUNC_MOTION=0x12 (vx,vy,wz)
 │   ├── <span class="r">stm32_firmware</span>（Yahboom）── ★メカナム逆運動学はここ <span class="warn">⚠MCU watchdog 有無は実機未確認</span>
-│   ├── <span class="x">✗ ros2_control ── 非採用（IK は STM32 側・ホストは body 速度を投げるだけ）</span>
+│   ├── <span class="warn">⚠ ros2_control ── 未裁定（ADR-0011 予約・Phase 2 TARGET 候補）。Phase 1 は自前 driver（IK は STM32 側・ホストは body 速度を投げるだけ）＝mode-m1/02 §5</span>
 │   └── <span class="x">✗ micro-ROS ── M1 経路 不使用（ESP32 旧構成・2台復帰時のみ legacy）</span>
 │
 └── <span class="h">08_Human_Interaction/</span>          <span class="d">正本: mode-x-er/09（2026-08-09 改訂）/ ADR-0007（俯瞰カメラ不使用）</span>
@@ -169,7 +169,7 @@
 <table class="diff">
 <tr><th>一般形（外部レビュー案）</th><th>M1 実構成での裁定</th><th>正本</th></tr>
 <tr><td>GNSS / RTK を Sensors に置く</td><td><b>対象外</b>（屋内ジオラマ・0.01m 地図でセル数個分・予算外。理由つきで ✗ 残置）</td><td>doc23 §5-1</td></tr>
-<tr><td>ros2_control を Control に置く</td><td><b>非採用</b>。メカナム逆運動学は STM32 ファーム側・ホストは自前シリアルドライバで body 速度を送るだけ</td><td>02-hardware §残課題5-6</td></tr>
+<tr><td>ros2_control を Control に置く</td><td><b>未裁定（ADR-0011 予約・Phase 2 TARGET 候補）</b>。Phase 1 は自前シリアルドライバ（メカナム逆運動学は STM32 ファーム側・ホストは body 速度を送るだけ）で進め、採否は ADR-0011 で裁定（feedback 側 = 4 輪 encoder→標準 odometry に価値）</td><td>mode-m1/02 §5 / adr/README（ADR-0011 予約）</td></tr>
 <tr><td>micro-ROS を Control に置く</td><td><b>M1 経路では不使用</b>（ESP32 旧構成の legacy。2台復帰時のみ再評価）</td><td>ADR-0006 Context</td></tr>
 <tr><td>collision_monitor を Nav2 配下に置く</td><td>Nav2 の一部でもあるが、本質は<b>凍結 cmd_vel 安全チェーン</b>（→twist_mux prio100→L0'）＝06 に独立掲載。recovery は BYPASS（#233 ⑥）</td><td>doc12 §cmd_vel トポロジ / doc23 §1 P1・P2</td></tr>
 <tr><td>nvblox_layer を Local のみに置く</td><td><b>偶然 T3 段と一致</b>。TARGET 完成形は Global にも T4 で追加（ただし OQ-8 次第で T3 止めが現実解）</td><td>doc23 §2・§7 移行順</td></tr>
