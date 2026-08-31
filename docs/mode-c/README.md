@@ -45,3 +45,4 @@ Mode C は **YouTube動画の実用検証回**として位置づける。Mode A�
 - [共通: 基盤](../architecture/12-infrastructure-common.md) — Emergency Guardian, State Cache, Emergency後同期
 - [MCPプラットフォーム](../architecture/15-mcp-platform.md) — Hermes / Warehouse MCP / Policy Gate / 競合状態の防止
 - [キャラLLM + 交渉プロトコル](../architecture/14-character-llm-negotiation.md) — Mode C ではクライマックス時のみ発動
+- [Open-RMF traffic 復習 HTML](open-rmf-traffic-recap.html) — Open-RMF 交通調停の自己完結図解（**2台系の記録**。単騎フェーズ＝[ADR-0006](../adr/0006-single-bot-first.md) 中は参考資料で、2台系 E2E は2台復帰フェーズへ繰延）

@@ -34,6 +34,7 @@ validator vocabulary.
 from __future__ import annotations
 
 import re
+from typing import TypeVar
 
 from pydantic import ConfigDict, Field, field_validator, model_validator
 
@@ -130,6 +131,13 @@ class _PluginFindingBase(_BridgeModel):
         ``none`` maps to ``warning`` (a non-blocking finding)."""
         forced = _EFFECT_TO_STATUS.get(self.dispatch_effect)
         return forced.value if forced is not None else "warning"
+
+
+# Finding type variable for ``clamp_finding`` (clamp is variant-preserving: the returned
+# model is the SAME concrete subclass that was passed in). Spelled as an explicit
+# ``TypeVar`` rather than PEP 695 ``def clamp_finding[F: _PluginFindingBase]`` syntax so
+# the module parses on Python 3.10 (ROS 2 Humble / Ubuntu 22.04 = ADR-0008).
+F = TypeVar("F", bound=_PluginFindingBase)
 
 
 class NamespacedPluginRuleResult(_PluginFindingBase):
@@ -309,7 +317,7 @@ class PluginDispatchPolicy(_BridgeModel):
         return self.max_effect
 
 
-def clamp_finding[F: _PluginFindingBase](finding: F, policy: PluginDispatchPolicy) -> F:
+def clamp_finding(finding: F, policy: PluginDispatchPolicy) -> F:
     """Clamp the requested effect to the policy ceiling; record the request in
     ``clamped_from`` when lowered (Grill Q1-(2)). Requests at/below the ceiling pass
     through unchanged. The clamp only LOWERS — it never raises a plugin's effect."""

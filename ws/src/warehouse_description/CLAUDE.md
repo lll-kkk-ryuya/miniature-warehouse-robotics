@@ -13,7 +13,8 @@
 
 ## 提供 (produce)
 - `robot_description`（URDF/xacro, sim+実機 共有）: `urdf/minicar.urdf.xacro`、`launch/description.launch.py`（namespace 毎に robot_state_publisher, `frame_prefix=<ns>/`）
-- **凍結リンク名**（doc09 TFツリー / doc16 §9）: `base_link` / `lidar_link` / `imu_link` / `wheel_{front,rear}_{left,right}`
+- **凍結リンク名**（doc09 TFツリー / doc16 §9）: `base_link` / `lidar_link` / `imu_link` / `wheel_{front,rear}_{left,right}` / `camera_link`
+- **`camera_link`**（HP60C・doc23 §4 `docs/architecture/23-perception-and-localization.md:124`・§5-2 `:157-160`）: **名前のみ凍結**。URDF の body/joint は取付実測待ちで `PENDING_URDF_LINKS` に列挙（unit test が「pending は xacro に無いこと」を pin）。**光学 frame 名は未凍結**（doc09 OQ-4 `docs/mode-x-er/09-hand-raise-summon.md:184`）ゆえ `FROZEN_FRAME_IDS` に camera エントリは無い
 - **凍結 frame_id**: `/<ns>/scan`→`<ns>/lidar_link`、imu→`<ns>/imu_link`、odom→`<ns>/odom`（child `<ns>/base_link`）
 - `robot_dimensions.py`: 凍結名タプル + `ROBOT_RADIUS=0.075`(R-42) + `SPAWN_Z`（Python 単一ソース）
 

@@ -29,6 +29,14 @@ STATION_SIZE = (0.20, 0.15, 0.02)
 AISLE_BOTTLENECK_WIDTH = 0.2
 AISLE_STANDARD_WIDTH = 0.3
 
+# config ``locations.shelf_N`` is the Nav2 *docking point* robots drive to (doc08 §場所名→座標
+# 変換テーブル — every LOCATIONS key must be dispatchable), NOT the shelf box centre: a goal at
+# an obstacle centre is unreachable by construction (2026-08-17 sim gate: ABORTED NO_VALID_PATH).
+# The shelf box sits SHELF_STANDOFF south of the point, so the point faces the shelf's north
+# (berth-side) face: centre_y = loc_y - SHELF_STANDOFF - SHELF_SIZE[1]/2. The standoff exceeds
+# inflation_radius 0.085 (nav2_params.yaml:245,291) so the docking cell carries zero cost.
+SHELF_STANDOFF = 0.12
+
 # Vertical aisles flanked by adjacent shelves (doc04 上面図): 通路A = shelf_1↔shelf_2,
 # 通路B = shelf_2↔shelf_3. ``bottleneck_walls`` narrows each to AISLE_BOTTLENECK_WIDTH.
 AISLES: tuple[tuple[str, str, str], ...] = (
@@ -73,11 +81,16 @@ def perimeter_walls() -> list[Box]:
     ]
 
 
+def _shelf_center_y(loc_y: float) -> float:
+    """Shelf box centre y from its docking-point y (box sits SHELF_STANDOFF south of the point)."""
+    return loc_y - SHELF_STANDOFF - SHELF_SIZE[1] / 2
+
+
 def shelves(cfg: Config | None = None) -> list[Box]:
     loc = _cfg(cfg)["locations"]
     sx, sy, sz = SHELF_SIZE
     return [
-        Box(name, loc[name]["x"], loc[name]["y"], sz / 2, sx, sy, sz)
+        Box(name, loc[name]["x"], _shelf_center_y(loc[name]["y"]), sz / 2, sx, sy, sz)
         for name in ("shelf_1", "shelf_2", "shelf_3")
     ]
 
@@ -103,7 +116,7 @@ def bottleneck_walls(cfg: Config | None = None) -> list[Box]:
         fill = (east_edge - west_edge - AISLE_BOTTLENECK_WIDTH) / 2
         if fill <= 0:  # coords already at/under the target → no narrowing wall needed
             continue
-        y = loc[left]["y"]  # shelf row (both flanking shelves share y)
+        y = _shelf_center_y(loc[left]["y"])  # shelf row (both flanking shelves share y)
         out.append(Box(f"aisle_{tag}_wall_w", west_edge + fill / 2, y, h / 2, fill, sy, h))
         out.append(Box(f"aisle_{tag}_wall_e", east_edge - fill / 2, y, h / 2, fill, sy, h))
     return out

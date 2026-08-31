@@ -117,7 +117,7 @@ DEFAULT_GATEWAY = "http://127.0.0.1:8644"
 LIVE_INSTRUCTION = INNER_PLAN["transcript"]  # bot1は赤い箱へ。到達したらbot2は青い箱へ。
 MAX_CONSECUTIVE_LIVE_FAILURES = 2
 # Ground-truth pixel facts for --pixel-hints (stand-in for the camera detection the live text
-# call has no image for; values = the verified red/blue fixture geometry, x_er_fixtures.py:89-98
+# call has no image for; values = the verified red/blue fixture geometry, x_er_fixtures.py:90-112
 # — red (420,310)->shelf_1, blue (810,280)->shelf_2). Without hints the live model invents
 # pixels the resolver cannot snap -> fail-closed empty Command (observed 2026-07-08 batch 1).
 PIXEL_HINTS = (

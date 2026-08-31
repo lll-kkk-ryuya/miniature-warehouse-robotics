@@ -44,7 +44,7 @@
   （locations.py:23/26）で destination 名キーを検証。座標は呼び出し側が渡す config dict（`locations` セクション）
   から読み、GATE-時は `warehouse_interfaces.config.load_config`（config.py）で `robots` / `locations` を供給。
   **凍結なのは location 名キーの正準集合** `KNOWN_LOCATIONS`（locations.py:23, `frozenset[str]`）。
-  **座標 {x,y} は凍結ではない**＝`load_config` 経由で `config/warehouse.base.yaml:35-44` から解決し、同 `:34` の
+  **座標 {x,y} は凍結ではない**＝`load_config` 経由で `config/warehouse.base.yaml:47-56` から解決し、同 `:46` の
   とおり **Phase 2 実測で確定する暫定値**。**契約変更なし**（座標を凍結契約に足さない）。
   RMF Navigation Graph の waypoint/lane を凍結 `locations`（名キー契約）に**発明しない**（要れば別 contract PR。11c:283 残未決5）。
 - topic（consume・GATE 後）: `/bot{n}/amcl_pose`（doc03:94 PoseWithCovarianceStamped）・`/bot{n}/odom`

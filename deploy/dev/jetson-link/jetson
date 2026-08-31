@@ -1,0 +1,970 @@
+#!/bin/zsh
+#
+# jetson -- bring the Jetson Orin Nano "minicar" to a ready-to-develop state,
+#           shut it down safely, and be honest about which of those is true.
+#
+#   jetson on      start work: verify the link, report dev-readiness
+#   jetson off     end work: stop workloads.  Leaves the machine RUNNING.
+#   jetson reboot  restart, verified both ways.  Fully remote-safe.
+#   jetson halt    real power-off.  ONE-WAY: needs a physical replug after.
+#   jetson status  the same truth, instantly, no waiting, no side effects
+#   jetson ssh     shell / one-shot command
+#
+# WHY "off" DOES NOT CUT POWER
+# ---------------------------
+# On this board a poweroff is a one-way door.  Ethernet (enP8p1s0) is down and
+# it runs on Wi-Fi (wlP1p1s0), so there is no Wake-on-LAN; an Orin Nano has no
+# BMC; and there is no smart plug.  Once halted, nothing on this Mac can bring
+# it back -- it costs a walk to the board and a jack replug, every time.
+# So mains stays on (idle ~5-7 W, ~4-5 kWh/month) and the machine is always up,
+# which is what makes `jetson on` succeed instantly instead of asking you to
+# go and touch hardware.  The real shutdown is still there, spelled `halt`,
+# and it warns you before it takes the door.
+#
+# Exit codes: 0 ok | 1 down | 2 unknown (stale/auth/no LAN/noname) | 3 shutdown refused
+#             4 timeout | 5 missing local prerequisite | 64 usage
+
+emulate -L zsh
+setopt no_unset
+
+# ------------------------------------------------------------------ config --
+# Direct on the LAN.  The reverse tunnel is gone: it dialled this Mac by
+# address, so either end getting a new DHCP lease broke it, and it was in fact
+# failing authentication in a 5-second retry loop.  mDNS resolves the board by
+# NAME (avahi-daemon is active on it), which no lease change can invalidate.
+# To go back to the tunnel for an off-LAN run: re-enable mwr-tunnel on the
+# board, add a "Host jetson-tunnel" block to ~/.ssh/config (HostName 127.0.0.1,
+# Port 2222 -- the ssh calls follow JETSON_HOST, not the two probe vars), then
+#   JETSON_HOST=jetson-tunnel JETSON_TUNNEL_ADDR=127.0.0.1 JETSON_TUNNEL_PORT=2222
+# Capture which route vars the caller pinned BEFORE the defaults land: the
+# tailscale fallback below must never override an explicit choice.  :+ (not +)
+# so that an exported-but-EMPTY var, which the := defaults below overwrite
+# anyway, does not read as a pin and silently disable the fallback.
+_MWR_ADDR_PINNED=${JETSON_TUNNEL_ADDR:+x}
+_MWR_HOST_PINNED=${JETSON_HOST:+x}
+_MWR_PORT_PINNED=${JETSON_TUNNEL_PORT:+x}
+_MWR_ROUTE=lan                  # flips to 'ts' when ts_fallback retargets
+: ${JETSON_HOST:=jetson}                                # ssh_config(5) alias
+: ${JETSON_TUNNEL_ADDR:=minicar.local}
+: ${JETSON_TUNNEL_PORT:=22}
+: ${JETSON_SHUTDOWN_CMD:=/usr/local/sbin/mwr-shutdown}  # root-owned safety wrapper
+: ${JETSON_REBOOT_CMD:=/usr/local/sbin/mwr-reboot}      # same wrapper, reboot edge
+: ${JETSON_REPO:=/opt/warehouse}   # canonical clone path (docs/setup/jetson-deploy.md §2); relative = under $HOME
+: ${JETSON_BOOT_TIMEOUT:=240}   # generous: you may still be reaching for the plug
+: ${JETSON_HALT_TIMEOUT:=90}
+: ${JETSON_POLL_INTERVAL:=3}
+: ${JETSON_SSH_TIMEOUT:=8}      # also the cost of detecting a stale forward
+: ${JETSON_SKEW_WARN:=120}      # seconds of clock drift before we complain
+: ${JETSON_DISK_WARN:=90}       # rootfs % full before we complain
+: ${JETSON_UPTIME_WARN:=86400}  # a 24/7 board up less than this restarted
+: ${JETSON_CLEAR_STALE:=0}      # tunnel-only; meaningless on the direct route
+: ${JETSON_TS_NAME:=minicar}    # the board's machine name on the tailnet
+: ${JETSON_TS_FALLBACK:=1}      # 0 disables the automatic tailscale fallback
+: ${JETSON_TS_PROBE_TIMEOUT:=8} # tailnet probes cross WireGuard/DERP, not a LAN
+
+# Absolute paths on purpose: Raycast invokes this from a non-login shell that
+# only appends /usr/local/bin to a minimal PATH.
+SSH=/usr/bin/ssh
+NC=/usr/bin/nc
+LSOF=/usr/sbin/lsof
+SLEEP=/bin/sleep
+PS=/bin/ps
+ID=/usr/bin/id
+DATE=/bin/date
+# Deliberately NOT in require_local(): it only sharpens a diagnosis, so a Mac
+# without it must still be able to run 'jetson halt', not die with exit 5.
+ROUTE=${JETSON_ROUTE:-/sbin/route}
+
+typeset -g LINK='' LINK_ERR='' WARNS=0
+
+# ------------------------------------------------------------------ output --
+say()  { print -r -- "$1" }
+warn() { print -r -- "  ! $1"; WARNS=$(( WARNS + 1 )) }
+die()  { print -ru2 -- "jetson: $2"; exit $1 }
+
+# Seconds -> something comparable at a glance.  This board normally reads
+# "up 6d 4h", and that is the whole point: an "up 11m" then stands out
+# instead of hiding inside a five-digit second count.
+human_secs() {
+  local s=$1 d h m
+  d=$(( s / 86400 )); h=$(( (s % 86400) / 3600 )); m=$(( (s % 3600) / 60 ))
+  if   (( d )); then print -r -- "${d}d ${h}h"
+  elif (( h )); then print -r -- "${h}h ${m}m"
+  elif (( m )); then print -r -- "${m}m"
+  else              print -r -- "${s}s"
+  fi
+}
+
+require_local() {
+  local p
+  for p in "$SSH" "$NC" "$LSOF" "$SLEEP" "$PS" "$ID" "$DATE"; do
+    [[ -x $p ]] || die 5 "missing required tool: $p"
+  done
+}
+
+# ---------------------------------------------------------- local network --
+# Everything below assumes THIS MAC can see the board's LAN.  When it cannot --
+# Wi-Fi off, joined to a hotspot instead of the router, a VPN eating mDNS -- a
+# connect attempt fails in exactly the same way as it does for a board that is
+# switched off.  Answering "the board is off, go and replug the DC jack" to a
+# laptop-side Wi-Fi fault is the one wrong turn that costs a walk to the
+# hardware, so decide first whether the failure is even about the Jetson.
+#
+# Prints a human reason when the fault is demonstrably LOCAL (caller must then
+# refuse to say "down"), prints nothing when this Mac is on a network and the
+# name resolved (caller may keep its own verdict).  Never touches the network
+# beyond the connect the caller already paid for.
+offline_reason() {
+  local nc_err=$1
+  # Conclusive and free: a missing default route means no usable network at
+  # all.  route(8) exits non-zero ("writing to routing socket: not in table")
+  # when nothing answers for 'default'.  Guarded so a missing route(8) simply
+  # skips this test instead of breaking the command.
+  if [[ -x $ROUTE ]] && ! "$ROUTE" -n get default >/dev/null 2>&1; then
+    print -r -- "this Mac has no default route - its own Wi-Fi is off, or it has joined nothing"
+    return 0
+  fi
+  # "Network is unreachable" is also local: this Mac has no route to that
+  # subnet.  NOTE what is deliberately NOT here: an unresolvable name.  mDNS
+  # only answers while the board is up, so "the name does not resolve" is just
+  # as likely to mean "the board is off or still booting" as "this Mac is on
+  # the wrong network" -- that ambiguous case is the separate 'noname' state,
+  # classified by link_state itself, never a proof of a local fault.
+  case $nc_err in
+    (*"Network is unreachable"*)
+      print -r -- "the network that holds ${JETSON_TUNNEL_ADDR} is unreachable from this Mac" ;;
+  esac
+  return 0
+}
+
+# -------------------------------------------------------------- link state --
+# The single source of truth.  Sets $LINK to exactly one of:
+#   up     an SSH handshake completed: the Jetson is running and reachable
+#   down   nothing is listening: the board is off, or the tunnel never came up
+#   stale  something answers on the port but it is not a live Jetson
+#   auth   we reached an sshd but could not authenticate (key / known_hosts)
+#   nolink THIS MAC is off the board's network, so the probe says nothing about
+#          the board.  Reported as UNKNOWN (exit 2) -- never as "down", and
+#          never as proof that a halt/reboot took effect.
+#   noname the NAME does not resolve while this Mac does have a network.  mDNS
+#          dies with the board, so this most often means "board off or still
+#          booting" -- but a wrong SSID looks identical, so both are named.
+#          'on' waits through it (the name comes back with avahi); 'halt'
+#          refuses to treat it as proof of anything.
+link_state() {
+  LINK=''; LINK_ERR=''
+
+  # --- Step 1: cheap pre-filter.  This is NOT a liveness test. ---------------
+  # A zero here means only "a socket accepted us", never "a Jetson answered".
+  # The Mac's sshd keeps the reverse-forward listener on 2222 bound for hours
+  # after the Jetson dies: sshd_config(5) says ClientAliveInterval defaults to
+  # 0, so it only notices via TCP keepalive, and this Mac's
+  # net.inet.tcp.keepidle is 7200000 ms = 2 hours.  Measured: `nc -z` against a
+  # socket that accepts and never speaks SSH returns 0, "succeeded".
+  # A NON-zero here is conclusive about the SOCKET (nothing accepted us) and
+  # costs ~6 ms -- which is the whole reason to keep nc: the boot-wait loop
+  # polls on it instead of spawning ~80 ssh processes.  Whether it says
+  # anything about the BOARD depends on this Mac having a LAN at all, which is
+  # what offline_reason() above settles before we dare answer "down".
+  # Keep nc's stderr instead of discarding it: it is the only thing that says
+  # WHY the connect failed, and on the failure path that is the whole question.
+  local nerr nrc why
+  # 2s fits a ~6ms LAN hop; a cold tailnet path may need a WireGuard/DERP
+  # handshake first, and calling that "down" is finding-someone-guilty-of-
+  # being-far-away.  Route-dependent budget.
+  local probe_t=2
+  [[ $_MWR_ROUTE == ts ]] && probe_t=$JETSON_TS_PROBE_TIMEOUT
+  nerr=$("$NC" -z -G "$probe_t" -w "$probe_t" "$JETSON_TUNNEL_ADDR" "$JETSON_TUNNEL_PORT" 2>&1)
+  nrc=$?
+  if (( nrc != 0 )); then
+    # Before blaming the board: is this Mac even on its network?  Identical
+    # symptom, completely different fix, and only one of the two is worth
+    # walking to the hardware for.
+    why=$(offline_reason "$nerr")
+    if [[ -n $why ]]; then
+      LINK=nolink
+      LINK_ERR=$why
+      return 0
+    fi
+    # Measured on macOS: an unresolvable name gives rc 1 with
+    #   "nc: getaddrinfo: nodename nor servname provided, or not known"
+    # while a resolved-but-silent host gives rc 1 with NO stderr.  The name
+    # failing while this Mac provably has a network is AMBIGUOUS: mDNS only
+    # answers while the board is up, so a halted or still-booting board looks
+    # exactly like a Mac on the wrong SSID.  Say so instead of picking a side
+    # -- picking "local fault" here is what once told the operator NOT to go
+    # and replug a board that was in fact sitting in soft-off.
+    case $nerr in
+      (*"getaddrinfo"*|*"Unknown host"*|*"Name or service not known"*)
+        LINK=noname
+        LINK_ERR="${JETSON_TUNNEL_ADDR} does not resolve: the board is off or still booting (mDNS answers only while it is up) - or this Mac is on a different network (hotspot/VPN)"
+        return 0 ;;
+    esac
+    LINK=down
+    return 0
+  fi
+
+  # --- Step 2: the actual proof -- complete a real SSH handshake. -----------
+  local err rc
+  err=$("$SSH" -o BatchMode=yes \
+               -o ConnectTimeout="$JETSON_SSH_TIMEOUT" \
+               -o ServerAliveInterval=3 -o ServerAliveCountMax=2 \
+               -- "$JETSON_HOST" true 2>&1)
+  rc=$?
+  LINK_ERR=$err
+  if (( rc == 0 )); then LINK=up; return 0; fi
+
+  # ssh(1): "ssh exits with the exit status of the remote command or with 255
+  # if an error occurred."  So 255 means *any* failure -- refused, timed out,
+  # bad key, or "the link dropped because the box halted".  All three of
+  # "Connection refused" / "Connection closed by" / "Connection timed out
+  # during banner exchange" give 255.  The code alone can never tell them
+  # apart, so classify on stderr.  ConnectTimeout bounds this: ssh_config(5)
+  # says it "is applied both to establishing the connection and to performing
+  # the initial SSH protocol handshake and key exchange".
+  case $err in
+    (*"banner exchange"*|*"Connection closed by"*|*"Connection reset"*|*"Broken pipe"*)
+      LINK=stale ;;
+    (*"Connection refused"*|*"No route to host"*|*"Network is unreachable"*|*"Could not resolve"*)
+      LINK=down ;;
+    (*"Permission denied"*|*"Host key verification failed"*|*"IDENTIFICATION HAS CHANGED"*)
+      LINK=auth ;;
+    (*)
+      # Unknown failure.  Never downgrade to "down" -- claiming the board is
+      # off when we do not know is the one lie that gets the microSD pulled
+      # while it is still writing.
+      LINK=stale ;;
+  esac
+  return 0
+}
+
+# wait_for <up|gone> <timeout-seconds> <label>   -> 0 reached, 4 timed out
+# Hard-bounded: the loop can only exit via the state check or the deadline.
+wait_for() {
+  local want=$1 limit=$2 label=$3
+  local start=$SECONDS
+  while :; do
+    link_state
+    # 'gone' must mean THE BOARD went, not that this Mac lost the LAN while we
+    # were watching.  Positive list, not a negative one: down (nothing answers),
+    # noname (mDNS sent its goodbye as the board stopped -- a CLEAN halt often
+    # ends this way, since the name dies before the ARP entry does), stale
+    # (tunnel corpse).  nolink is this Mac's own fault and proves nothing;
+    # auth means an sshd ANSWERED, which is a running board, not a gone one.
+    if [[ $want == up && $LINK == up ]] || [[ $want == gone && ( $LINK == down || $LINK == noname || $LINK == stale ) ]]; then
+      say ""                       # terminate the caller's dotted line
+      say "jetson: ${label} after $(( SECONDS - start ))s"
+      return 0
+    fi
+    (( SECONDS - start >= limit )) && break
+    print -n -- "."
+    "$SLEEP" "$JETSON_POLL_INTERVAL"
+  done
+  say ""
+  # A timeout that was really a local network fault would otherwise be reported
+  # as the board misbehaving.  Say which one it was; the caller still fails.
+  [[ $LINK == nolink ]] && say "jetson: (this Mac was off the LAN while waiting: ${LINK_ERR})"
+  return 4
+}
+
+# The Mac's sshd holds the 2222 listener open after the Jetson dies.  This is
+# not cosmetic: on reboot the Jetson's `ssh -N -R 127.0.0.1:2222:localhost:22`
+# cannot bind a port that is still taken, and ExitOnForwardFailure defaults to
+# "no" (ssh_config(5)), so the unit stays "active" while forwarding nothing.
+# Clearing the corpse is what makes the next boot actually work.
+clear_stale() {
+  [[ $JETSON_CLEAR_STALE == 1 ]] || return 0
+  # Hard guard.  This function finds whoever LISTENS on the target port and
+  # kills it.  On the tunnel route that is a dead reverse-forward inside our
+  # own sshd -- harmless.  On the direct route the port is 22, and the process
+  # listening on 22 is THIS MAC'S OWN sshd.  Killing that would lock us out of
+  # our own machine, so refuse outright rather than rely on the owner checks.
+  if [[ $JETSON_TUNNEL_PORT == 22 ]]; then
+    warn "refusing to clear port 22 - that is this Mac's own sshd, not a forward"
+    return 0
+  fi
+  local -a pids f
+  pids=( ${(f)"$("$LSOF" -nP -iTCP@${JETSON_TUNNEL_ADDR}:${JETSON_TUNNEL_PORT} \
+                        -sTCP:LISTEN -t 2>/dev/null)"} )
+  (( ${#pids} )) || return 0
+
+  local me pid info owner comm killed=0
+  me=$("$ID" -un)
+  for pid in $pids; do
+    info=$("$PS" -o user=,comm= -p "$pid" 2>/dev/null)
+    [[ -n $info ]] || continue
+    f=( ${=info} ); owner=${f[1]:-}; comm=${f[2]:-}
+    # Only ever touch our own sshd.  OpenSSH 9.8 split the server into a
+    # listener (sshd) and a per-session binary (sshd-session), and this Mac
+    # ships /usr/libexec/sshd-session -- so match both.
+    if [[ $owner != $me ]]; then
+      warn "port ${JETSON_TUNNEL_PORT} is held by pid $pid (owner $owner) - leaving it alone"
+      continue
+    fi
+    if [[ ${comm:t} != sshd* ]]; then
+      warn "port ${JETSON_TUNNEL_PORT} is held by pid $pid (${comm:t}), not sshd - leaving it alone"
+      continue
+    fi
+    say "jetson: clearing dead reverse-forward (pid $pid, ${comm:t})"
+    kill "$pid" 2>/dev/null && killed=1
+  done
+  (( killed )) || return 0
+
+  "$SLEEP" 1
+  # Verify the post-condition instead of assuming it.
+  if "$NC" -z -G 2 -w 2 "$JETSON_TUNNEL_ADDR" "$JETSON_TUNNEL_PORT" >/dev/null 2>&1; then
+    warn "port ${JETSON_TUNNEL_PORT} is STILL held - the Jetson may fail to re-bind its tunnel"
+    return 1
+  fi
+  say "jetson: port ${JETSON_TUNNEL_PORT} released"
+  return 0
+}
+
+# ------------------------------------------------------------- readiness ----
+# One SSH round trip.  Every probe is individually guarded so that something
+# being absent (ROS 2 today, the NVMe, the repo) reads as INFORMATION, never as
+# an error.  The script is sent over stdin via a quoted here-doc, so nothing in
+# it is expanded locally; the two values it needs arrive as $1 and $2.
+readiness() {
+  local out rc
+  out=$("$SSH" -o BatchMode=yes -o ConnectTimeout="$JETSON_SSH_TIMEOUT" \
+        -- "$JETSON_HOST" /bin/sh -s "$JETSON_SHUTDOWN_CMD" "$JETSON_REPO" <<'PROBE' 2>/dev/null
+set -u
+kv() { printf '%s=%s\n' "$1" "$2"; }
+wrapper_path=${1:-/usr/local/sbin/mwr-shutdown}
+repo_dir=${2:-/opt/warehouse}
+case "$repo_dir" in /*) : ;; *) repo_dir="$HOME/$repo_dir" ;; esac
+
+kv host "$(hostname 2>/dev/null || echo unknown)"
+if [ -r /proc/uptime ]; then kv uptime "$(cut -d. -f1 /proc/uptime)"; else kv uptime unknown; fi
+kv epoch "$(date +%s 2>/dev/null || echo 0)"
+
+# Boot provenance.  A board meant to run 24/7 can restart with nobody the
+# wiser: uptime just starts again from zero.  wtmp records a `shutdown`
+# entry for every clean stop, so a `reboot` entry that is NOT preceded by
+# one is an abrupt end -- mains blip, brownout, thermal cut, panic -- and
+# that is the case where the microSD was being written to at the time.
+# Only field 1 is read, so the mangled dates of a clock that booted without
+# an RTC cannot mislead this.  No last(1)/wtmp/history => unknown, which is
+# information, not an error.
+boot_prev=unknown
+boot_unclean=0
+if command -v last >/dev/null 2>&1; then
+  hist=$(last -x reboot shutdown 2>/dev/null \
+         | awk '$1=="reboot" || $1=="shutdown" {print $1}')
+  if [ -n "${hist:-}" ]; then
+    res=$(printf '%s\n' "$hist" | awk '
+      {t[NR]=$1}
+      END {
+        p="unknown"; n=0;
+        if (NR >= 2 && t[1] == "reboot") p = (t[2] == "shutdown") ? "clean" : "unclean";
+        for (i = 1; i < NR; i++) if (t[i] == "reboot" && t[i+1] != "shutdown") n++;
+        printf "%s %s\n", p, n;
+      }')
+    if [ -n "${res:-}" ]; then boot_prev=${res% *}; boot_unclean=${res#* }; fi
+  fi
+fi
+[ -n "${boot_prev:-}" ] || boot_prev=unknown
+[ -n "${boot_unclean:-}" ] || boot_unclean=0
+kv boot_prev "$boot_prev"
+kv boot_unclean "$boot_unclean"
+tun=$(systemctl is-enabled mwr-tunnel.service 2>/dev/null)
+kv tunnel "${tun:-unknown}"
+kv disk_pct "$(df -P / 2>/dev/null | awk 'NR==2 {gsub("%","",$5); print $5}')"
+kv disk_free "$(df -Ph / 2>/dev/null | awk 'NR==2 {print $4}')"
+
+nvme=$(lsblk -nro NAME,MOUNTPOINT 2>/dev/null | awk '$1 ~ /^nvme/ && NF > 1 {print $2; exit}')
+if [ -n "${nvme:-}" ]; then kv nvme "$nvme"; else kv nvme unmounted; fi
+
+ros=none
+for s in /opt/ros/*/setup.bash; do
+  [ -e "$s" ] || continue
+  ros=$(basename "$(dirname "$s")")
+  break
+done
+kv ros "$ros"
+
+if [ -x "$wrapper_path" ]; then kv wrapper yes; else kv wrapper no; fi
+
+if [ -d "$repo_dir/.git" ]; then
+  # -c safe.directory: a root-owned clone under /opt would otherwise trip
+  # git's dubious-ownership guard and silently degrade the SHA to "present"
+  kv repo "$(cd "$repo_dir" && git -c safe.directory="$repo_dir" rev-parse --short HEAD 2>/dev/null || echo present)"
+else
+  kv repo none
+fi
+PROBE
+)
+  rc=$?
+  if (( rc != 0 )); then
+    warn "the link is up but the readiness probe failed (ssh rc=${rc})"
+    return 0
+  fi
+
+  local line k v
+  local host=unknown uptime=unknown epoch=0 tunnel=unknown
+  local disk_pct='' disk_free=unknown nvme=unknown ros=none wrapper=no repo=none
+  local boot_prev=unknown boot_unclean=0
+  while IFS= read -r line; do
+    [[ -n $line ]] || continue
+    k=${line%%=*}; v=${line#*=}
+    case $k in
+      (host)      host=$v ;;
+      (uptime)    uptime=$v ;;
+      (epoch)     epoch=$v ;;
+      (boot_prev) boot_prev=$v ;;
+      (boot_unclean) boot_unclean=$v ;;
+      (tunnel)    tunnel=$v ;;
+      (disk_pct)  disk_pct=$v ;;
+      (disk_free) disk_free=$v ;;
+      (nvme)      nvme=$v ;;
+      (ros)       ros=$v ;;
+      (wrapper)   wrapper=$v ;;
+      (repo)      repo=$v ;;
+    esac
+  done <<< "$out"
+
+  local up_h=$uptime
+  if [[ $uptime == <-> ]]; then up_h=$(human_secs "$uptime"); fi
+  say "  host     ${host} (up ${up_h})"
+
+  # The board is supposed to stay powered, so a restart is news -- but the
+  # uptime alone can never say so, because a machine that dropped and came
+  # back looks exactly like one you caught early.  Ask wtmp instead: a boot
+  # preceded by a shutdown record was ASKED for (our own reboot/halt
+  # wrappers write one); a boot without one was taken from it.  Only the
+  # second is a warning, so a deliberate `jetson reboot` stays quiet, and
+  # not knowing stays honestly "do not know".
+  local ago="" short=0
+  if [[ $uptime == <-> ]]; then
+    ago=$(human_secs "$uptime")
+    (( uptime < JETSON_UPTIME_WARN )) && short=1
+  fi
+  case $boot_prev in
+    (unclean)
+      # Warn only while it is NEWS.  Past JETSON_UPTIME_WARN the same fact is
+      # still shown, but as information: a 40-day-old power blip nobody acted
+      # on must not make every 'on' end in "ready, with 1 warning(s)" forever.
+      if (( short )); then
+        warn "this board restarted${ago:+ ${ago} ago} and the previous boot ended WITHOUT a clean shutdown - mains blip, brownout, thermal cut or panic, with the microSD live at the time (${boot_unclean} such restart(s) in its wtmp history, including this one). Check the DC jack and the outlet; see them with: jetson ssh last -x reboot shutdown" ;
+      else
+        say "  boot     up ${ago}; NOTE: its last restart was unclean (no shutdown record; ${boot_unclean} in wtmp history)"
+      fi ;;
+    (clean)
+      (( short )) && say "  boot     restarted ${ago} ago, cleanly - that was a deliberate reboot, not a power event" ;;
+    (*)
+      (( short )) && say "  boot     restarted ${ago} ago; no shutdown history here, so whether that was clean is UNKNOWN" ;;
+  esac
+
+  # The Orin Nano dev kit has no fitted RTC cell, so after a power cut the
+  # clock can be far off -- which breaks git, apt and every TLS handshake
+  # before it breaks anything obvious.  Cheap to check, so check it.
+  if [[ $epoch == <-> ]] && (( epoch > 0 )); then
+    local now skew
+    now=$("$DATE" +%s)
+    skew=$(( now - epoch )); (( skew < 0 )) && skew=$(( -skew ))
+    if (( skew > JETSON_SKEW_WARN )); then
+      warn "clock is ${skew}s off this Mac - git/apt/TLS will misbehave (sudo systemctl restart systemd-timesyncd)"
+    else
+      say "  clock    ok (${skew}s skew)"
+    fi
+  fi
+
+  if [[ -n $disk_pct && $disk_pct == <-> ]]; then
+    if (( disk_pct >= JETSON_DISK_WARN )); then
+      warn "rootfs (microSD) is ${disk_pct}% full, only ${disk_free} free"
+    else
+      say "  disk /   ${disk_pct}% used, ${disk_free} free (microSD)"
+    fi
+  fi
+
+  [[ $nvme == unmounted ]] && say "  nvme     not mounted (the 931G SSD is still unused)" \
+                           || say "  nvme     mounted at ${nvme}"
+
+  # We reach the board directly by mDNS name, so the tunnel is a dormant
+  # fallback for off-LAN use.  Enabled is the state worth flagging now: it
+  # retries every 5s and fails auth, which is pure noise on this route.
+  case $tunnel in
+    (disabled|unknown) say "  tunnel   disabled (not needed: direct via ${JETSON_TUNNEL_ADDR})" ;;
+    (enabled) warn "mwr-tunnel.service is still enabled - it retries every 5s against this Mac and fails; disable it (sudo systemctl disable --now mwr-tunnel)" ;;
+    (*) say "  tunnel   ${tunnel}" ;;
+  esac
+
+  # Absent ROS 2 is the expected state today.  Never an error.
+  [[ $ros == none ]] && say "  ROS 2    not installed yet (expected - nothing to do)" \
+                     || say "  ROS 2    ${ros}"
+
+  [[ $wrapper == yes ]] && say "  safe-off ${JETSON_SHUTDOWN_CMD}" \
+                        || warn "${JETSON_SHUTDOWN_CMD} is missing - 'jetson halt' and 'jetson reboot' will refuse to run (fix: sudo sh ~/mwr-setup.sh on the board)"
+
+  # mirror the remote probe's relative-path normalization for the display
+  local repo_disp=$JETSON_REPO
+  [[ $repo_disp != /* ]] && repo_disp="~/${repo_disp}"
+  [[ $repo == none ]] && say "  repo     not cloned yet (${repo_disp})" \
+                      || say "  repo     ${repo_disp} @ ${repo}"
+  return 0
+}
+
+report_warns() {
+  (( WARNS )) && say "jetson: ${WARNS} warning(s) above."
+  return 0
+}
+
+# ------------------------------------------------------------ subcommands ---
+cmd_status() {
+  link_state
+  case $LINK in
+    (up)
+      say "jetson: UP     (${JETSON_HOST} via ${JETSON_TUNNEL_ADDR}:${JETSON_TUNNEL_PORT})"
+      readiness
+      report_warns
+      return 0 ;;
+    (down)
+      say "jetson: DOWN   nothing is listening on ${JETSON_TUNNEL_ADDR}:${JETSON_TUNNEL_PORT} - the board is off or unplugged."
+      return 1 ;;
+    (nolink)
+      say "jetson: NO LAN this Mac cannot reach ${JETSON_TUNNEL_ADDR}, so the board's state is UNKNOWN."
+      say "               ${LINK_ERR}"
+      say "               fix this end first (Wi-Fi on, same network as the board), then ask again."
+      return 2 ;;
+    (noname)
+      say "jetson: NONAME ${LINK_ERR}"
+      say "               if you just applied power, it needs ~60s; 'jetson on' will wait for it."
+      return 2 ;;
+    (stale)
+      say "jetson: STALE  ${JETSON_TUNNEL_ADDR}:${JETSON_TUNNEL_PORT} is held by a dead forward, so the board's state is UNKNOWN."
+      say "               ${LINK_ERR}"
+      say "               on the direct route this clears itself; wait, then 'jetson status' again."
+      return 2 ;;
+    (auth)
+      say "jetson: AUTH   reached an sshd but could not log in:"
+      say "               ${LINK_ERR}"
+      return 2 ;;
+  esac
+}
+
+cmd_on() {
+  link_state
+
+  if [[ $LINK == auth ]]; then
+    die 2 "reached an sshd but could not log in. This is a key/known_hosts problem, not a power problem:
+  ${LINK_ERR}
+  try: ssh -v ${JETSON_HOST}"
+  fi
+
+  # The fault is on this end, so the board's state is unknown: do NOT print the
+  # "it was halted, go and replug the jack" story, and do NOT burn
+  # JETSON_BOOT_TIMEOUT waiting for a board that may well be up and fine.
+  if [[ $LINK == nolink ]]; then
+    die 2 "cannot tell whether the board is up, because this Mac is not on its network:
+  ${LINK_ERR}
+  Nothing is known about the Jetson - do NOT go and replug it. Fix this end:
+  1. Wi-Fi on and joined?        networksetup -getairportnetwork en0
+  2. on the board's network?     route -n get default
+  3. does the name resolve?      ping -c1 ${JETSON_TUNNEL_ADDR}
+  4. VPN or firewall eating mDNS? drop it, then: jetson on"
+  fi
+
+  if [[ $LINK == up ]]; then
+    readiness
+    (( WARNS )) && say "jetson: ready, with ${WARNS} warning(s) above." || say "jetson: ready."
+    return 0
+  fi
+
+  # Being unreachable is now an EXCEPTION, not the normal start-of-day state:
+  # the board is meant to stay powered.  So do not ask for a jack that is
+  # already in -- name the things that can actually have happened.  noname
+  # ALSO waits here: after a halt+replug the name only returns once avahi is
+  # up (~60s), and refusing to wait through that is how this tool once told
+  # the operator "do NOT go and replug it" about a board sitting in soft-off.
+  if [[ $LINK == noname ]]; then
+    say "jetson: ${LINK_ERR}"
+    say "jetson: if you just applied power, this is normal for ~60s - waiting."
+  else
+    say "jetson: NOT REACHABLE at ${JETSON_TUNNEL_ADDR}:${JETSON_TUNNEL_PORT}."
+    say "jetson: this board is supposed to be up 24/7, so one of these is true:"
+    say "jetson:   1. it was halted (jetson halt / poweroff). Nothing here can undo"
+    say "jetson:      that - no Wake-on-LAN on Wi-Fi, no BMC. Unplug the DC jack,"
+    say "jetson:      wait 10s, plug it back in; it boots the moment power is applied."
+    say "jetson:   2. Wi-Fi dropped, or mDNS lost the name. Check the router's clients."
+    say "jetson:   3. mains was interrupted."
+  fi
+  print -n -- "jetson: watching ${JETSON_BOOT_TIMEOUT}s in case it is already on its way back"
+
+  if ! wait_for up "$JETSON_BOOT_TIMEOUT" "came up"; then
+    die 4 "still nothing after ${JETSON_BOOT_TIMEOUT}s. Check, in order:
+  1. the board itself: LED on, fan spinning?  (a halted board needs a jack replug)
+  2. ping minicar.local              is it on the network at all?
+  3. arp -an | grep 192.168.11       did its address change?
+  4. this Mac's own network          route -n get default; same SSID as the board?
+  5. ssh -v ${JETSON_HOST}                  verbose handshake"
+  fi
+
+  readiness
+  (( WARNS )) && say "jetson: ready, with ${WARNS} warning(s) above." || say "jetson: ready."
+  return 0
+}
+
+# "off" ends the WORK, not the machine -- see the note at the top of the file.
+# It is deliberately not a synonym for halt: making the everyday command the
+# one-way one is exactly how you end up walking to the board twice a day.
+cmd_off() {
+  link_state
+  case $LINK in
+    (up) ;;
+    (down|noname)  say "jetson: not reachable - nothing to stop."; return 1 ;;
+    (nolink) die 2 "this Mac is not on the board's network, so whether anything is running is UNKNOWN: ${LINK_ERR}" ;;
+    (auth)  die 2 "could not log in: ${LINK_ERR}" ;;
+    (stale) die 2 "link state is UNKNOWN (${LINK_ERR}). Run 'jetson status' first." ;;
+  esac
+
+  local out rc
+  out=$("$SSH" -o BatchMode=yes -o ConnectTimeout="$JETSON_SSH_TIMEOUT" \
+        -- "$JETSON_HOST" /bin/sh -s <<'STOP' 2>&1
+set -u
+stopped=0
+note=""
+if command -v docker >/dev/null 2>&1; then
+  # `docker ps` failing is NOT "no containers" -- this user may simply lack
+  # access to the socket.  Say which one it was instead of reporting zero.
+  if ids=$(docker ps -q 2>/dev/null); then
+    for id in $ids; do docker stop "$id" >/dev/null 2>&1 && stopped=$((stopped+1)); done
+  else
+    note="docker is installed but not queryable by this user (add ruyuya to the docker group to manage containers)"
+  fi
+fi
+if pgrep -f "ros2 launch" >/dev/null 2>&1; then
+  pkill -f "ros2 launch" 2>/dev/null && stopped=$((stopped+1))
+fi
+printf 'STOPPED=%s\n' "$stopped"
+[ -n "$note" ] && printf 'NOTE=%s\n' "$note"
+exit 0
+STOP
+)
+  rc=$?
+  local n note
+  n=${${(M)${(f)out}:#STOPPED=*}#STOPPED=}
+  note=${${(M)${(f)out}:#NOTE=*}#NOTE=}
+  # No STOPPED= line means the probe never ran to completion -- a link that
+  # dropped here must not be reported as "nothing was running".  Success needs
+  # evidence, exactly as cmd_halt demands its HALTING line.
+  if (( rc != 0 )) || [[ -z $n ]]; then
+    die 2 "could not confirm the stop (ssh rc=${rc}): ${out:-no output}
+  Nothing is known to have been stopped - refusing to claim the work is ended."
+  fi
+  [[ -n $note ]] && warn "$note"
+
+  if [[ ${n:-0} == 0 ]]; then
+    say "jetson: nothing was running - no workload to stop."
+  else
+    say "jetson: stopped ${n} workload(s)."
+  fi
+
+  # Drop the shared connection so "off" leaves nothing of ours behind.
+  "$SSH" -O exit -- "$JETSON_HOST" >/dev/null 2>&1
+
+  say "jetson: off (work ended). The machine stays powered, so 'jetson on' is instant."
+  say "        real power-off, if you truly want it: jetson halt"
+  report_warns
+  return 0
+}
+
+# A reboot is the one power operation that is fully safe to do remotely: the
+# board comes back by itself.  Verify BOTH edges -- that it went, and that it
+# returned -- so this can never report success while leaving it dark.
+cmd_reboot() {
+  link_state
+  case $LINK in
+    (up) ;;
+    (down|noname)  die 1 "not reachable - nothing to reboot." ;;
+    (nolink) die 2 "refusing to reboot a board this Mac cannot see - the link fault is on this end: ${LINK_ERR}" ;;
+    (auth)  die 2 "could not log in: ${LINK_ERR}" ;;
+    (stale) die 2 "link state is UNKNOWN (${LINK_ERR}). Run 'jetson status' first." ;;
+  esac
+
+  say "jetson: asking it to stop safely and reboot (${JETSON_REBOOT_CMD})..."
+  local out rc
+  out=$("$SSH" -o BatchMode=yes -o ConnectTimeout="$JETSON_SSH_TIMEOUT" \
+        -- "$JETSON_HOST" "sudo -n ${JETSON_REBOOT_CMD}" 2>&1)
+  rc=$?
+  # Positive confirmation first, for the same reason as cmd_halt: once
+  # REBOOTING is printed the reboot is scheduled, and classification of stray
+  # stderr must not turn that into a reported refusal.
+  if [[ $out != *"REBOOTING"* ]]; then
+    case $out in
+      (*"a password is required"*|*"not allowed to execute"*|*"a terminal is required"*)
+        die 3 "the Jetson refused it: ${out}
+  -> install /etc/sudoers.d/10-mwr (run: sudo sh ~/mwr-setup.sh on the board)" ;;
+      (*"command not found"*|*"No such file or directory"*)
+        die 3 "${JETSON_REBOOT_CMD} is not installed: ${out}
+  -> run the Jetson-side setup first; refusing to reboot without the safe-stop wrapper." ;;
+      (*"SAFE-STOP-FAILED"*)
+        die 3 "the robot did NOT reach a safe stop, so the Jetson refused to reboot:
+  ${out}" ;;
+    esac
+    die 3 "no REBOOTING confirmation (ssh rc=${rc}):
+  ${out}"
+  fi
+
+  "$SSH" -O exit -- "$JETSON_HOST" >/dev/null 2>&1
+  print -n -- "jetson: safe stop confirmed; waiting up to ${JETSON_HALT_TIMEOUT}s for it to go"
+  wait_for gone "$JETSON_HALT_TIMEOUT" "link dropped" \
+    || die 4 "it accepted the reboot but is still answering after ${JETSON_HALT_TIMEOUT}s."
+
+  print -n -- "jetson: waiting up to ${JETSON_BOOT_TIMEOUT}s for it to come back"
+  wait_for up "$JETSON_BOOT_TIMEOUT" "back up" \
+    || die 4 "it went down but has not returned after ${JETSON_BOOT_TIMEOUT}s.
+  This is the bad case: a reboot that did not come back needs a physical
+  jack cycle. Check the board LED before assuming it is dead."
+
+  readiness
+  (( WARNS )) && say "jetson: rebooted, with ${WARNS} warning(s) above." || say "jetson: rebooted and ready."
+  return 0
+}
+
+cmd_halt() {
+  # Argument validation FIRST: a typo must be reported as a typo, not spend
+  # seconds probing networks and then vanish into an "already down" exit 0.
+  (( $# > 1 )) && die 64 "'jetson halt' takes at most --yes"
+  [[ -n ${1:-} && ${1:-} != --yes ]] && die 64 "'jetson halt' accepts only --yes, got '${1}'"
+
+  link_state
+  case $LINK in
+    (down)
+      if [[ $_MWR_ROUTE == ts ]]; then
+        # Over the tailnet a dead probe can be a cold WireGuard path or a
+        # relay stall, and every LAN-side disambiguator (nolink/noname/stale)
+        # is unreachable from here.  "already down" is exactly the lie that
+        # gets a live rootfs unplugged -- refuse to certify it from afar.
+        die 2 "the tailscale route stopped answering, so the board's state is UNKNOWN.
+  It may well be running. Do NOT have anyone pull the plug on this word alone;
+  verify from the board's own LAN (or its LED) first."
+      fi
+      say "jetson: already down."
+      clear_stale
+      return 0 ;;
+    (nolink)
+      # NOT "already down".  A Mac that is off the LAN proves nothing about the
+      # board, and this is the one-way door: guessing here is how a running
+      # rootfs gets unplugged mid-write.
+      die 2 "this Mac is not on the board's network, so the board's state is UNKNOWN:
+  ${LINK_ERR}
+  It may well be running. Do NOT pull the plug. Fix the link here, then retry." ;;
+    (auth)
+      die 2 "reached an sshd but could not log in, so the board's state is UNKNOWN. Refusing to guess:
+  ${LINK_ERR}" ;;
+    (stale)
+      # Deliberately NOT exit 0.  A stale forward tells us nothing about the
+      # board, and reporting "off" here is exactly how a running rootfs gets
+      # unplugged mid-write.
+      die 2 "${JETSON_TUNNEL_ADDR}:${JETSON_TUNNEL_PORT} is held by a dead forward, so the board's state is UNKNOWN.
+  It may still be running. Do NOT pull the plug. Check the board LED, or run
+  'jetson status' again in a minute." ;;
+    (noname)
+      die 2 "the name does not resolve, so the board's state is UNKNOWN:
+  ${LINK_ERR}
+  It may be off already - or running with mDNS confused. Check the board LED
+  before touching power; 'jetson status' will say NONAME while this lasts." ;;
+  esac
+
+  # A halt cannot be undone from here, so make the caller say so explicitly.
+  # `[[ -t 0 ]]` distinguishes a human at a terminal from Raycast or a script,
+  # which must never trip a one-way door by accident.
+  if [[ ${1:-} != --yes ]]; then
+    if [[ -t 0 ]]; then
+      [[ $_MWR_ROUTE == ts ]] && \
+      say "jetson: you are on the REMOTE (tailscale) route - by definition not on the"
+      [[ $_MWR_ROUTE == ts ]] && \
+      say "        board's LAN. The recovery replug will need someone AT the board."
+      say "jetson: HALT is one-way. Wi-Fi has no Wake-on-LAN and there is no BMC,"
+      say "        so after this the ONLY way back is to unplug the DC jack, wait"
+      say "        10s and plug it in again. 'jetson reboot' is the remote-safe one."
+      print -n -- "        type YES to continue: "
+      local ans; read -r ans
+      [[ $ans == YES ]] || die 64 "aborted - nothing was changed."
+    else
+      die 64 "'jetson halt' is one-way and this is not a terminal. Pass --yes if you mean it."
+    fi
+  fi
+
+  say "jetson: asking it to stop safely and halt (${JETSON_SHUTDOWN_CMD})..."
+  local out rc
+  out=$("$SSH" -o BatchMode=yes -o ConnectTimeout="$JETSON_SSH_TIMEOUT" \
+        -- "$JETSON_HOST" "sudo -n ${JETSON_SHUTDOWN_CMD}" 2>&1)
+  rc=$?
+
+  # Positive confirmation FIRST.  The wrapper prints HALTING only after the
+  # safety hook returned success -- and once it has, the halt is already
+  # scheduled, so no stray stderr may talk us into reporting a refusal.
+  # Only when the confirmation is absent do we classify the failure.
+  if [[ $out != *"HALTING"* ]]; then
+    # sudo(1) exits 1 for "not allowed" AND passes through the command's own
+    # exit status otherwise, so the code cannot separate the cases.  Classify
+    # stderr instead.
+    case $out in
+      (*"a password is required"*|*"not allowed to execute"*|*"a terminal is required"*)
+        die 3 "the Jetson refused it: ${out}
+  -> install /etc/sudoers.d/10-mwr (run: sudo sh ~/mwr-setup.sh on the board)" ;;
+      (*"command not found"*|*"No such file or directory"*)
+        die 3 "${JETSON_SHUTDOWN_CMD} is not installed on the Jetson: ${out}
+  -> install the safe-shutdown wrapper first; refusing to halt without it." ;;
+      (*"SAFE-STOP-FAILED"*)
+        die 3 "the robot did NOT reach a safe stop, so the Jetson refused to halt:
+  ${out}
+  -> it is still running on purpose. Investigate before cutting power." ;;
+    esac
+    die 3 "no HALTING confirmation from ${JETSON_SHUTDOWN_CMD} (ssh rc=${rc}):
+  ${out}
+  -> refusing to claim it is shutting down."
+  fi
+
+  print -n -- "jetson: safe stop confirmed; waiting up to ${JETSON_HALT_TIMEOUT}s for it to go"
+  if ! wait_for gone "$JETSON_HALT_TIMEOUT" "link dropped"; then
+    die 4 "it accepted the shutdown but is still answering after ${JETSON_HALT_TIMEOUT}s.
+  Do NOT pull the plug. Check:  jetson ssh systemctl list-jobs"
+  fi
+
+  # Release the port so the NEXT boot can bind its tunnel.
+  clear_stale
+  say "jetson: halted. It will NOT come back until the DC jack is cycled."
+  return 0
+}
+
+cmd_ssh() {
+  link_state
+  case $LINK in
+    (up) ;;
+    (down)  die 1 "not reachable - the board looks powered off. Plug the DC jack in, then: jetson on" ;;
+    (noname) die 1 "the name does not resolve - board off/booting, or this Mac on a different network. Try: jetson on" ;;
+    (nolink) die 2 "this Mac cannot reach the board's network, so it is not known to be off: ${LINK_ERR}" ;;
+    (stale) die 2 "something answers on ${JETSON_TUNNEL_ADDR}:${JETSON_TUNNEL_PORT} but it is not a live Jetson. Wait a moment, then 'jetson status'." ;;
+    (auth)  die 2 "could not log in: ${LINK_ERR}" ;;
+  esac
+  # Hand over completely.  ConnectTimeout is forced because ~/.ssh/config
+  # leaves it unset -- verify with: ssh -G jetson | grep connecttimeout
+  exec "$SSH" -o ConnectTimeout="$JETSON_SSH_TIMEOUT" -- "$JETSON_HOST" "$@"
+}
+
+usage() {
+  say "usage: jetson [command]
+
+  on        Start work. Verifies the link and reports dev-readiness.
+            The board is kept powered 24/7, so this normally succeeds at once.
+  off       End work. Stops running workloads and LEAVES THE MACHINE UP, which
+            is what keeps the next 'jetson on' instant. Not a power-off.
+  reboot    Restart, via the safe-stop wrapper ${JETSON_REBOOT_CMD}.
+            Waits for it to go AND to come back. Safe to do remotely.
+  halt      Real power-off, via ${JETSON_SHUTDOWN_CMD}.
+            ONE-WAY: Wi-Fi has no Wake-on-LAN and there is no BMC, so getting
+            back needs an unplug/replug of the DC jack. Asks for confirmation;
+            pass --yes to skip it.
+  status    The same truth, instantly. Never waits, never changes anything.
+  ssh [..]  Shell, or run one command. Pre-flights the link first.
+
+exit codes
+  0 ok | 1 down | 2 state unknown (stale / auth / this Mac off-LAN / name not resolving)
+  3 shutdown refused | 4 timeout | 5 missing local tool | 64 usage
+
+environment (defaults shown)
+  JETSON_HOST=${JETSON_HOST}            ssh_config(5) alias
+  JETSON_TUNNEL_ADDR=${JETSON_TUNNEL_ADDR}   resolved by mDNS, immune to DHCP changes
+  JETSON_TUNNEL_PORT=${JETSON_TUNNEL_PORT}
+  JETSON_SHUTDOWN_CMD=${JETSON_SHUTDOWN_CMD}
+  JETSON_REBOOT_CMD=${JETSON_REBOOT_CMD}
+  JETSON_REPO=${JETSON_REPO}
+  JETSON_BOOT_TIMEOUT=${JETSON_BOOT_TIMEOUT}   JETSON_HALT_TIMEOUT=${JETSON_HALT_TIMEOUT}
+  JETSON_POLL_INTERVAL=${JETSON_POLL_INTERVAL}     JETSON_SSH_TIMEOUT=${JETSON_SSH_TIMEOUT}
+  JETSON_SKEW_WARN=${JETSON_SKEW_WARN}       JETSON_DISK_WARN=${JETSON_DISK_WARN}
+  JETSON_UPTIME_WARN=${JETSON_UPTIME_WARN}    under this uptime a restart is called out
+  JETSON_CLEAR_STALE=${JETSON_CLEAR_STALE}          (tunnel route only; never acts on port 22)
+  JETSON_TS_NAME=${JETSON_TS_NAME}           board's machine name on the tailnet
+  JETSON_TS_FALLBACK=${JETSON_TS_FALLBACK}              0 = never auto-switch to the tailscale route"
+}
+
+# ---------------------------------------------------- tailscale fallback ---
+# Off the home LAN (cafe Wi-Fi, tethering), minicar.local cannot resolve --
+# mDNS is link-local.  If a tailnet exists and the board is online on it,
+# transparently retarget every probe and ssh call at the board's MagicDNS
+# name; ~/.ssh/config's "Host *.ts.net" block carries the key and options.
+# Explicit JETSON_HOST / JETSON_TUNNEL_ADDR pins always win, and when the
+# tailnet cannot vouch for the board either, the normal nolink/noname
+# diagnosis stands untouched.
+ts_fallback() {
+  [[ $JETSON_TS_FALLBACK == 1 ]] || return 0
+  [[ -n $_MWR_ADDR_PINNED || -n $_MWR_HOST_PINNED || -n $_MWR_PORT_PINNED ]] && return 0
+  # Cheap pre-test: is the mDNS route alive?  ~ms at home.  Away, nc's -G/-w
+  # bound only the connect -- the .local lookup itself belongs to
+  # mDNSResponder and can add a few seconds before giving up.
+  "$NC" -z -G 2 -w 2 "$JETSON_TUNNEL_ADDR" "$JETSON_TUNNEL_PORT" >/dev/null 2>&1 && return 0
+  local ts pick
+  for ts in ${commands[tailscale]:-} /usr/local/bin/tailscale /opt/homebrew/bin/tailscale \
+            /Applications/Tailscale.app/Contents/MacOS/Tailscale; do
+    [[ -x $ts ]] && break
+  done
+  [[ -x $ts ]] || return 0
+  # The whole query runs under python with a hard 5s deadline: a wedged
+  # tailscaled must never hang 'jetson status', whose contract is "instant".
+  # BackendState must be Running -- a disconnected client keeps a stale
+  # netmap whose peers still read Online.  The peer is then addressed by
+  # tailnet IP (probes need no DNS, MagicDNS or not) while ssh gets the FQDN
+  # so the "Host minicar.*.ts.net" block carries the key.
+  # TAILSCALE_BE_CLI: the macOS binary guesses GUI-vs-CLI mode from TERM/PS1;
+  # force CLI so this also works from Raycast's non-interactive shell.
+  pick=$(/usr/bin/python3 -c '
+import json, os, subprocess, sys
+try:
+    out = subprocess.run([sys.argv[1], "status", "--json"],
+                         capture_output=True, timeout=5,
+                         env=dict(os.environ, TAILSCALE_BE_CLI="1")).stdout
+    st = json.loads(out)
+except Exception:
+    sys.exit(0)
+if st.get("BackendState") != "Running":
+    sys.exit(0)
+want = sys.argv[2].lower()
+for p in (st.get("Peer") or {}).values():
+    if p.get("HostName", "").lower() == want:
+        if not p.get("Online"):
+            print("offline")
+        else:
+            ips = p.get("TailscaleIPs") or []
+            fqdn = p.get("DNSName", "").rstrip(".")
+            if ips and fqdn:
+                print(ips[0] + " " + fqdn)
+        break
+' "$ts" "$JETSON_TS_NAME" 2>/dev/null)
+  [[ -n $pick ]] || return 0
+  if [[ $pick == offline ]]; then
+    # Sharper than the mDNS guesswork: the tailnet control plane itself says
+    # the BOARD is offline.  Do not switch routes; do surface the fact.
+    print -ru2 -- "jetson: (tailscale says '${JETSON_TS_NAME}' is offline - the board is down, or off the internet)"
+    return 0
+  fi
+  JETSON_TUNNEL_ADDR=${pick%% *}
+  JETSON_HOST=${pick##* }
+  _MWR_ROUTE=ts
+  # stderr on purpose: `jetson ssh <cmd>` stdout must stay byte-clean for pipes
+  print -ru2 -- "jetson: route = tailscale (${JETSON_HOST}) - minicar.local is not reachable from here"
+}
+
+# --------------------------------------------------------------- dispatch ---
+# `shift` with $#==0 is an error in zsh ("shift count must be <= $#"), so the
+# shift is guarded -- otherwise bare `jetson` prints a spurious shell error.
+sub=${1:-status}
+(( $# )) && shift
+
+# Every subcommand that talks to the board gets the route decision first.
+# require_local runs before it: ts_fallback dereferences $NC, and announcing
+# a route only to die on a missing prerequisite would be a lie with a flourish.
+case $sub in (on|off|reboot|halt|status|ssh) require_local; ts_fallback ;; esac
+
+case $sub in
+  (on)     (( $# )) && die 64 "'jetson on' takes no arguments";     require_local; cmd_on ;;
+  (off)    (( $# )) && die 64 "'jetson off' takes no arguments";    require_local; cmd_off ;;
+  (reboot) (( $# )) && die 64 "'jetson reboot' takes no arguments"; require_local; cmd_reboot ;;
+  (halt)   require_local; cmd_halt "$@" ;;
+  (status) (( $# )) && die 64 "'jetson status' takes no arguments"; require_local; cmd_status ;;
+  (ssh)    require_local; cmd_ssh "$@" ;;
+  (-h|--help|help) usage ;;
+  (*) print -ru2 -- "jetson: unknown subcommand '${sub}'"; usage; exit 64 ;;
+esac

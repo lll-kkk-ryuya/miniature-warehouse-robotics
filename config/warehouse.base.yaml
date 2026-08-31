@@ -19,6 +19,14 @@ safety:
   # 既定 1.0s は R-39（doc07:249）の AMCL 5-10Hz=100-200ms 正常間隔の ~5×（正常 cadence で誤発火しない）。
   # 正本 = doc12 §「Emergency Guardian — pose freshness guard」。TODO: Phase 2 実機 AMCL レートで確定。
   pose_freshness_timeout: 1.0   # s
+  # OQ-11 / doc23 A-5③ 変位ゲート: AMCL は motion-gated（update_min_d/_a 未満の静止で沈黙）
+  # ゆえに「駐機中の沈黙」は正常。独立ソース（wheel odom）で「動きうるか」を判定し、
+  # 動いていないときだけ pose_stale を抑止する（走行中の発火時刻は CURRENT と一致＝非緩和）。
+  # odom 不明/stale/非有限は fail-closed（ゲート開＝CURRENT 挙動）。正本 = doc23 §A-5③。
+  pose_freshness_motion_epsilon: 0.10   # m, = 2 x nav2_params.yaml:58 update_min_d(0.05)
+  pose_freshness_angular_epsilon: 0.4   # rad, = 2 x nav2_params.yaml:57 update_min_a(0.2)
+  # NOTE: 速度ゲートのキーは持たない（doc23 A-5③ は変位ゲート形のみ許容）。
+  odom_freshness_timeout: 0.5   # s, これを超えた odom は不明扱い→ゲート fail-closed
   # #44: BatteryState.percentage の driver スケール。percent=0..100 / fraction=0..1(REP-147)。
   # 既定 percent は fail-safe（fraction ドライバを percent と読むと誤 estop=安全側、見逃しは起きない）。
   # State Cache・Emergency Guardian が共有 helper(warehouse_interfaces.safety.normalize_battery_percent)
@@ -35,17 +43,17 @@ cycle:
   mode_c_seconds: 5   # Mode C (open-rmf): コスト最小 → 待機 ~3s（doc08:128）
 
 # 倉庫レイアウト上の地点キー。キーは 08-llm-bridge-common.md の LOCATIONS と完全一致させる
-# （Policy Gate の known_locations 検証用）。座標は暫定値（Phase 2 地図確定後に実測で確定）。
+# （Policy Gate の known_locations 検証用）。座標は暫定値（Phase 2 地図確定後に実測で確定）。全キーは Nav2 走行目標点＝shipped map の free 空間に置く（tests/unit/test_known_locations_navigable.py が固定）。
 locations:
-  shelf_1: {x: 0.2, y: 0.3}
-  shelf_2: {x: 0.7, y: 0.3}
-  shelf_3: {x: 1.2, y: 0.3}
+  shelf_1: {x: 0.2, y: 0.57}   # 棚前 docking 点（棚 box 北面+0.12m。box 位置は layout.SHELF_STANDOFF で導出＝棚中心を goal にしない）
+  shelf_2: {x: 0.7, y: 0.57}   # 同上
+  shelf_3: {x: 1.2, y: 0.57}   # 同上
   berth_A: {x: 0.2, y: 0.8}
   berth_B: {x: 0.7, y: 0.8}
-  shipping_station: {x: 0.2, y: 0.1}
-  charging_station: {x: 1.2, y: 0.1}   # 2台共有・先着順
-  retreat_A: {x: 0.45, y: 0.85}        # 通路A yield 退避先（doc08 LOCATIONS と一致）
-  retreat_B: {x: 0.95, y: 0.85}        # 通路B yield 退避先
+  shipping_station: {x: 0.45, y: 0.12}   # 通路A南口（棚南帯 140mm は robot 径 150mm 未満＝棚直下は走行目標にできない）
+  charging_station: {x: 1.5, y: 0.12}    # 2台共有・先着順。棚3の東側オープン領域（同上の理由で棚直下から移設）
+  retreat_A: {x: 0.45, y: 0.78}        # 通路A yield 退避先（doc08 LOCATIONS と一致。北壁 inscribed 圏外）
+  retreat_B: {x: 0.95, y: 0.78}        # 通路B yield 退避先
 
 # Hermes Gateway 接続先（環境別に上書き必須）
 hermes:
@@ -126,3 +134,20 @@ mode_x_er:
 policy_gate:
   stale_after_s: 0.5         # s: robot_stale（dispatch 拒否・cancel/charging は許可）。上限=既定・より小のみ可
   unavailable_after_s: 2.0   # s: robot_unavailable（全コマンド拒否）。上限=既定・より小のみ可
+
+# runtime 速度帯（三層モデルの層② = docs/mode-m1/04-runtime-speed-limiter.md §2・裁定 = ADR-0012）。
+# additive / safe-OFF・既定 OFF＝未設定なら従来挙動（①起動基準値のみ）に落ちる（doc09:406 と同規律。
+# キー名は凍結契約ではない）。enabled=false のとき nav2_bringup.launch.py は speed_band_publisher を
+# 起動しない（subscription も publisher も作らない）。キー名は node の param 名と 1:1。
+# ⚠️ 帯の実値（m/s）は **ここで発明しない**: 最速段は S-SPEED 実測待ち（doc09:434 OQ-T1）、最遅段/
+# 安定段と保持窓は OQ-T2（同 :435）、v_floor は ADR-0012 §Open が未決。下のキーは実測確定後に env
+# overlay（config/<env>/warehouse.yaml）で供給する **プレースホルダ**でありコメントアウトのまま残す。
+# enabled=true で帯値/保持窓が欠けていれば node が起動時に BandConfigError で落ちる（fail-closed）。
+speed_bands:
+  enabled: false             # true にする前に 3 帯すべての実値と hold_timeout_s を overlay で与えること
+  # band_slowest_mps: <OQ-T2 実測>   # 最遅段（0本・グー）。v_floor 以上・stable 以下
+  # band_stable_mps:  <OQ-T2 実測>   # 安定段（4〜5本・パー）= 未検出時の既定（doc09 T-5）
+  # band_fastest_mps: <OQ-T1 実測>   # 最速段（1〜3本）。①以下（publisher が min でクランプ）
+  # v_floor_mps: 0.05                # 例示値（ADR-0012 §Open）。実測の「動く最遅速度」で確定
+  # publish_rate_hz: 20.0            # 20Hz 周期送出（ADR-0012 決定 5）。node 既定と同値
+  # hold_timeout_s: <OQ-T2 実測>     # T-5 保持窓。node 既定 0.0 は fail-closed（必ず与える）

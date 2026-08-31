@@ -46,8 +46,8 @@
 - [ ] カメラ・スタンド・LED を発注
 - [ ] ホームセンターでベースボード素材を購入
 - [ ] Mac に Docker Desktop をインストール
-- [ ] Docker 内に ROS 2 Jazzy + Gazebo Harmonic 環境を構築
-  - 推奨イメージ: `tiryoh/ros2-desktop-vnc:jazzy`（ARM64対応、VNC付き）
+- [ ] Docker 内に ROS 2 Humble + Gazebo 環境を構築（Gazebo の版は ADR-0008 §Open）
+  - 推奨イメージ: `tiryoh/ros2-desktop-vnc:humble`（ARM64対応、VNC付き。旧 `:jazzy` の GO 実績は Jazzy+Harmonic のもの）
 - [x] ~~**micro-ROS の ROS 2 Jazzy 対応状況を確認**~~ → **確認済み（2026-05-22）。Jazzy対応確定**
 - [ ] RunPod アカウント登録（クラウドGPU用）
 - [ ] Anthropic API キー取得（Claude用）
@@ -64,8 +64,8 @@
 ### 完了条件
 
 - 全機材の発注完了
-- Mac 上で Docker + ROS 2 Jazzy + Gazebo Harmonic が動作する
-- **ROS 2 バージョンが確定している** → Jazzy に確定（micro-ROS Jazzy対応確認済み 2026-05-22）
+- Mac 上で Docker + ROS 2 Humble + Gazebo が動作する（Humble での再スパイク必須。ADR-0008 §Open）
+- **ROS 2 バージョンが確定している** → **Humble に確定**（2026-08-05 ADR-0008。旧: Jazzy 確定 2026-05-22）
 - 各LLM APIが呼び出せることを確認
 
 ---
@@ -141,7 +141,7 @@
 
 ### リスク
 
-- micro-ROS の Jazzy 対応が不完全な場合 → Humble にフォールバック
+- ~~micro-ROS の Jazzy 対応が不完全な場合 → Humble にフォールバック~~ → ADR-0008 で Humble が本線化（本リスクは解消）
 - WiFi遅延が大きい場合 → USB有線接続を検討
 
 ---
@@ -358,3 +358,25 @@
 - [tiryoh/ros2-desktop-vnc — Docker Hub](https://hub.docker.com/r/tiryoh/ros2-desktop-vnc) — 参照日: 2026-05-21
 - [Nav2 Documentation](https://docs.nav2.org/) — 参照日: 2026-05-19
 - [SLAM Toolbox — GitHub](https://github.com/SteveMacenski/slam_toolbox) — 参照日: 2026-05-19
+
+---
+
+## 【2026-08-07 追記】単騎（1台）先行によるフェーズ再定義（ADR-0006）
+
+[ADR-0006](../adr/0006-single-bot-first.md) により今回のフェーズは**ロボット1台**で実装する。本 doc の Phase 表は無編集で残し、読み替えを以下に定める:
+
+- **Phase 2 後半の「2台目ハードウェアセットアップ」「micro-ROS Agent 2台同時接続」「Multi-Robot Costmap Layer」「2台同時走行での衝突回避」と完了条件「2台が互いを認識して衝突回避できる」は、後続の 2台復帰フェーズへ繰延。** Phase 2 の今回の完了条件は「実機1台の SLAM + Nav2 自律走行」。
+- **Phase 3（2台協調・交渉・:182-238）は丸ごと 2台復帰フェーズ**の定義として凍結保存する（doc/実装とも削除しない）。
+- マイルストーン「AIが2台を指揮できた」（:333）に対応する今回の単騎マイルストーンは「**実機1台が LLM 司令官の指令＋手挙げ召喚（[mode-x-er/09](../mode-x-er/09-hand-raise-summon.md)）で自律走行する**」。
+- `# TODO(ユーザー判断)` :225 の「モードA/Bが動作することを初回公開の必須ゲートとする」は1台実機では満たせない。ゲート再定義（1台版に置換 or sim 先行リリースのみ公開）は ADR-0006 Open。
+
+---
+
+## 【2026-08-18 追記】部屋スケール運用に伴う Phase 1 / Phase 2 の読み替え（ADR-0009）
+
+[ADR-0009](../adr/0009-m1-room-scale-operation.md)（オペレーター決定 2026-08-18）により、**M1 実機はミニチュアジオラマではなく実際の部屋（room scale）を走る**。既存の Phase 定義は編集せず（[#165 教訓](../dev/03-retrospectives.md)）、以下の読み替えを適用する:
+
+- **部屋の SLAM 地図取得が実機側の前提になる。** 地図生成は現行 Phase 2 前半（:155）に置かれているが、**`KNOWN_LOCATIONS` の 9 座標を部屋の実測 waypoint へ差し替える前提**がこの地図であるため、**Phase 1 の実機立ち上げと地続きの作業**として扱う（9 キー自体は凍結・改名しない＝ADR-0009 Decision 5）。
+- **Phase 1 のジオラマ造作タスクは M1 フェーズでは非適用。** :132「ベースボード塗装・通路テープ貼り」および :125「ロボットの実寸を計測 → **通路幅を最終決定**」の後半（通路幅の決定）は、ジオラマを走らないため本フェーズでは行わない（**実寸計測そのものは実施**——footprint polygon 化に必要＝[23 F-5](23-perception-and-localization.md)）。ゲート定義は消さず「本フェーズ N/A」として残す（ADR-0006 と同じ扱い）。
+- **ジオラマ由来の暫定値は実機については supersede される**（`locations` の 9 座標・実機用 `map.pgm`・通路幅表）。**sim 側は不変**（ジオラマのまま回帰環境として維持＝ADR-0009 帰結 ④）。
+- **初回公開ゲートの再定義は引き続き Open。** :225 の「モードA/Bが動作することを初回公開の必須ゲートとする」は [ADR-0006](../adr/0006-single-bot-first.md) で既に Open だが、**部屋運用でジオラマ前提の「倉庫デモ」自体が測れなくなる**ため、さらに変質する（ADR-0009 Open）。

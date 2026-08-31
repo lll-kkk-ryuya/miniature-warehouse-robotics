@@ -16,7 +16,7 @@ it does **not** prove the EasyFullControl + in-process action-client end-to-end
     docs/architecture/03-software-architecture.md:97
   - 凍結 location 名キー集合 ``KNOWN_LOCATIONS``（座標 {x,y} は凍結でなく config 暫定値・
     Phase 2 実測で確定）: ws/src/warehouse_interfaces/warehouse_interfaces/locations.py:23
-    / config/warehouse.base.yaml:35-44
+    / config/warehouse.base.yaml:47-56
   - グローバル frame ``"map"``（TF tree: map → bot{n}/odom → bot{n}/base_link、両ロボット
     共有の単一 map 根）: ws/src/warehouse_description/warehouse_description/robot_dimensions.py:7
 

@@ -28,10 +28,10 @@ from __future__ import annotations
 
 import json
 import sys
-import tomllib
 from pathlib import Path
 from typing import Any
 
+import pytest
 from warehouse_llm_bridge.robotics.composition import (
     PluginCodeRegistry,
     PluginComposition,
@@ -116,6 +116,10 @@ class TestManifestPromotion:
             assert (PLUGIN_DIR / relative).is_file(), f"declared fixture missing: {relative}"
 
     def test_package_version_matches_manifest(self) -> None:
+        # ``tomllib`` is stdlib only on Python >= 3.11. ROS 2 Humble / Ubuntu 22.04 ships
+        # Python 3.10 (ADR-0008), where this one assertion skips instead of breaking
+        # collection for the whole module (precedent: test_duckdb_join.py importorskip).
+        tomllib = pytest.importorskip("tomllib")
         pyproject = tomllib.loads((PLUGIN_DIR / "pyproject.toml").read_text(encoding="utf-8"))
         assert pyproject["project"]["version"] == load_manifest().version
 

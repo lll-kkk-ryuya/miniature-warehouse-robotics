@@ -21,6 +21,8 @@ allowed-tools: Read, Grep, Glob, Bash, Write
 - `docs/productization/layer-l4-detail.html` — L4 Super-Box 内部（入れ子 sub-box/seam）＋ Mode A/B/C・Mode X-ER・Mode X-ER-VLA 詳細図。**リッチ・コンポーネント語彙の参照元**（§4）
 - `docs/productization/layer-l3-detail.html` — L3 Planning Core（core+plugin・stage）
 - `docs/mode-x-er/mode-x-er-explainer.html` — **per-mode explainer**（1 モード 1 自己完結 HTML）の雛形例
+- `docs/architecture/robot-architecture-tree.html` — **ディレクトリツリー型（architecture tree）**の雛形例（§5）。
+  companion フロー図 `perception-localization-flow.html` と navbar で対（tree=構造地図 / flow=データフロー）
 
 雛形: [`template/dark-explainer.html`](template/dark-explainer.html)（このスキル同梱・コピー元）。
 レイヤ/データフロー/モード分岐など**込み入った図**は、雛形より上記の `layer-l4-detail.html` /
@@ -166,6 +168,8 @@ PY
   （暗く＋中央取消線）、**一部使用**は `.role` テキストラベル＋文章で範囲明記、**optional** はラベル。
   box ごとに個別付与（図全体へグローバル適用しない）。例: `layer-l4-detail.html` §5.0 /
   `mode-x-er-explainer.html` §2。
+- **ディレクトリツリー（機能ツリー）**: 「何があるか・何を採らないか」の全体地図を等幅の
+  ディレクトリ型ツリー（`pre.tree`）で描く。CSS・構造規約は §5。例: `robot-architecture-tree.html`。
 
 ### 4.3 引用規約（この repo 固有・footer に明記する）
 
@@ -182,9 +186,65 @@ PY
 - 大きな改訂後は **敵対検証**（citation を出典 doc:line で裏取り＋ completeness 批評）を
   かけてから「完了」とする（[docs-first.md §引用](../../rules/docs-first.md)）。
 
+## 5. ディレクトリツリー型図解（architecture tree view）
+
+**「何があるか・何を採らないか」の全体地図（機能 inventory）** を、ファイルシステムの
+ディレクトリ構成のような等幅ツリー（`pre.tree`）で描くパターン。実証済みの完成例:
+`docs/architecture/robot-architecture-tree.html`（M1 単騎 01-08 機能ツリー。**構造の参照元**。
+配色のみ先行制作の独自値 — 新規ページは §カラーパレットの正準 `:root` に §5.2 の割当てで揃える）。
+
+### 5.1 使いどころ（flow 図との分業）
+
+- **tree = 構造の地図**: 機能領域を「番号付きディレクトリ」、実体（ノード/デバイス/トピック）を
+  「ファイル」として分類・一覧する。**採らないもの（✗）を理由つきで残す**のが本質的価値。
+- **flow = データの流れ**: runtime のデータフローは companion の別 HTML に分離し、`.navbar` で
+  相互リンクする（例: `robot-architecture-tree.html` ①tree ↔ `perception-localization-flow.html`
+  ②flow）。1 枚に両方を詰め込まない。
+
+### 5.2 コンポーネント（正準 `:root` で駆動する tree CSS）
+
+```css
+/* tree view — §カラーパレットの :root に追記して使う */
+pre.tree{font-family:"SF Mono",Menlo,Consolas,monospace;font-size:12.3px;
+  line-height:1.62;white-space:pre;color:var(--ink)}
+.card.tree-card{overflow-x:auto}   /* ツリーは折返さず横スクロール */
+/* カテゴリ色 = 短いクラスをアクセント変数へ割当（意味は凡例 .legend で固定） */
+.t1{color:var(--box)} .t2{color:var(--sub)} .t3{color:var(--seam)}
+.t4{color:var(--plugin)} .t5{color:var(--teal)} .t6{color:var(--red)}
+.tx{color:var(--faint);opacity:.85}       /* ✗ 不採用（理由つき残置） */
+.td{color:var(--muted)}                   /* 注記・正本併記・[virtual]/[external] */
+.tn{color:var(--sub);font-weight:700}     /* ★NEW/TARGET */
+.tw{color:var(--yellow);font-weight:700}  /* ⚠未確定/ドリフト */
+```
+
+罫線は `├──`/`│`/`└──`。行内のデータフローは `─▶ /topic` の最小限に留める
+（本格的な流れは §5.1 の flow 側へ）。
+
+### 5.3 構造規約（レシピ）
+
+1. **トップレベル＝番号付きディレクトリ**（例 `01_Sensors/`〜`08_Human_Interaction/`）。番号で
+   読み順・レイヤ順を固定し、凡例 `.legend` の色と 1:1 に対応させる。
+2. **1 行 = 1 ノード + 正本併記**: 行末 or 直下に `正本: docXX §Y`（`.td`）。file:line の
+   裏取りは §0-3 どおり（記憶で書かない）。
+3. **✗ 不採用を消さず残す**: `.tx` ＋理由 1 行（「なぜ無いか」も地図の情報。例:
+   `robot-architecture-tree.html` の GNSS / ros2_control / micro-ROS）。
+4. **状態マーカーは固定 4 種**: `★NEW/TARGET`（`.tn`）・`⚠未確定/ドリフト`（`.tw`）・
+   `✗ 不採用`（`.tx`）・`[virtual]/[external]` 等の属性注記（`.td`）。凡例に必ず載せる。
+5. **横断帯（cross-cutting）はツリーへ入れない**: Observability のように全ディレクトリへ跨る層は
+   別カードへ出し、「run_id / gen_id 等の key join で結合」のような**関係の記述**に留める。
+6. **差分表で締める**: 一般形（教科書構成）との差分を `一般形 / 実構成での裁定 / 正本` の
+   3 列表で末尾にまとめる（「なぜこの形か」を残す）。
+7. **`.navbar` を冒頭に**: companion（flow・詳細カタログ）への相互リンク。現在頁は
+   `class="here"` で示す。
+
+### 5.4 検証（§2/§4.4 に加えて）
+
+- `white-space:pre` ゆえ**罫線の桁揃え**を目視確認（等幅で崩れない・折返し無し）。
+- ツリーを含むカードに `overflow-x:auto`（狭幅では横スクロールにする）。
+
 ## References
 - 同梱雛形: [`template/dark-explainer.html`](template/dark-explainer.html)
-- 完成例: `docs/productization/box-taxonomy.html` / `docs/productization/layer-l4-detail.html`（リッチ語彙の参照元）/ `docs/productization/layer-l3-detail.html` / `docs/mode-x-er/mode-x-er-explainer.html`（per-mode explainer）
-- リッチ・コンポーネント語彙と図パターン: 本書 §4
+- 完成例: `docs/productization/box-taxonomy.html` / `docs/productization/layer-l4-detail.html`（リッチ語彙の参照元）/ `docs/productization/layer-l3-detail.html` / `docs/mode-x-er/mode-x-er-explainer.html`（per-mode explainer）/ `docs/architecture/robot-architecture-tree.html`（tree view・§5）
+- リッチ・コンポーネント語彙と図パターン: 本書 §4 ／ ディレクトリツリー型: 本書 §5
 - 正本ルール: [docs-first.md](../../rules/docs-first.md) / [consistency-check.md](../../rules/consistency-check.md)
 - Codex 版: `.agents/skills/html-explainer/SKILL.md`（同手順の簡約英語版・同じ雛形を参照）

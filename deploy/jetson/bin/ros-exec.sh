@@ -14,7 +14,7 @@
 # =============================================================================
 set -euo pipefail
 
-ROS_DISTRO="${ROS_DISTRO:-jazzy}"
+ROS_DISTRO="${ROS_DISTRO:-humble}"
 ros_setup="/opt/ros/${ROS_DISTRO}/setup.bash"
 
 if [[ ! -f "${ros_setup}" ]]; then

@@ -23,7 +23,15 @@ setup(
     # runtime node; pip-only like langfuse/openai (not a rosdep key). Today the composition
     # subtree is spike-isolated (no entry_point imports it), so it only runs under pytest where
     # pluggy is a transitive dep — pinned here so a pytest-less runtime install does not ImportError.
-    install_requires=["setuptools", "langfuse>=4.9,<5", "openai>=1.0,<2", "pluggy>=1,<2"],
+    # typing_extensions: `Self` on py3.10 (Jetson/Humble, ADR-0008 / #563) — pydantic v2
+    # already depends on >=4.x, so this pins an existing transitive dep (no new weight).
+    install_requires=[
+        "setuptools",
+        "langfuse>=4.9,<5",
+        "openai>=1.0,<2",
+        "pluggy>=1,<2",
+        "typing_extensions>=4",
+    ],
     zip_safe=True,
     maintainer="kawaguchiryuya",
     maintainer_email="ryu3124ruyu@gmail.com",
