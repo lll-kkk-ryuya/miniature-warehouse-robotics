@@ -25,8 +25,8 @@
 - `scripts/slice3_live_precheck.sh`
   - `pytest -p no:cacheprovider` で別 worktree の cache warning を回避。
   - precheck 後の launch command に `WAREHOUSE_CONFIG_DIR=/ws/config`、
-    `WAREHOUSE_ENV=dev`、sim 録画限定
-    `WAREHOUSE__SAFETY__POSE_FRESHNESS_TIMEOUT=999`、initialpose re-seed 手順を表示。
+    `WAREHOUSE_ENV=dev`、initialpose re-seed 手順を表示。
+    （pose freshness の 999 緩和は削除済＝既定 1.0s。駐機中の AMCL 沈黙は odom 変位ゲートが吸収する・doc23 A-5③）
 - `tests/e2e/README.md`
   - slice3 live runbook に同じ env / initialpose re-seed 手順を追記。
 
@@ -79,7 +79,7 @@
    ```bash
    export WAREHOUSE_CONFIG_DIR=/ws/config
    export WAREHOUSE_ENV=dev
-   export WAREHOUSE__SAFETY__POSE_FRESHNESS_TIMEOUT=999
+   # pose freshness は既定 1.0s のまま（駐機中の沈黙は odom 変位ゲートが吸収する・doc23 A-5③）
    ros2 launch warehouse_bringup bringup.launch.py llm:=false sim:=true
    ```
 

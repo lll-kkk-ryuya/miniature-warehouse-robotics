@@ -2,7 +2,7 @@
 # Build (if needed) and run the reusable `mwr-sim` Gazebo+Nav2 cockpit container.
 #
 # Idempotent — re-runnable any day:
-#   * builds the mwr-sim:jazzy image if it is missing (deploy/dev/Dockerfile),
+#   * builds the mwr-sim:humble image if it is missing (deploy/dev/Dockerfile),
 #   * creates the container if it is missing (repo mounted rw at /ws, noVNC localhost-bound),
 #   * starts it if it exists but is stopped,
 #   * then prints the noVNC URL.
@@ -17,7 +17,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-IMAGE="${MWR_SIM_IMAGE:-mwr-sim:jazzy}"
+IMAGE="${MWR_SIM_IMAGE:-mwr-sim:humble}"
 CONTAINER="${MWR_SIM_CONTAINER:-mwr-sim}"
 HOST_PORT="${MWR_SIM_PORT:-6080}"
 BIND="${MWR_SIM_BIND:-127.0.0.1}"

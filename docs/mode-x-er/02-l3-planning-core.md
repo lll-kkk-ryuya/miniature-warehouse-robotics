@@ -29,8 +29,8 @@ L3 は **実行可能状態の data へ変換する**。ただし最終実行許
 ```text
 red_box pixel=[420,310]
   -> homography
-  -> map(x=0.23, y=0.31)
-  -> shelf_1 に十分近い
+  -> map(x=0.23, y=0.55)
+  -> shelf_1（棚前 docking 点 (0.2, 0.57)・doc04 §走行目標点）に十分近い
   -> destination="shelf_1"
 ```
 
@@ -405,4 +405,15 @@ full L3 chain entry point `compile_raw_output`（`RawModelOutput -> ... -> froze
 
 ### choreography v2 仕様への前方リンク
 
-G5 デモ v2（bot1: red→帰還 / bot2: blue を **bot1 帰還完了後**に red→帰還）は、本節 v1 規範（離脱＝帰還完了依存）の適用例である。v2 本体仕様は [dev/08 追補 3](../dev/08-xer6-live-sim-x-lite-runbook.md) が正本（v1 の 2 タスク形＝[dev/08 §4](../dev/08-xer6-live-sim-x-lite-runbook.md) は機構検証ベースラインとして併存）。前提: home/帰還位置が `KNOWN_LOCATIONS`（[locations.py:11-23](../../ws/src/warehouse_interfaces/warehouse_interfaces/locations.py) の 9 地点・[config/warehouse.base.yaml:39-48](../../config/warehouse.base.yaml) と同期）に存在すること。既存の帰還先候補は `berth_A` / `berth_B`（2台の start berth＝[layout.py:39-40](../../ws/src/warehouse_sim/warehouse_sim/layout.py) `SPAWN_LOCATIONS`）。無い帰還位置が要る場合は `KNOWN_LOCATIONS` への **additive な contract 追加が先行**する（変更は contract change・[locations.py:8](../../ws/src/warehouse_interfaces/warehouse_interfaces/locations.py)）。（2026-07-11 追記）v2 本体仕様は [dev/08 追補 3](../dev/08-xer6-live-sim-x-lite-runbook.md) で確定した（t1–t5・帰還先= `berth_A`/`berth_B`・locations 追加なし。本節 v1 規範の適用例）。
+G5 デモ v2（bot1: red→帰還 / bot2: blue を **bot1 帰還完了後**に red→帰還）は、本節 v1 規範（離脱＝帰還完了依存）の適用例である。v2 本体仕様は [dev/08 追補 3](../dev/08-xer6-live-sim-x-lite-runbook.md) が正本（v1 の 2 タスク形＝[dev/08 §4](../dev/08-xer6-live-sim-x-lite-runbook.md) は機構検証ベースラインとして併存）。前提: home/帰還位置が `KNOWN_LOCATIONS`（[locations.py:11-23](../../ws/src/warehouse_interfaces/warehouse_interfaces/locations.py) の 9 地点・[config/warehouse.base.yaml:47-56](../../config/warehouse.base.yaml) と同期）に存在すること。既存の帰還先候補は `berth_A` / `berth_B`（2台の start berth＝[layout.py:47-48](../../ws/src/warehouse_sim/warehouse_sim/layout.py) `SPAWN_LOCATIONS`）。無い帰還位置が要る場合は `KNOWN_LOCATIONS` への **additive な contract 追加が先行**する（変更は contract change・[locations.py:8](../../ws/src/warehouse_interfaces/warehouse_interfaces/locations.py)）。（2026-07-11 追記）v2 本体仕様は [dev/08 追補 3](../dev/08-xer6-live-sim-x-lite-runbook.md) で確定した（t1–t5・帰還先= `berth_A`/`berth_B`・locations 追加なし。本節 v1 規範の適用例）。
+---
+
+## 【2026-08-09 追補】Visual Resolver の投影方式: CURRENT=homography（保存）/ TARGET=depth+TF（ADR-0007）
+
+俯瞰カメラ不使用（[ADR-0007](../adr/0007-no-overhead-camera-gesture-via-onboard-nn.md)）に伴う本 doc の読み替え:
+
+- **homography 経路（:135-151）は俯瞰カメラ前提の設計として保存**（削除しない）。本フェーズは calibration の `homography: []` により `NO_CALIBRATION` → unresolved → **0 dispatch の fail-closed が既定**（`visual_resolver/resolver.py` の既存挙動＝**実装無編集**）。
+- TARGET の pixel→map は `pixel(u,v)+depth → K 逆投影 → TF camera_optical→base_link→odom→map`。**valid polygon 検査・known location snap・0-dispatch 不変条件・confidence 合成は map 空間演算のため無編集で生存**する。
+- calibration artifact の逐語 5 field（:149）は形として保持。`homography` の扱い（空維持 or intrinsics/camera_frame の additive 追加）は**未決＝この追補では発明しない**（所有トラック判断）。`calibration_id ≡ camera_id`・配置規約は不変。
+- 新たな失敗モード: 投影が **AMCL pose 品質・TF freshness に従属**する（俯瞰は pose 非依存だった）。pose_stale 時の投影可否は [09](09-hand-raise-summon.md) / [architecture/23](../architecture/23-perception-and-localization.md) 側で扱う。
+

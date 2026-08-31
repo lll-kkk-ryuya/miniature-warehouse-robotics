@@ -14,7 +14,7 @@
 - topic: `/state_cache/snapshot`（std_msgs/String, 同一 JSON payload。キャラLLM 購読, doc12）。
 
 ## 消費 (consume)
-- 契約: `warehouse_interfaces.schemas`（`StateSnapshot`/`RobotSnapshot`/`Position`/`Velocity`）、`stores.FileStateStore`、`paths.state_path`、`safety.normalize_battery_percent`（#44）、`config.load_config`（`safety.battery_percentage_scale`）。
+- 契約: `warehouse_interfaces.schemas`（`StateSnapshot`/`RobotSnapshot`/`Position`/`Velocity`）、`stores.FileStateStore`、`paths.state_path`、`safety.normalize_battery_percent`（#44）、`config.load_config`（`safety.battery_percentage_scale`）、**`compat.UTC`（#563 py3.10 互換・py3.11+ では `datetime.UTC` 同一 singleton＝挙動不変。直 import は source-scan で禁止）**。
 - topic: `/{bot}/amcl_pose`(PoseWithCovarianceStamped), `/{bot}/battery`(BatteryState), `/{bot}/odom`(Odometry), `/{bot}/scan`(LaserScan→`obstacle_distance`), `/emergency/event`(std_msgs/String)。bot1 / bot2。
 
 ## 実装メモ

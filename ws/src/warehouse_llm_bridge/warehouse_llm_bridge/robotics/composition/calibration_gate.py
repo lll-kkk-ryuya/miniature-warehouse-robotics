@@ -46,10 +46,10 @@ from __future__ import annotations
 
 import math
 from collections.abc import Mapping
-from enum import StrEnum
 from typing import Any
 
 from pydantic import Field
+from warehouse_interfaces.compat import StrEnum
 
 from warehouse_llm_bridge.robotics.composition.profile import (
     SiteProfile,

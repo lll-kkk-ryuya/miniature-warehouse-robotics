@@ -4,6 +4,8 @@ Pins filtering (since_seq/to_seq/kind/limit), newest-first run listing, and the 
 guarantee: a GET must never create or prune the recordings dir (EventLog.reader path).
 """
 
+import os
+
 import pytest
 from warehouse_web_bridge import views
 from warehouse_web_bridge.event_log import EventLog
@@ -45,8 +47,10 @@ def test_events_page_unknown_run_is_empty_and_creates_nothing(tmp_path):
 def test_runs_lists_newest_first(tmp_path):
     _seed(tmp_path, "run-old", 1)
     _seed(tmp_path, "run-new", 1)
-    # bump run-new mtime to be unambiguously newer
-    (tmp_path / "events-run-new.jsonl").touch()
+    # Explicit strictly-ordered mtimes: touch() alone can TIE on Linux, where file
+    # timestamps have kernel-tick granularity (observed on the Jetson board, #563).
+    os.utime(tmp_path / "events-run-old.jsonl", (1_000_000, 1_000_000))
+    os.utime(tmp_path / "events-run-new.jsonl", (2_000_000, 2_000_000))
     got = views.runs(str(tmp_path))
     assert set(got) == {"run-old", "run-new"}
     assert got[0] == "run-new"

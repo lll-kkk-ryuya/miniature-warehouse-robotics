@@ -442,7 +442,7 @@ rclpy 配線・`colcon build`・apt・live・sim・メモリ実測は引き続�
 先行。§3.5 D の defer を上書きせず scope 細分）:
 
 - `ws/src/warehouse_rmf_adapter/nav2_router.py` — frozen `KNOWN_LOCATIONS`（`locations.py:23`）で
-  destination を検証し config 座標（暫定値・`config/warehouse.base.yaml:35-44`）から `Nav2Goal` を解決
+  destination を検証し config 座標（暫定値・`config/warehouse.base.yaml:47-56`）から `Nav2Goal` を解決
   （未登録座標は raise・捏造しない・`:283`）。namespace / action 名（`/bot1/navigate_to_pose`・`:252`）。
 - `robot_driver.py` — 1 namespace = 1 注入 port = 唯一の Nav2 writer（`:63`）。navigate=resolve→send /
   stop=cancel。port の namespace 不一致を fail-closed 拒否。

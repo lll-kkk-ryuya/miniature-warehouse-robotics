@@ -291,16 +291,16 @@ robots:
 # ───────────────────────────────────────────────
 # 場所定義 (Policy Gate の known_locations 検証用)
 # ───────────────────────────────────────────────
-locations:                       # 座標マップ（doc08 LOCATIONS とキー一致。座標は暫定＝Phase 2 実測で確定）
-  shelf_1: {x: 0.2, y: 0.3}
-  shelf_2: {x: 0.7, y: 0.3}
-  shelf_3: {x: 1.2, y: 0.3}
+locations:                       # 座標マップ（doc08 LOCATIONS とキー一致。座標は暫定＝Phase 2 実測で確定。全キー=Nav2 走行目標点＝map free 空間。04-diorama-layout.md §走行目標点）
+  shelf_1: {x: 0.2, y: 0.57}
+  shelf_2: {x: 0.7, y: 0.57}
+  shelf_3: {x: 1.2, y: 0.57}
   berth_A: {x: 0.2, y: 0.8}
   berth_B: {x: 0.7, y: 0.8}
-  shipping_station: {x: 0.2, y: 0.1}
-  charging_station: {x: 1.2, y: 0.1}
-  retreat_A: {x: 0.45, y: 0.85}
-  retreat_B: {x: 0.95, y: 0.85}
+  shipping_station: {x: 0.45, y: 0.12}
+  charging_station: {x: 1.5, y: 0.12}
+  retreat_A: {x: 0.45, y: 0.78}
+  retreat_B: {x: 0.95, y: 0.78}
 
 # ───────────────────────────────────────────────
 # Hermes Gateway 接続情報 (LLM Bridge Node が読む)

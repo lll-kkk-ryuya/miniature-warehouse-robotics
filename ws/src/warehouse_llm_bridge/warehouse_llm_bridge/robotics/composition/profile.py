@@ -46,12 +46,12 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Mapping, Sequence
-from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
 import yaml
 from pydantic import Field
+from warehouse_interfaces.compat import StrEnum
 
 from warehouse_llm_bridge.robotics_planning_core.models.base import _BridgeModel
 

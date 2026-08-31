@@ -17,7 +17,7 @@ Mode X-ER on its own does not use ``WORKER`` (that is Mode X-ER-VLA's GPU/VLA ru
 docs/productization/01:163); the value is kept so the enum stays stable when VLA arrives.
 """
 
-from enum import StrEnum
+from warehouse_interfaces.compat import StrEnum
 
 
 class ProviderType(StrEnum):

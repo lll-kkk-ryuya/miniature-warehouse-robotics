@@ -4,7 +4,8 @@ The URDF↔world interface — link names, sensor ``frame_id``, footprint — is
 and in ``minicar.urdf.xacro`` so ``warehouse_sim`` (sim) and the real Yahboom car
 reference identical names (doc16 §9). The canonical TF tree (doc09 §TFツリー / doc07 T6) is::
 
-    map → bot{n}/odom → bot{n}/base_link → { bot{n}/lidar_link, bot{n}/imu_link }
+    map → bot{n}/odom → bot{n}/base_link → { bot{n}/lidar_link, bot{n}/imu_link,
+                                             bot{n}/camera_link }
 
 Body geometry (sizes) lives in the xacro — the URDF's natural home. This module owns
 the *names* and the deployment-side values Python needs (nav footprint radius, spawn
@@ -18,6 +19,11 @@ file (Python consumers) and the matching xacro property — the unit tests guard
 BASE_FRAME = "base_link"
 LIDAR_FRAME = "lidar_link"  # MS200 mount; /bot{n}/scan header.frame_id = bot{n}/lidar_link
 IMU_FRAME = "imu_link"
+# HP60C (ascamera) body frame. Static child of base_link via robot_state_publisher
+# (doc23 §5-2: docs/architecture/23-perception-and-localization.md:157-160). The ROS
+# z-forward *optical* frame is deliberately NOT frozen here: its name is still an open
+# question (doc09 OQ-4: docs/mode-x-er/09-hand-raise-summon.md:184 / doc23 OQ-7: :248).
+CAMERA_FRAME = "camera_link"
 ODOM_FRAME = "odom"  # /bot{n}/odom child_frame_id = bot{n}/base_link
 
 # 4-wheel skid-steer (Yahboom MicroROS car). Wheels are model-internal — not in the
@@ -30,7 +36,22 @@ WHEEL_LINKS: tuple[str, ...] = (
 )
 
 # Contract link names that warehouse_sim + real hardware must reference identically.
-FROZEN_LINK_NAMES: tuple[str, ...] = (BASE_FRAME, LIDAR_FRAME, IMU_FRAME, *WHEEL_LINKS)
+# CAMERA_FRAME is appended last so existing positions stay stable (additive-first,
+# .claude/rules/parallel-workflow.md §7.2).
+FROZEN_LINK_NAMES: tuple[str, ...] = (
+    BASE_FRAME,
+    LIDAR_FRAME,
+    IMU_FRAME,
+    *WHEEL_LINKS,
+    CAMERA_FRAME,
+)
+
+# Frozen *names* whose URDF body/joint is not written yet because the mount pose is
+# unmeasured. The camera's x/y/z offset and tilt are open questions — Phase 1 は水平固定
+# だが最終値は S2 実測（doc09 §3: docs/mode-x-er/09-hand-raise-summon.md:41,43 / doc23 OQ-3
+# 経由 :280）— so no numeric offset is invented here. The unit tests pin this list from
+# docs and require that a name leaves it in the same PR that adds the link to the xacro.
+PENDING_URDF_LINKS: tuple[str, ...] = (CAMERA_FRAME,)  # TODO(Phase 1 実測): mount pose
 
 # Sensor / odom frame_id contract (consumed by AMCL / Nav2 / warehouse_traffic).
 FROZEN_FRAME_IDS: dict[str, str] = {

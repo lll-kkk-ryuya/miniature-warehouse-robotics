@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>warehouse_perception</name>
+  <version>0.0.0</version>
+  <description>L4 perception home (gesture_detector lands here): speed band publisher for the runtime speed limiter (ADR-0012).</description>
+  <maintainer email="ryu3124ruyu@gmail.com">kawaguchiryuya</maintainer>
+  <license>Apache-2.0</license>
+
+  <!-- Frozen contract only (MAX_LINEAR_VELOCITY). No other track's internals. -->
+  <exec_depend>warehouse_interfaces</exec_depend>
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>nav2_msgs</exec_depend>
+
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

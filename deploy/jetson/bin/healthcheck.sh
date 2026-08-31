@@ -24,7 +24,7 @@ UNITS=(
 RUNTIME_DIR="${WAREHOUSE_RUNTIME_DIR:-/run/warehouse}"
 STATE_FILE="${RUNTIME_DIR}/state.json"
 STATE_MAX_AGE="${STATE_MAX_AGE:-10}"        # seconds; state cache target ~100ms (doc12:477)
-HERMES_HOST="${HERMES_HOST:-34.4.104.112}"  # prod GCP Hermes (doc19:18,86)
+HERMES_HOST="${HERMES_HOST:-34.4.104.112}"  # prod GCP Hermes (doc19:18 / doc19:110)
 HERMES_PORT="${HERMES_PORT:-8642}"          # Hermes Gateway port
 
 rc=0

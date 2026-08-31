@@ -1,0 +1,16 @@
+#!/bin/sh
+# Reverse SSH tunnel to the dev machine. Resolves the Mac by mDNS first, then a
+# known LAN IP, so a DHCP change does not break the link.
+# Design: docs/jetson/02-remote-access-and-dev-link.md
+PORT=2222
+USER_ON_MAC=kawaguchiryuya
+MAC=""
+for H in MacBook-Pro-5.local 192.168.11.11; do
+  if ping -c1 -W2 "$H" >/dev/null 2>&1; then MAC="$H"; break; fi
+done
+[ -z "$MAC" ] && { echo "dev machine not reachable"; exit 1; }
+echo "tunneling to $MAC"
+exec ssh -N -R 127.0.0.1:$PORT:localhost:22 \
+  -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+  -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 \
+  "$USER_ON_MAC@$MAC"
