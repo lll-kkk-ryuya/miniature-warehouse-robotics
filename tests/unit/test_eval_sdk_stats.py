@@ -1,6 +1,9 @@
 """eval_sdk.stats tests — pure percentile + path-length helpers (doc21 §4).
 
 Phase-1.5a additions (doc21 §14 Step1.5a / §13.1): SR/SPL/SoftSPL + jerk/SPARC/LDLJ/N_MU.
+Phase-1.5b additions (doc21 §14 Step1.5b / §6 :184-186): rate / Jain fairness / makespan /
+throughput — the Tier-1 aggregate arithmetic (the domain composition lives in
+``tests/unit/test_wo_tier1_kpi.py``).
 Each expected value is a hand-computed literal from the *reference* formula
 (AllenAct / Habitat / siva82kb), not a re-derivation of the implementation — R-26 independent
 oracle (.claude/rules/safety.md, doc20 §9), mutation-red on the named guard step.
@@ -13,16 +16,20 @@ import pytest
 from eval_sdk.stats import (
     DistanceAccumulator,
     distance_traveled,
+    jain_fairness_index,
     jerk,
     ldlj,
+    makespan,
     n_movement_units,
     path_lengths,
     percentile,
+    rate,
     soft_spl,
     sparc,
     spl,
     spl_metric,
     success_rate,
+    throughput,
 )
 from eval_sdk.stats import _third_difference as _raw_third_diff  # no-lowpass reference
 
@@ -355,3 +362,82 @@ def test_sparc_raises_clear_importerror_when_numpy_absent(
     monkeypatch.setattr(builtins, "__import__", fake_import)
     with pytest.raises(ImportError, match=r"eval_sdk\[stats\]"):
         sparc([0, 1, 2, 1, 0, 0, 1, 2], 10)
+
+
+# ── Tier-1 aggregates: rate / Jain fairness / makespan / throughput (doc21:184-186) ──
+
+
+@pytest.mark.unit
+def test_rate_guards_zero_denominator() -> None:
+    # None (no data) must stay distinguishable from 0.0 (measured zero).
+    assert rate(3, 12) == pytest.approx(0.25)
+    assert rate(0, 12) == 0.0
+    assert rate(5, 0) is None
+
+
+@pytest.mark.unit
+def test_jain_index_is_one_for_perfect_equality_and_one_over_n_for_full_concentration() -> None:
+    # Independent oracle = the two closed-form endpoints of Jain, Chiu & Hawe (1984):
+    # equal shares ⇒ J = 1; a single entity holding everything ⇒ J = 1/n. Neither literal is
+    # re-derived from (Σx)²/(n·Σx²), so a mutated formula cannot satisfy both.
+    for n in range(1, 8):
+        assert jain_fairness_index([7.5] * n) == pytest.approx(1.0)
+        concentrated = [0.0] * n
+        concentrated[n // 2] = 42.0
+        assert jain_fairness_index(concentrated) == pytest.approx(1.0 / n)
+
+
+@pytest.mark.unit
+def test_jain_index_is_scale_and_order_invariant_and_bounded() -> None:
+    # Scale/permutation invariance + the [1/n, 1] envelope, checked on random load vectors
+    # against a bound computed from n alone (not from the implementation).
+    rng = random.Random(20260728)
+    for _ in range(60):
+        n = rng.randint(2, 12)
+        loads = [rng.uniform(0.0, 50.0) for _ in range(n)]
+        if sum(loads) == 0:
+            continue
+        base = jain_fairness_index(loads)
+        assert base is not None
+        scaled = jain_fairness_index([x * 3.7 for x in loads])
+        shuffled = list(loads)
+        rng.shuffle(shuffled)
+        assert scaled == pytest.approx(base)
+        assert jain_fairness_index(shuffled) == pytest.approx(base)
+        assert 1.0 / n - 1e-12 <= base <= 1.0 + 1e-12
+
+
+@pytest.mark.unit
+def test_jain_index_undefined_cases() -> None:
+    assert jain_fairness_index([]) is None
+    assert jain_fairness_index([0.0, 0.0, 0.0]) is None  # 0/0 is not "unfair"
+    with pytest.raises(ValueError, match="negative"):
+        jain_fairness_index([3.0, -1.0])
+
+
+@pytest.mark.unit
+def test_jain_index_matches_hand_computed_value() -> None:
+    # Hand-computed from the published formula: loads [3, 1] ⇒ (4)² / (2·(9+1)) = 16/20 = 0.8.
+    assert jain_fairness_index([3, 1]) == pytest.approx(0.8)
+    # loads [2, 2, 4] ⇒ (8)² / (3·(4+4+16)) = 64/72 = 8/9.
+    assert jain_fairness_index([2, 2, 4]) == pytest.approx(8 / 9)
+
+
+@pytest.mark.unit
+def test_makespan_spans_first_start_to_last_end() -> None:
+    # C_max over interleaved, out-of-order intervals = 130 − 100 (not the longest single one).
+    assert makespan([(110.0, 130.0), (100.0, 112.0), (105.0, 120.0)]) == pytest.approx(30.0)
+    assert makespan([(7.0, 7.0)]) == 0.0
+    assert makespan([]) is None
+    with pytest.raises(ValueError, match="end precedes start"):
+        makespan([(10.0, 9.0)])
+
+
+@pytest.mark.unit
+def test_throughput_is_count_per_duration_with_guards() -> None:
+    assert throughput(3, 32.0) == pytest.approx(3 / 32)
+    assert throughput(0, 32.0) == 0.0
+    assert throughput(5, 0.0) is None  # instantaneous window has no defined rate
+    assert throughput(5, None) is None  # composes with makespan([]) → None
+    with pytest.raises(ValueError, match="non-negative"):
+        throughput(-1, 10.0)

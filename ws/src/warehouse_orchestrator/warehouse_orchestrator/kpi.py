@@ -33,6 +33,20 @@ Deferred (NOT in this slice): ``efficiency`` (= 総移動距離, doc08:397; need
 distance), the live Langfuse score-send (needs ``trace_id`` — see
 :mod:`langfuse_sink`), and freezing an audit/KPI schema in ``warehouse_interfaces``
 (a future ``contract`` PR; see CLAUDE.md).
+
+Phase-1.5b (doc21 §14 Step 1.5b :407 / §6 :180-189) adds the **audit-sourced Tier-1 KPIs**
+— intervention rate, command rejection rate, per-robot fairness, and completion
+throughput/makespan. The layer split is doc21:178 (数学 = ``eval_sdk.stats`` / ドメイン合成 =
+wo): the ratios, the Jain index and the span are imported arithmetic, while *which* rows count
+as an intervention and *which* per-robot number is "the load" are decided here. **No new
+producer and no new score send** — these are report fields only (score names are frozen in
+doc08 §比較計測の追加設計 and emitted in Phase 3-4; see CLAUDE.md voids 4). The odom-sourced
+Tier-1 entries of doc21:310 (detour factor / jerk・SPARC composition / 速度予算消化率 / idle
+率) are **deliberately NOT here**: `kpi_collector` streams odom straight into
+``DistanceAccumulator`` and neither pose series nor velocities survive the call
+(``eval_sdk.stats.DistanceAccumulator`` keeps only ``_totals`` and the previous point), so they
+need a new producer — contradicting doc21:189 "新 producer ゼロ". That contradiction is listed
+in the PR residuals and belongs to a docs PR, not to invented buffering here.
 """
 
 import argparse
@@ -47,7 +61,14 @@ from pathlib import Path
 # re-exported here so the module's public surface (and the existing tests/consumers) are
 # unchanged. ``_percentile`` keeps its private alias (completion_stats uses it); ``efficiency``
 # stays a warehouse name over the generic ``path_lengths``.
-from eval_sdk.stats import DistanceAccumulator, distance_traveled
+from eval_sdk.stats import (
+    DistanceAccumulator,
+    distance_traveled,
+    jain_fairness_index,
+    makespan,
+    rate,
+    throughput,
+)
 from eval_sdk.stats import path_lengths as compute_efficiency
 from eval_sdk.stats import percentile as _percentile
 
@@ -70,6 +91,10 @@ COMMAND_TOOLS = frozenset(
 )
 READONLY_TOOLS = frozenset({"get_fleet_status", "get_task_queue"})
 CANCEL_TOOL = "cancel_task"
+# The commander's escalation reply (MCP tool 6, doc15:173-180) — the documented producer of the
+# intervention signal (doc21:184). Redeclared locally like the sets above (we consume the
+# documented tool-name surface, never the producer module).
+INTERVENTION_TOOL = "escalation_response"
 
 # Public surface (also marks the eval_sdk.stats re-exports as intentional, not dead imports).
 __all__ = [
@@ -83,6 +108,7 @@ __all__ = [
     "CompletionStats",
     "KpiReport",
     "cancelled_task_ids",
+    "robot_load_fairness",
     "compute_kpis",
     "pair_completion_times",
     "completion_stats",
@@ -168,6 +194,13 @@ class CompletionStats:
     minimum: float | None
     maximum: float | None
     records: list[CompletionRecord] = field(default_factory=list)
+    # Tier-1 throughput / makespan (doc21:185). PROVISIONAL WINDOW: doc21 names the pair but
+    # never pins the observation window, so we use the completion set's own span —
+    # ``makespan`` = last completion − first dispatch, ``throughput`` = count / makespan
+    # (tasks per second). Both stay ``None`` until a completion source is supplied, exactly
+    # like the rest of this dataclass. See the PR residuals.
+    makespan: float | None = None
+    throughput: float | None = None
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -178,6 +211,8 @@ class CompletionStats:
             "p99": self.p99,
             "min": self.minimum,
             "max": self.maximum,
+            "makespan": self.makespan,
+            "throughput": self.throughput,
         }
 
 
@@ -199,6 +234,24 @@ class KpiReport:
     acceptance_rate: float | None
     error_rate: float | None
     completion: CompletionStats | None = None
+    # ── Tier-1, audit-sourced (doc21 §6 :180-186, §13.2 :310) ────────────────
+    # ``intervention_count`` = executed ``escalation_response`` rows in the included set
+    # (doc21:184 names the row + its executed set; a *rejected* escalation reply changed
+    # nothing, so it is not an intervention). The full tally incl. rejects stays reachable via
+    # ``by_tool["escalation_response"]``.
+    intervention_count: int = 0
+    # Denominator shared with :attr:`acceptance_rate` = decided COMMAND_TOOLS rows. **PROVISIONAL**:
+    # doc21:184 pins the numerator only, so it is exposed here to keep the rate re-derivable
+    # against another denominator without a schema change (PR residual → doc21 follow-up).
+    command_decisions: int = 0
+    intervention_rate: float | None = None
+    # Complement of :attr:`acceptance_rate` = share of command decisions NOT executed. Note this
+    # includes ``error`` (and drift ``other``) rows, not only ``rejected`` ones — doc21:310
+    # names "command rejection 率" without saying which (PR residual).
+    command_rejection_rate: float | None = None
+    # Jain index over the per-robot EXECUTED command load (doc21:186 "fairness / 負荷均等 …
+    # by_robot", doc21:310 "fairness(Jain 指数)"). See :func:`robot_load_fairness`.
+    fairness_jain: float | None = None
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -214,6 +267,11 @@ class KpiReport:
             "acceptance_rate": self.acceptance_rate,
             "error_rate": self.error_rate,
             "completion": self.completion.to_dict() if self.completion else None,
+            "intervention_count": self.intervention_count,
+            "command_decisions": self.command_decisions,
+            "intervention_rate": self.intervention_rate,
+            "command_rejection_rate": self.command_rejection_rate,
+            "fairness_jain": self.fairness_jain,
         }
 
 
@@ -237,6 +295,28 @@ def _is_cancelled(entry: AuditEntry, cancelled: set[str]) -> bool:
     if entry.tool == CANCEL_TOOL:
         return True
     return entry.tool in DISPATCH_TOOLS and entry.task_id is not None and entry.task_id in cancelled
+
+
+def robot_load_fairness(by_robot: dict[str, ResultTally]) -> float | None:
+    """Jain fairness index over the per-robot **executed** load in ``by_robot`` (doc21:186, :310).
+
+    The domain half of the Tier-1 fairness KPI: doc21:186 fixes the data source (`by_robot`)
+    and doc21:310 fixes the index (Jain), but neither says *which* tally is "the load", so this
+    picks ``executed`` — the work a robot was actually given. Counting ``total`` would let a
+    robot that merely attracted rejections look equally loaded. Rejected/error rows stay
+    visible in ``by_robot`` for anyone who wants the other reading (PR residual).
+
+    Scope caveat: ``by_robot`` collects **every** audit row that carries a ``robot`` field, not
+    only ``COMMAND_TOOLS`` rows. Today the two coincide (only the command tools write ``robot``;
+    the read-only tools do not), but the audit record shape is explicitly not a frozen contract
+    (``audit_reader.py:3-8``), so a future read-only producer that starts writing ``robot`` would
+    enter this load silently. Narrowing to a command-only tally is a follow-up, not something
+    this additive slice does implicitly (PR residual).
+
+    ``1.0`` = every robot got the same executed load; ``1/n`` = one robot got all of it;
+    ``None`` when no robot rows exist or nothing was executed (undefined, not "unfair").
+    """
+    return jain_fairness_index([tally.executed for tally in by_robot.values()])
 
 
 def _tally_for(table: dict[str, ResultTally], key: str) -> ResultTally:
@@ -270,6 +350,7 @@ def compute_kpis(
     excluded = 0
     command_decided = 0
     command_executed = 0
+    interventions = 0
 
     for entry in entries:
         if exclude_cancelled and _is_cancelled(entry, cancelled):
@@ -288,12 +369,19 @@ def compute_kpis(
             command_decided += 1
             if entry.result == RESULT_EXECUTED:
                 command_executed += 1
+        # Checked independently of COMMAND_TOOLS membership so the intervention signal cannot
+        # silently disappear if that set is ever re-scoped (doc21:184).
+        if entry.tool == INTERVENTION_TOOL and entry.result == RESULT_EXECUTED:
+            interventions += 1
 
     completion = None
     if completions:
         records = pair_completion_times(entries, completions, exclude_cancelled=exclude_cancelled)
         completion = completion_stats(records)
 
+    # ``rate`` is the eval_sdk zero-denominator guard (doc21:184); behaviour is unchanged from
+    # the previous inline ``if command_decided else None``.
+    acceptance = rate(command_executed, command_decided)
     return KpiReport(
         total_entries=len(entries),
         included_entries=included,
@@ -304,9 +392,14 @@ def compute_kpis(
         by_tool=by_tool,
         by_robot=by_robot,
         rejection_reasons=dict(rejection_reasons),
-        acceptance_rate=(command_executed / command_decided) if command_decided else None,
-        error_rate=(overall.error / overall.total) if overall.total else None,
+        acceptance_rate=acceptance,
+        error_rate=rate(overall.error, overall.total),
         completion=completion,
+        intervention_count=interventions,
+        command_decisions=command_decided,
+        intervention_rate=rate(interventions, command_decided),
+        command_rejection_rate=(None if acceptance is None else 1.0 - acceptance),
+        fairness_jain=robot_load_fairness(by_robot),
     )
 
 
@@ -357,8 +450,22 @@ def pair_completion_times(
 
 
 def completion_stats(records: Sequence[CompletionRecord]) -> CompletionStats:
-    """Summarise completion-time records (mean + p50/p95/p99 + min/max)."""
+    """Summarise completion-time records (mean + p50/p95/p99 + min/max + makespan/throughput).
+
+    Tier-1 addition (doc21:185): ``makespan`` is the span of the whole completion set (first
+    dispatch → last completion, ``eval_sdk.stats.makespan``) and ``throughput`` is
+    ``count / makespan`` tasks per second. Both are ``None`` for an empty record set, and
+    ``throughput`` is also ``None`` for a zero-length span (a single instantaneous task has no
+    defined rate). :func:`pair_completion_times` already drops completions preceding their
+    dispatch, so the ``compute_kpis`` path never hands ``makespan`` an inverted interval.
+
+    Failure mode (new in this slice): a :class:`CompletionRecord` built by hand with
+    ``completion_ts < dispatch_ts`` and passed here **directly** raises ``ValueError`` from
+    ``eval_sdk.stats.makespan`` — a malformed pairing is treated as a programming error, not a
+    measurable span. Reaching it requires bypassing :func:`pair_completion_times`.
+    """
     times = [record.completion_time for record in records]
+    span = makespan([(record.dispatch_ts, record.completion_ts) for record in records])
     return CompletionStats(
         count=len(times),
         mean=(sum(times) / len(times)) if times else None,
@@ -368,6 +475,8 @@ def completion_stats(records: Sequence[CompletionRecord]) -> CompletionStats:
         minimum=min(times) if times else None,
         maximum=max(times) if times else None,
         records=list(records),
+        makespan=span,
+        throughput=throughput(len(times), span),
     )
 
 
@@ -380,6 +489,10 @@ def format_report(report: KpiReport) -> str:
         f"  overall: {report.overall.to_dict()}",
         f"  acceptance_rate: {report.acceptance_rate}",
         f"  error_rate: {report.error_rate}",
+        f"  command_rejection_rate: {report.command_rejection_rate}",
+        f"  intervention_rate: {report.intervention_rate} "
+        f"({report.intervention_count}/{report.command_decisions} command decisions)",
+        f"  fairness_jain: {report.fairness_jain}",
     ]
     for tool, tally in sorted(report.by_tool.items()):
         lines.append(f"  tool {tool}: {tally.to_dict()}")
