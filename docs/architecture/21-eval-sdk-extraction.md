@@ -128,20 +128,20 @@ run ごとの producer 構成は `eval_sdk` core に持たせない。どの box
 
 ## 4. v0.1 = 5モジュール（抽出元 file:line）
 
-すべて near-verbatim で lift（リネーム＋意図的重複の解消のみ・挙動不変）:
+すべて near-verbatim で lift（リネーム＋意図的重複の解消のみ・挙動不変）。**下表の file:line は「抽出前」の歴史的座標**＝Phase 1（#273 = commit `dd13798`）で実際に lift した結果、抽出元ファイルは縮み**現 HEAD では同じ行番号を指さない**。追跡は **`dd13798^` = `9190530`** に pin して読む（`git show 9190530:<path>`）。行が合わない場合は括弧内の symbol 名で引く（実装は churn する＝impl 参照は symbol/契約で名指す）:
 
-| モジュール | 抽出元（検証済 file:line） | 難度 |
+| モジュール | 抽出元（`9190530`〔抽出前〕時点の検証済 file:line ＋ symbol） | 難度 |
 |---|---|---|
-| `seed.py` | `warehouse_orchestrator/.../trace_id.py:31-106` + `warehouse_llm_bridge/.../tracing.py:39-60` | そのまま（env 名 → param 化・**2系統の重複を1本化**） |
-| `tracer.py` | `warehouse_llm_bridge/.../tracing.py:63-187`（`Tracer`/`NoopTracer`/`LangfuseTracer`） | そのまま（span 名/tag は呼出側供給） |
-| `sink.py` | `warehouse_orchestrator/.../langfuse_sink.py:104-136,154-162` ＋ `:39-41`（`DataType`） | 軽微（`KpiReport`/`TAG_KEY_ROBOT`/KPI 送信メソッドを剥がす・`normalize_trace_id` は `seed.py` へ統合） |
-| `stats.py` | `warehouse_orchestrator/.../kpi.py:79-91,97-140,391-403`（percentile/path_length/accumulator/completion stats） | そのまま（**純関数サブセットのみ抽出**・`kpi.py` 全体は `audit_reader` 結合のため module 移設しない） |
-| `cost.py` | `warehouse_orchestrator/.../grok_cost.py:98-163`（token-cost・価格表は `:126` で注入済） | そのまま（汎用名 `token_cost` へ） |
+| `seed.py` | `warehouse_orchestrator/.../trace_id.py@9190530:31-106`（`WAREHOUSE_RUN_ID_ENV`/`run_id`/`seed_for`/`normalize_trace_id`/`derive_trace_id`/`trace_id_for`） + `warehouse_llm_bridge/.../tracing.py@9190530:39-60`（`trace_seed`/`resolve_run_id`） | そのまま（env 名 → param 化・**2系統の重複を1本化**） |
+| `tracer.py` | `warehouse_llm_bridge/.../tracing.py@9190530:63-187`（`Tracer`/`NoopTracer`/`LangfuseTracer`） | そのまま（span 名/tag は呼出側供給） |
+| `sink.py` | `warehouse_orchestrator/.../langfuse_sink.py@9190530:104-136`（`_create_score`）`,154-162`（`flush`）＋ `:39-41`（`DATA_TYPE_*`＝`DataType`） | 軽微（`KpiReport`/`TAG_KEY_ROBOT`/KPI 送信メソッドを剥がす・`normalize_trace_id` は `seed.py` へ統合） |
+| `stats.py` | `warehouse_orchestrator/.../kpi.py@9190530:79-91`（`_percentile`）`,97-140`（`distance_traveled`/`compute_efficiency`/`DistanceAccumulator`）`,391-403`（`completion_stats`） | そのまま（**純関数サブセットのみ抽出**・`kpi.py` 全体は `audit_reader` 結合のため module 移設しない） |
+| `cost.py` | `warehouse_orchestrator/.../grok_cost.py@9190530:98-163`（`_token_count`/`grok_cost`/`grok_cost_for_model`・価格表は `:126` `resolve_grok_price` で注入済） | そのまま（汎用名 `token_cost` へ） |
 
-> **抽出可能性 監査（2026-06-15 検証済）**: `trace_id.py`/`tracing.py`/`grok_cost.py` は `warehouse_*`/`rclpy`/`langfuse`（module level）を import せず**純粋＝そのまま lift 可**。`langfuse_sink.py` は `KpiReport`/`TAG_KEY_ROBOT`/`normalize_trace_id` に結合するため、core（`_create_score`/`flush`/`DataType`/fail-open ゲート）だけ残し残りは剥がす。`kpi.py` は module 全体が `audit_reader` に結合するので**純関数サブセット（`_percentile`/`distance_traveled`/`compute_efficiency`/`completion_stats`）のみ抽出**する。**seed 重複は実在**（`trace_id.py:40 seed_for` ↔ `tracing.py:39 trace_seed` が同一 `f"{run_id}:{gen_id}"` の別実装）＝Phase 1 の「重複削除＝境界の反証可能証拠」が成立。
+> **抽出可能性 監査（2026-06-15 検証済）**: `trace_id.py`/`tracing.py`/`grok_cost.py` は `warehouse_*`/`rclpy`/`langfuse`（module level）を import せず**純粋＝そのまま lift 可**。`langfuse_sink.py` は `KpiReport`/`TAG_KEY_ROBOT`/`normalize_trace_id` に結合するため、core（`_create_score`/`flush`/`DataType`/fail-open ゲート）だけ残し残りは剥がす。`kpi.py` は module 全体が `audit_reader` に結合するので**純関数サブセット（`_percentile`/`distance_traveled`/`compute_efficiency`/`completion_stats`）のみ抽出**する。**seed 重複は実在**（`trace_id.py@9190530:40 seed_for` ↔ `tracing.py@9190530:39 trace_seed` が同一 `f"{run_id}:{gen_id}"` の別実装）＝Phase 1 の「重複削除＝境界の反証可能証拠」が成立。**Phase 1 実績（#273 = `dd13798`）**: この監査のうち `_percentile`/`distance_traveled`/`compute_efficiency`/`DistanceAccumulator` は抽出済（`compute_efficiency` は汎用名 `eval_sdk.stats.path_lengths` になり、wo 側が `from eval_sdk.stats import path_lengths as compute_efficiency` で**別名再 export**＝外部 import 面は不変）。**`completion_stats` だけは未抽出で `warehouse_orchestrator.kpi` に残置**（`CompletionStats.records → CompletionRecord` の `task_id`/`robot` が domain フィールドで domain 非依存を崩すため、依存する純算術 `percentile` のみを抽出した）＝**上表 `stats.py` 行の symbol 列（5点）から `completion_stats` を除いた4点**（`eval_sdk.stats` の `percentile`/`distance_traveled`/`path_lengths`/`DistanceAccumulator`）が Phase 1 抽出済と読む（同 blockquote 冒頭の監査時点の列挙とは別集合）。
 
 ### 背骨（不変条件・verbatim 維持）
-- **fail-open**: creds 無・SDK 未導入・通信障害は**静かに no-op**（raise しない）。`langfuse_sink.py:113` 系の `enabled`/`trace_id` ゲート。
+- **fail-open**: creds 無・SDK 未導入・通信障害は**静かに no-op**（raise しない）。`langfuse_sink.py@9190530:113` 系の `enabled`/`trace_id` ゲート（`_create_score` 冒頭）。
 - **lazy-import**: `langfuse` は**任意 extra**（未導入でも build/test 可・package.xml にハード依存を入れない）。
 - **依存注入**: `create_fn`（trace_id 生成）・価格表を引数注入 → **SDK 無しで単体テスト可能**。
 
@@ -249,7 +249,7 @@ sink.flush()
 
 ## 11. リスク / 未確定
 
-- **Langfuse v4 surface は seam に隔離**: tracer は v4.9 API（`client.create_trace_id`/`start_as_current_observation`/`propagate_attributes`）に pin。score/cost/managed-prompt の実トレース確認は **human-gate #88 継続**。fail-open で劣化はするが**#88 緑まで dashboard を過大宣伝しない**。
+- **Langfuse v4 surface は seam に隔離**: tracer は v4.9 API（`client.create_trace_id`/`start_as_current_observation`/`propagate_attributes`）に pin。score/cost/managed-prompt の実トレース確認は **human-gate #88 継続**。fail-open で劣化はするが**#88 緑まで dashboard を過大宣伝しない**。 **裁定（#282 → #445 = `651e4d6`）: trace teardown は event loop 上で閉じ、per-turn の hard timeout を置かない。** langfuse の span / attribute context manager の `__exit__` は OTEL `context.detach` を走らせ、これは **thread-affine**（token を attach したのと同じ loop thread でしか detach できない）。`asyncio.to_thread` + `wait_for` で worker thread へ逃がすと **span CM**（`use_span` 経由の public `context.detach`）が毎ターン `Failed to detach context` を吐き **current span を leak** する（#282 review で CONFIRMED。再現するのは **langfuse の disabled client**〔鍵未設定時に `get_client()` が OTEL `NoOpTracer` へ落とす経路・langfuse `_client/client.py:339-354`〕と実 client の双方であり、**綴りの似た repo 側 `eval_sdk.tracer.NoopTracer`〔§4 の lift symbol〕は OTEL context に一切触れないので再現しない**＝別物）。attr CM（`propagate_attributes`）の detach は langfuse 私有の `_detach_context_token_safely` が例外を握り潰すため **silent** だが、open / `propagate_attributes` も同じく context-affine ゆえ off-loop 化は不可。加えて langfuse 既定の **async span processor** 下では close は network を待たない＝非ブロッキングなので、**hard な per-turn timeout は unsafe（span leak を招く）かつ不要（塞ぐべき stall が無い）**。真に hard bound が要るなら timeout ではなく**専用 tracing thread 等の別アーキ判断**になる（本 doc では未採用・要 spike）。この裁定は `eval_sdk.tracer` seam と、その helper を借用する `warehouse_llm_bridge.robotics.observability` の両方に適用し、**timeout を再導入しない**（#282 DoD 項目1「`asyncio.wait_for(~0.5s)` でラップ」は本裁定で置換。同 DoD 項目2 の disabled-tracing ログは #445 で実装済＝ただし gate は Issue 記載の `LANGFUSE_HOST` ではなく **SDK の実挙動に合わせた `LANGFUSE_PUBLIC_KEY`/`LANGFUSE_SECRET_KEY`**（無鍵で client が黙って disabled になるのが実 gate）。同 DoD 項目3「`span.update` が 5s sleep でもサイクルが ~0.5s で抜ける stall unit」は**項目1 の timeout 機構そのものを検証するテストゆえ本裁定で失効**し、#445 が on-loop 回帰ガード `tests/unit/test_eval_sdk_tracer.py::test_langfuse_tracer_closes_on_event_loop_thread`（open/close の loop-thread ident 一致を assert）へ差し替え済＝**#282 DoD 3項目はすべて処遇確定**）。
 - **OTLP 属性生存が embodied の全てを gate**: `*.nav.*` 名前空間を標準化する前に 30分スパイクで検証。可搬 export 路はそのヘッジ（Langfuse mapping 非依存）。
 - **安全は「ただの指標」ではない**: 0.3m/s は**コードで強制**（firmware Layer-0 `safety_clamp.h`・R-26・`collision_monitor` stop polygon）＝**fail-closed の能動制御パス**。eval 層の **fail-open とは正反対**。汎用 `Outcome.collision: bool` は Guardian を観測値に潰す。**安全はドメインプラグインに留め、コアはフィールド名を与えるだけ**。
 - **action は均一でない**: Mode C は no-actuation forwarder（`forwarder=None`・R-26 凍結）。汎用 `action: dict` は no-actuation 契約を失うか倉庫 mode logic を「プラグイン」に密輸する。**action payload を domain-free と偽らない**。
@@ -400,7 +400,7 @@ episode start は deadlock/conflict detector、route lock conflict、または t
 | Step | 内容 | reuse 判定 |
 |---|---|---|
 | **0（今）** | doc21 を land（提案・コード前） | — |
-| **1a 抽出** | `ws/src/eval_sdk/`（ament_python・ROS/warehouse 依存ゼロ・langfuse 任意 extra）に `seed`(trace_id.py:40 + tracing.py:39 重複統合)/`tracer`(tracing.py:63-187)/`sink`(langfuse_sink.py:104-)/`stats`(kpi.py 純関数)/`cost`(grok_cost.py) を lift | 自前所有＋seam |
+| **1a 抽出** | `ws/src/eval_sdk/`（ament_python・ROS/warehouse 依存ゼロ・langfuse 任意 extra）に `seed`(`trace_id.py@9190530:40 seed_for` + `tracing.py@9190530:39 trace_seed` の重複統合)/`tracer`(`tracing.py@9190530:63-187`)/`sink`(`langfuse_sink.py@9190530:104-`)/`stats`(`kpi.py` 純関数)/`cost`(`grok_cost.py`) を lift（**§4 と同じ抽出前 pin `9190530`**） | 自前所有＋seam |
 | **1b seam** | `sink`/`tracer` に Langfuse v4 を閉じ込め・`langfuse>=4.9,<5` pin・自前安定動詞で覆う・fail-open | 借りる（seam） |
 | **1c 二重利用** | 倉庫を import 切替。**DoD = 既存テスト無改変通過 ∧ seed 重複削除** | — |
 | **1.5a 指標(offline)** | `stats` に `spl`(AllenAct verbatim コピー)・`success_rate`/`soft_spl`(Habitat 写経)・`sparc`/`jerk`(siva82kb 照合後 自前・numpy FFT・scipy lazy)。合成データ property test | コピー/写経 |
