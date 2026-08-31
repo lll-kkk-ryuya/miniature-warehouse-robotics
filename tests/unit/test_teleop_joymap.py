@@ -15,7 +15,12 @@ import math
 
 import pytest
 from warehouse_interfaces.safety import MAX_LINEAR_VELOCITY
-from warehouse_teleop.joymap import DEFAULT_DEADMAN_BUTTON, joy_to_twist
+from warehouse_teleop.joymap import (
+    DEFAULT_DEADMAN_BUTTON,
+    DEFAULT_JOY_TIMEOUT_S,
+    apply_joy_freshness,
+    joy_to_twist,
+)
 
 pytestmark = [pytest.mark.safety, pytest.mark.unit]
 
@@ -112,3 +117,49 @@ def test_invert_flags_flip_sign_only() -> None:
     vx2, _, _ = joy_to_twist(axes(1.0), buttons(), invert_x=True)
     assert vx2 == pytest.approx(-vx1)
     assert abs(vx2) <= CAP + EPS
+
+
+# ---------------------------------------------------- /joy freshness dead-man
+#
+# Oracle: docs/mode-m1/03 §3 (stale /joy over joy_timeout_s -> zero twist) +
+# teleop_keyboard stop_timeout parity (default 0.6 s, strictly-greater stops).
+# joy_node stops publishing on device removal WITHOUT a zero Joy, so a held
+# command must never outlive the stream (it would read as forever-fresh
+# cmd_vel and disarm the m1_driver W-1 watchdog).
+
+HELD = (0.2, -0.1, 0.5)  # arbitrary in-cap command latched while deadman held
+
+
+def test_fresh_joy_passes_latest_through() -> None:
+    assert apply_joy_freshness(HELD, 0.1, 0.6) == HELD
+
+
+def test_stale_joy_is_zero_twist() -> None:
+    assert apply_joy_freshness(HELD, 0.61, 0.6) == (0.0, 0.0, 0.0)
+
+
+def test_exactly_at_timeout_still_passes() -> None:
+    # Boundary parity with teleop_keyboard's dead-man: strictly greater stops.
+    assert apply_joy_freshness(HELD, 0.6, 0.6) == HELD
+
+
+def test_default_timeout_matches_keyboard_stop_timeout() -> None:
+    assert DEFAULT_JOY_TIMEOUT_S == 0.6
+
+
+@pytest.mark.parametrize("bad_elapsed", [float("nan"), float("inf"), float("-inf")])
+def test_non_finite_elapsed_reads_stale(bad_elapsed: float) -> None:
+    # NaN > t is False: an unguarded comparison would latch motion forever.
+    assert apply_joy_freshness(HELD, bad_elapsed, 0.6) == (0.0, 0.0, 0.0)
+
+
+@pytest.mark.parametrize("bad_timeout", [float("nan"), float("inf"), -1.0, 0.0])
+def test_degenerate_timeout_falls_back_to_default(bad_timeout: float) -> None:
+    # An inf/NaN timeout would DISARM the dead-man; <= 0 would jam it
+    # always-stale. Either way the 0.6 s default governs, not the bad value.
+    assert apply_joy_freshness(HELD, DEFAULT_JOY_TIMEOUT_S + 0.1, bad_timeout) == (
+        0.0,
+        0.0,
+        0.0,
+    )
+    assert apply_joy_freshness(HELD, DEFAULT_JOY_TIMEOUT_S - 0.1, bad_timeout) == HELD
