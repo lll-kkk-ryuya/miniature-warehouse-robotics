@@ -7,12 +7,15 @@ fail open: if a sink raises, the box falls back to another sink (web/overlay-equ
 and the run continues (doc05:109,270 L4OF-G2).
 
 ``RecordingSink`` is the in-memory stand-in used as the fallback (web/overlay) sink and in
-tests — it records notices and never raises. A sink emits ONLY text (``OperatorNotice``);
-it has no motion channel, preserving the box's 0-actuation guarantee (R-26).
+tests — it records notices and never raises. ``LoggingNoticeSink`` is the runtime stand-in
+"speaker" used by the subscriber node until the real TTS sink lands (XER-OF3). A sink emits
+ONLY text (``OperatorNotice``); it has no motion channel, preserving the box's 0-actuation
+guarantee (R-26).
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Protocol, runtime_checkable
 
 from .models import OperatorNotice
@@ -38,6 +41,24 @@ def invoke_sink(sink: object, notice: OperatorNotice) -> None:
         sink(notice)
     else:  # pragma: no cover - misuse guard
         raise TypeError(f"sink is neither a NoticeSink nor callable: {sink!r}")
+
+
+class LoggingNoticeSink:
+    """Sink that writes the rendered notice through an INJECTED log callable.
+
+    The runtime stand-in "speaker" for the subscriber node (``notice_node.py``) until the real
+    TTS sink is wired (XER-OF3, doc05:259,281): it emits ONLY the deterministic ``text`` and
+    the derived ``severity`` through the injected callable (a ROS logger's ``.info`` at
+    runtime, a list ``append`` in tests). No audio provider, no motion channel — 0 actuation
+    (R-26 / L4OF-G1, doc05:269). The logger is injected (never imported) so this stays
+    host-testable without ROS, matching the injection discipline of this module.
+    """
+
+    def __init__(self, log: Callable[[str], None]) -> None:
+        self._log = log
+
+    def speak(self, notice: OperatorNotice) -> None:
+        self._log(f"[operator_notice] {notice.severity}: {notice.text}")
 
 
 class RecordingSink:
