@@ -38,7 +38,7 @@
 ### 選定理由
 
 - 手持ちの Orin Nano Super Dev Kit をそのまま司令塔として載せられる（公式 Orin 版キットが存在し、**直ネジ止め**手順が公式動画で確認済＝末尾追記 P-5）
-- 制御プロトコルが公開・実読済（`0xFF/0xFC/LEN/FUNC/CHECKSUM`・`FUNC_MOTION=0x12`・40ms auto-report）＝**Yahboom スタックに依存せず自前 ROS 2 ノードで完結できる**（`:323` / 末尾追記 P-7e）
+- 制御プロトコルが公開・実読済（`0xFF/0xFC/LEN/FUNC/CHECKSUM`・`FUNC_MOTION=0x12`・40ms auto-report）＝**Yahboom スタックに依存せず自前 ROS 2 ノードで完結できる**（`:323` / 末尾追記 P-7e。→ **#550 で wire フレーミングのみ vendor `Rosmaster_Lib` へ委譲**＝末尾追記 P-8。ROS 2 スタック非依存は不変）
 - 360° LiDAR ＋ 深度カメラ搭載で、部屋スケールの SLAM とジェスチャ召喚が追加センサーなしで成立（ADR-0009）
 - メカナムでも**契約変更が不要**（逆運動学が STM32 側 → `linear.y = 0` で凍結 URDF / Nav2 の diff-drive のまま成立。`:324`）
 - **安全の帰結**: stock FW の M1 上限は **0.7 m/s**・**通信途絶停止なし**（`ENABLE_IWDG=0`）＝MCU 内 L0 が使えない → **ホスト側シリアル送信直前の L0' クランプ**（0.3 m/s・方向保存）と G-g watchdog が必須（`:325` / `:371` / 末尾追記 P-7a・P-7c。実装 = [`ws/src/warehouse_m1_driver/`](../../ws/src/warehouse_m1_driver/CLAUDE.md)）
@@ -688,7 +688,7 @@ M1 単騎フェーズは**実際の部屋（room scale）**を走り、ジオラ
 
 1. **step 8「Install Jetson Orin Nano board」**の部品リストは `Jetson Orin Nano board *1`・`M2.5x5mm round head screw *4`・`Patch antenna acrylic board *1`・`M2.5x16+6mm single-pass copper pillar`（オーバーレイは ×2 に見えるが紙説明書 p06 は ×3。`# TODO(現物確認)`）・`Patch antenna`。**専用取付板・3D プリント部品・中間プレートは一切登場しない**——ボードは車体側に立てた銅柱へ **M2.5×5mm ネジ ×4 で直接ネジ止め**される。アクリル板は名称どおりパッチアンテナ用であり Orin の下敷きではない。
 2. 搭載ボードは**ファン付き・裏面に M.2 スロット 2 連＋ラベル**の外観で、**純正 Jetson Orin Nano Developer Kit と外観一致**（製品ページの選択肢名も「Orin NANO SUPER-8GB」= NVIDIA の Super Dev Kit 呼称。ただし**断定は現物合わせ**）。
-3. **step 9 = T-MINI PLUS LiDAR**（`T-MINI PLUS LiDAR adapter board *1`・M3×6mm ×3・M2×10+4mm 銅柱 ×2）、**step 12 = top cover 取り付けで完成**。つまり**公式構成では Orin を搭載したまま top cover が閉まる**＝`11-m1-assembly-manual.md` `:229` の 🔴 高さ干渉（34.8mm 厚）は**公式配置なら不発生の傍証**（最終確定は実物）。
+3. **step 9 = T-MINI PLUS LiDAR**（`T-MINI PLUS LiDAR adapter board *1`・M3×6mm ×3・M2×10+4mm 銅柱 ×2）、**step 12 = top cover 取り付けで完成**。つまり**公式構成では Orin を搭載したまま top cover が閉まる**＝`11-m1-assembly-manual.md` `:231` の 🔴 高さ干渉（34.8mm 厚）は**公式配置なら不発生の傍証**（最終確定は実物）。
 
 **NVIDIA 側の一次資料**（`:416` の補強）:
 
@@ -796,7 +796,7 @@ Phase 1 は次を別々に扱う:
 |---|---|---|---|---|
 | STM32 firmware for expansion board | `ROS-Driver-Board-FW-master.zip` | 879KB | ✅ | **仕様の一次ソース**。`car_type=0x0A` / `CAR_M1_MAX_SPEED=700` / `ENABLE_IWDG=0` の確定根拠（P-7a・P-7c） |
 | 〃 | `rosmaster_V3.6.5.hex` | 245KB | ✅ | 搭載 FW 版の照合用。**書き込まない**（stock FW 置換は現行方針で不採用＝`:328`） |
-| OrinNano | `Rosmaster.zip` | 324.8MB | ✅ | 公式 Python lib（`Rosmaster_Lib`）の実体。**参照のみ**（`:323` により実装には使わない） |
+| OrinNano | `Rosmaster.zip` | 324.8MB | ✅ | 公式 Python lib（`Rosmaster_Lib`）の実体。旧: **参照のみ**（`:323` により実装には使わない）→ **#550 で裁定変更＝robot image の実行時依存**（wire フレーミングは自作せず本 lib へ委譲。正本 = [`ws/src/warehouse_m1_driver/CLAUDE.md`](../../ws/src/warehouse_m1_driver/CLAUDE.md)、導入手順は末尾追記 **P-8**） |
 | 〃 | `ros2_kilted.zip` | 13.9MB | ✅ | 参考（distro 差分の確認用） |
 | 〃 | `ros2_ws.zip` | 17.2MB | ✅ | 汎用 ROS 2 学習 workspace。M1 固有ドライバではない（P-7d で保存対象外と判定済） |
 | 〃 | `ultralytics.zip` | 565.1MB | ✅ | 知覚の参考のみ。**AGPL-3.0・zip 内に `.env` あり**（P-7d の取り扱い注意） |
@@ -807,13 +807,13 @@ Phase 1 は次を別々に扱う:
 
 ### P-7e-2. 「どのコードが必要か」の裁定（`:323` の再確認）
 
-**結論は変わらない**——ベンダーの ROS 2 スタック（`yahboom_ws` / `yahboomcar_ws` / `Rosmaster_Lib`）は**実装の依存物にしない**。理由:
+**ベンダーの ROS 2 スタック（`yahboom_ws` / `yahboomcar_ws`）は実装の依存物にしない**（この結論は不変）。（→ **#550 で `Rosmaster_Lib` のみ裁定変更**: `FUNC_MOTION=0x12` の wire フレーミングは自作せず本 lib へ委譲＝**robot image の実行時依存**。理由と seam は [`ws/src/warehouse_m1_driver/CLAUDE.md`](../../ws/src/warehouse_m1_driver/CLAUDE.md) が正本、導入手順は末尾追記 **P-8**。以下 1.〜3. は ROS 2 スタック 2 本については今も有効）理由:
 
-1. **ライセンス**: `Rosmaster_Lib` は Proprietary 表記・PyPI 未配布・配布経路が Google Drive。`ultralytics` は AGPL-3.0。**再配布・コード流用は個別確認まで不可**（P-7d）。
+1. **ライセンス**: `Rosmaster_Lib` は Proprietary 表記・PyPI 未配布・配布経路が Google Drive。`ultralytics` は AGPL-3.0。**再配布・コード流用は個別確認まで不可**（P-7d）。（→ #550 後もこの制約は不変: `Rosmaster_Lib` は**実機へ pip install するだけ**で **repo へ commit しない・vendoring しない・再配布しない**＝P-8）
 2. **安全レイヤと非互換**: 公式サンプル（例 `Rosmaster/auto_drive/yolov5_auto.py`）は検出結果から `set_car_motion()` を直接呼ぶ＝ **L0' / L1 / L2 を迂回する**構造。本プロジェクトは全 `/cmd_vel` を L0' の単一絞り点に通す（`:325`）。
-3. **代替が成立している**: プロトコルは公式 xlsx とソースで完全に判明済（`0xFF/0xFC/LEN/FUNC/CHECKSUM`・`FUNC_MOTION=0x12`・40ms auto-report＝`:323` / P-6b）。自前 ROS 2 ノード（[`ws/src/warehouse_m1_driver/`](../../ws/src/warehouse_m1_driver/CLAUDE.md)）で足りる。
+3. **代替が成立している**: プロトコルは公式 xlsx とソースで完全に判明済（`0xFF/0xFC/LEN/FUNC/CHECKSUM`・`FUNC_MOTION=0x12`・40ms auto-report＝`:323` / P-6b）。自前 ROS 2 ノード（[`ws/src/warehouse_m1_driver/`](../../ws/src/warehouse_m1_driver/CLAUDE.md)）で足りる（→ **#550 修正**: ノード側の L0'・watchdog・odom は自前のまま、**フレーム組立だけは vendor lib へ委譲**＝P-8。プロトコルが判明済である事実は変わらず、委譲理由は「wire 形が本 repo の凍結 docs 外＝工場 FW と実績のある単一実装に寄せる」）。
 
-**したがってベンダーコードの役割は「実装の依存」ではなく「仕様の裏取り資料」**。取得済み 4 本 ＋ FW 2 本は *読むため* に置いてある。非取得 4 本（計 5.2GB）は、この裁定が覆らない限り**取りに行かない**。
+**したがってベンダーコードの役割は、`Rosmaster_Lib` を除き「実装の依存」ではなく「仕様の裏取り資料」**。取得済み 4 本 ＋ FW 2 本は *読むため* に置いてある（**例外 = `py_install_V3.3.9.zip`（`Rosmaster_Lib`）だけは実機へ導入する成果物**＝P-8）。非取得 4 本（計 5.2GB）は、この裁定が覆らない限り**取りに行かない**。
 
 ### P-7e-3. 後続セッションが実際に参照する手順
 
@@ -836,3 +836,53 @@ unzip -p ~/Developer/mwr-vendor-code-cache-20260824/ROS-Driver-Board-FW-master.z
 守ること: ① 実行しない・展開前に `unzip -t` と path traversal 検査（P-7d） ② `ultralytics` 内の `.env` は**読まない・commit しない**（`.claude/rules/safety.md`） ③ 引用は必ず zip 内 path と行で残す（docs-first） ④ **repo へバイナリを置かない**——台帳は [`docs/assets/m1-vendor/README.md`](../assets/m1-vendor/README.md)（untracked・sha256 付き）。
 
 `# TODO(未取得)` Yahboom `ROSMASTER M1-V1.0.STEP`（`:761` の 3D Model フォルダ・約67.8MB）は quota exceeded のまま。fallback マウント設計が必要になった時点で再取得する（Q-8）。
+
+---
+
+## 【2026-08-31 追記】`Rosmaster_Lib` を実行時依存へ格上げ（#550 裁定変更）とボード導入手順（P-8）
+
+> **本節は P-7e-2（`:810`「ベンダーの ROS 2 スタックは実装の依存物にしない」）の一部を上書きする**。上書きされるのは **`Rosmaster_Lib` 1 本だけ**で、`yahboom_ws` / `yahboomcar_ws` / `ultralytics` / `dify` は従来どおり**非依存**（取りに行かない）。
+> **裁定の正本は [`ws/src/warehouse_m1_driver/CLAUDE.md`](../../ws/src/warehouse_m1_driver/CLAUDE.md)**（`## 前提・未確定 (TODO)` の「シリアル層は #550 で裁定変更のうえ結線済」行 ＋ `## 【2026-08-26 追記】serial driver node スライス`）。本節はハード側 doc として **入手・導入・検証の手順**だけを持つ。
+
+### P-8-1. 何がどう変わったか（自作シリアル層 → vendor lib 委譲）
+
+| | 変更前（`:323` / P-7e-2 の当初裁定） | 変更後（#550・現行） |
+|---|---|---|
+| `FUNC_MOTION=0x12` フレーム組立 | **自前実装**（`HEAD=0xFF, DEVICE_ID=0xFC, LEN, FUNC, payload…, CHECKSUM`） | **vendor `Rosmaster_Lib` へ委譲**（`set_car_motion` / `reset_car_state`） |
+| `Rosmaster_Lib` の位置づけ | 参照のみ（読む資料） | **robot image の実行時依存**（dev host には不要） |
+| L0' 速度クランプ・W-1/W-2 停止・odom | 自前 | **自前のまま不変**（`clamp_body_velocity` 必経＝`:325`-`:329` 残課題 7） |
+| ROS 2 スタック（`yahboom_ws` 等） | 非依存 | **非依存のまま** |
+
+**委譲した理由**（#550）: wire のフレーム形は**本 repo の凍結 docs の範囲外**であり、工場出荷 STM32 ファームが実際にテストされている実装は vendor lib 1 本しかない。自作すると「docs に無い契約を発明する」ことになり、かつ実機不在のまま検証できない（`.claude/rules/docs-first.md`）。**安全側（L0' クランプ）は委譲していない**——`Rosmaster_Lib` を呼ぶのはクランプ済み値だけを渡す最下流の backend seam であり、全 `cmd_vel` は依然として単一の絞り点を通る。
+
+### P-8-2. ボードへの導入手順（Jetson 実機のみ・repo に置かない）
+
+入手元は既存キャッシュ（P-7e-3 `:820`・`:826`）。**新規ダウンロードは不要**:
+
+```bash
+# 1) 開発機 (Mac) → Jetson へ転送（jetson CLI の経路は jetson/02 §9 を使う）
+scp ~/Developer/mwr-vendor-code-cache-20260824/py_install_V3.3.9.zip <jetson>:/tmp/
+
+# 2) Jetson 側（ROS を source していないシェルで実行）
+unzip -t /tmp/py_install_V3.3.9.zip          # 展開前の健全性・path traversal 検査（P-7d）
+unzip -d /tmp/rosmaster_lib /tmp/py_install_V3.3.9.zip
+pip install --user /tmp/rosmaster_lib/<展開されたパッケージ>   # 実体名は unzip -l で確認してから指定
+```
+
+**守ること（P-7d / `.claude/rules/safety.md` の継続）**:
+
+- **repo へ commit しない・vendoring しない・再配布しない**（Proprietary 表記＝`:812`）。`ws/src/**` に取り込まず、あくまで **robot image 側の外部依存**として置く。
+- 展開は `/tmp` 等の repo 外で行う。`pip install --user` はユーザ領域に閉じる（system site-packages を汚さない）。
+- `# TODO(Phase 1・未 doc 化)` ボード上の作業シェルは **ROS を source していない状態**で行う（旧 ROS pytest プラグインが新しい pytest と衝突した運用上の実測メモ。**現時点で docs 化された正本が無い**ため、実機で再現を確認したうえで [jetson/02](../jetson/02-remote-access-and-dev-link.md) 側へ正式に記録する）。
+- **dev host（Mac / CI）には入れない**。`RosmasterBackend` は lazy import 設計で、host の R-26 unit は fake backend で通る（doc16 §11 fake seam）。
+
+### P-8-3. 検証（導入できたことの確認）
+
+```bash
+python3 -c "from Rosmaster_Lib import Rosmaster"     # import が通ること（ROS 非 source シェル）
+ros2 run warehouse_m1_driver m1_probe                # read-only プローブ（motion 送信なし）
+```
+
+`m1_probe` は car_type / version / battery / encoder×4 を読むだけで**モータを回さない**。これは [mode-m1/03 §2](../mode-m1/03-joystick-teleop-bringup.md) の M1 ゲート内プローブと同一のもので、`get_car_type()` の結果は [ADR-0010](../adr/0010-raise-speed-cap-to-platform-max.md) の pin 値確定にも使う。**モータを回す確認は車輪を浮かせた状態で M1 ゲートとして行う**（同 doc §1）。
+
+`# TODO(Phase 1)` 実機未着のため、**上記手順は未実行**（`pip install` の対象パッケージ名・aarch64 での import 可否・`python3` と `--user` パスの整合は実機で確定する）。udev symlink `/dev/myserial`・CH340（`1a86:7523`）・115200 8N1 の実機セットアップも同じセッションで潰す（残課題 5 / 10 ＝ `:323` / `:334`）。

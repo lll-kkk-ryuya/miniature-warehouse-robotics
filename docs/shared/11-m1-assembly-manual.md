@@ -96,7 +96,7 @@ Orin はコアモジュール脱着・network card 増設が無い分 B01 より
 | UI | AI voice module + Speaker | Side elbow Type-C → HUB |
 | その他 | 2DOF PTZ ／ Handle receiver ／ Cooling fan | PTZ/カメラ/音声は HUB 下段、receiver は Orin 直挿し |
 
-> 注: 説明書は LiDAR・カメラ・音声を USB HUB に集約して Orin の 1 ポートへ入れるが、[02:404](02-hardware-design.md) は Orin の USB-A 直結（各スタック VBUS 3A 制限）前提で書かれている。矛盾ではなく、集約/直結は実装時判断。
+> 注: 説明書は LiDAR・カメラ・音声を USB HUB に集約して Orin の 1 ポートへ入れるが、[02:404](02-hardware-design.md) は Orin の USB-A 直結（各スタック VBUS 3A 制限）前提で書かれている。矛盾ではなく、集約/直結は実装時判断。（→ **判断基準**: [02 P-6c](02-hardware-design.md) が公式手順＝**HUB 集約**（LiDAR / PTZ / 深度カメラ / 音声モジュールは HUB ボードのポート・受信機と U ディスクのみ SBC 直挿し）と記録＝**第一候補**。組立時はまず HUB 集約で配線し、`dmesg` の USB エラーと HP60C のフレーム落ちの**実測**で確定する。**直結は縮退先**。）
 >
 > ⚠️ **電源は説明書どおりに配線しない**。拡張ボードの 12V 出力は生バッテリ電圧スルー（非安定化）・**定格 4A／ピーク 6A・保護なし**で、Orin 系統の最悪ケース約 7.5A に対して不足する（[02:318-319](02-hardware-design.md)）。既定構成は**バッテリー直タップ → ヒューズ 10A → 昇圧 DC-DC 12.6→19V → Orin DC 5.5×2.5**（[02:320](02-hardware-design.md) / [02:422-428](02-hardware-design.md)）。説明書の XH2.54 直結は「給電実測①〜④（[02:336-345](02-hardware-design.md)）合格時のみの縮退案」（[02:321](02-hardware-design.md)）。**昇圧モジュールは Orin 未接続で 19.0V に調整してから接続**（[02:451](02-hardware-design.md)。飛ばすと Orin 破壊）。部材の調達状況は [02:435-449](02-hardware-design.md) の台帳が正本（本 doc は複製しない）。
 
@@ -114,7 +114,7 @@ Orin はコアモジュール脱着・network card 増設が無い分 B01 より
    - 返答側: **Upload text to the cloud → Cloud speech synthesis → Play audio**
 7. **End** →（"One more loop" で 1 へ）
 
-**位置づけ**: Yahboom 純正の**クラウド二段推論デモ**（Decision layer = テキスト LLM、Execution layer = マルチモーダル LLM）。本プロジェクトの層で言えば **L4 司令官相当を Yahboom クラウドが担う構成**であり、本プロジェクトの L4 は自作 LLM Bridge / X-ER Bridge（[architecture/08](../architecture/08-llm-bridge-common.md)）が担う——つまり**このクラウドフローは本プロジェクトの構成に存在しない**（事実帰結）。**voice module ハード（mic/speaker）自体の処遇は未決**であり、裁定の正本候補は音声入力側 [mode-x-er/04](../mode-x-er/04-er-input-modalities-and-stt.md)（入力 modality / STT）と音声応答側 [mode-x-er/05](../mode-x-er/05-operator-feedback-and-voice-response.md)（speaker = TTS sink・optional 縮退設計）。`# TODO(Phase 1)` 両 doc 側でハード採否を裁定。
+**位置づけ**: Yahboom 純正の**クラウド二段推論デモ**（Decision layer = テキスト LLM、Execution layer = マルチモーダル LLM）。本プロジェクトの層で言えば **L4 司令官相当を Yahboom クラウドが担う構成**であり、本プロジェクトの L4 は自作 LLM Bridge / X-ER Bridge（[architecture/08](../architecture/08-llm-bridge-common.md)）が担う——つまり**このクラウドフローは本プロジェクトの構成に存在しない**（事実帰結）。**voice module ハード（mic/speaker）自体の処遇**は、~~未決~~ → **2026-08-31 に裁定済**で、その正本は音声入力側 [mode-x-er/04](../mode-x-er/04-er-input-modalities-and-stt.md)（入力 modality / STT）と音声応答側 [mode-x-er/05](../mode-x-er/05-operator-feedback-and-voice-response.md)（speaker = TTS sink・optional 縮退設計）。~~`# TODO(Phase 1)` 両 doc 側でハード採否を裁定。~~ → **【2026-08-31 裁定済】mic = ER 音声直入力の実機マイクとして Phase 1 採用（[04 末尾追補](../mode-x-er/04-er-input-modalities-and-stt.md)）／ speaker = 実機 TTS sink 候補として登録（[05 末尾追補](../mode-x-er/05-operator-feedback-and-voice-response.md)）。いずれも採るのは**ハードのみ**で、本節のクラウドフローは不採用のまま。**裁定の正本は各 doc 側**（本 doc は転記 doc ゆえ結論を複製しない）。
 
 ## 6. 本プロジェクトでの利用マップ（転記 → 設計正本への接続）
 
@@ -124,14 +124,14 @@ Orin はコアモジュール脱着・network card 増設が無い分 B01 より
 | 電源配線（XH2.54 直結） | **使わない**（昇圧 DC-DC 経由が既定） | [02 §給電の配線設計](02-hardware-design.md) |
 | Orin の OS 導入 | microSD 経路で JetPack 6.2 → SSD 移行 | [02:407-412](02-hardware-design.md) / [02:149](02-hardware-design.md) / [setup/jetson-deploy.md](../setup/jetson-deploy.md) |
 | 実機 bringup・安全ゲート | G0-G7・L0' 結線・部屋 SLAM の順（本 doc の範囲外） | [jetson/01](../jetson/01-fidelity-and-validation.md) / [mode-x-er/10](../mode-x-er/10-room-scale-safety-review.md) / [ADR-0009](../adr/0009-m1-room-scale-operation.md) |
-| AI voice module クラウドフロー（§5） | 本プロジェクト構成に存在しない（L4 = 自作 Bridge）。**ハードの処遇は未決**（§5 の TODO） | [architecture/08](../architecture/08-llm-bridge-common.md) / [mode-x-er/04](../mode-x-er/04-er-input-modalities-and-stt.md) / [mode-x-er/05](../mode-x-er/05-operator-feedback-and-voice-response.md) |
+| AI voice module クラウドフロー（§5） | 本プロジェクト構成に存在しない（L4 = 自作 Bridge）。**ハード（mic / speaker）は 2026-08-31 に採用裁定済**（§5 参照・正本は右列の 04 / 05 各末尾追補） | [architecture/08](../architecture/08-llm-bridge-common.md) / [mode-x-er/04](../mode-x-er/04-er-input-modalities-and-stt.md) / [mode-x-er/05](../mode-x-er/05-operator-feedback-and-voice-response.md) |
 | USB wireless handle | 転記事実のみ: receiver は Orin 直挿し。**手動走行の採否・その経路が L0'（送信直前クランプ）を通るかは未決**。`# TODO(Phase 1)` 実機確認。G0 ゲート通過前に motion を有効化しない | [02:325-329](02-hardware-design.md) / [jetson/01](../jetson/01-fidelity-and-validation.md) |
 
 ## 7. 転記の限界（未撮影ページ）
 
-以下は撮影範囲外のため本 doc に含まれない。**組立時は紙の該当ページを直接参照**すること:
+以下は**紙説明書（12頁）の撮影範囲外**という事実の記録。**Orin 手順 2〜5 は末尾追記 Q-7（英語版デジタル説明書 全25頁）で完全解消済であり、紙を参照する必要はない**——残り2項目のみ組立時に紙の該当ページを直接参照する:
 
-- Jetson Orin Nano board installation step の **2〜5**（SSD・アンテナ・ボードマウント相当）
+- Jetson Orin Nano board installation step の **2〜5**（SSD・アンテナ・ボードマウント相当）（→ **末尾追記 Q-7 で完全解消済・手順 2〜5 は Q-7 を参照。SSD は車体搭載前に装着**）
 - 2DOF PTZ 取付の **④以降**
 - Quick Start Tutorials の Example mode 以外のページ
 
@@ -239,9 +239,9 @@ Yahboom 公式 build ページ（<https://www.yahboom.net/build/id/16900/cid/427
 これにより本 doc の次の記述を**更新**する（該当行に個別ポインタ済み）:
 
 - `:69`「自作 3D プリントマウント前提」→ **撤回**（付属部品での公式直付けが第一候補）。
-- `:195`「3D プリントマウントは引き続き必要」→ **撤回**。
-- `:228` 障壁1（穴位置）→ 公式動画により**直付け可の見込み**。`:229` 障壁2（高さ干渉）→ 公式構成で cover が閉まる**傍証あり**。`:231` 障壁4（純正取付板の問い合わせ）→ **優先度低下**（公式手順に別売取付板は登場しない）。
-- `:173`-`:174` の柱ピッチ懸念・3D プリント板の TODO → **fallback 時のみ**の検討事項へ。
+- `:197`「3D プリントマウントは引き続き必要」→ **撤回**。
+- `:230` 障壁1（穴位置）→ 公式動画により**直付け可の見込み**。`:231` 障壁2（高さ干渉）→ 公式構成で cover が閉まる**傍証あり**。`:233` 障壁4（純正取付板の問い合わせ）→ **優先度低下**（公式手順に別売取付板は登場しない）。
+- `:175` / `:176` の柱ピッチ懸念・3D プリント板の TODO → **fallback 時のみ**の検討事項へ。
 
 **設計判断の正本は [02](02-hardware-design.md) 末尾追記 P-5**（本 doc は転記 doc のため事実の記録に留める）。`# TODO(Phase B 現物合わせ)` 動画ボードが純正 Dev Kit かの断定・柱位置（HUB ボード上 2 階建て vs 前デッキ直）・パッチアンテナ柱の本数（動画 ×2 vs p06 ×3）は組立時に確定する。
 

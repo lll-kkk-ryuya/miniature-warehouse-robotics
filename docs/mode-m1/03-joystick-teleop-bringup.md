@@ -51,7 +51,7 @@ m1_driver（clamp_body_velocity 必経 = L0'）→ FUNC_MOTION 0x12 → STM32
 
 ## 4. 物理手順の順序（正本への forward・本 doc は複製しない）
 
-1. **Phase A（机上）**: Orin 単体ブート（QSPI 確認 → microSD → SSD 移行 = [02:407-412](../shared/02-hardware-design.md)）・マウント試し刷り（[02:414-420](../shared/02-hardware-design.md)）。
+1. **Phase A（机上）**: Orin 単体ブート（QSPI 確認 → microSD → SSD 移行 = [02:407-412](../shared/02-hardware-design.md)。→ **SSD は B案＝`/ssd` データディスクで決着済・rootfs は microSD のまま** = [jetson/02:191-194](../jetson/02-remote-access-and-dev-link.md)）・マウント試し刷り（[02:414-420](../shared/02-hardware-design.md)。→ **[02 P-5](../shared/02-hardware-design.md) で fallback へ格下げ＝必須でない**）。
 2. **Phase B（車体組立）**: [shared/11 §2-§3](../shared/11-m1-assembly-manual.md)（電源手順のみ §4 で差し替え）。
 3. **Phase C（給電ハーネス）**: テスターゲート①〜④厳守（[02:451](../shared/02-hardware-design.md)。飛ばすと Orin 破壊）→ **M0**。
 4. **Phase D（搭載・USB 配線）** → **Phase E（§2 プローブ + G-g）** → **M1**。
