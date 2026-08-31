@@ -10,6 +10,10 @@ clamp; this module must still never emit an over-cap command on its own):
   overshoots 41% on the diagonal (C-8, docs/shared/02-hardware-design.md:373).
   ``hypot(vx, vy)`` is scaled back preserving direction.
 * **Deadman gating** — no pressed deadman button -> zero twist, always.
+* **/joy freshness dead-man** — :func:`apply_joy_freshness` zeroes the
+  republished twist once the /joy stream goes stale (Humble joy_node stops
+  publishing on device removal WITHOUT emitting a zero Joy), so a held
+  command can never outlive its joystick.
 * **Non-finite anywhere -> zero twist** (stop), same guarantee as
   ``warehouse_interfaces.safety.clamp_velocity``.
 * Caps are hardened like keymap's ``_nonneg``: negative / non-finite caps
@@ -36,6 +40,7 @@ DEFAULT_AXIS_ANGULAR: int = 2
 DEFAULT_DEADMAN_BUTTON: int = 4  # L1/LB on common pads; verify with jstest
 DEFAULT_DEADZONE: float = 0.1
 DEFAULT_MAX_ANGULAR: float = 1.5  # rad/s, teleop-local (no frozen angular cap)
+DEFAULT_JOY_TIMEOUT_S: float = 0.6  # s, same default as teleop_keyboard stop_timeout
 
 
 def _nonneg(value: float) -> float:
@@ -115,3 +120,42 @@ def joy_to_twist(
     wz = clamp_velocity(wz_raw, angular_cap)
 
     return (vx, vy, wz)
+
+
+def _positive_or_default(value: float, default: float) -> float:
+    """Non-finite / non-positive timeouts would disarm the dead-man -> default.
+
+    Same fail-safe idiom as teleop_keyboard's ``_positive`` and m1_driver's
+    ``driver_core._positive_or_default``: ``elapsed > NaN`` / ``> inf`` never
+    trips, so a degenerate param must fall back instead of being honoured.
+    """
+    if not math.isfinite(value) or value <= 0.0:
+        return default
+    return value
+
+
+def apply_joy_freshness(
+    latest: tuple[float, float, float],
+    elapsed_s: float,
+    timeout_s: float = DEFAULT_JOY_TIMEOUT_S,
+) -> tuple[float, float, float]:
+    """Freshness dead-man for the republish timer: stale /joy -> zero twist.
+
+    Humble joy_node stops publishing /joy on device removal WITHOUT emitting a
+    zero Joy (joystick_drivers ros2 branch, joy.cpp handleJoyDeviceRemoved).
+    Without this gate the fixed-rate republisher would stream the last mapped
+    twist forever — and, being ever-fresh cmd_vel, it would also keep the
+    m1_driver W-1 freshness watchdog satisfied. Postconditions (pinned by
+    R-26 units):
+
+      * finite ``elapsed_s <= timeout_s`` -> ``latest`` passes through
+      * ``elapsed_s > timeout_s`` or non-finite -> ``(0.0, 0.0, 0.0)``
+        (a NaN elapsed must read as STALE, not fresh — ``NaN > t`` is False,
+        which is exactly the latch this guard exists to prevent)
+      * non-finite / non-positive ``timeout_s`` falls back to
+        ``DEFAULT_JOY_TIMEOUT_S`` (an inf timeout would disarm the guard)
+    """
+    timeout = _positive_or_default(timeout_s, DEFAULT_JOY_TIMEOUT_S)
+    if not math.isfinite(elapsed_s) or elapsed_s > timeout:
+        return (0.0, 0.0, 0.0)
+    return latest
