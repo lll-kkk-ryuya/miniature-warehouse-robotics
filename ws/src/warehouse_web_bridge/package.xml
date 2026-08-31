@@ -10,6 +10,10 @@
   <exec_depend>rclpy</exec_depend>
   <exec_depend>warehouse_interfaces</exec_depend>
   <exec_depend>std_msgs</exec_depend>
+  <!-- eval_sdk: the deterministic trace-seed / trace-id derivation shared with the LLM Bridge
+       and the orchestrator-scorer (doc22 §7:195; same one-way exec_depend those two declare).
+       langfuse itself stays an optional pip extra — absent, trace_id degrades to null. -->
+  <exec_depend>eval_sdk</exec_depend>
 
   <test_depend>python3-pytest</test_depend>
 

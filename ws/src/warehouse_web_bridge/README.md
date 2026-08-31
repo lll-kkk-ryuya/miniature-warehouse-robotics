@@ -34,8 +34,11 @@ Web Observability gateway（**observe-only**）。Mode A/B のキャラLLM会話
 | `state` | live run context（mode/run_id/last_seq） |
 | `app` | FastAPI 面（GET + receive-only WS のみ・StaticFiles 後置 mount・**lazy import**） |
 | `web_bridge_node` | rclpy subscribe（matching QoS）+ snapshot drain + `main()`（rclpy thread + uvicorn） |
+| `trace` | `trace_id` 導出（gen_id を持つ negotiation event のみ・Pattern A / Option D を owner ノブで選択・fail-open） |
+| `preflight` | heavy-dep ImportError → pip spec + provisioning 位置の hint（stdlib のみ・#283） |
+| `cli` | console script 入口（preflight → `web_bridge_node:main`） |
 
-entry_point `web_bridge = warehouse_web_bridge.web_bridge_node:main`。config は `web_bridge`（base: port 8646 / snapshot_hz、overlay: host / recordings_dir / allowed_origins / static_dir）。
+entry_point `web_bridge = warehouse_web_bridge.cli:main`（実行名は `web_bridge` のまま）。config は `web_bridge`（base: port 8646 / snapshot_hz、overlay: host / recordings_dir / allowed_origins / static_dir）。
 
 ## テスト（ROS 不要・host）
 
