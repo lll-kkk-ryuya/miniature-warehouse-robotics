@@ -166,7 +166,7 @@ DWB（Dynamic Window Approach）は、格子状に速度候補（約30個）を�
 
 #### MPPI（Phase 2後半以降で使用、推奨）
 
-MPPI（Model Predictive Path Integral）は、ランダムにノイズを加えた軌道候補を大量（1,000〜2,000本）生成し、各軌道のコストに基づく重み付き加重平均で最適速度を算出する。Nav2 Jazzyに標準搭載されており、追加コスト・学習は不要。
+MPPI（Model Predictive Path Integral）は、ランダムにノイズを加えた軌道候補を大量（1,000〜2,000本）生成し、各軌道のコストに基づく重み付き加重平均で最適速度を算出する。Nav2 に標準搭載されており、追加コスト・学習は不要（`nav2_mppi_controller` は Humble 1.1.20 / Jazzy 1.3.12 の両方にリリースあり。ADR-0008）。
 
 > **注記（R-49, [07:264](07-research-notes.md)）**: 「yaml 1行で切替」は不正確。plugin 型指定は1行だが、**コントローラのパラメータブロック全体の差し替え＋再チューニング**が必要（DWB と MPPI でパラメータ体系が異なる）。実装は `warehouse_bringup/config/nav2_params.yaml`（MPPI 全ブロック + DWB 代替ブロックをコメントで併記）。
 
@@ -340,3 +340,9 @@ sim マップの占有規約は Nav2 `nav2_map_server/src/map_io.cpp` に準拠�
 - [Nav2 Simple Commander API](https://docs.nav2.org/commander_api/index.html) — 参照日: 2026-05-21
 - [Nav2 MPPI Controller](https://docs.nav2.org/configuration/packages/configuring-mppic.html) — 参照日: 2026-05-22
 - [SLAM Toolbox — GitHub](https://github.com/SteveMacenski/slam_toolbox) — 参照日: 2026-05-19
+
+---
+
+## 【2026-08-07 追記】TARGET 知覚・自己位置スタックへの forward link
+
+本 doc は **CURRENT（SLAM Toolbox + AMCL + 2D costmap）の正本**として不変。Isaac ROS **nvblox** を costmap 層に足し、**robot_localization EKF** を `odom→base_link` の唯一の配信者に置き、**MOLA-LO**（2D LiDAR odometry。旧候補 cuVSLAM は blocked-by-hardware）を EKF 第2入力とする TARGET 設計（＋固定 RPLiDAR A1 の ground truth への役割変更・TF 配信責任の一意化・検証 V1-V10）は [architecture/23-perception-and-localization.md](../architecture/23-perception-and-localization.md) を正本とする。単騎構成の前提は [ADR-0006](../adr/0006-single-bot-first.md)。

@@ -338,6 +338,10 @@ def test_plugin_reject_zero_dispatch_store_and_gen_untouched() -> None:
     assert outcome.plugin_report is not None
     assert not outcome.plugin_report.permits_dispatch
     assert outcome.plugin_report.core.status == "accepted"  # core accepted; the PLUGIN vetoed
+    # #563: enum renders as its RAW value in the operator-facing reasoning through the REAL
+    # x_er_cycle f-string — never "ValidationStatus.X" (py3.10 StrEnum-shim guard).
+    assert "validation status=" in outcome.command.reasoning
+    assert "ValidationStatus" not in outcome.command.reasoning
     _assert_zero_interaction(h)
 
 

@@ -122,7 +122,7 @@ Layer 3: Claude / Hermes（戦略判断、Mode A: 3秒 / Mode C: 5秒サイク�
 | **自律走行**（Hard-RT） | Nav2・AMCL・SLAM Toolbox・collision_monitor・twist_mux（**全て C++ 既存依存**）＋ 設定 `warehouse_bringup/config/nav2_params.yaml`・launch（Python） |
 | **緊急監視**（Hard-RT / Layer 1） | Emergency Guardian（**Python 自作**・`warehouse_safety`） |
 | **物理安全**（即時 / Layer 0） | ESP32 firmware（**C++ 自作**・FreeRTOS・PlatformIO・`firmware/`）／ micro-ROS（C・XRCE-DDS）／ micro-ROS Agent（C++・Jetson 上）／ on-robot センサ MS200（`/scan`）・エンコーダ・バッテリ（※**RPLiDAR A1 は Jetson-USB 固定の外部トラッキング用・optional**＝on-robot ではない。doc02:179-180 / doc03:167） |
-| **横断**（全層共通） | ROS 2 Jazzy（DDS）／ 凍結契約 `warehouse_interfaces`（Python・pydantic）／ `warehouse_description`（URDF）／ Sim：Gazebo Harmonic＋ros_gz_bridge・Isaac Sim／ 実行機：Jetson Orin Nano（Ubuntu 24.04）／ 環境切替：`WAREHOUSE_ENV`＋config（doc19） |
+| **横断**（全層共通） | ROS 2 Humble（DDS。[ADR-0008](../adr/0008-ros2-distro-humble-for-rosmaster-m1.md)）／ 凍結契約 `warehouse_interfaces`（Python・pydantic）／ `warehouse_description`（URDF）／ Sim：Gazebo＋ros_gz_bridge（版は ADR-0008 §Open）・Isaac Sim／ 実行機：Jetson Orin Nano（Ubuntu 22.04 / JetPack 6.x）／ 環境切替：`WAREHOUSE_ENV`＋config（doc19） |
 
 > 各パッケージ責務の正本は各 `ws/src/warehouse_*/CLAUDE.md`、リポジトリ構成は doc16、環境/config は doc19。
 
@@ -170,7 +170,7 @@ Layer 3: Claude / Hermes（戦略判断、Mode A: 3秒 / Mode C: 5秒サイク�
          └────── センサ値は ⬆ で State Cache へ還流し situation を再構成 ──────┘
 
 ── 横断（全層共通の土台）──────────────────────────────────────────────────
-   通信  : ROS 2 Jazzy (DDS)         契約: warehouse_interfaces (pydantic・凍結)
+   通信  : ROS 2 Humble (DDS)        契約: warehouse_interfaces (pydantic・凍結)
    記述  : warehouse_description(URDF) Sim : Gazebo Harmonic+ros_gz_bridge / Isaac Sim
    実行機: Jetson Orin Nano (Ubuntu 24.04)
    環境  : WAREHOUSE_ENV + config/<env>  (dev=Mac/Docker/Gazebo ・ prod=Jetson実機)
@@ -507,8 +507,8 @@ Jetson Orin Nano Super（8GB LPDDR5 共有メモリ）ではローカルLLMモ�
 
 - **問題**: §:66 の通り Emergency Guardian は `/{bot}/amcl_pose` を直接購読するが、**pose 到着の鮮度判定を持たない**。AMCL 失調・ノード断で pose が途絶しても気付かず、最後に観測した stale な位置で近接判定を続けてしまう（=「走行中に自己位置を見失っても止まらない」穴）。
 - **判定（純ロジック・R-26 unit）**: per-bot で最後に pose を受信した時刻（`time.monotonic()`）を保持し、`age = now - last_pose_t` が **`safety.pose_freshness_timeout` を超えたら stale**（localization ロスト疑い）と判定する（`guard_logic.evaluate(..., pose_freshness_timeout=...)`、rclpy 非依存）。**初回 pose 受信前（`age=None`）は stale としない**（まだ localize していない停止中ロボットを誤って estop しない）。正常 AMCL cadence では発火しない。
-- **しきい値**: `safety.pose_freshness_timeout`（config、**既定 1.0s・暫定**）。根拠 = R-39（doc07:249）の AMCL 5-10Hz ＝ 正常間隔 100-200ms に対し **~5×**（正常 cadence/jitter で誤発火しない最小余裕）。LLM dispatch 用の別系統である Policy Gate の `STALE_AFTER_S=0.5`／`UNAVAILABLE_AFTER_S=2.0`（:264-265）の中間に位置する。**TODO Phase-2: 実機 AMCL レートを実測して確定**（`emergency_min_distance`/`blocked_timeout` と同様の暫定値）。
-- **動作 = precautionary estop（fail-safe）**: stale ＝ ロボットが自己位置不明のまま走行している恐れ → §:58/:66 の「下位層停止 → 安全停止」ドクトリンに従い **estop 相当**（Nav2 goal cancel ＋ `/{bot}/cmd_vel/emergency` へ zero `Twist`）＋ `/emergency/event`（`type="pose_stale"`）を発行する。**物理停止は level**（毎 tick 再アサート — twist_mux prio100 入力が 0.5s で失効するため）＝ **pose 鮮度が回復すれば EdgeLatch がリセットされ自動解除**される。誤検出（一過性の AMCL hiccup）でも被害は「最大 ~1s 停止 → 自動復帰」に限定され、走行中 localization ロストを見逃す false-negative の被害（衝突）より安全側。
+- **しきい値**: `safety.pose_freshness_timeout`（config、**既定 1.0s・暫定**）。根拠 = R-39（doc07:249）の AMCL 5-10Hz ＝ 正常間隔 100-200ms に対し **~5×**（正常 cadence/jitter で誤発火しない最小余裕）。LLM dispatch 用の別系統である Policy Gate の `STALE_AFTER_S=0.5`／`UNAVAILABLE_AFTER_S=2.0`（:264-265）とは**測る軸が違うので大小を比較しない**——あちらは `StateSnapshot` の**書込 age**（State Cache が 100ms 毎に更新するため AMCL が死んでも新鮮に見える）、本値は pose の**到着 age**（doc23【2026-08-10 追補】A-10 ③）。**TODO Phase-2: 実機 AMCL レートを実測して確定**（`emergency_min_distance`/`blocked_timeout` と同様の暫定値）。
+- **動作 = precautionary estop（fail-safe）**: stale ＝ ロボットが自己位置不明のまま走行している恐れ → §:58/:66 の「下位層停止 → 安全停止」ドクトリンに従い **estop 相当**（Nav2 goal cancel ＋ `/{bot}/cmd_vel/emergency` へ zero `Twist`）＋ `/emergency/event`（`type="pose_stale"`）を発行する。**物理停止は level**（毎 tick 再アサート — twist_mux prio100 入力が 0.5s で失効するため）＝ **実際に pose が到着すれば EdgeLatch がリセットされ解除**される。ただし **motion-gated なソース（AMCL）では「鮮度が自然回復する」とは限らない**——estop が運動を禁じ、運動が無いと AMCL は publish せず、回復証拠が構造的に得られない（自己ラッチ。doc23【2026-08-10 追補】A-10 ②）。これを断つのが末尾 §「変位ゲート」である。誤検出（一過性の AMCL hiccup）でも被害は「最大 ~1s 停止 → 自動復帰」に限定され、走行中 localization ロストを見逃す false-negative の被害（衝突）より安全側。
 - **`/emergency/event` 後方互換**: `type` に新値 `"pose_stale"` を足すのみ ＝ **additive**。コア形（`event_id/robot/type/severity/action_taken/timestamp/requires_llm_review` [+任意 `detail`]、:141-150）は不変で、State Cache は `active`/`history` ring に積むだけ（既存購読者は無視可）。**凍結契約 `warehouse_interfaces` は無変更**。
 - **scan 鮮度は対象外（Phase-2 defer）**: `/scan` の stale 停止（`source_timeout`）は本来 `nav2_collision_monitor` のパラメータであり（R-39, doc07:249）、Guardian は `/scan` を購読しない（§:97 の collision_monitor 委譲。cmd_vel 挿入トポロジは下記 §「collision_monitor 委譲」で確定済、配線 impl は nav-traffic 調整で defer）。本節の freshness は **amcl_pose のみ**を対象とする、collision_monitor 採用までの interim な Guardian policy 層ガードである。
 
@@ -585,3 +585,28 @@ Nav2 behavior_server (recovery: BackUp/DriveOnHeading/Spin)
 - [WiseVision ROS 2 MCP Server — GitHub](https://github.com/wise-vision/mcp_server_ros_2) — 参照日: 2026-05-23（調査対象、不採用）
 - [Nav2 MCP Server — GitHub](https://github.com/ajtudela/nav2_mcp_server) — 参照日: 2026-05-23（調査対象、不採用）
 - [Langfuse — 公式サイト](https://langfuse.com/) — 参照日: 2026-05-23
+
+---
+
+## 【2026-08-10 追補】Guardian の localization health 監視プロファイル構想 → 正本は doc23 追補
+
+Guardian の pose 監視を **AMCL 固定から config 切替（監視プロファイル）へ抽象化する構想**——購読先 topic / heartbeat 信号 / 静止ゲート / stale 閾値 / **startup_timeout**（初回 pose 不着の沈黙穴の根治）/ 自己申告フラグを 1 プロファイルに束ね、`Health Aggregator` 集約ノードは置かず直接購読を維持する方針——および **localization ロストを protective stop ではなく operational stop（運用停止）として位置づける**業界標準との対応は、[architecture/23-perception-and-localization.md 【2026-08-10 追補】](23-perception-and-localization.md) が正本。
+
+本節は **TARGET 構想へのポインタのみ**であり、上記 §「Emergency Guardian — pose freshness guard」（:502-513）の CURRENT 契約（`pose_freshness_timeout` 既定 1.0s・`/amcl_pose` 直購読・`pose_stale` estop）は**不変**である。
+
+> 【2026-08-17 追記】doc23 の【2026-08-17 追補】B-8 が、監視プロファイル（上記ポインタ先【2026-08-10 追補】A-5〜A-7）に **MOLA-LO 行**を追加した: スキャンマッチャは**縮退時も publish を続ける**（鮮度単独では loss を検出できない）ため、速い経路＝`pose_quality` 自己申告・遅い経路＝watchdog の二重化で監視する。CURRENT の Guardian 契約は引き続き不変。
+
+---
+
+## 【2026-08-17 追補】freshness guard の変位ゲート（OQ-11 の第1実装スライス）
+
+> §「freshness guard」（:506-513）の CURRENT 契約への **additive な限定**。`pose_freshness_timeout` の既定 1.0s・`/amcl_pose` 直購読・`pose_stale` estop・`/emergency/event` コア形（:141-150）は**すべて不変**、**凍結契約 `warehouse_interfaces` も不変**。設計正本は [architecture/23-perception-and-localization.md 【2026-08-10 追補】A-5③](23-perception-and-localization.md)（変位ゲートの3許容条件）・同 A-10（OQ-11）。
+
+- **なぜ要るか**: AMCL は motion-gated（`update_min_d: 0.05` / `update_min_a: 0.2`、`ws/src/warehouse_bringup/config/nav2_params.yaml:57-58`）で、**駐機中の沈黙は正常**。CURRENT はこれを 1.0s 超で `pose_stale` estop に誤変換していた（OQ-11）。しかも estop が運動を禁じるため **自己ラッチ**する（:511 / doc23 A-10 ②）。
+- **判定（純ロジック・R-26 unit）**: `pose_stale` を **`pose_age > pose_freshness_timeout` ∧ 変位ゲート開** に限定する。ゲートは独立ソース（wheel odom `/{bot}/odom`・`nav_msgs/Odometry`・doc03:77）から、**前回 pose 到着以降の累積変位 > `safety.pose_freshness_motion_epsilon`**／**累積 `|Δyaw|` > `safety.pose_freshness_angular_epsilon`** のいずれかで開く（**速度項は持たない**＝A-5③ が禁じる形。下記「速度項の撤去」）。実装 = `guard_logic.pose_gate_open` / `guard_logic.PoseGateTracker`（rclpy 非依存）、node 側は marshal のみ（odom の twist は読まない）。
+- **しきい値（すべて config・`config/warehouse.base.yaml`）**: `pose_freshness_motion_epsilon: 0.10`（= 2 × `update_min_d`）／`pose_freshness_angular_epsilon: 0.4`（= 2 × `update_min_a`）／`odom_freshness_timeout: 0.5`（**計3キー**）。**2× は「健全な AMCL なら必ず publish しているはず」の余裕**（正常 jitter でゲートが空振りしない）＝同時に **`update_min_d`(0.05) < `motion_epsilon`(0.10) が出発を可能にする不変条件**（駐機明けは健全 AMCL が先に再 publish する）。**TODO Phase-2: 実機で確定**（既存の暫定値群と同格）。
+- **fail-closed**: odom が不明／`odom_freshness_timeout` 超過で stale ／非有限、または epsilon 未設定・非有限のときは**ゲートを開く**＝ CURRENT（ゲート無し）挙動へ縮退する。ゲートは estop を**足すことはできず、抑止しか**できない（restrict-only。[ADR-0004](../adr/0004-l2-restrict-only-policy-profile.md) と同じ向き）。
+- **ラッチ内蔵**: 変位は**経路長の累積**（直線距離ではない）ゆえ単調非減少で、**pose が実際に到着するまでゲートは閉じない**。速度のみのゲートが作る fail-open limit cycle（estop→速度0→ゲート閉→解除）を構造的に排除する（doc23 A-5③）。
+- **非緩和性（R-26 で機械証明）**: `motion_epsilon` を 1.0s の鮮度窓内に埋める速度（≥ 0.1 m/s）では発火 tick が CURRENT と一致することを unit で固定する（`tests/unit/test_guardian_displacement_gate.py`）。**唯一の残留** = それ未満の匍匐前進は `motion_epsilon / v` だけ発火が遅れ、**v→0 で非有界**（検出は遅れるが変位は単調ゆえ失われない）。ジオラマ規模で「0.10m の走行」を受容する明示的トレードとして unit に pin 済。
+- **999 回避策の撤去**: 本スライスで sim / live 実行経路の `WAREHOUSE__SAFETY__POSE_FRESHNESS_TIMEOUT=999`（5ファイル6箇所・doc23 A-10 ①）を**全削除**し、freshness guard を既定 1.0s で実効化した。**既定 1.0s のままの sim full-stack 完走は human gate（未実施）**。
+- **【2026-08-17 追記】速度項の撤去（sim ゲート実走 P2 FAIL の是正・code-to-docs）**: 初版は上記の変位項に `|速度| > safety.pose_freshness_speed_epsilon` を OR していたが、これは **A-5③ が明示的に禁じる形**（[23 A-5③](23-perception-and-localization.md)）であり、Gazebo 実走で二重に falsify された——**出発デッドロック**（駐機明け最初の運動 tick・変位 3.2mm で estop → 速度 0 → `update_min_d` に届かず pose 来ず → nav goal 5/5 キャンセル）と**ラッチ破れ**（AMCL 死亡下で 12 秒に estop 立ち上がり 17 回・累積変位 0.023m）。**速度項と config キー `pose_freshness_speed_epsilon` を削除**し、`BotState.odom_speed` / tracker の速度チャネル / node の twist 読取りも同時に撤去（dead code を残さない）。ゲートは変位・角度・fail-closed のみ。詳細と実測値は [doc23 A-10【2026-08-17 追記②】](23-perception-and-localization.md)。**sim gate 全体の再実走が最終受け入れ（PENDING）**。

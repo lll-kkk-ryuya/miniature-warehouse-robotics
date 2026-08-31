@@ -113,3 +113,9 @@ class GeminiErAdapter:
 > **transport の分岐スコープ（reconcile）**: `transport` は本節（L4）の **request 組み立て / fail-safe fallback のキー**にはなる — 同一 box の interface 裏で `hermes|direct|worker` を選ぶのは実装選択（[`../productization/01-commercial-box-map.md`](../productization/01-commercial-box-map.md):52）。一方 `Transport` enum docstring（`adapters/enums.py`・`transport.py`・doc03:75）の「**NEVER an execution-branch key**」は **DOWNSTREAM の L3 policy 判断 / L2 safety gate** を指す（safety-gate box の transport は `n/a`・[`01`](../productization/01-commercial-box-map.md):53）。よって L4 の request assembly で transport をキーにするのはこの禁止と矛盾しない（前者＝L4 wire、後者＝L3/L2 gate）。
 
 > 実装: `robotics/adapters/gemini_er.py` `propose_plan` が本節の凍結形で live 送信する（別 PR）。**robotics-grade command 品質 eval と実 gateway 配備・有料 live verify は human gate**（doc04:28 / environments.md `.env` 承認）。
+
+---
+
+## 【2026-08-09 追補】`overhead_image_ref` は改名せず意味を再定義（ADR-0007）
+
+俯瞰カメラ不使用により、`ErTaskRequest.overhead_image_ref`（:43・:104）の実体は**搭載 HP60C のカメラフレーム参照**となる。**フィールド名は改名しない**（`er_task.py`・adapter・test への波及回避）。「Adapter は俯瞰画像を受ける」（:11）は「搭載カメラフレームを受ける」と読み替える。

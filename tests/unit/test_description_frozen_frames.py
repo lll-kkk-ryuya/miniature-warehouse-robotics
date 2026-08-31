@@ -21,7 +21,22 @@ def test_xacro_exists() -> None:
 def test_all_frozen_link_names_appear_in_xacro() -> None:
     text = _xacro_text()
     for name in rd.FROZEN_LINK_NAMES:
+        if name in rd.PENDING_URDF_LINKS:
+            continue  # body/joint awaits the measured mount pose — see below
         assert f'name="{name}"' in text, name
+
+
+@pytest.mark.unit
+def test_pending_links_are_still_absent_from_xacro() -> None:
+    """Forces the pending list to shrink in the same PR that writes the link.
+
+    Without this, PENDING_URDF_LINKS could silently mask a link that already exists in
+    the xacro and the drift guard above would stop covering it. camera_link's mount pose
+    is unmeasured (doc09 §3: docs/mode-x-er/09-hand-raise-summon.md:41,43).
+    """
+    text = _xacro_text()
+    for name in rd.PENDING_URDF_LINKS:
+        assert f'name="{name}"' not in text, name
 
 
 @pytest.mark.unit

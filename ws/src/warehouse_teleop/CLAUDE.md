@@ -36,3 +36,13 @@
 
 > #1 契約凍結の雛形 stub を #158 で実装に置換（リポジトリ最後の skeleton stub 解消）。
 > 申し送り: doc16 §9 branch 表（16-...:72）は warehouse_teleop を `ros2/hw` 表記＝`feat/teleop`（#158）追記は governance/docs PR（doc16 は skeleton 所有・本レーン read-only）。
+
+## 【2026-08-26 追記】joystick teleop（`teleop_joy`）追加
+
+設計正本: [docs/mode-m1/03-joystick-teleop-bringup.md](../../../docs/mode-m1/03-joystick-teleop-bringup.md) §3（joy 経路・Yahboom 公式 joy node 不採用の理由）。
+
+- **提供 (produce)**: console_script **`teleop_joy`**（`teleop_joy.py`）— `/joy`（`sensor_msgs/Joy`・stock `joy_node` 出力）購読 → pure **`joymap.joy_to_twist`** → `/<bot>/cmd_vel`。keyboard 版と同じ **standalone bring-up utility**（mux 入力追加は bringup 所有の別変更のまま）。固定レート republish（デッドマン保持中=指令・解放=明示ゼロ。m1_driver W-1 との整合）。
+- **`joymap`（pure・rclpy 非依存）**: **ベクトルキャップ**（`hypot(vx,vy) ≤ min(param, MAX_LINEAR_VELOCITY)`・方向保存＝**C-8**。keymap のスカラー clamp では `vy` を扱えないための新設）・デッドマン必須・非有限→0 寄与・cap 負/非有限→fail-stop（keymap `_nonneg` idiom）。軸/ボタン index は公式レイアウト既定（x=axes[1], y=axes[0], yaw=axes[2], deadman=button 4）で **ros param 上書き可**（実機 `jstest` で確定＝mode-m1/03 §2-3）。
+- **消費 (consume)**: `warehouse_interfaces.safety.MAX_LINEAR_VELOCITY` / `clamp_velocity`（単一ソース）・sensor_msgs / joy（package.xml exec_depend 追加）。
+- **テスト (R-26)**: `tests/unit/test_teleop_joymap.py`（15 ケース・spec 由来オラクル）。**mutation 2 本 KILLED**（2026-08-26 実測）: per-axis クランプすり替え→1 fail（C-8 本命）・デッドマン disarm→1 fail。クリーン 0 fail。
+- 注意: ここは**第一防御**にすぎない。最終防衛は `warehouse_m1_driver` の L0'（`clamp_body_velocity`）＝別トラック。

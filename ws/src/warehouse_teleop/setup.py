@@ -18,6 +18,9 @@ setup(
     license="Apache-2.0",
     tests_require=["pytest"],
     entry_points={
-        "console_scripts": ["teleop_keyboard = warehouse_teleop.teleop_keyboard:main"],
+        "console_scripts": [
+            "teleop_keyboard = warehouse_teleop.teleop_keyboard:main",
+            "teleop_joy = warehouse_teleop.teleop_joy:main",
+        ],
     },
 )

@@ -179,11 +179,12 @@ L4 ER Adapter
 
 | Layer | 責務（凡例の要約） | package / 主要ファイル（repo 実体） |
 |---|---|---|
-| **L4** 入力・知覚/オーケストレーション | 音声・画像・state を束ね、model（LLM/ER）を呼び、提案と trace を作る。直接 actuation しない | `ws/src/warehouse_llm_bridge/warehouse_llm_bridge/`: `llm_bridge.py`（Mode A/C commander node）・`x_er_bridge.py`（X-ER commander node・契約正本 [mode-x-er/08](../mode-x-er/08-x-er-bridge-node-spec.md)）・`robotics/`（ER adapter / transport / composition）・`hermes_client.py`・`situation.py`・`executor.py`・`action_map.py`（→L2 への seam・`gen_id`/`idempotency_key` は Bridge mint） |
+| **L4** 入力・知覚/オーケストレーション | 音声・画像・state を束ね、model（LLM/ER）を呼び、提案と trace を作る。直接 actuation しない | `ws/src/warehouse_llm_bridge/warehouse_llm_bridge/`: `llm_bridge.py`（Mode A/C commander node）・`x_er_bridge.py`（X-ER commander node・契約正本 [mode-x-er/08](../mode-x-er/08-x-er-bridge-node-spec.md)）・`robotics/`（ER adapter / transport / composition）・`hermes_client.py`・`situation.py`・`executor.py`・`action_map.py`（→L2 への seam・`gen_id`/`idempotency_key` は Bridge mint）／ `ws/src/warehouse_perception/warehouse_perception/`: `speed_band_core.py`・`speed_band_node.py`（speed band publisher = runtime speed limiter ② の帯 publish。control-plane・**0 cmd_vel**＝[ADR-0012](../adr/0012-speed-band-no-l2-best-effort.md) 決定 7③〔R-26 AST pin〕・配置＝決定 6・単一 publisher 規律＝決定 11・`gesture_detector` 予定地） |
 | **L3** 司令・検証（Planning Core） | model 提案を検証・target 解決・依存管理し、既存 `Command` 候補へ変換する。実行許可は持たない | `warehouse_llm_bridge/robotics_planning_core/`: `handoff.py`・`validator/validator.py`・`visual_resolver/resolver.py`・`task_graph_executor/executor.py`・`command_compiler/compiler.py`・`pipeline.py`（plugin 合成は `warehouse_llm_bridge/robotics/composition/`） |
 | **L2** 実行許可・交通管理 | accepted motion だけを下流へ通す（Governance）＋複数台の交通調整（Traffic）＋凍結契約ハブ（Contract †） | Governance: `ws/src/warehouse_mcp_server/`（`policy_gate.py`・`tools.py`・`gen_check.py`・`audit.py`）／ Traffic: `ws/src/warehouse_traffic/`（`traffic_manager.py`・`virtual_scan*.py`）＋ `ws/src/warehouse_rmf_adapter/`（必要がなければ X-lite に縮退＝§Box 境界の原則 4・保管詳細 [11 §Box の保管場所](11-l2-contract-governance-traffic-box.md)）／ Contract †: `ws/src/warehouse_interfaces/`（L2–L0 が一方向横断依存） |
 | **L1** 自律走行・安全 | Nav2 の実走と物理停止（collision_monitor / twist_mux / Emergency Guardian） | Navigation: `ws/src/warehouse_nav2_bridge/`（REST→Nav2 action）・`ws/src/warehouse_bringup/config/`（`nav2_params.yaml`・`collision_monitor.yaml`・`twist_mux.yaml`）／ Safety: `ws/src/warehouse_safety/`（`emergency_guardian.py`・`guard_logic.py`） |
 | **L0** 物理安全 | ESP32 firmware の速度 clamp ≤0.3 m/s・近接/非常停止（MCU / 即時） | `firmware/src/main.cpp`・`firmware/include/safety_clamp.h`・`firmware/include/kinematics.h`（micro-ROS Agent 経由） |
+| **L0'** 物理安全（ホスト側・ROSMASTER M1 構成） | ベンダ製 STM32 ファームに MCU 内 clamp（L0）を置けない M1 で、ホスト側シリアルドライバの送信直前で速度 clamp（`warehouse_interfaces.safety.MAX_LINEAR_VELOCITY` 単一ソース・現契約値 ≤0.3 m/s）＋ W-1/W-2 watchdog 停止。**ホストプロセス生存中のみ有効**（設計正本 [mode-m1/02](../mode-m1/02-m1-driver-and-watchdog.md)・[shared/02 残課題 7](../shared/02-hardware-design.md)） | `ws/src/warehouse_m1_driver/warehouse_m1_driver/`: `clamp.py`（`clamp_body_velocity`・ベクトルクランプ C-8・非有限 fail-safe）・`driver_core.py`（clamp 必経の単一絞り点・W-1 freshness / W-2 shutdown stop）・`driver_node.py`（rclpy wrapper）・`backend.py`（MotionBackend seam・fake 注入可） |
 | **横断** Eval / Observability（観測面） | 全 box（L4–L0）を横断して raw event / trace / KPI を集約する（motion 権限なし） | `ws/src/eval_sdk/`・`ws/src/warehouse_orchestrator/`・`ws/src/warehouse_web_bridge/`（observe-only consumer・[architecture/22](../architecture/22-web-observability.md)） |
 
 annotation の注意（layer ≠ process / layer ≠ package）:
@@ -193,3 +194,13 @@ annotation の注意（layer ≠ process / layer ≠ package）:
 - **帰属未定の component は未定と書く**: State Cache（`ws/src/warehouse_state/`）は box 帰属未定（F3・§未凍結事項・暫定 `safety` box に subsume）。annotation では「State Cache（box 帰属未定 F3・暫定 Safety）」と書き、断定しない。
 - **起動・記述・sim 系 package（`warehouse_bringup` / `warehouse_description` / `warehouse_sim` / `warehouse_teleop`）は単一 layer に帰属させない**（複数レイヤの起動/記述/開発基盤）。annotation は「扱っている config / launch がどの layer の component か」で書く（例: `collision_monitor.yaml`＝L1 Safety の config）。
 - **他体系の番号を裸で書かない**: 安全レイヤー 4 層（Layer 0–3・[../architecture/12-infrastructure-common.md](../architecture/12-infrastructure-common.md)）・時間 3 層とは軸が異なる。読み替えは [11 §レイヤ番号の対応](11-l2-contract-governance-traffic-box.md) を正とする。
+
+## 将来 box 候補: Localization Health 監視プロファイル
+
+実験段階（単騎構成）で得た **Guardian 監視プロファイル**——localization health を集約ノードでなく Guardian の直接購読先 config 切替として抽象化し、ソースごとに heartbeat / 静止ゲート / stale 閾値 / startup_timeout を束ねる設計——は、**L1 Safety Box の「safety profile」artifact（§Box 一覧）を localization ソース非依存に拡張する商品化候補**である。案件ごとに localizer（2D LiDAR / VSLAM / 外部測位）が変わっても Safety Box の interface を変えずに済む差替点になりうる。
+
+併せて、**localization ロスト = operational stop（運用停止）であって protective stop（安全停止）ではない**という切り分け（ISO 3691-4 / MiR / OTTO と同型）は、Safety Box の event catalog と reject reason の分類軸として再利用できる。
+
+現時点では **box 化しない**（実験段階の知見であり、produces/consumes 契約が固まっていない＝§Box 種別と分類規則の box 条件を満たさない）。設計の正本は [architecture/23-perception-and-localization.md 【2026-08-10 追補】](../architecture/23-perception-and-localization.md)、用語は [GLOSSARY §11](../GLOSSARY.md)。
+
+**License flag（2026-08-17）**: TARGET-1 に採用した MOLA-LO（`mola_lidar_odometry`）は **GPLv3**（商用ライセンスは作者へ要相談）。localization を含む box を商品化する際は、GPLv3 コンポーネントの扱い（分離プロセス化・商用ライセンス取得・license-clean 代替 Kinematic-ICP(MIT) への差し替え）を box 化前に裁定すること。正本: [architecture/23-perception-and-localization.md 【2026-08-17 追補】B-2](../architecture/23-perception-and-localization.md)。

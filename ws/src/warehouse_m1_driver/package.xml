@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>warehouse_m1_driver</name>
+  <version>0.0.0</version>
+  <description>ROSMASTER M1 host-side serial driver: L0' velocity clamp before the FUNC_MOTION frame.</description>
+  <maintainer email="ryu3124ruyu@gmail.com">kawaguchiryuya</maintainer>
+  <license>Apache-2.0</license>
+
+  <!-- Frozen contract only (MAX_LINEAR_VELOCITY). No other track's internals. -->
+  <exec_depend>warehouse_interfaces</exec_depend>
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>
