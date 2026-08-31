@@ -303,3 +303,10 @@ class Transport(StrEnum):     # box interface 裏の実装選択（01:52）— �
 - **§3 提案形からの差分**: `execution_profile` / `calibration_id`（§3:101-103 提案どおり）に加え、`enabled`（bringup 起動 gate。**`traffic_mode` に `x-er` 値を発明しない**＝07:55 のスケッチは不採用・traffic_mode 直交の §3 提案を維持）、`run_manifest` / `plugin_manifests`（composition ingestion の取得元＝[productization/09](../productization/09-run-manifest-and-plugin-composition.md):402-416 RESIDUAL の解消）、`site_profile.{base_dir,customer,site}`（S3 profile gate の解決子）を追加凍結。
 - **base.yaml への実追加**は §3 の contract PR 手順（:110）どおり **XER6 実装レーンが bringup/skeleton 所有 Issue へ予告 → additive 末尾追記 PR** で行う（本 docs PR では config を触らない）。
 - **Slice B 追補（2026-07-07）**: 上記に加え `dispatch.forward_to_nav2`（L2 forwarder 解決の単一 boolean・endpoint は既存 `nav2_bridge.base_url` 再利用）と `request_fixture`（v0 dev-only PROVISIONAL 入力源）を §3 に追加凍結（[08 §3](08-x-er-bridge-node-spec.md) 正本）。あわせて起動 gate を `llm:=true`∧`mode_x_er.enabled` に確定（[08 §2.1](08-x-er-bridge-node-spec.md)・launch 実配線は実装レーン委譲）。
+
+---
+
+## 【2026-08-09 追補】calibration artifact と coordinate goal への注記（ADR-0007 / 09 改訂）
+
+- **calibration artifact**（§3 RESOLVED・逐語 5 field）: 配置 `config/<env>/calibration/<id>.yaml`・`calibration_id ≡ camera_id` は不変。俯瞰カメラ不使用（[ADR-0007](../adr/0007-no-overhead-camera-gesture-via-onboard-nn.md)）により本フェーズは `homography: []`（fail-closed）を既定とし、**搭載カメラ用の不足 field（intrinsics / camera_frame）の additive 追加は OPEN**（この追補では発明しない）。
+- **coordinate goal DEFER（:127）への条件付き注記**: 影響先リスト（MCP 引数 / CommandItem / Policy Gate）に加え、**「モデルに座標を主張させる」方向へ解凍する場合は `handoff.py` の `coordinate_goal_unfrozen` ルール（:90）の改訂も必要**になる。逆に座標が **L3 の導出結果**（ジェスチャ幾何解決など・[09 INV-1](09-hand-raise-summon.md)）である限り handoff は無関係＝不触で済む。解凍 gate（:131「具体デモ要件」）の現時点の候補は指差しジェスチャだが、[09 §9](09-hand-raise-summon.md) の定量（交点誤差 15-25cm < location 間隔 500mm）は「snap で足りる＝解凍不要」を示している。

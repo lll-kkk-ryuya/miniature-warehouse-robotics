@@ -6,7 +6,7 @@ robot's Nav2 ``obstacle_layer``). The math is kept rclpy-free so it is
 unit-testable on the host; ``virtual_scan.py`` wraps it in a ROS node.
 
 Single source of truth: ``ROBOT_RADIUS`` is imported from
-``warehouse_description.robot_dimensions`` (``robot_dimensions.py:45``, R-42 =
+``warehouse_description.robot_dimensions`` (``robot_dimensions.py:66``, R-42 =
 0.075 m), an allowed shared asset (``parallel-workflow.md`` §2.1). It is NOT
 re-hardcoded here — doc11a's older 0.1 is superseded.
 """

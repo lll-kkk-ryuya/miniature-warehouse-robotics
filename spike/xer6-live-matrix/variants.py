@@ -3,7 +3,7 @@
 Each variant = one committed ``run_manifest.v1`` (manifests/) + its committed plugin manifests
 (plugins/*.plugin.yaml) + a runtime-materialized APPROVED site bundle + a ``plugin_factories``
 map for ``build_x_er_runtime`` (x_er_composition.py:119-126). The cfg dict reuses the landed
-fixture kit ``build_x_er_cfg`` (tests/unit/x_er_fixtures.py:272-301) so the frozen doc08 §3
+fixture kit ``build_x_er_cfg`` (tests/unit/x_er_fixtures.py:286-315) so the frozen doc08 §3
 ``mode_x_er:`` key shape is inherited, not re-invented; live mode adds the
 ``robotics.er_gateway`` sub-tree (exact keys per robotics/transport.py:49-58).
 """
@@ -130,7 +130,7 @@ DEFAULT_ORDER: tuple[str, ...] = ("A", "B_in", "B_out", "C", "D")
 
 
 def materialize_site_bundles(base_dir: Path) -> Path:
-    """Write APPROVED bundles for both customers once per batch (x_er_fixtures.py:229-266)."""
+    """Write APPROVED bundles for both customers once per batch (x_er_fixtures.py:243-280)."""
     write_site_profile_bundle(base_dir, customer=CUSTOMER_A, site=SITE)
     write_site_profile_bundle(base_dir, customer=CUSTOMER_B, site=SITE)
     return base_dir

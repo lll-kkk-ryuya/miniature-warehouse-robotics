@@ -35,7 +35,7 @@ guardian が**異常終了/クラッシュしても Nav2 を停止**する（`sy
 | 到着前 | `deploy/jetson/bin/preflight.sh --offline` で unit/env/script の静的検査 | 不要 |
 | 到着後 | SSD へ JetPack 焼込（microSD 初回ブート→SSD 移行） | **必要** |
 | 到着後 | Super 化（`sudo nvpmodel -m 2` + `sudo jetson_clocks`） | **必要** |
-| 到着後 | ROS 2 Jazzy + `micro_ros_agent` 導入・8GB メモリ実測（doc06 Phase 0.5 段階2） | **必要** |
+| 到着後 | ROS 2 Humble + `micro_ros_agent` 導入・8GB メモリ実測（doc06 Phase 0.5 段階2） | **必要** |
 
 詳細は doc02:140-164。本書はその後の **systemd 常駐化**を扱う。
 
@@ -43,7 +43,7 @@ guardian が**異常終了/クラッシュしても Nav2 を停止**する（`sy
 
 ## 2. リリース取得（git タグ）
 
-prod は **git タグ固定**（`v0.x`）を clone/checkout して実行（doc19:94 / doc17 §4.0 別マシン=clone）。
+prod は **git タグ固定**（`v0.x`）を clone/checkout して実行（doc19:6 / doc19:118 / doc17 §4.0 別マシン=clone）。
 規約パスは `/opt/warehouse`（`install.sh` は実 clone 先を自動検出するので別パスでも可）。
 
 ```bash
@@ -51,10 +51,16 @@ sudo git clone --branch v0.x https://github.com/lll-kkk-ryuya/miniature-warehous
 cd /opt/warehouse
 ```
 
+> **補足（bring-up 暫定・2026-08-30）**: `v0.x` タグは**未発行**で、bring-up 中のボードは main HEAD
+> 直 clone（`/ssd/warehouse` → `/opt/warehouse` symlink）で運用している（暫定であることは
+> [jetson/02 §9.6 表 row5](../jetson/02-remote-access-and-dev-link.md) に記録済）。**初回 `v0.1.0` の発行は
+> §6 起動（= systemd enable・prod 昇格）前の必須タスク**とし、発行後に本節のタグ固定運用へ切替える。
+> タグは「壊れた時に戻れる印」程度の軽い運用でよい（過剰な儀式化はしない＝capability-first 方針）。
+
 ## 3. ビルド
 
 ```bash
-source /opt/ros/jazzy/setup.bash
+source /opt/ros/humble/setup.bash
 cd /opt/warehouse/ws && colcon build && cd /opt/warehouse
 ```
 
@@ -63,7 +69,7 @@ cd /opt/warehouse/ws && colcon build && cd /opt/warehouse
 doc19 §4 / §4.1 の2ファイルに分けて配置（**リポジトリには置かない**。`.gitignore` で実体除外）:
 
 - `config/prod/.env` — ROS 側（`API_SERVER_KEY` = `~/.hermes/.env` と同値、Langfuse 観測キー）。
-- `~/.hermes/.env` — Hermes Gateway 側（各社プロバイダキー）。**prod Hermes は GCP**（`34.4.104.112`, doc19:18,86）なので Jetson 側 Bridge は `config/prod/.env` の `API_SERVER_KEY` のみで足りる。
+- `~/.hermes/.env` — Hermes Gateway 側（各社プロバイダキー）。**prod Hermes は GCP**（`34.4.104.112`, doc19:18 / doc19:110）なので Jetson 側 Bridge は `config/prod/.env` の `API_SERVER_KEY` のみで足りる。
 
 `/etc/warehouse/warehouse.env`（secrets 無し・パス/環境）は `install.sh` が雛形から生成
 （`env/warehouse.env.example` 参照）。生成後 **`WAREHOUSE_MAP` と `WAREHOUSE_TRAFFIC_MODE`** を確認。
@@ -83,6 +89,10 @@ deploy/jetson/bin/preflight.sh --arrival
 `preflight.sh` は読み取り専用で、`systemctl enable/start/restart/stop` は実行しない。`--offline` は
 到着前にも実行できる静的検査、`--arrival` は Jetson 到着後の `/etc/warehouse/warehouse.env`・
 ROS underlay/workspace・コマンド存在確認を追加する。
+
+> **現況（2026-08-30・意図的 defer）**: bring-up ボードは本節を**未実施**のまま運用中（unit 導入・
+> サービスアカウント作成を保留）。G0–G7 ゲートが旧世界（2 台構成）前提で M1 単騎への rescope 未了のため
+> （[jetson/02 §7 残課題](../jetson/02-remote-access-and-dev-link.md)）、rescope 後に **§5 → v0.1.0 発行 → §6** の順で進める。
 
 ## 6. 起動（安全ゲート通過後のみ）
 
@@ -128,7 +138,7 @@ systemctl status warehouse.target
 
 ```bash
 cd /opt/warehouse && sudo git fetch --tags && sudo git checkout v0.y
-source /opt/ros/jazzy/setup.bash && (cd ws && colcon build)
+source /opt/ros/humble/setup.bash && (cd ws && colcon build)
 sudo /opt/warehouse/deploy/jetson/bin/install.sh   # unit 差分反映
 sudo systemctl restart warehouse.target
 ```
@@ -157,7 +167,7 @@ runtime dir = `paths.runtime_dir()`）を共有・個別再起動でも保持。
 - `warehouse-mcp-server.service`（`warehouse_mcp_server`）/ `warehouse-nav2-bridge.service`
   （`warehouse_nav2_bridge`, Mode A/B）/ WO Bridge。LLM Bridge が稼働するには MCP Server が必要
   （bridge unit コメント参照）。
-- **Hermes Gateway は prod では Jetson に置かない**（GCP `34.4.104.112`, doc19:86）。
+- **Hermes Gateway は prod では Jetson に置かない**（GCP `34.4.104.112`, doc19:110）。
 
 ---
 
@@ -170,3 +180,13 @@ runtime dir = `paths.runtime_dir()`）を共有・個別再起動でも保持。
 - env 解決（`paths.runtime_dir()` prod=`/run/warehouse`）は既存 unit テストで回帰カバー
   （`tests/unit/test_*` の `WAREHOUSE_ENV=prod`）。
 - **実機投入は Phase 1**（Jetson 到着後、§0 安全ゲート通過後）。
+
+---
+
+## 【2026-08-28 追記】作業用アクセス経路は jetson/02
+
+本書は **prod 常駐化（systemd）** の正本。bring-up 中に開発機（Mac）から Jetson を操作するための
+**接続経路（mDNS 直結 `minicar.local`＋常時通電運用・`jetson` CLI＝02 §9。旧 pull 型 agent は恒久廃止）と実機の同定情報**は
+[jetson/02-remote-access-and-dev-link.md](../jetson/02-remote-access-and-dev-link.md) を参照する。
+**接続できることと §0 安全ゲートを通過したことは別**であり、`systemctl enable --now` の条件は本書 `:26` が正本。
+

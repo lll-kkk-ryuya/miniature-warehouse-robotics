@@ -12,9 +12,10 @@ docs/
 ├── productization/  商用再利用 Box 設計（L4/L3/下位ROS/安全/evalの独立部品化）
 ├── dev/             開発プロセス（並列開発 playbook・オペレーター手順・教訓ログ）
 ├── setup/           デプロイ手順（Jetson prod 常駐化・systemd / 監視）
-├── jetson/          Jetson 忠実度ギャップ・実機投入前ゲート（dev/stg→prod de-risk・#127）
+├── jetson/          Jetson 実機: 忠実度ギャップ・投入前ゲート（#127）＋ 開発機↔実機アクセス経路
 ├── mode-a/          Mode A/B: LLM単独交通管理（Open-RMFなし）
 ├── mode-c/          Mode C: LLM + Open-RMF（主方針）
+├── mode-m1/         Mode M1: ROSMASTER M1 単騎・部屋スケール実行モード（bring-up / driver / joystick）
 ├── mode-x-er/       Mode X-ER: Gemini Robotics-ER 視覚タスク司令（設計提案）
 ├── mode-x-er-vla/   Mode X-ER-VLA: Gemini Robotics-ER + VLA 統合モード
 └── mode-x/          旧 Mode X 互換参照（新規設計は mode-x-er / mode-x-er-vla）
@@ -34,6 +35,7 @@ docs/
 | [07-research-notes](shared/07-research-notes.md) | 調査メモ・未検証事項（T1-T12） |
 | [09-navigation-internals](shared/09-navigation-internals.md) | AMCL・Nav2・SLAM内部設計 |
 | [10-system-qanda](shared/10-system-qanda.md) | システム設計Q&A |
+| [11-m1-assembly-manual](shared/11-m1-assembly-manual.md) | ROSMASTER M1 紙説明書の転記（同梱部品・組立手順・配線・音声フロー）＋開梱記録 |
 
 ## architecture/ — 共通基盤
 
@@ -53,6 +55,8 @@ docs/
 | [20-dev-quality-and-testing](architecture/20-dev-quality-and-testing.md) | 開発品質・テスト戦略（Ruff/pytest/pre-commit/CI/Playwright・安全契約テスト・テストピラミッド） |
 | [21-eval-sdk-extraction](architecture/21-eval-sdk-extraction.md) | Eval SDK 抽出（`eval_sdk`：Langfuse trace/score・KPI をドメイン非依存に抽出する設計提案） |
 | [22-web-observability](architecture/22-web-observability.md) | Web Observability（Mode A 会話・稟議のリアルタイム観測基盤：`web_bridge` + Next.js `web/console`、Langfuse 整合） |
+| [23-perception-and-localization](architecture/23-perception-and-localization.md) | 知覚・自己位置スタック TARGET 設計（nvblox / **MOLA-LO**〔旧 cuVSLAM は blocked〕/ robot_localization EKF / Nav2 costmap 層・スパイクゲート S1-S3。CURRENT=doc09 は不変） |
+| [robot-architecture-tree](architecture/robot-architecture-tree.html) + [perception-localization-flow](architecture/perception-localization-flow.html) | HTML 図解 2 枚構成: ① 01-08 機能 Tree（全体地図・不採用の理由つき残置・M1 差分表）② Runtime Data Flow（doc23 companion）。観測 4 tier は [productization/tool-catalog-detail](productization/tool-catalog-detail.html) |
 
 ## productization/ — 商用再利用 Box 設計
 
@@ -91,6 +95,16 @@ docs/
 | [11c-traffic-mode-c](mode-c/11c-traffic-mode-c.md) | 交通管理 Mode C（RMFTrafficManager, Open-RMF） |
 | [12c-integration-mode-c](mode-c/12c-integration-mode-c.md) | システム統合 Mode C（Fleet Adapter, Open-RMF連携） |
 
+## mode-m1/ — ROSMASTER M1 単騎・部屋スケール実行モード
+
+| ファイル | 内容 |
+|---------|------|
+| [README](mode-m1/README.md) | Mode M1 の位置づけ・境界（Mode A/B/C から独立・オペレーター指示 2026-08-26）・索引 |
+| [01-mode-boundary-and-traffic](mode-m1/01-mode-boundary-and-traffic.md) | traffic_mode 裁定（collision_monitor 常時起動 = G-k の構造的解決）・stg/prod config とのギャップ |
+| [02-m1-driver-and-watchdog](mode-m1/02-m1-driver-and-watchdog.md) | m1_driver serial node 設計（L0' 結線 = G-l）＋ watchdog 多層停止設計（STM32 watchdog 不在・G-g 手順） |
+| [03-joystick-teleop-bringup](mode-m1/03-joystick-teleop-bringup.md) | joystick 手動走行 bring-up（M0/M1/M2 成功ゲート・実機プローブ・joy 経路） |
+| [04-runtime-speed-limiter](mode-m1/04-runtime-speed-limiter.md) | OQ-T3 設計解: Nav2 speed_limit_topic による走行中速度上限の動的変更（三層モデル・publisher 実装済 2026-08-30・bringup 配線未） |
+
 ## mode-x-er/ — Gemini Robotics-ER 視覚タスク司令（設計提案）
 
 | ファイル | 内容 |
@@ -106,6 +120,9 @@ docs/
 | [dev/07 live runbook](dev/07-mode-x-er-live-e2e-runbook.md) | Mode X-ER live ER→L3→Langfuse 実走 operator runbook（gateway 起動・preflight・課金 gate・scoped 承認文言・honest limits。設計は本 mode-x-er/、live 手順は dev/ 側） |
 | [deploy/hermes/er-audio-fork/](../deploy/hermes/er-audio-fork/) | **ER audio-via-Hermes `input_audio` fork パッケージ**（#357）＋ `hlf-g0-langfuse` Option-D（#360）の配備成果物。`apply-fork.sh` / `run-er-gateway.sh` / patch。**TARGET=default-Hermes**（fork 経由で audio も Hermes）／ **CURRENT（shipped）=audio は direct**（fork は未 productionize・direct は恒久 fallback。doc `mode-x-er/06` §5 補遺:263-271） |
 | [08-x-er-bridge-node-spec](mode-x-er/08-x-er-bridge-node-spec.md) | **XER6 `x_er_bridge` node 契約（設計正本）**: X-ER commander node の形・`mode_x_er:` config key 凍結（06 §3 RESOLVED と対）・composition 起動シーケンス・plugin gating（二重 validate）・dispatch seam・エラー方針・テスト 3 層 |
+| [09-hand-raise-summon](mode-x-er/09-hand-raise-summon.md) | **ジェスチャ司令（召喚・指差し）設計**（2026-08-09 全面改訂・ADR-0007）: 搭載 HP60C + ローカル骨格 NN で「肩より上=召喚」「腕を伸ばす=指差し」を決定論認識・ER バイパスで既存 L3/L2 ゲートを全通過（INV-1/INV-2）・時間窓多数決・到達点は KNOWN_LOCATIONS snap（coordinate goal は Phase 2 defer）・/goal_pose 直注入はしない・旧俯瞰+マーカー方式は §13 に降格保存 |
+| [10-room-scale-safety-review](mode-x-er/10-room-scale-safety-review.md) | **部屋スケール運用の安全レビュー（分析・2026-08-18）**: 人とロボットが同一走行平面に立つ構成（[ADR-0009](adr/0009-m1-room-scale-operation.md) 帰結⑦）の残余リスク評価。R-3 多層防御論証の柱ごと評価・OQ-20 召喚レグ再設計・C-3 停止ポリゴン要求仕様・#223 座標 seam 監査・OQ-21 L1 有効性・運用規律・waypoint 配置規律・Guardian 経路点検の 8 項目 ＋ **部屋運用開始の前提条件チェックリスト**。**分析であって運転許可ではない**（最終受け入れ＝オペレーターゲート） |
+| [11-standby-and-hri-features](mode-x-er/11-standby-and-hri-features.md) | **standby モードと HRI 機能群（2026-08-21 決定）**: persona **8号「はっちゃん」**（音声返答＝事前生成 wav を `aplay`・毎回 TTS しない）・**standby がデフォルト起動状態**でジェスチャ/音声は active 遷移後のみ armed（入口＝ウェイクワード「はっちゃん」＋**拍手**）・三層の入り確認合図（チャイム→音声→LED）・機能 tier（A=persona/standby/拍手 ／ B=**ついてこいモード**・**エア描画コマンド**（$1 recognizer・○/横棒/×/✓）／ C=**ボディミラー操縦**＝`twist_mux` 凍結契約に触れ **ADR 裁定待ち**）・8GB 起動プロファイル P0-P3（同居可否は [23 §7 S1](architecture/23-perception-and-localization.md) 実測で決定＝数値を発明しない）。**起動プロファイル（launch・十数秒）と standby⇄active（ms）の 2 軸を混同しない** |
 
 ## mode-x-er-vla/ — Gemini Robotics-ER + VLA 統合モード（設計提案）
 
@@ -135,6 +152,7 @@ docs/
 | ファイル | 内容 |
 |---------|------|
 | [01-fidelity-and-validation](jetson/01-fidelity-and-validation.md) | Jetson 忠実度ギャップ・dev/stg→prod de-risk（#127） |
+| [02-remote-access-and-dev-link](jetson/02-remote-access-and-dev-link.md) | 開発機（Mac）↔ Jetson のアクセス経路（**mDNS 直結・常時通電運用・`jetson` CLI**＝§9 正本・board 基盤 provisioning＝§9.6・**外出先は Tailscale 自動フォールバック**＝§9.7・初回ブート実測ベースライン） |
 
 ## モード切替
 
@@ -163,6 +181,12 @@ hard-to-reverse な設計判断とその理由を `NNNN-slug.md` で記録する
 | ファイル | 内容 |
 |---------|------|
 | [adr/README](adr/README.md) | ADR 一覧・命名・いつ起こすか（3条件）・retrospectives との違い |
+| [0012-speed-band-no-l2-best-effort](adr/0012-speed-band-no-l2-best-effort.md) | 速度帯（ジェスチャ速度セレクタの runtime 経路）は **L2 Policy Gate 非経由**の best-effort 制御面（**最小安全方針の docs 初出**・mode-m1/04 §6 OQ-R1〜R7 一括裁定・クランプ天井 = ①起動基準値・20Hz 周期送出・hard 安全床は不変） |
+| [0010-raise-speed-cap-to-platform-max](adr/0010-raise-speed-cap-to-platform-max.md) | 速度上限 0.3 m/s を**プラットフォーム上限へ再定義**（実機 car_type のファーム clamp = 1.0 or 0.7 m/s・実機確認後に contract PR で pin）。運用値は config・デモ最終値は **S-SPEED 段階増速実測**で確定。L0' は方向保存・暴走バックストップとして維持/結線 |
+| [0009-m1-room-scale-operation](adr/0009-m1-room-scale-operation.md) | M1 単騎フェーズは**実際の部屋（room scale）**を走り、ミニチュアジオラマは走行に使わず**凍結保存**（sim 回帰環境としては現状維持）。倉庫設定を薄め**ジェスチャ召喚を主役**に。PR #530 の非円形 footprint は re-scope して生存・ジオラマ通路数値は歴史記録へ・W3（9 点再設計）は中止し `KNOWN_LOCATIONS` は**キー凍結／値のみ**部屋 waypoint へ |
+| [0007-no-overhead-camera-gesture-via-onboard-nn](adr/0007-no-overhead-camera-gesture-via-onboard-nn.md) | ER/知覚入力に**俯瞰カメラを使わない**。搭載 HP60C + ローカル骨格 NN（MediaPipe 第1候補）でジェスチャ2種を決定論認識し既存 L3/L2 ゲートへ。homography 系は fail-closed で降格保存 |
+| [0006-single-bot-first](adr/0006-single-bot-first.md) | 今回のフェーズはロボット**1台（単騎構成）**で実装。2台系の設計 doc・実装資産は削除せず凍結保存し、交通管理・交渉・min-separation の実機実証は2台復帰フェーズへ繰延 |
+| [0008-ros2-distro-humble-for-rosmaster-m1](adr/0008-ros2-distro-humble-for-rosmaster-m1.md) | ROS 2 distro を Jazzy→**Humble** へ切替（Orin Nano の Isaac ROS は 3.x=Humble のみ・ROSMASTER M1 の Yahboom 資産が Humble 固定）。代償は Gazebo 公式ペア喪失 |
 | [0005-l0-battery-brownout-floor](adr/0005-l0-battery-brownout-floor.md) | L0 の battery brownout floor は percent 3段 policy と別名・別機構の voltage-based MCU floor として将来 phase に持つ方針（現行 L0 は cutoff 無し・percent policy は L1 所有・cutoff 電圧は Phase-1 実測）。凍結 percent `battery_is_critical(pct)` とは非対称 |
 | [0004-l2-restrict-only-policy-profile](adr/0004-l2-restrict-only-policy-profile.md) | L2 Governance は自由 plugin 化せず data-only restrict-only policy profile に閉じる（凍結値=floor・緩い値は起動拒否・v1 code plugin 不採用）。ADR-0003（L3）と対 |
 | [0003-bridge-local-manifest-composition](adr/0003-bridge-local-manifest-composition.md) | bridge-local run manifest + fail-closed plugin composition を A案で標準化（manifest resolution 層／namespaced plugin code〔9-enum 非改変〕／advisory trust／ISOLATE_PLUGIN／safety-critical profile hash gate）。実装 = offline spike 済・配線 XER6 pending |

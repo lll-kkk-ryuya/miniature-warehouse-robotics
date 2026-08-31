@@ -24,10 +24,9 @@ uses ``resolution``; reconciling the ``"kind"`` spellings is a docs-reconcile fo
 
 from __future__ import annotations
 
-from enum import StrEnum
-from typing import Self
-
 from pydantic import Field, model_validator
+from typing_extensions import Self
+from warehouse_interfaces.compat import StrEnum
 
 from warehouse_llm_bridge.robotics_planning_core.models.base import _BridgeModel
 

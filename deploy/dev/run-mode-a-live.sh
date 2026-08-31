@@ -260,6 +260,8 @@ if [[ "${RESTART_STACK}" -eq 1 ]]; then
     'pkill -f "ros2 launch warehouse_bringup bringup.launch.py" || true; pkill -f "/warehouse_llm_bridge/.*/llm_bridge" || true; sleep 2'
 fi
 
+# No pose-freshness override is injected: the Guardian keeps its 1.0s default because the odom
+# displacement gate absorbs a parked bot's motion-gated AMCL silence (doc23 A-5③).
 info "launching Mode-A live stack; log=${LOG_FILE}"
 docker exec -d \
   -e DISPLAY=:1 \
@@ -279,7 +281,6 @@ docker exec -d \
   -e WAREHOUSE_CONFIG_DIR=/ws/config \
   -e WAREHOUSE__HERMES__BASE_URL="${CONTAINER_HERMES_URL}" \
   -e HERMES_BASE_URL="${CONTAINER_HERMES_URL}" \
-  -e WAREHOUSE__SAFETY__POSE_FRESHNESS_TIMEOUT=999 \
   -e WAREHOUSE_SCENARIO="${SCENARIO}" \
   "${CONTAINER}" bash -lc \
   "set -euo pipefail; \

@@ -29,12 +29,13 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
+from warehouse_interfaces.compat import UTC
 
 from warehouse_llm_bridge.robotics.composition.manifest import RunManifest
 from warehouse_llm_bridge.robotics.composition.preflight import (

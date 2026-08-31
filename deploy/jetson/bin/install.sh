@@ -9,7 +9,7 @@
 #
 # Unit ExecStart paths are rewritten from the /opt/warehouse convention to the
 # actual repo clone location, so this works wherever the release tag was cloned
-# (doc19:94). Run as root:  sudo deploy/jetson/bin/install.sh
+# (doc19:6 / doc19:118). Run as root:  sudo deploy/jetson/bin/install.sh
 #
 # Source of truth: docs/setup/jetson-deploy.md, docs/architecture/19-environments-and-config.md.
 # =============================================================================

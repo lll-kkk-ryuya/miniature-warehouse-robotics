@@ -94,3 +94,9 @@ Fusion が本領を発揮するのは ER + VLA、特に Nav2 だけでは表現�
 - `docs/mode-x-er-vla/01-integration-architecture.md` / `docs/mode-x-er-vla/04-openvla-use-cases-and-control-flow.md`（ER+VLA・Fusion の本領）
 - `docs/productization/06-oss-reuse-and-box-small-designs.md`（Fusion / L3 Handoff / Input Context box 設計）
 - `docs/dev/vla-access-and-runtime-spike.md`（Gemini direct probe 実測）
+
+---
+
+## 【2026-08-09 追補】ER/VLA 対比の論拠更新（ADR-0007）
+
+「ER は俯瞰画像から立てた計画、VLA は手元カメラで見ている現実」（:72）の対比は、俯瞰カメラ不使用（[ADR-0007](../adr/0007-no-overhead-camera-gesture-via-onboard-nn.md)）により**視点の差でなく時間の差**に論拠を張り替える: ER は「**過去フレーム**から立てた計画」、VLA は「**今このフレーム**で見ている現実」。Fusion の必要性の結論は不変。なお本フェーズの主入力分担は「ジェスチャ=ローカル骨格 NN（決定論・課金ゼロ）／音声=ER audio 直入力（イベント駆動）」（[09 §12](09-hand-raise-summon.md)）。

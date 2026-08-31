@@ -16,12 +16,13 @@ Contents (each mirrors a landed canonical usage — grounded, not invented):
   step6 gate (``verify_against_approved(...).assert_verified()``) passes.
 - :func:`dev_calibration_yaml` — the 5-field calibration artifact content (``camera_id /
   map_frame / homography(3x3) / reprojection_error / valid_polygon`` = doc02:149 / doc06:105 /
-  doc08 §3), with the VERIFIED red/blue geometry lifted verbatim from
-  ``tests/unit/test_l3_pipeline.py:159-169`` (itself from ``test_visual_resolver.py``): red_box
-  pixel (420,310) -> (0.2,0.3) -> shelf_1; blue_box pixel (810,280) -> (0.7,0.28) -> shelf_2.
+  doc08 §3), with the red/blue pixels lifted verbatim from
+  ``tests/unit/test_l3_pipeline.py:159-169`` and the homography re-derived as a SQUARE-PIXEL
+  top-down camera for the docking-point coordinates (doc04 §走行目標点): red_box pixel
+  (420,310) -> (0.2,0.57) -> shelf_1; blue_box pixel (810,280) -> (0.7,0.6085) -> shelf_2.
 - :func:`build_x_er_cfg` / :func:`write_x_er_cfg_tree` — the warehouse cfg dict with the frozen
   ``mode_x_er:`` block (doc08 §3) + the ``locations`` block copied from
-  ``config/warehouse.base.yaml:39-48`` (self-checked against the real file below).
+  ``config/warehouse.base.yaml:47-56`` (self-checked against the real file below).
 
 Self-check tests live IN this module (it deliberately does NOT import the lane-A/B modules
 ``x_er_composition`` / ``x_er_cycle``, so the fixtures stay green while those lanes land). Run
@@ -86,32 +87,45 @@ X_ER_PLUGIN_REASON_CODE = "target_out_of_zone"  # doc09:204 declared emit
 X_ER_CUSTOMER = "customer_a"
 X_ER_SITE = "site_01"
 
-# ── verified red/blue geometry (VERBATIM from tests/unit/test_l3_pipeline.py:159-169) ───────
-# red_box pixel (420,310) -> map (0.2, 0.3) == shelf_1; blue_box pixel (810,280) -> (0.7, 0.28)
-# -> within snap radius of shelf_2 (0.7, 0.3). Same values as test_visual_resolver.py:106.
+# ── red/blue geometry (pixels VERBATIM from tests/unit/test_l3_pipeline.py:159-169) ─────────
+# Re-derived 2026-08-18 as ONE consistent synthetic top-down camera for the docking-point
+# coordinates (doc04 §走行目標点), instead of fitting each axis to a separate pair of anchors:
+#   * SQUARE PIXELS — the same ground sampling distance on both axes, _A = 0.5 m / 390 px =
+#     1.282 mm/px (pinned by red px 420 -> x 0.2 and blue px 810 -> x 0.7). A camera looking
+#     straight down has no per-axis scale; the previous two-anchor y fit made the y axis 4.18x
+#     finer than x (non-physical) and shrank the imageable band to 0.31 m of map height.
+#   * IMAGE-ROW-DOWN = MAP -y (``_E = -_A``) — the standard image convention on a right-handed
+#     floor frame: row 0 is the north (berth) edge, rows grow south.
+# Anchors that fall out of it (all verified in test_geometry_red_blue_snap_via_dev_calibration
+# and tests/unit/test_xer6_overhead_geometry.py):
+#   red_box  (420, 310)  -> (0.2, 0.57)     == shelf_1 docking point (exact)
+#   blue_box (810, 280)  -> (0.7, 0.6085)   -> 0.0385 m from shelf_2 (0.7, 0.57) => snaps
+#   berth_A  (0.2, 0.8)  <- pixel (420, 131), berth_B (0.7, 0.8) <- (810, 131): the integer
+#     preimages the choreography-v2 kit ships; the 0.6 px rounding costs 0.51 mm (<< snap
+#     0.25 m) and now lands INSIDE the rendered frame (the old py=1060 was off-image).
 
 _A = 0.5 / 390.0
 _C = 0.2 - 420 * _A
-_E = (0.30 - 0.28) / (310 - 280)
-_F = 0.30 - 310 * _E
+_E = -_A  # square pixels, y flipped (image row grows downward = map y decreases)
+_F = 0.57 + 310 * _A  # red py=310 -> shelf_1 docking y 0.57
 HOMOGRAPHY: list[list[float]] = [[_A, 0.0, _C], [0.0, _E, _F], [0.0, 0.0, 1.0]]
 VALID_POLYGON: list[list[float]] = [[-0.5, -0.5], [2.0, -0.5], [2.0, 1.5], [-0.5, 1.5]]
 REPROJECTION_ERROR = 1.0
 MAX_REPROJECTION_ERROR = 3.0  # site safety ceiling (mirrors test_calibration_source.py CEILING)
 SNAP_RADIUS_M = 0.25  # doc08 §3 example value (same as the existing offline fixtures)
 
-# ── locations block, copied from config/warehouse.base.yaml:39-48 (self-checked below) ──────
+# ── locations block, copied from config/warehouse.base.yaml:47-56 (self-checked below) ──────
 
 BASE_LOCATIONS: dict[str, dict[str, float]] = {
-    "shelf_1": {"x": 0.2, "y": 0.3},
-    "shelf_2": {"x": 0.7, "y": 0.3},
-    "shelf_3": {"x": 1.2, "y": 0.3},
+    "shelf_1": {"x": 0.2, "y": 0.57},
+    "shelf_2": {"x": 0.7, "y": 0.57},
+    "shelf_3": {"x": 1.2, "y": 0.57},
     "berth_A": {"x": 0.2, "y": 0.8},
     "berth_B": {"x": 0.7, "y": 0.8},
-    "shipping_station": {"x": 0.2, "y": 0.1},
-    "charging_station": {"x": 1.2, "y": 0.1},
-    "retreat_A": {"x": 0.45, "y": 0.85},
-    "retreat_B": {"x": 0.95, "y": 0.85},
+    "shipping_station": {"x": 0.45, "y": 0.12},
+    "charging_station": {"x": 1.5, "y": 0.12},
+    "retreat_A": {"x": 0.45, "y": 0.78},
+    "retreat_B": {"x": 0.95, "y": 0.78},
 }
 
 
