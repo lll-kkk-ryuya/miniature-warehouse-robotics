@@ -49,3 +49,10 @@ L0 firmware（micro-ROS / ESP32）の**現行設計は battery cutoff を持た�
 - firmware sensor publish（現行 cutoff 無し）: [`main.cpp`](../../firmware/src/main.cpp):144（`publishBattery`）・:147-158（safety watchdog コメント）
 - 対の既決機構: [doc12](../architecture/12-infrastructure-common.md):79（comms-loss heartbeat deadman＝L0・同型）
 - 様式 / 親: [ADR-FORMAT](../../.claude/skills/domain-modeling/ADR-FORMAT.md) / [adr/README](README.md) / [`.claude/rules/docs-first.md`](../../.claude/rules/docs-first.md)
+
+## 【2026-09-05 追記】「cutoff 無し」の実害を M1 実機で初実測（doc02 P-9）
+
+本 ADR が「現行設計は battery cutoff を持たない」とした前提の実害が M1 実機で実測された:
+**T 挿しっぱなし（Orin レグはメインスイッチ上流のため遮断されない）→ Orin 自動起動 → 約半日で保管下限 11.1V 割れ**。
+このとき 9.6V 低電圧ブザーはスイッチ下流の拡張ボード実装のため鳴らず、昇圧 DC-DC にも UVLO 記載なし＝**この系に過放電を自動で止める機構は無い**ことが確認された。
+当面の対処は**運用**（T 挿抜運用: 充電・保管はバッテリー直後の T を抜く）であり、正本は [shared/02-hardware-design.md](../shared/02-hardware-design.md) 末尾追記 **P-9**。本 ADR の decision（voltage-based MCU floor は将来 phase・閾値は実機実測）は不変——本実測はその優先度判断の材料になる。
