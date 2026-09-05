@@ -22,7 +22,7 @@
 | 2 | モータラベルの RPM 印字 + ホイール径ノギス実測 | 理論最高速度・エンコーダ→距離換算（`ENCODER_CIRCLE_*` の選択 = [02 V-2 :543](../shared/02-hardware-design.md)） |
 | 3 | トレッド / ホイールベース実測 → `(W+L)/2` | ファーム X3 幾何（`MECANUM_APB 164.555`）とのズレ量 → `wz` 補正係数の要否（[02 §1-3](02-m1-driver-and-watchdog.md)） |
 | 4 | G-g watchdog 試験（[02 §4](02-m1-driver-and-watchdog.md)） | W-3 層の有無の確定 |
-| 5 | `get_version()` | 実機ファーム版と調査ソース（V3.5.1）の一致（U-5） |
+| 5 | `get_version()` | 実機ファーム版と調査ソース（**V3.6.5** = [02 P-7a :746](../shared/02-hardware-design.md)。旧 V3.5.1 GitHub mirror は履歴確認のみ = [02:584](../shared/02-hardware-design.md)）の一致（U-5） |
 | 6 | `get_motor_encoder()` が 4 値動くこと | 自前 odom（0x0D 経路）の前提 |
 
 ## 3. joy 経路設計
@@ -51,7 +51,7 @@ m1_driver（clamp_body_velocity 必経 = L0'）→ FUNC_MOTION 0x12 → STM32
 
 ## 4. 物理手順の順序（正本への forward・本 doc は複製しない）
 
-1. **Phase A（机上）**: Orin 単体ブート（QSPI 確認 → microSD → SSD 移行 = [02:407-412](../shared/02-hardware-design.md)）・マウント試し刷り（[02:414-420](../shared/02-hardware-design.md)）。
+1. **Phase A（机上）**: Orin 単体ブート（QSPI 確認 → microSD → SSD 移行 = [02:407-412](../shared/02-hardware-design.md)。→ **SSD は B案＝`/ssd` データディスクで決着済・rootfs は microSD のまま** = [jetson/02:191-194](../jetson/02-remote-access-and-dev-link.md)）・マウント試し刷り（[02:414-420](../shared/02-hardware-design.md)。→ **[02 P-5](../shared/02-hardware-design.md) で fallback へ格下げ＝必須でない**）。
 2. **Phase B（車体組立）**: [shared/11 §2-§3](../shared/11-m1-assembly-manual.md)（電源手順のみ §4 で差し替え）。
 3. **Phase C（給電ハーネス）**: テスターゲート①〜④厳守（[02:451](../shared/02-hardware-design.md)。飛ばすと Orin 破壊）→ **M0**。
 4. **Phase D（搭載・USB 配線）** → **Phase E（§2 プローブ + G-g）** → **M1**。

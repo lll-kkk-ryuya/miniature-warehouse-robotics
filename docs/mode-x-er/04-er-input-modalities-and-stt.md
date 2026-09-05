@@ -100,3 +100,37 @@ Fusion が本領を発揮するのは ER + VLA、特に Nav2 だけでは表現�
 ## 【2026-08-09 追補】ER/VLA 対比の論拠更新（ADR-0007）
 
 「ER は俯瞰画像から立てた計画、VLA は手元カメラで見ている現実」（:72）の対比は、俯瞰カメラ不使用（[ADR-0007](../adr/0007-no-overhead-camera-gesture-via-onboard-nn.md)）により**視点の差でなく時間の差**に論拠を張り替える: ER は「**過去フレーム**から立てた計画」、VLA は「**今このフレーム**で見ている現実」。Fusion の必要性の結論は不変。なお本フェーズの主入力分担は「ジェスチャ=ローカル骨格 NN（決定論・課金ゼロ）／音声=ER audio 直入力（イベント駆動）」（[09 §12](09-hand-raise-summon.md)）。
+
+---
+
+## 【2026-08-31 追補】M1 同梱 AI 音声モジュールを ER 音声直入力の実機マイクとして Phase 1 採用（裁定・本節が正本）
+
+> **本節はハード採否の裁定であり、正本は本 doc（音声**入力**側）に置く。** [shared/11:117](../shared/11-m1-assembly-manual.md)（M1 紙説明書の転記 doc）が「voice module ハードの処遇は未決・裁定の正本候補は本 doc と [05](05-operator-feedback-and-voice-response.md)」と forward していた `# TODO(Phase 1)` に対する答え＝**本節でその forward を受け止める**（スピーカー＝出力側の裁定は [05 末尾追補](05-operator-feedback-and-voice-response.md)）。
+
+### 裁定
+
+**M1 に同梱される「AI large model voice module」のマイクを、§2 の ER 音声直入力（`instruction_audio_ref` 経路）の実機マイクとして Phase 1 で採用する。**
+
+根拠（ハード側の一次確認は [shared/02 V-5 :571-578](../shared/02-hardware-design.md) が正本・本節は複製しない）:
+
+1. **通常の USB オーディオデバイスとして見え、`arecord` で生 wav が録れる**（[shared/02:575](../shared/02-hardware-design.md)）。ER は wav を直接食える（§1）ため、**録音 → ER に追加のアダプタ層が要らない**。
+2. **追加ドライバ不要の見込み**（`snd-usb-audio` はカーネル標準・[shared/02:577](../shared/02-hardware-design.md)）。
+3. **Standard / Superior 共通同梱**＝追加調達ゼロ（[shared/02:573](../shared/02-hardware-design.md)）。
+
+### 採用しないもの（境界）
+
+- **Yahboom のクラウド二段推論フロー（ASR/LLM/TTS をベンダークラウドで回す構成）は使わない**——L4 司令官は自作 Bridge が担うため（[shared/11 §5](../shared/11-m1-assembly-manual.md)）。本節が採るのは**モジュールの mic ハードだけ**であり、上に載る Yahboom のソフト層は一切採らない。
+- **基板のシリアル側（CH340・中国語ウェイクワード "你好小雅"）は未使用**（[shared/02:576](../shared/02-hardware-design.md)）。本プロジェクトのウェイクワードは別実装（[11 §2-3](11-standby-and-hri-features.md)）。
+- 本節は **ROS topic / config key / 凍結契約を追加しない**（本 doc 冒頭 `:5` の性格を維持）。デバイス名・サンプルレート等の実値は実機確認後に別途扱う。
+
+### 残件（隠さない）
+
+- **[shared/02:578](../shared/02-hardware-design.md) の「要実機確認（6点）」は未消化**（VID:PID / オーディオ・シリアルの同一ハブ性 / ch 数・実サンプルレート / **基板の NS・AEC 前処理の有無** / チップ型番 / スピーカーコネクタ）。特に④ NS/AEC は **ER に渡る音質に直結**するため、採用の前提が崩れうる唯一の項目。
+- **ER audio の robotics-grade command 品質は依然未検証**——これは本 doc の既存 TODO（`:84`）と**同一の残件**であり、本節で新たに増えたものではない（重複計上しない）。マイクの採否と eval の要否は独立。
+
+### 参照（双方向）
+
+- [shared/11 §5 / §6](../shared/11-m1-assembly-manual.md) — この裁定を要求していた転記 doc 側の forward 元
+- [shared/02 V-5](../shared/02-hardware-design.md) — ハード一次確認（生 wav・`aplay`・要実機確認6点）の正本
+- [05-operator-feedback-and-voice-response.md](05-operator-feedback-and-voice-response.md) 末尾追補 — 同モジュールの**スピーカー**（TTS sink）側の裁定
+- [11-standby-and-hri-features.md](11-standby-and-hri-features.md) — ウェイクワード / standby の設計正本（本節の mic ストリームの消費者）

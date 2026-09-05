@@ -418,4 +418,37 @@ plugin composition（Variant B 採用＝`docs/productization/09-run-manifest-and
 - box 小設計テンプレ / Input Context 対称: `docs/productization/06-oss-reuse-and-box-small-designs.md`（テンプレ `:74-83`・Input Context `:85-104`・E-G2 `:249`）
 - web sink precedent: `docs/architecture/22-web-observability.md`（`/character/speech` `:36,112`）
 - 図解（本書の補足）: [`operator-feedback-flow.html`](operator-feedback-flow.html)
-</invoke>
+
+---
+
+## 【2026-08-31 追補】M1 同梱スピーカーを実機 TTS sink 候補として登録（裁定・本節が正本）
+
+> **本節は音声**出力**側のハード採否の裁定であり、正本は本 doc に置く。** [shared/11:117](../shared/11-m1-assembly-manual.md) が「voice module ハードの処遇は未決・裁定の正本候補は [04](04-er-input-modalities-and-stt.md)（入力）と本 doc（出力）」と forward していた `# TODO(Phase 1)` の受け止め先。マイク側の裁定は [04 末尾追補](04-er-input-modalities-and-stt.md)。
+
+### 裁定
+
+**M1 に同梱される「AI large model voice module」のスピーカーを、Operator Feedback Box の実機 TTS sink 候補として登録する**（§3 の sink 抽象に対する**具体デバイスの当て込み**であり、box 設計そのものは変更しない）。
+
+根拠（ハード側の一次確認は [shared/02 V-5 :571-578](../shared/02-hardware-design.md) が正本・本節は複製しない）:
+
+1. **OS 標準再生（`aplay`）で任意 wav を再生できる**（[shared/02:576](../shared/02-hardware-design.md)）。TTS 合成済み wav をそのまま流せる。
+2. Standard / Superior 共通同梱＝追加調達ゼロ（[shared/02:573](../shared/02-hardware-design.md)）。
+
+### 変更しないもの（境界）
+
+- **speaker 無し縮退（log / web sink のみ）の設計は不変**（`:72`）。本節は「speaker がある構成での実デバイス候補」を1つ挙げるだけで、**optional sub-box という分類も、縮退経路の存在も変えない**。
+- **deterministic テンプレート原則は不変**（`:12` / §4）。文面生成を LLM に委ねない設計は、出力デバイスが何であれ変わらない。
+- **Yahboom のクラウド TTS（二段推論フローの音声合成レグ）は使わない**（[shared/11 §5](../shared/11-m1-assembly-manual.md)）。採るのは**スピーカーというハードだけ**。なお persona 返答（はっちゃん）は**事前生成 wav の `aplay` 再生**で毎回 TTS を焚かない方針が別途あり（[11 §1](11-standby-and-hri-features.md)）、本節の sink はその再生先とも同一デバイスになる。
+- 本節は **ROS topic / `operator_notice.v0` の wire payload / 凍結契約を一切変更しない**（§8.10 item 5 / §8.11）。
+
+### 残件（隠さない）
+
+- **[shared/02:578](../shared/02-hardware-design.md) の「要実機確認（6点）」のうち⑥スピーカーコネクタが未確認**——結線方法が判明するまで「候補」であり確定ではない。
+- 本 doc 自体が **proposal（`ws/src` に runtime subscriber node の実体なし・§2.2）** の段階である点は変わらない。sink デバイスが決まっても box の成熟度は上がらない。
+
+### 参照（双方向）
+
+- [shared/11 §5 / §6](../shared/11-m1-assembly-manual.md) — forward 元の転記 doc
+- [shared/02 V-5](../shared/02-hardware-design.md) — ハード一次確認の正本
+- [04-er-input-modalities-and-stt.md](04-er-input-modalities-and-stt.md) 末尾追補 — 同モジュールの**マイク**（ER 音声直入力）側の裁定
+- [11-standby-and-hri-features.md](11-standby-and-hri-features.md) — persona 返答の事前生成 wav 方針（同じスピーカーを使う別経路）
