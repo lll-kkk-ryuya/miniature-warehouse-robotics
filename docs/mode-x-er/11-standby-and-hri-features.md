@@ -340,3 +340,5 @@ Rosmaster 系の拡張ボードにライトバー制御 API（`set_colorful_lamp
 **用語**: [GLOSSARY.md §11](../GLOSSARY.md) — スタンバイモード / ウェイクワード / はっちゃん(persona) / エア描画コマンド / ついてこいモード の正準定義
 
 **索引（backlink）**: [mode-x-er/README.md](README.md) 末尾「standby と HRI 機能群 (index)」 / [docs/README.md](../README.md) の `mode-x-er/` マップ表
+
+**関連（2026-09-07 追記）**: §2-2 の 2 軸と直交する**第 3 の軸「運転モード（AUTO/MANUAL）」と停止権限の担当分離**は [mode-m1/05-operation-state-and-stop-authority.md](../mode-m1/05-operation-state-and-stop-authority.md) が正本（本書の standby⇄active は再定義されない。同 doc §2 が本書 §2-2 を forward 参照）。
