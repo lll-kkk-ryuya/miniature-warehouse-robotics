@@ -1,7 +1,7 @@
 # 05 — 運転状態と停止権限の担当分離（operation state & stop authority）
 
 > **Status**: 設計確定（**2026-09-07 オペレーター採用の設計戦略の書き起こし**。3 レーン検証で既存裁定・実コードと突合済）。実装は §8 の順で行い、**ROS topic 名・型・周期・しきい値は本書では決めない**（doc03 契約カタログへの additive 追加は実装スライスで＝§9 OQ-OP1/OP2）。
-> **layer 注記**（[.claude/rules/layer-annotation.md](../../.claude/rules/layer-annotation.md)）: 本書が扱うのは **L2**（実行許可 = Policy Gate）・**L1**（Emergency Guardian・twist_mux）・**L0'**（m1_driver 内クランプ＋停止上乗せ）・**L4**（teleop 発生源ゲート・運転モード発信元）。速度経路に新ノードは足さない（§1）。
+> **layer 注記**（[.claude/rules/layer-annotation.md](../../.claude/rules/layer-annotation.md)）: 本書が扱うのは **L2**（実行許可 = Policy Gate）・**L1**（Emergency Guardian・twist_mux）・**L0'**（m1_driver 内クランプ＋停止上乗せ）・**L4**（運転モード発信元 = publish-only・0 actuation）。**teleop は velocity producer であり、`warehouse_teleop` は正準表が単一 layer 帰属の対象外とする package**（[productization/01:195](../productization/01-commercial-box-map.md)）＝本書では layer を断定しない。速度経路に新ノードは足さない（§1）。
 > **本書が再定義しないもの**: standby⇄active（armed）の 2 軸は [mode-x-er/11 §2-2](../mode-x-er/11-standby-and-hri-features.md) が正本。本書は**第 3 の軸（運転モード）と停止理由の集合**だけを新設し、doc11 の軸と直交させる（§2）。
 
 ## 0. 位置づけ
@@ -15,12 +15,12 @@
 | 担当 | layer | 判断する対象 | 既存実体 |
 |---|---|---|---|
 | **L2 Policy Gate** | L2 | **新しい自律タスクを実行してよいか**（per-dispatch・restrict-only・合成は AND） | `policy_gate.py`（[ADR-0004](../adr/0004-l2-restrict-only-policy-profile.md)） |
-| **teleop（発生源ゲート）** | L4→cmd_vel | **今のモード・deadman・/joy 鮮度で手動指令を出してよいか**（発生源で自己判定） | `warehouse_teleop`（§6） |
+| **teleop（発生源ゲート）** | velocity producer（単一帰属対象外 = [productization/01:195](../productization/01-commercial-box-map.md)） | **今のモード・deadman・/joy 鮮度で手動指令を出してよいか**（発生源で自己判定） | `warehouse_teleop`（§6） |
 | **Emergency Guardian** | L1 | **停止条件が成立しているか**。成立中は prio100 へゼロ Twist を level 送出＋goal cancel | `emergency_guardian.py`（[doc12:181](../architecture/12-infrastructure-common.md)） |
 | **m1_driver** | L0' | **届いた速度が有効か**（clamp 必経・W-1 鮮度）＋**停止上乗せ**（§4・新設） | `driver_core.py` |
 | **運転モード発信元** | L4 | 現在の運転モード（§2 軸(c)）を publish する。**許可判断は持たない** | 新設（実装形 = OQ-OP6） |
 
-**確定裁定 — twist_mux 手前の「許可チェック」relay は不採用**。理由は 2 つ検証済み: (a) twist_mux の lock は「lock priority より厳密に低い入力を全遮断」する閾値カットであり、「AUTO 状態で teleop だけ遮断して nav2 を通す」は**原理的に表現不能**（Humble 実ソース確認・2026-08-31）。(b) 速度経路上の relay ノードは L2-G8（L2 の出口は position goal のみ・[productization/11:214](../productization/11-l2-contract-governance-traffic-box.md)）と [ADR-0012](../adr/0012-speed-band-no-l2-best-effort.md) の確定先例（velocity path に L2 を載せる案の却下）に抵触する。**代わりに「発生源で止める」**: teleop の publish 自粛＋L2 の dispatch 拒否＋Guardian の goal cancel の組合せで同じ状態表を実現する。
+**確定裁定 — twist_mux 手前の「許可チェック」relay は不採用**。理由は 2 つ検証済み: (a) twist_mux の lock は「lock priority より厳密に低い入力を全遮断」する閾値カットであり、「AUTO 状態で teleop だけ遮断して nav2 を通す」は**原理的に表現不能**（一次情報: ros-teleop/twist_mux `humble` ブランチ 4.3.0 の `src/twist_mux.cpp` `getLockPriority`/`hasPriority` と `include/twist_mux/topic_handle.hpp` `isMasked` = `getPriority() < lock_priority`・参照日 2026-08-31）。(b) 速度経路上の relay ノードは L2-G8（L2 の出口は position goal のみ・[productization/11:214](../productization/11-l2-contract-governance-traffic-box.md)）と [ADR-0012](../adr/0012-speed-band-no-l2-best-effort.md) の確定先例（velocity path に L2 を載せる案の却下）に抵触する。**代わりに「発生源で止める」**: teleop の publish 自粛＋L2 の dispatch 拒否＋Guardian の goal cancel の組合せで同じ状態表を実現する。
 
 **新規タスクの拒否だけでは走行中のタスクは止まらない**。停止時は必ず ①L2 で新規拒否 ②実行中 goal の cancel ③ゼロ指令の維持 を組み合わせる（③の主担当は Guardian・最終床は driver W-1）。
 
@@ -41,7 +41,7 @@
 
 ### 3-1. 確定した現状の事実（2026-08-31〜09-07 検証）
 
-1. `/emergency/event` は **rising edge のみ**発行される（`guard_logic.py:385-416` EdgeLatch・[doc12:511](../architecture/12-infrastructure-common.md)）。**解消（falling edge）は通知されない**。
+1. `/emergency/event` は **rising edge のみ**発行される（`guard_logic.py:385-416` EdgeLatch・[doc12:185](../architecture/12-infrastructure-common.md)）。**解消（falling edge）は通知されない**。
 2. state.json の `emergency.active` は**解除経路の無い受信ログ**（`aggregator.py:165-182`・clear プロトコルは [doc12:342](../architecture/12-infrastructure-common.md) が Phase-2 TODO と自認）。
 3. L2 の `PolicyGate.set_emergency`（`policy_gate.py:288`）は**呼び出し元ゼロ＝未配線**。emergency 中でも L2 は新規 dispatch を拒否できない（`check_emergency` は never-fire）。
 4. **Guardian の生存を運ぶチャネルは存在しない**。state.json の timestamp は State Cache 由来（Guardian 死でも更新され続ける）。Guardian 単独死は「0.5 秒後に走行が再開する」既知の部分故障モード（[mode-x-er/10:459-461](../mode-x-er/10-room-scale-safety-review.md)）。
@@ -51,7 +51,7 @@
 - **イベント（発生の記録・通知）と現在状態（いま停止中か・理由は何か）を分ける**。`/emergency/event` は記録・通知用として現行のまま維持する。
 - **Guardian が「現在状態」を周期 publish する**。level 評価の結果は毎 tick 手元にある（`emergency_guardian.py:185-208`）ため、publish を足すだけで**解消の伝搬**と**Guardian 生存証明**を同時に満たす（イベント配線案・state.json 経由案との比較検証で唯一この 2 つを両立する経路であることを確認済み）。
 - **受信側は鮮度監視を必須とする**。`transient_local` は後着購読者への保持配信であって生存確認にならない。**現在状態が不明・stale の場合、統合構成では新しい走行を開始しない**（fail-closed）。L2 への接続は in-process（`llm_bridge` が購読し `WarehouseTools(policy_gate=...)` 注入経由で反映）を第 1 候補とする（standalone stdio の `server.py` は rclpy 非依存のため購読不可＝扱いは OQ-OP4）。
-- topic 名・型・周期・鮮度閾値は**本書で発明しない** → OQ-OP1（doc03 additive 追記とセット）。
+- topic 名・型・周期・鮮度閾値は**本書で発明しない** → OQ-OP1（doc03 additive 追記とセット）。**凍結契約 `warehouse_interfaces` は無変更**（新 topic は doc03 カタログへの additive 追加のみ・[doc12:512](../architecture/12-infrastructure-common.md) の pose_stale 先例と同型）。
 
 ## 4. m1_driver の停止上乗せ（stop overlay）（確定・2026-09-07）
 
@@ -73,7 +73,7 @@ driver に「走行を許可する権限」を新設するのではなく、**�
 - Guardian に**新しい停止理由として追加**する。実装 idiom は既存どおり: `BotState` への既定値付きフィールド追加＋`evaluate` の追加ブロック＋純ロジック側の latch dataclass（`pose_stale`/`PoseGateTracker` が先例）。**既存の異常条件（near_collision / battery_critical / pose_stale）は自動解除のまま変えない**（非回帰を R-26 で pin）。
 - **latch 意味論**: 要求ボタンを離しても保持し、**明示解除でのみ**落ちる。いずれかの停止理由が残っていれば Guardian は既存 Emergency 経路（prio100）からゼロを level 送出し続ける。解除後は走行禁止のまま待機へ戻し、**走行の開始は別操作**とする。
 - **「解除≠即走行」は Guardian 単体では担保できない**（検証済み）: `_cancel_all_goals` は fire-and-forget で成功保証が無く、解除 0.5 秒後に Nav2 goal が残っていれば `cmd_vel/nav2` が通る（[mode-x-er/10:459-461](../mode-x-er/10-room-scale-safety-review.md)）。担保は「latch 期間中の cancel 反復＋解除時の残 goal 確認＋L2 の現在状態参照（§3）」の合成で行う（確認手段の詳細 = OQ-OP3）。
-- **入力源の裁定**: 第 1 候補 = **ゲームパッドの空きボタン**（15 ボタン中 deadman の 1 個のみ使用済・実機 index は M1 ゲートの jstest で確定）。**web は不可**（observe-only の R-26 unit が機械的に禁止 = [architecture/22](../architecture/22-web-observability.md)）。**骨格 NN・音声を単独の停止手段にしない**（[mode-x-er/11:235](../mode-x-er/11-standby-and-hri-features.md)）。物理 E-stop（doc10 P-1・未裁定）は独立の層であり本要求で置換しない。
+- **入力源の裁定**: 第 1 候補 = **ゲームパッドの空きボタン**（15 ボタン中 deadman の 1 個のみ使用済・実機 index は M1 ゲートの jstest で確定）。**web は不可**（observe-only の R-26 unit が機械的に禁止 = [architecture/22](../architecture/22-web-observability.md)）。**骨格 NN を単独の停止手段にしない**（[mode-x-er/11:235](../mode-x-er/11-standby-and-hri-features.md)）。**音声も単独手段にしない**（**本書判断** — 誤検出率未実測という骨格 NN と同型の非決定論性を理由とする外挿。[mode-x-er/11:79](../mode-x-er/11-standby-and-hri-features.md) の未実測宣言）。物理 E-stop（doc10 P-1・未裁定）は独立の層であり本要求で置換しない。
 - 停止理由は 1 個の Bool でなく**理由ごとに保持**する（§2）。操作者要求だけ解除しても他の異常が残っていれば走行禁止。
 - 付随挙動の記録: 新理由は `action="estop"` のため `/emergency/event`（type 新値・コアキー不変＝additive）と `/negotiation/abort` が発火する。下流 consumer は全て未知 type を無視/素通しすることを確認済み。M1 単騎では交渉系は非起動。
 
@@ -89,6 +89,7 @@ driver に「走行を許可する権限」を新設するのではなく、**�
 
 - **再アーム条件**: 再接続・停止解除の後は、**スティックを一度中立に戻し、deadman を押し直す**ことを walk 再開の条件にする（押しっぱなしの古い操作による再発進の防止）。
 - `/joy` 鮮度タイムアウトは実装スライス進行中（別セッション）。mux 統合時の publish 意味論（release 後の沈黙）は standalone 構成（連続ゼロ維持）と要件が逆転するため**構成別 param** とする。正本の joy 経路は [mode-m1/03](03-joystick-teleop-bringup.md)。
+- **運転モード参照の既定は「無効」**（§4 の停止上乗せと同じ構造）: standalone 構成（発信元不在 = [mode-m1/03:50](03-joystick-teleop-bringup.md)）では従来どおり deadman が主ゲートで動く。モード購読を**明示有効化**した統合構成では、**モード不明・stale → MANUAL 指令を出さない**（fail-closed）。既定値・鮮度閾値の具体は OQ-OP6。
 
 ## 7. 別項目（本書では実装対象にしない）
 
@@ -121,14 +122,14 @@ fault injection（Guardian kill・driver kill・USB 抜線・joy 切断・proces
 | **OQ-OP3** | 解除時の残 goal 確認手段（cancel 反復の完了確認・nav_status 参照の形） | 実装設計＋実機確認 | 高（§5「解除≠走行」の担保） |
 | **OQ-OP4** | standalone stdio MCP（`server.py`）での現在状態参照（rclpy 不可。state.json fallback にするか非対応と割り切るか） | 実装スライスで裁定 | 中 |
 | **OQ-OP5** | state.json `emergency.active` の clear プロトコル（[doc12:342](../architecture/12-infrastructure-common.md) Phase-2 TODO との合流。§3 の現在状態と二重管理にしない形） | doc12 所有トラックと調整 | 中 |
-| **OQ-OP6** | 運転モード発信元の実装形（どの package が持つか。軸(b) standby manager との同居可否） | 実装スライスで裁定（doc11 OQ-H9 と同時が望ましい） | 中 |
+| **OQ-OP6** | 運転モード発信元の実装形（どの package が持つか。軸(b) standby manager との同居可否）＋ **モード topic の既定値と stale 時挙動**（§6 の fail-closed の具体形・発信元不在構成での既定無効） | 実装スライスで裁定（doc11 OQ-H9 と同時が望ましい） | 中 |
 | **OQ-OP7** | 操作者停止要求の GLOSSARY 分類（operational stop か protective stop か。搬送経路は protective の prio100 チャネル） | GLOSSARY 追補時に裁定 | 低 |
 
 ## 10. 残件・既知ドリフト（隠さない）
 
 - `get_fleet_status` が `emergency` を返していない（`tools.py:283-291` ↔ [doc12:389-409](../architecture/12-infrastructure-common.md) のフロー記述）— 順序 2 で併修候補。
 - `set_emergency` 未配線（§3-1 事実 3）— 順序 2 の本体。
-- doc12 内部の行 pin ドリフト（Guardian 詳細節を「:95-151」と自己参照するが実体は :181）・[mode-x-er/10:457](../mode-x-er/10-room-scale-safety-review.md) の GLOSSARY 行参照ドリフト — 所有トラックへ申し送り（本 PR では触らない）。
+- doc12 内部の行 pin ドリフト（Guardian 詳細節を「:95-151」と自己参照するが実体は :181。**同型 stale がコード側 `ws/src/warehouse_bringup/launch/bringup.launch.py:221` のコメントにも現存**）・[mode-x-er/10:457](../mode-x-er/10-room-scale-safety-review.md) の GLOSSARY 行参照ドリフト — 所有トラックへ申し送り（本 PR では触らない）。
 - doc12 / doc10 への backlink 追記は所有境界を尊重し本 PR では行わない（張り残しとして明示）。
 
 ## References（双方向）
