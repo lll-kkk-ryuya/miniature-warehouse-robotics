@@ -121,7 +121,7 @@ Layer 3: Claude / Hermes（戦略判断、Mode A: 3秒 / Mode C: 5秒サイク�
 | **調整**（Soft-RT・うち交通管理のみ Layer 2） | State Cache（Python・`warehouse_state`・**安全層外**）／ VirtualScan（Python・Mode A/B・**安全層外**）／ SimpleTrafficManager（Python・`warehouse_traffic`・Mode B・**Layer 2**）／ Open-RMF（**C++ 依存**・Mode C・**Layer 2**）／ Orchestrator KPI（Python・`warehouse_orchestrator`・**安全層外**） |
 | **自律走行**（Hard-RT） | Nav2・AMCL・SLAM Toolbox・collision_monitor・twist_mux（**全て C++ 既存依存**）＋ 設定 `warehouse_bringup/config/nav2_params.yaml`・launch（Python） |
 | **緊急監視**（Hard-RT / Layer 1） | Emergency Guardian（**Python 自作**・`warehouse_safety`） |
-| **物理安全**（即時 / Layer 0） | ESP32 firmware（**C++ 自作**・FreeRTOS・PlatformIO・`firmware/`）／ micro-ROS（C・XRCE-DDS）／ micro-ROS Agent（C++・Jetson 上）／ on-robot センサ MS200（`/scan`）・エンコーダ・バッテリ（※**RPLiDAR A1 は Jetson-USB 固定の外部トラッキング用・optional**＝on-robot ではない。doc02:179-180 / doc03:167） |
+| **物理安全**（即時 / Layer 0） | ESP32 firmware（**C++ 自作**・FreeRTOS・PlatformIO・`firmware/`）／ micro-ROS（C・XRCE-DDS）／ micro-ROS Agent（C++・Jetson 上）／ on-robot センサ MS200（`/scan`）・エンコーダ・バッテリ（※**RPLiDAR A1 は Jetson-USB 固定の外部トラッキング用・optional**＝on-robot ではない。doc02:179-180 / doc03:168） |
 | **横断**（全層共通） | ROS 2 Humble（DDS。[ADR-0008](../adr/0008-ros2-distro-humble-for-rosmaster-m1.md)）／ 凍結契約 `warehouse_interfaces`（Python・pydantic）／ `warehouse_description`（URDF）／ Sim：Gazebo＋ros_gz_bridge（版は ADR-0008 §Open）・Isaac Sim／ 実行機：Jetson Orin Nano（Ubuntu 22.04 / JetPack 6.x）／ 環境切替：`WAREHOUSE_ENV`＋config（doc19） |
 
 > 各パッケージ責務の正本は各 `ws/src/warehouse_*/CLAUDE.md`、リポジトリ構成は doc16、環境/config は doc19。

@@ -10,6 +10,7 @@ are NEVER hardcoded here (safety.py is the single source of truth).
 
 from __future__ import annotations
 
+import json
 import math
 from dataclasses import dataclass, field
 
@@ -33,6 +34,9 @@ class BotState:
     # input: an instantaneous-speed term is the shape doc23:349 rejects.
     odom_disp_since_pose: float | None = None
     odom_dyaw_since_pose: float | None = None
+    # Operator emergency-stop request (doc05 §5): fleet-wide LATCHED stop, mirrored
+    # by the node from OperatorStopLatch. Default False = safe absence (no request).
+    operator_stop_requested: bool = False
 
 
 @dataclass(frozen=True)
@@ -41,7 +45,7 @@ class Decision:
 
     bot: str
     action: str  # "estop" | "recovery"
-    reason: str  # "near_collision" | "battery_critical" | "blocked_timeout" | "pose_stale"
+    reason: str  # near_collision|battery_critical|blocked_timeout|pose_stale|operator_stop_request
     detail: dict | None = None  # optional doc12:322-339 block (proximity / pose_stale case)
 
 
@@ -168,6 +172,8 @@ def evaluate(
        pose, so a not-yet-localized bot is never estopped at startup (#126).
        The gate (doc23:349 = A-5③) suppresses ONLY the parked-robot false positive
        (OQ-11), never a moving one — see ``pose_gate_open``.
+    5. per-bot latched operator emergency-stop request (doc05 §5) -> estop while the
+       fleet-wide ``OperatorStopLatch`` is engaged (explicit clear only, never time).
     """
     decisions: list[Decision] = []
 
@@ -239,6 +245,15 @@ def evaluate(
                     {"pose_age": b.pose_age, "freshness_timeout": pose_freshness_timeout},
                 )
             )
+
+    # (5) operator emergency-stop request (doc05 §5) -> estop. The latch lives in
+    # OperatorStopLatch (node-fed); here the flag is just another LEVEL input, so
+    # the existing estop machinery (prio-100 zero Twist re-asserted every tick +
+    # goal cancel + edge-triggered event) applies unchanged. Fleet-wide: the node
+    # feeds the SAME latch state to every bot, and this loop must cover both.
+    for b in (bot_a, bot_b):
+        if b.operator_stop_requested:
+            decisions.append(Decision(b.bot, "estop", "operator_stop_request", None))
 
     return decisions
 
@@ -414,3 +429,60 @@ class EdgeLatch:
         fresh = now - self._active
         self._active = now
         return fresh
+
+
+_OPERATOR_STOP_ACTIONS = ("engage", "clear")
+
+
+def parse_operator_stop_action(raw: str) -> str | None:
+    """Parse one ``/operator/stop_request`` payload (doc05 §5 / OQ-OP2 ruling).
+
+    Returns ``"engage"`` / ``"clear"`` for the two explicit actions, else ``None``
+    for anything unrecognized: malformed JSON, a non-object payload, a missing /
+    unknown / wrongly-typed ``action``. ``None`` means IGNORE — an invalid payload
+    must NEVER be treated as a clear (fail-safe: garbage on the wire cannot release
+    a stop). The caller may log it; the latch state is untouched.
+    """
+    try:
+        payload = json.loads(raw)
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    action = payload.get("action")
+    return action if action in _OPERATOR_STOP_ACTIONS else None
+
+
+@dataclass
+class OperatorStopLatch:
+    """Fleet-wide latched operator emergency-stop request (doc05 §5).
+
+    Unlike the sensor-derived reasons (near_collision / battery_critical /
+    pose_stale — all auto-clearing levels, unchanged by this class), this reason
+    LATCHES: an explicit ``{"action": "engage"}`` turns it on for ALL bots and it
+    stays on regardless of message absence or repeated engages; ONLY an explicit
+    ``{"action": "clear"}`` drops it. A released button / a silent stream must
+    never auto-clear (doc05 §6 "非常停止ボタンを離す → 非常停止を保持"). Clear is
+    NOT resume: other active reasons keep blocking, and nothing here starts motion
+    (doc05 §5 "解除≠即走行").
+
+    Pure and injectable: no ROS, no wall clock — state changes ONLY through
+    ``feed`` payloads, so the mere passage of time or absence of messages
+    structurally cannot alter it (R-26).
+    """
+
+    _engaged: bool = False
+
+    def feed(self, raw: str) -> str | None:
+        """Apply one payload; return the accepted action, or None if ignored."""
+        action = parse_operator_stop_action(raw)
+        if action == "engage":
+            self._engaged = True
+        elif action == "clear":
+            self._engaged = False
+        return action
+
+    @property
+    def engaged(self) -> bool:
+        """True while the operator stop is latched (read-only; no side effects)."""
+        return self._engaged
