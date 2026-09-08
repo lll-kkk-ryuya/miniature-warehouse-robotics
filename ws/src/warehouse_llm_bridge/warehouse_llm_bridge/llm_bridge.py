@@ -96,10 +96,20 @@ DEFAULT_NAV2_BRIDGE_BASE_URL = "http://localhost:8645"
 # Mode C (open-rmf) routes via Open-RMF instead — no Nav2 Bridge forwarder.
 NAV2_BRIDGE_MODES = frozenset({"none", "simple"})
 # Fleet namespaces (doc03 topic contract; same tuple as the Guardian / State Cache).
-_BOTS = ("bot1", "bot2")
-# Sweep cadence for the Guardian-estop mirror (doc12 【2026-09-07 追補】): worst-case
-# clear latency = emergency_clear_after_s + this period, still >> the 0.5s
-# twist_mux expiry so L2 always opens after the physical override lapses.
+# Cross-checked against config robots: by tests/unit/test_emergency_mirror_wiring.py —
+# a bot added in config without a subscription here would be fail-open (the Guardian
+# estops it but the L2 mirror never hears about it).
+_BOTS: tuple[str, ...] = ("bot1", "bot2")
+# Sweep cadence for the Guardian-estop mirror (doc12 【2026-09-07 追補】): clear
+# latency is AT LEAST emergency_clear_after_s + this period — the RELIABLE/depth-10
+# subscription may redeliver a queued burst after a gap and each late sample restamps
+# the silence window at RECEIVE time, pushing the clear later (safe direction: the
+# hold only lasts longer) — and always after the 0.5s twist_mux expiry, so L2 opens
+# only once the physical override has lapsed. Known residual startup window (accepted,
+# mode-m1/05 §3-2 / mode-x-er/10:459-461): after a bridge restart the mirror is empty
+# until DDS discovery completes, so a dispatch during a held estop can be
+# phantom-accepted — motion stays physically blocked (twist_mux prio100) and the
+# Guardian cancels goals every tick.
 EMERGENCY_SWEEP_PERIOD_S = 0.1
 
 

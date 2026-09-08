@@ -104,6 +104,7 @@ docs/
 | [02-m1-driver-and-watchdog](mode-m1/02-m1-driver-and-watchdog.md) | m1_driver serial node 設計（L0' 結線 = G-l）＋ watchdog 多層停止設計（STM32 watchdog 不在・G-g 手順） |
 | [03-joystick-teleop-bringup](mode-m1/03-joystick-teleop-bringup.md) | joystick 手動走行 bring-up（M0/M1/M2 成功ゲート・実機プローブ・joy 経路） |
 | [04-runtime-speed-limiter](mode-m1/04-runtime-speed-limiter.md) | OQ-T3 設計解: Nav2 speed_limit_topic による走行中速度上限の動的変更（三層モデル・publisher 実装済 2026-08-30・bringup 配線未） |
+| [05-operation-state-and-stop-authority](mode-m1/05-operation-state-and-stop-authority.md) | 運転状態と停止権限の担当分離（L2/teleop/Guardian/driver の 4 担当・Emergency 現在状態の共有・停止上乗せ・操作者非常停止 latch・2026-09-07 確定） |
 
 ## mode-x-er/ — Gemini Robotics-ER 視覚タスク司令（設計提案）
 
