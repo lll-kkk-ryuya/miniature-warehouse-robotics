@@ -25,11 +25,21 @@ from warehouse_mcp_server.gen_check import GenChecker
 from warehouse_mcp_server.policy_gate import PolicyGate
 from warehouse_mcp_server.tools import WarehouseTools
 
-# A State Cache ring entry in the /emergency/event core shape (doc12:411-419).
+# State Cache ring entries in the /emergency/event core shape (doc12:411-419).
+# The aggregator bounds active/history to DIFFERENT ring sizes, so a real
+# snapshot can hold history ⊃ active — the fixture keeps them distinct so an
+# active<->history swap in the tool goes red (mutation sensitivity).
 RING_EVENT = {
     "event_id": "emg-20260907-0001",
     "robot": "bot1",
     "type": "near_collision",
+    "severity": "critical",
+    "action_taken": ["nav2_goal_cancel", "cmd_vel_stop"],
+}
+OLDER_RING_EVENT = {
+    "event_id": "emg-20260906-0007",
+    "robot": "bot2",
+    "type": "battery_critical",
     "severity": "critical",
     "action_taken": ["nav2_goal_cancel", "cmd_vel_stop"],
 }
@@ -92,10 +102,13 @@ def test_ring_and_l2_holds_are_independent_systems(tmp_path: Path) -> None:
     # are separate systems in separate keys — neither feeds the other.
     # Direction 1: a ring entry (bot1 once estopped, long resolved) creates NO
     # L2 hold — the very fail-open the 裁定 rejected as a feed.
-    tools = _tools(tmp_path, _snapshot(emergency={"active": [RING_EVENT], "history": [RING_EVENT]}))
+    tools = _tools(
+        tmp_path,
+        _snapshot(emergency={"active": [RING_EVENT], "history": [OLDER_RING_EVENT, RING_EVENT]}),
+    )
     payload = _fleet_status(tools)
     assert payload["emergency"]["active"] == [RING_EVENT]
-    assert payload["emergency"]["history"] == [RING_EVENT]
+    assert payload["emergency"]["history"] == [OLDER_RING_EVENT, RING_EVENT]
     assert payload["l2_emergency_holds"] == []
 
     # Direction 2: a live L2 hold (bot2) does NOT write the ring (the ring's
