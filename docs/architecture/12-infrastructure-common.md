@@ -527,7 +527,7 @@ Jetson Orin Nano Super（8GB LPDDR5 共有メモリ）ではローカルLLMモ�
 
 ```
 Nav2 controller_server (FollowPath)
-  └(remap cmd_vel)→ /bot{n}/cmd_vel/nav2_raw          ← 新・中間 plumbing topic（doc03 スコープ外, :111）
+  └(remap cmd_vel)→ /bot{n}/cmd_vel/nav2_raw          ← 新・中間 plumbing topic（doc03 スコープ外, doc03:114）
        nav2_collision_monitor  (per-bot, /bot{n} ns)
          cmd_vel_in_topic  = cmd_vel/nav2_raw
          cmd_vel_out_topic = cmd_vel/nav2             ← twist_mux prio10 入力（既存・不変）
