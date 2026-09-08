@@ -49,9 +49,18 @@ class M1DriverNode(Node):
         # Watchdog tick period. Implementation detail (not a safety
         # threshold): ticks just need to be denser than the timeout window.
         self.declare_parameter("watchdog_period_s", 0.1)
+        # Stop overlay (doc05 §4). Default False: standalone M0-M2 bring-up
+        # has no stop-state producer (docs/mode-m1/03:50) and must keep the
+        # pre-overlay behaviour bit-identically. Integrated bringup enables it
+        # explicitly. NOTE: the producer subscription is deliberately NOT
+        # wired in this slice (doc05 §3-2 / OQ-OP1-OP2 — the topic contract is
+        # a doc03 additive follow-up); with no feed, an enabled overlay holds
+        # the stop side (fail-closed, doc05 §4 R-26 ③).
+        self.declare_parameter("stop_overlay_enabled", False)
 
         bot = str(self.get_parameter("bot").value)
         timeout = float(self.get_parameter("cmd_vel_timeout_s").value)
+        stop_overlay_enabled = bool(self.get_parameter("stop_overlay_enabled").value)
         # Same hardening as the core's timeout: a 0/negative/NaN period would
         # break the timer (or hot-spin) and silently disarm W-1.
         period = _positive_or_default(float(self.get_parameter("watchdog_period_s").value), 0.1)
@@ -64,7 +73,11 @@ class M1DriverNode(Node):
             car_type = car_type_param if car_type_param >= 0 else None
             backend = RosmasterBackend(com=device, car_type=car_type)
         self._backend = backend
-        self._core = M1DriverCore(backend, cmd_timeout_s=timeout)
+        self._core = M1DriverCore(
+            backend,
+            cmd_timeout_s=timeout,
+            stop_overlay_enabled=stop_overlay_enabled,
+        )
 
         self.create_subscription(Twist, f"/{bot}/cmd_vel", self._on_cmd_vel, 10)
         self.create_timer(period, self._on_watchdog)
@@ -72,17 +85,26 @@ class M1DriverNode(Node):
 
         # W-2: stop frames on every exit path we can reach from userspace.
         atexit.register(self._core.shutdown_sequence)
+        overlay_note = (
+            "stop overlay ENABLED — holding stop until a fresh stop-state arrives "
+            "(producer wiring is a follow-up slice, doc05 OQ-OP1/OP2)"
+            if self._core.stop_overlay_enabled
+            else "stop overlay disabled (default; doc05 §4)"
+        )
         self.get_logger().info(
             f"m1_driver up: /{bot}/cmd_vel -> L0' clamp -> serial "
-            f"(W-1 timeout {self._core.cmd_timeout_s:.2f}s)"
+            f"(W-1 timeout {self._core.cmd_timeout_s:.2f}s; {overlay_note})"
         )
 
     def _on_cmd_vel(self, msg: Twist) -> None:
         self._core.on_cmd_vel(msg.linear.x, msg.linear.y, msg.angular.z, time.monotonic())
 
     def _on_watchdog(self) -> None:
-        braked = self._core.on_watchdog_tick(time.monotonic())
-        if braked and not self._was_stale:
+        self._core.on_watchdog_tick(time.monotonic())
+        # Warn on the W-1 fresh->stale TRANSITION only. `core.stale` tracks
+        # W-1 alone, so an enabled stop overlay braking over a fresh command
+        # stream (doc05 §4) does not spam a misleading "cmd_vel stale" warn.
+        if self._core.stale and not self._was_stale:
             self.get_logger().warn("cmd_vel stale (> W-1 timeout) — braking until fresh command")
         self._was_stale = self._core.stale
 
