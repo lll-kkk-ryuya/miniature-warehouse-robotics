@@ -103,7 +103,7 @@ driver に「走行を許可する権限」を新設するのではなく、**�
 | 順 | 作業 | 完了条件 |
 |---|---|---|
 | 1 | 本書 land（状態・停止理由・担当の文書確定） | check_consistency 0 ERROR |
-| 2 | **Emergency 現在状態の L2 共有**（§3）— **充足済み（#593 land・level mirror・R-26 32 本 main で green）**。残余 follow-up は §10（get_fleet_status 併修・配線層 AST pin・起動窓） | ✅ emergency 中の dispatch reject R-26 |
+| 2 | **Emergency 現在状態の L2 共有**（§3）— **充足済み（#593 land・level mirror・R-26 32 本 main で green）**。残余 follow-up は §10（get_fleet_status 併修=**#600 で解消**・配線層 AST pin・起動窓） | ✅ emergency 中の dispatch reject R-26 |
 | 3 | **joy 鮮度監視・中立確認・deadman 再操作**（§6・一部進行中） | 前進押し続けでも Emergency が勝つ実機確認 |
 | 4 | **teleop の mux 追加**（Emergency prio100 不変の additive 3 入力・contract 級 PR） | 手動解除・通信断で自律へ戻らない |
 | 5 | **運転モード発信元・driver 停止上乗せ・操作者停止 latch**（§2/§4/§5） | 解除しただけでは動かない実機確認 |
@@ -128,7 +128,7 @@ fault injection（Guardian kill・driver kill・USB 抜線・joy 切断・proces
 
 ## 10. 残件・既知ドリフト（隠さない）
 
-- `get_fleet_status` が `emergency` を返していない（`tools.py` ↔ [doc12:389-409](../architecture/12-infrastructure-common.md) のフロー記述）。**#593 後は「L2 が enforce する emergency（mirror）を司令官が観測できない」**——reject 理由が見えず再試行ループになりうるため優先度が上がった。mirror の hold/clear ログ追加とセットで follow-up スライス。
+- `get_fleet_status` が `emergency` を返していない（`tools.py` ↔ [doc12:389-409](../architecture/12-infrastructure-common.md) のフロー記述）。**#593 後は「L2 が enforce する emergency（mirror）を司令官が観測できない」**——reject 理由が見えず再試行ループになりうるため優先度が上がった。mirror の hold/clear ログ追加とセットで follow-up スライス。→ **【2026-09-08 解消】** #600 が `emergency{active,history}`（State Cache ring 素通し）と `l2_emergency_holds`（L2 enforce 実体 = `PolicyGate.emergency_holds()`）を**別キー**で返し（[doc12:631](../architecture/12-infrastructure-common.md) の独立系統裁定＝混ぜない）、hold/clear の遷移エッジ 1 行ログとセットで実装。
 - **#593 の残余 follow-up（レビュー確定・2026-09-08）**: ①配線層（topic 名・QoS・timer）が unit/CI のどちらにも乗っていない → AST pin を追加（`test_speed_band_bringup_wiring.py` 先例）②L4 側 `_BOTS` ハードコードと config `robots:` の突合アサート ③bridge 起動〜DDS discovery 完了までの phantom 受理窓（§3-2）。
 - **#582（joy 鮮度）は §6「再接続だけでは走行を再開しない」をまだ満たさない**（ガードは mask であって latch でない・再アーム未実装）— land 時に残件明示＋後続スライスで latch/再アームを実装。あわせて #582 の doc03 中段挿入が [jetson/02](../jetson/02-remote-access-and-dev-link.md) の `mode-m1/03:54` pin を割るため、#582 land 後に **:55 への再 pin** が要る（この形の pin は check_consistency の検査対象外＝CI では検出されない）。
 - doc12 内部の行 pin ドリフト（Guardian 詳細節を「:95-151」と自己参照するが実体は :181。**同型 stale がコード側 `ws/src/warehouse_bringup/launch/bringup.launch.py:221` のコメントにも現存**）・[mode-x-er/10:457](../mode-x-er/10-room-scale-safety-review.md) の GLOSSARY 行参照ドリフト — 所有トラックへ申し送り（本 PR では触らない）。

@@ -300,14 +300,23 @@ class WarehouseTools:
         # bot may long since be fine; doc12:399-405), while "l2_emergency_holds"
         # is the level state the Policy Gate is enforcing RIGHT NOW (Guardian
         # estop mirror, auto-clears on silence; doc12 【2026-09-07 追補②】).
-        ring = state.get("emergency") or {}
+        ring = state.get("emergency")
+        if not isinstance(ring, dict):
+            # Fail-open to the empty labeled shape: a malformed extra key must
+            # degrade, never raise — dispatch() converts only TypeError, so an
+            # AttributeError here would escape onto the wire (the module
+            # docstring's invariant). Same guard discipline as
+            # self_action_gate._validate_live_state on this very key.
+            ring = {}
+        active = ring.get("active")
+        history = ring.get("history")
         payload = {
             "status": "ok",
             "timestamp": state.get("timestamp"),
             "robots": robots,
             "emergency": {
-                "active": ring.get("active") or [],
-                "history": ring.get("history") or [],
+                "active": active if isinstance(active, list) else [],
+                "history": history if isinstance(history, list) else [],
             },
             "l2_emergency_holds": sorted(self._policy_gate.emergency_holds()),
         }

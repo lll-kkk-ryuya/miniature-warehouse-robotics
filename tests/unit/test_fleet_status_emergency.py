@@ -26,9 +26,11 @@ from warehouse_mcp_server.policy_gate import PolicyGate
 from warehouse_mcp_server.tools import WarehouseTools
 
 # State Cache ring entries in the /emergency/event core shape (doc12:411-419).
-# The aggregator bounds active/history to DIFFERENT ring sizes, so a real
-# snapshot can hold history ⊃ active — the fixture keeps them distinct so an
-# active<->history swap in the tool goes red (mutation sensitivity).
+# NOTE: today the aggregator appends every event to BOTH rings under the SAME
+# 50-item bound (aggregator.py:165-182), so real snapshots hold active ==
+# history; the fixture's asymmetry is synthetic, purely so an active<->history
+# swap in the tool goes red (mutation sensitivity) — it also matches the
+# Phase-2 clear-protocol shape (active ⊂ history) when that lands.
 RING_EVENT = {
     "event_id": "emg-20260907-0001",
     "robot": "bot1",
@@ -152,3 +154,29 @@ def test_shape_is_stable_without_ring_or_state(tmp_path: Path) -> None:
     assert payload["robots"] == {}
     assert payload["emergency"] == {"active": [], "history": []}
     assert payload["l2_emergency_holds"] == []
+
+
+@pytest.mark.safety
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "ring",
+    [
+        "hello",  # truthy non-dict: .get() would raise AttributeError unguarded
+        ["not", "a", "dict"],  # truthy list: same escape path
+        7,  # truthy scalar
+        {"active": "boom", "history": {"a": 1}},  # dict ring, non-list values
+    ],
+)
+def test_malformed_ring_fails_open_and_never_escapes_the_wire(tmp_path: Path, ring: Any) -> None:
+    # dispatch()'s documented invariant (tools.py module docstring): no exception
+    # escapes onto the wire — it converts only TypeError, so an unguarded
+    # AttributeError from a malformed extra key WOULD leak through. The guard
+    # degrades to the empty labeled shape instead (fail-open for a read-only
+    # tool; same discipline as self_action_gate._validate_live_state).
+    tools = _tools(tmp_path, _snapshot(emergency=ring))
+    mirror = EmergencyLevelMirror(tools.policy_gate.set_emergency)
+    mirror.on_stop_signal("bot1", 0.0)
+    payload = _fleet_status(tools)
+    assert payload["emergency"] == {"active": [], "history": []}
+    # The L2 hold report is independent of ring garbage (doc12:631 separation).
+    assert payload["l2_emergency_holds"] == ["bot1"]
