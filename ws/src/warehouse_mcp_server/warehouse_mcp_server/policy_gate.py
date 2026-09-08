@@ -283,7 +283,9 @@ class PolicyGate:
         self._gate_lock = asyncio.Lock()
         self._task_seq = 0
 
-    # -- emergency set management (seedable; #5 will feed it later) -----------
+    # -- emergency set management (fed by the Guardian estop level mirror:
+    # emergency_sync.EmergencyLevelMirror wired in llm_bridge, doc12
+    # 【2026-09-07 追補】 / #592; the ctor kwarg stays for tests / recovery) ---
 
     def set_emergency(self, robot: str, active: bool) -> None:
         """Flag (or clear) ``robot`` as being in an emergency state."""

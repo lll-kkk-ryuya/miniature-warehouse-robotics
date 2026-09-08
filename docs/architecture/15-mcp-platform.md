@@ -563,3 +563,7 @@ Hermes の server-side tool execution は read-only tool では利用可能だ�
 Gemini Robotics-ER や OpenVLA は、Hermes が対象 API / modality / structured output を扱える場合だけ Hermes 経由にできる。扱えない場合は Bridge-managed direct adapter とし、trace、timeout、audit、L3 handoff、secret 境界は Robotics Bridge Super-Box が所有する。
 
 ---
+
+## 【2026-09-07 追補】Policy Gate `robot_in_emergency` の supply 経路（#592）
+
+:307-309 の「Emergency中のrobot禁止」検査（実装 `ws/src/warehouse_mcp_server/warehouse_mcp_server/policy_gate.py` の `check_emergency`）への emergency 状態の供給は、**Guardian estop level 信号のミラー**で行う: L4 `llm_bridge` node が `/bot{n}/cmd_vel/emergency`（:389-404 の twist_mux prio100 入力・Guardian が estop 条件持続中は毎 50ms tick 再アサート）を購読して `PolicyGate.set_emergency(bot, True)`、無信号が `policy_gate.emergency_clear_after_s`（既定 1.0s・fail-closed・tighten-only floor＝[ADR-0004](../adr/0004-l2-restrict-only-policy-profile.md)）を超えたら `False` に落とす。設計正本（採用理由・却下 2 案・既定値根拠・残件）は [doc12 【2026-09-07 追補】Emergency後の状態同期②](12-infrastructure-common.md)。config key は `config/warehouse.base.yaml` の既存 `policy_gate` ブロック（`stale_after_s` / `unavailable_after_s` と同じ検証規律・純ロジックは `warehouse_mcp_server/emergency_sync.py`）。twist_mux 契約（:389-395・prio100・0.5s timeout）は**不変**＝既存 topic への新規 consumer 追加のみ。recovery（blocked_timeout・low-harm）は当該 topic を publish しないため dispatch を塞がない。

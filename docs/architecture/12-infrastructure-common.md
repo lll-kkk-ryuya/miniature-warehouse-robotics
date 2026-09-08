@@ -610,3 +610,31 @@ Guardian の pose 監視を **AMCL 固定から config 切替（監視プロフ�
 - **非緩和性（R-26 で機械証明）**: `motion_epsilon` を 1.0s の鮮度窓内に埋める速度（≥ 0.1 m/s）では発火 tick が CURRENT と一致することを unit で固定する（`tests/unit/test_guardian_displacement_gate.py`）。**唯一の残留** = それ未満の匍匐前進は `motion_epsilon / v` だけ発火が遅れ、**v→0 で非有界**（検出は遅れるが変位は単調ゆえ失われない）。ジオラマ規模で「0.10m の走行」を受容する明示的トレードとして unit に pin 済。
 - **999 回避策の撤去**: 本スライスで sim / live 実行経路の `WAREHOUSE__SAFETY__POSE_FRESHNESS_TIMEOUT=999`（5ファイル6箇所・doc23 A-10 ①）を**全削除**し、freshness guard を既定 1.0s で実効化した。**既定 1.0s のままの sim full-stack 完走は human gate（未実施）**。
 - **【2026-08-17 追記】速度項の撤去（sim ゲート実走 P2 FAIL の是正・code-to-docs）**: 初版は上記の変位項に `|速度| > safety.pose_freshness_speed_epsilon` を OR していたが、これは **A-5③ が明示的に禁じる形**（[23 A-5③](23-perception-and-localization.md)）であり、Gazebo 実走で二重に falsify された——**出発デッドロック**（駐機明け最初の運動 tick・変位 3.2mm で estop → 速度 0 → `update_min_d` に届かず pose 来ず → nav goal 5/5 キャンセル）と**ラッチ破れ**（AMCL 死亡下で 12 秒に estop 立ち上がり 17 回・累積変位 0.023m）。**速度項と config キー `pose_freshness_speed_epsilon` を削除**し、`BotState.odom_speed` / tracker の速度チャネル / node の twist 読取りも同時に撤去（dead code を残さない）。ゲートは変位・角度・fail-closed のみ。詳細と実測値は [doc23 A-10【2026-08-17 追記②】](23-perception-and-localization.md)。**sim gate 全体の再実走が最終受け入れ（PENDING）**。
+
+---
+
+## 【2026-09-07 追補】Emergency後の状態同期②: L2 Policy Gate への同期（`robot_in_emergency` の feed 確定・#592）
+
+> §「Emergency後の状態同期」（:389-409）は Guardian → State Cache → `get_fleet_status` → LLM の**事後通知**フローのみを定義しており、L2 Policy Gate の `robot_in_emergency` 検査（doc15:307-309・実装 `ws/src/warehouse_mcp_server/warehouse_mcp_server/policy_gate.py` の `check_emergency`）へ emergency 状態を**供給する経路が未定義**だった＝`PolicyGate.set_emergency` は production で呼び出し元ゼロの never-fire（`set_emergency`/`is_in_emergency`＝`policy_gate.py:290-299` / 構築点 `tools.py:118` は emergency を渡さない）。本追補がその feed を確定する。**凍結契約 `warehouse_interfaces`・`/emergency/event` コア形（:141-150）・twist_mux prio100 契約（doc15:389-395）はすべて不変**。additive tighten-only（reject が増える方向のみ＝[ADR-0004](../adr/0004-l2-restrict-only-policy-profile.md) と同じ向き）。
+
+### 採用: Guardian estop level 信号のミラー（`/bot{n}/cmd_vel/emergency` 購読）
+
+- **set**: L4 commander node（`llm_bridge`）が `/bot{n}/cmd_vel/emergency`（topic 名/timeout=doc15:392-402・型と RELIABLE QoS の実体は Guardian publisher `emergency_guardian.py:109-111,139-141`＝`geometry_msgs/Twist`。購読側も同じ RELIABLE を明示＝QoS 非互換の silent no-match で fail-open にしない）を購読し、受信のたび `PolicyGate.set_emergency(bot, True)` へ写像する。Guardian の物理停止は **level**（estop 条件が続く限り毎 50ms tick 再アサート、:185 / `ws/src/warehouse_safety/warehouse_safety/emergency_guardian.py:224-229`）なので、この topic の継続受信自体が「Guardian がこの bot を停止させ続けている」の ground truth。
+- **clear**: 同 topic の**無信号が `policy_gate.emergency_clear_after_s`（既定 1.0s・厳密 `>`）を超えたら** `set_emergency(bot, False)`（0.1s 周期 sweep）。解除イベントは不要＝「Guardian が押すのを止めた」ことの検出。twist_mux prio100 入力自体が 0.5s 無信号で失効する（doc15:389-395）のと同じ silence 意味論で、**L2 は物理 override の失効（0.5s）より必ず後（1.0s）に開く**。
+- **既定 1.0s の根拠**: ① twist_mux 失効 0.5s の 2 倍（物理停止が先に解ける順序の保証）② Guardian tick 50ms の 20 倍（R-40 jitter 耐性）③ `safety.pose_freshness_timeout` 1.0s（:506-513）と同格の鮮度窓。値は config `policy_gate.emergency_clear_after_s`（`config/warehouse.base.yaml` の既存 `policy_gate` ブロック）で、**fail-closed + tighten-only floor**: 非数値・非有限・≤0・**既定 1.0 未満（緩め方向＝早く開ける）は起動拒否**（freshness 窓の ceiling 規律 = ADR-0004 / PR#427 と同型・こちらは floor）。
+- **配置（layer 注記・productization/01:192 の layer ≠ process）**: 購読 marshal = **L4** node（`warehouse_llm_bridge/llm_bridge.py`）／ミラー純ロジック（stamp 管理・sweep）と config 検証 = **L2 Governance**（`warehouse_mcp_server/emergency_sync.py`・rclpy 非依存）／状態 = `PolicyGate._emergency`（**L2**）。検査自体は従来から `_validate_dispatch_inner`（`policy_gate.py:388`）と charging 経路（`:494`）で毎 dispatch 実行されている。
+- **意味論**: estop 級（near_collision / battery_critical / pose_stale）のみ dispatch を塞ぐ。**recovery（blocked_timeout・low-harm）は `/cmd_vel/emergency` を publish しない**（`emergency_guardian.py:237-241`・event のみ）ため塞がない＝意図どおり（bot は正当に idle かもしれない）。battery_critical 中は `send_to_charging` も reject される（:250 の表「≤10% = 全コマンド拒否」と一致。物理的にも Guardian が毎 tick zero Twist + Nav2 cancel を維持するため充電走行は不能＝人手回収）。
+
+### 却下した 2 案（falsification・再検討時の再訪先）
+
+1. **`/emergency/event` 駆動 set**: event は rising edge のみ（:185 / `EdgeLatch`）で clear イベントが無い上、bridge プロセス再起動で edge を取りこぼすと**復元手段の無い fail-open**（条件持続中は再発行されない）。level ミラーは次 tick（≤50ms）で自己回復する。
+2. **State Cache `emergency.active` 参照**（#592 kickoff の当初候補）: active は **append-only の 50 件 ring で clear/resolution protocol が無い**（`ws/src/warehouse_state/warehouse_state/aggregator.py:165-182`・本 doc :401 も「active に追加」のみ）。これを feed にすると一度でも emergency を出した bot が**永続 reject**になる（厳密には 50 件 ring の押し出しで偶発的に外れうる＝決定論的 clear が無い）——既存 `self_action_gate._validate_live_state`（`ws/src/warehouse_llm_bridge/warehouse_llm_bridge/self_action_gate.py:192-197`）が実際にこの形で sticky（別件・本追補のスコープ外）。active の clear protocol は引き続き **Phase-2 TODO（safety-state 所有）**で、本追補はそれを代替しない（landed 後も L2 feed は level ミラーのまま＝独立系統）。
+
+### 残（隠さない）
+
+- **x_er_bridge（Mode X-ER commander）は未配線**: 自前 `WarehouseTools` 構築（`x_er_bridge.py`）に同じ never-fire が残る（既定 `mode_x_er.dispatch.forward_to_nav2: false`＝0 actuation で実害なし）。`emergency_sync` は純 module なので同型の購読 + sweep で配線可（XER レーン所有）。
+- **stdio `server.py` 経路（Hermes 外部接続用の別プロセス MCP）は ROS 文脈が無くミラー不能**＝当該プロセスの emergency 検査は従来どおり never-fire。production の tool dispatch は in-process（doc16:58 / #81）でありこの経路は現用外。
+- **near_collision estop は物理的に自己ラッチ**（両 bot 静止のまま距離 < 0.3m が持続）。L2 reject はその物理保持を鏡映するだけで、解消は人手（ジオラマ）または collision_monitor 委譲（:543-552）後の再設計。本配線が新たな deadlock を作るのではない（配線前でも受理 dispatch は Guardian が毎 tick cancel していた＝phantom 受理と bookkeeping ドリフトが消えるだけ）。
+- **doc03 トピック表に `/bot{n}/cmd_vel/emergency` が未記載**（doc03:88 は `/bot{n}/cmd_vel` のみ）: 型・QoS の docs 正本が無いまま consumer が 2 つ（twist_mux・本ミラー）になった。表への追記は doc03 所有トラックの別レーン（それまでの正本は上記 Guardian publisher 実装 file:line）。
+- **:250 の Guardian 列「最寄り安全地点へ退避」は未実装のまま**（`warehouse_safety` に退避実装なし・grep 一致は :250 のみ）。本配線により ≤10% 中は指令経由の退避も `robot_in_emergency` reject となり、当該文言は現実装と二重に乖離。文言是正は safety-state 所有 doc の別レーン。
+- **L3 側の同型 never-fire は残る**: `robotics_planning_core/validator/context.py:37` の `RuntimeSafetyState.emergency_active` は production producer 無し（既定 False＝`validator.py:121` の `EMERGENCY_ACTIVE` 判定は常に通過。[productization/11:257](../productization/11-l2-contract-governance-traffic-box.md) の L3/L2 対の L3 側）。L2 が dispatch 瞬間に止めるため安全側だが、`emergency_sync` は純 module ゆえ同型で feed 可能＝XER/L3 レーン候補。

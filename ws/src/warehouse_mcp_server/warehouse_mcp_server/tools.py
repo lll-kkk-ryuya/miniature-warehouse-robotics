@@ -128,6 +128,16 @@ class WarehouseTools:
         self._escalations: dict[str, dict] = {}
         self._negotiation_seq = 0
 
+    @property
+    def policy_gate(self) -> PolicyGate:
+        """The gate (L2), exposed so the hosting node can feed ``set_emergency``.
+
+        Consumed by the ``EmergencyLevelMirror`` wiring in ``llm_bridge``
+        (doc12 【2026-09-07 追補】, #592): read-only access — tools remain the
+        only dispatch path through the gate.
+        """
+        return self._policy_gate
+
     # ── wire entry: dispatch by tool name (server.py stdio boundary) ────────
 
     async def dispatch(self, name: str, arguments: dict) -> dict[str, Any]:
