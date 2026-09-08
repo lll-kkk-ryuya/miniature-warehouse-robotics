@@ -4,9 +4,9 @@ Prints the facts that pin downstream decisions. Deliberately sends **no
 motion command** (motion tests are manual, wheels-up, with the G-g watchdog
 procedure = docs/mode-m1/02 §4):
 
-  1. car_type            -> firmware clamp ceiling (0x01 -> 1.0 / 0x02 -> 0.7
-                            m/s) = ADR-0010 §Open 1 pin value
-  5. firmware version    -> match against the investigated V3.5.1 source (U-5)
+  1. car_type            -> firmware clamp ceiling (expect M1 = 0x0A -> 0.7
+                            m/s, V3.6.5 source) = ADR-0010 §Open 1 pin value
+  5. firmware version    -> match against the investigated V3.6.5 source (U-5)
   6. 4x encoder counts   -> 0x0D path liveness for the odom slice
   +  battery voltage     -> sanity / ADR-0005 context
 
@@ -47,9 +47,9 @@ def main() -> None:
     car_type = read("get_car_type_from_machine", "get_car_type")
     print(
         f"car_type            : {car_type}  "
-        f"(0x01 -> clamp 1.0 m/s / 0x02 -> clamp 0.7 m/s = ADR-0010 Open 1)"
+        "(expect M1 = 0x0A -> clamp 0.7 m/s, V3.6.5 = ADR-0010 Open 1)"
     )
-    print(f"firmware version    : {read('get_version')}  (compare vs V3.5.1 = U-5)")
+    print(f"firmware version    : {read('get_version')}  (compare vs V3.6.5 = U-5)")
     print(f"battery voltage [V] : {read('get_battery_voltage')}")
 
     print(f"encoder samples x{args.samples} (int32 M1..M4, 1s apart):")
