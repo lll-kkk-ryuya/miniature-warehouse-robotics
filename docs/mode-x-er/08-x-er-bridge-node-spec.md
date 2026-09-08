@@ -132,6 +132,29 @@ async 境界: `propose_plan` は async・L3/composition は sync のため、Mod
 - **per-instruction（per-cycle）切替は非採用**: 1 つの稼働 node が指示ごとに実行系を替える形は、(a) 実効構成レコードと実行の 1:1（§4 step7・ADR-0003 決定 4）が壊れる（起動時に一度書いた record と mid-run の実行系が食い違う）、(b) 長命 executor の single-live-handle 契約（[02:361](02-l3-planning-core.md)）と gen 発番 owner の一意性（§2 相互排他）が「どの実行系の cycle か」で曖昧になる、(c) §4 の fail-closed startup gate（profile 拒否含む）が cycle 中に再評価されず安全前提が崩れる——ため採用しない。将来必要になったら **docs-first の新設計＋ADR**（hard-to-reverse 判定は [docs/adr/README](../adr/README.md)）を先行する。
 - **x_rmf の実体は #346 gate 後**: 現状 `execution_profile: x_rmf` は**起動拒否**（`NotImplementedError` fail-closed・§3 / compiler.py:79-83）。本節は切替の**戦略**（単位と手順）だけを先に確定するもので、x_rmf backend を実装したり [ADR-0002](../adr/0002-er-in-hermes-standard.md)（ER-in-Hermes 標準）/ ADR-0003（bridge-local composition）の決定を変えるものではない。
 
+## 11. Guardian estop ミラー配線（L2 `robot_in_emergency`＋L3 `emergency_active` の feed・2026-09-08 追補）
+
+[doc12 【2026-09-07 追補】](../architecture/12-infrastructure-common.md)（#592・Guardian estop level ミラーの設計正本）が「残」として列挙した 2 件 — ①**x_er_bridge 未配線**（自前 `WarehouseTools` 構築に L2 `robot_in_emergency` の同型 never-fire）②**L3 側の同型 never-fire**（`robotics_planning_core/validator/context.py:37` の `RuntimeSafetyState.emergency_active` に production producer が無く、`validator.py:121` の `EMERGENCY_ACTIVE` 判定が常に通過）— を本節で解消する。**凍結契約 `warehouse_interfaces`・`/bot{n}/cmd_vel/emergency` の producer 契約（Guardian publisher）・doc12 追補の採用設計（level ミラー・却下 2 案・既定 1.0s floor）はすべて不変**。additive tighten-only（reject が増える方向のみ）。
+
+### 11.1 L2 feed（doc12 追補の同型配線・x_er_bridge 版）
+
+- x_er_bridge は `llm_bridge.py` の #593 配線と**同型**に `/bot{n}/cmd_vel/emergency`（`geometry_msgs/Twist`・RELIABLE/KEEP_LAST/depth10 の明示 QoS＝Guardian publisher `emergency_guardian.py:109-111,139-141` と一致）を bot1/bot2 分購読し、受信ごとに `EmergencyLevelMirror.on_stop_signal(bot, monotonic)`、0.1s timer で `sweep` する。mirror は `self._tools.policy_gate.set_emergency`（`WarehouseTools.policy_gate` read-only property）へ写像する。
+- clear 窓は `clear_after_from_config(cfg)`（config `policy_gate.emergency_clear_after_s`・既定 1.0s・fail-closed・tighten-only **floor**）。malformed は**起動拒否**（§6 起動時と同族＝0 cycle・0 dispatch）。
+- 設計判断は本節で再定義しない: 採用理由・却下 2 案・既定値根拠・意味論（recovery は塞がない等）は doc12 追補が正本。本節は「x_er_bridge にも同じものを置く」という配線宣言のみ。
+
+### 11.2 L3 feed（本追補の固有部分・plan 時ゲートの production producer）
+
+- **意味論 = fleet-any**: `RuntimeSafetyState.emergency_active = (mirror.held_bots() ≠ ∅)`。どれか 1 台でも Guardian estop level が保持されている間は **plan 自体を組み立てない**（`EMERGENCY_ACTIVE`・`dispatch_effect=emergency_stop`＝`validator.py:121-133`）。per-robot の精密判定は L2 が dispatch 瞬間に行う（[productization/11 の L3=plan 時刻 / L2=dispatch 瞬間の対](../productization/11-l2-contract-governance-traffic-box.md)）。fleet-any は保守側（tighten-only）であり、2-bot ジオラマの near_collision estop はそもそも両 bot に関与する。
+- **供給経路**: **同一 mirror instance を 2 面で consume** する — L2=`set_emergency` callback（push）・L3=`held_bots()` read（pull）。L4 adapter `EmergencyMirrorStateSource`（`x_er_bridge.py`・純・rclpy 非依存）が L3 Protocol `RuntimeStateSource`（`context.py:41-51`「a ROS/durable-backed source can replace it」の seam そのもの）を実装し、`run_x_er_cycle(..., runtime_state_source=...)` へ注入する。
+- **cycle 内 snapshot**: `PlanningContext.from_store` が cycle 冒頭で 1 回解決（`context.py:83-85` の per-cycle 契約）し、**同一 context を §5 step3（plugin 合成 validate）と step4（`compile_raw_output(context=...)`）の両方に渡す**＝「二重 validate が同一判定」（§5 step3 の F1 前提）を構造保証する。`runtime_state_source=None`（既定）は従来どおり clean context＝additive・既存 offline テスト非依存。plan 時 snapshot と dispatch 瞬間の間の遷移は L2 feed（§11.1）が塞ぐ（doc12 追補の二段防御）。
+- **fail-closed read**: reader（cycle loop thread）と mutation（rclpy spin thread の `on_stop_signal`/`sweep`）の競合で `held_bots()` の frozenset 構築が `RuntimeError`（dict resize 中 iteration）になった場合、その cycle は **emergency_active=True 扱い**（mutation の発生自体が estop 活動遷移の証拠。保守側に 1 cycle skip し、次 cycle で自己回復）。
+
+### 11.3 layer 注記・テスト・残
+
+- **layer**: 購読 marshal＋adapter=**L4**（`x_er_bridge.py`）／mirror 純ロジック＋config 検証=**L2 Governance**（`warehouse_mcp_server/emergency_sync.py`）／`RuntimeSafetyState`・`RuntimeStateSource`=**L3** 契約型（`context.py:27-51`）／`EMERGENCY_ACTIVE` 判定=**L3**（`validator.py:121`）。layer ≠ process（productization/01:192）。
+- **unit（R-26・§8 ①層）**: `tests/unit/test_x_er_emergency_feed.py` — fleet-any 真理値・sweep 後 clear・RuntimeError fail-closed・estop 保持中 cycle=0 dispatch/store 無接触/gen 無 mint・clear 後 dispatch 復帰・既定（source 無し）挙動不変・node/cycle 配線 pin。
+- **残（隠さない）**: ① `RuntimeSafetyState.state_age_s` は引き続き `None`（`CYCLE_STATE_STALE` は reference policy で gate 無効＝`policy.py:44,64`。鮮度 feed は別スライス）。② llm_bridge（Mode A）は L3 validator を使わないため L3 feed 不要（L2 ミラーは #593 で配線済）。③ stdio `server.py` 経路は doc12 追補どおり未 feed（現用外）。
+
 ## References
 
 - 判定履歴: [06-unfrozen-contract-resolutions §3＋追補](06-unfrozen-contract-resolutions.md) / 現状記録: [07-implementation-status](07-implementation-status.md)
