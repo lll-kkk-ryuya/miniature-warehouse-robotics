@@ -55,27 +55,33 @@ import asyncio
 import contextlib
 import json
 import threading
+import time
 from collections import deque
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
-# ROS-free (httpx is lazily imported inside Nav2RestForwarder.forward), so this stays importable
-# under plain pytest — the forwarder resolver below is a pure, testable helper.
+# ROS-free (httpx is lazily imported inside Nav2RestForwarder.forward; emergency_sync is
+# pure L2 logic), so this stays importable under plain pytest — the forwarder resolver and
+# the emergency-mirror state source below are pure, testable helpers.
+from warehouse_mcp_server.emergency_sync import EmergencyLevelMirror, clear_after_from_config
 from warehouse_mcp_server.nav2_client import Nav2Forwarder, Nav2RestForwarder
 
 from warehouse_llm_bridge.robotics.composition.factory_registry import (
     production_plugin_factories,
 )
 from warehouse_llm_bridge.robotics.er_task import ErTaskRequest
+from warehouse_llm_bridge.robotics_planning_core.validator import RuntimeSafetyState
 
 try:
     # Runtime node deps: rclpy exists only in the ROS runtime env; x_er_composition /
     # x_er_cycle are the ROS-free wiring modules this node codes against (frozen
     # inter-module IF). Guarded together so the pure helpers stay collectable.
     import rclpy
+    from geometry_msgs.msg import Twist
     from rclpy.logging import get_logger
     from rclpy.node import Node
+    from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
     from std_msgs.msg import String
     from warehouse_interfaces.config import load_config
     from warehouse_interfaces.stores import FileGenStore, FileIdempotencyStore, FileStateStore
@@ -116,6 +122,15 @@ _DISPATCH_KEY = "dispatch"
 _FORWARD_TO_NAV2_KEY = "forward_to_nav2"
 _NAV2_BRIDGE_KEY = "nav2_bridge"
 _BASE_URL_KEY = "base_url"
+# Guardian estop mirror wiring (doc08 §11 / doc12 【2026-09-07 追補】). Fleet namespaces are
+# the doc03 topic-contract tuple (same as llm_bridge.py _BOTS); the topic is the Guardian's
+# level-held estop output (producer: warehouse_safety emergency_guardian, twist_mux prio100
+# input — this node is an added consumer, contract unchanged).
+_BOTS = ("bot1", "bot2")
+_EMERGENCY_TOPIC = "/{bot}/cmd_vel/emergency"
+# Sweep cadence (llm_bridge.py EMERGENCY_SWEEP_PERIOD_S same value): worst-case clear
+# latency = emergency_clear_after_s + this period, still after the 0.5s twist_mux expiry.
+_EMERGENCY_SWEEP_PERIOD_S = 0.1
 
 
 def resolve_nav2_forwarder(cfg: Mapping[str, Any]) -> Nav2Forwarder | None:
@@ -187,6 +202,44 @@ def load_request_fixture(path: Path | str) -> ErTaskRequest:
     return ErTaskRequest.model_validate(payload)
 
 
+class _SupportsHeldBots(Protocol):
+    """The mirror surface this node's L3 feed reads (emergency_sync.py held_bots)."""
+
+    def held_bots(self) -> frozenset[str]: ...
+
+
+class EmergencyMirrorStateSource:
+    """L4 adapter: Guardian estop mirror -> L3 ``RuntimeSafetyState`` (doc08 §11.2).
+
+    Implements the L3 ``RuntimeStateSource`` protocol (context.py:41-51) over the SAME
+    ``EmergencyLevelMirror`` instance that feeds the L2 Policy Gate, closing the L3
+    ``EMERGENCY_ACTIVE`` never-fire (validator.py:121 — ``emergency_active`` had no
+    production producer). Semantics are FLEET-ANY: while ANY bot's estop level is held,
+    no new plan is assembled; per-robot precision stays L2's dispatch-time job
+    (productization/11 L3=plan-time / L2=dispatch-time pair).
+
+    ``state_age_s`` stays ``None`` (the freshness gate is disabled in the reference
+    policy — feeding it is a separate slice, doc08 §11.3 残①).
+
+    Fail-closed read: ``held_bots()`` builds a frozenset from a dict mutated on the rclpy
+    spin thread (``on_stop_signal`` / ``sweep``) while this reader runs on the cycle-loop
+    thread; a concurrent-resize ``RuntimeError`` is treated as emergency-active for THIS
+    cycle (the mutation itself evidences an estop transition; one conservative skipped
+    cycle, self-healing on the next).
+    """
+
+    def __init__(self, mirror: _SupportsHeldBots) -> None:
+        self._mirror = mirror
+
+    def current_state(self) -> RuntimeSafetyState:
+        """Snapshot the mirror into the per-cycle L3 safety state (doc08 §11.2)."""
+        try:
+            held = self._mirror.held_bots()
+        except RuntimeError:
+            return RuntimeSafetyState(emergency_active=True)
+        return RuntimeSafetyState(emergency_active=bool(held))
+
+
 if _NODE_IMPORT_ERROR is None:
 
     class XErBridge(Node):
@@ -235,6 +288,29 @@ if _NODE_IMPORT_ERROR is None:
                 config=cfg,
             )
             self._tool_executor = DispatchToolExecutor(self._tools.dispatch)
+            # Guardian estop -> L2/L3 emergency feed (doc08 §11 / doc12 【2026-09-07 追補】,
+            # llm_bridge.py #592 same-shape wiring). ONE mirror, TWO consumers: (L2) each
+            # level signal drives tools.policy_gate.set_emergency so check_emergency fires
+            # at dispatch time; (L3) held_bots() feeds plan-time EMERGENCY_ACTIVE through
+            # the runtime-state source injected into run_x_er_cycle. A malformed clear
+            # window (clear_after_from_config, tighten-only floor) raises here = startup
+            # refusal (§6 起動時 family). QoS mirrors the Guardian's RELIABLE publisher.
+            self._emergency_mirror = EmergencyLevelMirror(
+                self._tools.policy_gate.set_emergency, clear_after_from_config(cfg)
+            )
+            self._runtime_state_source = EmergencyMirrorStateSource(self._emergency_mirror)
+            estop_qos = QoSProfile(
+                reliability=ReliabilityPolicy.RELIABLE, history=HistoryPolicy.KEEP_LAST, depth=10
+            )
+            for bot in _BOTS:
+                # b=bot binds the loop variable per-callback (late-binding closure pitfall).
+                self.create_subscription(
+                    Twist,
+                    _EMERGENCY_TOPIC.format(bot=bot),
+                    lambda _msg, b=bot: self._emergency_mirror.on_stop_signal(b, time.monotonic()),
+                    estop_qos,
+                )
+            self.create_timer(_EMERGENCY_SWEEP_PERIOD_S, self._sweep_emergency_mirror)
             # v0 request source (dev-only, provisional): only consumed when set. A
             # set-but-malformed fixture raises here = startup refusal, not a skipped cycle.
             fixture_path = resolve_request_fixture_path(cfg)
@@ -272,6 +348,10 @@ if _NODE_IMPORT_ERROR is None:
                 f"request_source={request_src}, out_dir={self._runtime.out_dir})"
             )
 
+        def _sweep_emergency_mirror(self) -> None:
+            """Clear mirrored estops whose level signal has gone silent (timer cb)."""
+            self._emergency_mirror.sweep(time.monotonic())
+
         # ── cycle loop (background thread + dedicated event loop, llm_bridge.py:254-297) ──
 
         def _run_loop(self) -> None:
@@ -307,6 +387,7 @@ if _NODE_IMPORT_ERROR is None:
                         executor=self._task_executor,
                         gen_store=self._gen_store,
                         tool_executor=self._tool_executor,
+                        runtime_state_source=self._runtime_state_source,
                     )
                 except Exception as exc:
                     # §6: never swallow an exception and keep dispatching (fail-open
