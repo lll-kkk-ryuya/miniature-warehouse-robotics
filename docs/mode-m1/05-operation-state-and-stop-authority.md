@@ -119,7 +119,7 @@ fault injection（Guardian kill・driver kill・USB 抜線・joy 切断・proces
 | # | 未決事項 | 決め方 | 優先度 |
 |---|---|---|---|
 | **OQ-OP1** | **平常時も流れる Guardian 生存証明チャネル**（周期 publish の現在状態）を導入するか、#593 の level mirror を恒久受容するか（§3-2）。導入時の topic 名・型・周期・鮮度閾値は doc03 additive 追記と同一 PR。先行して **doc03 に既存 `/bot{n}/cmd_vel/emergency` を追記**（[doc12:638](../architecture/12-infrastructure-common.md) の残件） | fault injection（§8）で Guardian 死の実害を実測 → オペレーター裁定 | 中（CURRENT は暫定受容済み） |
-| **OQ-OP2** | 操作者停止要求・明示解除の入力 topic の形（別 topic か同 topic payload か） | doc03 additive 追記と同一 PR | 高（順序 5 の前提） |
+| **OQ-OP2** | 操作者停止要求・明示解除の入力 topic の形（別 topic か同 topic payload か）→【2026-09-08 解消】単一 global topic `/operator/stop_request`（`std_msgs/String` JSON・同 topic payload 方式: `{"action": "engage"}`／`{"action": "clear"}`。不明・不正 payload は無視＝clear 扱いにしない。M1 単騎ゆえ per-bot 選択性は安全要件でない。PR #602） | doc03 additive 追記と同一 PR（済） | 高（順序 5 の前提） |
 | **OQ-OP3** | 解除時の残 goal 確認手段（cancel 反復の完了確認・nav_status 参照の形） | 実装設計＋実機確認 | 高（§5「解除≠走行」の担保） |
 | **OQ-OP4** | standalone stdio MCP（`server.py`）での現在状態参照。[doc12:636](../architecture/12-infrastructure-common.md) が「ROS 文脈が無くミラー不能・現用外」と登録済み — 残るのは state.json fallback にするか非対応と割り切るかの裁定のみ | 実装スライスで裁定 | 低 |
 | **OQ-OP5** | state.json `emergency.active` の clear プロトコル実装（[doc12:342](../architecture/12-infrastructure-common.md) Phase-2 TODO）。**L2 feed は level mirror のまま独立系統と裁定済み**（[doc12:631](../architecture/12-infrastructure-common.md)）のため、残る実害は `self_action_gate` の sticky reject と LLM 観測面 | doc12 所有トラックと調整 | 中 |

@@ -1,8 +1,8 @@
 """Emergency Guardian — 50ms reflex safety node (doc12:95-151). LLM-independent.
 
 On a 50ms timer it estops on inter-robot proximity / critical battery / stale
-localization (``/amcl_pose`` older than ``pose_freshness_timeout`` **while the
-odom displacement gate is open** -> precautionary stop, #126 + doc23 A-5③) and
+localization (#126 + doc23 A-5③ displacement gate) / a LATCHED operator stop
+request (``/operator/stop_request`` engage/clear JSON, doc05 §5 / OQ-OP2), and
 triggers a (low-harm) recovery event on blocked-timeout. An estop cancels Nav2
 goals, publishes a zero ``Twist`` to ``/{bot}/cmd_vel/emergency`` (twist_mux
 priority 100 — never ``/{bot}/cmd_vel`` directly, which races Nav2, doc15) and
@@ -149,6 +149,15 @@ class EmergencyGuardian(Node):
         self._negotiation_abort_pub = self.create_publisher(
             String, "/negotiation/abort", reliable_qos
         )
+        # Operator emergency-stop request (doc05 §5): a fleet-wide LATCH — engage
+        # holds the estop for ALL bots until an explicit clear; silence never clears.
+        # RELIABLE/KEEP_LAST(10): no comparable command-ish subscription exists here
+        # (all sensor subs are BEST_EFFORT) and a dropped engage/clear must be
+        # retried, so it reuses the safety-critical reliable_qos profile above.
+        self._op_latch = gl.OperatorStopLatch()
+        self.create_subscription(
+            String, "/operator/stop_request", self._on_operator_stop, reliable_qos
+        )
         self.create_timer(0.05, self._check_safety)  # 50ms reflex
         self.get_logger().info("emergency_guardian running (50ms reflex)")
 
@@ -208,14 +217,16 @@ class EmergencyGuardian(Node):
                 self._trigger_recovery(dec, emit_event=emit_event)
 
     def _bot_state(self, bot: str, now: float) -> gl.BotState:
-        # #126 freshness: pose_age = now - last /amcl_pose arrival, None until the
-        # first pose (the pure logic then never estops a not-yet-localized bot).
+        # #126: pose_age = now - last /amcl_pose arrival (None until the 1st pose,
+        # so the pure logic never estops a not-yet-localized bot). Trailing arg =
+        # doc05 §5 operator latch, fed IDENTICALLY to every bot (fleet-wide stop).
         last_t = self._last_pose_t[bot]
         pose_age = None if last_t is None else now - last_t
         x, y = self._xy(bot)
         # doc23 A-5③: None pair when odom is absent / stale -> gate fails closed.
         disp, dyaw = self._gate.snapshot(bot, now, stale_after=self._odom_freshness_timeout)
-        return gl.BotState(bot, x, y, self._battery[bot], self._blocked[bot], pose_age, disp, dyaw)
+        batt, blocked = self._battery[bot], self._blocked[bot]
+        return gl.BotState(bot, x, y, batt, blocked, pose_age, disp, dyaw, self._op_latch.engaged)
 
     def _xy(self, bot: str) -> tuple[float | None, float | None]:
         p = self._pose[bot]
@@ -270,6 +281,20 @@ class EmergencyGuardian(Node):
         # Zeroed goal_info (empty uuid + zero stamp) == "cancel all goals" for any
         # ROS 2 action server. Fire-and-forget: do not await the future here.
         cli.call_async(CancelGoal.Request())
+
+    # --- operator stop request (doc05 §5): marshal payloads into the pure latch ---
+    def _on_operator_stop(self, msg: String) -> None:
+        # All parse/latch semantics live in the rclpy-free gl.OperatorStopLatch
+        # (R-26). An invalid payload returns None = IGNORED, never a clear
+        # (fail-safe); it is logged loudly so a wedged producer is visible.
+        action = self._op_latch.feed(msg.data)
+        if action is None:
+            self.get_logger().warning(
+                f"ignoring invalid /operator/stop_request payload: {msg.data[:200]!r}"
+            )
+        else:
+            latched = self._op_latch.engaged
+            self.get_logger().info(f"operator stop request: {action} (latched={latched})")
 
 
 def main() -> None:

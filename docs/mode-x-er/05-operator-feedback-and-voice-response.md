@@ -289,7 +289,7 @@ transport は box interface 裏の `transport: hermes|direct` 選択であって
 
 ## 8. doc03 トピック契約ドラフト（`/operator/notice`）— contract PR 用
 
-> **状態**: 契約 PR 用ドラフト。§5.2 で採用した**案A（専用 topic）**の実体。doc03（トピック契約カタログ）には **topic 名・型・一行責務**のみを足し、**payload schema / QoS / publisher / subscriber の正本は本節**に置く（doc03 の慣習: `docs/architecture/03-software-architecture.md:113`「doc03 は topic 名・型・一行責務のみ」）。**doc03 への行追加は別 contract PR**（owner = skeleton/governance・`.claude/rules/parallel-workflow.md` §4）で行い、本書では凍結しない。
+> **状態**: 契約 PR 用ドラフト。§5.2 で採用した**案A（専用 topic）**の実体。doc03（トピック契約カタログ）には **topic 名・型・一行責務**のみを足し、**payload schema / QoS / publisher / subscriber の正本は本節**に置く（doc03 の慣習: `docs/architecture/03-software-architecture.md:114`「doc03 は topic 名・型・一行責務のみ」）。**doc03 への行追加は別 contract PR**（owner = skeleton/governance・`.claude/rules/parallel-workflow.md` §4）で行い、本書では凍結しない。
 
 ### 8.1 doc03 へ追加する行（提案）
 

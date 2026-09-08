@@ -109,6 +109,7 @@ LLMはタスク割当・優先順位・バッテリー管理の戦略判断の�
 | `/bot{n}/virtual_scan` | `sensor_msgs/LaserScan` | 相手ロボを仮想障害物として自機 Nav2 `obstacle_layer` に注入（frame `bot{n}/base_link`、近接時のみ）。モードA/B のみ起動（モードC は Open-RMF）（11a §VirtualScan） |
 | `/nav2_bridge/goal_result` | `std_msgs/String`（JSON） | Nav2 Bridge のゴール完了/失敗通知（`{robot, task_id, result}`、200msポーリング検出）→ State Cache Node が `nav_status` 更新。モードA/B ＋ **Mode X-ER**（XER6・x_er_bridge が完了→`mark_succeeded` 変換で consume＝mode-x-er/08 §5 step7・robot 経由相関）（12a §ゴールフィードバック設計） |
 | `/operator/notice` | `std_msgs/String`（JSON） | 別ノード(L2/L1/L0)の operator 起因 reject/要確認通知を **Mode X-ER** L4 Operator Feedback Box が購読し音声化（reject 級 `decision` のみ・publish-only=0 actuation。emergency は MVP では既存 `/emergency/event` 相乗り＝二重 publish しない・mode-x-er/05 §8.7）。契約正本: mode-x-er/05 §8・§8.10。Phase 4 で `.msg` 化, doc16 §3 |
+| `/operator/stop_request` | `std_msgs/String`（JSON） | 操作者非常停止要求（**latch**・単一 global topic＝fleet 全体）。`{"action": "engage"}` で latch ON／`{"action": "clear"}` の**明示解除のみ**で OFF。不明・不正 payload は**無視**（clear 扱いにしない＝fail-safe）。consumer = Emergency Guardian（L1・estop 理由 `operator_stop_request`）。producer は当面手動 `ros2 topic pub`（将来 = teleop 空きボタン・実機 index は M1 ゲートの jstest で確定）。契約正本: mode-m1/05 §5（§9 OQ-OP2 裁定） |
 
 > ※ 上表は Jetson 内部の**全アプリ契約トピックを網羅**する（doc03 = トピック契約の単一参照カタログ）。各トピックの publisher/subscriber・プロトコル・ペイロード schema の**正本は 内容列がリンクする設計 doc**（doc12 State Cache / doc14 キャラLLM・交渉 / 11a VirtualScan / 12a Nav2 Bridge）であり、doc03 は topic 名・型・一行責務のみを保持する（詳細の二重管理＝ドリフトを避ける）。生 Nav2/tf・`/clock`・costmap 等の plumbing トピックは契約対象外（doc03 スコープ外）。
 
