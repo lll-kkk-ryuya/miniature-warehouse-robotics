@@ -126,7 +126,10 @@ class EmergencyLevelMirror:
                 # held->clear edge: the entry is gone, so this logs exactly once
                 # per hold. The window in the reason is the CONFIGURED one (a
                 # tightened overlay may hold longer than the 1.0s default).
-                log.info(
+                # WARNING (not INFO) to match the HOLD edge: under the default
+                # WARNING root level only the hold would survive, leaving "when
+                # did dispatch resume?" invisible — both edges or neither.
+                log.warning(
                     "emergency mirror CLEAR %s (estop signal silent > %.2fs); held=%s",
                     bot,
                     self._clear_after_s,

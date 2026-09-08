@@ -319,6 +319,7 @@ def test_tools_policy_gate_property_feeds_dispatch_wire(tmp_path: Path) -> None:
 # ── transition logging: hold/clear edges only, never the 20Hz re-assert ──────
 
 
+@pytest.mark.safety
 @pytest.mark.unit
 def test_hold_logs_exactly_once_per_edge(
     caplog: pytest.LogCaptureFixture,
@@ -337,11 +338,16 @@ def test_hold_logs_exactly_once_per_edge(
     assert "['bot1']" in holds[0].getMessage()  # current held set in the line
 
 
+@pytest.mark.safety
 @pytest.mark.unit
 def test_clear_logs_transition_with_configured_window(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    caplog.set_level(logging.INFO, logger="warehouse_mcp_server.emergency_sync")
+    # Captured at WARNING, not INFO: the clear edge must survive the default
+    # WARNING level alongside the hold edge, otherwise an operator reading the
+    # log sees dispatch stop and never sees it resume. Pinning the capture level
+    # here is what makes a WARNING->INFO downgrade of the CLEAR line go red.
+    caplog.set_level(logging.WARNING, logger="warehouse_mcp_server.emergency_sync")
     setter = _RecordingSetter()
     mirror = EmergencyLevelMirror(setter, clear_after_s=2.0)
     mirror.on_stop_signal("bot1", 0.0)
@@ -355,6 +361,7 @@ def test_clear_logs_transition_with_configured_window(
     assert len([r for r in caplog.records if "CLEAR" in r.getMessage()]) == 2
 
 
+@pytest.mark.safety
 @pytest.mark.unit
 def test_reflag_after_clear_logs_a_new_hold_edge(
     caplog: pytest.LogCaptureFixture,
