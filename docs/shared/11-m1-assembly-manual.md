@@ -262,3 +262,7 @@ Yahboom 公式配布の zip（`docs/assets/m1-vendor/instruction-manual-en/`・u
 NVIDIA 公式の Developer Kit STEP と P3768-A04 Reference Design を `docs/assets/m1-vendor/cad/nvidia/`（untracked）へ保存し、assembly drawing PDF の top / bottom 両面をレンダリング確認した。これは**公式説明書の直付け手順を置き換えるものではなく**、5条件（4穴同時一致・裏面非接触・M2.5 ネジが自然に入る・SSD/アンテナ/ケーブル収容・cover 無荷重閉鎖）のいずれかが不合格だった場合の fallback 干渉解析用とする。
 
 `# TODO(Phase B 現物合わせ)`: 手持ちキャリア基板裏面の `P3768` / revision 印字を撮影する。保存資料は **A04** のため、実物 revision が異なる場合は A04 寸法だけで変換プレートを設計しない。Yahboom 車体 STEP は 2026-08-24 時点で Google Drive quota exceeded のため未取得であり、fallback が必要になった時点で再取得する。設計判断と取得 URL の正本は [02 P-7](02-hardware-design.md) とする。
+
+### Q-9.（2026-09-05 追記）充電・保管の運用正本は [02](02-hardware-design.md) 末尾追記 P-9 —「充電時はメインスイッチ OFF」は本構成では満たせない
+
+`:19` の充電器（12.6V/2A・DC4017）と `:55` の充電ケーブル（バッテリーパック直結ピグテール・T 型の負荷口とは別口）で充電する際、Yahboom 公式バッテリ取扱注意が指示する「充電時は拡張ボードのメインスイッチを OFF」は、本プロジェクトの昇圧ハーネス（[02:427-428](02-hardware-design.md)）が**スイッチより上流でタップ**するため**スイッチ操作では満たせない**。**充電・保管はバッテリー直後の T 型コネクタを抜く**（拡張ボード側の T では Orin レグを遮断できない。抜く前に必ず `jetson halt`）。運用表・実測根拠（2026-09-04/05）は [02](02-hardware-design.md) 末尾追記 **P-9** が正本（本 doc は転記 doc のため事実の記録に留める）。
