@@ -294,12 +294,28 @@ class WarehouseTools:
         # `or {}` (not get(default)): a present-but-null "robots" must not reach
         # len() / .get() and crash a read-only tool.
         robots = state.get("robots") or {}
+        # Two INDEPENDENT emergency systems, deliberately kept in separate keys
+        # (doc12:631 裁定 — never merge them): "emergency" is the State Cache
+        # /emergency/event ring (append-only log, NO clear protocol — a listed
+        # bot may long since be fine; doc12:399-405), while "l2_emergency_holds"
+        # is the level state the Policy Gate is enforcing RIGHT NOW (Guardian
+        # estop mirror, auto-clears on silence; doc12 【2026-09-07 追補②】).
+        ring = state.get("emergency") or {}
         payload = {
             "status": "ok",
             "timestamp": state.get("timestamp"),
             "robots": robots,
+            "emergency": {
+                "active": ring.get("active") or [],
+                "history": ring.get("history") or [],
+            },
+            "l2_emergency_holds": sorted(self._policy_gate.emergency_holds()),
         }
-        self._audit.record("get_fleet_status", "executed", {"robots": len(robots)})
+        self._audit.record(
+            "get_fleet_status",
+            "executed",
+            {"robots": len(robots), "l2_emergency_holds": len(payload["l2_emergency_holds"])},
+        )
         return payload
 
     # ── tool 4: get_task_queue ──────────────────────────────────────────────

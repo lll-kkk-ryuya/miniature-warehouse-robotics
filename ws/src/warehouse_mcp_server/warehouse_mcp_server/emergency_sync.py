@@ -16,8 +16,11 @@ with a monotonic clock; the mirror itself is L2 Governance logic
 (productization/01:192 layer ≠ process).
 """
 
+import logging
 import math
 from collections.abc import Callable
+
+log = logging.getLogger(__name__)
 
 # Silence window after which the Guardian's estop hold is considered released
 # (doc12 【2026-09-07 追補】: 2x the 0.5s twist_mux expiry so L2 opens strictly
@@ -97,8 +100,18 @@ class EmergencyLevelMirror:
 
     def on_stop_signal(self, bot: str, now: float) -> None:
         """A ``/bot{n}/cmd_vel/emergency`` message arrived: (re)flag the robot."""
+        newly_held = bot not in self._last_stop
         self._last_stop[bot] = now
         self._set_emergency(bot, True)
+        if newly_held:
+            # Transition edge (clear->held) only: the Guardian re-asserts every
+            # 50ms while a condition lasts (doc12:185) — per-tick logging would
+            # be ~20Hz noise, so re-asserts stay silent.
+            log.warning(
+                "emergency mirror HOLD %s (estop level signal received); held=%s",
+                bot,
+                sorted(self._last_stop),
+            )
 
     def sweep(self, now: float) -> None:
         """Clear robots whose stop signal has been silent for > clear window.
@@ -110,6 +123,15 @@ class EmergencyLevelMirror:
             if now - seen > self._clear_after_s:
                 del self._last_stop[bot]
                 self._set_emergency(bot, False)
+                # held->clear edge: the entry is gone, so this logs exactly once
+                # per hold. The window in the reason is the CONFIGURED one (a
+                # tightened overlay may hold longer than the 1.0s default).
+                log.info(
+                    "emergency mirror CLEAR %s (estop signal silent > %.2fs); held=%s",
+                    bot,
+                    self._clear_after_s,
+                    sorted(self._last_stop),
+                )
 
     def held_bots(self) -> frozenset[str]:
         """Robots currently mirrored as emergency-held (for logs / tests)."""

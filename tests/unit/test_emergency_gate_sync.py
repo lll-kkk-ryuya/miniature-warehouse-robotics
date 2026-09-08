@@ -11,6 +11,7 @@ binary-representable floats so strict-``>`` mutations (``>=``) go red.
 """
 
 import asyncio
+import logging
 from datetime import datetime
 from pathlib import Path
 
@@ -313,3 +314,60 @@ def test_tools_policy_gate_property_feeds_dispatch_wire(tmp_path: Path) -> None:
         tools.dispatch("dispatch_task", {"gen_id": 5, "robot": "bot1", "dropoff": "berth_A"})
     )
     assert res2["status"] == "ok"
+
+
+# ── transition logging: hold/clear edges only, never the 20Hz re-assert ──────
+
+
+@pytest.mark.unit
+def test_hold_logs_exactly_once_per_edge(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # The Guardian re-asserts every 50ms while a condition lasts (doc12:185):
+    # only the clear->held EDGE may log, or the mirror spams ~20 lines/s.
+    caplog.set_level(logging.WARNING, logger="warehouse_mcp_server.emergency_sync")
+    setter = _RecordingSetter()
+    mirror = EmergencyLevelMirror(setter)
+    mirror.on_stop_signal("bot1", 0.0)
+    mirror.on_stop_signal("bot1", 0.05)
+    mirror.on_stop_signal("bot1", 0.10)
+    holds = [r for r in caplog.records if "HOLD" in r.getMessage()]
+    assert len(holds) == 1
+    assert "bot1" in holds[0].getMessage()
+    assert "['bot1']" in holds[0].getMessage()  # current held set in the line
+
+
+@pytest.mark.unit
+def test_clear_logs_transition_with_configured_window(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level(logging.INFO, logger="warehouse_mcp_server.emergency_sync")
+    setter = _RecordingSetter()
+    mirror = EmergencyLevelMirror(setter, clear_after_s=2.0)
+    mirror.on_stop_signal("bot1", 0.0)
+    mirror.on_stop_signal("bot2", 0.0)
+    mirror.sweep(2.5)  # both silent > 2.0s: two clear edges
+    clears = [r for r in caplog.records if "CLEAR" in r.getMessage()]
+    assert len(clears) == 2
+    # The reason names the CONFIGURED window, not the 1.0s default.
+    assert all("2.00" in r.getMessage() for r in clears)
+    mirror.sweep(3.0)  # already cleared: no further lines
+    assert len([r for r in caplog.records if "CLEAR" in r.getMessage()]) == 2
+
+
+@pytest.mark.unit
+def test_reflag_after_clear_logs_a_new_hold_edge(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level(logging.INFO, logger="warehouse_mcp_server.emergency_sync")
+    setter = _RecordingSetter()
+    mirror = EmergencyLevelMirror(setter)
+    mirror.on_stop_signal("bot1", 0.0)
+    mirror.sweep(2.0)  # clear
+    mirror.on_stop_signal("bot1", 5.0)  # new hold edge
+    holds = [r for r in caplog.records if "HOLD" in r.getMessage()]
+    clears = [r for r in caplog.records if "CLEAR" in r.getMessage()]
+    assert len(holds) == 2
+    assert len(clears) == 1
+    assert "['bot1']" not in clears[0].getMessage()  # held set AFTER removal: empty
+    assert "[]" in clears[0].getMessage()
