@@ -52,7 +52,7 @@
 
 ## 実装済（#432 / Part of #430: Tier-1 KPI 拡張 — audit 由来のみ・additive）
 - `kpi.py` — doc21 §14 Step1.5b（`docs/architecture/21-eval-sdk-extraction.md:407`）/ §6 表（`:180-189`）/ §13.2（`:310`）の **audit 由来 Tier-1** を additive 実装。層分担は doc21:178（**数学=`eval_sdk.stats` / ドメイン合成=wo**）。**新 producer ゼロ・新トピックゼロ・新 score 送信ゼロ**（score 名符号化は #434 所有）。
-  - `KpiReport.intervention_count` = **executed** `escalation_response` 行数（doc21:184 の producer＝MCP tool6・`warehouse_mcp_server/tools.py:408` が executed 行を `robot=new_robot` で記帳＝executed 分岐は同 `:400-408`。rejected 行は「介入していない」ので除外＝全数は `by_tool["escalation_response"]` に残す）。`COMMAND_TOOLS` 所属とは独立に判定し、その独立性は `COMMAND_TOOLS` を実際に再スコープする unit（`tests/unit/test_wo_tier1_kpi.py::test_intervention_count_survives_a_rescoped_command_tool_set`）で赤く落ちる形に pin。
+  - `KpiReport.intervention_count` = **executed** `escalation_response` 行数（doc21:184 の producer＝MCP tool6・`warehouse_mcp_server/tools.py:443` が executed 行を `robot=new_robot` で記帳＝executed 分岐は同 `:435-444`。rejected 行は「介入していない」ので除外＝全数は `by_tool["escalation_response"]` に残す）。`COMMAND_TOOLS` 所属とは独立に判定し、その独立性は `COMMAND_TOOLS` を実際に再スコープする unit（`tests/unit/test_wo_tier1_kpi.py::test_intervention_count_survives_a_rescoped_command_tool_set`）で赤く落ちる形に pin。
   - `KpiReport.intervention_rate` = `intervention_count / command_decisions`。**分母は暫定**（doc21:184 は分子のみ規定＝下記 voids 11）。`command_decisions`（=`acceptance_rate` と同分母）を露出して再導出可能にする。
   - `KpiReport.command_rejection_rate` = `1 − acceptance_rate`（doc21:310「command rejection 率」）。**error/other 行も含む補数**である旨を docstring と本節に明記（voids 11）。
   - `KpiReport.fairness_jain` = `robot_load_fairness(by_robot)` = **Jain 指数**（doc21:310）を **per-robot executed 負荷**に適用（doc21:186 は `by_robot` を指定するが「どの tally が負荷か」は未規定＝executed を採用・voids 11）。

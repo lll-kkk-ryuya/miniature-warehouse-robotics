@@ -270,7 +270,7 @@ CI 側の裏取り: `tests/unit/test_xer6_g5_replay_artifacts.py` が **commit �
 ### G5 v2 で実際に効く安全網（正確な列挙・過大に言わない）
 
 1. **完了依存の構造保証（L3）**: bot2→shelf_1 の dispatch は t2（bot1 帰還）完了**後**にしか生成されない（executor の after gate・上記）。失敗は後続を解放しない（fail-closed）。
-2. **L2 Policy Gate `duplicate_destination`**（`ws/src/warehouse_mcp_server/warehouse_mcp_server/policy_gate.py:222-235`）: **別 robot が現在向かっている** destination への dispatch を拒否。予約は robot ごとの**最新 dispatch 先**（`policy_gate.py:400-409` の上書き。タスク完了ではエントリは消えず、次の dispatch が上書きする）。v2 の t4（shelf_1 再訪）は、t4 dispatch 時点で bot1 の予約が t2 により `berth_A` へ移っているため**誤発火しない**——並走で 2 台が同一地点へ収束する dispatch は従来どおり拒否される。両方向とも CI unit（`tests/unit/test_xer6_g5_choreography_v2.py`）で実挙動を固定済み。
+2. **L2 Policy Gate `duplicate_destination`**（`ws/src/warehouse_mcp_server/warehouse_mcp_server/policy_gate.py:222-235`）: **別 robot が現在向かっている** destination への dispatch を拒否。予約は robot ごとの**最新 dispatch 先**（`policy_gate.py:412-421` の上書き。タスク完了ではエントリは消えず、次の dispatch が上書きする）。v2 の t4（shelf_1 再訪）は、t4 dispatch 時点で bot1 の予約が t2 により `berth_A` へ移っているため**誤発火しない**——並走で 2 台が同一地点へ収束する dispatch は従来どおり拒否される。両方向とも CI unit（`tests/unit/test_xer6_g5_choreography_v2.py`）で実挙動を固定済み。
 3. **L1 反射層 + L0**: collision_monitor / twist_mux / Emergency Guardian ＋ firmware ≤0.3 m/s クランプは §5 の表のまま常在（v1 と同一・迂回しない）。
 4. **非アクティブなもの（正直に）**: 本デモは `TRAFFIC_MODE=none`（§2）ゆえ **traffic 層の隘路排他ロック（Mode A/B の ≥0.15m 最小分離を作る機構）は動いていない**（出所の正確な整理は `docs/mode-x-er/02-l3-planning-core.md:391`。L2 Policy Gate に 0.15m 距離チェックは存在しない）。metric な最小分離の最終防衛は L1/L0 側。
 5. **rate limit 注記**: Policy Gate は robot あたり 0.5s の rate limit を持つ（`policy_gate.py:134,210-219`）。同一 robot の連続 dispatch（t3→t4→t5）は 0.5s 以上空く必要があるが、実 sim は nav 完了が十秒オーダーで自然に満たす。offline CI は fake clock を進めて再現する。
