@@ -99,8 +99,8 @@ class RMFTrafficManager(TrafficManager):
         return {
             # producer が failed.id から採番する識別子。司令官はこれを escalation_response の
             # escalation_id / start_negotiation の deadlock_or_escalation_id 引数にそのまま渡す
-            # （doc15 ツール6/7）。この id を MCP in-memory registry（tools.py:108）へ登録する
-            # producer→registry 連携は # TODO(#escalation)、それまで tools.py:357 で
+            # （doc15 ツール6/7）。この id を MCP in-memory registry（tools.py:128）へ登録する
+            # producer→registry 連携は # TODO(#escalation)、それまで tools.py:416 で
             # unknown_escalation_id 拒否。
             "id": failed.id,
             "level": failed.level,                 # 1: Nav2 stuck→reroute失敗 / 2: RMF調整失敗 / 3: 両方（§6）
@@ -110,7 +110,7 @@ class RMFTrafficManager(TrafficManager):
             "failed_attempts": failed.attempts,    # RMF が試行した回数（上限=3 で escalation）
             # 司令官への助言ヒント。§6 の level に対応: 1→change_destination /
             # 2→reassign_task / 3→global_reassign。escalation_response の action enum
-            # （reassign|cancel|retry、tools.py:40）とは**別物**＝戦略ツールへのマッピング用。
+            # （reassign|cancel|retry、tools.py:42）とは**別物**＝戦略ツールへのマッピング用。
             "suggested_action": failed.suggestion,
         }
 ```
@@ -176,7 +176,7 @@ Claudeに渡すtraffic（**エスカレーション発生時** — RMF が route
 }
 ```
 
-> **キー集合（`traffic`）**: 両例とも top-level は `mode / aisles / conflicts / adjustments_since_last / escalation` の5キー。これは `08c` の situation 例（`08c §入力`）の `traffic` ブロックと**同一キー集合**であり、producer（本 `get_traffic_state()`）の戻り値そのもの。`escalation` が非 null のときの内部キーは `id / level / reason / robots / location / failed_attempts / suggested_action`。`id` は producer（`_derive_escalation` が `failed.id` から採番）が付与する識別子で、司令官が `escalation_response`(`escalation_id`)/`start_negotiation`(`deadlock_or_escalation_id`) に渡す（doc15 ツール6/7）。この id を MCP in-memory registry（`tools.py:108`）へ登録する producer→registry 連携は未実装（`tools.py:343 TODO(#escalation)`）＝現状 registry 未登録 id は `tools.py:357` で `unknown_escalation_id` 拒否。`escalation` の派生は §6 エスカレーション階層に対応する。
+> **キー集合（`traffic`）**: 両例とも top-level は `mode / aisles / conflicts / adjustments_since_last / escalation` の5キー。これは `08c` の situation 例（`08c §入力`）の `traffic` ブロックと**同一キー集合**であり、producer（本 `get_traffic_state()`）の戻り値そのもの。`escalation` が非 null のときの内部キーは `id / level / reason / robots / location / failed_attempts / suggested_action`。`id` は producer（`_derive_escalation` が `failed.id` から採番）が付与する識別子で、司令官が `escalation_response`(`escalation_id`)/`start_negotiation`(`deadlock_or_escalation_id`) に渡す（doc15 ツール6/7）。この id を MCP in-memory registry（`tools.py:128`）へ登録する producer→registry 連携は未実装（`tools.py:402 TODO(#escalation)`）＝現状 registry 未登録 id は `tools.py:416` で `unknown_escalation_id` 拒否。`escalation` の派生は §6 エスカレーション階層に対応する。
 
 ---
 

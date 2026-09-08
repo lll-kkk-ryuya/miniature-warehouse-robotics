@@ -396,7 +396,7 @@ live persona は Slice 3（Hermes persona・human-gated・Phase 3、≈ #288）�
 - trace seed / paths: `ws/src/eval_sdk/eval_sdk/seed.py:16,33-42,70-85` / `tracer.py:70-71,194` / `ws/src/warehouse_interfaces/warehouse_interfaces/paths.py:22-30`
 - QoS / rate: `state_cache.py:43,59-61,124` / `emergency_guardian.py:117-122`
 - launch gate: `ws/src/warehouse_bringup/launch/bringup.launch.py:233(nav2 gate),255-276(character_llm Node),262(gate 条件)`
-- MCP tool 7: `ws/src/warehouse_mcp_server/warehouse_mcp_server/tools.py:404-448`（mint :435 / audit :446 / publish :447）
+- MCP tool 7: `ws/src/warehouse_mcp_server/warehouse_mcp_server/tools.py:446-492`（mint :478 / audit :490 / publish :491）
 - KPI: `ws/src/warehouse_orchestrator/warehouse_orchestrator/kpi.py:185,199,307` / `warehouse_orchestrator/CLAUDE.md:15`
 - Langfuse / 比較: [doc08:373-375](08-llm-bridge-common.md)（Pattern A）, :348-352,396-397（score 定義/比較指標）, :504（Grok 価格）, :510（read 形未検証）, :514（4×3 grid）, :517（Metrics API・score name 符号化）
 - 緊急 / battery / 周期: [doc12:77](12-infrastructure-common.md)（0.3 m/s）, :141-150（event コア形）, :185（edge-trigger）, :191（near 距離閾値）, :250-252（battery band）, :262（100ms）
