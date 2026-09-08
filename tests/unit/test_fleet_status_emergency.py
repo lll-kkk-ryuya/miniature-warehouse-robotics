@@ -143,6 +143,30 @@ def test_multiple_holds_sorted_and_reject_reason_explained(tmp_path: Path) -> No
 
 @pytest.mark.safety
 @pytest.mark.unit
+def test_holds_are_sorted_not_merely_collected(tmp_path: Path) -> None:
+    # Mutation sensitivity for the ordering itself: the sibling test above holds
+    # only two bots, so dropping ``sorted()`` (-> plain ``list()`` over the gate's
+    # frozenset) survives it roughly half the time. Nine bots flagged in DESCENDING
+    # order make an accidental pass ~1/9! — and the descending insertion also kills
+    # an "insertion order happens to be right" pass if the gate's container ever
+    # became order-preserving. Deterministic order matters because this field is
+    # prompt-facing (doc12:389-409): an unstable list churns the situation JSON
+    # between cycles and defeats trace diffing for a field that did not change.
+    #
+    # The bots are deliberately NOT in the snapshot's ``robots`` map (bot1/bot2
+    # only): an L2 hold is mirrored per estop signal and is independent of what
+    # the State Cache happens to list.
+    tools = _tools(tmp_path, _snapshot())
+    mirror = EmergencyLevelMirror(tools.policy_gate.set_emergency)
+    for i in range(9, 0, -1):
+        mirror.on_stop_signal(f"bot{i}", 0.0)
+
+    payload = _fleet_status(tools)
+    assert payload["l2_emergency_holds"] == [f"bot{i}" for i in range(1, 10)]
+
+
+@pytest.mark.safety
+@pytest.mark.unit
 def test_shape_is_stable_without_ring_or_state(tmp_path: Path) -> None:
     # A snapshot without the extra key (or no snapshot at all) must still yield
     # the labeled shape — a read-only tool never crashes on absent state.
