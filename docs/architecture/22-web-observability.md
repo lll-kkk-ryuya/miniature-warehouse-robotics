@@ -168,7 +168,7 @@ GET /config → {
   ws_path: "/ws",            // 同一オリジンなら相対。dev cross-origin 時のみ絶対 URL
   mode: "none"|"simple"|"open-rmf",   // §12.1 per-mode gating 用
   lan: bool,                 // LAN 公開中か（UI 表示用）
-  token_required: bool       // token 本体は返さない（§11）
+  token_required: bool, langfuse_base_url: str   // token 本体は返さない（§11）／Langfuse project base URL（非秘匿・`""`=deep-link 無し＝trace_id をコピー可能テキスト表示・§7）
 }
 ```
 
@@ -191,7 +191,7 @@ web_bridge は base+overlay 解決済みの **browser-facing 値のみ**を返�
 
 **設計上の落とし穴**: 「全 ObsEvent に trace_id を打つ」は**不可能**。`Command` schema は `gen_id` を持たず（`schemas.py:187-196`）、`/llm/reasoning` は生 text、`/state_cache/snapshot` も gen_id を持たない。**gen_id を wire に載せているのは `/negotiation/start` と `/negotiation/proposal` のみ**（`negotiation_messages.py:49-53` / `schemas.py:210`）。
 
-- **v1 方針（軽量・推奨）**: gen_id を持つ negotiation event のみ trace_id を導出。reasoning/command/snapshot は「Langfuse join key 無し」と明記し、UI は deep-link を出さない。**導出レシピは trace owner ノブ（`WAREHOUSE_LANGFUSE_OWNER` env → `hermes.langfuse_owner` config → 既定 `bridge`）に従う**: Pattern A = `derive_trace_id(seed_for(run_id, gen_id))`、Option D(`hermes_plugin`) = `derive_plugin_trace_id`（`seed.py:108-126`）。不正値は Pattern A へ fail-safe。owner 解決は scorer 先例（`score_send.py:65-89`）を **import せずミラー**（web_bridge は `warehouse_interfaces` + `eval_sdk` のみに依存＝一方向）。**join の前提は「両脚が同じ run_id を seed する」こと**: `WAREHOUSE_RUN_ID`（§13 run boundary・`llm_bridge.py:179`）が未設定な run では Bridge 側が per-process session id へ fallback するため seed が一致しない。この場合 web_bridge は event を synthetic run_id で stamp しつつ（:303）**`trace_id` は null のまま**にする（誰も mint していない trace への deep-link を出さない＝:152 の no-link 状態）。scorer も同じ規則（`trace_id.py:49-50,79-87`＝run id 未設定なら trace を導出しない）。
+- **v1 方針（軽量・推奨）**: gen_id を持つ negotiation event のみ trace_id を導出。reasoning/command/snapshot は「Langfuse join key 無し」と明記し、UI は deep-link を出さない。**導出レシピは trace owner ノブ（`WAREHOUSE_LANGFUSE_OWNER` env → `hermes.langfuse_owner` config → 既定 `bridge`）に従う**: Pattern A = `derive_trace_id(seed_for(run_id, gen_id))`、Option D(`hermes_plugin`) = `derive_plugin_trace_id`（`seed.py:108-126`）。不正値は Pattern A へ fail-safe。owner 解決は scorer 先例（`score_send.py:65-89`）を **import せずミラー**（web_bridge は `warehouse_interfaces` + `eval_sdk` のみに依存＝一方向）。**join の前提は「両脚が同じ run_id を seed する」こと**: `WAREHOUSE_RUN_ID`（§13 run boundary・`llm_bridge.py:179`）が未設定な run では Bridge 側が per-process session id へ fallback するため seed が一致しない。この場合 web_bridge は event を synthetic run_id で stamp しつつ（:303）**`trace_id` は null のまま**にする（誰も mint していない trace への deep-link を出さない＝:152 の no-link 状態）。scorer も同じ規則（`trace_id.py:49-50,79-87`＝run id 未設定なら trace を導出しない）。**deep-link の URL 化は UI 側の別問題**: 導出済み trace_id を clickable にするには Langfuse の project base URL が要るが、これは build に焼かず **`GET /config` の `langfuse_base_url`（§5.1・overlay `web_bridge.langfuse_base_url`・§16）**で runtime 配布する（:332 の規律）。**未設定は `""`（fail-open の既定）／不正値は fail-CLOSED で `""`**（非 http(s) scheme・credentials 入り・非 ASCII host 等は返さない＝`settings.py:normalize_langfuse_base_url`）。いずれも **trace_id をコピー可能テキストとして表示**する（:152 の no-link 状態と同じ着地）。
 - trace seed: `seed_for(run_id, work_id) = f"{run_id}:{work_id}"`（`seed.py:33-42`、verbatim `:42`）→ `derive_trace_id`（`seed.py:70-85`）。**`create_trace_id` は seed.py に存在せず Langfuse SDK 由来**（None のとき fail-open）。`seed.py` は domain-free で env を読まない（`:16`）。`WAREHOUSE_RUN_ID` の実読込は呼び手 `llm_bridge.py:179`。
 - Langfuse タグ: `[provider, mode, "prompt:<name>", env=<v>]`（`llm_bridge.py:213-218`、最終順は `tracer.py:194`）。consumer は**タグ値で filter**（順序非依存。`tracer.py:70-71` は "normalize stored tag order" と述べる。※"alphabetical" はコード上未検証＝記憶ノートのみ。doc に "alphabetical" と断定しない）。
 - **より良い経路（additive・§14）**: `/llm/situation` publisher を新設すると、`Situation` は `gen_id` を持つ（`schemas.py:125-132`）ので bus に gen_id を載せられ、司令官判断パネルの Langfuse join が成立する。これは llm-bridge track の additive contract PR。
@@ -241,7 +241,7 @@ web_bridge は base+overlay 解決済みの **browser-facing 値のみ**を返�
 | GET | `/ws?since_seq=N` | WS live tail（backfill→live） |
 | GET | `/events?run_id&since_seq&to_seq&kind` | REST replay/pagination（events.jsonl 由来） |
 | GET | `/runs` | 観測した run_id 一覧 |
-| GET | `/config` | **browser-facing 値**（ws base〔同一オリジンなら相対 `/ws`〕・mode〔§12.1 gating〕・LAN/token 要否）。`NEXT_PUBLIC_*` に焼かず runtime 取得＝同一 build を dev/prod に配る（§5.1）。**token 本体は絶対に返さない/焼かない** |
+| GET | `/config` | **browser-facing 値**（ws base〔同一オリジンなら相対 `/ws`〕・mode〔§12.1 gating〕・LAN/token 要否・Langfuse project base URL〔§7 deep-link 用・非秘匿〕）。`NEXT_PUBLIC_*` に焼かず runtime 取得＝同一 build を dev/prod に配る（§5.1）。**token 本体は絶対に返さない/焼かない**。href に入る唯一の値である base URL は **scheme allowlist（http/https のみ）＋ credentials 拒否**で検証してから返す（`settings.py:normalize_langfuse_base_url`） |
 | GET | `/health` | ヘルス（[doc12a:234](../mode-a/12a-integration-mode-a.md) の慣習） |
 | GET | `/`（+静的 asset） | **static export `out/` を `StaticFiles` 配信**（API route 登録の**後**に mount＝API 優先）。observe-only（upload/POST route を持たない＝§12.3 R-26 を配信面にも拡張） |
 
@@ -343,7 +343,7 @@ live persona は Slice 3（Hermes persona・human-gated・Phase 3、≈ #288）�
 - **decoder 再利用の判断**: `negotiation_messages` の decoder を別 track から import するのは疎結合違反（parallel-workflow §2.1）。**推奨 = decoder を `warehouse_interfaces` へ promote する小さな contract PR**（import clean・将来の web track 独立にも効く）。代替 = gateway を一時的に llm-bridge track 内に置く。
 - **config schema**（additive・ハードコード禁止 [environments.md](../../.claude/rules/environments.md)）:
   - `web_bridge.port: 8646`（**base**・bringup/skeleton 所有・予告必要）／`web_bridge.snapshot_hz`（**base**・§8）
-  - `web_bridge.host`（**overlay**・dev=127.0.0.1）／`web_bridge.allowed_origins`（**overlay**・dev cross-origin のみ）／`web_bridge.recordings_dir`（**overlay**・**明示 SSD path**・例 Jetson `/opt/warehouse/recordings`・**`paths.runtime_dir()`=tmpfs `/run/warehouse` を流用禁止** `paths.py:22-30`・§9）
+  - `web_bridge.langfuse_base_url`（**overlay**・非秘匿・例 `https://cloud.langfuse.com/project/<id>`・未設定=deep-link 無し・§7/§5.1）／`web_bridge.host`（**overlay**・dev=127.0.0.1）／`web_bridge.allowed_origins`（**overlay**・dev cross-origin のみ）／`web_bridge.recordings_dir`（**overlay**・**明示 SSD path**・例 Jetson `/opt/warehouse/recordings`・**`paths.runtime_dir()`=tmpfs `/run/warehouse` を流用禁止** `paths.py:22-30`・§9）
   - `WEB_BRIDGE_TOKEN`（`config/<env>/.env`・`.env.example` にプレースホルダ）
 - **CI**（governance PR・`.github/**`）: `web-quality` job（setup-node 20 + eslint + `tsc --noEmit` + `next build`〔=export〕で `web/console` を gate）を追加し、既存 `web-e2e`（Playwright スモーク・`web/console/out` を serve）を有効化（旧 `if:false` 解除）。**両者は常時 job（全 push/PR）とし `paths` filter を付けない**（paths-filter した job を branch protection の required check にすると `web/**` 非変更 PR で skip → status 未報告 → merge が永久 block になる GitHub の既知 footgun。既存 5 job も無条件）。**同一 governance PR で [doc20 §1/§4/§7](20-dev-quality-and-testing.md) の CI job 一覧を更新**（job 数ドリフト防止・firmware-safety 先例。PR #311 で land）。
 
