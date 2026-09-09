@@ -279,7 +279,7 @@ class KpiReport:
     # surfaced in the report; **no new score is sent** — the existing efficiency score-send in
     # ``score_send`` is untouched). Reported so ``detour_factors`` is re-derivable.
     distance_traveled: dict[str, float] = field(default_factory=dict)
-    # pᵢ/lᵢ per robot (doc21:310). Empty until an lᵢ oracle exists (Phase 3a, doc21:410).
+    # pᵢ/lᵢ per robot (doc21:310). Empty until an lᵢ oracle exists (Phase 3a, doc21:409).
     detour_factors: dict[str, float] = field(default_factory=dict)
     # Per-robot 軌道平滑性 over the retained odom window (doc21:306's SPARC / LDLJ / N_MU).
     smoothness: dict[str, SmoothnessStats] = field(default_factory=dict)

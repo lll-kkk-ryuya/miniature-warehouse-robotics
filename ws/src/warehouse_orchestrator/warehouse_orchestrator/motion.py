@@ -18,7 +18,7 @@ Scope — the **odom** half of doc21 §13.2 Tier 1
 * **detour factor** — doc21:310 states the formula inline, ``pᵢ/lᵢ``. ``pᵢ`` = the odom travel
   distance already accumulated by ``eval_sdk.stats.DistanceAccumulator`` (no new source);
   ``lᵢ`` = the shortest-path oracle, which per doc21:303-304 comes from KNOWN_LOCATIONS + the
-  planner at reset and has **no producer before Phase 3a** (doc21:410). It is therefore an
+  planner at reset and has **no producer before Phase 3a** (doc21:409). It is therefore an
   *externally supplied* map, exactly like the ``completions`` scaffold in
   :func:`warehouse_orchestrator.kpi.pair_completion_times`, and stays empty in dev.
 
@@ -35,7 +35,7 @@ Scope — the **odom** half of doc21 §13.2 Tier 1
 * **decision latency** — doc08:497 derives it from the Langfuse ``generation.latency``, not from
   audit+odom; Issue #432 delegates it to the A-4 query helper (#434).
 
-**Producer note (doc21:189 vs the code).** doc21:186 lists 軌道平滑性's data source as the
+**Producer note (doc21:189 vs the code).** doc21:187 lists 軌道平滑性's data source as the
 *existing* ``/bot{n}/odom`` with 「新 producer ゼロ」, but ``DistanceAccumulator`` keeps only a
 running total and the previous point, so no series survives its call — the gap recorded as
 CLAUDE.md void 12. :class:`MotionAccumulator` closes it **inside the subscription the collector
@@ -157,7 +157,7 @@ class MotionInputs:
       (``eval_sdk.stats.DistanceAccumulator.totals``). Deliberately not derived from ``samples``:
       that buffer is bounded, the accumulator sees every message.
     * ``optimal_distances`` — lᵢ, the shortest-path oracle. **No producer before Phase 3a**
-      (doc21:303-304, :410), so it is empty in dev and every detour factor is simply absent.
+      (doc21:303-304, :409), so it is empty in dev and every detour factor is simply absent.
     """
 
     samples: Mapping[str, Sequence[MotionSample]] = field(default_factory=dict)
