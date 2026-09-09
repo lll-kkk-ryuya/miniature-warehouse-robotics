@@ -795,7 +795,7 @@ Phase 1 は次を別々に扱う:
 | 子フォルダ | ファイル | サイズ | 取得 | 本プロジェクトでの位置づけ |
 |---|---|---|---|---|
 | STM32 firmware for expansion board | `ROS-Driver-Board-FW-master.zip` | 879KB | ✅ | **仕様の一次ソース**。`car_type=0x0A` / `CAR_M1_MAX_SPEED=700` / `ENABLE_IWDG=0` の確定根拠（P-7a・P-7c） |
-| 〃 | `rosmaster_V3.6.5.hex` | 245KB | ✅ | 搭載 FW 版の照合用。**書き込まない**（stock FW 置換は現行方針で不採用＝`:328`） |
+| 〃 | `rosmaster_V3.6.5.hex` | 245KB | ✅ | 搭載 FW 版の照合用 ＋ **ロールバック用 golden image として保全**（[ADR-0013](../adr/0013-stm32-command-stream-watchdog.md) accepted 2026-09-09・前提ゲート (c) の UART ISP 書き戻し実証に使う）。書き込むのはロールバック実証・復旧時のみ（フルスクラッチ置換の不採用＝`:328` は不変） |
 | OrinNano | `Rosmaster.zip` | 324.8MB | ✅ | 公式 Python lib（`Rosmaster_Lib`）の実体。旧: **参照のみ**（`:323` により実装には使わない）→ **#550 で裁定変更＝robot image の実行時依存**（wire フレーミングは自作せず本 lib へ委譲。正本 = [`ws/src/warehouse_m1_driver/CLAUDE.md`](../../ws/src/warehouse_m1_driver/CLAUDE.md)、導入手順は末尾追記 **P-8**） |
 | 〃 | `ros2_kilted.zip` | 13.9MB | ✅ | 参考（distro 差分の確認用） |
 | 〃 | `ros2_ws.zip` | 17.2MB | ✅ | 汎用 ROS 2 学習 workspace。M1 固有ドライバではない（P-7d で保存対象外と判定済） |
