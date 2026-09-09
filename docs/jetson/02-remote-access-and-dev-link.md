@@ -176,7 +176,7 @@ ssh -i ~/.ssh/mwr_jetson ruyuya@<IP>
 | 電力モード | `NV Power Mode: 25W`（mode **1**） | ⚠️ 当時未実施 → **2026-08-30 適用済**（mode 2 = MAXN_SUPER・再起動後も維持を実測・§9） |
 | メモリ | total 7.4Gi / available 5.0Gi / zram swap 3.7Gi | G1 メモリゲートの基準線（スタック未起動時の値） |
 | ROS | `/opt/ros` 無し＝**未インストール** | 当時 → **2026-08-30 Humble 導入済**（§9.6） |
-| USB | Realtek hub ×2 / IMC Bluetooth / Logitech receiver | 当時は拡張ボード（CH340）・LiDAR・HP60C とも**未接続** → **2026-09-09: 拡張ボード CH340（`1a86:7523`）は接続済だが `ch341` ドライバ不在で `/dev/ttyUSB*` が生成されなかった**（OOT 導入で解消＝§10） |
+| USB | Realtek hub ×2 / IMC Bluetooth / Logitech receiver | 当時は拡張ボード（CH340）・LiDAR・HP60C とも**未接続** → **2026-09-09: 拡張ボード CH340（`1a86:7523`）は接続済だが `ch341` ドライバ不在で `/dev/ttyUSB*` が生成されなかった**（out-of-tree 導入で解消＝§10） |
 | ディスク | `/` 57G 中 22G 使用（41%） | microSD 上 |
 
 > **この表は「実機で初めて判明したこと」の記録**であり、合否基準は
@@ -412,7 +412,7 @@ Host minicar.*.ts.net
 
 > **位置づけ**: §6 の初回ブート表（`:179`）では拡張ボードが**未接続**だったため見えていなかった欠落の記録と、その恒久化手順。対象 layer: **ホスト OS のカーネルドライバ層（L0'＝ホスト側 clamp（[../GLOSSARY.md](../GLOSSARY.md) §3）よりさらに下・レイヤ対応表 [../productization/01-commercial-box-map.md](../productization/01-commercial-box-map.md) に行なし＝帰属未定）**——`/dev/ttyUSB*` を生やすだけで motion を有効化するものではない（§9.6 と同じ安全ゲート＝[setup/jetson-deploy.md:26](../setup/jetson-deploy.md) §0 は不変・actuation 経路なし）。
 >
-> **forward（この節を前提にする先）**: [../shared/02-hardware-design.md](../shared/02-hardware-design.md) §P-8-2 / §P-8-3（`Rosmaster_Lib` 導入と `m1_probe` 検証＝`/dev/myserial` 前提）・[`ws/src/warehouse_m1_driver/CLAUDE.md`](../../ws/src/warehouse_m1_driver/CLAUDE.md)（produce/consume・シリアル層 seam）・[../mode-m1/03-joystick-teleop-bringup.md](../mode-m1/03-joystick-teleop-bringup.md) §2「実機プローブ（M1 ゲート内）」。**リンクは節名で張り行番号 pin しない**（実装 doc 側の churn で腐るため）。
+> **forward（この節を前提にする先）**: [../shared/02-hardware-design.md](../shared/02-hardware-design.md) §P-8-2 / §P-8-3（`Rosmaster_Lib` 導入と `m1_probe` 検証＝`/dev/myserial` 前提）・同 doc §P-9d（本節の検証中に鳴り続ける低電圧ブザーの正体と運用）・[`ws/src/warehouse_m1_driver/CLAUDE.md`](../../ws/src/warehouse_m1_driver/CLAUDE.md)（produce/consume・シリアル層 seam）・[../mode-m1/03-joystick-teleop-bringup.md](../mode-m1/03-joystick-teleop-bringup.md) §2「実機プローブ（M1 ゲート内）」。**実装側 doc（package `CLAUDE.md` 等）へのリンクは節名で張り行番号 pin しない**（実装 doc 側の churn で腐るため。設計 doc への行 pin は本 PR で net-zero 同期した行に限る）。
 
 ### 10.1 症状と根本原因（ドライバがカーネルに入っていない）
 
@@ -492,7 +492,9 @@ sudo udevadm control --reload-rules && sudo udevadm trigger
 sudo modprobe ch341
 ```
 
-**実施記録（2026-09-09 17:10 JST）**: 3 ファイル（`extra/ch341.ko` / `modules-load.d/ch341.conf` / `udev/rules.d/99-yahboom-myserial.rules`）が **root 所有で存在**し、`modinfo -n ch341` が `extra/` 配下を解決することを確認済み。
+> **注（§10.4 の試験ロードを先に行った場合）**: 末尾の `sudo modprobe ch341` は既にロード済みなら **no-op** で、`extra/` 側の恒久版が実際に load されることの証明にはならない。恒久版の load は `sudo modprobe -r ch341 && sudo modprobe ch341`（拡張ボード USB を抜いた状態で）で確かめるか、§10.8(f) の再起動で確定する。
+
+**実施記録（2026-09-09 17:10 JST）**: 3 ファイル（`extra/ch341.ko` / `modules-load.d/ch341.conf` / `udev/rules.d/99-yahboom-myserial.rules`）が **root 所有で存在**し、`modinfo -n ch341` が `extra/` 配下を解決することを確認済み（パス解決の確認であり、ロード中の実体が `extra/` 側である証明ではない＝§10.8(f)）。
 
 ### 10.6 第 2 層のブロッカー: brltty が CH340 を横取りする（udev・2026-09-09 17:12 実機ログ）
 
@@ -543,7 +545,9 @@ udevadm info -q path -n /dev/myserial  # symlink が実デバイスへ解決す�
 dpkg -l brltty | tail -1               # brltty が居ないこと（期待: 先頭 `un`＝§10.6）
 ```
 
-**実測（拡張ボード USB 接続状態）— デバイスノード層まで確認済**:
+> ⚠️ **この検証状態では拡張ボードが連続ブザーを鳴らす**（Orin は AC 給電・T 抜き・USB のみ接続＝USB VBUS で MCU が起きて電池 0V 読み＝偽陽性・無害）。正体と運用は [../shared/02-hardware-design.md](../shared/02-hardware-design.md) §P-9d。検証が済んだら USB を抜けば止まる（ドライバ・udev 設定は残る）。
+
+**実測（拡張ボード USB 接続状態・Orin は AC 給電・T 抜き）— デバイスノード層まで確認済**:
 
 | 確認項目 | 実測値 |
 |---|---|
@@ -563,3 +567,4 @@ dpkg -l brltty | tail -1               # brltty が居ないこと（期待: 先
 - **(c) 台本が repo に無い**: `test-insmod.sh` / `install.sh` / `verify.sh` は現状**ボード上 `~/ch341-build/` のみ**に存在する。repo 化（`deploy/dev/jetson-link/mwr-ch341-setup.sh` として idempotent 化）は **`# TODO(Phase 1)`・別 PR**。**その台本には §10.6 の brltty 除去（または mask）ステップと、`dpkg -l brltty` による事前ガード（既に居なければ skip・居れば purge して USB 再挿入を促す）を必ず含める**——ドライバ導入だけを移植すると、次のボードや再インストール後に**同じ 2 層目**で詰まる。
 - **(d) グループ付与だけでは足りない**: §9.6 の `dialout` 付与は**アクセス権**の話で、**ドライバが先**。ch341 不在のままではそもそも `/dev/ttyUSB*` が存在しない（この順序を取り違えると「権限問題」と誤診する）。
 - **(e) brltty が黙って戻り得る**: `brltty` は `ubuntu-desktop` の Recommends に居ると推定される（§10.6）ため、将来の `apt install ubuntu-desktop` や `--install-recommends` を伴う操作で**再導入され得る**（戻れば §10.6 の症状が再発し、`/dev/ttyUSB0` は生えた直後に消え `/dev/myserial` も失われる）。§10.7 の検証コマンドに `dpkg -l brltty`（期待 `un`）を入れてあるのはこのため。
+- **(f) 再起動生存は未検証**: `modules-load.d/ch341.conf` と udev ルールの効果（ブート後に人手なしで `/dev/myserial` が生えること）は **2026-09-09 時点で再起動して確認していない**。`jetson reboot`（§9）後に §10.7 のコマンドを再実行して確定する `# TODO(Phase 1)`。確定するまで本節の「恒久化」は「設定ファイルを置いた」の意味に留まる。

@@ -574,7 +574,7 @@ M1 単騎フェーズは**実際の部屋（room scale）**を走り、ジオラ
 
 - **生 wav が録れる（最重要の確定）**: 公式 M1 コース PDF の実コード（`largemodel/asr.py`）が**ホスト側 PyAudio（=ALSA）でマイクストリームを直接開き wav に書き出している**＝通常の USB オーディオデバイスとして見える。`arecord` で録れる → **ER 音声直入力設計（[mode-x-er/04](../mode-x-er/04-er-input-modalities-and-stt.md)）にドライバ追加なしで接続可**。Yahboom の ASR 層（SenseVoiceSmall/Tongyi・zh/en のみ）は使わない＝日本語非対応は無関係。
 - 基板は**オーディオ + シリアル（CH340・`/dev/ttyUSB*`）の複合デバイス**。シリアル側は中国語ウェイクワード（"你好小雅"）通知専用＝**本プロジェクトでは未使用**。スピーカーは OS 標準再生（`aplay`）で任意 wav 再生可＝到着発話（[mode-x-er/09 §11](../mode-x-er/09-hand-raise-summon.md)）に流用可。
-- JetPack 6 / Ubuntu 22.04 で追加ドライバ不要の見込み（`snd-usb-audio` / `ch341` はカーネル標準〔**`ch341` は誤り**＝L4T `5.15.148-tegra` に**不在**・2026-09-09 実機で `CONFIG_USB_SERIAL_CH341` 無効を確認 → out-of-tree 導入手順は [../jetson/02-remote-access-and-dev-link.md](../jetson/02-remote-access-and-dev-link.md) §10。`snd-usb-audio` 側は未検証のまま〕。公式コースも Orin はネイティブ実行前提）。
+- JetPack 6 / Ubuntu 22.04 で追加ドライバ不要の見込み**は L4T では半分外れ**（2026-09-09 実機確認: `snd-usb-audio` は L4T `5.15.148-tegra` に**組込み**＝`CONFIG_SND_USB_AUDIO=y` で追加不要、**`ch341` は不在**＝`CONFIG_USB_SERIAL_CH341` 無効 → シリアル側は out-of-tree 導入が要る＝[../jetson/02-remote-access-and-dev-link.md](../jetson/02-remote-access-and-dev-link.md) §10。ERF01 用に導入済みなら本モジュールのシリアル側も同じドライバで見える。公式コースも Orin はネイティブ実行前提＝ネイティブでもドライバは要る）。
 - **要実機確認（6点）**: ①USB ディスクリプタ（VID:PID・UAC版）②オーディオ/シリアルが同一 Type-C 配下か（内部ハブ推定・未証明）③マイク ch 数と実サンプルレート（コースは 1ch/16kHz 固定）④**基板 NS/AEC 前処理が掛かった音が来るか**（静音録音のノイズフロアで切り分け・ER へ渡す音質に直結）⑤チップ型番 ⑥スピーカーコネクタ。確認コマンド: `lsusb` → `lsusb -t` → `arecord -l` → `arecord -D plughw:N,0 -f S16_LE -r 16000 -c 1 -d 5 /tmp/mic_test.wav` → `aplay /tmp/mic_test.wav`。
 
 ### V-6. 出典（一次情報）
