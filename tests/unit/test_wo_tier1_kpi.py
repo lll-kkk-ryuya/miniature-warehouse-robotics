@@ -16,10 +16,11 @@ Jain / makespan definitions, never re-derived from the implementation (independe
 counting rejected escalations as interventions, nesting the intervention tally inside the
 ``COMMAND_TOOLS`` branch, or swapping the makespan endpoints each turns a listed assertion red.
 
-Scope note (deliberate): the **odom-sourced** Tier-1 entries of doc21:310 (detour factor,
-jerk/SPARC composition, 速度予算消化率, idle 率) are NOT covered because they are not
-implemented — ``kpi_collector`` keeps no pose/velocity history, so they need a new producer
-(see the module docstring of ``warehouse_orchestrator.kpi`` and the PR residuals).
+Scope note (deliberate): the **odom-sourced** Tier-1 entries of doc21:310 are not covered here.
+Detour factor and the jerk/SPARC composition landed in the follow-up slice and are tested in
+``test_wo_motion_kpi.py`` (``warehouse_orchestrator.motion``); ``速度予算消化率`` and ``idle 率``
+are still unimplemented because doc21:310 names them without defining numerator, denominator or
+threshold (CLAUDE.md voids 15).
 """
 
 import json
