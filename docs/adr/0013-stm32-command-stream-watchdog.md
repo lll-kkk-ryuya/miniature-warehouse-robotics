@@ -1,6 +1,6 @@
 # STM32 command-stream watchdog（W-3）を vendor ソースへの additive 追記で実装する（「埋められない」と G-g の裁定衝突の解消）
 
-**Status**: proposed（2026-09-08 起草。**オペレーター裁定待ち** — 採否そのものと §Decision 2 の前提ゲート 4 点の承認が要る）
+**Status**: **accepted**（2026-09-08 起草 → **2026-09-09 オペレーター採用裁定**。§Decision 2 の前提ゲート 4 点込みの承認＝ゲート全通過まで書き込まない、は不変）
 
 M1 の watchdog 多層停止設計のうち **W-3（MCU 側 communication watchdog）**を、stock ファームの不在確定を受けて「埋められない層」のまま恒久受容するのではなく、**vendor 公式 STM32 ソース（V3.6.5）への additive 追記**（通信途絶 → wheel target = 0）として実装する方向を裁定する。あわせて、repo 内で正面衝突している 2 つの land 済み記述 — [mode-m1/02:64](../mode-m1/02-m1-driver-and-watchdog.md)「この層は埋められない」と [mode-x-er/10:486](../mode-x-er/10-room-scale-safety-review.md) G-g「MCU command-stream watchdog を追加し、host test と実機 USB 抜線で停止を確認（PHASE-1-GATE）」 — を本 ADR で解消する。
 
@@ -20,7 +20,7 @@ M1 の watchdog 多層停止設計のうち **W-3（MCU 側 communication watchd
   - **ライセンスは未確認**: Yahboom 配布物は Proprietary 表記があり「再配布・コード流用は個別確認まで不可」（[shared/02:812](../shared/02-hardware-design.md)）。改変して**自機に書き込む**（再配布しない）行為の可否は未検証 → §Decision 2-(b)。
 - **最小安全方針との整合**: 通信断での暴走防止は「自機保護の最小線」のど真ん中であり（[GLOSSARY §11「最小安全方針」](../GLOSSARY.md)「hard 安全床は本方針下でも撤去しない」）、一般人向け安全プロセスの追加ではない。多層ガバナンスの新設でもない（既存の W-1〜W-4 体系の W-3 を埋めるだけ）。
 
-## Decision / 決定（proposed）
+## Decision / 決定（accepted 2026-09-09）
 
 1. **W-3 を vendor V3.6.5 ソースへの additive 追記として実装する方向を採る**。追記内容は「最後の有効 motion フレーム受信からの経過が閾値超 → wheel velocity target = 0」の communication watchdog のみ。**メカナム IK・±700mm/s 二段 clamp・シリアルプロトコル・auto-report は不変**（[shared/02:328](../shared/02-hardware-design.md) の却下射程＝フルスクラッチ置換とは別物、[adr/0010:56](0010-raise-speed-cap-to-platform-max.md) の「stock 上限の契約意味」は clamp 不変により保存、と裁定する）。
 2. **実装着手の前提ゲート 4 点**（すべて通過するまで書き込まない）:
@@ -31,7 +31,7 @@ M1 の watchdog 多層停止設計のうち **W-3（MCU 側 communication watchd
 3. **タイムアウト値は実測で確定する（本 ADR で発明しない）**。外部提案の 0.3s は例示として扱い、W-1（ホスト 0.5s）との整合（層ごとの発火順序をどう設計するか）は実装スライスの doc で裁定する。
 4. **IWDG（`ENABLE_IWDG`）の有効化は本 ADR の射程外**。IWDG は MCU 自身のハングを見る別機構であり、通信断は見ない。別項目として評価する。
 5. **W-4（運用層）の緩和は自動ではない**。W-3 が実機試験まで閉じた後、[mode-x-er/10:487](../mode-x-er/10-room-scale-safety-review.md) **G-h（OPERATOR-GATE）**で P-1〜P-4 の採否とあわせて明示裁定する。
-6. **accepted 時の docs 同期**（同一 PR で）: [mode-m1/02:64](02-m1-driver-and-watchdog.md) の「この層は埋められない」を「**stock では埋められない（本 ADR の additive 追記で埋める）**」へ改訂し、[shared/02:798](../shared/02-hardware-design.md) を golden image 表現へ改訂、G-g（doc10）との衝突を解消する。
+6. **accepted 時の docs 同期**（同一 PR で）: [mode-m1/02:64](02-m1-driver-and-watchdog.md) の「この層は埋められない」を「**stock では埋められない（本 ADR の additive 追記で埋める）**」へ改訂し、[shared/02:798](../shared/02-hardware-design.md) を golden image 表現へ改訂、G-g（doc10）との衝突を解消する。→【2026-09-09 実施】採用と同一 PR で mode-m1/02:64・:67／shared/02:798／doc10:486 G-g 行／両 README 索引／GLOSSARY §5 を改訂済（全て in-place・行ズレなし）。
 
 ## 得られるもの
 
