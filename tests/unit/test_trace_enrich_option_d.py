@@ -421,18 +421,24 @@ def test_enricher_never_raises_when_attribute_propagation_fails(
 
 
 @pytest.mark.unit
-def test_a_raising_enricher_cannot_break_the_cycle() -> None:
-    # Defence in depth for an INJECTED enricher: a raise must not reach the caller or the loop.
+def test_a_raising_enricher_reaches_neither_the_caller_nor_the_event_loop() -> None:
+    # Defence in depth for an INJECTED enricher. The enrichment runs as a loop callback, so a
+    # raise would NOT surface at the caller — it would land in the loop's exception handler
+    # ("Exception in callback ...") and pollute every cycle of a live run. The independent oracle
+    # is therefore the loop's own exception handler: it must never be invoked.
+    handled: list[dict] = []
     enricher = _RecordingEnricher(raises=RuntimeError("enrich exploded"))
     tracer = PluginTraceEnrichingTracer(enricher)
 
     async def _run() -> None:
+        asyncio.get_running_loop().set_exception_handler(lambda _loop, ctx: handled.append(ctx))
         async with tracer.turn(4):
             pass
         await asyncio.sleep(0)  # the deferred enrichment runs here
 
-    asyncio.run(_run())  # must not raise
+    asyncio.run(_run())  # must not raise at the caller either
     assert enricher.calls == [4]
+    assert handled == []
 
 
 @pytest.mark.unit
