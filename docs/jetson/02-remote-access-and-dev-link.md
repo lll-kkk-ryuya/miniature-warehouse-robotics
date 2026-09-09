@@ -410,7 +410,7 @@ Host minicar.*.ts.net
 
 ## 10. CH340（ch341）カーネルモジュール不在 — out-of-tree ビルドと udev `/dev/myserial`（2026-09-09 実機確定）
 
-> **位置づけ**: §6 の初回ブート表（`:179`）では拡張ボードが**未接続**だったため見えていなかった欠落の記録と、その恒久化手順。対象 layer: **L0 未満（ホスト OS のドライバ層）**——`/dev/ttyUSB*` を生やすだけで motion を有効化するものではない（§4 の安全ゲート＝[setup/jetson-deploy.md:26](../setup/jetson-deploy.md) は不変・actuation 経路なし）。
+> **位置づけ**: §6 の初回ブート表（`:179`）では拡張ボードが**未接続**だったため見えていなかった欠落の記録と、その恒久化手順。対象 layer: **ホスト OS のカーネルドライバ層（L0'＝ホスト側 clamp（[../GLOSSARY.md](../GLOSSARY.md) §3）よりさらに下・レイヤ対応表 [../productization/01-commercial-box-map.md](../productization/01-commercial-box-map.md) に行なし＝帰属未定）**——`/dev/ttyUSB*` を生やすだけで motion を有効化するものではない（§9.6 と同じ安全ゲート＝[setup/jetson-deploy.md:26](../setup/jetson-deploy.md) §0 は不変・actuation 経路なし）。
 >
 > **forward（この節を前提にする先）**: [../shared/02-hardware-design.md](../shared/02-hardware-design.md) §P-8-2 / §P-8-3（`Rosmaster_Lib` 導入と `m1_probe` 検証＝`/dev/myserial` 前提）・[`ws/src/warehouse_m1_driver/CLAUDE.md`](../../ws/src/warehouse_m1_driver/CLAUDE.md)（produce/consume・シリアル層 seam）・[../mode-m1/03-joystick-teleop-bringup.md](../mode-m1/03-joystick-teleop-bringup.md) §2「実機プローブ（M1 ゲート内）」。**リンクは節名で張り行番号 pin しない**（実装 doc 側の churn で腐るため）。
 
@@ -430,7 +430,7 @@ Host minicar.*.ts.net
 ### 10.2 前提（ビルド前に必ず確認する）
 
 - 動作中カーネル **`5.15.148-tegra`（L4T 36.4.4）** と `/lib/modules/$(uname -r)/build` のヘッダ版が**一致**していること（`uname -r` と `dpkg -l nvidia-l4t-kernel-headers` で照合）。
-- ⚠️ **ビルド前に `apt upgrade` しない**。apt 候補には **`36.4.7` のヘッダ**が見えており、ヘッダだけ新しくなると動作中カーネルと不一致になって**ロードできないモジュール**が出来上がる。
+- ⚠️ **ビルド前に `apt upgrade` しない**。apt 候補には **`36.4.7` のヘッダ**が見えており、ヘッダだけ新しくなると動作中カーネルと不一致になって**ロードできないモジュール**が出来上がる（一般則。実観測は apt 候補に `36.4.7` が見えることまで）。
 - ツールチェーンは導入済み（`gcc 11.4` / `make`）＝追加インストール不要。
 
 ### 10.3 ソース取得とビルド（ボード上 `~/ch341-build/`・sudo 不要）
@@ -513,7 +513,7 @@ ch341 1-2.1.3:1.0: device disconnected
 ENV{PRODUCT}=="1a86/7523/*", ENV{BRLTTY_BRAILLE_DRIVER}="bm"
 ```
 
-があり、**CH340 の汎用 VID:PID `1a86:7523` を Baum 点字ディスプレイと誤認**する（§10.8(b) と同じ「汎用 VID:PID」問題の別の顔）。`brltty-udev.service` が usbfs 経由でインタフェースを掴み、`ch341` を剥がす。CH340 / Arduino 系では 22.04 の既知問題。
+があり、**CH340 の汎用 VID:PID `1a86:7523` を Baum 点字ディスプレイと誤認**する（§10.8(b) と同じ「汎用 VID:PID」問題の別の顔）。`brltty-udev.service` が usbfs 経由でインタフェースを掴み、`ch341` を剥がす。CH340 / Arduino 系で広く報告される 22.04 の問題（一次情報は上記ルール行そのもの＝導入済みボードでは `grep 1a86/7523 /usr/lib/udev/rules.d/85-brltty.rules` で再確認できる）。
 
 **対処（実施済・sudo）**:
 
@@ -521,7 +521,7 @@ ENV{PRODUCT}=="1a86/7523/*", ENV{BRLTTY_BRAILLE_DRIVER}="bm"
 sudo apt-get remove --purge -y brltty
 ```
 
-apt の出力は `The following packages will be REMOVED: brltty*` / `0 upgraded, 0 newly installed, 1 to remove and 495 not upgraded`＝**消えたのは brltty 1 個だけ**（`ubuntu-desktop` は brltty を **Recommends** にしか持たないため道連れなし）。本プロジェクトは**点字ディスプレイを使わない**ので、mask ではなく purge を選んだ（CH340 側の標準的な対処）。
+apt の出力は `The following packages will be REMOVED: brltty*` / `0 upgraded, 0 newly installed, 1 to remove and 495 not upgraded`＝**消えたのは brltty 1 個だけ**（`ubuntu-desktop` は道連れにならなかった＝hard Depends ではない〔`1 to remove` の実出力から判断・Recommends と推定〕）。本プロジェクトは**点字ディスプレイを使わない**ので、mask ではなく purge を選んだ（CH340 側の標準的な対処）。
 
 **除去後はボード USB を挿し直す**（既に奪われた状態は再列挙しないと戻らない）。17:17:15 JST のログ:
 
@@ -562,4 +562,4 @@ dpkg -l brltty | tail -1               # brltty が居ないこと（期待: 先
 - **(b) `myserial` の取り合い**: `1a86:7523` は CH340 の**汎用** VID:PID。別の CH340 機器（例: AI 音声モジュールのシリアル側＝[../shared/02-hardware-design.md](../shared/02-hardware-design.md) §V-5）を同時に挿すと `SYMLINK+="myserial"` を取り合う。serial 番号での絞り込みは同時挿し要件が出た時点で設計する。
 - **(c) 台本が repo に無い**: `test-insmod.sh` / `install.sh` / `verify.sh` は現状**ボード上 `~/ch341-build/` のみ**に存在する。repo 化（`deploy/dev/jetson-link/mwr-ch341-setup.sh` として idempotent 化）は **`# TODO(Phase 1)`・別 PR**。**その台本には §10.6 の brltty 除去（または mask）ステップと、`dpkg -l brltty` による事前ガード（既に居なければ skip・居れば purge して USB 再挿入を促す）を必ず含める**——ドライバ導入だけを移植すると、次のボードや再インストール後に**同じ 2 層目**で詰まる。
 - **(d) グループ付与だけでは足りない**: §9.6 の `dialout` 付与は**アクセス権**の話で、**ドライバが先**。ch341 不在のままではそもそも `/dev/ttyUSB*` が存在しない（この順序を取り違えると「権限問題」と誤診する）。
-- **(e) brltty が黙って戻り得る**: `brltty` は `ubuntu-desktop` の **Recommends** に居るため、将来の `apt install ubuntu-desktop` や `--install-recommends` を伴う操作で**再導入され得る**（戻れば §10.6 の症状が再発し、`/dev/ttyUSB0` は生えた直後に消え `/dev/myserial` も失われる）。§10.7 の検証コマンドに `dpkg -l brltty`（期待 `un`）を入れてあるのはこのため。
+- **(e) brltty が黙って戻り得る**: `brltty` は `ubuntu-desktop` の Recommends に居ると推定される（§10.6）ため、将来の `apt install ubuntu-desktop` や `--install-recommends` を伴う操作で**再導入され得る**（戻れば §10.6 の症状が再発し、`/dev/ttyUSB0` は生えた直後に消え `/dev/myserial` も失われる）。§10.7 の検証コマンドに `dpkg -l brltty`（期待 `un`）を入れてあるのはこのため。
