@@ -408,3 +408,19 @@ def test_clear_chord_while_deadman_held_is_ignored() -> None:
     assert action == ESTOP_ACTION_NONE
     assert state.latched is True
     assert allowed is False
+
+
+# (19) Invariant behind the redundant reset: neutrality observed DURING a latch
+#      never counts toward the re-arm ("解除の後は…" — docs/mode-m1/05:91), so
+#      latched always implies neutral_seen False. This is why mutating the
+#      CLEAR transition's `neutral_seen=False` alone is an EQUIVALENT mutant:
+#      the `if not latched` guard already carries the requirement.
+def test_latched_implies_neutral_never_seen() -> None:
+    state = armed_state()
+    state, _, _ = operator_estop_step(state, btn(DEFAULT_ESTOP_BUTTON), NEUTRAL, CFG)
+    assert (state.latched, state.neutral_seen, state.armed) == (True, False, False)
+    for sample in (btn(), btn(CFG.deadman_button), btn(), btn(10, 11)):
+        state, _, allowed = operator_estop_step(state, sample, NEUTRAL, CFG)
+        assert allowed is False
+        if state.latched:
+            assert state.neutral_seen is False
