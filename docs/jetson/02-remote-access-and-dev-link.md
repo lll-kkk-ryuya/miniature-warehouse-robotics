@@ -12,7 +12,7 @@ Tailscale 経路を追記）
 > **本 doc のスコープ**: 開発時アクセス（ssh / コマンド実行）に閉じる。**prod 常駐化は
 > [setup/jetson-deploy.md](../setup/jetson-deploy.md)**、**実機投入前ゲート G0-G7 は
 > [01-fidelity-and-validation.md §4](01-fidelity-and-validation.md)**、**物理手順の順序は
-> [mode-m1/03:54](../mode-m1/03-joystick-teleop-bringup.md)** が正本。ここでは重複させない。
+> [mode-m1/03:55](../mode-m1/03-joystick-teleop-bringup.md)** が正本。ここでは重複させない。
 >
 > **設計正本（着手前 Read 済・file:line）**:
 > - フラッシュ経路・QSPI: [shared/02:409](../shared/02-hardware-design.md) / JetPack 6.2 系＝Humble ネイティブ: [shared/02:412](../shared/02-hardware-design.md)
