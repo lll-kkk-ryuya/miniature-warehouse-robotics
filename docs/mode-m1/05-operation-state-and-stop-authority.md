@@ -52,7 +52,7 @@
 - **現在状態の L2 供給は #593 で land 済み（CURRENT・正本 = [doc12:616](../architecture/12-infrastructure-common.md) 追補②）**: 新 topic を作らず、Guardian が estop 継続中 50ms 毎に再アサートする既存 `/bot{n}/cmd_vel/emergency`（level 信号）をミラーする。イベント駆動案・state.json `emergency.active` 参照案は falsification 付きで却下済み（[doc12:628-631](../architecture/12-infrastructure-common.md)。後者は clear protocol 不在で永続 reject になる = §3-1 事実 2）。
 - **mirror の意味論として受容した暫定（隠さない）**: この信号は estop 中しか流れない**条件付き信号**であり、「無信号 = 非常時でない」が定義。したがって**無信号 1.0s 超は「解消」と「Guardian 死」を区別しない**。Guardian 単独死では物理層（twist_mux prio100・0.5s 失効）→ L2（1.0s）の順で開く fail-active 窓が残るが、これは §3-1 事実 4 の既知故障モードに包絡され、**L2 は常に物理より後に開く**。最小安全方針の下で暫定受容し、**平常時も流れる「Guardian 生存証明チャネル」（周期 publish の現在状態）を導入するか恒久受容するかは OQ-OP1 として保持**する。bridge 再起動〜DDS discovery 完了までの短い窓（estop 保持中の dispatch が phantom 受理されうる・motion は物理層が阻止し Guardian が毎 tick cancel）も同クラスの残余（§10）。
 - **受信側の鮮度監視の原則は「常時流れる設計のチャネル」に適用する**: `transient_local` は後着購読者への保持配信であって生存確認にならないため、§4 停止上乗せ・§6 運転モードが購読するチャネルでは**不明・stale → 統合構成で新しい走行を開始しない／MANUAL 指令を出さない**（fail-closed）。※条件付き信号である mirror にこの規則をそのまま適用すると平常時に全 dispatch が塞がるため適用外 — これが上記暫定受容の理由である。
-- 生存証明チャネルを新設する場合の topic 名・型・周期・鮮度閾値は**本書で発明しない** → OQ-OP1。**凍結契約 `warehouse_interfaces` は無変更**（doc03 カタログへの additive 追加のみ・[doc12:512](../architecture/12-infrastructure-common.md) の pose_stale 先例と同型）。なお doc03 への既存 `/bot{n}/cmd_vel/emergency` 行の追記は**解消済（2026-09-09・#597）**: doc03:113（[doc12:638](../architecture/12-infrastructure-common.md) の解消マーク参照）。
+- **【2026-09-09 追記で限定】** 以下の「発明しない」は **L2 feed 用の生存証明チャネル**（本節が論じている対象）に限る。**§4 停止上乗せ（L0'）が購読する入力チャネルは §4-1 で確定済**（`/bot{n}/stop_state`・topic 名/型/鮮度規律/期限規律。**publish 周期は未定**）。両者を 1 本に統合するかは OQ-OP1 のまま未決。— 生存証明チャネルを新設する場合の topic 名・型・周期・鮮度閾値は**本書で発明しない** → OQ-OP1。**凍結契約 `warehouse_interfaces` は無変更**（doc03 カタログへの additive 追加のみ・[doc12:512](../architecture/12-infrastructure-common.md) の pose_stale 先例と同型）。なお doc03 への既存 `/bot{n}/cmd_vel/emergency` 行の追記は**解消済（2026-09-09・#597）**: doc03:113（[doc12:638](../architecture/12-infrastructure-common.md) の解消マーク参照）。
 
 ## 4. m1_driver の停止上乗せ（stop overlay）（確定・2026-09-07）
 
@@ -84,25 +84,31 @@ driver に「走行を許可する権限」を新設するのではなく、**�
 
 **期限規律（watermark）**
 
-- `valid_until` は**絶対期限（秒）**。基準時計は **producer と consumer が同一ホスト・同一 boot で共有する単調時計**（POSIX `CLOCK_MONOTONIC`）。**壁時計は使わない**（NTP のステップで期限が伸びる＝fail-open になるため）。同一ホスト前提は doc03「Jetson 内部」（両ノードとも Jetson 上に立つ）に依存する。
+- `valid_until` は**絶対期限（秒）**。基準時計は **producer と consumer が同一ホスト・同一 boot で共有する単調時計**（POSIX `CLOCK_MONOTONIC`）。**壁時計は使わない**（NTP のステップで期限が伸びる＝fail-open になるため）。
+- **同一ホスト・同一 boot は本節が置く前提であって、他 doc から導かれたものではない**（doc03「Jetson 内部」は「Jetson 内部のアプリ契約トピックを網羅する」と言うだけで、ホストや時計ドメインを規定していない）。producer を別ホスト／別コンテナに置く場合、および `use_sim_time`（`/clock`）下で走らせる場合は**この期限規律が成立しない**（consumer は恒久的に fail-closed 側へ落ちる）。sim での扱いは本節では決めない → producer 実装スライス。
 - producer は `valid_until` を**単調非減少**で発行する。consumer は受理済みの最大値を **watermark** として保持し、**それを下回る値（逆行）を拒否**する。目的は「replay・順序逆転・producer 再起動によって、古くて長い許可が復活しない」こと。
 - **逆行・非有限・非正はいずれも「無視」ではなく即時失権**（成立中の許可を落とす）＝ :70 ②。
-- consumer は許可長を **`stop_state_max_validity_s`** で上限クリップする（producer の誤値・暴走が長時間の許可へ化けるのを防ぐ）。**W-1 の `cmd_vel_timeout_s` とは別 param**（守る故障が違う＝:69）。**値は Phase 1 実測までの暫定**で、凍結 twist_mux 入力 timeout 0.5s に整合させる（W-1 既定と同じ暫定根拠）。
+- consumer は許可長を **`stop_state_max_validity_s`** で上限クリップする（producer の誤値・暴走が長時間の許可へ化けるのを防ぐ）。**W-1 の `cmd_vel_timeout_s` とは別 param**（守る故障が違う＝:69）。既定値は **凍結 twist_mux 入力 timeout と同じ 0.5s を暫定的に借りる**（導出ではない。W-1 既定 `DEFAULT_CMD_TIMEOUT_S` と同じ借り方で、実運用値は `# TODO(Phase 1 実測)`）。
+- この param は **operator が設定する信頼済みノブ**として扱う: consumer が硬化するのは**退化値（非有限・非正）→ 既定へフォールバック**のみで、大きな有限値はそのまま天井になる（＝上乗せは実質無効化されうる）。これは W-1 の `cmd_vel_timeout_s` と**同じ信頼クラス**（既存 idiom）。**ハード上限を設けるか否かは未決**（値を発明せず開いたままにする）→ §10。
+- **壁時計 producer は上限クリップに吸収されて静かに縮退する**: 期限が常に天井へ丸められ、絶対期限契約が事実上「窓ぶんのハートビート」になる（安全側だが契約の保証は失われる）。検出手段（clip 発生の log / counter）は producer 実装スライスで足す。
 
 **鮮度規律・不正 payload の扱い**
 
 - `now > valid_until` → 停止側（:66 の表 4 行目）。未受信 → 初期状態＝停止側（:70 ③）。
 - **JSON パース不能・キー欠落・型不一致は即時失権**（fail-closed）。これは `/operator/stop_request` の「不明・不正 payload は**無視**」（§5・OQ-OP2）と**逆向き**だが矛盾ではない: あちらは停止を**掛ける**方向の入力なので無視が安全側、こちらは走行を**許す**方向の入力なので無視は危険側になる。**fail-closed の向きは入力の意味で決まる**。
+- **キー重複も失権**（JSON の last-wins をそのまま採ると `{"stop_requested": true, …, "stop_requested": false}` が停止要求を許可へ上書きできてしまう）。同様に、**decode 中に生じた例外を consumer 外へ漏らさない**（漏らすと「失権」ではなく driver プロセス死になる。表現不能な巨大整数・過度に深いネストが実例）。
 
 **本節が裁定しないこと（隠さない）**
 
 - OQ-OP1 の本題（**L2 feed** を #593 の level mirror のまま恒久受容するか、生存証明チャネルへ移すか）は**本節では裁定しない**。本節は §4 停止上乗せ（L0'）の入力契約のみを確定する。両者を 1 本のチャネルへ統合するかは fault injection（§8）後のオペレーター裁定に残す。
+- **publish 周期（rate）は確定しない**。本節が固定するのは「常時流れる設計であること」と consumer 側の期限・鮮度規律だけで、実値は producer 実装スライス（＋ Phase 1 実測）へ残す。
+- **`stop_state_max_validity_s` のハード上限**（大きな有限値による実質無効化を封じるか、W-1 と同じ信頼クラスのまま置くか）はオペレーター裁定に残す。
 - producer 実装（Guardian 側の publisher）は `warehouse_safety` 所有の後続スライス。**本契約が先に land しても、producer 不在の間は overlay を有効化すると常時停止側**（fail-closed・設計どおり）。
 - producer 再起動で `valid_until` が watermark を下回り続ける場合、consumer は停止側で保持し続ける（fail-closed）。復帰手段（driver 再起動 か producer 側の watermark 継承か）は producer 実装スライスで裁定する。
 
 **R-26 追加（:70 の ①〜⑧ に対する additive）**
 
-⑨ 契約 payload の decode: 正常形 → `(stop_requested, valid_until)`、パース不能・キー欠落・型不一致 → 即時失権 ⑩ 上限クリップが効く（過大な `valid_until` が許可窓を延ばさない） ⑪ 配線層（topic 名・型・QoS・**既定無効時は購読しないこと**）を AST で pin する（§10 の #593 残余 follow-up ① と同じ `test_speed_band_bringup_wiring.py` 先例）。
+⑨ 契約 payload の decode: 正常形 → `(stop_requested, valid_until)`、パース不能・キー欠落・型不一致・**キー重複**・**decode 中の例外**（表現不能な巨大整数・深いネスト）→ 即時失権（例外を consumer 外へ漏らさない） ⑩ 上限クリップが効く（過大な `valid_until` が許可窓を延ばさない）。退化した窓 param は既定へフォールバックする一方、**大きな有限値は信頼して通す**ことも pin する（開いている点を suite 上で可視にするため） ⑪ 配線層を AST で pin する（§10 の #593 残余 follow-up ① と同じ `test_speed_band_bringup_wiring.py` 先例）。CI に rclpy が無く**配線層は実行されない**ため、pin は部分一致でなく**厳密一致**にする: topic 式・型・QoS 4 値・**guard の極性**（`if not …` / `… or True` を通さない）・**callback が decode 結果を改変せず core へ渡すこと**（`on_stop_state(False, …)` のようなハードコードや core 呼び出しの欠落が緑のまま通らないように）。
 
 ## 5. 操作者非常停止要求（operator stop request）（確定・2026-09-07）
 
@@ -153,7 +159,7 @@ fault injection（Guardian kill・driver kill・USB 抜線・joy 切断・proces
 
 | # | 未決事項 | 決め方 | 優先度 |
 |---|---|---|---|
-| **OQ-OP1** | **平常時も流れる Guardian 生存証明チャネル**（周期 publish の現在状態）を導入するか、#593 の level mirror を恒久受容するか（§3-2）。導入時の topic 名・型・周期・鮮度閾値は doc03 additive 追記と同一 PR。先行条件だった **doc03 への既存 `/bot{n}/cmd_vel/emergency` 追記は解消済**（doc03:113・#597＝[doc12:638](../architecture/12-infrastructure-common.md) 解消マーク） | fault injection（§8）で Guardian 死の実害を実測 → オペレーター裁定 | 中（CURRENT は暫定受容済み） |
+| **OQ-OP1** | **平常時も流れる Guardian 生存証明チャネル**（周期 publish の現在状態）を導入するか、#593 の level mirror を恒久受容するか（§3-2）。導入時の topic 名・型・周期・鮮度閾値は doc03 additive 追記と同一 PR。先行条件だった **doc03 への既存 `/bot{n}/cmd_vel/emergency` 追記は解消済**（doc03:113・#597＝[doc12:638](../architecture/12-infrastructure-common.md) 解消マーク）。**【2026-09-09 で範囲縮小】** §4-1 が **L0' 停止上乗せ用の常時 publish チャネル `/bot{n}/stop_state`**（topic 名・型・鮮度/期限規律・doc03 additive 行）を確定したため、残る問いは「**そのチャネルを L2 feed にも流用するか、level mirror を恒久受容するか**」＋**publish 周期**。「常時チャネルを作るか否か」自体はもはや論点ではない | fault injection（§8）で Guardian 死の実害を実測 → オペレーター裁定 | 中（CURRENT は暫定受容済み） |
 | **OQ-OP2** | 操作者停止要求・明示解除の入力 topic の形（別 topic か同 topic payload か）→【2026-09-08 解消】単一 global topic `/operator/stop_request`（`std_msgs/String` JSON・同 topic payload 方式: `{"action": "engage"}`／`{"action": "clear"}`。不明・不正 payload は無視＝clear 扱いにしない。M1 単騎ゆえ per-bot 選択性は安全要件でない。PR #602） | doc03 additive 追記と同一 PR（済） | 高（順序 5 の前提） |
 | **OQ-OP3** | 解除時の残 goal 確認手段（cancel 反復の完了確認・nav_status 参照の形） | 実装設計＋実機確認 | 高（§5「解除≠走行」の担保） |
 | **OQ-OP4** | standalone stdio MCP（`server.py`）での現在状態参照。[doc12:636](../architecture/12-infrastructure-common.md) が「ROS 文脈が無くミラー不能・現用外」と登録済み — 残るのは state.json fallback にするか非対応と割り切るかの裁定のみ | 実装スライスで裁定 | 低 |
@@ -179,5 +185,6 @@ fault injection（Guardian kill・driver kill・USB 抜線・joy 切断・proces
 - [adr/0004-l2-restrict-only-policy-profile.md](../adr/0004-l2-restrict-only-policy-profile.md)（restrict-only・AND 合成）／ [adr/0012-speed-band-no-l2-best-effort.md](../adr/0012-speed-band-no-l2-best-effort.md)（最小安全方針 §Context :9・velocity path に L2 を載せない先例）
 - [productization/11-l2-contract-governance-traffic-box.md](../productization/11-l2-contract-governance-traffic-box.md)（L2 定義・L2-G8 :214）／ [architecture/22-web-observability.md](../architecture/22-web-observability.md)（web observe-only）
 - 実装側 anchor（行 pin しない＝churn 前提・契約の形で指す）: `policy_gate.py` の `set_emergency`/`check_emergency`・`emergency_guardian.py` の level 送出と `_cancel_all_goals`・`guard_logic.py` の `evaluate`/`BotState`/latch 群・`aggregator.py` の `emergency.active`・`driver_core.py` の clamp 必経と W-1・`twist_mux.yaml` の凍結 2 入力（emergency 100 / nav2 10）
-- **用語**: [GLOSSARY.md §11](../GLOSSARY.md) — 停止上乗せ / 操作者非常停止要求 / 運転モード（本書と双方向）
+- [architecture/03-software-architecture.md](../architecture/03-software-architecture.md) — トピック契約カタログ。**§4-1 の `/bot{n}/stop_state` 行 = doc03:114**（名前・型・一行責務のみ／詳細は §4-1 が正本＝doc03:116 の委譲規約）。`/operator/stop_request` = doc03:112（§5）・`/bot{n}/cmd_vel/emergency` = doc03:113（§3-2）
+- **用語**: [GLOSSARY.md §11](../GLOSSARY.md) — 停止上乗せ / 操作者非常停止要求 / 運転モード（本書と双方向）。**§4-1 が導入した語（`/bot{n}/stop_state`・期限 watermark・許可窓上限）は未登録＝張り残し**（GLOSSARY は本 PR の編集境界外）
 - **索引（backlink）**: [mode-m1/README.md](README.md) ファイル表 / [docs/README.md](../README.md) mode-m1 表

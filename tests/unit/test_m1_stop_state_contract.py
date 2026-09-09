@@ -94,15 +94,35 @@ def feed(core: M1DriverCore, raw: str, now: float, window: float = SPEC_MAX_VALI
     core.on_stop_state(stop_requested, valid_until, now)
 
 
-def revoking(result: tuple[bool, float]) -> bool:
-    """Spec shape of "revoke now": a stop request with an unusable deadline.
+def assert_revokes(raw: str, window: float = SPEC_MAX_VALIDITY_S) -> None:
+    """Assert the spec BEHAVIOUR of "revoke now", not the returned tuple shape.
 
-    doc05 §4-1 requires an unparseable/invalid update to DROP the standing
-    permission rather than be ignored, and to leave the watermark untouched —
-    which is exactly what a non-finite deadline does to the core (§4 R-26 ②).
+    doc05 §4-1: an update we cannot fully understand must DROP the standing
+    permission (not be ignored and coast to the old deadline), and must not
+    poison the watermark for the next legitimate update.
+
+    BOTH halves are asserted, deliberately:
+
+    (a) the decoder must signal *revoke*, not merely "fail to grant". Behaviour
+        alone cannot see this — a decoder that returned a tiny positive
+        deadline would also produce no motion, because the core's watermark
+        happens to reject it. That masking is an accident of the surrounding
+        state, not the contract.
+    (b) the resulting behaviour through the core, so a change that merely
+        relabels the revoke sentinel cannot pass while driving regresses.
     """
-    stop_requested, valid_until = result
-    return stop_requested is True and not math.isfinite(valid_until)
+    stop_requested, valid_until = decode_stop_state(raw, 100.0, window)
+    assert stop_requested is True and not math.isfinite(valid_until), (
+        "decoder must return the revoke signal, not a deadline that merely fails to grant"
+    )
+    core, backend = enabled_core()
+    feed(core, payload(False, 100.4), 100.0)  # a standing permission
+    feed(core, raw, 100.05, window)  # the suspect update
+    core.on_cmd_vel(0.1, 0.0, 0.0, 100.1)  # still inside the OLD deadline
+    assert not backend.moved, "suspect update was ignored instead of revoking"
+    feed(core, payload(False, 100.6), 100.2)  # a later legitimate state
+    core.on_cmd_vel(0.1, 0.0, 0.0, 100.3)
+    assert backend.moved, "revoking raised the watermark and locked the producer out"
 
 
 # --------------------------------------------------------------------------
@@ -143,12 +163,33 @@ def test_unknown_keys_are_ignored_forward_compatibility() -> None:
     ],
 )
 def test_unparseable_payload_revokes(raw: str) -> None:
-    assert revoking(decode_stop_state(raw, 100.0, 0.5))
+    assert_revokes(raw)
 
 
 @pytest.mark.parametrize("raw", ["[]", "123", '"engage"', "null", "true"])
 def test_non_object_json_revokes(raw: str) -> None:
-    assert revoking(decode_stop_state(raw, 100.0, 0.5))
+    assert_revokes(raw)
+
+
+def test_deeply_nested_payload_revokes_instead_of_crashing() -> None:
+    """RecursionError is not a ValueError: unhandled it would kill the driver."""
+    assert_revokes("[" * 20000 + "]" * 20000)
+
+
+@pytest.mark.parametrize("digits", [309, 4400])
+def test_unrepresentable_integer_deadline_revokes_instead_of_crashing(digits: int) -> None:
+    """A legal JSON int that float() cannot represent raises OverflowError.
+
+    ~350 bytes from any graph participant must revoke, never escape the
+    decoder (doc05 §4-1 R-26 ⑨).
+    """
+    huge = "9" * digits
+    assert_revokes(f'{{"stop_requested": false, "valid_until": {huge}}}')
+
+
+def test_duplicate_keys_revoke() -> None:
+    """JSON last-wins would let a stop request be overwritten by a grant."""
+    assert_revokes('{"stop_requested": true, "valid_until": 100.4, "stop_requested": false}')
 
 
 @pytest.mark.parametrize(
@@ -166,18 +207,17 @@ def test_non_object_json_revokes(raw: str) -> None:
     ],
 )
 def test_missing_or_mistyped_keys_revoke(raw: str) -> None:
-    assert revoking(decode_stop_state(raw, 100.0, 0.5))
+    assert_revokes(raw)
 
 
 @pytest.mark.parametrize("bad", ["NaN", "Infinity", "-Infinity"])
 def test_non_finite_deadline_revokes(bad: str) -> None:
-    raw = f'{{"stop_requested": false, "valid_until": {bad}}}'
-    assert revoking(decode_stop_state(raw, 100.0, 0.5))
+    assert_revokes(f'{{"stop_requested": false, "valid_until": {bad}}}')
 
 
 @pytest.mark.parametrize("bad", [0.0, -1.0, -1e300])
 def test_non_positive_deadline_revokes(bad: float) -> None:
-    assert revoking(decode_stop_state(payload(False, bad), 100.0, 0.5))
+    assert_revokes(payload(False, bad))
 
 
 # --------------------------------------------------------------------------
@@ -197,10 +237,30 @@ def test_deadline_inside_the_window_is_left_alone() -> None:
 
 
 @pytest.mark.parametrize("bad_window", [0.0, -1.0, float("nan"), float("inf")])
-def test_invalid_window_falls_back_to_the_default_instead_of_disarming(bad_window: float) -> None:
-    """A broken param must not remove the ceiling (that would be fail-open)."""
+def test_degenerate_window_falls_back_to_the_default_instead_of_disarming(
+    bad_window: float,
+) -> None:
+    """A DEGENERATE param (non-finite / non-positive) must not remove the ceiling.
+
+    Scope is deliberately exactly that: a large *finite* window is a trusted
+    operator setting, pinned separately below. Claiming more here would be an
+    oracle the implementation does not hold.
+    """
     _, valid_until = decode_stop_state(payload(False, 1.0e9), now=100.0, max_validity_s=bad_window)
     assert valid_until == pytest.approx(100.0 + SPEC_MAX_VALIDITY_S)
+
+
+def test_a_large_finite_window_is_honoured_as_a_trusted_operator_setting() -> None:
+    """DOCUMENTED, NOT ENDORSED — doc05 §4-1「開いている点」.
+
+    ``stop_state_max_validity_s`` is trusted the same way W-1's
+    ``cmd_vel_timeout_s`` is (both disarm their floor if an operator sets them
+    absurdly high; that idiom predates this slice). Pinned so the fail-open
+    surface is visible in the suite instead of merely implied, and so a future
+    hard ceiling lands as a deliberate, reviewed change to this test.
+    """
+    _, valid_until = decode_stop_state(payload(False, 1.0e9), now=100.0, max_validity_s=3600.0)
+    assert valid_until == pytest.approx(3700.0)
 
 
 def test_window_ceiling_is_not_the_w1_command_timeout_knob() -> None:
@@ -412,17 +472,27 @@ def _calls(tree: ast.AST, func_name: str) -> list[ast.Call]:
 
 
 def _stop_state_subscription(tree: ast.Module) -> ast.Call:
-    for call in _calls(tree, "create_subscription"):
-        if call.args and isinstance(call.args[0], ast.Name) and call.args[0].id == "String":
-            return call
-    raise AssertionError("no create_subscription(String, ...) in driver_node.py")
+    """The one subscription whose callback is the stop-state handler.
+
+    Keyed on the CALLBACK, not on the message type: a second String
+    subscription must not be able to silently capture this pin.
+    """
+    matches = [
+        call
+        for call in _calls(tree, "create_subscription")
+        if len(call.args) >= 3 and ast.unparse(call.args[2]) == "self._on_stop_state"
+    ]
+    assert len(matches) == 1, (
+        f"expected exactly one _on_stop_state subscription, got {len(matches)}"
+    )
+    return matches[0]
 
 
 def test_node_subscribes_the_contracted_topic_with_the_contracted_type() -> None:
     call = _stop_state_subscription(_node_tree())
     assert ast.unparse(call.args[0]) == "String"  # std_msgs/String, doc05 §4-1
-    topic = ast.unparse(call.args[1])
-    assert "STOP_STATE_TOPIC_TEMPLATE" in topic and "bot=bot" in topic
+    # Exact, not substring: `...format(bot=bot) + '_x'` must fail this pin.
+    assert ast.unparse(call.args[1]) == "STOP_STATE_TOPIC_TEMPLATE.format(bot=bot)"
 
 
 def test_topic_template_matches_the_contract() -> None:
@@ -451,14 +521,44 @@ def test_subscription_qos_is_reliable_keep_last_1_volatile() -> None:
 
 def test_subscription_only_exists_while_the_overlay_is_enabled() -> None:
     """Default-off must leave the standalone ROS graph untouched, not just the
-    command path (doc05 §4 table row 1 / §4-1 consumer row)."""
+    command path (doc05 §4 table row 1 / §4-1 consumer row).
+
+    The guard's TEST is matched exactly, so an inverted (`if not ...`) or
+    weakened (`... or True`) guard fails rather than passing on a substring.
+    """
     tree = _node_tree()
     guarded: set[int] = set()
     for node in ast.walk(tree):
-        if isinstance(node, ast.If) and SPEC_ENABLE_PARAM in ast.unparse(node.test):
+        if isinstance(node, ast.If) and ast.unparse(node.test) == f"self._core.{SPEC_ENABLE_PARAM}":
             for inner in node.body:
                 guarded.update(id(c) for c in _calls(inner, "create_subscription"))
     assert id(_stop_state_subscription(tree)) in guarded
+
+
+def test_callback_feeds_the_decoded_pair_through_to_the_core_unaltered() -> None:
+    """The whole point of the wiring: decode -> core, with nothing hardcoded.
+
+    Pinned by exact source shape because CI cannot import rclpy to run it.
+    Without this, `on_stop_state(False, ...)` (every stop read as "no stop" =
+    fail-open) or dropping the core call entirely passes the whole suite.
+    """
+    callback = next(
+        node
+        for node in ast.walk(_node_tree())
+        if isinstance(node, ast.FunctionDef) and node.name == "_on_stop_state"
+    )
+    # ast.unparse parenthesises tuple targets on some versions and not others;
+    # normalise so the pin is about the wiring, not the Python minor version.
+    statements = [
+        ast.unparse(stmt).replace("(stop_requested, valid_until)", "stop_requested, valid_until")
+        for stmt in callback.body
+    ]
+    assert "now = time.monotonic()" in statements
+    assert (
+        "stop_requested, valid_until = decode_stop_state(msg.data, now, "
+        "self._stop_state_max_validity_s)" in statements
+    )
+    assert "self._core.on_stop_state(stop_requested, valid_until, now)" in statements
 
 
 def test_node_declares_the_separate_window_parameter() -> None:

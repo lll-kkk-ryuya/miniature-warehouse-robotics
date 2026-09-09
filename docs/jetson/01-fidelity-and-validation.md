@@ -16,7 +16,7 @@
 > - 安全4層・実時間目標: [`docs/architecture/12-infrastructure-common.md:47-48`](../architecture/12-infrastructure-common.md)（Hard/Soft RT）`:75-84`（Layer0/1）`:483`（50ms/100ms は非ハードRT）`:254`（battery scale #44）。
 > - メモリ二段構え: [`docs/architecture/06-implementation-phases.md:89-102`](../architecture/06-implementation-phases.md)（段階1 Mac Docker 6GB 近似 / 段階2 Jetson 実測）。
 > - ハードウェア: [`docs/shared/02-hardware-design.md:52-164`](../shared/02-hardware-design.md)（Jetson Orin Nano Super 準備）`:180`（RPLiDAR USB）。
-> - 開発環境定義: [`docs/architecture/03-software-architecture.md:259-278`](../architecture/03-software-architecture.md)（Mac 開発機 :260 / Jetson 実行機 :269）。
+> - 開発環境定義: [`docs/architecture/03-software-architecture.md:259-278`](../architecture/03-software-architecture.md)（Mac 開発機 :261 / Jetson 実行機 :270）。
 > - 実装: [`deploy/jetson/`](../../deploy/jetson/)（systemd unit・スクリプト・env 雛形）/ 正本手順 [`docs/setup/jetson-deploy.md`](../setup/jetson-deploy.md)。
 
 ---

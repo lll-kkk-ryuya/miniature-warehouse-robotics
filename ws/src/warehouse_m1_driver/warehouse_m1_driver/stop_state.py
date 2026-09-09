@@ -40,6 +40,16 @@ STOP_STATE_TOPIC_TEMPLATE: Final[str] = "/{bot}/stop_state"
 DEFAULT_STOP_STATE_MAX_VALIDITY_S: Final[float] = 0.5
 
 
+def _no_duplicate_keys(pairs: list[tuple[str, object]]) -> dict:
+    """json object hook that rejects repeated keys instead of last-wins."""
+    seen = {}
+    for key, value in pairs:
+        if key in seen:
+            raise ValueError(f"duplicate key in stop_state payload: {key!r}")
+        seen[key] = value
+    return seen
+
+
 def _revoke() -> tuple[bool, float]:
     """Args that make :meth:`M1DriverCore.on_stop_state` drop permission NOW.
 
@@ -73,7 +83,16 @@ def decode_stop_state(
     Everything else that is not exactly the contracted shape revokes.
     """
     try:
-        decoded = json.loads(payload)
+        # object_pairs_hook: JSON's last-wins duplicate-key rule would let
+        # {"stop_requested": true, ..., "stop_requested": false} smuggle a
+        # stop request into a grant. On a permitting input that is fail-open,
+        # so duplicates revoke instead (doc05 §4-1 fail-closed direction).
+        decoded = json.loads(payload, object_pairs_hook=_no_duplicate_keys)
+    except RecursionError:
+        # Deeply nested JSON: not a ValueError, and it must not escape into
+        # the rclpy callback (an unhandled decode error would kill the driver
+        # rather than revoke — doc05 §4-1 R-26 ⑨ says revoke).
+        return _revoke()
     except (TypeError, ValueError):
         return _revoke()
     if not isinstance(decoded, dict):
@@ -89,7 +108,14 @@ def decode_stop_state(
     if isinstance(valid_until, bool) or not isinstance(valid_until, (int, float)):
         return _revoke()
 
-    valid_until = float(valid_until)
+    try:
+        valid_until = float(valid_until)
+    except (OverflowError, ValueError):
+        # A JSON integer with 309+ digits is a perfectly legal int that float()
+        # cannot represent. Without this it raises OUT of the decoder and, from
+        # the rclpy callback, takes the driver process with it — a ~350-byte
+        # message from any graph participant. Revoke instead (doc05 §4-1 ⑨).
+        return _revoke()
     if not math.isfinite(valid_until) or valid_until <= 0.0:
         return _revoke()
 
