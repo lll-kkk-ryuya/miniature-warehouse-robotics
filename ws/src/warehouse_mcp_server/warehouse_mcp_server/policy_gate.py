@@ -305,6 +305,21 @@ class PolicyGate:
         emergency 情報を含めて LLM に返す): the SAME set ``check_emergency`` reads
         on every dispatch, so what the commander sees is exactly what rejects.
         A frozen copy — callers cannot mutate the gate state through it.
+
+        Cross-thread read — no fail-closed guard here, unlike #596's
+        ``x_er_bridge.EmergencyMirrorStateSource``. The estop mirror writes
+        ``set_emergency`` from the rclpy spin thread while this reads from the
+        tool-dispatch thread, and ``tools.dispatch`` converts only ``TypeError``,
+        so a stray ``RuntimeError`` would escape onto the wire. It cannot: the
+        source is a ``set``, and ``frozenset(set)`` is CPython's ``set_merge``
+        fast path — a C-level table copy that never re-enters Python (str hashes
+        are cached) and never releases the GIL mid-walk, i.e. atomic against a
+        concurrent ``add``/``discard``. Measured on 3.12.10, 3 mutator + 3 reader
+        threads over a 100k-element container: 0 ``RuntimeError``. #596's guard
+        covers ``held_bots()``, whose source is a ``dict``; that walk proved
+        equally atomic in the same probe, so that guard is defense in depth
+        rather than a live failure mode this one is missing. BOTH rulings rest on
+        the GIL — revisit if this ever runs on a free-threaded build.
         """
         return frozenset(self._emergency)
 

@@ -7,14 +7,14 @@ wire — doc16 §11):
 
 * the rejection ORDER — a stale generation (B-3) is refused BEFORE the
   action/starter shape check, so a superseded cycle's escalation/negotiation never
-  books anything (the ``gen_checker.check`` guard, tools.py:351 / tools.py:408);
+  books anything (the ``gen_checker.check`` guard, tools.py:406 / tools.py:467);
 * the shape rejects — ``action`` ∉ {reassign, cancel, retry} (doc15:177) and
   ``starter`` ∉ {bot1, bot2} (doc15:186);
 * the success audits — a seeded escalation and a valid negotiation each emit an
   ``"executed"`` row, and tool7 mints a deterministic ``nego_{seq:03d}`` id;
 * the already-resolved gap (doc15:337-338) — an escalation answered once must be
   re-rejected, not acted on twice (the ``escalation_id not in self._escalations``
-  check at tools.py:361 previously gated on id existence alone, never resolved state).
+  check at tools.py:416 previously gated on id existence alone, never resolved state).
 """
 
 import asyncio
@@ -58,7 +58,7 @@ def _audit(tmp_path: Path) -> list[dict]:
 @pytest.mark.unit
 def test_escalation_stale_gen_rejected_before_action_check(tmp_path: Path) -> None:
     # cur_gen=5, gen_id=4 (stale) AND a bogus action: the gen_checker.check stale guard
-    # (tools.py:351) must fire BEFORE the action check (tools.py:357), so the reason is
+    # (tools.py:406) must fire BEFORE the action check (tools.py:412), so the reason is
     # stale_generation — never unknown_action. A superseded cycle books nothing.
     tools = _tools(tmp_path, cur_gen=5)
     res = asyncio.run(
@@ -73,7 +73,7 @@ def test_escalation_stale_gen_rejected_before_action_check(tmp_path: Path) -> No
 @pytest.mark.unit
 def test_escalation_unknown_action_rejected(tmp_path: Path) -> None:
     # A non-stale call with action ∉ {reassign,cancel,retry} (doc15:177) is refused
-    # with the action echoed back. Action is shape-checked (tools.py:357) before the
+    # with the action echoed back. Action is shape-checked (tools.py:412) before the
     # id existence check, so even a seeded id would not save a bogus action.
     tools = _tools(tmp_path)
     tools._escalations["esc_1"] = {}
@@ -86,7 +86,7 @@ def test_escalation_unknown_action_rejected(tmp_path: Path) -> None:
 @pytest.mark.unit
 def test_escalation_unknown_id_rejected(tmp_path: Path) -> None:
     # A valid action but an id absent from the (in-memory) registry is rejected
-    # (tools.py:361). Nothing seeded → unknown_escalation_id.
+    # (tools.py:416). Nothing seeded → unknown_escalation_id.
     tools = _tools(tmp_path)
     res = asyncio.run(tools.escalation_response(5, escalation_id="ghost", action="reassign"))
     assert res["status"] == "rejected"
@@ -122,7 +122,7 @@ def test_escalation_already_resolved_rejected_on_second_response(tmp_path: Path)
     # doc15:337-338: an escalation resolved by a prior response must be re-rejected —
     # not acted on twice. The first valid response resolves it; the second (same id,
     # same non-stale gen) is refused with already_resolved. This closes the gap where
-    # the id-existence check (tools.py:361) gated on existence alone, never resolved.
+    # the id-existence check (tools.py:416) gated on existence alone, never resolved.
     tools = _tools(tmp_path)
     tools._escalations["esc_1"] = {}
     first = asyncio.run(tools.escalation_response(5, escalation_id="esc_1", action="reassign"))
@@ -139,8 +139,8 @@ def test_escalation_already_resolved_rejected_on_second_response(tmp_path: Path)
 
 @pytest.mark.unit
 def test_escalation_resolved_then_bad_action_keeps_action_precedence(tmp_path: Path) -> None:
-    # The action shape check (tools.py:357) runs BEFORE the resolved branch
-    # (tools.py:371): on a SECOND response to a resolved escalation a *valid* action is
+    # The action shape check (tools.py:412) runs BEFORE the resolved branch
+    # (tools.py:426): on a SECOND response to a resolved escalation a *valid* action is
     # refused already_resolved, but a *bogus* action is refused unknown_action — action
     # precedence wins. Pins the "a bogus action above still wins" comment so a reorder
     # regression (resolved-before-action, matching doc15:334-341's pseudocode order)
@@ -163,7 +163,7 @@ def test_escalation_resolved_then_bad_action_keeps_action_precedence(tmp_path: P
 @pytest.mark.unit
 def test_negotiation_stale_gen_rejected_before_starter_check(tmp_path: Path) -> None:
     # cur_gen=5, gen_id=4 (stale) AND a bogus starter: the gen_checker.check stale guard
-    # (tools.py:408) fires BEFORE the starter check (tools.py:414) → stale_generation,
+    # (tools.py:467) fires BEFORE the starter check (tools.py:473) → stale_generation,
     # never unknown_starter. No id is minted for a superseded cycle.
     tools = _tools(tmp_path, cur_gen=5)
     res = asyncio.run(
