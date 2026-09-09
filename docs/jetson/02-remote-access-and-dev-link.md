@@ -492,9 +492,9 @@ sudo udevadm control --reload-rules && sudo udevadm trigger
 sudo modprobe ch341
 ```
 
-> **注（§10.4 の試験ロードを先に行った場合）**: 末尾の `sudo modprobe ch341` は既にロード済みなら **no-op** で、`extra/` 側の恒久版が実際に load されることの証明にはならない。恒久版の load は `sudo modprobe -r ch341 && sudo modprobe ch341`（拡張ボード USB を抜いた状態で）で確かめるか、§10.8(f) の再起動で確定する。
+> **注（§10.4 の試験ロードを先に行った場合）**: 末尾の `sudo modprobe ch341` は既にロード済みなら **no-op** で、`extra/` 側の恒久版が実際に load されることの証明にはならない。恒久版の load は §10.8(f) の再起動実測（2026-09-09 17:57）で**確定済**（`/proc/modules` に `(OE)` で載り `modinfo -n` が `extra/` を返す）。
 
-**実施記録（2026-09-09 17:10 JST）**: 3 ファイル（`extra/ch341.ko` / `modules-load.d/ch341.conf` / `udev/rules.d/99-yahboom-myserial.rules`）が **root 所有で存在**し、`modinfo -n ch341` が `extra/` 配下を解決することを確認済み（パス解決の確認であり、ロード中の実体が `extra/` 側である証明ではない＝§10.8(f)）。
+**実施記録（2026-09-09 17:10 JST）**: 3 ファイル（`extra/ch341.ko` / `modules-load.d/ch341.conf` / `udev/rules.d/99-yahboom-myserial.rules`）が **root 所有で存在**し、`modinfo -n ch341` が `extra/` 配下を解決することを確認済み（パス解決の確認。ロード中の実体が `extra/` 側であることは §10.8(f) の再起動実測で確定）。
 
 ### 10.6 第 2 層のブロッカー: brltty が CH340 を横取りする（udev・2026-09-09 17:12 実機ログ）
 
@@ -558,6 +558,15 @@ dpkg -l brltty | tail -1               # brltty が居ないこと（期待: 先
 | カーネルログ | `usb 1-2.1.3: ch341-uart converter now attached to ttyUSB0`（以後 detach なし＝§10.6 が効いている） |
 | brltty | `dpkg -l brltty` → **`un`（未導入）**・`/usr/lib/udev/rules.d/85-brltty.rules` は消失・`systemctl list-unit-files 'brltty*'` は 0 件 |
 
+**再起動生存（2026-09-09 17:57 `jetson reboot` → 18:04 USB 挿入・§10.8(f)）**:
+
+| 確認項目 | 実測値 |
+|---|---|
+| 自動ロード | 再起動 25 秒後の `lsmod` に `ch341 20480 0` / `usbserial 40960 1 ch341`（人手なし・USB 未挿入でも載る） |
+| ロード元 | `modinfo -n ch341` = `/lib/modules/5.15.148-tegra/extra/ch341.ko`・`/proc/modules` フラグ `(OE)`＝out-of-tree/unsigned・`systemd-modules-load` Result=success |
+| 挿入後 | 18:05 `crw-rw---- root dialout 188,0 /dev/ttyUSB0`・`/dev/myserial -> ttyUSB0`・udev path は上表と同一（人手なし） |
+| 例外 | 再起動直後の `journalctl -k -b` にブート時の ch341 登録行が無い（理由未特定）＝④ が空でも `lsmod` / `/proc/modules` を正とする |
+
 ⚠️ **確認できたのは「デバイスノードと symlink が安定して存在する」層まで**。その先の **`Rosmaster_Lib` / `m1_probe` によるシリアル open（115200 8N1 で MCU と実際に喋る）は未実施** ＝ `# TODO(Phase 1)`。[../shared/02-hardware-design.md](../shared/02-hardware-design.md) §P-8-2 / §P-8-3 の導入・検証手順と同じセッションで潰す。
 
 ### 10.8 残注意（隠さない）
@@ -567,4 +576,4 @@ dpkg -l brltty | tail -1               # brltty が居ないこと（期待: 先
 - **(c) 台本が repo に無い**: `test-insmod.sh` / `install.sh` / `verify.sh` は現状**ボード上 `~/ch341-build/` のみ**に存在する。repo 化（`deploy/dev/jetson-link/mwr-ch341-setup.sh` として idempotent 化）は **`# TODO(Phase 1)`・別 PR**。**その台本には §10.6 の brltty 除去（または mask）ステップと、`dpkg -l brltty` による事前ガード（既に居なければ skip・居れば purge して USB 再挿入を促す）を必ず含める**——ドライバ導入だけを移植すると、次のボードや再インストール後に**同じ 2 層目**で詰まる。
 - **(d) グループ付与だけでは足りない**: §9.6 の `dialout` 付与は**アクセス権**の話で、**ドライバが先**。ch341 不在のままではそもそも `/dev/ttyUSB*` が存在しない（この順序を取り違えると「権限問題」と誤診する）。
 - **(e) brltty が黙って戻り得る**: `brltty` は `ubuntu-desktop` の Recommends に居ると推定される（§10.6）ため、将来の `apt install ubuntu-desktop` や `--install-recommends` を伴う操作で**再導入され得る**（戻れば §10.6 の症状が再発し、`/dev/ttyUSB0` は生えた直後に消え `/dev/myserial` も失われる）。§10.7 の検証コマンドに `dpkg -l brltty`（期待 `un`）を入れてあるのはこのため。
-- **(f) 再起動生存は未検証**: `modules-load.d/ch341.conf` と udev ルールの効果（ブート後に人手なしで `/dev/myserial` が生えること）は **2026-09-09 時点で再起動して確認していない**。`jetson reboot`（§9）後に §10.7 のコマンドを再実行して確定する `# TODO(Phase 1)`。確定するまで本節の「恒久化」は「設定ファイルを置いた」の意味に留まる。
+- **(f) 再起動生存＝確認済（2026-09-09）**: `jetson reboot`（§9・全周 51 秒）後、人手なしで `ch341` が `extra/` からロードされ、USB 挿入（18:04:57）で `ttyUSB0`＋`/dev/myserial` が生成された（§10.7 の再起動生存表）。途中 18:05:01 に `USB disconnect, device number 6` → 18:05:08 再列挙（device number 9）を 1 回挟むが、`usbfs`/brltty 行は無く**物理的な再挿しと読める**（以後切断なし・`dpkg -l brltty` は `un` のまま）。走行振動下での USB コネクタ緩みは別途未確認（[../shared/02-hardware-design.md](../shared/02-hardware-design.md) P-9c の DC プラグと同じ扱い）。
