@@ -21,6 +21,7 @@ from warehouse_safety.guard_logic import parse_operator_stop_action
 from warehouse_teleop.joymap import (
     DEFAULT_DEADMAN_BUTTON,
     DEFAULT_ESTOP_BUTTON,
+    DEFAULT_ESTOP_BUTTON_ALT,
     DEFAULT_JOY_TIMEOUT_S,
     ESTOP_ACTION_CLEAR,
     ESTOP_ACTION_ENGAGE,
@@ -194,7 +195,7 @@ def test_degenerate_timeout_falls_back_to_default(bad_timeout: float) -> None:
 #     depended on by the package — .claude/rules/implementation-and-dependencies §1)
 #   * docs/mode-m1/03:52 sentinels + "a typo must not stop the fleet"
 
-CFG = OperatorEstopConfig()  # deadman 6 (L1), estop 1 (B), chord (10, 11)
+CFG = OperatorEstopConfig()  # deadman 6 (L1), estop 1 (B) + alt 7 (R1), chord (10, 11)
 NEUTRAL = axes()
 DEFLECTED = axes(1.0, -1.0, 1.0)
 
@@ -308,20 +309,15 @@ def test_out_of_range_estop_index_blocks_motion_without_publishing() -> None:
 
 
 # (9) Sentinel = feature off: the pre-latch "deadman only" posture is reachable
-#     and the e-stop button is inert.
-@pytest.mark.parametrize(
-    "cfg",
-    [
-        replace(CFG, estop_button=-1),
-        replace(CFG, clear_buttons=()),
-    ],
-)
-def test_sentinel_disables_the_latch(cfg: OperatorEstopConfig) -> None:
+#     and BOTH e-stop buttons are inert. estop_button = -1 is the ONLY sentinel
+#     (docs/mode-m1/03:52) — see (20) for what an empty chord means instead.
+def test_sentinel_disables_the_latch() -> None:
+    cfg = replace(CFG, estop_button=-1)
     assert cfg.enabled is False
     assert operator_estop_config_error(cfg, btn()) is None
     state = armed_state(cfg)  # True is reachable
     state, action, allowed = operator_estop_step(
-        state, btn(cfg.deadman_button, DEFAULT_ESTOP_BUTTON), NEUTRAL, cfg
+        state, btn(cfg.deadman_button, DEFAULT_ESTOP_BUTTON, DEFAULT_ESTOP_BUTTON_ALT), NEUTRAL, cfg
     )
     assert (action, allowed) == (ESTOP_ACTION_NONE, True)
     assert state.latched is False
@@ -415,6 +411,9 @@ def test_clear_chord_while_deadman_held_is_ignored() -> None:
 #      latched always implies neutral_seen False. This is why mutating the
 #      CLEAR transition's `neutral_seen=False` alone is an EQUIVALENT mutant:
 #      the `if not latched` guard already carries the requirement.
+#      NOTE: this case pins an INVARIANT of the state machine, not a documented
+#      behaviour — it is the honest record of an equivalent mutant, and must not
+#      be read as an oracle for what an operator observes.
 def test_latched_implies_neutral_never_seen() -> None:
     state = armed_state()
     state, _, _ = operator_estop_step(state, btn(DEFAULT_ESTOP_BUTTON), NEUTRAL, CFG)
@@ -424,3 +423,233 @@ def test_latched_implies_neutral_never_seen() -> None:
         assert allowed is False
         if state.latched:
             assert state.neutral_seen is False
+
+
+# ---------------------------------------------- adversarial-review follow-ups
+#
+# Same independent oracle as above (the docs, restated as English
+# preconditions), extended by the 2026-09-09 hardware grip test:
+#   * docs/mode-m1/03:52 two e-stop buttons — B(1) deliberate, R1(7) reflex;
+#     EITHER rising edge engages, alt = -1 disables just the alt
+#   * docs/mode-m1/03:52 the clear chord needs the deadman AND both e-stop
+#     buttons released
+#   * docs/mode-m1/03:52 estop_button = -1 is the ONLY sentinel; an empty chord
+#     is a stop with no release = misconfiguration
+#   * docs/mode-m1/03:52 cold start is asymmetric: the deadman must be released
+#     and re-pressed, a held e-stop engages
+#   * "publish は rising edge のみ" (ws/src/warehouse_teleop/CLAUDE.md) — an
+#     engage is an edge, never a level
+
+
+# (20) An empty clear chord is NOT a sentinel (R5): enabling a stop with no
+#      documented way to release it is a misconfiguration, and the fail-closed
+#      posture (no motion, no publish) applies.
+def test_empty_clear_chord_is_a_misconfiguration_not_a_sentinel() -> None:
+    cfg = replace(CFG, clear_buttons=())
+    assert cfg.enabled is True  # the feature is ON; the wiring is broken
+    assert operator_estop_config_error(cfg) is not None  # caught at startup
+    state, action, allowed = operator_estop_step(
+        OperatorEstopState(), btn(CFG.deadman_button), NEUTRAL, cfg
+    )
+    assert (action, allowed) == (ESTOP_ACTION_NONE, False)
+    state, action, allowed = operator_estop_step(state, btn(DEFAULT_ESTOP_BUTTON), NEUTRAL, cfg)
+    assert (action, allowed) == (ESTOP_ACTION_NONE, False)  # no fabricated engage
+
+
+# (21) Only -1 is the sentinel: any other negative index is a typo, not "off".
+@pytest.mark.parametrize("bad", [-5, -2])
+def test_negative_estop_index_other_than_minus_one_is_a_misconfiguration(bad: int) -> None:
+    cfg = replace(CFG, estop_button=bad)
+    assert cfg.enabled is True
+    assert operator_estop_config_error(cfg) is not None
+    _, action, allowed = operator_estop_step(OperatorEstopState(), btn(), NEUTRAL, cfg)
+    assert (action, allowed) == (ESTOP_ACTION_NONE, False)
+
+
+# (22) R1: one button cannot be both the throttle and the stop. Symmetric with
+#      the chord checks of (17) — rejected statically, and the deadman press
+#      that would otherwise arm the node does nothing.
+def test_estop_button_equal_to_deadman_is_rejected() -> None:
+    cfg = OperatorEstopConfig(estop_button=DEFAULT_DEADMAN_BUTTON)
+    assert cfg.estop_button == cfg.deadman_button  # the collision, spelled out
+    assert operator_estop_config_error(cfg) is not None  # caught at startup
+    state, action, allowed = operator_estop_step(
+        OperatorEstopState(), btn(cfg.deadman_button), NEUTRAL, cfg
+    )
+    assert (action, allowed) == (ESTOP_ACTION_NONE, False)
+    state, action, allowed = operator_estop_step(state, btn(cfg.deadman_button), NEUTRAL, cfg)
+    assert (action, allowed) == (ESTOP_ACTION_NONE, False)
+
+
+# (23) An engage is an EDGE, not a level: holding either e-stop button engages
+#      exactly once, so the wire sees one {"action": "engage"} per press.
+@pytest.mark.parametrize("index", [DEFAULT_ESTOP_BUTTON, DEFAULT_ESTOP_BUTTON_ALT])
+def test_held_estop_publishes_exactly_one_engage(index: int) -> None:
+    state = armed_state()
+    state, action, allowed = operator_estop_step(state, btn(index), NEUTRAL, CFG)
+    assert (action, allowed) == (ESTOP_ACTION_ENGAGE, False)
+    for _ in range(2):  # keep holding it
+        state, action, allowed = operator_estop_step(state, btn(index), NEUTRAL, CFG)
+        assert action == ESTOP_ACTION_NONE
+        assert allowed is False
+    assert state.latched is True
+
+
+# (24) A chord held BEFORE the stop must not clear it when the stop is released:
+#      the chord has to complete on this sample (all down now, not all down
+#      before), otherwise "hold SELECT+START, tap the stop" would be a no-op.
+def test_chord_held_across_the_engage_does_not_clear() -> None:
+    state = armed_state()
+    state, action, _ = operator_estop_step(state, btn(10, 11), NEUTRAL, CFG)
+    assert action == ESTOP_ACTION_NONE  # chord alone, nothing latched yet
+    state, action, _ = operator_estop_step(state, btn(10, 11, DEFAULT_ESTOP_BUTTON), NEUTRAL, CFG)
+    assert action == ESTOP_ACTION_ENGAGE
+    state, action, allowed = operator_estop_step(state, btn(10, 11), NEUTRAL, CFG)
+    assert action == ESTOP_ACTION_NONE
+    assert state.latched is True
+    assert allowed is False
+
+
+# (25) Neutral means ALL THREE mapped axes, not just the forward one: a held
+#      lateral or yaw stick is still a deflected stick (docs/mode-m1/03:52).
+@pytest.mark.parametrize("deflected", [axes(0.0, 1.0, 0.0), axes(0.0, 0.0, 1.0)])
+def test_neutral_requires_every_mapped_axis(deflected: list[float]) -> None:
+    state, _, allowed = operator_estop_step(OperatorEstopState(), btn(), deflected, CFG)
+    assert state.neutral_seen is False
+    assert allowed is False
+
+
+# (26) A degenerate deadzone must not turn a fully deflected stick into
+#      "centered": NaN loses every comparison, so an unhardened threshold would
+#      re-arm on a stick held hard over.
+def test_non_finite_deadzone_does_not_make_a_deflected_stick_neutral() -> None:
+    cfg = replace(CFG, deadzone=float("nan"))
+    state, _, allowed = operator_estop_step(OperatorEstopState(), btn(), DEFLECTED, cfg)
+    assert state.neutral_seen is False
+    assert allowed is False
+
+
+# (27) Deadzone boundary, stated the way the doc states it
+#      (`abs(v) < deadzone` is centered): exactly ON the deadzone is NOT.
+def test_deadzone_boundary_is_exclusive() -> None:
+    on_edge, inside = CFG.deadzone, CFG.deadzone - 1e-7
+    state, _, _ = operator_estop_step(OperatorEstopState(), btn(), axes(on_edge), CFG)
+    assert state.neutral_seen is False
+    state, _, _ = operator_estop_step(OperatorEstopState(), btn(), axes(inside), CFG)
+    assert state.neutral_seen is True
+
+
+# (28) Cold start, arming side: with no button history a HELD deadman is not a
+#      press. The operator must let go and press again — the same gesture the
+#      re-arm rule asks for (docs/mode-m1/05:91).
+def test_cold_start_held_deadman_does_not_arm() -> None:
+    held = btn(CFG.deadman_button)
+    state, action, allowed = operator_estop_step(OperatorEstopState(), held, NEUTRAL, CFG)
+    assert (action, allowed) == (ESTOP_ACTION_NONE, False)
+    assert state.neutral_seen is True  # condition 1 is satisfied ...
+    assert state.armed is False  # ... condition 2 is not
+    state, _, allowed = operator_estop_step(state, held, NEUTRAL, CFG)
+    assert allowed is False  # still held: still nothing
+    state, _, allowed = operator_estop_step(state, btn(), NEUTRAL, CFG)  # release
+    assert allowed is False
+    state, _, allowed = operator_estop_step(state, held, NEUTRAL, CFG)  # press again
+    assert allowed is True
+
+
+# (29) Cold start, stopping side — deliberately the OPPOSITE resolution: a stop
+#      already held when the node starts engages on the first sample. The two
+#      unknowns fail in opposite directions because their costs differ.
+@pytest.mark.parametrize("index", [DEFAULT_ESTOP_BUTTON, DEFAULT_ESTOP_BUTTON_ALT])
+def test_cold_start_held_estop_engages(index: int) -> None:
+    state, action, allowed = operator_estop_step(OperatorEstopState(), btn(index), NEUTRAL, CFG)
+    assert action == ESTOP_ACTION_ENGAGE
+    assert state.latched is True
+    assert allowed is False
+
+
+# (30) The deadman index is only checkable against a live sample (nothing at
+#      start-up knows how many buttons the pad has), so the per-sample pass must
+#      cover it too — otherwise a typo'd deadman silently disables the throttle
+#      with no diagnostic.
+def test_out_of_range_deadman_is_caught_by_the_live_check_only() -> None:
+    cfg = replace(CFG, deadman_button=99)
+    assert operator_estop_config_error(cfg) is None  # static pass cannot know
+    assert operator_estop_config_error(cfg, btn()) is not None  # live pass does
+    _, action, allowed = operator_estop_step(OperatorEstopState(), btn(), NEUTRAL, cfg)
+    assert (action, allowed) == (ESTOP_ACTION_NONE, False)
+
+
+# (31) Clearing while still squeezing a stop button is not clearing: the chord
+#      needs BOTH e-stop buttons released as well as the deadman (R6).
+@pytest.mark.parametrize("held", [DEFAULT_ESTOP_BUTTON, DEFAULT_ESTOP_BUTTON_ALT])
+def test_clear_chord_while_an_estop_button_is_held_is_ignored(held: int) -> None:
+    state = armed_state()
+    state, action, _ = operator_estop_step(state, btn(held), NEUTRAL, CFG)
+    assert action == ESTOP_ACTION_ENGAGE
+    state, action, allowed = operator_estop_step(state, btn(held, 10, 11), NEUTRAL, CFG)
+    assert action == ESTOP_ACTION_NONE
+    assert state.latched is True
+    assert allowed is False
+    # Let everything go and complete the chord properly -> it does clear.
+    state, _, _ = operator_estop_step(state, btn(), NEUTRAL, CFG)
+    state, action, allowed = operator_estop_step(state, btn(10, 11), NEUTRAL, CFG)
+    assert action == ESTOP_ACTION_CLEAR
+    assert (state.latched, allowed) == (False, False)
+
+
+# (32) The alt button is a full second stop, not a decoration.
+def test_alt_estop_button_engages() -> None:
+    state = armed_state()
+    state, action, allowed = operator_estop_step(
+        state, btn(CFG.deadman_button, DEFAULT_ESTOP_BUTTON_ALT), DEFLECTED, CFG
+    )
+    assert action == ESTOP_ACTION_ENGAGE
+    assert state.latched is True
+    assert allowed is False
+
+
+# (33) alt = -1 keeps the feature ON with the primary button only (the alt is
+#      optional; only estop_button decides whether the latch exists at all).
+def test_alt_sentinel_keeps_the_primary_button() -> None:
+    cfg = replace(CFG, estop_button_alt=-1)
+    assert cfg.enabled is True
+    assert operator_estop_config_error(cfg, btn()) is None
+    state = armed_state(cfg)
+    state, action, allowed = operator_estop_step(
+        state, btn(cfg.deadman_button, DEFAULT_ESTOP_BUTTON_ALT), NEUTRAL, cfg
+    )
+    assert (action, allowed) == (ESTOP_ACTION_NONE, True)  # index 7 is inert now
+    state, action, allowed = operator_estop_step(
+        state, btn(cfg.deadman_button, DEFAULT_ESTOP_BUTTON), NEUTRAL, cfg
+    )
+    assert (action, allowed) == (ESTOP_ACTION_ENGAGE, False)  # the primary still stops
+
+
+# (34) A conflicting alt is a misconfiguration on the same terms as (17)/(22):
+#      refuse motion, publish nothing.
+@pytest.mark.parametrize(
+    "alt",
+    [
+        DEFAULT_DEADMAN_BUTTON,  # alt == deadman
+        DEFAULT_ESTOP_BUTTON,  # alt duplicates the primary
+        10,  # alt inside the clear chord
+        -5,  # not an index (-1 is the only sentinel)
+    ],
+)
+def test_conflicting_alt_estop_button_is_rejected(alt: int) -> None:
+    cfg = replace(CFG, estop_button_alt=alt)
+    assert operator_estop_config_error(cfg) is not None
+    state = OperatorEstopState()
+    for sample in (btn(), btn(cfg.deadman_button), btn(DEFAULT_ESTOP_BUTTON)):
+        state, action, allowed = operator_estop_step(state, sample, NEUTRAL, cfg)
+        assert (action, allowed) == (ESTOP_ACTION_NONE, False)
+
+
+# (35) ... and an in-range-looking alt that the pad does not actually have is
+#      caught on the live sample, like every other index.
+def test_out_of_range_alt_estop_button_is_caught_live() -> None:
+    cfg = replace(CFG, estop_button_alt=99)
+    assert operator_estop_config_error(cfg) is None
+    assert operator_estop_config_error(cfg, btn()) is not None
+    _, action, allowed = operator_estop_step(OperatorEstopState(), btn(), NEUTRAL, cfg)
+    assert (action, allowed) == (ESTOP_ACTION_NONE, False)

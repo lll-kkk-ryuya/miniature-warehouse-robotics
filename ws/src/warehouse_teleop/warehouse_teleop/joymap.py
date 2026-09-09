@@ -45,7 +45,12 @@ DEFAULT_AXIS_ANGULAR: int = 2
 # the Y button in PC/PCS mode. Every index stays a ros param: confirm with
 # jstest at the M1 gate (docs/mode-m1/03 §2).
 DEFAULT_DEADMAN_BUTTON: int = 6  # L1
-DEFAULT_ESTOP_BUTTON: int = 1  # B — operator emergency stop (latching)
+DEFAULT_ESTOP_BUTTON: int = 1  # B — deliberate stop (right thumb, aimed at)
+# Second, INDEPENDENT e-stop button (hardware grip test 2026-09-09,
+# docs/mode-m1/03:52). B is the button you aim for; R1 is the one a startled
+# hand clenches. Their failure modes are opposite, so both engage. -1 = no alt
+# (the feature as a whole is still governed by estop_button alone).
+DEFAULT_ESTOP_BUTTON_ALT: int = 7  # R1 — reflex stop (right index finger)
 DEFAULT_ESTOP_CLEAR_BUTTONS: tuple[int, ...] = (10, 11)  # SELECT + START chord
 DEFAULT_DEADZONE: float = 0.1
 DEFAULT_MAX_ANGULAR: float = 1.5  # rad/s, teleop-local (no frozen angular cap)
@@ -217,6 +222,7 @@ class OperatorEstopConfig:
 
     deadman_button: int = DEFAULT_DEADMAN_BUTTON
     estop_button: int = DEFAULT_ESTOP_BUTTON
+    estop_button_alt: int = DEFAULT_ESTOP_BUTTON_ALT
     clear_buttons: tuple[int, ...] = DEFAULT_ESTOP_CLEAR_BUTTONS
     axis_linear_x: int = DEFAULT_AXIS_LINEAR_X
     axis_linear_y: int = DEFAULT_AXIS_LINEAR_Y
@@ -225,15 +231,21 @@ class OperatorEstopConfig:
 
     @property
     def enabled(self) -> bool:
-        """Sentinel: ``estop_button = -1`` OR an empty chord disables the latch.
+        """Sentinel: ``estop_button = -1`` — and ONLY that — disables the latch.
 
-        Disabling BOTH halves together is deliberate — an engage with no way to
-        clear (or a clear with nothing to clear) is not a safe half-feature.
+        An empty ``clear_buttons`` is deliberately NOT a second sentinel
+        (docs/mode-m1/03:52): reading it as "feature off" makes the most
+        dangerous typo silent, whereas reading it as what it is — a stop with no
+        documented way to release it — is a misconfiguration, reported by
+        :func:`operator_estop_config_error`. ``estop_button_alt`` is likewise
+        not a sentinel: it is an optional SECOND button, so a site that wants
+        only the thumb stop sets it to -1 and keeps the feature.
+
         Disabled means "deadman only", i.e. the pre-latch behaviour; the re-arm
         sequence still applies because it also serves the /joy-dropout rule
         (docs/mode-m1/05:87), which is independent of this button.
         """
-        return self.estop_button >= 0 and len(self.clear_buttons) > 0
+        return self.estop_button != -1
 
 
 #: Module-level singleton (ruff B008: no dataclass call in an argument default).
@@ -247,13 +259,15 @@ class OperatorEstopState:
     ``prev_buttons`` carries the previous sample so every transition below is a
     RISING EDGE, not a level: holding the e-stop must not re-engage forever and
     holding the deadman across a stop/dropout must not re-arm (that is the whole
-    point of docs/mode-m1/05:91).
+    point of docs/mode-m1/05:91). ``None`` means NO HISTORY YET (cold start),
+    which is NOT the same as "nothing was pressed" — the two edge helpers below
+    resolve it in OPPOSITE directions on purpose (docs/mode-m1/03:52).
     """
 
     latched: bool = False
     neutral_seen: bool = False
     armed: bool = False
-    prev_buttons: tuple[int, ...] = ()
+    prev_buttons: tuple[int, ...] | None = None
 
 
 def _pressed(buttons: Sequence[int], index: int) -> bool:
@@ -299,29 +313,77 @@ def operator_estop_config_error(
     """
     if not cfg.enabled:
         return None
+    if cfg.estop_button < -1:
+        return f"estop_button {cfg.estop_button} is not an index (-1 is the only sentinel)"
+    if cfg.estop_button_alt < -1:
+        return f"estop_button_alt {cfg.estop_button_alt} is not an index (-1 disables the alt)"
+    if not cfg.clear_buttons:
+        # NOT a sentinel (docs/mode-m1/03:52): a stop nobody can release.
+        return "estop is enabled but estop_clear_buttons is empty (no way to clear the stop)"
     if any(b < 0 for b in cfg.clear_buttons):
         return f"estop_clear_buttons has a negative index: {list(cfg.clear_buttons)}"
+    # A button cannot be two things at once. The deadman pair is the symmetric
+    # twin of the chord checks below: sharing it would make every throttle press
+    # an e-stop (or vice versa) depending only on evaluation order.
+    if cfg.estop_button == cfg.deadman_button:
+        return f"estop_button {cfg.estop_button} is also the deadman button"
+    if cfg.estop_button_alt >= 0:
+        if cfg.estop_button_alt == cfg.deadman_button:
+            return f"estop_button_alt {cfg.estop_button_alt} is also the deadman button"
+        if cfg.estop_button_alt == cfg.estop_button:
+            return f"estop_button_alt {cfg.estop_button_alt} duplicates estop_button"
     if cfg.deadman_button in cfg.clear_buttons:
         return f"deadman_button {cfg.deadman_button} is also in the clear chord"
     if cfg.estop_button in cfg.clear_buttons:
         return f"estop_button {cfg.estop_button} is also in the clear chord"
+    if cfg.estop_button_alt >= 0 and cfg.estop_button_alt in cfg.clear_buttons:
+        return f"estop_button_alt {cfg.estop_button_alt} is also in the clear chord"
     if buttons is None:
         return None
+    if not _index_ok(buttons, cfg.deadman_button):
+        return f"deadman_button {cfg.deadman_button} out of range for {len(buttons)} buttons"
     if not _index_ok(buttons, cfg.estop_button):
         return f"estop_button {cfg.estop_button} out of range for {len(buttons)} buttons"
+    if cfg.estop_button_alt >= 0 and not _index_ok(buttons, cfg.estop_button_alt):
+        return f"estop_button_alt {cfg.estop_button_alt} out of range for {len(buttons)} buttons"
     for index in cfg.clear_buttons:
         if not _index_ok(buttons, index):
             return f"clear button {index} out of range for {len(buttons)} buttons"
     return None
 
 
-def _rising(prev: Sequence[int], now: Sequence[int], index: int) -> bool:
+def _rising(prev: Sequence[int] | None, now: Sequence[int], index: int) -> bool:
+    """Rising edge on the ARMING side: no history means NO edge.
+
+    Cold start with the deadman already held must not read as a press
+    (docs/mode-m1/03:52) — the operator has to let go and press again, which is
+    exactly the re-arm gesture of docs/mode-m1/05:91.
+    """
+    if prev is None:
+        return False
     return _pressed(now, index) and not _pressed(prev, index)
 
 
-def _chord_rising(prev: Sequence[int], now: Sequence[int], indices: Sequence[int]) -> bool:
-    """The chord completes on this sample (all down now, not all down before)."""
-    if not indices:
+def _estop_rising(prev: Sequence[int] | None, now: Sequence[int], index: int) -> bool:
+    """Rising edge on the STOPPING side — deliberately asymmetric to :func:`_rising`.
+
+    With no history a HELD e-stop counts as an edge: at cold start the two
+    unknowns fail in opposite directions (refuse to drive / honour the stop),
+    because the cost of a spurious stop is a re-press and the cost of a missed
+    one is a moving robot (docs/mode-m1/03:52).
+    """
+    if not _pressed(now, index):
+        return False
+    return prev is None or not _pressed(prev, index)
+
+
+def _chord_rising(prev: Sequence[int] | None, now: Sequence[int], indices: Sequence[int]) -> bool:
+    """The chord completes on this sample (all down now, not all down before).
+
+    No history -> not a completion: the chord RELEASES a stop, so it follows the
+    arming-side rule, not the stopping-side one.
+    """
+    if prev is None or not indices:
         return False
     if not all(_pressed(now, i) for i in indices):
         return False
@@ -341,9 +403,10 @@ def operator_estop_step(
     ``motion_allowed`` gates the republished twist (path A).
 
     Transitions (docs/mode-m1/05 §5-§6):
-      * e-stop rising edge          -> latched, disarmed, ENGAGE
-      * clear chord rising edge, while latched and the deadman is NOT held
-                                    -> unlatched but still disarmed, CLEAR
+      * rising edge on EITHER e-stop button (primary / alt)
+                                    -> latched, disarmed, ENGAGE
+      * clear chord rising edge, while latched and the deadman AND BOTH e-stop
+        buttons are released        -> unlatched but still disarmed, CLEAR
       * not latched, all axes neutral (once)      -> neutral seen
       * not latched, neutral seen, deadman rising -> armed
 
@@ -363,7 +426,12 @@ def operator_estop_step(
 
     prev = state.prev_buttons
     if cfg.enabled:
-        if _rising(prev, now, cfg.estop_button):
+        # Either button stops: the thumb one is aimed at, the index one is
+        # clenched (docs/mode-m1/03:52). An unset alt is -1, which _pressed
+        # reads as "not pressed", so this stays a single-button feature there.
+        if _estop_rising(prev, now, cfg.estop_button) or _estop_rising(
+            prev, now, cfg.estop_button_alt
+        ):
             return (
                 OperatorEstopState(latched=True, neutral_seen=False, armed=False, prev_buttons=now),
                 ESTOP_ACTION_ENGAGE,
@@ -373,6 +441,11 @@ def operator_estop_step(
             state.latched
             and _chord_rising(prev, now, cfg.clear_buttons)
             and not _pressed(now, cfg.deadman_button)
+            # Releasing the stop while still holding it is not releasing it: an
+            # e-stop held through the chord would re-engage on its next press
+            # anyway, and in between the robot would be free to move.
+            and not _pressed(now, cfg.estop_button)
+            and not _pressed(now, cfg.estop_button_alt)
         ):
             return (
                 OperatorEstopState(
