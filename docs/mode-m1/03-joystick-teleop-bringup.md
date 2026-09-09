@@ -40,7 +40,7 @@ joy_node（ROS 2 Humble 標準パッケージ・無改造）
 m1_driver（clamp_body_velocity 必経 = L0'）→ FUNC_MOTION 0x12 → STM32
 ```
 
-- receiver が標準 joystick デバイスであることの出典: Yahboom 公式 handle 制御ドキュメント（<http://www.yahboom.net/public/upload/upload-html/1684827990/5.%20Robot%20handle%20control.html> — 参照日 2026-08-26。`js0`・`jstest` 検証手順を明記）。実機の VID:PID / 直挿し vs HUB 経由は `lsusb` で確認（[shared/11 §6](../shared/11-m1-assembly-manual.md) の未決に答えを入れる）。
+- receiver が標準 joystick デバイスであることの出典: Yahboom 公式 handle 制御ドキュメント（<http://www.yahboom.net/public/upload/upload-html/1684827990/5.%20Robot%20handle%20control.html> — 参照日 2026-08-26。`js0`・`jstest` 検証手順を明記）。実機の VID:PID / 直挿し vs HUB 経由は `lsusb` で確認（[shared/11 §6](../shared/11-m1-assembly-manual.md) の未決に答えを入れる）。 用語の正準は **ゲームパッド**（[GLOSSARY §11](../GLOSSARY.md)・別名 ハンドル/handle/joystick/joy＝同一物）。
 - **Yahboom 公式の joy 変換 node（`yahboom_joy_*`）は不採用**（一次ソース実見・参照日 2026-08-26）:
   1. `/cmd_vel` へ直 publish = **L0' を素通り**する（[shared/11:128](../shared/11-m1-assembly-manual.md) の未決「handle 経路が L0' を通るか」への答え = **公式のままでは通らない**）。
   2. 既定 limit `xspeed 1.0 / yspeed 1.0 / angular 5.0` = 契約 0.3 を大幅超過。
