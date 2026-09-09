@@ -3,8 +3,8 @@
 doc08:533 fixes ONE vocabulary for the commander turn's trace, regardless of who minted it:
 ``tags=[provider, mode, "prompt:<name>", env=<v>]`` and
 ``metadata={prompt_name, prompt_version, prompt_source, mode_label}``. Those identifiers are the
-Phase-4 fairness discriminators (doc08:377 / :526 §比較検証ログ) — without them a comparison run
-cannot be filtered by prompt / mode / env.
+Phase-4 fairness discriminators (doc08:377 emit list; doc08:305 §比較の公平性 R-36) — without them
+a comparison run cannot be filtered by prompt / mode / env.
 
 Under **Pattern A** (default, ``langfuse_owner=bridge``) the Bridge owns the trace and
 :class:`~eval_sdk.tracer.LangfuseTracer` writes that vocabulary itself (``provider`` / ``mode``
