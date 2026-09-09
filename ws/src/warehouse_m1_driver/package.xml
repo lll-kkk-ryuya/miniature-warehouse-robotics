@@ -11,6 +11,8 @@
   <exec_depend>warehouse_interfaces</exec_depend>
   <exec_depend>rclpy</exec_depend>
   <exec_depend>geometry_msgs</exec_depend>
+  <!-- /bot{n}/stop_state (std_msgs/String JSON) — doc05 §4-1 stop-overlay feed. -->
+  <exec_depend>std_msgs</exec_depend>
 
   <test_depend>python3-pytest</test_depend>
 
