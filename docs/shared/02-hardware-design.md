@@ -574,7 +574,7 @@ M1 単騎フェーズは**実際の部屋（room scale）**を走り、ジオラ
 
 - **生 wav が録れる（最重要の確定）**: 公式 M1 コース PDF の実コード（`largemodel/asr.py`）が**ホスト側 PyAudio（=ALSA）でマイクストリームを直接開き wav に書き出している**＝通常の USB オーディオデバイスとして見える。`arecord` で録れる → **ER 音声直入力設計（[mode-x-er/04](../mode-x-er/04-er-input-modalities-and-stt.md)）にドライバ追加なしで接続可**。Yahboom の ASR 層（SenseVoiceSmall/Tongyi・zh/en のみ）は使わない＝日本語非対応は無関係。
 - 基板は**オーディオ + シリアル（CH340・`/dev/ttyUSB*`）の複合デバイス**。シリアル側は中国語ウェイクワード（"你好小雅"）通知専用＝**本プロジェクトでは未使用**。スピーカーは OS 標準再生（`aplay`）で任意 wav 再生可＝到着発話（[mode-x-er/09 §11](../mode-x-er/09-hand-raise-summon.md)）に流用可。
-- JetPack 6 / Ubuntu 22.04 で追加ドライバ不要の見込み（`snd-usb-audio` / `ch341` はカーネル標準。公式コースも Orin はネイティブ実行前提）。
+- JetPack 6 / Ubuntu 22.04 で追加ドライバ不要の見込み（`snd-usb-audio` / `ch341` はカーネル標準〔**`ch341` は誤り**＝L4T `5.15.148-tegra` に**不在**・2026-09-09 実機で `CONFIG_USB_SERIAL_CH341` 無効を確認 → out-of-tree 導入手順は [../jetson/02-remote-access-and-dev-link.md](../jetson/02-remote-access-and-dev-link.md) §10。`snd-usb-audio` 側は未検証のまま〕。公式コースも Orin はネイティブ実行前提）。
 - **要実機確認（6点）**: ①USB ディスクリプタ（VID:PID・UAC版）②オーディオ/シリアルが同一 Type-C 配下か（内部ハブ推定・未証明）③マイク ch 数と実サンプルレート（コースは 1ch/16kHz 固定）④**基板 NS/AEC 前処理が掛かった音が来るか**（静音録音のノイズフロアで切り分け・ER へ渡す音質に直結）⑤チップ型番 ⑥スピーカーコネクタ。確認コマンド: `lsusb` → `lsusb -t` → `arecord -l` → `arecord -D plughw:N,0 -f S16_LE -r 16000 -c 1 -d 5 /tmp/mic_test.wav` → `aplay /tmp/mic_test.wav`。
 
 ### V-6. 出典（一次情報）
@@ -885,7 +885,7 @@ ros2 run warehouse_m1_driver m1_probe                # read-only プローブ（
 
 `m1_probe` は car_type / version / battery / encoder×4 を読むだけで**モータを回さない**。これは [mode-m1/03 §2](../mode-m1/03-joystick-teleop-bringup.md) の M1 ゲート内プローブと同一のもので、`get_car_type()` の結果は [ADR-0010](../adr/0010-raise-speed-cap-to-platform-max.md) の pin 値確定にも使う。**モータを回す確認は車輪を浮かせた状態で M1 ゲートとして行う**（同 doc §1）。
 
-`# TODO(Phase 1)` 実機未着のため、**上記手順は未実行**（`pip install` の対象パッケージ名・aarch64 での import 可否・`python3` と `--user` パスの整合は実機で確定する）。udev symlink `/dev/myserial`・CH340（`1a86:7523`）・115200 8N1 の実機セットアップも同じセッションで潰す（残課題 5 / 10 ＝ `:323` / `:334`）。
+`# TODO(Phase 1)` 実機未着のため、**上記手順は未実行**（`pip install` の対象パッケージ名・aarch64 での import 可否・`python3` と `--user` パスの整合は実機で確定する）。udev symlink `/dev/myserial`・CH340（`1a86:7523`）・115200 8N1 の実機セットアップも同じセッションで潰す（残課題 5 / 10 ＝ `:323` / `:334`）。→ **udev `/dev/myserial` と `ch341` ドライバ（L4T 不在 → out-of-tree ビルド）は 2026-09-09 に導入済**＝[../jetson/02-remote-access-and-dev-link.md](../jetson/02-remote-access-and-dev-link.md) §10（`pip install` 側の TODO は未消化のまま）。
 
 ## 【2026-09-05 追記】充電・保管・開発時の電源運用（P-9）— T 型コネクタが唯一の遮断手段
 
@@ -901,14 +901,14 @@ Yahboom 公式バッテリ取扱注意（References `:470` の URL・再参照�
 この構造は次の 2 つの実害を生む（いずれも実測または一次情報で確認）:
 
 1. **充電**: 充電器は **12.6V/2A・DC4017 プラグ**（[11-m1-assembly-manual.md:19](11-m1-assembly-manual.md) §1.1）で、**バッテリーパック直結の充電ピグテール**に挿す。充電口が T 型の負荷口とは**別口**であることは 2026-09-04 現物確認（[11-m1-assembly-manual.md:55](11-m1-assembly-manual.md) §2 手順4 は取り回しのみ記載）。T を挿したまま充電すると、**Orin アイドル分（DC 入力実測 約5W＝[../jetson/02-remote-access-and-dev-link.md:239](../jetson/02-remote-access-and-dev-link.md)・昇圧効率込みの 12V 側換算で約 0.4–0.5A）が充電器の満充電終止判定を妨げて満充電を検出できず**（終止電流の仕様は未入手＝機構は推定・現象は実機で確認）、Orin 高負荷時（銘板上限 45W＝P-1）では 12V 側約 4A ＞ 充電器 2A で**充電中でも正味放電**になる。公式も「Do not use the battery while charging」（同 URL）と充電中使用を禁じており、結論はこの一次情報だけでも成立する。**充電は必ず T を抜いてから**。
-2. **保管**: **T を挿したままにすると Orin は給電と同時に自動起動**し（Dev Kit の既定動作・実機確認）、**約半日で保管下限 11.1V（`:303` / `:470`）を割った**（2026-09-04→05 実測）。この間 **9.6V 低電圧ブザーは鳴らない**——ブザーは拡張ボード ERF01 実装（`:716`・公式も「the buzzer of the expansion board」）＝**メインスイッチ下流**で、スイッチ OFF の保管状態では無通電。昇圧 DC-DC（O242・P-4）にも **UVLO（低電圧遮断）の記載は無い**。つまり**この系には過放電を自動で止める機構が存在しない**——止めるのは運用（T 抜き）だけ。過放電 floor の決定記録は [../adr/0005-l0-battery-brownout-floor.md](../adr/0005-l0-battery-brownout-floor.md)（現行 cutoff 無し・実装は将来 phase・閾値は実機実測待ち）＝本実測はその「cutoff 無し」の実害を M1 実機で確認した初の証跡。
+2. **保管**: **T を挿したままにすると Orin は給電と同時に自動起動**し（Dev Kit の既定動作・実機確認）、**約半日で保管下限 11.1V（`:303` / `:470`）を割った**（2026-09-04→05 実測）。この間 **9.6V 低電圧ブザーは鳴らない**——ブザーは拡張ボード ERF01 実装（`:716`・公式も「the buzzer of the expansion board」）＝**メインスイッチ下流**で、スイッチ OFF の保管状態では無通電〔例外: Orin が AC 給電中で拡張ボード USB が挿さっていると USB 給電で MCU が起きて鳴る＝P-9d〕。昇圧 DC-DC（O242・P-4）にも **UVLO（低電圧遮断）の記載は無い**。つまり**この系には過放電を自動で止める機構が存在しない**——止めるのは運用（T 抜き）だけ。過放電 floor の決定記録は [../adr/0005-l0-battery-brownout-floor.md](../adr/0005-l0-battery-brownout-floor.md)（現行 cutoff 無し・実装は将来 phase・閾値は実機実測待ち）＝本実測はその「cutoff 無し」の実害を M1 実機で確認した初の証跡。
 
 ### P-9b. 確定運用（2026-09-05・operator 決定）
 
 | 場面 | 電源 | 操作 |
 |---|---|---|
 | **走行時のみ** | バッテリー | **T を挿す**（＝Orin 自動起動）。走行セッション終了で下の抜去手順へ |
-| **開発（机上）** | 純正 19V AC アダプタ（P-1） | 常時通電運用（[../jetson/02-remote-access-and-dev-link.md](../jetson/02-remote-access-and-dev-link.md) §9・[../GLOSSARY.md](../GLOSSARY.md)）どおり。バッテリーは使わない・T は抜いたまま |
+| **開発（机上）** | 純正 19V AC アダプタ（P-1） | 常時通電運用（[../jetson/02-remote-access-and-dev-link.md](../jetson/02-remote-access-and-dev-link.md) §9・[../GLOSSARY.md](../GLOSSARY.md)）どおり。バッテリーは使わない・T は抜いたまま・拡張ボード USB は抜く（USB 給電でブザーが鳴る＝P-9d） |
 | **充電** | 充電器 12.6V/2A | **T を抜いてから**充電ピグテールに挿す。完了（緑ランプ）後は充電器を外す（過充電回避・公式指示） |
 | **保管** | なし | **T を抜く**（メインスイッチ OFF では Orin レグを遮断できない）。保管電圧 11.1–11.7V（`:303`） |
 
@@ -928,3 +928,26 @@ Yahboom 公式バッテリ取扱注意（References `:470` の URL・再参照�
 
 - ① の実施（9/4）は P-4 `:677` の初期不良保証期限（8/28–29 頃）を過ぎていたが、**初期不良は無かった**（出力可変・整定・設定保持とも正常）＝同 `# TODO(期限あり)` は結果として close。
 - 未実施のまま残るもの: `:453` のリプル実測・`:336-345` の負荷実測②〜④（いずれも Phase A/B で実施）。`:443` の 2.5/2.1 兼用 DC プラグは実挿し・通電・Orin ブートまで確認済（本節の T 挿し実測がその証跡）だが、**走行振動下での緩みは未確認**。
+
+### P-9d. 拡張ボードの USB ファントム給電と低電圧ブザー（2026-09-09 実機観測）
+
+**観測**: Orin を**純正 19V AC アダプタ（P-1）**で給電し、バッテリーの **T は抜いたまま**（P-9b「開発（机上）」行の状態）で、**Orin ⇔ 拡張ボードの USB ケーブルだけ**を挿すと、拡張ボードが**連続的な低電圧ブザー（ピピピピピ）**を鳴らす。拡張ボードの USB を抜くと**即座に止まる**（2026-09-09 operator が現物で確認）。
+
+**機構**: USB の VBUS だけで拡張ボードの MCU / CH340 のロジックが起動し（実際 `1a86:7523` として USB 列挙される）、その状態で**バッテリー電圧を約 0V と読む**ため、`:22` / `:303` / `:904` と**同一の 9.6V 低電圧警報**が「バッテリー不在」に対して発火する。**故障ではなく、T 抜き状態での偽陽性**。
+
+**含意**:
+
+- **無害**（放置しても系に害は無い）。ただし机上作業では単純にうるさい。
+- **USB リンクだけでボードのロジックが起きる**証跡でもある＝**AC 給電・T 抜きのままでも `/dev/myserial` は生える**（[../jetson/02-remote-access-and-dev-link.md](../jetson/02-remote-access-and-dev-link.md) §10 の検証はこの状態で実施した）。read-only の `m1_probe`（§P-8-3）は原理上この状態でも走り、battery を約 0V と報告するはず＝**未実施・見込み**（実行して確かめてはいない）。**モータはこの状態では回せない**（動力はバッテリー側）。
+- P-9a `:904` の「保管中は 9.6V ブザーが鳴らない」は**保管ケース（Orin 停止・USB 給電なし）では引き続き真**。本節はその**例外**（Orin 通電かつ拡張ボード USB 接続時）を記録するもの。
+
+**運用（P-9b `:911` の追補）**:
+
+| 場面 | 症状 | 操作 |
+|---|---|---|
+| 開発（AC・T 抜き） | 低電圧ブザーが鳴り続ける | シリアルが要らない間は**拡張ボードの USB を抜く**（音が止まる・害は無いので放置も可） |
+| `m1_probe` / G-g / ドライバ実機作業 | 実バッテリー値が要る | **T を挿し・拡張ボードのメインスイッチ ON**。motion を出し得る作業は**車輪を浮かせて**行う（[../mode-m1/03-joystick-teleop-bringup.md](../mode-m1/03-joystick-teleop-bringup.md)） |
+
+**未検証（断定しない）**: ① Orin を**昇圧レグ（バッテリー給電）**で動かしつつ拡張ボードの**メインスイッチを OFF** にした場合にも同じブザーが鳴るか。② USB VBUS 側の電圧・電流の実測値（本節は数値を持たない）。
+
+**関連**: [../jetson/02-remote-access-and-dev-link.md](../jetson/02-remote-access-and-dev-link.md) §10（ch341 out-of-tree 導入と `/dev/myserial`）・P-9a（`:904`）・P-9b（`:911`）・[../GLOSSARY.md](../GLOSSARY.md) §8「T 挿抜運用」。

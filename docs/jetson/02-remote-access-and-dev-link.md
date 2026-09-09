@@ -176,7 +176,7 @@ ssh -i ~/.ssh/mwr_jetson ruyuya@<IP>
 | 電力モード | `NV Power Mode: 25W`（mode **1**） | ⚠️ 当時未実施 → **2026-08-30 適用済**（mode 2 = MAXN_SUPER・再起動後も維持を実測・§9） |
 | メモリ | total 7.4Gi / available 5.0Gi / zram swap 3.7Gi | G1 メモリゲートの基準線（スタック未起動時の値） |
 | ROS | `/opt/ros` 無し＝**未インストール** | 当時 → **2026-08-30 Humble 導入済**（§9.6） |
-| USB | Realtek hub ×2 / IMC Bluetooth / Logitech receiver | 拡張ボード（CH340）・LiDAR・HP60C は**未接続** |
+| USB | Realtek hub ×2 / IMC Bluetooth / Logitech receiver | 当時は拡張ボード（CH340）・LiDAR・HP60C とも**未接続** → **2026-09-09: 拡張ボード CH340（`1a86:7523`）は接続済だが `ch341` ドライバ不在で `/dev/ttyUSB*` が生成されなかった**（OOT 導入で解消＝§10） |
 | ディスク | `/` 57G 中 22G 使用（41%） | microSD 上 |
 
 > **この表は「実機で初めて判明したこと」の記録**であり、合否基準は
@@ -350,7 +350,7 @@ UNKNOWN と表示（clean と断定しない）。警告は `JETSON_UPTIME_WARN`
 | 6 | `/etc/warehouse/warehouse.env`（`ROS_DISTRO=humble`） | 雛形 [env.example の `jazzy` 記述](../../deploy/jetson/env/warehouse.env.example) を踏まない。`TRAFFIC_MODE` / `MAP` は**未決マークのまま**（prod traffic 変更は安全レビュー PR＝[mode-m1/01](../mode-m1/01-mode-boundary-and-traffic.md)） |
 
 補足: `ruyuya` へ `input` / `dialout` グループ付与（joy の `/dev/input/event*`・M1 シリアルの
-`/dev/ttyUSB*` 用・次ログインから有効）。G1 ベースライン = idle available RAM **6179MB**（スタック
+`/dev/ttyUSB*` 用・次ログインから有効）。ただし `dialout` 付与だけでは `/dev/ttyUSB*` は生えない（ドライバが先＝`ch341` 不在・§10）。G1 ベースライン = idle available RAM **6179MB**（スタック
 未起動・本計測は G1 ゲートで実施）。systemd unit は **install も enable もしていない**
 （[setup/jetson-deploy.md:26](../setup/jetson-deploy.md) の安全ゲート準拠・actuation 経路なし）。
 
@@ -404,6 +404,162 @@ Host minicar.*.ts.net
 - [mode-m1/03-joystick-teleop-bringup.md](../mode-m1/03-joystick-teleop-bringup.md)（物理手順の順序 `:54`・M0/M1/M2 ゲート）
 - [shared/02-hardware-design.md](../shared/02-hardware-design.md)（`:150` Super 化 / `:409` QSPI / `:412` JetPack 6.2 系）
 - [ADR-0008](../adr/0008-ros2-distro-humble-for-rosmaster-m1.md)（`:16` Humble / Ubuntu 22.04 を全系の既定 distro）
-- 実装: [`deploy/dev/jetson-link/jetson`](../../deploy/dev/jetson-link/jetson)（Mac CLI）/ [`mwr-setup.sh`](../../deploy/dev/jetson-link/mwr-setup.sh)（ボード側 §9.4）/ [`mwr-provision.sh`](../../deploy/dev/jetson-link/mwr-provision.sh)（基盤 §9.6）/ [`mwr-tailscale-setup.sh`](../../deploy/dev/jetson-link/mwr-tailscale-setup.sh)（外出先経路 §9.7）/ [`mwr-tunnel.service`](../../deploy/dev/jetson-link/mwr-tunnel.service)＋[`mwr-tunnel`](../../deploy/dev/jetson-link/mwr-tunnel)（dormant fallback 写し）
+- 実装: [`deploy/dev/jetson-link/jetson`](../../deploy/dev/jetson-link/jetson)（Mac CLI）/ [`mwr-setup.sh`](../../deploy/dev/jetson-link/mwr-setup.sh)（ボード側 §9.4）/ [`mwr-provision.sh`](../../deploy/dev/jetson-link/mwr-provision.sh)（基盤 §9.6）/ [`mwr-tailscale-setup.sh`](../../deploy/dev/jetson-link/mwr-tailscale-setup.sh)（外出先経路 §9.7）/ [`mwr-tunnel.service`](../../deploy/dev/jetson-link/mwr-tunnel.service)＋[`mwr-tunnel`](../../deploy/dev/jetson-link/mwr-tunnel)（dormant fallback 写し）/ ch341 導入手順＝§10（台本はボード `~/ch341-build/` のみ・repo 化は `# TODO(Phase 1)`）
 - [.claude/rules/safety.md](../../.claude/rules/safety.md)（鍵・secrets 非コミット）/ [.claude/rules/environments.md](../../.claude/rules/environments.md)
 - [GLOSSARY.md](../GLOSSARY.md) §8「常時通電運用（always-on dev link）」（正準用語・双方向）
+
+## 10. CH340（ch341）カーネルモジュール不在 — out-of-tree ビルドと udev `/dev/myserial`（2026-09-09 実機確定）
+
+> **位置づけ**: §6 の初回ブート表（`:179`）では拡張ボードが**未接続**だったため見えていなかった欠落の記録と、その恒久化手順。対象 layer: **L0 未満（ホスト OS のドライバ層）**——`/dev/ttyUSB*` を生やすだけで motion を有効化するものではない（§4 の安全ゲート＝[setup/jetson-deploy.md:26](../setup/jetson-deploy.md) は不変・actuation 経路なし）。
+>
+> **forward（この節を前提にする先）**: [../shared/02-hardware-design.md](../shared/02-hardware-design.md) §P-8-2 / §P-8-3（`Rosmaster_Lib` 導入と `m1_probe` 検証＝`/dev/myserial` 前提）・[`ws/src/warehouse_m1_driver/CLAUDE.md`](../../ws/src/warehouse_m1_driver/CLAUDE.md)（produce/consume・シリアル層 seam）・[../mode-m1/03-joystick-teleop-bringup.md](../mode-m1/03-joystick-teleop-bringup.md) §2「実機プローブ（M1 ゲート内）」。**リンクは節名で張り行番号 pin しない**（実装 doc 側の churn で腐るため）。
+
+### 10.1 症状と根本原因（ドライバがカーネルに入っていない）
+
+拡張ボードの CH340 は `lsusb` に **`1a86:7523`** として見えるのに、**`/dev/ttyUSB*` が 1 本も生えない**。原因はパーミッションでも配線でもなく、**動作中カーネルに `ch341` ドライバが存在しない**ことだった:
+
+| 観測（2026-09-09 実機） | 意味 |
+|---|---|
+| `modinfo ch341` → not found | モジュール自体が入っていない（未ロードではなく**不在**） |
+| `/lib/modules/5.15.148-tegra/build/.config:6331` ＝ `# CONFIG_USB_SERIAL_CH341 is not set` | **NVIDIA の L4T カーネルがビルド時に無効化**している。同 `.config:6325` は `CONFIG_USB_SERIAL=m`＝USB シリアル基盤（`usbserial`）自体は有効 |
+| 同梱の usb-serial ドライバは `usbserial.ko` / `cp210x.ko` / `ftdi_sio.ko` / `option.ko` / `usb_wwan.ko` のみ | CH340 系だけが欠けている |
+| ヘッダ package `nvidia-l4t-kernel-headers 5.15.148-tegra-36.4.4` は `.c` を同梱しない | ソースは別途取得が要る（モジュールのビルド自体はヘッダだけで足りる） |
+
+> **docs の訂正**: [../shared/02-hardware-design.md:577](../shared/02-hardware-design.md) の「`ch341` はカーネル標準」は **L4T では誤り**。同行は本節を正として行内訂正済み（`snd-usb-audio` 側は未検証のため触っていない）。
+
+### 10.2 前提（ビルド前に必ず確認する）
+
+- 動作中カーネル **`5.15.148-tegra`（L4T 36.4.4）** と `/lib/modules/$(uname -r)/build` のヘッダ版が**一致**していること（`uname -r` と `dpkg -l nvidia-l4t-kernel-headers` で照合）。
+- ⚠️ **ビルド前に `apt upgrade` しない**。apt 候補には **`36.4.7` のヘッダ**が見えており、ヘッダだけ新しくなると動作中カーネルと不一致になって**ロードできないモジュール**が出来上がる。
+- ツールチェーンは導入済み（`gcc 11.4` / `make`）＝追加インストール不要。
+
+### 10.3 ソース取得とビルド（ボード上 `~/ch341-build/`・sudo 不要）
+
+**① ソース**（動作中カーネルと**同じ tag** から 1 ファイルだけ取る。GPL-2.0）:
+
+```bash
+mkdir -p ~/ch341-build && cd ~/ch341-build
+curl -fsSL -o ch341.c \
+  "https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git/plain/drivers/usb/serial/ch341.c?h=v5.15.148"
+sha256sum ch341.c   # f66d070eab6235b8a5c7a06a283d2feecb8fa3d81bc1323c847c2d2cbf7bd410
+```
+
+取得 2026-09-09・**22,862 B**・sha256 上記（再取得時はこの値で同一性を確認する）。
+
+**② Makefile**（3 行。`$(MAKE)` の行頭は**タブ**）:
+
+```makefile
+obj-m += ch341.o
+all:
+	$(MAKE) -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules
+```
+
+**③ ビルド**: `make` → `ch341.ko` が生成される（**警告ゼロ**）。健全性は `modinfo ./ch341.ko` で確認する:
+
+| 確認項目 | 実測値（2026-09-09） |
+|---|---|
+| vermagic | `5.15.148-tegra SMP preempt mod_unload modversions aarch64`＝**同梱 `cp210x.ko` とバイト一致** |
+| alias | `usb:v1A86p7523*`（拡張ボードの VID:PID と一致） |
+| depends | `usbserial` |
+
+### 10.4 試験ロード（sudo・恒久化の前に 1 度だけ）
+
+```bash
+sudo modprobe usbserial      # 先に依存を入れる（insmod は依存を解決しない）
+sudo insmod ./ch341.ko
+```
+
+カーネルログに次が出る:
+
+```
+ch341: module verification failed: signature and/or required key missing - tainting kernel
+usbcore: registered new interface driver ch341
+usbserial: USB Serial support registered for ch341-uart
+```
+
+> **`module verification failed` は失敗ではない**。未署名 out-of-tree モジュールをロードしたときの既定挙動（カーネルに taint フラグが立つだけ）で、**直後の 2 行が登録成功の証拠**。ここを failure と読み違えて手順を戻さないこと。
+
+### 10.5 恒久化（sudo・`install.sh`）
+
+```bash
+sudo install -D -m 0644 ch341.ko /lib/modules/$(uname -r)/extra/ch341.ko
+sudo depmod -a
+echo ch341 | sudo tee /etc/modules-load.d/ch341.conf            # ブート時に自動ロード
+sudo tee /etc/udev/rules.d/99-yahboom-myserial.rules <<'EOF'
+SUBSYSTEM=="tty", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="7523", MODE="0660", GROUP="dialout", SYMLINK+="myserial"
+EOF
+sudo udevadm control --reload-rules && sudo udevadm trigger
+sudo modprobe ch341
+```
+
+**実施記録（2026-09-09 17:10 JST）**: 3 ファイル（`extra/ch341.ko` / `modules-load.d/ch341.conf` / `udev/rules.d/99-yahboom-myserial.rules`）が **root 所有で存在**し、`modinfo -n ch341` が `extra/` 配下を解決することを確認済み。
+
+### 10.6 第 2 層のブロッカー: brltty が CH340 を横取りする（udev・2026-09-09 17:12 実機ログ）
+
+§10.5 まで終えても `/dev/ttyUSB0` が**残らない**。ボード USB を挿し直した直後のカーネルログ（17:12:42 JST）:
+
+```
+usb 1-2.1.3: ch341-uart converter now attached to ttyUSB0
+usb 1-2.1.3: usbfs: interface 0 claimed by ch341 while 'brltty' sets config #1
+ch341-uart ttyUSB0: ch341-uart converter now disconnected from ttyUSB0
+ch341 1-2.1.3:1.0: device disconnected
+```
+
+> **手順を戻さないこと（初見の最大の罠）**: 1 行目が出ている＝**§10.3–10.5 のドライバ導入は成功している**。`/dev/ttyUSB0` は**一瞬生えてから奪われている**だけで、ビルドや恒久化のやり直しは不要。ここで「ドライバが悪い」と誤診して §10.3 へ戻るのが最大の時間損失。ブロッカーは**カーネル層（§10.1 ＝ `ch341` 不在）とユーザ空間 udev 層（本節）の 2 層**あった。
+
+**原因**: Ubuntu 22.04 が既定で導入する点字ディスプレイ常駐 **`brltty 6.4-4ubuntu3`**。その `/usr/lib/udev/rules.d/85-brltty.rules` に
+
+```
+ENV{PRODUCT}=="1a86/7523/*", ENV{BRLTTY_BRAILLE_DRIVER}="bm"
+```
+
+があり、**CH340 の汎用 VID:PID `1a86:7523` を Baum 点字ディスプレイと誤認**する（§10.8(b) と同じ「汎用 VID:PID」問題の別の顔）。`brltty-udev.service` が usbfs 経由でインタフェースを掴み、`ch341` を剥がす。CH340 / Arduino 系では 22.04 の既知問題。
+
+**対処（実施済・sudo）**:
+
+```bash
+sudo apt-get remove --purge -y brltty
+```
+
+apt の出力は `The following packages will be REMOVED: brltty*` / `0 upgraded, 0 newly installed, 1 to remove and 495 not upgraded`＝**消えたのは brltty 1 個だけ**（`ubuntu-desktop` は brltty を **Recommends** にしか持たないため道連れなし）。本プロジェクトは**点字ディスプレイを使わない**ので、mask ではなく purge を選んだ（CH340 側の標準的な対処）。
+
+**除去後はボード USB を挿し直す**（既に奪われた状態は再列挙しないと戻らない）。17:17:15 JST のログ:
+
+```
+ch341 1-2.1.3:1.0: ch341-uart converter detected
+usb 1-2.1.3: ch341-uart converter now attached to ttyUSB0
+```
+
+以後 `ttyUSB0` は**保持される**（切断ログが続かない）。確定した状態は §10.7。
+
+**採らなかった代替（記録のみ）**: `sudo systemctl mask brltty-udev.service brltty.service` ＋ 空の `/etc/udev/rules.d/85-brltty.rules` を置いて lib 側ルールを上書きする方法。brltty を残したまま無効化できるが、本プロジェクトでは残す理由が無いため不採用。
+
+### 10.7 検証（2026-09-09 17:17 JST・実測で確定）
+
+```bash
+lsmod | grep ch341                     # ロードされているか
+ls -l /dev/ttyUSB* /dev/myserial       # デバイスと symlink が生えているか
+udevadm info -q path -n /dev/myserial  # symlink が実デバイスへ解決するか
+dpkg -l brltty | tail -1               # brltty が居ないこと（期待: 先頭 `un`＝§10.6）
+```
+
+**実測（拡張ボード USB 接続状態）— デバイスノード層まで確認済**:
+
+| 確認項目 | 実測値 |
+|---|---|
+| デバイス | `crw-rw---- 1 root dialout 188, 0 /dev/ttyUSB0`＝**`dialout` 所有・`0660`**（§10.5 の udev ルールどおり。§9.6 の group 付与と噛み合う） |
+| symlink | `lrwxrwxrwx /dev/myserial -> ttyUSB0` |
+| 解決先 | `udevadm info -q path -n /dev/myserial` = `/devices/platform/bus@0/3610000.usb/usb1/1-2/1-2.1/1-2.1.3/1-2.1.3:1.0/ttyUSB0/tty/ttyUSB0` |
+| モジュール | `lsmod`: `ch341 20480 0` / `usbserial 40960 1 ch341` |
+| カーネルログ | `usb 1-2.1.3: ch341-uart converter now attached to ttyUSB0`（以後 detach なし＝§10.6 が効いている） |
+| brltty | `dpkg -l brltty` → **`un`（未導入）**・`/usr/lib/udev/rules.d/85-brltty.rules` は消失・`systemctl list-unit-files 'brltty*'` は 0 件 |
+
+⚠️ **確認できたのは「デバイスノードと symlink が安定して存在する」層まで**。その先の **`Rosmaster_Lib` / `m1_probe` によるシリアル open（115200 8N1 で MCU と実際に喋る）は未実施** ＝ `# TODO(Phase 1)`。[../shared/02-hardware-design.md](../shared/02-hardware-design.md) §P-8-2 / §P-8-3 の導入・検証手順と同じセッションで潰す。
+
+### 10.8 残注意（隠さない）
+
+- **(a) カーネル更新で消える**: `extra/` は**カーネル版に固定**されるため `nvidia-l4t-kernel` が更新されると失われる。`~/ch341-build/` を保持し、更新後に `make` → §10.5 を再実行する。恒久策の **DKMS 化は `# TODO(Phase 1・別 PR)`**。
+- **(b) `myserial` の取り合い**: `1a86:7523` は CH340 の**汎用** VID:PID。別の CH340 機器（例: AI 音声モジュールのシリアル側＝[../shared/02-hardware-design.md](../shared/02-hardware-design.md) §V-5）を同時に挿すと `SYMLINK+="myserial"` を取り合う。serial 番号での絞り込みは同時挿し要件が出た時点で設計する。
+- **(c) 台本が repo に無い**: `test-insmod.sh` / `install.sh` / `verify.sh` は現状**ボード上 `~/ch341-build/` のみ**に存在する。repo 化（`deploy/dev/jetson-link/mwr-ch341-setup.sh` として idempotent 化）は **`# TODO(Phase 1)`・別 PR**。**その台本には §10.6 の brltty 除去（または mask）ステップと、`dpkg -l brltty` による事前ガード（既に居なければ skip・居れば purge して USB 再挿入を促す）を必ず含める**——ドライバ導入だけを移植すると、次のボードや再インストール後に**同じ 2 層目**で詰まる。
+- **(d) グループ付与だけでは足りない**: §9.6 の `dialout` 付与は**アクセス権**の話で、**ドライバが先**。ch341 不在のままではそもそも `/dev/ttyUSB*` が存在しない（この順序を取り違えると「権限問題」と誤診する）。
+- **(e) brltty が黙って戻り得る**: `brltty` は `ubuntu-desktop` の **Recommends** に居るため、将来の `apt install ubuntu-desktop` や `--install-recommends` を伴う操作で**再導入され得る**（戻れば §10.6 の症状が再発し、`/dev/ttyUSB0` は生えた直後に消え `/dev/myserial` も失われる）。§10.7 の検証コマンドに `dpkg -l brltty`（期待 `un`）を入れてあるのはこのため。
