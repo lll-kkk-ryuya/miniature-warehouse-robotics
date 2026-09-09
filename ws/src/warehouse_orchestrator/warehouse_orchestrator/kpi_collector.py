@@ -38,6 +38,7 @@ from warehouse_orchestrator.motion import (
     DEFAULT_MOTION_BUFFER_SAMPLES,
     MotionAccumulator,
     MotionInputs,
+    resolve_motion_buffer_samples,
 )
 from warehouse_orchestrator.score_send import resolve_pattern_d, resolve_provider, send_scores
 from warehouse_orchestrator.trace_id import run_id as env_run_id
@@ -84,16 +85,16 @@ class KpiCollector(Node):
         self._pattern_d = resolve_pattern_d(cfg)
 
         self._distances = DistanceAccumulator()
-        # Recent odom window for the smoothness KPIs. A non-positive param falls back to the
-        # default with a warning rather than raising — an observation buffer must never stop the
-        # node (the ``resolve_pattern_d`` precedent: unknown value -> safe default + warning).
-        buffer_samples = int(self.get_parameter("motion_buffer_samples").value)
-        if buffer_samples < 1:
-            self.get_logger().warning(
-                f"motion_buffer_samples={buffer_samples} is not positive; "
-                f"using {DEFAULT_MOTION_BUFFER_SAMPLES}"
-            )
-            buffer_samples = DEFAULT_MOTION_BUFFER_SAMPLES
+        # Recent odom window for the smoothness KPIs. An unusable param falls back to the default
+        # with a warning rather than raising — an observation buffer must never stop the node (the
+        # ``resolve_pattern_d`` precedent: unknown value -> safe default + warning). The decision
+        # itself is the pure ``resolve_motion_buffer_samples`` so it is unit-testable without a
+        # live node; here we only log what it decided.
+        buffer_samples, buffer_warning = resolve_motion_buffer_samples(
+            self.get_parameter("motion_buffer_samples").value
+        )
+        if buffer_warning is not None:
+            self.get_logger().warning(buffer_warning)
         self._motion = MotionAccumulator(max_samples=buffer_samples)
         self._langfuse = LangfuseScoreSink()
 
@@ -137,8 +138,8 @@ class KpiCollector(Node):
                 entries,
                 exclude_cancelled=self._exclude_cancelled,
                 # ``optimal_distances`` stays empty: the lᵢ oracle (KNOWN_LOCATIONS + planner,
-                # doc21:303-304) has no producer before Phase 3a, so detour factors are absent
-                # rather than guessed.
+                # doc21:301 データ源 (c) / doc21:304) has no producer before Phase 3a, so detour
+                # factors are absent rather than guessed.
                 motion=MotionInputs(
                     samples=self._motion.series(), distances=self._distances.totals()
                 ),

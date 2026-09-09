@@ -18,6 +18,19 @@ guard, computing the sample rate as ``n/span``, feeding the spectral metrics the
 inverting the detour ratio to ``lᵢ/pᵢ``, applying SPL's ``max(pᵢ,lᵢ)`` clamp to it, or dropping
 the ``lᵢ ≤ 0`` filter.
 
+**#616 additions (post-merge review of #613).** Three mutations used to survive and no longer do
+— all three are red **with numpy absent too**, which is the CI configuration
+(``.github/workflows/ci.yml:35`` installs ruff/pytest/pydantic/pyyaml and no numpy):
+
+* dropping the doc21:306 low-pass in front of ``sparc``/``ldlj`` → red via the LDLJ value oracle
+  (``ldlj`` is pure stdlib) and via the recorded argument of the monkeypatched metric;
+* hard-coding ``fs`` (to ``1.0``, ``10.0`` or anything else) instead of passing the window's
+  measured rate → red via that same recorder, and via the SPARC value at the production-like
+  fs = 30 when numpy is present;
+* deleting the ``_MIN_SPECTRAL_SAMPLES`` floor → red via ``SmoothnessStats.filtered_samples``,
+  which reports whether a filtered series actually reached the metrics. (SPARC has no floor of
+  its own: it returns a finite number for a 2-sample series, asserted below when numpy is there.)
+
 No ROS, no live SDK: ``motion`` is rclpy-free (doc16 §11) and numpy is only needed by SPARC,
 whose tests skip when the optional ``eval_sdk[stats]`` extra is absent.
 """
@@ -27,26 +40,49 @@ import math
 import random
 
 import pytest
+from eval_sdk.stats import ldlj, n_movement_units, sparc
 from warehouse_orchestrator import motion as motion_module
 from warehouse_orchestrator.audit_reader import parse_lines
 from warehouse_orchestrator.kpi import compute_kpis, format_report
 from warehouse_orchestrator.motion import (
     DEFAULT_MOTION_BUFFER_SAMPLES,
+    DEFAULT_SMOOTHING_WINDOW,
     MotionAccumulator,
     MotionInputs,
     MotionSample,
     detour_factors,
+    resolve_motion_buffer_samples,
     sample_rate_hz,
     smoothness_stats,
 )
 
 _TOL = 1e-9
 
+# Production-like odom cadence: the collector subscribes to ``/bot{n}/odom`` at ~30 Hz
+# (``motion.py`` ring-buffer note). fs only matters to SPARC — LDLJ is fs-invariant — so the
+# fs-sensitive assertions below are deliberately taken at this rate, not at a round 10 Hz.
+_FS = 30.0
+_DT = 1.0 / _FS
+
+# A jittery 9-sample speed window (0.3 s at 30 Hz): long enough to survive the 5-wide low-pass
+# (9 − 5 + 1 = 5 filtered samples) and jittery enough that filtering visibly changes the score.
+_JITTERY9 = [0.10, 0.30, 0.12, 0.28, 0.14, 0.26, 0.16, 0.24, 0.18]
+# …and a 12-sample version (8 filtered samples) for the fs-sensitive SPARC assertions.
+_JITTERY12 = [*_JITTERY9, 0.22, 0.20, 0.21]
+
 
 def _series(velocities: list[float], *, dt: float = 0.1, t0: float = 0.0) -> list[MotionSample]:
     """A uniformly sampled window carrying ``velocities`` (positions are irrelevant here:
     the smoothness family reads ``v``, the odom message's own signed linear velocity)."""
     return [MotionSample(t0 + i * dt, 0.0, 0.0, v) for i, v in enumerate(velocities)]
+
+
+def _moving_average(signal: list[float], window: int) -> list[float]:
+    """Independent 'valid'-mode centered moving average — the oracle for doc21:306's pre-filter.
+
+    Written out here rather than imported from ``eval_sdk.stats`` so the expectation is a
+    transcription of the definition, not a second call to the code under test."""
+    return [sum(signal[j : j + window]) / window for j in range(len(signal) - window + 1)]
 
 
 # ── MotionAccumulator: the retained window (producer half) ────────────────────
@@ -127,6 +163,127 @@ def test_sample_rate_is_none_without_a_measurable_window() -> None:
     assert sample_rate_hz(flat) is None  # zero span (only reachable by bypassing the buffer)
 
 
+# ── doc21:306's mandatory low-pass in front of the spectral pair (#616 🔴1) ───
+
+
+@pytest.mark.unit
+def test_the_speed_profile_is_low_passed_before_the_spectral_metrics() -> None:
+    """doc21:306 「3階微分前に low-pass 必須」 — the metrics must see the FILTERED profile.
+
+    Oracle: the filtered series transcribed from the definition (:func:`_moving_average`) fed to
+    ``eval_sdk.stats.ldlj`` directly. LDLJ is pure stdlib, so this bites in CI where numpy — and
+    therefore SPARC — is absent. It is also the assertion that shows *why* doc21 demands the
+    filter: on this window the unfiltered number is −8.34 and the filtered one −3.06, i.e. the
+    raw metric was scoring sampling noise as jerk (doc21:306 「odom ノイズ爆発」).
+    """
+    stats = smoothness_stats(_series(_JITTERY9, dt=_DT))
+    filtered = _moving_average([abs(v) for v in _JITTERY9], DEFAULT_SMOOTHING_WINDOW)
+
+    assert stats.ldlj == pytest.approx(ldlj(filtered, _FS), rel=1e-9)
+    unfiltered = ldlj(_JITTERY9, _FS)
+    assert stats.ldlj != pytest.approx(unfiltered, rel=1e-3)
+    assert stats.ldlj > unfiltered  # larger LDLJ = smoother: the removed noise was fake jerk
+
+
+@pytest.mark.unit
+def test_sparc_is_low_passed_on_the_same_window() -> None:
+    """The other spectral indicator gets the identical pre-filter (doc21:306 covers the family,
+    not just LDLJ). Skipped where numpy is absent — the LDLJ half above still guards there."""
+    pytest.importorskip("numpy", reason="SPARC needs the optional eval_sdk[stats] extra")
+    stats = smoothness_stats(_series(_JITTERY9, dt=_DT))
+    filtered = _moving_average([abs(v) for v in _JITTERY9], DEFAULT_SMOOTHING_WINDOW)
+    assert stats.sparc == pytest.approx(sparc(filtered, _FS), rel=1e-9)
+    assert stats.sparc != pytest.approx(sparc(_JITTERY9, _FS), rel=1e-3)
+
+
+@pytest.mark.unit
+def test_the_report_names_the_filter_it_applied() -> None:
+    """A reader gets the numbers of a *transformed* window, so the transform is published:
+    width used, and how many samples reached the metrics (9 − 5 + 1 = 5, hand-computed)."""
+    stats = smoothness_stats(_series(_JITTERY9, dt=_DT))
+    assert stats.samples == 9  # the measured window is still reported raw
+    assert stats.smooth_window == DEFAULT_SMOOTHING_WINDOW == 5
+    assert stats.filtered_samples == 5
+    assert stats.to_dict()["filtered_samples"] == 5
+    assert stats.to_dict()["smooth_window"] == 5
+    # A wider filter shortens the analysed series by window − 1 (9 − 7 + 1 = 3).
+    assert smoothness_stats(_series(_JITTERY9, dt=_DT), smooth_window=7).filtered_samples == 3
+
+
+@pytest.mark.unit
+def test_n_movement_units_reads_the_raw_signed_series() -> None:
+    """N_MU is exempt: doc21:306 attaches the low-pass to the differentiation, and 速度符号反転数
+    differentiates nothing — filtering it would erase the reversals it exists to count.
+
+    Oracle: this window reverses 8 times (hand-counted from the alternating signs), while the
+    same window low-passed reverses strictly fewer — so a filtered N_MU would under-report."""
+    alternating = [0.20, -0.18, 0.19, -0.17, 0.21, -0.16, 0.20, -0.19, 0.18]
+    stats = smoothness_stats(_series(alternating, dt=_DT))
+    assert stats.n_movement_units == 8
+    assert n_movement_units(_moving_average(alternating, DEFAULT_SMOOTHING_WINDOW)) < 8
+
+
+# ── fs actually reaches the metrics (#616 🔴3) ────────────────────────────────
+
+
+@pytest.mark.unit
+def test_the_spectral_metrics_receive_the_measured_rate_and_the_filtered_series(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Pins the two arguments at the seam, with no numpy needed: the window's own measured rate
+    (30 Hz — 11 intervals over 11/30 s, hand-computed) and the low-passed |v| profile.
+
+    Red for a hard-coded ``fs`` (the pre-#616 fixtures were all at dt = 0.1 s, where a mutated
+    constant of 10.0 was indistinguishable from the measurement) and red for a dropped filter.
+    """
+    captured: list[tuple[list[float], float]] = []
+
+    def _record(series: list[float], fs: float) -> float:
+        captured.append((list(series), fs))
+        return -1.0
+
+    monkeypatch.setattr(motion_module, "ldlj", _record)
+    stats = smoothness_stats(_series(_JITTERY12, dt=_DT))
+
+    assert stats.ldlj == -1.0  # the recorder ran
+    assert len(captured) == 1
+    series, fs = captured[0]
+    assert fs == pytest.approx(_FS)
+    assert series == pytest.approx(
+        _moving_average([abs(v) for v in _JITTERY12], DEFAULT_SMOOTHING_WINDOW)
+    )
+
+
+@pytest.mark.unit
+def test_sparc_is_evaluated_at_the_production_rate_not_a_constant() -> None:
+    """Value-level fs pin: SPARC's ``fc`` = 10 Hz band cut is in absolute Hz, so the SAME window
+    scores differently at 30 Hz (production) and at 10 Hz. Oracle = the filtered series evaluated
+    at the rate the window actually carries; the 10 Hz reading is >1 SAL unit away, so a
+    hard-coded rate cannot pass by accident."""
+    pytest.importorskip("numpy", reason="SPARC needs the optional eval_sdk[stats] extra")
+    stats = smoothness_stats(_series(_JITTERY12, dt=_DT))
+    filtered = _moving_average([abs(v) for v in _JITTERY12], DEFAULT_SMOOTHING_WINDOW)
+    assert stats.sample_rate_hz == pytest.approx(_FS)
+    assert stats.sparc == pytest.approx(sparc(filtered, _FS), rel=1e-9)
+    assert abs(stats.sparc - sparc(filtered, 10.0)) > 1.0
+
+
+@pytest.mark.unit
+def test_ldlj_is_fs_invariant_so_only_sparc_moves_with_the_rate() -> None:
+    """The fact ``sample_rate_hz``'s docstring states (corrected in #616): every power of ``fs``
+    cancels in ``dlj = −(dur³/peak²)·Σjerk²·dt``. Documented here because it decides which
+    metric a mis-estimated rate can bias — and because the pre-#616 docstring claimed otherwise.
+    """
+    profile = _moving_average([abs(v) for v in _JITTERY12], DEFAULT_SMOOTHING_WINDOW)
+    assert ldlj(profile, 1.0) == pytest.approx(ldlj(profile, 30.0), rel=1e-12)
+    # …so the same window at two different cadences reports the same LDLJ.
+    slow = smoothness_stats(_series(_JITTERY12, dt=0.1))
+    fast = smoothness_stats(_series(_JITTERY12, dt=_DT))
+    assert slow.sample_rate_hz == pytest.approx(10.0)
+    assert fast.sample_rate_hz == pytest.approx(_FS)
+    assert slow.ldlj == pytest.approx(fast.ldlj, rel=1e-12)
+
+
 # ── smoothness: doc21:306's three indicators + the speed ingredients ──────────
 
 
@@ -172,28 +329,81 @@ def test_spectral_metrics_read_the_speed_profile_not_the_signed_series() -> None
     apart (an equivalent mutant); the LDLJ half is pure stdlib, so it also guards in CI where
     numpy (and therefore SPARC) is absent. The profile below is deliberately asymmetric — a
     mirror-symmetric one (e.g. 0.2, 0.1, -0.1, -0.2, -0.1, 0.1) yields the *same* sum of squared
-    second differences signed or not, and silently stops discriminating.
+    second differences signed or not, and silently stops discriminating. It is 10 samples long so
+    that 6 survive the doc21:306 low-pass (#616): the earlier 6-sample fixture filtered down to 2
+    and both metrics fell below the spectral floor, making the comparison vacuous.
     """
-    signed = _series([0.30, 0.05, -0.20, -0.05, 0.10, 0.25])
-    unsigned = _series([0.30, 0.05, 0.20, 0.05, 0.10, 0.25])  # = |v| of the row above
+    signed = _series([0.30, 0.05, -0.20, -0.05, 0.10, 0.25, 0.18, -0.06, -0.22, 0.09])
+    unsigned = _series([0.30, 0.05, 0.20, 0.05, 0.10, 0.25, 0.18, 0.06, 0.22, 0.09])
+    assert smoothness_stats(signed).ldlj is not None  # not vacuously equal via a shared None
     assert smoothness_stats(signed).ldlj == pytest.approx(smoothness_stats(unsigned).ldlj)
+    # …while N_MU still sees the direction changes the speed profile threw away (4, hand-counted
+    # from the sign run + + − − + + + − − +).
+    assert smoothness_stats(signed).n_movement_units == 4
+    assert smoothness_stats(unsigned).n_movement_units == 0
     pytest.importorskip("numpy", reason="SPARC needs the optional eval_sdk[stats] extra")
     assert smoothness_stats(signed).sparc == pytest.approx(smoothness_stats(unsigned).sparc)
-    # …while N_MU still sees the direction change the speed profile threw away.
-    assert smoothness_stats(signed).n_movement_units == 2
-    assert smoothness_stats(unsigned).n_movement_units == 0
 
 
 @pytest.mark.unit
 def test_a_jittery_profile_is_less_smooth_than_a_steady_one() -> None:
-    """Ordering check, the other independent oracle for a smoothness metric: an
-    oscillating speed profile must score WORSE (more negative SAL) than a smooth ramp
-    of the same length and peak."""
+    """Ordering check, the other independent oracle for a smoothness metric: an oscillating
+    speed profile must score WORSE than a smooth ramp of the same length and peak — for both
+    spectral indicators, and the ordering must survive the doc21:306 low-pass (a filter that
+    smoothed everything into agreement would be filtering too hard).
+
+    16 samples (12 after the 5-wide filter): the pre-#616 8-sample fixtures left only 4 filtered
+    samples, too few for the comparison to mean much."""
+    steady = _series(
+        [
+            0.02,
+            0.06,
+            0.11,
+            0.17,
+            0.23,
+            0.28,
+            0.30,
+            0.30,
+            0.29,
+            0.26,
+            0.21,
+            0.16,
+            0.11,
+            0.07,
+            0.04,
+            0.02,
+        ],
+        dt=_DT,
+    )
+    jittery = _series(
+        [
+            0.02,
+            0.30,
+            0.04,
+            0.28,
+            0.06,
+            0.30,
+            0.03,
+            0.29,
+            0.05,
+            0.30,
+            0.02,
+            0.28,
+            0.06,
+            0.30,
+            0.04,
+            0.29,
+        ],
+        dt=_DT,
+    )
+    # LDLJ half is pure stdlib -> this ordering also holds in CI, where numpy is absent.
+    steady_ldlj, jittery_ldlj = smoothness_stats(steady).ldlj, smoothness_stats(jittery).ldlj
+    assert steady_ldlj is not None and jittery_ldlj is not None
+    assert jittery_ldlj < steady_ldlj
     pytest.importorskip("numpy", reason="SPARC needs the optional eval_sdk[stats] extra")
-    smooth = smoothness_stats(_series([0.05, 0.12, 0.20, 0.28, 0.30, 0.22, 0.12, 0.04])).sparc
-    jittery = smoothness_stats(_series([0.05, 0.30, 0.06, 0.29, 0.04, 0.30, 0.05, 0.28])).sparc
-    assert smooth is not None and jittery is not None
-    assert jittery < smooth
+    steady_sparc, jittery_sparc = smoothness_stats(steady).sparc, smoothness_stats(jittery).sparc
+    assert steady_sparc is not None and jittery_sparc is not None
+    assert jittery_sparc < steady_sparc  # more negative SAL = rougher
 
 
 @pytest.mark.unit
@@ -203,6 +413,7 @@ def test_a_never_moving_robot_has_no_smoothness_rather_than_zero() -> None:
     stats = smoothness_stats(_series([0.0] * 12))
     assert stats.sparc is None
     assert stats.ldlj is None
+    assert stats.filtered_samples is None  # a zero-peak window never reaches the metrics
     assert stats.mean_speed == 0.0  # the ingredients ARE measured
     assert stats.max_speed == 0.0
     assert stats.n_movement_units == 0
@@ -211,12 +422,37 @@ def test_a_never_moving_robot_has_no_smoothness_rather_than_zero() -> None:
 @pytest.mark.unit
 def test_spectral_metrics_are_none_below_the_documented_sample_floor() -> None:
     """``eval_sdk.stats.ldlj`` documents a 3-sample floor; below it the spectral pair is
-    undefined while the descriptive ingredients still report."""
+    undefined while the descriptive ingredients still report. Two raw samples are also shorter
+    than one low-pass window, so nothing is analysed at all (``filtered_samples`` = ``None``)."""
     stats = smoothness_stats(_series([0.1, 0.2]))
     assert stats.sparc is None
     assert stats.ldlj is None
+    assert stats.filtered_samples is None
     assert stats.samples == 2
     assert stats.max_speed == pytest.approx(0.2)
+
+
+@pytest.mark.unit
+def test_the_spectral_floor_counts_filtered_samples_not_raw_ones() -> None:
+    """#616 🔴4 — the floor applies to what the metrics actually consume.
+
+    Six raw samples clear a naive 3-sample check but leave only ``6 − 5 + 1 = 2`` filtered ones,
+    so the spectral pair must stay ``None`` and ``filtered_samples`` must say the floor fired.
+    That field is what makes the guard testable **without numpy**: with numpy absent SPARC would
+    raise ``ImportError`` and LDLJ ``ValueError``, so deleting the floor would leave both metrics
+    ``None`` anyway and the mutant would survive in CI (``ci.yml:35`` installs no numpy).
+    """
+    stats = smoothness_stats(_series([0.10, 0.20, 0.30, 0.25, 0.20, 0.15], dt=_DT))
+    assert stats.samples == 6
+    assert stats.filtered_samples is None
+    assert stats.sparc is None
+    assert stats.ldlj is None
+    # With numpy present, show WHAT the floor is protecting against: SPARC has no floor of its
+    # own and happily returns a finite spectral arc length for a 2-sample series.
+    pytest.importorskip("numpy", reason="SPARC needs the optional eval_sdk[stats] extra")
+    filtered = _moving_average([0.10, 0.20, 0.30, 0.25, 0.20, 0.15], DEFAULT_SMOOTHING_WINDOW)
+    assert len(filtered) == 2
+    assert math.isfinite(sparc(filtered, _FS))
 
 
 @pytest.mark.unit
@@ -241,9 +477,10 @@ def test_smoothness_is_fail_open_when_a_metric_is_unavailable(
         raise ImportError("numpy missing")
 
     monkeypatch.setattr(motion_module, "sparc", _explode)
-    stats = smoothness_stats(_series([0.1, 0.2, 0.3, 0.2, 0.1]))
+    stats = smoothness_stats(_series(_JITTERY9, dt=_DT))
     assert stats.sparc is None
     assert stats.ldlj is not None  # the stdlib metric is unaffected
+    assert stats.filtered_samples == 5  # the window WAS analysed; only that one metric failed
 
 
 @pytest.mark.unit
@@ -253,6 +490,8 @@ def test_smoothness_of_an_empty_window_is_all_none() -> None:
     assert (stats.window_start, stats.window_end, stats.sample_rate_hz) == (None, None, None)
     assert (stats.mean_speed, stats.max_speed) == (None, None)
     assert (stats.sparc, stats.ldlj, stats.n_movement_units) == (None, None, None)
+    assert stats.filtered_samples is None
+    assert stats.smooth_window == DEFAULT_SMOOTHING_WINDOW  # the filter is always reported
     assert stats.to_dict()["samples"] == 0
 
 
@@ -397,8 +636,56 @@ def test_format_report_shows_the_odom_family_only_when_supplied() -> None:
 
 
 @pytest.mark.unit
-def test_default_buffer_depth_is_a_positive_engineering_bound() -> None:
-    """Guards the one tunable constant this slice introduces: it must stay a usable ring
-    depth (a typo'd 0 would silently disable every smoothness KPI)."""
+def test_default_buffer_depth_matches_its_documented_rationale() -> None:
+    """``motion.py`` justifies 4096 as "~2 minutes of recent motion at ~30 Hz". Assert the
+    constant still satisfies the claim it is documented by — a typo'd 40 (1.3 s) or 409600
+    (3.8 hours, and ~13 MB per robot) breaks the rationale while both pass a bare ``>= 1``
+    (#616 🟡: that was the whole of the previous assertion) — and that an unconfigured
+    accumulator really uses it."""
     assert isinstance(DEFAULT_MOTION_BUFFER_SAMPLES, int)
-    assert DEFAULT_MOTION_BUFFER_SAMPLES >= 1
+    window_seconds = DEFAULT_MOTION_BUFFER_SAMPLES / 30.0
+    assert 60.0 <= window_seconds <= 300.0
+    assert MotionAccumulator().max_samples == DEFAULT_MOTION_BUFFER_SAMPLES
+
+
+@pytest.mark.unit
+def test_default_smoothing_window_is_a_usable_centered_width() -> None:
+    """The doc21:306 filter width must stay a positive ODD integer (a centered average needs a
+    middle sample; ``eval_sdk.stats.low_pass`` raises otherwise) and must not be 1, which would
+    disable the filter doc21:306 makes mandatory."""
+    assert isinstance(DEFAULT_SMOOTHING_WINDOW, int)
+    assert DEFAULT_SMOOTHING_WINDOW >= 3
+    assert DEFAULT_SMOOTHING_WINDOW % 2 == 1
+    # …and it is short enough that a ~1 s window at 30 Hz still yields an analysable series.
+    assert len(_moving_average([0.1] * 30, DEFAULT_SMOOTHING_WINDOW)) >= 3
+
+
+# ── motion_buffer_samples resolver (pure; the node only logs what it decides) ──
+
+
+@pytest.mark.unit
+def test_resolve_motion_buffer_samples_accepts_a_usable_depth() -> None:
+    """A positive whole number passes through untouched and produces no warning."""
+    assert resolve_motion_buffer_samples(512) == (512, None)
+    assert resolve_motion_buffer_samples(2.0) == (2, None)  # rclpy hands back a double param
+    assert resolve_motion_buffer_samples("512") == (512, None)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "value", [0, -1, -4096, 4096.5, math.nan, math.inf, "", "abc", None, True, False, [4096]]
+)
+def test_resolve_motion_buffer_samples_falls_back_with_a_warning(value: object) -> None:
+    """Unusable values fall back to the default **and say so**, never raise: an observation
+    buffer must not stop the collector (fail-open, the ``resolve_pattern_d`` precedent).
+
+    Pure so the branch is reachable at all — before #616 it lived inside
+    ``KpiCollector.__init__``, where only a live ROS node could execute it, and ``int("")``
+    would have raised there rather than falling back. ``True``/``False`` are rejected on
+    purpose: ``bool`` is an ``int`` in Python and a 1-sample ring buffer is never intended.
+    """
+    depth, warning = resolve_motion_buffer_samples(value)
+    assert depth == DEFAULT_MOTION_BUFFER_SAMPLES
+    assert warning is not None
+    assert "motion_buffer_samples" in warning
+    assert str(DEFAULT_MOTION_BUFFER_SAMPLES) in warning

@@ -212,6 +212,30 @@ def _centered_moving_average(signal: Sequence[float], window: int) -> list[float
     return [sum(signal[j : j + window]) / window for j in range(n - window + 1)]
 
 
+def low_pass(signal: Sequence[float], window: int = 5) -> list[float]:
+    """Centered moving-average low-pass — the pre-filter doc21:306 mandates, as a public name.
+
+    doc21:306 requires a low-pass **before** the derivative chain of the 平滑性 family ("3階微分前
+    に low-pass 必須" — raw differentiation blows up odom noise). :func:`jerk` has always applied
+    it internally; this exposes the *same* filter so a domain composer can put the identical
+    pre-filter in front of the other indicators doc21:306 names (SPARC / LDLJ) instead of
+    re-implementing one, or none at all.
+
+    'valid' mode, exactly like :func:`jerk`'s internal smoothing: the output is
+    ``len(signal) − window + 1`` long (every output sample is an average of a full window, so no
+    edge is fabricated) and ``[]`` when the signal is shorter than one window. Spacing is
+    unchanged, so the sample rate of the filtered series equals the input's — a caller may reuse
+    its ``fs``. ``window`` must be a positive **odd** integer (a centered average needs a middle
+    sample); ``window=1`` is the identity. It is a caller tuning parameter, **not** a domain
+    threshold — doc21 fixes *that* a low-pass is applied, never its width.
+    """
+    if window < 1 or window % 2 == 0:
+        raise ValueError("window must be a positive odd integer")
+    if window == 1:
+        return list(signal)
+    return _centered_moving_average(signal, window)
+
+
 def _third_difference(signal: Sequence[float], dt: float) -> list[float]:
     """3rd-order finite difference /dt³ (Δ³x = x₃−3x₂+3x₁−x₀) — position→jerk."""
     if len(signal) < 4:
