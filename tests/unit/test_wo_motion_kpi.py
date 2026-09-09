@@ -339,7 +339,9 @@ def _audit_rows():
 
 @pytest.mark.unit
 def test_compute_kpis_without_motion_leaves_the_odom_family_empty() -> None:
-    """The offline ``kpi_report`` CLI supplies no motion, so its output is unchanged."""
+    """The offline ``kpi_report`` CLI supplies no motion: every audit-sourced number is
+    unchanged and the three odom keys are present but empty (additive, not absent — a
+    consumer can tell "not measured" from "measured zero")."""
     report = compute_kpis(_audit_rows())
     assert report.distance_traveled == {}
     assert report.detour_factors == {}
