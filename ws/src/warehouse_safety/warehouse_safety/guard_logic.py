@@ -258,6 +258,22 @@ def evaluate(
     return decisions
 
 
+def stop_requested_for(decisions: list[Decision], bot: str) -> bool:
+    """Does THIS bot have an emergency stop this tick? (doc05 §4-1 producer input.)
+
+    The Emergency Guardian publishes ``/{bot}/stop_state`` for the L0' stop overlay;
+    a bot is ``stop_requested`` exactly when the SAME tick's ``decisions`` contain an
+    ``estop`` for it. ``recovery`` decisions (low-harm blocked_timeout) are NOT a stop
+    request — they publish an event only, and the overlay must keep driving. Deriving
+    the flag from ``decisions`` (rather than a second evaluation) is what keeps the
+    feed physically synchronised with the estop the node asserts from the same list.
+
+    Pure so the polarity and per-bot isolation are unit-tested with an independent
+    oracle (R-26), not only AST-pinned in the node.
+    """
+    return any(d.action == "estop" for d in decisions if d.bot == bot)
+
+
 def build_event(
     event_id: str,
     robot: str,
