@@ -79,9 +79,8 @@ from warehouse_llm_bridge.scheduler import (
     resolve_cycle_wait,
 )
 from warehouse_llm_bridge.situation import DEFAULT_EMERGENCY_MIN_DISTANCE, SituationBuilder
+from warehouse_llm_bridge.trace_enrich import TraceIdentity, build_commander_tracer
 from warehouse_llm_bridge.tracing import (
-    LangfuseTracer,
-    NoopTracer,
     Tracer,
     build_session_id,
     resolve_run_id,
@@ -244,28 +243,28 @@ class LlmBridge(Node):
         # Deployment environment is another opaque trace tag. Resolve WAREHOUSE_ENV in the
         # Bridge so eval_sdk remains domain-free; keep env last in the emitted tag list.
         env_tag = f"env={warehouse_env()}"
-        # Option D: the Hermes plugin owns the trace server-side, so a Bridge-owned
-        # LangfuseTracer here would double-count -> use NoopTracer (the cycle stays
-        # untraced on the Bridge side; the plugin's trace is the single source). Pattern A
-        # (default) keeps the Bridge-owned LangfuseTracer exactly as before.
-        tracer: Tracer
-        if plugin_owned:
-            tracer = NoopTracer()
-        else:
-            tracer = LangfuseTracer(
-                run_id=run_id,
-                session_id=session_id,
-                provider=provider,
-                mode=mode,
-                extra_tags=[f"prompt:{resolved_prompt.name}", env_tag],
-                extra_metadata={
-                    "prompt_name": resolved_prompt.name,
-                    "prompt_version": resolved_prompt.version,
-                    "prompt_source": prompt_source,
-                    # readable companion to the bare mode tag (none -> "Mode A (LLM単独交通管理)").
-                    "mode_label": mode_label(mode),
-                },
-            )
+        # The doc08:533 trace vocabulary for this run, resolved ONCE (the prompt is fetched once
+        # per node, doc08:529) and shared by BOTH owner paths so they cannot drift apart.
+        # ``mode_label`` is the readable companion to the bare mode tag
+        # (none -> "Mode A (LLM単独交通管理)").
+        trace_identity = TraceIdentity(
+            provider=provider,
+            mode=mode,
+            session_id=session_id,
+            prompt_name=resolved_prompt.name,
+            prompt_version=resolved_prompt.version,
+            prompt_source=prompt_source,
+            mode_label=mode_label(mode),
+            env_tag=env_tag,
+        )
+        # Owner-dependent per-turn tracer (trace_enrich.build_commander_tracer):
+        # Pattern A (default) = the Bridge-owned LangfuseTracer, exactly as before. Option D = no
+        # Bridge trace for the cycle (the plugin's is the single source, a second one would
+        # double-count) PLUS a post-hoc, off-critical-path enrichment that re-attaches the
+        # doc08:533 identifiers the plugin cannot know (MANAGED-PROMPT-DECISION.md option #1).
+        tracer: Tracer = build_commander_tracer(
+            plugin_owned=plugin_owned, run_id=run_id, identity=trace_identity
+        )
         self._scheduler = BridgeScheduler(
             llm_client=HermesClient(
                 base_url,
