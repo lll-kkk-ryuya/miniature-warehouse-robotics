@@ -30,18 +30,28 @@ Mechanics (option #1, no plugin fork):
   propagates the doc08:533 tags/metadata onto it — the same two langfuse calls Pattern A already
   makes (``start_as_current_observation(trace_context=...)`` + ``propagate_attributes``), i.e. NO
   new SDK surface beyond the one the ``langfuse-api-contract`` CI job pins
-  (``tests/unit/test_eval_sdk_langfuse_api_contract.py``);
+  (``tests/unit/test_eval_sdk_langfuse_api_contract.py``). This is a DELIBERATE deviation from the
+  spike doc's wording, which sketched the write as ``update``/``create_event`` keyed by trace id:
+  both would be NEW SDK surface outside that pin, so the observation+propagate route was chosen
+  instead — the decision (enrich the plugin's trace by id, post-hoc, no fork) is unchanged;
 * it runs OFF the commander critical path — :class:`PluginTraceEnrichingTracer` is a no-op for the
   cycle itself (no turn span, no tool spans) and only SCHEDULES the enrichment when the turn's body
   is already finished, so the cycle's latency is unchanged;
 * it is FAIL-OPEN end to end: langfuse is imported lazily (through the ``eval_sdk`` seam, never
   directly), every failure mode degrades to "this trace is un-enriched", and NOTHING here can raise
-  into the commander cycle (doc08:333 / doc08:531 never-raise discipline).
+  into the commander cycle (doc08:333 Langfuse fail-open).
 
 Layer: **L4 observability face only** — this module dispatches nothing, actuates nothing and is
 never consulted by the safety path (R-26). Whether the enrichment actually LANDS on the live
 plugin-minted trace is a Langfuse credential/live check that belongs to the #88 human gate
 (``.claude/rules/llm-observability-testing.md`` §テスト層 4); offline it is pinned with fakes.
+Two SPECIFIC things that live check must look at (both read off the installed langfuse 4.9.0
+source, so they are known unknowns rather than vague doubt): (1) ``propagate_attributes`` documents
+「Pre-existing spans will NOT be retroactively updated」 (``_client/propagation.py``) — it says
+nothing about the trace RECORD, which is what we are labelling, so backend merge behaviour is the
+open question; (2) a ``trace_context``-anchored span is stamped ``langfuse.internal.as_root``
+(``_client/client.py``), so the plugin's trace ends up with TWO as-root observations and which one
+supplies the trace's name/tags/session is server-side behaviour.
 """
 
 import asyncio
@@ -151,7 +161,10 @@ class PluginTraceEnricher:
         # A blank run_id makes H non-joinable, so ``hermes_client._plugin_session_id`` sends NO
         # X-Hermes-Session-Id header and the plugin seeds on its own "sessionless" default. Any id
         # we derived here would therefore point at a trace that does not exist — enriching it would
-        # MINT a phantom trace instead of labelling the plugin's. Mirror that guard exactly.
+        # MINT a phantom trace instead of labelling the plugin's. This mirrors the blank-run_id half
+        # of that helper; its other half (a situation carrying no ``gen_id``) has no counterpart
+        # here because the frozen ``Situation.gen_id`` is a required, un-aliased int, so a turn
+        # always has one.
         if not self._run_id or not self._run_id.strip():
             log.debug(
                 "Option-D enrichment skipped for gen=%s: blank run_id (H is non-joinable, "
@@ -164,8 +177,17 @@ class PluginTraceEnricher:
             client = LangfuseTracer._client(self)
             if client is None:
                 return  # langfuse unavailable -> no-op (the helper already logged once)
-            trace_id = derive_plugin_trace_id(
-                self._run_id, gen_id, create_fn=getattr(client, "create_trace_id", None)
+            # Derive ONLY through the client we just resolved. Handing eval_sdk ``create_fn=None``
+            # would let it fall back to its own ``langfuse.get_client()`` (seed.py
+            # ``_default_create_fn``) — a DIFFERENT client object than ``_client()`` returned —
+            # breaking this module's "never touch langfuse except through the resolved client"
+            # contract. A client without the method means v4 API drift: treat that as "cannot
+            # derive" and fail open.
+            create_fn = getattr(client, "create_trace_id", None)
+            trace_id = (
+                derive_plugin_trace_id(self._run_id, gen_id, create_fn=create_fn)
+                if create_fn is not None
+                else None
             )
             if trace_id is None:
                 log.warning(
@@ -239,10 +261,22 @@ class PluginTraceEnrichingTracer(Tracer):
     finished it SCHEDULES :meth:`PluginTraceEnricher.enrich` off the critical path (``spawn``,
     default :func:`spawn_off_cycle`).
 
-    The enrichment is scheduled for EVERY turn, including a non-productive one (timeout / outage /
-    invalid response), which mirrors Pattern A — ``LangfuseTracer.turn`` likewise opens a trace
-    regardless of the cycle's outcome. ``spawn`` is injectable so tests can run the enrichment
-    deterministically and assert it did NOT run inside the cycle.
+    KNOWN LIMITATION (open, #88 live gate): the enrichment is scheduled for EVERY turn, including a
+    non-productive one (timeout / outage / invalid response). ``LangfuseTracer.turn`` also opens a
+    trace regardless of outcome, but that parallel does NOT excuse this case — under Pattern A the
+    Bridge OWNS the trace, so an outage trace is real, whereas here a cycle whose request never
+    reached Hermes minted no plugin trace, and enriching its id CREATES a trace holding only the
+    enrichment span. Such a trace carries the full ``[provider, mode, prompt:…, env=…]`` tag set
+    with no generation under it, so a Phase-4 count filtering on tags alone would overcount. The
+    same shape occurs for a whole run configured ``langfuse_owner=hermes_plugin`` while the plugin
+    is actually OFF, and for a cycle where ``hermes_client._detect_session_drift`` saw the gateway
+    echo a DIFFERENT session id (the plugin then minted a trace at some other id, and we label ours).
+    Suppressing these needs a per-gen signal that Hermes answered on OUR id — ``HermesClient``
+    already has it — deliberately NOT wired here: it is new intra-package coupling on the decide
+    path, and the live check is what can measure the real shape first (see the PR residuals).
+
+    ``spawn`` is injectable so tests can run the enrichment deterministically and assert it did NOT
+    run inside the cycle.
     """
 
     def __init__(

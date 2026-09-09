@@ -223,8 +223,10 @@ class LlmBridge(Node):
         # WAREHOUSE_LANGFUSE_OWNER / hermes.langfuse_owner and CONTINGENT on the live audio
         # D-verify passing. Under Option D the plugin mints the trace+generation server-side,
         # so the Bridge must NOT also open its own per-turn trace (that would double-count);
-        # the per-turn tracer below degrades to NoopTracer and HermesClient sends the
-        # X-Hermes-Session-Id=H header instead of the langfuse.openai wrapper.
+        # the per-turn tracer below opens NO Bridge trace for the cycle
+        # (trace_enrich.PluginTraceEnrichingTracer — it only enriches the plugin's trace
+        # afterwards, off the critical path) and HermesClient sends the X-Hermes-Session-Id=H
+        # header instead of using the langfuse.openai wrapper.
         langfuse_owner = resolve_langfuse_owner(cfg)
         plugin_owned = langfuse_owner == LANGFUSE_OWNER_HERMES_PLUGIN
         # Mode-aware commander prompt — MANAGED in Langfuse Prompt Management (doc08

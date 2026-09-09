@@ -393,6 +393,42 @@ def test_enricher_never_raises_when_trace_id_derivation_fails(
 
 
 @pytest.mark.unit
+def test_enricher_derives_only_through_the_resolved_client(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A client without create_trace_id means v4 API drift. Handed create_fn=None, eval_sdk falls
+    # back to its OWN langfuse.get_client() lookup (seed._default_create_fn) — a DIFFERENT client
+    # than the one we resolved — and we would then open a span on an id that client never minted.
+    # The enricher must treat "no method" as "cannot derive" and stop.
+    #
+    # The oracle is the SPAN, not an exception: the enricher's outer guard would swallow a raising
+    # fallback, so instead the fallback is made to SUCCEED with a foreign id. If the guard is
+    # missing, a span gets opened on that foreign id — which is exactly the leak, and is visible.
+    class _NoTraceIdClient:
+        """v4-drifted client: no create_trace_id, but a working observation surface."""
+
+        def __init__(self) -> None:
+            self.observations: list[dict] = []
+
+        def start_as_current_observation(self, **kwargs) -> _FakeObservation:
+            self.observations.append(kwargs)
+            return _FakeObservation(_FakeSpan())
+
+        def propagate_attributes(self, **kwargs) -> _FakeAttributes:
+            return _FakeAttributes()
+
+    client = _NoTraceIdClient()
+    monkeypatch.setattr(LangfuseTracer, "_client", lambda self: client)
+    import eval_sdk.seed as seed_mod
+
+    foreign = "ffffffffffffffffffffffffffffffff"
+    monkeypatch.setattr(seed_mod, "_default_create_fn", lambda: lambda *, seed: foreign)
+
+    PluginTraceEnricher(run_id="run-7", identity=_identity()).enrich(1)  # must not raise
+    assert client.observations == []  # no span opened through a client we did not resolve
+
+
+@pytest.mark.unit
 def test_enricher_never_raises_when_span_or_attributes_fail(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
