@@ -52,7 +52,7 @@
 - **現在状態の L2 供給は #593 で land 済み（CURRENT・正本 = [doc12:616](../architecture/12-infrastructure-common.md) 追補②）**: 新 topic を作らず、Guardian が estop 継続中 50ms 毎に再アサートする既存 `/bot{n}/cmd_vel/emergency`（level 信号）をミラーする。イベント駆動案・state.json `emergency.active` 参照案は falsification 付きで却下済み（[doc12:628-631](../architecture/12-infrastructure-common.md)。後者は clear protocol 不在で永続 reject になる = §3-1 事実 2）。
 - **mirror の意味論として受容した暫定（隠さない）**: この信号は estop 中しか流れない**条件付き信号**であり、「無信号 = 非常時でない」が定義。したがって**無信号 1.0s 超は「解消」と「Guardian 死」を区別しない**。Guardian 単独死では物理層（twist_mux prio100・0.5s 失効）→ L2（1.0s）の順で開く fail-active 窓が残るが、これは §3-1 事実 4 の既知故障モードに包絡され、**L2 は常に物理より後に開く**。最小安全方針の下で暫定受容し、**平常時も流れる「Guardian 生存証明チャネル」（周期 publish の現在状態）を導入するか恒久受容するかは OQ-OP1 として保持**する。bridge 再起動〜DDS discovery 完了までの短い窓（estop 保持中の dispatch が phantom 受理されうる・motion は物理層が阻止し Guardian が毎 tick cancel）も同クラスの残余（§10）。
 - **受信側の鮮度監視の原則は「常時流れる設計のチャネル」に適用する**: `transient_local` は後着購読者への保持配信であって生存確認にならないため、§4 停止上乗せ・§6 運転モードが購読するチャネルでは**不明・stale → 統合構成で新しい走行を開始しない／MANUAL 指令を出さない**（fail-closed）。※条件付き信号である mirror にこの規則をそのまま適用すると平常時に全 dispatch が塞がるため適用外 — これが上記暫定受容の理由である。
-- 生存証明チャネルを新設する場合の topic 名・型・周期・鮮度閾値は**本書で発明しない** → OQ-OP1。**凍結契約 `warehouse_interfaces` は無変更**（doc03 カタログへの additive 追加のみ・[doc12:512](../architecture/12-infrastructure-common.md) の pose_stale 先例と同型）。なお **doc03 には既存 `/bot{n}/cmd_vel/emergency` 自体が未記載**という残件が doc12 側にも登録済み（[doc12:638](../architecture/12-infrastructure-common.md)）。
+- 生存証明チャネルを新設する場合の topic 名・型・周期・鮮度閾値は**本書で発明しない** → OQ-OP1。**凍結契約 `warehouse_interfaces` は無変更**（doc03 カタログへの additive 追加のみ・[doc12:512](../architecture/12-infrastructure-common.md) の pose_stale 先例と同型）。なお doc03 への既存 `/bot{n}/cmd_vel/emergency` 行の追記は**解消済（2026-09-09・#597）**: doc03:113（[doc12:638](../architecture/12-infrastructure-common.md) の解消マーク参照）。
 
 ## 4. m1_driver の停止上乗せ（stop overlay）（確定・2026-09-07）
 
@@ -118,7 +118,7 @@ fault injection（Guardian kill・driver kill・USB 抜線・joy 切断・proces
 
 | # | 未決事項 | 決め方 | 優先度 |
 |---|---|---|---|
-| **OQ-OP1** | **平常時も流れる Guardian 生存証明チャネル**（周期 publish の現在状態）を導入するか、#593 の level mirror を恒久受容するか（§3-2）。導入時の topic 名・型・周期・鮮度閾値は doc03 additive 追記と同一 PR。先行して **doc03 に既存 `/bot{n}/cmd_vel/emergency` を追記**（[doc12:638](../architecture/12-infrastructure-common.md) の残件） | fault injection（§8）で Guardian 死の実害を実測 → オペレーター裁定 | 中（CURRENT は暫定受容済み） |
+| **OQ-OP1** | **平常時も流れる Guardian 生存証明チャネル**（周期 publish の現在状態）を導入するか、#593 の level mirror を恒久受容するか（§3-2）。導入時の topic 名・型・周期・鮮度閾値は doc03 additive 追記と同一 PR。先行条件だった **doc03 への既存 `/bot{n}/cmd_vel/emergency` 追記は解消済**（doc03:113・#597＝[doc12:638](../architecture/12-infrastructure-common.md) 解消マーク） | fault injection（§8）で Guardian 死の実害を実測 → オペレーター裁定 | 中（CURRENT は暫定受容済み） |
 | **OQ-OP2** | 操作者停止要求・明示解除の入力 topic の形（別 topic か同 topic payload か）→【2026-09-08 解消】単一 global topic `/operator/stop_request`（`std_msgs/String` JSON・同 topic payload 方式: `{"action": "engage"}`／`{"action": "clear"}`。不明・不正 payload は無視＝clear 扱いにしない。M1 単騎ゆえ per-bot 選択性は安全要件でない。PR #602） | doc03 additive 追記と同一 PR（済） | 高（順序 5 の前提） |
 | **OQ-OP3** | 解除時の残 goal 確認手段（cancel 反復の完了確認・nav_status 参照の形） | 実装設計＋実機確認 | 高（§5「解除≠走行」の担保） |
 | **OQ-OP4** | standalone stdio MCP（`server.py`）での現在状態参照。[doc12:636](../architecture/12-infrastructure-common.md) が「ROS 文脈が無くミラー不能・現用外」と登録済み — 残るのは state.json fallback にするか非対応と割り切るかの裁定のみ | 実装スライスで裁定 | 低 |
