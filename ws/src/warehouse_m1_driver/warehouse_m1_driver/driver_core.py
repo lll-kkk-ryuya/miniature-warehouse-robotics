@@ -100,10 +100,10 @@ class M1DriverCore:
         ``valid_until`` is an absolute deadline on the SAME injected monotonic
         clock as ``now``: the update grants driving permission only until that
         instant (doc05 §3-2 freshness — a producer that dies must not leave a
-        standing permission). The producer channel (topic name/type/period) is
-        deliberately NOT wired here; doc05 §3-2/OQ-OP1 defers it to the doc03
-        additive slice. Until then this method is the seam the future ROS
-        wiring will call.
+        standing permission). The producer channel is now contracted in doc05
+        §4-1 (``/bot{n}/stop_state``, std_msgs/String JSON) and decoded by
+        :mod:`warehouse_m1_driver.stop_state`; this method stays the pure seam
+        that wiring calls, and remains transport-agnostic.
 
         Fail-closed validation (doc05 §4 R-26 ②): a non-finite, non-positive,
         or regressing deadline is treated as NO permission — it drops any
