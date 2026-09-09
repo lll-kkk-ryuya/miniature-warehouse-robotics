@@ -68,6 +68,9 @@ Pattern A puts the tags/metadata on the **Bridge-owned** trace via
 `LangfuseTracer.turn(gen)` (`ws/src/eval_sdk/eval_sdk/tracer.py`). Under Option D the Bridge
 swaps `LangfuseTracer` → `NoopTracer` (the plugin owns the trace, so the Bridge must not open a
 second one — `llm_bridge.py`), which means the Bridge no longer writes those tags itself.
+(Superseded 2026-09-09, #612: the swap target is now `PluginTraceEnrichingTracer` — still no
+cycle-side spans, but it schedules a post-turn `PluginTraceEnricher.enrich()` that writes the
+same tag/metadata vocabulary onto the plugin-owned trace, i.e. option (2) below became real.)
 Three ways to still attach the prompt name/version to the **plugin's** trace, in order of
 preference:
 

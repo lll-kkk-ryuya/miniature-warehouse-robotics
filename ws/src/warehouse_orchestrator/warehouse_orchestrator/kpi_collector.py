@@ -12,6 +12,11 @@ Live-send is **gated** and inert in dev: it needs (a) Langfuse creds, (b) ``WARE
 not yet write (mcp_server must add it, predeclared on #4/#73). ``efficiency`` (= 総移動距離)
 accumulates from ``/bot{n}/odom`` (doc09:79) and stays 0 until robots/sim run (Phase 3). With
 any prerequisite missing every send no-ops (fail-open). See ``warehouse_orchestrator/CLAUDE.md``.
+
+The **same** odom subscription also feeds a bounded :class:`~warehouse_orchestrator.motion.
+MotionAccumulator` for the odom-sourced Tier-1 KPIs (doc21:310 軌道平滑性 / detour factor). That
+is report-only: **no new topic, no new contract and no new Langfuse score** — ``_send_scores``
+is untouched by that family (Issue #432 DoD).
 """
 
 import contextlib
@@ -29,6 +34,11 @@ from warehouse_orchestrator.kpi import (
     format_report,
 )
 from warehouse_orchestrator.langfuse_sink import LangfuseScoreSink
+from warehouse_orchestrator.motion import (
+    DEFAULT_MOTION_BUFFER_SAMPLES,
+    MotionAccumulator,
+    MotionInputs,
+)
 from warehouse_orchestrator.score_send import resolve_pattern_d, resolve_provider, send_scores
 from warehouse_orchestrator.trace_id import run_id as env_run_id
 
@@ -48,6 +58,9 @@ class KpiCollector(Node):
         self.declare_parameter("run_id", "")  # empty => WAREHOUSE_RUN_ID env (#73)
         self.declare_parameter("mode", "")  # traffic_mode tag for score metadata (A/B/C)
         self.declare_parameter("provider", "")  # empty => WAREHOUSE_PROVIDER env (doc08:367)
+        # Ring-buffer depth for the odom-sourced Tier-1 metrics (doc21:310). Memory bound, NOT a
+        # domain threshold — see ``motion.DEFAULT_MOTION_BUFFER_SAMPLES``.
+        self.declare_parameter("motion_buffer_samples", DEFAULT_MOTION_BUFFER_SAMPLES)
 
         interval = float(self.get_parameter("report_interval_sec").value)
         self._exclude_cancelled = bool(self.get_parameter("exclude_cancelled").value)
@@ -71,6 +84,17 @@ class KpiCollector(Node):
         self._pattern_d = resolve_pattern_d(cfg)
 
         self._distances = DistanceAccumulator()
+        # Recent odom window for the smoothness KPIs. A non-positive param falls back to the
+        # default with a warning rather than raising — an observation buffer must never stop the
+        # node (the ``resolve_pattern_d`` precedent: unknown value -> safe default + warning).
+        buffer_samples = int(self.get_parameter("motion_buffer_samples").value)
+        if buffer_samples < 1:
+            self.get_logger().warning(
+                f"motion_buffer_samples={buffer_samples} is not positive; "
+                f"using {DEFAULT_MOTION_BUFFER_SAMPLES}"
+            )
+            buffer_samples = DEFAULT_MOTION_BUFFER_SAMPLES
+        self._motion = MotionAccumulator(max_samples=buffer_samples)
         self._langfuse = LangfuseScoreSink()
 
         # /bot{n}/odom → per-robot distance (efficiency = 総移動距離; inert until robots run).
@@ -91,6 +115,17 @@ class KpiCollector(Node):
         def _on_odom(msg: Odometry) -> None:
             position = msg.pose.pose.position
             self._distances.add(robot, position.x, position.y)
+            # Same message, same subscription — the odom-sourced Tier-1 window (doc21:310).
+            # Stamp = the sample's own time (works under sim time); ``twist.twist.linear.x`` =
+            # the canonical signed linear velocity of doc12:340. No new topic / contract.
+            stamp = msg.header.stamp
+            self._motion.add(
+                robot,
+                stamp.sec + stamp.nanosec * 1e-9,
+                position.x,
+                position.y,
+                msg.twist.twist.linear.x,
+            )
 
         return _on_odom
 
@@ -98,7 +133,16 @@ class KpiCollector(Node):
         """Read the audit log, compute + log KPIs, then best-effort send Langfuse scores."""
         try:
             entries = read_audit_log(self._audit_path)
-            report = compute_kpis(entries, exclude_cancelled=self._exclude_cancelled)
+            report = compute_kpis(
+                entries,
+                exclude_cancelled=self._exclude_cancelled,
+                # ``optimal_distances`` stays empty: the lᵢ oracle (KNOWN_LOCATIONS + planner,
+                # doc21:303-304) has no producer before Phase 3a, so detour factors are absent
+                # rather than guessed.
+                motion=MotionInputs(
+                    samples=self._motion.series(), distances=self._distances.totals()
+                ),
+            )
         except OSError as exc:  # never let a transient read error kill the node
             self.get_logger().warning(f"kpi report skipped (audit read failed): {exc}")
             return

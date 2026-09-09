@@ -48,6 +48,7 @@ m1_driver（clamp_body_velocity 必経 = L0'）→ FUNC_MOTION 0x12 → STM32
 - **メカナム横移動（`vy ≠ 0`）を割り当てる場合はベクトルクランプ必須**（C-8 = [02:373](../shared/02-hardware-design.md)）。既存 `warehouse_teleop/keymap.py` のスカラー `clamp_velocity` は `vy` を扱えないため流用不可（オペレーター指示 2026-08-26「メカナムはベクトルで計算」と一致）。ただし**最終防衛は m1_driver 内の `clamp_body_velocity`**であり、変換 node 側のクランプは第一防御にすぎない。
 - **デッドマンボタン**（押している間だけ publish）を必須にする（joy 特有の「スティック放置でゼロが流れ続ける」を利用して W-1 との整合も取る）。
 - **mux の扱い**: Phase 1 bring-up は standalone 構成（Nav2 / twist_mux を立てない）で `/bot1/cmd_vel` を直接 publish → m1_driver が consume。これは既存 teleop の前提（[warehouse_teleop/CLAUDE.md:13](../../ws/src/warehouse_teleop/CLAUDE.md)）と同型。Nav2 同時稼働スライスで `/cmd_vel/teleop` の mux 入力追加が要る（bringup 所有 = 別調整・凍結 prio 100/10 には触れない = [twist_mux.yaml:42-48](../../ws/src/warehouse_bringup/config/twist_mux.yaml)）。
+- **/joy 鮮度タイムアウト**（`joy_timeout_s`・既定 **0.6 s** = teleop_keyboard `stop_timeout` と同値）: Humble joy_node はデバイス喪失時に /joy の publish を止めるだけで**ゼロ Joy を出さない**（joystick_drivers ros2 branch `joy.cpp` handleJoyDeviceRemoved・一次ソース実見 参照日 2026-08-31）ため、変換 node は最後の /joy 受信から超過で republish をゼロ twist に落とす（デッドマン保持中に joy_node/receiver が死ぬと、保持指令が「新鮮な cmd_vel」として流れ続け [02 §3](02-m1-driver-and-watchdog.md) W-1 が発火しない穴を塞ぐ第一防御）。
 
 ## 4. 物理手順の順序（正本への forward・本 doc は複製しない）
 

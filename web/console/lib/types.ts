@@ -37,6 +37,10 @@ export interface RuntimeConfig {
   mode: string; // "none" | "simple" | "open-rmf"
   lan: boolean;
   token_required: boolean;
+  // Langfuse PROJECT base URL for trace deep-links (doc22:194,:332); "" = no link, show the id.
+  // Optional in the TYPE only: the current gateway always sends it (settings.py:browser_config),
+  // but the SPA is a separately-deployed static bundle that may meet an older one.
+  langfuse_base_url?: string;
 }
 
 export type ConnectionStatus = "idle" | "connecting" | "backfilling" | "open" | "closed";

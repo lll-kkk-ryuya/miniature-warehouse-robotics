@@ -40,13 +40,18 @@ throughput/makespan. The layer split is doc21:178 (数学 = ``eval_sdk.stats`` /
 wo): the ratios, the Jain index and the span are imported arithmetic, while *which* rows count
 as an intervention and *which* per-robot number is "the load" are decided here. **No new
 producer and no new score send** — these are report fields only (score names are frozen in
-doc08 §比較計測の追加設計 and emitted in Phase 3-4; see CLAUDE.md voids 4). The odom-sourced
-Tier-1 entries of doc21:310 (detour factor / jerk・SPARC composition / 速度予算消化率 / idle
-率) are **deliberately NOT here**: `kpi_collector` streams odom straight into
-``DistanceAccumulator`` and neither pose series nor velocities survive the call
-(``eval_sdk.stats.DistanceAccumulator`` keeps only ``_totals`` and the previous point), so they
-need a new producer — contradicting doc21:189 "新 producer ゼロ". That contradiction is listed
-in the PR residuals and belongs to a docs PR, not to invented buffering here.
+doc08 §比較計測の追加設計 and emitted in Phase 3-4; see CLAUDE.md voids 4).
+
+The **odom-sourced** Tier-1 entries of doc21:310 followed in a second slice and live in
+:mod:`warehouse_orchestrator.motion` (軌道平滑性 = SPARC/LDLJ/N_MU per doc21:306, detour factor
+= pᵢ/lᵢ). This module only *composes* them into :class:`KpiReport` from a caller-supplied
+:class:`~warehouse_orchestrator.motion.MotionInputs` — same shape as the ``completions``
+scaffold. With nothing supplied every audit-sourced number is bit-identical and ``format_report``
+renders exactly as before; ``to_dict()`` gains three keys holding empty containers (additive —
+no existing key changes value or disappears).
+``idle 率`` and ``速度予算消化率`` remain unimplemented: doc21:310 names them and no doc defines
+them (CLAUDE.md voids 15). ``decision latency`` is doc08:497 (Langfuse-derived), delegated to
+#434.
 """
 
 import argparse
@@ -80,6 +85,17 @@ from warehouse_orchestrator.audit_reader import (
     read_audit_log,
 )
 
+# Odom-sourced Tier-1 half (doc21:310): the domain composition lives in ``motion`` so this
+# audit-centric module stays readable; re-exported below like the eval_sdk helpers.
+from warehouse_orchestrator.motion import (
+    MotionAccumulator,
+    MotionInputs,
+    MotionSample,
+    SmoothnessStats,
+    detour_factors,
+    smoothness_stats,
+)
+
 # The 7 MCP tool names (doc15 §ツール定義 / warehouse_mcp_server tools.py:TOOL_NAMES).
 # Redeclared locally — we consume the *documented* tool-name surface, NOT the
 # producer module (loose coupling). COMMAND_TOOLS are the LLM's decisions whose
@@ -107,6 +123,12 @@ __all__ = [
     "CompletionRecord",
     "CompletionStats",
     "KpiReport",
+    "MotionAccumulator",
+    "MotionInputs",
+    "MotionSample",
+    "SmoothnessStats",
+    "detour_factors",
+    "smoothness_stats",
     "cancelled_task_ids",
     "robot_load_fairness",
     "compute_kpis",
@@ -252,6 +274,17 @@ class KpiReport:
     # Jain index over the per-robot EXECUTED command load (doc21:186 "fairness / 負荷均等 …
     # by_robot", doc21:310 "fairness(Jain 指数)"). See :func:`robot_load_fairness`.
     fairness_jain: float | None = None
+    # ── Tier-1, odom-sourced (doc21 §6 :187, §13.2 :310) ─────────────────────
+    # All three stay EMPTY unless the caller supplies ``motion=`` — the offline ``kpi_report``
+    # CLI reads audit.jsonl only, so its output is unchanged by this slice.
+    # pᵢ per robot = whole-run odom travel distance (= the ``efficiency`` quantity of doc08:397,
+    # surfaced in the report; **no new score is sent** — the existing efficiency score-send in
+    # ``score_send`` is untouched). Reported so ``detour_factors`` is re-derivable.
+    distance_traveled: dict[str, float] = field(default_factory=dict)
+    # pᵢ/lᵢ per robot (doc21:310). Empty until an lᵢ oracle exists (Phase 3a, doc21:409).
+    detour_factors: dict[str, float] = field(default_factory=dict)
+    # Per-robot 軌道平滑性 over the retained odom window (doc21:306's SPARC / LDLJ / N_MU).
+    smoothness: dict[str, SmoothnessStats] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -272,6 +305,9 @@ class KpiReport:
             "intervention_rate": self.intervention_rate,
             "command_rejection_rate": self.command_rejection_rate,
             "fairness_jain": self.fairness_jain,
+            "distance_traveled": dict(self.distance_traveled),
+            "detour_factors": dict(self.detour_factors),
+            "smoothness": {robot: stats.to_dict() for robot, stats in self.smoothness.items()},
         }
 
 
@@ -331,6 +367,7 @@ def compute_kpis(
     *,
     exclude_cancelled: bool = True,
     completions: dict[str, float] | None = None,
+    motion: MotionInputs | None = None,
 ) -> KpiReport:
     """Aggregate the ``result`` KPI family from audit entries.
 
@@ -339,6 +376,12 @@ def compute_kpis(
     externally supplied ``{task_id: completion_epoch}`` map for the
     ``task_completion_time`` scaffold — ``None`` (the live default until Phase 3)
     leaves :attr:`KpiReport.completion` as ``None``.
+
+    ``motion`` carries the odom-sourced Tier-1 inputs (doc21:310) the ``kpi_collector`` node
+    accumulates from ``/bot{n}/odom``; ``None`` (the offline-CLI default) leaves
+    :attr:`KpiReport.distance_traveled`, :attr:`~KpiReport.detour_factors` and
+    :attr:`~KpiReport.smoothness` empty — every audit-sourced number is then bit-identical to the
+    previous slice (``to_dict()`` still gains the three keys, holding empty containers).
     """
     cancelled = cancelled_task_ids(entries) if exclude_cancelled else set()
     overall = ResultTally()
@@ -379,6 +422,18 @@ def compute_kpis(
         records = pair_completion_times(entries, completions, exclude_cancelled=exclude_cancelled)
         completion = completion_stats(records)
 
+    # Odom half (doc21:310) — pure composition over caller-supplied inputs, so an audit-only
+    # caller (the ``kpi_report`` CLI) keeps its previous output exactly.
+    distances: dict[str, float] = {}
+    detours: dict[str, float] = {}
+    smoothness: dict[str, SmoothnessStats] = {}
+    if motion is not None:
+        distances = dict(motion.distances)
+        detours = detour_factors(motion.distances, motion.optimal_distances)
+        smoothness = {
+            robot: smoothness_stats(samples) for robot, samples in motion.samples.items() if samples
+        }
+
     # ``rate`` is the eval_sdk zero-denominator guard (doc21:184); behaviour is unchanged from
     # the previous inline ``if command_decided else None``.
     acceptance = rate(command_executed, command_decided)
@@ -400,6 +455,9 @@ def compute_kpis(
         intervention_rate=rate(interventions, command_decided),
         command_rejection_rate=(None if acceptance is None else 1.0 - acceptance),
         fairness_jain=robot_load_fairness(by_robot),
+        distance_traveled=distances,
+        detour_factors=detours,
+        smoothness=smoothness,
     )
 
 
@@ -502,6 +560,14 @@ def format_report(report: KpiReport) -> str:
         lines.append(f"  rejection_reasons: {report.rejection_reasons}")
     if report.completion is not None:
         lines.append(f"  task_completion_time: {report.completion.to_dict()}")
+    # Odom half — omitted entirely when no motion was supplied (offline CLI), so the audit-only
+    # rendering is byte-identical to the previous slice.
+    for robot, distance in sorted(report.distance_traveled.items()):
+        lines.append(f"  distance_traveled {robot}: {distance}")
+    for robot, factor in sorted(report.detour_factors.items()):
+        lines.append(f"  detour_factor {robot}: {factor}")
+    for robot, stats in sorted(report.smoothness.items()):
+        lines.append(f"  smoothness {robot}: {stats.to_dict()}")
     return "\n".join(lines)
 
 
