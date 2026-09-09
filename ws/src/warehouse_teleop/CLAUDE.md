@@ -46,3 +46,13 @@
 - **消費 (consume)**: `warehouse_interfaces.safety.MAX_LINEAR_VELOCITY` / `clamp_velocity`（単一ソース）・sensor_msgs / joy（package.xml exec_depend 追加）。
 - **テスト (R-26)**: `tests/unit/test_teleop_joymap.py`（15 ケース・spec 由来オラクル）。**mutation 2 本 KILLED**（2026-08-26 実測）: per-axis クランプすり替え→1 fail（C-8 本命）・デッドマン disarm→1 fail。クリーン 0 fail。
 - 注意: ここは**第一防御**にすぎない。最終防衛は `warehouse_m1_driver` の L0'（`clamp_body_velocity`）＝別トラック。
+
+## 【2026-08-31 追記】/joy 鮮度タイムアウト（teleop_joy の freshness dead-man）
+
+設計正本: [docs/mode-m1/03-joystick-teleop-bringup.md](../../../docs/mode-m1/03-joystick-teleop-bringup.md) §3（/joy 鮮度タイムアウトの行）。
+
+- **動機**: Humble joy_node はデバイス喪失時に /joy の publish を止めるだけで**ゼロ Joy を出さない**（joystick_drivers ros2 branch `joy.cpp` handleJoyDeviceRemoved）。旧 `_on_timer` は `self._latest` を無条件 20Hz 再送するため、デッドマン保持中に joy_node/receiver が死ぬと最後の非ゼロ twist を永久送出し、cmd_vel が fresh のまま m1_driver **W-1（0.5s）も発火しない**穴があった。
+- **提供 (produce)**: ros param **`joy_timeout_s`**（既定 `DEFAULT_JOY_TIMEOUT_S = 0.6`＝teleop_keyboard `stop_timeout` と同値）。最後の /joy 受信からの経過が超過（strictly greater・keyboard 版と同境界）で republish がゼロ twist に落ちる。初回 /joy 受信前は stale 扱い（fail-closed・driver_core W-1 と同姿勢）。
+- **pure 実装**: `joymap.apply_joy_freshness(latest, elapsed_s, timeout_s)`（rclpy 非依存）。**非有限 elapsed は stale 扱い**（`NaN > t` が False で永久ラッチする穴そのものを塞ぐ）・**param の非有限/非正は既定へ fail-safe**（`_positive_or_default`・`driver_core.py:37-41` / keyboard `_positive` と同型。inf timeout は dead-man を無効化するため raw を honor しない）。
+- **テスト (R-26)**: `tests/unit/test_teleop_joymap.py` 末尾に 11 ケース append（fresh 素通し / stale→ゼロ / 境界＝ちょうどは素通し / 非有限 elapsed 3 種→ゼロ / 退化 timeout 4 種→既定で裁定 / 既定値 0.6 の keyboard パリティ）。**mutation 4 本 KILLED**（2026-08-31 実測・個別適用）: ①ガード disarm ②非有限 elapsed を fresh 扱い ③timeout ハードニング除去 ④比較反転。クリーン 0 fail・全 suite 2545 passed。
+- ⚠️ **mutation ハーネスの追加教訓（pyc エイリアス）**: 実ファイル差替方式でも **`__pycache__` を毎回 purge しないと stale bytecode が復元後も import され続ける**（pyc 有効判定は mtime 秒粒度＋サイズ。同一秒内の書き戻しでエイリアスし、「復元済みソース・変異体の挙動」という偽状態になる—2026-08-31 実測）。ハーネスは `PYTHONDONTWRITEBYTECODE=1` ＋ 各 run 前に `__pycache__` 削除を必須とする（`warehouse_m1_driver/CLAUDE.md` の PYTHONPATH 落とし穴と対の注意）。
