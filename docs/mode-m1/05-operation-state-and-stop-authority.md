@@ -69,6 +69,41 @@ driver に「走行を許可する権限」を新設するのではなく、**�
 - **clamp 必経（G-l 条件）は不変**。停止上乗せは `clamp_body_velocity` を迂回する経路を作らない。W-1 とは「守る故障が違う」（W-1=指令途絶／上乗せ=停止要求・状態途絶）ため timeout を単一 param に混ぜない。**W-3（MCU watchdog 不在）の代替と説明しない**（ホスト死には効かない）。
 - R-26 unit（独立オラクル＋mutation）: ①停止要求→ゼロ ②非有限/非正/逆行する期限→無許可扱い ③初期状態=停止側（有効時）④**無効時は現行と bit 等価**（negative oracle — これが無いと「安全機構がある」名目だけが残る）⑤clamp 必経の回帰 ⑥W-1 との AND 合成（どちらか stale なら brake）⑦W-2 との整合 ⑧注入時計のみ使用。
 
+### 4-1. 停止上乗せの入力契約（producer → overlay）（確定・2026-09-09）
+
+§4 の「停止要求」「状態更新」を運ぶチャネルを確定する。これは §3-2 が言う**「常時流れる設計のチャネル」**（`transient_local` は生存確認にならない）に該当し、fail-closed の鮮度監視をそのまま適用する。**doc03 カタログへの追加は additive 1 行のみ**（topic 名・型・一行責務。詳細の正本は本節＝doc03 の委譲規約に従う）。**凍結契約 `warehouse_interfaces` は無変更**。
+
+| 項目 | 確定値 |
+|---|---|
+| topic | `/bot{n}/stop_state`（per-bot。driver が per-bot に立つため） |
+| 型 | `std_msgs/String`（JSON）。Phase 4 で `.msg` 化（[doc16 §3](../architecture/16-repository-and-conventions.md)） |
+| producer | **Emergency Guardian（L1）** — 停止理由の集合を持つ担当（§1 / §5）。**周期 publish**（停止要求が無い間も流し続ける＝§3-2） |
+| consumer | **m1_driver（L0'）の停止上乗せ**。`stop_overlay_enabled: true` のときだけ購読する（既定無効＝:68 を壊さない） |
+| QoS | RELIABLE / KEEP_LAST depth **1** / **VOLATILE**。`transient_local` は使わない（後着購読者へ古い許可を再配信＝fail-open になるため＝§3-2） |
+| payload | `{"stop_requested": <bool>, "valid_until": <float>}`。未知キーは consumer が無視する（additive-first・前方互換） |
+
+**期限規律（watermark）**
+
+- `valid_until` は**絶対期限（秒）**。基準時計は **producer と consumer が同一ホスト・同一 boot で共有する単調時計**（POSIX `CLOCK_MONOTONIC`）。**壁時計は使わない**（NTP のステップで期限が伸びる＝fail-open になるため）。同一ホスト前提は doc03「Jetson 内部」（両ノードとも Jetson 上に立つ）に依存する。
+- producer は `valid_until` を**単調非減少**で発行する。consumer は受理済みの最大値を **watermark** として保持し、**それを下回る値（逆行）を拒否**する。目的は「replay・順序逆転・producer 再起動によって、古くて長い許可が復活しない」こと。
+- **逆行・非有限・非正はいずれも「無視」ではなく即時失権**（成立中の許可を落とす）＝ :70 ②。
+- consumer は許可長を **`stop_state_max_validity_s`** で上限クリップする（producer の誤値・暴走が長時間の許可へ化けるのを防ぐ）。**W-1 の `cmd_vel_timeout_s` とは別 param**（守る故障が違う＝:69）。**値は Phase 1 実測までの暫定**で、凍結 twist_mux 入力 timeout 0.5s に整合させる（W-1 既定と同じ暫定根拠）。
+
+**鮮度規律・不正 payload の扱い**
+
+- `now > valid_until` → 停止側（:66 の表 4 行目）。未受信 → 初期状態＝停止側（:70 ③）。
+- **JSON パース不能・キー欠落・型不一致は即時失権**（fail-closed）。これは `/operator/stop_request` の「不明・不正 payload は**無視**」（§5・OQ-OP2）と**逆向き**だが矛盾ではない: あちらは停止を**掛ける**方向の入力なので無視が安全側、こちらは走行を**許す**方向の入力なので無視は危険側になる。**fail-closed の向きは入力の意味で決まる**。
+
+**本節が裁定しないこと（隠さない）**
+
+- OQ-OP1 の本題（**L2 feed** を #593 の level mirror のまま恒久受容するか、生存証明チャネルへ移すか）は**本節では裁定しない**。本節は §4 停止上乗せ（L0'）の入力契約のみを確定する。両者を 1 本のチャネルへ統合するかは fault injection（§8）後のオペレーター裁定に残す。
+- producer 実装（Guardian 側の publisher）は `warehouse_safety` 所有の後続スライス。**本契約が先に land しても、producer 不在の間は overlay を有効化すると常時停止側**（fail-closed・設計どおり）。
+- producer 再起動で `valid_until` が watermark を下回り続ける場合、consumer は停止側で保持し続ける（fail-closed）。復帰手段（driver 再起動 か producer 側の watermark 継承か）は producer 実装スライスで裁定する。
+
+**R-26 追加（:70 の ①〜⑧ に対する additive）**
+
+⑨ 契約 payload の decode: 正常形 → `(stop_requested, valid_until)`、パース不能・キー欠落・型不一致 → 即時失権 ⑩ 上限クリップが効く（過大な `valid_until` が許可窓を延ばさない） ⑪ 配線層（topic 名・型・QoS・**既定無効時は購読しないこと**）を AST で pin する（§10 の #593 残余 follow-up ① と同じ `test_speed_band_bringup_wiring.py` 先例）。
+
 ## 5. 操作者非常停止要求（operator stop request）（確定・2026-09-07）
 
 - Guardian に**新しい停止理由として追加**する。実装 idiom は既存どおり: `BotState` への既定値付きフィールド追加＋`evaluate` の追加ブロック＋純ロジック側の latch dataclass（`pose_stale`/`PoseGateTracker` が先例）。**既存の異常条件（near_collision / battery_critical / pose_stale）は自動解除のまま変えない**（非回帰を R-26 で pin）。
@@ -133,6 +168,7 @@ fault injection（Guardian kill・driver kill・USB 抜線・joy 切断・proces
 - **#582（joy 鮮度）は §6「再接続だけでは走行を再開しない」をまだ満たさない**（ガードは mask であって latch でない・再アーム未実装）— land 時に残件明示＋後続スライスで latch/再アームを実装。あわせて #582 の doc03 中段挿入が [jetson/02](../jetson/02-remote-access-and-dev-link.md) の `mode-m1/03:54` pin を割るため、#582 land 後に **:55 への再 pin** が要る（この形の pin は check_consistency の検査対象外＝CI では検出されない）。
 - doc12 内部の行 pin ドリフト（Guardian 詳細節を「:95-151」と自己参照するが実体は :181。**同型 stale がコード側 `ws/src/warehouse_bringup/launch/bringup.launch.py:221` のコメントにも現存**）・[mode-x-er/10:457](../mode-x-er/10-room-scale-safety-review.md) の GLOSSARY 行参照ドリフト — 所有トラックへ申し送り（本 PR では触らない）。
 - doc12 / doc10 への backlink 追記は所有境界を尊重し本 PR では行わない（張り残しとして明示）。
+- **【2026-09-09 追記】停止上乗せの入力契約は §4-1 に確定**（topic `/bot{n}/stop_state`・doc03「Jetson 内部」表へ additive 1 行・consumer 側配線と R-26 のみ land）。**producer（Guardian 側 publisher）は `warehouse_safety` 所有の後続スライスで未実装**＝現状 `stop_overlay_enabled:=true` は feed 不在で常時停止側（fail-closed）。**OQ-OP1 の本題（L2 feed を level mirror のまま恒久受容するか）は §4-1 では裁定していない**（§9 の表は未決のまま）。
 
 ## References（双方向）
 

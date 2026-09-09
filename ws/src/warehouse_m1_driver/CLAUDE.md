@@ -136,5 +136,36 @@ Yahboom ROSMASTER M1 の公式 STM32 source V3.6.5 は入手済みだが、stock
 
 ### 前提・未確定 (TODO)
 
-- `# TODO(doc05 OQ-OP1/OP2)` **producer channel の ROS 配線は未実装（意図的 defer）**: 停止上乗せが購読する topic 名・型・周期・鮮度閾値は doc03 additive 追記と同一 PR で確定してから `driver_node.py` に subscription を足す（doc05 §3-2 は本書で発明しない、と明記）。それまで統合構成で `stop_overlay_enabled:=true` にすると **feed 不在 = 常時停止側**（fail-closed・設計どおり）。
+- ~~`# TODO(doc05 OQ-OP1/OP2)` producer channel の ROS 配線は未実装（意図的 defer）~~ → **解消（下記 2026-09-09 追記の producer 配線スライス）**。契約は doc05 §4-1 が正本・doc03「Jetson 内部」表に 1 行 additive 済。
 - `# TODO(Phase 1)` 統合 bringup での有効化（launch 設定の切り分け: 単体=無効 / 統合=明示有効。doc05:68）。
+
+## 【2026-09-09 追記】stop overlay の producer 配線スライス（doc05 §4-1 契約 + 消費側）
+
+設計正本: [docs/mode-m1/05-operation-state-and-stop-authority.md](../../../docs/mode-m1/05-operation-state-and-stop-authority.md) **§4-1（停止上乗せの入力契約）**。カタログ行は doc03「Jetson 内部」表の `/bot{n}/stop_state`（topic 名・型・一行責務のみ・詳細は §4-1 へ委譲）。**`warehouse_interfaces` 無変更**（`std_msgs/String` JSON・doc16 §3 の Phase 4 まで JSON 運用）。
+
+### 提供 (produce) — 本スライスで追加
+
+- `warehouse_m1_driver.stop_state.STOP_STATE_TOPIC_TEMPLATE` = `"/{bot}/stop_state"`。
+- `warehouse_m1_driver.stop_state.DEFAULT_STOP_STATE_MAX_VALIDITY_S` = `0.5`（**暫定**・凍結 twist_mux 入力 timeout と整合。`# TODO(Phase 1 実測)`）。
+- `warehouse_m1_driver.stop_state.decode_stop_state(payload, now, max_validity_s) -> (stop_requested, valid_until)`
+  — **純関数・rclpy 非依存**。JSON パース不能・非 object・キー欠落・型不一致・非有限/非正/逆行する `valid_until` は**すべて即時失権**（`(True, nan)` を返し core 規則②に載せる＝watermark を汚さない）。未知キーは無視（additive-first）。受理時は `min(valid_until, now + max_validity_s)` に**上限クリップ**。
+- ROS param **`stop_state_max_validity_s`**（`driver_node.py`）— **W-1 の `cmd_vel_timeout_s` とは別 param**（doc05:69）。非有限・非正は既定へ fail-safe。
+- `driver_node` の **`/{bot}/stop_state` 購読**（`std_msgs/String`・QoS **RELIABLE / KEEP_LAST depth 1 / VOLATILE**）。**`stop_overlay_enabled: true` のときだけ購読を作る**＝既定無効では ROS グラフも従来どおり（command path だけでなくトポロジも bit 等価）。
+- **新しい型 / JSON スキーマは `warehouse_interfaces` に産まない**（doc03 カタログへ 1 行 additive のみ）。
+
+### 消費 (consume) — 追加分
+
+- `std_msgs/String`（`package.xml` exec_depend 追加済）/ `rclpy.qos`（QoSProfile・3 policy enum）。
+- topic 契約 `/bot{n}/stop_state` の **producer は Emergency Guardian（L1・`warehouse_safety` 所有）**。本スライスは consumer 側のみ＝producer publisher は後続スライス。
+
+### テスト（R-26）
+
+- `tests/unit/test_m1_stop_state_contract.py`（57 ケース）— doc05 §4-1 由来の**独立オラクル**（期待値はテスト側リテラル。実装定数を import して比較する tautology にしない）。decode の全異常系／上限クリップ／watermark 逆行・同値・rejected が watermark を上げないこと／既定無効の bit 等価（call log 完全一致）／clamp 必経・W-1 AND・W-2 不干渉／配線層 AST pin（topic・型・QoS 3 policy・**購読が enable flag で guard されていること**・`declare_parameter` 集合・`time.monotonic()` 使用）。
+- CI に rclpy は無いため配線層は **AST で読む**（`test_emergency_mirror_wiring.py` / `test_speed_band_bringup_wiring.py` 先例）。
+
+### 前提・未確定 (TODO)
+
+- `# TODO(producer)` Guardian 側 publisher は `warehouse_safety` 所有の後続スライス。**それまで `stop_overlay_enabled:=true` は feed 不在＝常時停止側**（fail-closed・設計どおり・起動 log に表示）。
+- `# TODO(Phase 1 実測)` `stop_state_max_validity_s` の運用値（現在は twist_mux 0.5s に暫定整合）。
+- `# TODO(doc05 §4-1)` producer 再起動で `valid_until` が watermark を下回り続ける場合の復帰手段は producer スライスで裁定（現状は fail-closed で保持）。
+- 同一ホスト・同一 boot の単調時計共有が契約前提（doc03「Jetson 内部」）。クロスホスト化する場合は §4-1 の期限規律を再設計する。

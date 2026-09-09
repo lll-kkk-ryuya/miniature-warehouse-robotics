@@ -22,7 +22,7 @@ Mode A（および Mode B）でキャラLLM Bot1/Bot2 が会話・交渉し、�
 
 ### 1.3 非ゴール（重要）
 - **ブラウザ→ロボット操作は持たない**（観測専用。§12 で R-26 unit により証明）。
-- 生 ROS グラフ（`/scan`・`/map`・TF・costmap）のブラウザ直結は**しない**（doc03:115 スコープ外。rosbridge/Foxglove をブラウザに置かない）。安全・帯域・Jetson コストのため。
+- 生 ROS グラフ（`/scan`・`/map`・TF・costmap）のブラウザ直結は**しない**（doc03:116 スコープ外。rosbridge/Foxglove をブラウザに置かない）。安全・帯域・Jetson コストのため。
 - LLM 比較の**クロス集計**（4社×3モード）はリアルタイムでなく事後（Langfuse-backed、§7）。
 
 ---
@@ -90,9 +90,9 @@ Mode A（および Mode B）でキャラLLM Bot1/Bot2 が会話・交渉し、�
 
 ### 2.2 WO画面（KPI/control ダッシュボード）との調停 — **別アプリ（統合しない）**
 
-既に **「WO画面（Warehouse Orchestrator dashboard・Phase 4）」** が計画されている（[doc03:215-229](03-software-architecture.md)・[doc06:267-269](06-implementation-phases.md)、`web/e2e` の Playwright が対象とする画面、owner=`feat/wo-metrics`）。本 console との関係を明示する。
+既に **「WO画面（Warehouse Orchestrator dashboard・Phase 4）」** が計画されている（[doc03:216-230](03-software-architecture.md)・[doc06:267-269](06-implementation-phases.md)、`web/e2e` の Playwright が対象とする画面、owner=`feat/wo-metrics`）。本 console との関係を明示する。
 
-- **WO画面 = CONTROL 面**: WO Bridge Node が Nav2 にゴール送信（doc03:227）／Before-After 切替制御（doc03:229）。
+- **WO画面 = CONTROL 面**: WO Bridge Node が Nav2 にゴール送信（doc03:228）／Before-After 切替制御（doc03:230）。
 - **web/console = OBSERVE-ONLY 面**: ブラウザ→ロボット操作なし（§1.3・§12.3 R-26）。
 - **裁定: 別アプリ・別 owner・別安全 posture として棲み分け、1 つの shell に control 経路を畳み込まない。** observe-only gateway に Nav2-goal control を載せると **web_bridge の R-26 保証（§12.3）が壊れる**＝これが「統合しない」最強の根拠。両者は未着工（`grep wo_bridge ws/src`=0 件）なので重複は実装でなく product/port/Playwright scaffold の競合に留まる。
 - rmf-web（Mode C fleet・doc12c）／Foxglove・rosbridge（ブラウザに置かない・§1.3）／Langfuse（事後 sink・§4）との棲み分けは既に各節で確定済み。
@@ -116,7 +116,7 @@ Mode A（および Mode B）でキャラLLM Bot1/Bot2 が会話・交渉し、�
 | `/negotiation/abort` | `std_msgs/String`（**canonical `{reason, bot, event_id}`**＝producer `warehouse_safety.guard_logic.build_abort` `guard_logic.py:181,191` / [doc03:108](03-software-architecture.md)。`event_id` で `/emergency/event` と join 可） | event（中断）。※`negotiation_messages.decode_abort`(`:131-141`) は `reason` のみ拾う **lenient consumer**＝producer 契約ではない |
 | `/emergency/event` | `std_msgs/String`（コア形 `event_id/robot/type/severity/action_taken/timestamp/requires_llm_review[+detail]` doc12:141-150・edge-trigger doc12:185） | event（緊急） |
 
-> **ObsEvent は ROS トピックではなく WS/REST 上の封筒**（§5）。よって doc03 トピックカタログには `web_bridge` を producer として追加しない（既存契約の consumer であり、生 plumbing 同様 doc03 スコープ外 doc03:115）。doc03 には可視化・モニタリング表（doc03:279-285）に本コンソールを 1 行追記するに留める。
+> **ObsEvent は ROS トピックではなく WS/REST 上の封筒**（§5）。よって doc03 トピックカタログには `web_bridge` を producer として追加しない（既存契約の consumer であり、生 plumbing 同様 doc03 スコープ外 doc03:116）。doc03 には可視化・モニタリング表（doc03:280-286）に本コンソールを 1 行追記するに留める。
 
 ---
 
@@ -388,7 +388,7 @@ live persona は Slice 3（Hermes persona・human-gated・Phase 3、≈ #288）�
 ## 19. 参照（たどれる file:line）
 
 - 共存パターン / health: [docs/mode-a/12a-integration-mode-a.md:200-234](../mode-a/12a-integration-mode-a.md), :234
-- トピックカタログ: [docs/architecture/03-software-architecture.md:98-108](03-software-architecture.md), :115, :279-285
+- トピックカタログ: [docs/architecture/03-software-architecture.md:98-108](03-software-architecture.md), :116, :280-286
 - 会話 producer: `ws/src/warehouse_llm_bridge/warehouse_llm_bridge/negotiation_messages.py:88-101,49-53,10-17`（decode_abort `:131-141` は **lenient consumer**） / `character_session.py:89-90,103` / `character_node.py:15-17,91-94,154-156` / `persona.py:114-160`
 - abort producer（canonical）: `ws/src/warehouse_safety/warehouse_safety/guard_logic.py:181,191`（`build_abort`→`{reason, bot, event_id}`・[doc03:108](03-software-architecture.md)・doc14:241-247 R2）
 - 司令官 publisher: `ws/src/warehouse_llm_bridge/warehouse_llm_bridge/llm_bridge.py:143-144,150(create_publisher),165(negotiation_starter 配線),267-273,287(publish helper)` / `scheduler.py:151(_noop),178-179(既定 publish 配線),232-246(proposal 注入 API),302,334(cycle への attach),357(situation へ発火)`
@@ -402,5 +402,5 @@ live persona は Slice 3（Hermes persona・human-gated・Phase 3、≈ #288）�
 - 緊急 / battery / 周期: [doc12:77](12-infrastructure-common.md)（0.3 m/s）, :141-150（event コア形）, :185（edge-trigger）, :191（near 距離閾値）, :250-252（battery band）, :262（100ms）
 - キャラLLM: [doc14:40-46](14-character-llm-negotiation.md)（実況）, :239-247（abort）, :255（Phase 4 Mode C 交渉）
 - 環境 / テスト / デプロイ: [doc19:5,56](19-environments-and-config.md)（コード1本・env は config）, :76（.env）, :94（git tag deploy）, :129（G1 残RAM≥500MB）, [doc20](20-dev-quality-and-testing.md), [doc16:84](16-repository-and-conventions.md)（命名）, :205（topic catalog 所有）, :188-200（branch 表）, [jetson-deploy](../setup/jetson-deploy.md)（5-unit systemd）
-- WO画面 / 撮影 / #187: [doc03:215-229](03-software-architecture.md)（WO画面=control）, [doc06:267-269](06-implementation-phases.md)（WO Bridge Phase4）, [doc05](../shared/05-video-storyboard.md)（撮影）, [doc07:243](../shared/07-research-notes.md)（#187 R-38 段階2 未通過）
+- WO画面 / 撮影 / #187: [doc03:216-230](03-software-architecture.md)（WO画面=control）, [doc06:267-269](06-implementation-phases.md)（WO Bridge Phase4）, [doc05](../shared/05-video-storyboard.md)（撮影）, [doc07:243](../shared/07-research-notes.md)（#187 R-38 段階2 未通過）
 - config: `config/warehouse.base.yaml:41-43`（cycle）, :47-56（locations）, :92-93（nav2_bridge :8645）
