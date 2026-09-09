@@ -298,6 +298,16 @@ class PolicyGate:
         """Return True if ``robot`` is currently flagged in emergency."""
         return robot in self._emergency
 
+    def emergency_holds(self) -> frozenset[str]:
+        """Bots currently flagged in emergency — the level state this gate enforces.
+
+        Read-only observability surface for ``get_fleet_status`` (doc12:389-409:
+        emergency 情報を含めて LLM に返す): the SAME set ``check_emergency`` reads
+        on every dispatch, so what the commander sees is exactly what rejects.
+        A frozen copy — callers cannot mutate the gate state through it.
+        """
+        return frozenset(self._emergency)
+
     # -- state.json helpers --------------------------------------------------
 
     def _read_state(self) -> dict:
