@@ -400,7 +400,7 @@ topics:
 ```
 
 - Emergency Guardian は `/bot{n}/cmd_vel/emergency` に publish
-- Nav2 Controller は `/bot{n}/cmd_vel/nav2` に publish（remap）
+- Nav2 Controller は `/bot{n}/cmd_vel/nav2` に publish（remap。同 topic へは collision_monitor 出力（doc12:543）と behavior_server recovery の直行（doc12:559）も合流。この prio10 入力は自作ノードが両端に居ない plumbing のため **doc03 トピックカタログ対象外**＝スコープ規約 doc03:114）
 - `twist_mux` ノードが優先度に従って `/bot{n}/cmd_vel` に転送
 - Emergency が 0.5s 以内に来ていれば Nav2 を完全にブロック
 
