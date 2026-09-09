@@ -46,7 +46,9 @@ The **odom-sourced** Tier-1 entries of doc21:310 followed in a second slice and 
 :mod:`warehouse_orchestrator.motion` (軌道平滑性 = SPARC/LDLJ/N_MU per doc21:306, detour factor
 = pᵢ/lᵢ). This module only *composes* them into :class:`KpiReport` from a caller-supplied
 :class:`~warehouse_orchestrator.motion.MotionInputs` — same shape as the ``completions``
-scaffold, so the offline CLI and every existing caller are unaffected when nothing is supplied.
+scaffold. With nothing supplied every audit-sourced number is bit-identical and ``format_report``
+renders exactly as before; ``to_dict()`` gains three keys holding empty containers (additive —
+no existing key changes value or disappears).
 ``idle 率`` and ``速度予算消化率`` remain unimplemented: doc21:310 names them and no doc defines
 them (CLAUDE.md voids 15). ``decision latency`` is doc08:497 (Langfuse-derived), delegated to
 #434.
@@ -378,7 +380,8 @@ def compute_kpis(
     ``motion`` carries the odom-sourced Tier-1 inputs (doc21:310) the ``kpi_collector`` node
     accumulates from ``/bot{n}/odom``; ``None`` (the offline-CLI default) leaves
     :attr:`KpiReport.distance_traveled`, :attr:`~KpiReport.detour_factors` and
-    :attr:`~KpiReport.smoothness` empty. Audit-only behaviour is therefore unchanged.
+    :attr:`~KpiReport.smoothness` empty — every audit-sourced number is then bit-identical to the
+    previous slice (``to_dict()`` still gains the three keys, holding empty containers).
     """
     cancelled = cancelled_task_ids(entries) if exclude_cancelled else set()
     overall = ResultTally()
