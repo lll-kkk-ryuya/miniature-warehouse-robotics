@@ -162,6 +162,29 @@ def test_sparc_is_amplitude_invariant() -> None:
 
 
 @pytest.mark.unit
+def test_spectral_metrics_read_the_speed_profile_not_the_signed_series() -> None:
+    """SPARC and LDLJ are defined on a **speed** profile (doc21:306), so reversing is not
+    roughness: a robot creeping backwards at 0.1 m/s is exactly as smooth as one creeping
+    forwards at 0.1 m/s. Oracle = the two windows below must score identically because they
+    share one |v| profile — handing the metrics the signed series makes them diverge.
+
+    Added after a mutation run showed the earlier all-positive fixtures could not tell the two
+    apart (an equivalent mutant); the LDLJ half is pure stdlib, so it also guards in CI where
+    numpy (and therefore SPARC) is absent. The profile below is deliberately asymmetric — a
+    mirror-symmetric one (e.g. 0.2, 0.1, -0.1, -0.2, -0.1, 0.1) yields the *same* sum of squared
+    second differences signed or not, and silently stops discriminating.
+    """
+    signed = _series([0.30, 0.05, -0.20, -0.05, 0.10, 0.25])
+    unsigned = _series([0.30, 0.05, 0.20, 0.05, 0.10, 0.25])  # = |v| of the row above
+    assert smoothness_stats(signed).ldlj == pytest.approx(smoothness_stats(unsigned).ldlj)
+    pytest.importorskip("numpy", reason="SPARC needs the optional eval_sdk[stats] extra")
+    assert smoothness_stats(signed).sparc == pytest.approx(smoothness_stats(unsigned).sparc)
+    # …while N_MU still sees the direction change the speed profile threw away.
+    assert smoothness_stats(signed).n_movement_units == 2
+    assert smoothness_stats(unsigned).n_movement_units == 0
+
+
+@pytest.mark.unit
 def test_a_jittery_profile_is_less_smooth_than_a_steady_one() -> None:
     """Ordering check, the other independent oracle for a smoothness metric: an
     oscillating speed profile must score WORSE (more negative SAL) than a smooth ramp
