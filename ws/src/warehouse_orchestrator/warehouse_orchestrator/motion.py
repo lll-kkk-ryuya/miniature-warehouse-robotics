@@ -39,7 +39,17 @@ resulting input length are republished in every :class:`SmoothnessStats`.
 **N_MU is deliberately NOT low-passed.** doc21:306 attaches the low-pass to the differentiation
 ("3階微分前"), and 速度符号反転数 differentiates nothing — it counts sign changes of the signed
 velocity. Filtering it would erase the very reversals it measures. Its noise sensitivity is
-unaddressed by doc21 and is carried as a residual rather than resolved by invention.
+unaddressed by doc21 and is carried as a residual (CLAUDE.md void 17) rather than resolved by
+invention.
+
+**Open point — SPARC's filter is a judgement doc21 does not settle** (disclosed in doc21 §16 ③,
+CLAUDE.md void 17). LDLJ's case is airtight (its 2nd difference of speed *is* position's 3rd
+derivative). SPARC differentiates nothing, already band-limits itself at ``fc`` = 10 Hz, and the
+siva82kb implementation doc21:306 names as the 照合元 does not pre-filter — and a 5-wide moving
+average at 30 Hz has its first null at 6 Hz, *inside* that band, so the two limits compound
+(measured: SPARC −2.05 raw → −1.70 filtered on the 9-sample fixture). Issue #616's DoD asks for
+both spectral inputs to be pre-filtered and that is what ships; reversing it for SPARC alone is a
+one-line change, which is why the decision is documented rather than hidden.
 
 **Deliberately NOT here — documented design voids (do not invent, see CLAUDE.md voids 15):**
 
@@ -54,14 +64,16 @@ unaddressed by doc21 and is carried as a residual rather than resolved by invent
 * **decision latency** — doc08:497 derives it from the Langfuse ``generation.latency``, not from
   audit+odom; Issue #432 delegates it to the A-4 query helper (#434).
 
-**Producer note (doc21:189 vs the code).** doc21:187 lists 軌道平滑性's data source as the
-*existing* ``/bot{n}/odom`` with 「新 producer ゼロ」, but ``DistanceAccumulator`` keeps only a
-running total and the previous point, so no series survives its call — the gap recorded as
-CLAUDE.md void 12. :class:`MotionAccumulator` closes it **inside the subscription the collector
-already has**: no new topic, no new node, no new message type, no new contract and no new score
-send. ``max_samples`` is an engineering memory bound (a ring buffer), **not** a domain threshold;
-the measured window is republished in every :class:`SmoothnessStats` so a reader always knows
-what was summarised.
+**Producer note (doc21:187 / doc21:189).** doc21:187 lists 軌道平滑性's data source as the
+*existing* ``/bot{n}/odom``, but ``DistanceAccumulator`` keeps only a running total and the
+previous point, so no series survives its call. :class:`MotionAccumulator` closes that gap
+**inside the subscription the collector already has**: no new topic, no new node, no new message
+type, no new contract and no new score send. That is why doc21:189 now reads 「新ノード不要」
+rather than the 「新 producer ゼロ」 it carried when #613 landed — the wording was revised in
+#616 and the change is recorded in doc21 §16 ①, not silently reinterpreted here.
+``max_samples`` is an engineering memory bound (a ring buffer), **not** a domain threshold; the
+measured window is republished in every :class:`SmoothnessStats` so a reader always knows what
+was summarised.
 
 **Velocity source.** ``v`` is the odom message's own signed linear velocity
 (``twist.twist.linear.x``) rather than a re-differentiation of pose: doc12:340 makes
@@ -240,12 +252,16 @@ class SmoothnessStats:
     window, not a KPI**: they are the ingredients of the undefined 速度予算消化率 (module
     docstring), published so the metric can be pinned in doc21 later without a schema change.
 
-    ``smooth_window`` / ``filtered_samples`` describe the doc21:306 pre-filter: the width used
-    and how many low-passed samples actually reached ``sparc``/``ldlj`` (``samples − window + 1``,
-    or ``None`` when nothing did). Reported for the same reason as ``window_start``/``window_end``
-    — the numbers summarise a *transformed* window and a reader must be able to see which one.
-    ``filtered_samples is None`` is also the visible signature of the ``_MIN_SPECTRAL_SAMPLES``
-    floor firing, which is otherwise indistinguishable from numpy being absent.
+    ``smooth_window`` / ``filtered_samples`` describe the doc21:306 pre-filter. The width is
+    reported **always**; ``filtered_samples`` is the number of low-passed samples that actually
+    reached ``sparc``/``ldlj`` (``samples − window + 1``) and is ``None`` whenever none did.
+    Reported for the same reason as ``window_start``/``window_end`` — the numbers summarise a
+    *transformed* window and a reader must be able to see which one. ``None`` here means the
+    spectral pair was **never called**, which is what makes the ``_MIN_SPECTRAL_SAMPLES`` floor
+    observable at all (a metric that raised and a metric that was skipped both leave a ``None``
+    score, and with numpy absent ``sparc`` always raises). It does **not** say which of the four
+    reasons applied — window shorter than the filter, fewer than ``_MIN_SPECTRAL_SAMPLES``
+    filtered samples, an all-zero (peak 0) window, or an unusable ``sample_rate_hz``.
 
     ``None`` means "not computable from this window" (too few samples, an unusable sample rate,
     a never-moving robot, or numpy absent) — never "measured zero", the ``rate`` / ``percentile``
@@ -328,7 +344,14 @@ def smoothness_stats(
     ``smooth_window`` = width of the doc21:306 low-pass applied to the |v| profile before the
     spectral pair (module docstring). Widening it filters harder and shortens the analysed series
     by ``window − 1``; ``1`` disables the filter and is **not** doc21-compliant — it exists so a
-    test can exhibit the unfiltered numbers, not as a production setting.
+    test (or a future doc decision, see the module docstring's open point) can exhibit the
+    unfiltered numbers, not as a production setting.
+
+    Note the one deliberate exception to this module's fail-open stance: an even or non-positive
+    ``smooth_window`` propagates ``ValueError`` out of ``eval_sdk.stats.low_pass`` rather than
+    degrading to ``None``. That is a caller programming error, not live data — every *data*
+    failure (numpy absent, a degenerate window) still becomes ``None`` via :func:`_guarded`. No
+    ROS parameter reaches this argument today, so the live path cannot trigger it.
     """
     signed = [sample.v for sample in samples]
     speeds = [abs(v) for v in signed]

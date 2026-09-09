@@ -19,6 +19,7 @@ from eval_sdk.stats import (
     jain_fairness_index,
     jerk,
     ldlj,
+    low_pass,
     makespan,
     n_movement_units,
     path_lengths,
@@ -282,6 +283,61 @@ def test_jerk_too_short_and_even_window() -> None:
     assert jerk([0, 1, 2], 0.1, smooth_window=5) == []  # < window+3 samples
     with pytest.raises(ValueError):
         jerk(list(range(10)), 0.1, smooth_window=4)  # even window rejected
+
+
+# ── low_pass (the doc21:306 pre-filter, public since #616) ───────────────────
+
+
+@pytest.mark.unit
+def test_low_pass_is_a_valid_mode_centered_moving_average() -> None:
+    """Hand-computed: means of [1,2,3] / [2,3,4] / [3,4,5] over a width-3 window, and
+    'valid' mode so the output is ``n − window + 1`` long (no fabricated edge samples)."""
+    assert low_pass([1.0, 2.0, 3.0, 4.0, 5.0], 3) == pytest.approx([2.0, 3.0, 4.0])
+    assert len(low_pass([0.0] * 30, 5)) == 26
+    assert low_pass([1.0, 2.0], 5) == []  # shorter than one window -> nothing is valid
+
+
+@pytest.mark.unit
+def test_low_pass_attenuates_noise_without_moving_a_constant() -> None:
+    """The property that makes it a low-pass: a constant survives untouched (DC gain 1) while
+    zero-mean noise is damped. Independent of how the average is implemented."""
+    rng = random.Random(616)
+    assert low_pass([0.3] * 12, 5) == pytest.approx([0.3] * 8)
+    noisy = [0.3 + rng.uniform(-0.05, 0.05) for _ in range(200)]
+    assert _rms([v - 0.3 for v in low_pass(noisy, 5)]) < _rms([v - 0.3 for v in noisy]) / 1.5
+
+
+@pytest.mark.unit
+def test_low_pass_window_of_one_is_the_identity() -> None:
+    """Documented escape hatch (used by tests to exhibit unfiltered numbers) — and it must be a
+    copy, not the caller's list."""
+    signal = [0.1, 0.2, 0.3]
+    passed = low_pass(signal, 1)
+    assert passed == signal
+    assert passed is not signal
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("window", [0, -1, 2, 4, 100])
+def test_low_pass_rejects_windows_that_cannot_be_centered(window: int) -> None:
+    """A centered average needs a middle sample, so the width must be a positive ODD integer —
+    the same contract ``jerk``'s ``smooth_window`` enforces (fail-loud: a bad width is a
+    programming error, not live data). ``window=100`` is even, not merely too long."""
+    with pytest.raises(ValueError):
+        low_pass([0.1] * 10, window)
+
+
+@pytest.mark.unit
+def test_low_pass_is_the_same_filter_jerk_applies() -> None:
+    """doc21:306 is one clause: the pre-filter a domain composer puts in front of SPARC/LDLJ
+    must be the one ``jerk`` already uses, not a second implementation that could drift.
+    Oracle = the 3rd finite difference of the low-passed signal, built here from the two public
+    pieces, must equal ``jerk`` end to end."""
+    dt = 0.1
+    signal = [0.1, 0.4, 0.35, 0.6, 0.55, 0.8, 0.7, 1.0, 0.9, 1.2, 1.1, 1.4]
+    assert jerk(signal, dt, smooth_window=5) == pytest.approx(
+        _raw_third_diff(low_pass(signal, 5), dt)
+    )
 
 
 # ── ldlj (log dimensionless jerk, stdlib, doc21:306) ──────────────────────────

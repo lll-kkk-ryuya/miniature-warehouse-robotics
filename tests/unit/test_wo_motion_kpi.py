@@ -10,8 +10,11 @@ Covers the **odom** half of doc21 §13.2 Tier 1
 
 Every expected number is an **independent oracle** — hand-counted from the fixture, hand-computed
 from the published definition, or a literature invariant (SPARC's amplitude invariance,
-doc21:306 「振幅/継続不変」) — never re-derived from the implementation
-(``.claude/rules/safety.md`` R-26 / doc20 §9). Each of the following mutations turns a listed
+doc21:306 「振幅/継続不変」) — never re-derived from **the composition under test**
+(``.claude/rules/safety.md`` R-26 / doc20 §9). Some expectations *do* call
+``eval_sdk.stats.{sparc,ldlj,n_movement_units}``: those are a different unit, anchored by their
+own goldens in ``tests/unit/test_eval_sdk_stats.py``, and what is asserted here is what
+``motion`` feeds them — never their arithmetic. Each of the following mutations turns a listed
 assertion red: keeping the *oldest* samples in the ring buffer, dropping the non-advancing-stamp
 guard, computing the sample rate as ``n/span``, feeding the spectral metrics the signed series
 (or N_MU the unsigned one), returning ``0.0`` instead of ``None`` for a never-moving robot,
@@ -206,8 +209,13 @@ def test_the_report_names_the_filter_it_applied() -> None:
     assert stats.filtered_samples == 5
     assert stats.to_dict()["filtered_samples"] == 5
     assert stats.to_dict()["smooth_window"] == 5
-    # A wider filter shortens the analysed series by window − 1 (9 − 7 + 1 = 3).
-    assert smoothness_stats(_series(_JITTERY9, dt=_DT), smooth_window=7).filtered_samples == 3
+    # A wider filter shortens the analysed series by window − 1 (9 − 7 + 1 = 3) — and the width
+    # REPORTED must be the width USED, not the default (a report that always echoes
+    # DEFAULT_SMOOTHING_WINDOW would satisfy every other assertion here while lying).
+    wider = smoothness_stats(_series(_JITTERY9, dt=_DT), smooth_window=7)
+    assert wider.filtered_samples == 3
+    assert wider.smooth_window == 7
+    assert wider.to_dict()["smooth_window"] == 7
 
 
 @pytest.mark.unit
@@ -235,6 +243,12 @@ def test_the_spectral_metrics_receive_the_measured_rate_and_the_filtered_series(
 
     Red for a hard-coded ``fs`` (the pre-#616 fixtures were all at dt = 0.1 s, where a mutated
     constant of 10.0 was indistinguishable from the measurement) and red for a dropped filter.
+
+    **Load-bearing and alone**: a value-level ``fs`` assertion is impossible through LDLJ (it is
+    fs-invariant, see below) and SPARC needs numpy, so in the CI configuration this recorder is
+    the *only* guard on the fs wiring — a measured mutation run showed exactly one failure here.
+    If ``smoothness_stats`` is ever refactored so that ``motion_module.ldlj`` is no longer the
+    patchable call site, replace this with an equivalent seam rather than deleting it.
     """
     captured: list[tuple[list[float], float]] = []
 
