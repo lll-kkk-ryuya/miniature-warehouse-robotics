@@ -27,12 +27,18 @@ Role under Option D (OPT-IN, plugin-ON; doc13:517 reversed):
     ``X-Hermes-Session-Id = H = seed_for(run_id, gen_id)``; ``hermes_client._decide_plugin_owned``).
     So under D the :class:`LangfuseTracer` **no longer creates the generation** (the un-wrapped
     ``openai.AsyncOpenAI`` makes no generation) and would only DOUBLE-COUNT the trace — therefore
-    the node (``llm_bridge``) swaps in :class:`NoopTracer` when ``langfuse_owner == hermes_plugin``
-    (the per-turn Bridge trace is suppressed; the plugin's is the single source). This module is
-    UNCHANGED by D: :class:`LangfuseTracer` stays the Pattern-A (default) tracer and
-    :class:`NoopTracer` keeps the cycle langfuse-free + unit-testable on BOTH paths. The scorer
-    side (#6) re-derives the plugin's trace id via :func:`eval_sdk.seed.derive_plugin_trace_id`
-    — see ``warehouse_orchestrator/score_send.py`` (``pattern_d``).
+    the node (``llm_bridge``) installs a tracer that opens NO Bridge trace for the cycle when
+    ``langfuse_owner == hermes_plugin`` (the per-turn Bridge trace is suppressed; the plugin's is
+    the single source). The owner decision lives in
+    :func:`warehouse_llm_bridge.trace_enrich.build_commander_tracer`, which returns this module's
+    :class:`LangfuseTracer` for Pattern A and
+    :class:`~warehouse_llm_bridge.trace_enrich.PluginTraceEnrichingTracer` for D — the latter is
+    cycle-side no-op like :class:`NoopTracer` but ALSO re-attaches the doc08:533 identifiers the
+    plugin cannot know (prompt name/version, env), post-hoc and off the critical path (#436). This
+    module is UNCHANGED by D: :class:`LangfuseTracer` stays the Pattern-A (default) tracer and the
+    cycle stays langfuse-free + unit-testable on BOTH paths. The scorer side (#6) re-derives the
+    plugin's trace id via :func:`eval_sdk.seed.derive_plugin_trace_id` — see
+    ``warehouse_orchestrator/score_send.py`` (``pattern_d``).
 """
 
 from eval_sdk.seed import resolve_run_id, seed_for
