@@ -204,3 +204,17 @@ def test_malformed_ring_fails_open_and_never_escapes_the_wire(tmp_path: Path, ri
     assert payload["emergency"] == {"active": [], "history": []}
     # The L2 hold report is independent of ring garbage (doc12:631 separation).
     assert payload["l2_emergency_holds"] == ["bot1"]
+
+
+@pytest.mark.unit
+def test_history_capped_to_most_recent_ten_but_active_complete(tmp_path: Path) -> None:
+    # doc08 【2026-09-09 追補】: the tool surface applies the SAME most-recent-10
+    # history cap as the situation surface (single shared constant), while
+    # active — the actionable set — is returned complete and state.json is
+    # untouched. Oracle is the addendum's literal 10.
+    events = [{**RING_EVENT, "event_id": f"emg-{i:03d}"} for i in range(12)]
+    tools = _tools(tmp_path, _snapshot(emergency={"active": list(events), "history": list(events)}))
+    payload = _fleet_status(tools)
+    assert len(payload["emergency"]["history"]) == 10
+    assert payload["emergency"]["history"] == events[2:]  # last 10, order preserved
+    assert payload["emergency"]["active"] == events  # never truncated

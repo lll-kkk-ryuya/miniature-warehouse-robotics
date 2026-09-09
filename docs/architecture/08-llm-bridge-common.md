@@ -548,3 +548,19 @@ rclpy
 - [Langfuse -- 公式サイト](https://langfuse.com/) -- 参照日: 2026-05-23
 - [Langfuse -- GitHub](https://github.com/langfuse/langfuse) -- 参照日: 2026-05-23
 - [Hermes Agent -- Built-in Plugins (Langfuse)](https://hermes-agent.nousresearch.com/docs/user-guide/features/built-in-plugins) -- 参照日: 2026-05-23
+
+---
+
+## 【2026-09-09 追補】emergency ring の LLM 表示面切詰め（history 直近 10 件・両経路維持）
+
+> 対象 layer: **L4**（`situation.py`＝Situation 組立・毎サイクル）と **L2**（`warehouse_mcp_server/tools.py` の `get_fleet_status`）。凍結契約 `warehouse_interfaces`・state.json の形（[doc12:320-334](12-infrastructure-common.md)＝`emergency{active,history}` extra キー・[doc12:342](12-infrastructure-common.md)）・producer（State Cache の ring 上限 50/50）は**すべて不変**。
+
+State Cache の emergency event ring は司令官 LLM へ **2 経路**で届く: ①毎サイクルの situation top-level extra（本 doc :266-271「次回の Hermes Gateway POST に付加」・実装 `situation.py` の `_attach_emergency`）②`get_fleet_status` 返り値（[doc12:389-409](12-infrastructure-common.md)・#600）。ring は active/history とも 50 件 bound で**同一 event が両 ring に載る**（`aggregator.py` の add_emergency）ため、満杯時は 1 経路 ~100 entry（概算 6〜10k tok・event 形は [doc12:411-419](12-infrastructure-common.md)）が input に乗り得る。
+
+**裁定**: 両経路とも維持した上で（[doc12:405](12-infrastructure-common.md)「emergency 情報を含めて」・本 doc :271 の要求はどちらも満たしたまま）、**LLM 表示面のみ `history` を直近 10 件に切詰める**。
+
+- `active` は**切詰めない**（未解決集合＝actionable。clear protocol 不在は [doc12:342](12-infrastructure-common.md) の Phase-2 TODO のまま）。
+- state.json・producer・非 LLM consumer（`self_action_gate` は state.json 直読）は**一切不変**＝安全判断への入力は細らない（L2 の enforce 実体 `l2_emergency_holds` も別系統で不変・doc12:631）。
+- 定数は**単一定義** `warehouse_mcp_server.tools.EMERGENCY_HISTORY_LLM_MAX = 10`（`situation.py` が同一トラック import＝両表示面の split-brain 防止。#44 battery 正規化の単一ソース化と同型）。
+- **10 は暫定値（TODO Phase-2 実測確定）**: #126 の edge-trigger 化以降 distinct event のみが積まれるため、デモ run の現実的 event 数を包絡しつつ最悪 token を history 分について 1/5 化する。
+- 判断材料（2026-09-09 分析）: ②tool 経路は現行 deploy で未配線（[doc12:636](12-infrastructure-common.md)＝stdio 経路現用外・Hermes への warehouse MCP 未登録・Bridge は read-only tool を自発呼びしない）＝実効コストの主因は①の毎サイクル situation 経路。よって切詰めは consumer（表示）側のみで行い、producer 側の ring 再設計は Phase-2 clear protocol と同時に再訪する。

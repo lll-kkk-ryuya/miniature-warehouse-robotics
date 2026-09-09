@@ -36,6 +36,18 @@ from warehouse_mcp_server.policy_gate import PolicyGate, freshness_from_config
 
 log = logging.getLogger(__name__)
 
+# LLM-facing cap on the emergency ``history`` ring (doc08 【2026-09-09 追補】).
+# The SINGLE definition shared by both commander-facing surfaces —
+# ``get_fleet_status`` below and ``SituationBuilder._attach_emergency``
+# (warehouse_llm_bridge, same track) — so the two can never drift apart
+# (same single-source discipline as #44 battery normalization). ``active`` is
+# never truncated (it is the actionable set), state.json itself is untouched
+# (the aggregator still bounds both rings at 50), and non-LLM consumers
+# (self_action_gate) read state.json directly. 10 is provisional
+# (TODO Phase-2 実測): post-#126 edge-triggering only distinct events accrue,
+# so 10 envelopes a demo run while cutting the worst-case history payload 5x.
+EMERGENCY_HISTORY_LLM_MAX = 10
+
 # Valid character-LLM negotiation starters (doc14 / doc15 ツール7).
 NEGOTIATION_STARTERS = ("bot1", "bot2")
 # Valid escalation_response actions (doc15 ツール6 / validate_escalation).
@@ -316,7 +328,11 @@ class WarehouseTools:
             "robots": robots,
             "emergency": {
                 "active": active if isinstance(active, list) else [],
-                "history": history if isinstance(history, list) else [],
+                # history is capped to the most recent N for the LLM only
+                # (doc08 【2026-09-09 追補】); active stays complete.
+                "history": (
+                    history[-EMERGENCY_HISTORY_LLM_MAX:] if isinstance(history, list) else []
+                ),
             },
             "l2_emergency_holds": sorted(self._policy_gate.emergency_holds()),
         }

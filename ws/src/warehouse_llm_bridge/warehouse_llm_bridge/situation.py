@@ -33,6 +33,11 @@ from warehouse_interfaces.schemas import (
 )
 from warehouse_interfaces.stores import StateStore
 
+# Same-track import (doc16 §9 / #81): the SINGLE LLM-facing history cap shared
+# with get_fleet_status, so the two commander surfaces cannot drift apart
+# (doc08 【2026-09-09 追補】).
+from warehouse_mcp_server.tools import EMERGENCY_HISTORY_LLM_MAX
+
 # Illustrative layout string for the commander prompt (doc mode-a/08a:51-53;
 # diorama 1.8m x 0.9m, .claude/CLAUDE.md). Coordinates are config-sourced and
 # pending diorama measurement; this is descriptive context for the LLM only.
@@ -145,13 +150,22 @@ class SituationBuilder:
         after model serialization. The value is not schema-promoted here; State
         Cache owns the bounded ``active``/``history`` rings and the commander only
         needs the JSON context on the next cycle (doc08:266-271).
+
+        The ``history`` ring is capped to the shared most-recent-N for the LLM
+        only (doc08 【2026-09-09 追補】): this attach runs EVERY cycle, so a full
+        50-event ring would otherwise ride every Hermes POST. ``active`` (the
+        actionable set) and the state.json source stay complete.
         """
         if not isinstance(raw, dict) or "emergency" not in raw:
             return
-        emergency = raw["emergency"]
+        emergency = deepcopy(raw["emergency"])
         if emergency is None:
             return
-        situation["emergency"] = deepcopy(emergency)
+        if isinstance(emergency, dict):
+            history = emergency.get("history")
+            if isinstance(history, list) and len(history) > EMERGENCY_HISTORY_LLM_MAX:
+                emergency["history"] = history[-EMERGENCY_HISTORY_LLM_MAX:]
+        situation["emergency"] = emergency
 
     def _enrich(self, snap: RobotSnapshot, *, current_task: str | None = None) -> RobotState:
         """Lift a raw ``RobotSnapshot`` into a ``RobotState`` (L2 -> L1, 08a:93-95).

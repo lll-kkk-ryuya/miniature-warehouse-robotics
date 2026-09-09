@@ -390,3 +390,28 @@ def test_mode_a_static_opposing_bots_predictions_do_not_converge(tmp_path: Path)
     )
     pred_dist = math.hypot(p1["x"] - p2["x"], p1["y"] - p2["y"])
     assert pred_dist == pytest.approx(cur_dist)  # NO convergence: static standoff != pattern-3
+
+
+@pytest.mark.unit
+def test_emergency_history_capped_to_most_recent_ten_for_llm(tmp_path: Path) -> None:
+    # doc08 【2026-09-09 追補】: the situation surface rides EVERY Hermes POST, so
+    # history is capped to the MOST RECENT 10 events (independent oracle: the
+    # addendum's literal 10 — not the implementation constant). active (the
+    # actionable set) is never truncated, and the state.json source is untouched.
+    events = [
+        {"event_id": f"emg-{i:03d}", "robot": "bot1", "type": "near_collision"} for i in range(12)
+    ]
+    emergency = {"active": list(events), "history": list(events)}
+    store = FileStateStore(tmp_path / "state.json")
+    store.write(
+        {"timestamp": "2026-09-09T10:00:00", "robots": {"bot1": _robot()}, "emergency": emergency}
+    )
+
+    sit = SituationBuilder(store).build(turn=1, gen_id=1)
+
+    assert sit is not None
+    assert len(sit["emergency"]["history"]) == 10
+    assert sit["emergency"]["history"] == events[2:]  # last 10, order preserved
+    assert sit["emergency"]["active"] == events  # complete
+    # The truncation is display-side only: state.json still holds all 12.
+    assert len(store.read()["emergency"]["history"]) == 12
