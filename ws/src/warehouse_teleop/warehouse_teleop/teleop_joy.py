@@ -20,8 +20,9 @@ device removal without a zero Joy, so an ungated republisher would latch the
 last held twist as forever-fresh cmd_vel and disarm W-1. Stale /joy -> zero
 twist (pure gate: :func:`warehouse_teleop.joymap.apply_joy_freshness`).
 
-Operator e-stop (docs/mode-m1/05 §5-§6, button map docs/mode-m1/03:52). One
-gesture drives two paths:
+Operator e-stop (docs/mode-m1/05 §5-§6, button map docs/mode-m1/03:52). Two
+buttons engage it — ``estop_button`` (B, aimed at) and ``estop_button_alt``
+(R1, clenched) — and one gesture drives two paths:
 
   A. standalone — while latched this node keeps publishing zeros, and after a
      clear it refuses to drive until the sticks are seen centered AND the
@@ -43,6 +44,7 @@ import rclpy
 from geometry_msgs.msg import Twist
 from rclpy.node import Node
 from rclpy.publisher import Publisher
+from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
 from rclpy.time import Time
 from sensor_msgs.msg import Joy
 from std_msgs.msg import String
@@ -55,6 +57,7 @@ from warehouse_teleop.joymap import (
     DEFAULT_DEADMAN_BUTTON,
     DEFAULT_DEADZONE,
     DEFAULT_ESTOP_BUTTON,
+    DEFAULT_ESTOP_BUTTON_ALT,
     DEFAULT_ESTOP_CLEAR_BUTTONS,
     DEFAULT_JOY_TIMEOUT_S,
     DEFAULT_MAX_ANGULAR,
@@ -89,11 +92,14 @@ class TeleopJoy(Node):
         self.declare_parameter("invert_wz", False)
         self.declare_parameter("publish_rate_hz", 20.0)
         self.declare_parameter("joy_timeout_s", DEFAULT_JOY_TIMEOUT_S)
-        # Operator e-stop (docs/mode-m1/03:52). -1 / [] are the "feature off"
-        # sentinels (same idiom as m1_driver's car_type -1): the node then keeps
-        # the pre-latch, deadman-only posture. Indices are the Yahboom PC/PCS
-        # primary table and MUST be confirmed with jstest at the M1 gate.
+        # Operator e-stop (docs/mode-m1/03:52). ``estop_button = -1`` is the ONLY
+        # "feature off" sentinel (same idiom as m1_driver's car_type -1): the node
+        # then keeps the pre-latch, deadman-only posture. An empty clear chord is
+        # NOT a sentinel but a misconfiguration, reported below. Two int params
+        # instead of one array: array param type inference is unverified on the
+        # real pad, so the alt is a plain int (-1 = no alt) in this slice.
         self.declare_parameter("estop_button", DEFAULT_ESTOP_BUTTON)
+        self.declare_parameter("estop_button_alt", DEFAULT_ESTOP_BUTTON_ALT)
         self.declare_parameter("estop_clear_buttons", list(DEFAULT_ESTOP_CLEAR_BUTTONS))
         # Path B only. Path A (zeros while latched) is unconditional.
         self.declare_parameter("publish_operator_stop", True)
@@ -112,6 +118,7 @@ class TeleopJoy(Node):
         self._estop_cfg = OperatorEstopConfig(
             deadman_button=int(self.get_parameter("deadman_button").value),
             estop_button=int(self.get_parameter("estop_button").value),
+            estop_button_alt=int(self.get_parameter("estop_button_alt").value),
             clear_buttons=tuple(
                 int(b) for b in (self.get_parameter("estop_clear_buttons").value or [])
             ),
@@ -121,26 +128,32 @@ class TeleopJoy(Node):
             deadzone=float(self.get_parameter("deadzone").value),
         )
         self._estop_state = OperatorEstopState()
-        # Fail-closed until the first Joy sample re-arms us (docs/mode-m1/05:91).
+        # Fail-closed, and the FIRST Joy sample cannot lift it: with no button
+        # history the arming edge is not detectable, so a deadman already held at
+        # start-up reads as "no press". The operator must release it and press
+        # again — which is the re-arm gesture anyway (docs/mode-m1/05:91). A held
+        # e-stop resolves the other way and engages (docs/mode-m1/03:52).
         self._motion_allowed = False
+        # The config verdict is reported ONCE, not per Joy sample at 20 Hz.
+        self._cfg_error_logged = False
 
         self._stop_pub: Publisher | None = None
         if bool(self.get_parameter("publish_operator_stop").value):
-            # QoS RELIABLE / KEEP_LAST(10) — rclpy's default profile, matching the
-            # Guardian's subscription (ws/src/warehouse_safety/CLAUDE.md:22).
+            # Stated explicitly rather than relying on the depth-10 shorthand's
+            # implied profile (.claude/rules/ros2.md): a dropped engage is a
+            # missed stop. Same shape as the consumer's own safety-critical
+            # profile (warehouse_safety.emergency_guardian's ``reliable_qos``;
+            # named, not line-pinned, because that file churns).
+            stop_qos = QoSProfile(
+                reliability=ReliabilityPolicy.RELIABLE,
+                history=HistoryPolicy.KEEP_LAST,
+                depth=10,
+            )
             self._stop_pub = self.create_publisher(
-                String, str(self.get_parameter("operator_stop_topic").value), 10
+                String, str(self.get_parameter("operator_stop_topic").value), stop_qos
             )
 
-        config_error = operator_estop_config_error(self._estop_cfg)
-        if config_error is not None:
-            # Refuse to drive, but never fabricate an engage: one operator's typo
-            # must not stop the fleet (docs/mode-m1/03:52).
-            self.get_logger().error(
-                f"operator e-stop misconfigured ({config_error}) — teleop motion is "
-                "disabled until the params are fixed; nothing is published to "
-                f"{self.get_parameter('operator_stop_topic').value}"
-            )
+        self._report_config_error(operator_estop_config_error(self._estop_cfg))
 
         self._latest = (0.0, 0.0, 0.0)
         # No /joy yet == stale (fail-closed), same posture as driver_core W-1.
@@ -151,8 +164,27 @@ class TeleopJoy(Node):
             f"/joy stale > {float(self.get_parameter('joy_timeout_s').value)}s -> zeros)"
         )
 
+    def _report_config_error(self, config_error: str | None) -> None:
+        """Log an unusable e-stop wiring ONCE (start-up or first live sample).
+
+        Refusing to drive is the whole response — an engage is NEVER fabricated,
+        because one operator's typo must not stop the fleet (docs/mode-m1/03:52).
+        """
+        if config_error is None or self._cfg_error_logged:
+            return
+        self._cfg_error_logged = True
+        self.get_logger().error(
+            f"operator e-stop misconfigured ({config_error}) — teleop motion is "
+            "disabled until the params are fixed; nothing is published to "
+            f"{self.get_parameter('operator_stop_topic').value}"
+        )
+
     def _on_joy(self, msg: Joy) -> None:
         self._last_joy_time = self.get_clock().now()
+        # Index ranges are only knowable against a real sample (a start-up check
+        # cannot know how many buttons the pad has), so re-run the verdict here.
+        # operator_estop_step applies it either way; this only surfaces it.
+        self._report_config_error(operator_estop_config_error(self._estop_cfg, msg.buttons))
         self._latest = joy_to_twist(
             msg.axes,
             msg.buttons,
