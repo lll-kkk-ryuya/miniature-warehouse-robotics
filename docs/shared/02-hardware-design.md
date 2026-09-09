@@ -945,9 +945,14 @@ Yahboom 公式バッテリ取扱注意（References `:470` の URL・再参照�
 
 | 場面 | 症状 | 操作 |
 |---|---|---|
-| 開発（AC・T 抜き） | 低電圧ブザーが鳴り続ける | シリアルが要らない間は**拡張ボードの USB を抜く**（音が止まる・害は無いので放置も可） |
+| 開発（AC・T 抜き） | 低電圧ブザーが鳴り続ける | シリアルが要らない間は**拡張ボードの USB を抜く**（音が止まる・害は無いので放置も可）。挿したままにするなら **KEY1 短押し**で消音できる見込み（下記「消音と起動順序」） |
 | `m1_probe` / G-g / ドライバ実機作業 | 実バッテリー値が要る | **T を挿し・拡張ボードのメインスイッチ ON**。Orin の給電を AC から昇圧レグへ切り替えるなら **AC を抜く前に `jetson halt`**（[../GLOSSARY.md](../GLOSSARY.md) §8「T 挿抜運用」）。motion を出し得る作業は**車輪を浮かせて**行う（[../mode-m1/03-joystick-teleop-bringup.md](../mode-m1/03-joystick-teleop-bringup.md)） |
 
-**未検証（断定しない）**: ① Orin を**昇圧レグ（バッテリー給電）**で動かしつつ拡張ボードの**メインスイッチを OFF** にした場合にも同じブザーが鳴るか。② USB VBUS 側の電圧・電流の実測値（本節は数値を持たない）。
+**未検証（断定しない）**: ① Orin を**昇圧レグ（バッテリー給電）**で動かしつつ拡張ボードの**メインスイッチを OFF** にした場合にも同じブザーが鳴るか。② USB VBUS 側の電圧・電流の実測値（本節は数値を持たない）。③ KEY1 短押し消音の実機確認。④ 下記の低電圧ラッチと起動順序の実機再現（source 読みのみ）。
+
+**消音と起動順序（2026-09-09・公式 STM32 source V3.6.5（`:329`）を実読・実機は未検証）**: ブザーは firmware の低電圧処理が鳴らしている。`Source/APP/app_bat.c` `Bat_State()` は 9.6V 未満（`Bat_Get_Low_Voltage()`=96）を 100ms × 20 回連続で検出すると `g_bat_state=BATTERY_LOW`・`g_system_enable=0` に**ラッチし、MCU リセット以外では戻らない**（source コメント「只能通过复位恢复」）。6.5–8.5V だけは鳴らない例外窓がある（理由は source に無い。本件で鳴った＝読み値はその窓の外）。ラッチ中は 100ms ごとに `Motion_Stop(STOP_BRAKE)`、auto-report スレッドは終了（`vTask_Auto_Report` は `System_Enable()` の間だけ回る）、コマンド解釈は縮小版 `Upper_Data_Parse_Low_Battery`（reset / car_type / request / beep / servo 系のみ）になる。
+
+- **消音**: 拡張ボードの **KEY1 を短押し**（`Source/APP/app.c` の KEY1 処理: `System_Enable()==0` のとき `g_enable_beep=0; BEEP_OFF()`）。以後その電源サイクル中は鳴らない見込み（LED/ブザー表示関数 `Bsp_Led_Show_Low_Battery(enable_beep)` の実体は公開 source に含まれず、フラグが尊重されることは実機で確認する）。**10 秒長押しは工場リセット**（`:725`。ラッチ中は無効だが避ける）。ホストからの `set_beep(0)`（`FUNC_BEEP` は縮小パーサでも受理）は `Beep_On_Time(0)` を呼ぶだけで、100ms 周期の再点鳴を止められない見込み。
+- **起動順序（実害・M1 ゲートに直結）**: USB を先に挿すと AC の Orin から VBUS で MCU が起動→電池 0V でラッチ→**その後に T を挿してもラッチは解けない**＝モータ不動・`0x0A` 自動レポート停止のまま、`m1_probe` の battery / encoder 読みだけは通る（気づきにくい）。**順序は「T 挿し＋拡張ボードのメインスイッチ ON（MCU が電池で起動）→ USB 接続」**。逆順にしたら USB を抜き・スイッチ OFF で MCU を落としてからやり直す。[../mode-m1/03-joystick-teleop-bringup.md](../mode-m1/03-joystick-teleop-bringup.md) の M1 ゲート手順への反映は teleop-estop レーン後（残件）。
 
 **関連**: [../jetson/02-remote-access-and-dev-link.md](../jetson/02-remote-access-and-dev-link.md) §10（ch341 out-of-tree 導入と `/dev/myserial`）・P-9a（`:904`）・P-9b（`:911`）・[../GLOSSARY.md](../GLOSSARY.md) §8「T 挿抜運用」。
