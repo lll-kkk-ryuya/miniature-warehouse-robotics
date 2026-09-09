@@ -5,6 +5,9 @@ Thin by design: all safety-relevant logic lives in the rclpy-free
 host with a fake backend). This file only wires ROS I/O:
 
   * subscribe ``/<bot>/cmd_vel`` (geometry_msgs/Twist — doc03:88 contract)
+  * subscribe ``/<bot>/stop_state`` (std_msgs/String JSON — doc03:114 contract,
+    detail source docs/mode-m1/05 §4-1) -> core.on_stop_state, ONLY while the
+    stop overlay is enabled (default off keeps the standalone graph unchanged)
   * watchdog timer -> core.on_watchdog_tick (W-1)
   * atexit + SIGINT/SIGTERM -> core.shutdown_sequence (W-2)
 
@@ -27,11 +30,18 @@ from typing import Any
 import rclpy
 from geometry_msgs.msg import Twist
 from rclpy.node import Node
+from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
+from std_msgs.msg import String
 
 from warehouse_m1_driver.driver_core import (
     DEFAULT_CMD_TIMEOUT_S,
     M1DriverCore,
     _positive_or_default,
+)
+from warehouse_m1_driver.stop_state import (
+    DEFAULT_STOP_STATE_MAX_VALIDITY_S,
+    STOP_STATE_TOPIC_TEMPLATE,
+    decode_stop_state,
 )
 
 
@@ -52,15 +62,23 @@ class M1DriverNode(Node):
         # Stop overlay (doc05 §4). Default False: standalone M0-M2 bring-up
         # has no stop-state producer (docs/mode-m1/03:50) and must keep the
         # pre-overlay behaviour bit-identically. Integrated bringup enables it
-        # explicitly. NOTE: the producer subscription is deliberately NOT
-        # wired in this slice (doc05 §3-2 / OQ-OP1-OP2 — the topic contract is
-        # a doc03 additive follow-up); with no feed, an enabled overlay holds
-        # the stop side (fail-closed, doc05 §4 R-26 ③).
+        # explicitly. While disabled we also do NOT create the stop_state
+        # subscription, so the standalone ROS graph is unchanged too — not
+        # just the command path (doc05 §4 table row 1).
         self.declare_parameter("stop_overlay_enabled", False)
+        # Ceiling on the permission window one accepted stop-state may grant
+        # (doc05 §4-1). SEPARATE from cmd_vel_timeout_s on purpose: W-1 guards
+        # a dead command stream, this guards a lying/dead stop-state producer
+        # (doc05 §4 — do not merge the two into one param).
+        self.declare_parameter("stop_state_max_validity_s", DEFAULT_STOP_STATE_MAX_VALIDITY_S)
 
         bot = str(self.get_parameter("bot").value)
         timeout = float(self.get_parameter("cmd_vel_timeout_s").value)
         stop_overlay_enabled = bool(self.get_parameter("stop_overlay_enabled").value)
+        self._stop_state_max_validity_s = _positive_or_default(
+            float(self.get_parameter("stop_state_max_validity_s").value),
+            DEFAULT_STOP_STATE_MAX_VALIDITY_S,
+        )
         # Same hardening as the core's timeout: a 0/negative/NaN period would
         # break the timer (or hot-spin) and silently disarm W-1.
         period = _positive_or_default(float(self.get_parameter("watchdog_period_s").value), 0.1)
@@ -80,14 +98,34 @@ class M1DriverNode(Node):
         )
 
         self.create_subscription(Twist, f"/{bot}/cmd_vel", self._on_cmd_vel, 10)
+        if self._core.stop_overlay_enabled:
+            # doc05 §4-1 QoS: RELIABLE (a dropped level update must not read as
+            # "still permitted"), KEEP_LAST depth 1 (only the newest state can
+            # grant; freshness is carried by the deadline, not by the queue),
+            # VOLATILE — explicitly NOT transient_local, which would replay a
+            # stale permission to a late-joining driver (doc05 §3-2: durability
+            # is not liveness).
+            self.create_subscription(
+                String,
+                STOP_STATE_TOPIC_TEMPLATE.format(bot=bot),
+                self._on_stop_state,
+                QoSProfile(
+                    reliability=ReliabilityPolicy.RELIABLE,
+                    history=HistoryPolicy.KEEP_LAST,
+                    depth=1,
+                    durability=DurabilityPolicy.VOLATILE,
+                ),
+            )
         self.create_timer(period, self._on_watchdog)
         self._was_stale = True
 
         # W-2: stop frames on every exit path we can reach from userspace.
         atexit.register(self._core.shutdown_sequence)
         overlay_note = (
-            "stop overlay ENABLED — holding stop until a fresh stop-state arrives "
-            "(producer wiring is a follow-up slice, doc05 OQ-OP1/OP2)"
+            f"stop overlay ENABLED — subscribing "
+            f"{STOP_STATE_TOPIC_TEMPLATE.format(bot=bot)}, holding stop until a fresh "
+            f"stop-state arrives (max validity {self._stop_state_max_validity_s:.2f}s; "
+            f"doc05 §4-1)"
             if self._core.stop_overlay_enabled
             else "stop overlay disabled (default; doc05 §4)"
         )
@@ -98,6 +136,19 @@ class M1DriverNode(Node):
 
     def _on_cmd_vel(self, msg: Twist) -> None:
         self._core.on_cmd_vel(msg.linear.x, msg.linear.y, msg.angular.z, time.monotonic())
+
+    def _on_stop_state(self, msg: String) -> None:
+        """Feed one stop-state message to the overlay (doc05 §4-1).
+
+        Receipt time and the decoded deadline share ONE clock — the same
+        ``time.monotonic()`` the command path and W-1 use — because the core
+        compares them directly (doc05 §4 R-26 ⑧: injected monotonic only).
+        """
+        now = time.monotonic()
+        stop_requested, valid_until = decode_stop_state(
+            msg.data, now, self._stop_state_max_validity_s
+        )
+        self._core.on_stop_state(stop_requested, valid_until, now)
 
     def _on_watchdog(self) -> None:
         self._core.on_watchdog_tick(time.monotonic())

@@ -289,11 +289,11 @@ transport は box interface 裏の `transport: hermes|direct` 選択であって
 
 ## 8. doc03 トピック契約ドラフト（`/operator/notice`）— contract PR 用
 
-> **状態**: 契約 PR 用ドラフト。§5.2 で採用した**案A（専用 topic）**の実体。doc03（トピック契約カタログ）には **topic 名・型・一行責務**のみを足し、**payload schema / QoS / publisher / subscriber の正本は本節**に置く（doc03 の慣習: `docs/architecture/03-software-architecture.md:115`「doc03 は topic 名・型・一行責務のみ」）。**doc03 への行追加は別 contract PR**（owner = skeleton/governance・`.claude/rules/parallel-workflow.md` §4）で行い、本書では凍結しない。
+> **状態**: 契約 PR 用ドラフト。§5.2 で採用した**案A（専用 topic）**の実体。doc03（トピック契約カタログ）には **topic 名・型・一行責務**のみを足し、**payload schema / QoS / publisher / subscriber の正本は本節**に置く（doc03 の慣習: `docs/architecture/03-software-architecture.md:116`「doc03 は topic 名・型・一行責務のみ」）。**doc03 への行追加は別 contract PR**（owner = skeleton/governance・`.claude/rules/parallel-workflow.md` §4）で行い、本書では凍結しない。
 
 ### 8.1 doc03 へ追加する行（提案）
 
-doc03 §ROS 2 トピック設計「Jetson 内部」表（`docs/architecture/03-software-architecture.md:92-113`。**本 PR で追加＝`/operator/notice` 行は 111 行目**）に1行追加:
+doc03 §ROS 2 トピック設計「Jetson 内部」表（`docs/architecture/03-software-architecture.md:92-114`。**本 PR で追加＝`/operator/notice` 行は 111 行目**）に1行追加:
 
 ```
 | `/operator/notice` | `std_msgs/String`（JSON） | 別ノード(L2/L1/L0)の operator 起因 reject/clarification/emergency 通知。L4 Operator Feedback Box が購読し音声化（契約正本: mode-x-er/05 §8。Phase 4 で `.msg` 化, doc16 §3） |

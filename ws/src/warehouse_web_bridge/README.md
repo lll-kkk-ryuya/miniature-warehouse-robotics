@@ -27,7 +27,7 @@ Web Observability gateway（**observe-only**）。Mode A/B のキャラLLM会話
 
 | モジュール | 役割 |
 |---|---|
-| `settings` | config 解決（fail-open default）・`browser_config`（GET /config・secret 除外） |
+| `settings` | config 解決（fail-open default）・`browser_config`（GET /config・secret 除外）・`normalize_langfuse_base_url`（href に入る唯一の値＝`urlsplit` 分解のうえ scheme allowlist・非 ASCII host / backslash / credentials / `?`・`#` を拒否。不正値は `""`） |
 | `coalescer` | snapshot 10Hz → `snapshot_hz` last-write-wins（rclpy↔asyncio 境界） |
 | `hub` | WS fan-out（per-client bounded queue・snapshot=drop-oldest / event=never-drop→切断・max-clients） |
 | `views` | `/events`・`/runs`・`/health` の純 read 投影（retention 副作用なし） |

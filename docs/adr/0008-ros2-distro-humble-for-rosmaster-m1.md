@@ -6,7 +6,7 @@
 
 ## Context / 背景
 
-- 現行の既定は **ROS 2 Jazzy**（[03 §開発環境](../architecture/03-software-architecture.md):265 `tiryoh/ros2-desktop-vnc:jazzy` / [12 §横断](../architecture/12-infrastructure-common.md):125 / Jetson は Ubuntu 24.04）。`docs` / `ws` / `deploy` / `.github` / `.claude` に "jazzy" 記述が **363 箇所**ある。
+- 現行の既定は **ROS 2 Jazzy**（[03 §開発環境](../architecture/03-software-architecture.md):266 `tiryoh/ros2-desktop-vnc:jazzy` / [12 §横断](../architecture/12-infrastructure-common.md):125 / Jetson は Ubuntu 24.04）。`docs` / `ws` / `deploy` / `.github` / `.claude` に "jazzy" 記述が **363 箇所**ある。
 - **決定要因①: Isaac ROS を Orin Nano で使う道は Humble しかない。** Isaac ROS 公式 Getting Started は「All Isaac ROS packages are designed and tested to be compatible with **ROS 2 Jazzy**」としつつ、対応プラットフォーム表は **Jetson Thor（T5000 / T4000）のみ**・要 **JetPack 7.1** で、**Orin Nano は載っていない**。Orin を対象に含む系列は **Isaac ROS 3.x（ROS 2 Humble ＋ JetPack 6.x ＋ 公式 dev container）** であり、これが Orin での唯一の経路。なお NVIDIA は「Orin Nano **4GB** はメモリ不足で非推奨」と注記するが、本件は **8GB** のため該当しない。
 - **決定要因②**: 実機候補が ROSMASTER M1（メカナム4輪）に変わり、Yahboom 資産が Humble 固定であることを一次情報で確認した（[02 §ROSMASTER M1 採用検討時の残課題](../shared/02-hardware-design.md)）。Nuwa-HP60C 深度カメラの ROS 2 driver `ascamera` は ament_cmake ＋ ベンダ製プリビルド `.so` への静的リンクで、同梱 aarch64 バイナリの `libs/lib/aarch64-linux-gnu/readme.md` は **「5.4.1 20170404 (Linaro GCC 5.4-2017.05)」＝2017 年 GCC 5.4 ビルド**。動作報告のある distro は Foxy(20.04) / Humble(22.04) のみで、**Jazzy / Ubuntu 24.04 の成功報告が無い**。ソース非公開のため ABI が割れたら回復手段が無い。
 - Jetson 側も **JetPack 6.x = Ubuntu 22.04** であり、Jazzy を使うには JetPack 7.2（エコシステム未成熟）か container 隔離が要る。Humble なら**ネイティブ**で載る。
@@ -70,7 +70,7 @@
 ## References
 
 - [02-hardware-design.md §ROSMASTER M1 採用検討時の残課題](../shared/02-hardware-design.md)（HP60C の GCC 5.4 blob・ydlidar・L0 の所在）
-- [03-software-architecture.md](../architecture/03-software-architecture.md):265（開発コンテナ行。本 ADR 適用で `tiryoh/ros2-desktop-vnc:jazzy`→`:humble` 反映済・Gazebo 版は §Open）
+- [03-software-architecture.md](../architecture/03-software-architecture.md):266（開発コンテナ行。本 ADR 適用で `tiryoh/ros2-desktop-vnc:jazzy`→`:humble` 反映済・Gazebo 版は §Open）
 - [16-repository-and-conventions.md](../architecture/16-repository-and-conventions.md):213-215（環境スパイクと GO 判定）
 - [07-research-notes.md](../shared/07-research-notes.md):22（micro-ROS の Humble フォールバック）
 - [nav2_mppi_controller — ROS Index](https://index.ros.org/p/nav2_mppi_controller/) — 参照日: 2026-08-05（Humble 1.1.20 / Jazzy 1.3.12）

@@ -36,6 +36,6 @@ npm run lint && npm run typecheck && npm run build   # web-quality 三点（doc2
 - **run 境界**: envelope `run_id` 変化で store を reset 済み（per-run seq 再開対応・doc22:309）。正式には S2.5 `/run/header` が run 境界を通知（現状は synthetic run_id で代替）。
 - web-quality / web-e2e の **CI 配線は governance**（`.github/**`・doc22:348）。
 - `/runs?run_id` deep-link + live パネルへの replay-scrub（v1 は client state の読み取り表）。
-- Langfuse deep-link の実 URL（`NEXT_PUBLIC_LANGFUSE_URL` 未設定時は trace_id 表示のみ）。
+- Langfuse deep-link の base URL は **`GET /config` の `langfuse_base_url`**（runtime 配布・doc22:332。build に焼く `NEXT_PUBLIC_LANGFUSE_URL` は撤去済）。実値は overlay `config/<env>/warehouse.yaml` の `web_bridge.langfuse_base_url`（例 `https://cloud.langfuse.com/project/<id>`・非秘匿）で設定する。**未設定なら trace_id 表示のみ**（deep-link 無し）。
 - KNOWN_LOCATIONS を `/config` 配信化（現状は base.yaml 由来の暫定座標を埋め込み）。
 - dev は `next dev` 既定 :3000（別ポートでも :8646 gateway を指す）。非標準構成は `NEXT_PUBLIC_GATEWAY_URL`。
