@@ -34,7 +34,7 @@ from nav_msgs.msg import Odometry
 from rclpy.client import Client
 from rclpy.node import Node
 from rclpy.publisher import Publisher
-from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
+from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import BatteryState
 from std_msgs.msg import String
 from warehouse_interfaces.compat import UTC
@@ -44,6 +44,19 @@ from warehouse_interfaces.safety import BATTERY_PERCENTAGE_SCALE_DEFAULT, valida
 from warehouse_safety import guard_logic as gl
 
 _BOTS: tuple[str, ...] = ("bot1", "bot2")
+
+#: doc05 §4-1 producer window: how far ahead each published ``/bot{n}/stop_state``
+#: deadline sits on the shared CLOCK_MONOTONIC (``valid_until = now + this``). The
+#: consumer clips any accepted deadline to its OWN ``stop_state_max_validity_s``
+#: ceiling (``warehouse_m1_driver.stop_state.DEFAULT_STOP_STATE_MAX_VALIDITY_S`` = 0.5,
+#: itself borrowed from the frozen twist_mux ``emergency`` input timeout in
+#: ``warehouse_bringup/config/twist_mux.yaml``). Matching that 0.5s here keeps the
+#: producer's deadline at (just under) the consumer ceiling in normal operation —
+#: producer_now <= consumer_now on the shared clock, so ``min()`` never clips it, and
+#: clip detection stays quiet (doc05 §4-1 "壁時計 producer は上限クリップに吸収されて静か
+#: に縮退する" — a monotonic producer never trips it). This is a BORROW, not a derivation
+#: — # TODO(Phase 1 実測). Do not invent a separate literal.
+DEFAULT_STOP_STATE_VALID_WINDOW_S: float = 0.5
 
 
 class EmergencyGuardian(Node):
@@ -109,8 +122,21 @@ class EmergencyGuardian(Node):
         reliable_qos = QoSProfile(
             reliability=ReliabilityPolicy.RELIABLE, history=HistoryPolicy.KEEP_LAST, depth=10
         )
+        # doc05 §4-1 stop-overlay feed (/bot{n}/stop_state): its OWN profile, NOT the
+        # depth-10 estop/event profile above. RELIABLE so a dropped state is retried;
+        # KEEP_LAST/depth 1 because only the latest state matters (this is a level
+        # channel re-published every tick, not a history to replay); VOLATILE because
+        # transient_local would redeliver a stale — possibly permissive — deadline to a
+        # late-joining driver (fail-OPEN, doc05 §4-1 "transient_local は使わない").
+        stop_state_qos = QoSProfile(
+            reliability=ReliabilityPolicy.RELIABLE,
+            history=HistoryPolicy.KEEP_LAST,
+            depth=1,
+            durability=DurabilityPolicy.VOLATILE,
+        )
 
         self._cmd_pub: dict[str, Publisher] = {}
+        self._stop_state_pub: dict[str, Publisher] = {}
         self._cancel_cli: dict[str, Client] = {}
         for bot in _BOTS:
             # b=bot binds the loop variable per-callback (late-binding closure pitfall).
@@ -138,6 +164,11 @@ class EmergencyGuardian(Node):
             # Stop goes to /cmd_vel/emergency (twist_mux prio 100), never /cmd_vel (doc15).
             self._cmd_pub[bot] = self.create_publisher(
                 Twist, f"/{bot}/cmd_vel/emergency", reliable_qos
+            )
+            # doc05 §4-1 producer: per-bot stop-overlay feed for the L0' driver. Own QoS
+            # profile (RELIABLE/KEEP_LAST/depth1/VOLATILE), never the estop depth-10 one.
+            self._stop_state_pub[bot] = self.create_publisher(
+                String, f"/{bot}/stop_state", stop_state_qos
             )
             self._cancel_cli[bot] = self.create_client(
                 CancelGoal, f"/{bot}/navigate_to_pose/_action/cancel_goal"
@@ -215,6 +246,11 @@ class EmergencyGuardian(Node):
                 self._emergency_stop(dec, emit_event=emit_event)
             else:
                 self._trigger_recovery(dec, emit_event=emit_event)
+        # doc05 §4-1 producer: publish the stop-overlay feed for EVERY bot on EVERY tick
+        # (stop-requested or not), derived from THIS tick's `decisions` and the SAME
+        # monotonic `now` sampled above. Kept AFTER the estop loop so it can never delay
+        # or suppress a physical stop; purely additive to the existing estop path.
+        self._publish_stop_state(decisions, now)
 
     def _bot_state(self, bot: str, now: float) -> gl.BotState:
         # #126: pose_age = now - last /amcl_pose arrival (None until the 1st pose,
@@ -250,6 +286,28 @@ class EmergencyGuardian(Node):
         # triggered too, so a sustained blocked-timeout does not re-spam at 20Hz.
         if emit_event:
             self._publish_event(dec, action_taken=["nav2_recovery"])
+
+    def _publish_stop_state(self, decisions: list[gl.Decision], now: float) -> None:
+        """doc05 §4-1 producer: publish ``/{bot}/stop_state`` for every bot this tick.
+
+        Periodic (every 50ms tick, stop-requested or not) so the L0' stop overlay has a
+        live feed whose very silence is a fault (fail-closed freshness, §4-1). The stop
+        flag is derived per bot from the SAME tick's ``decisions`` via the pure,
+        unit-tested ``gl.stop_requested_for``, so it is physically synchronised with the
+        estop ``_emergency_stop`` asserts above (recovery decisions are low-harm and do
+        NOT request a stop). ``valid_until`` reuses the SINGLE ``now`` the caller already
+        sampled from ``time.monotonic()`` (§4-1 CLOCK_MONOTONIC — never a wall clock nor
+        a fresh sample), so across ticks the deadline is monotonically non-decreasing.
+        The payload is a 2-key, always-serialisable dict and this runs AFTER the estop
+        assertion, so it can neither delay nor suppress a physical stop.
+        """
+        valid_until = now + DEFAULT_STOP_STATE_VALID_WINDOW_S
+        for bot in _BOTS:
+            payload = {
+                "stop_requested": gl.stop_requested_for(decisions, bot),
+                "valid_until": valid_until,
+            }
+            self._stop_state_pub[bot].publish(String(data=json.dumps(payload)))
 
     def _publish_event(
         self, dec: gl.Decision, action_taken: list[str], *, is_estop: bool = False
