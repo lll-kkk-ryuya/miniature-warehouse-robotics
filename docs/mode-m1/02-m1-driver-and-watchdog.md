@@ -61,10 +61,10 @@ agent-team 調査（一次情報 = 工場 STM32 ファーム Rosmaster V3.5.1 C 
 |---|---|---|---|
 | **W-1** | driver 内 **cmd_vel freshness timeout**: 上流からの最終受信から T 秒で自発的にゼロ送出（brake） | 上流（Nav2 / teleop / joy）の沈黙・ハング | **実装済（#550）**: T は ROS param 注入・既定 0.5s（`DEFAULT_CMD_TIMEOUT_S`＝[twist_mux.yaml:44](../../ws/src/warehouse_bringup/config/twist_mux.yaml)（凍結契約）整合・非正/非有限 param は既定へ fail-safe）。運用値の実機確定は `# TODO(Phase 1 実測)` 継続 |
 | **W-2** | **atexit / SIGINT / SIGTERM handler で stop フレーム必送**: `0x12` ゼロ + `0x0F` の**二重送出** | driver の正常・準正常終了（Ctrl-C・例外死） | **実装済（#550）**: `M1DriverCore.shutdown_sequence`（冪等・一度だけ）＋ `driver_node` の atexit / SIGINT / SIGTERM 配線。R-26 unit 済（`tests/unit/test_m1_driver_core.py`） |
-| **W-3** | MCU 側 communication watchdog | ホスト kernel 死・USB 断（W-1/W-2 が動けない故障） | **不在が濃厚（§1-2）= この層は埋められない**。G-g 実機確認（§4）で確定 |
+| **W-3** | MCU 側 communication watchdog | ホスト kernel 死・USB 断（W-1/W-2 が動けない故障） | **stock では埋められない（不在確定 = §1-2）— [ADR-0013](../adr/0013-stm32-command-stream-watchdog.md)（accepted 2026-09-09）の vendor V3.6.5 additive 追記で埋める**。実装は前提ゲート 4 点（U-5 / ライセンス / stock hex 書き戻し実証 / G-g）全通過後・書込までは不在のまま |
 | **W-4** | **運用**: 実施者がバッテリー主電源カットオフに手を掛けたまま実施・初回試験は車輪を完全に浮かせる | 全層失敗（W-3 不在の代替） | [mode-x-er/10:376 P-1](../mode-x-er/10-room-scale-safety-review.md)（物理停止手段の到達性）を**必須化**する根拠が §1-2 で確定 |
 
-- W-1 と W-3 は**守る場所が違う**（W-1 = ホスト内・W-3 = ホスト死そのもの）。W-3 が埋められない以上、**W-4 は省略可能な備えではなく必須の層**である。
+- W-1 と W-3 は**守る場所が違う**（W-1 = ホスト内・W-3 = ホスト死そのもの）。W-3 が実機で閉じるまで（[ADR-0013](../adr/0013-stm32-command-stream-watchdog.md) の追記が G-g 試験まで完了するまで）、**W-4 は省略可能な備えではなく必須の層**である（緩和は自動でなく G-h の明示裁定 = ADR-0013 Decision 5）。
 - 将来 ros2_control 化しても W-2/W-4 は不変・W-1 は `reference_timeout` 相当へ移る（§5）。
 
 ## 4. G-g 実機確認手順（5 分・車輪浮かせ必須）

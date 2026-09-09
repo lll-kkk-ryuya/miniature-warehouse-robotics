@@ -70,6 +70,7 @@ from warehouse_llm_bridge.robotics_planning_core.task_graph_executor import (
 from warehouse_llm_bridge.robotics_planning_core.validator import (
     PlanningContext,
     PlanValidator,
+    RuntimeStateSource,
     warehouse_reference_policy,
 )
 from warehouse_llm_bridge.robotics_planning_core.visual_resolver import (
@@ -167,6 +168,7 @@ async def run_x_er_cycle(
     executor: TaskGraphExecutor,
     gen_store: GenStore,
     tool_executor: ToolExecutor,
+    runtime_state_source: RuntimeStateSource | None = None,
 ) -> XErCycleOutcome:
     """Run ONE X-ER commander cycle: ER -> plugin gate -> L3 -> gen mint -> dispatch.
 
@@ -181,6 +183,11 @@ async def run_x_er_cycle(
         gen_store: the shared ``GenStore`` (B-3); minted here only after a non-empty
             Command and never from ER output (doc08 §5 step5).
         tool_executor: dispatch seam into the Warehouse MCP tools (executor.py:35-49).
+        runtime_state_source: optional plan-time safety feed (doc08 §11.2): resolved ONCE
+            per cycle into the shared :class:`PlanningContext`, so ``emergency_active``
+            (the Guardian estop mirror's fleet-any ``held_bots()``) drives the L3
+            ``EMERGENCY_ACTIVE`` gate (validator.py:121-133). ``None`` (the default)
+            keeps the clean offline context — behaviour-identical to before the seam.
 
     Returns:
         :class:`XErCycleOutcome`; ``skipped_reason`` is non-``None`` on every
@@ -207,10 +214,18 @@ async def run_x_er_cycle(
         )
 
     # 2. Plugin composition gate FIRST (doc08 §5 step3). The draft dict is the same
-    #    validator raw-plan contract compile_raw_output uses internally (pipeline.py:169-171);
-    #    the context mirrors the pipeline default so both validations judge identically.
+    #    validator raw-plan contract compile_raw_output uses internally (pipeline.py:169-171).
+    #    ONE runtime snapshot per cycle (context.py:83-85, doc08 §11.2): the SAME context
+    #    feeds this composed validate AND compile_raw_output below, so both validations
+    #    judge identically by construction. No source (the default) = clean context;
+    #    a fed source only ever tightens (EMERGENCY_ACTIVE adds a reject, never removes one).
     draft = to_robotics_plan_draft(raw)
-    context = PlanningContext(policy=warehouse_reference_policy())
+    policy = warehouse_reference_policy()
+    context = (
+        PlanningContext.from_store(policy, runtime_state_source)
+        if runtime_state_source is not None
+        else PlanningContext(policy=policy)
+    )
     report = validate_with_plugins(
         PlanValidator(), draft.model_dump(), context, runtime.composition
     )
@@ -234,6 +249,9 @@ async def run_x_er_cycle(
         raw,
         calibration=runtime.calibration,
         resolver_policy=runtime.visual_policy,
+        # The step-2 context, resolved once this cycle (doc08 §11.2) — compile's internal
+        # validate judges with the SAME runtime snapshot the plugin gate just used.
+        context=context,
         executor=executor,
     )
     if not command.commands:

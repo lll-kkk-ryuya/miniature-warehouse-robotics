@@ -283,7 +283,9 @@ class PolicyGate:
         self._gate_lock = asyncio.Lock()
         self._task_seq = 0
 
-    # -- emergency set management (seedable; #5 will feed it later) -----------
+    # -- emergency set management (fed by the Guardian estop level mirror:
+    # emergency_sync.EmergencyLevelMirror wired in llm_bridge, doc12
+    # 【2026-09-07 追補】 / #592; the ctor kwarg stays for tests / recovery) ---
 
     def set_emergency(self, robot: str, active: bool) -> None:
         """Flag (or clear) ``robot`` as being in an emergency state."""
@@ -295,6 +297,31 @@ class PolicyGate:
     def is_in_emergency(self, robot: str) -> bool:
         """Return True if ``robot`` is currently flagged in emergency."""
         return robot in self._emergency
+
+    def emergency_holds(self) -> frozenset[str]:
+        """Bots currently flagged in emergency — the level state this gate enforces.
+
+        Read-only observability surface for ``get_fleet_status`` (doc12:389-409:
+        emergency 情報を含めて LLM に返す): the SAME set ``check_emergency`` reads
+        on every dispatch, so what the commander sees is exactly what rejects.
+        A frozen copy — callers cannot mutate the gate state through it.
+
+        Cross-thread read — no fail-closed guard here, unlike #596's
+        ``x_er_bridge.EmergencyMirrorStateSource``. The estop mirror writes
+        ``set_emergency`` from the rclpy spin thread while this reads from the
+        tool-dispatch thread, and ``tools.dispatch`` converts only ``TypeError``,
+        so a stray ``RuntimeError`` would escape onto the wire. It cannot: the
+        source is a ``set``, and ``frozenset(set)`` is CPython's ``set_merge``
+        fast path — a C-level table copy that never re-enters Python (str hashes
+        are cached) and never releases the GIL mid-walk, i.e. atomic against a
+        concurrent ``add``/``discard``. Measured on 3.12.10, 3 mutator + 3 reader
+        threads over a 100k-element container: 0 ``RuntimeError``. #596's guard
+        covers ``held_bots()``, whose source is a ``dict``; that walk proved
+        equally atomic in the same probe, so that guard is defense in depth
+        rather than a live failure mode this one is missing. BOTH rulings rest on
+        the GIL — revisit if this ever runs on a free-threaded build.
+        """
+        return frozenset(self._emergency)
 
     # -- state.json helpers --------------------------------------------------
 

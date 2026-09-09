@@ -38,7 +38,7 @@
 ### 選定理由
 
 - 手持ちの Orin Nano Super Dev Kit をそのまま司令塔として載せられる（公式 Orin 版キットが存在し、**直ネジ止め**手順が公式動画で確認済＝末尾追記 P-5）
-- 制御プロトコルが公開・実読済（`0xFF/0xFC/LEN/FUNC/CHECKSUM`・`FUNC_MOTION=0x12`・40ms auto-report）＝**Yahboom スタックに依存せず自前 ROS 2 ノードで完結できる**（`:323` / 末尾追記 P-7e）
+- 制御プロトコルが公開・実読済（`0xFF/0xFC/LEN/FUNC/CHECKSUM`・`FUNC_MOTION=0x12`・40ms auto-report）＝**Yahboom スタックに依存せず自前 ROS 2 ノードで完結できる**（`:323` / 末尾追記 P-7e。→ **#550 で wire フレーミングのみ vendor `Rosmaster_Lib` へ委譲**＝末尾追記 P-8。ROS 2 スタック非依存は不変）
 - 360° LiDAR ＋ 深度カメラ搭載で、部屋スケールの SLAM とジェスチャ召喚が追加センサーなしで成立（ADR-0009）
 - メカナムでも**契約変更が不要**（逆運動学が STM32 側 → `linear.y = 0` で凍結 URDF / Nav2 の diff-drive のまま成立。`:324`）
 - **安全の帰結**: stock FW の M1 上限は **0.7 m/s**・**通信途絶停止なし**（`ENABLE_IWDG=0`）＝MCU 内 L0 が使えない → **ホスト側シリアル送信直前の L0' クランプ**（0.3 m/s・方向保存）と G-g watchdog が必須（`:325` / `:371` / 末尾追記 P-7a・P-7c。実装 = [`ws/src/warehouse_m1_driver/`](../../ws/src/warehouse_m1_driver/CLAUDE.md)）
@@ -300,7 +300,7 @@ RPLiDAR A2（+10,000円）: 精度・回転速度が向上。予備費からの�
 | 項目 | 値 | 出典 |
 |---|---|---|
 | 車体寸法 | 全幅 231.40 × 全長 284.40 × 全高 181.40mm（LiDAR 上面 147.50 / 車体上面 74.58） | 公式 Product parameters 図 |
-| バッテリ | 12.6V 6000mAh + 12.6V/2A 充電器 → **3S 構成と整合**（保管 11.1–11.7V・**9.6V でブザー警報**） | 公式 unboxing / battery precautions |
+| バッテリ | 12.6V 6000mAh + 12.6V/2A 充電器 → **3S 構成と整合**（保管 11.1–11.7V・**9.6V でブザー警報**〔ブザーは拡張ボード実装＝スイッチ OFF 保管では鳴らない→末尾追記 P-9a〕） | 公式 unboxing / battery precautions |
 | 拡張ボード出力 | **DC 12V ×2（XH2.54 2PIN）/ DC 5V ×1（バレル・シルク "5VOUT2"）/ Type-C 5V ×1（"5VOUT1"・Pi5 給電対応）** | ROS robot board V3.0 パラメータ表 |
 | 拡張ボード入力 | T プラグ **DC 12V のみ**（公式 Q&A「This board just support 12VDC input」） | 公式製品ページ Q&A |
 | Orin 給電経路（純正） | Orin Nano SUPER 版のみ **「DC5.5×2.5 → XH2.54 2PIN 電源ケーブル」**同梱＝**12V を Orin の DC ジャックへ直結**（DC-DC 非使用） | 公式 Shipping List 図 |
@@ -467,7 +467,7 @@ NVIDIA は Carrier Board Specification に**取付穴の位置を公開してい
 - [ORBBEC MS200 ユーザーマニュアル](https://manuals.plus/orbbec/ms200-dtof-lidar-sensor-manual) — 参照日: 2026-05-21
 - [Yahboom ROSMASTER M1 — 公式](https://category.yahboom.net/products/rosmaster-m1) — 参照日: 2026-08-05（車体寸法・同梱物は公式 Product parameters 図 / Shipping List 図を実見）
 - [Yahboom ROS robot expansion board V3.0 — 公式](https://category.yahboom.net/products/ros-driver-board) — 参照日: 2026-08-05（12V/5V/Type-C 出力・T プラグ 12V 入力・Q&A）
-- [Yahboom バッテリ取扱注意](https://www.yahboom.net/public/upload/upload-html/1697613339/Precautions%20for%20battery.html) — 参照日: 2026-08-05（保管 11.1–11.7V / 9.6V 警報）
+- [Yahboom バッテリ取扱注意](https://www.yahboom.net/public/upload/upload-html/1697613339/Precautions%20for%20battery.html) — 参照日: 2026-08-05（保管 11.1–11.7V / 9.6V 警報）／再参照日: 2026-09-05（「充電時は拡張ボードのメインスイッチを OFF」「Do not use the battery while charging」→末尾追記 P-9a）
 - [Jetson Orin Nano Devkit Carrier Board Specification SP-11324-001 v1.3 — NVIDIA](https://developer.nvidia.com/downloads/assets/embedded/secure/jetson/orin_nano/docs/jetson_orin_nano_devkit_carrier_board_specification_sp.pdf) — 参照日: 2026-08-05（§1.2 / §3.8 DC ジャック 9–20V・5.5mm/2.5mm・3.5A）
 - [Nuwa-HP60C 深度カメラ — 公式](https://category.yahboom.net/products/hp60c) — 参照日: 2026-08-05（単品 $150 / ブラケット付 $170）
 - Yahboom 出品者回答（Amazon メッセージ・2026-08-06 16:41）— 一次情報。①本 SKU の制御ボード=拡張ボード V3.0・`without Nano`=Jetson Nano B01 のみ非同梱 ②12V 出力（XH2.54）= T プラグ入力の非安定化スルー・**定格 4A／ピーク 6A・過電流保護/ヒューズ無し**・バッテリー 9.5V 以上推奨 ③XH2.54⇔DC5.5×2.5 ケーブル（Orin 版同梱と同一）単品購入可 ④Orin Dev Kit 用取付板はボード種別の確認待ち＋キット付属品の一部非互換の注意
@@ -620,7 +620,7 @@ M1 単騎フェーズは**実際の部屋（room scale）**を走り、ジオラ
 
 `# TODO(未確認)` 銘板の認証マーク群に **PSE（◇PS / ⬡PS）は判読できていない**。同梱 AC コードは 2 本あり、**平刃2本（Type A / NEMA 1-15P）＝日本のコンセントで使用可**・**丸ピン（Europlug Type C 系）＝日本では使用不可**。アダプタ本体が 100-240V ユニバーサル入力のため Type A 側を使えば電圧上の問題は無い。PSE 表示のある国内向けコードへ差し替える場合は、先に**アダプタ側 AC インレット形状（メガネ型 IEC C7 / ミッキー型 IEC C5）**を実物で確認する。
 
-> **Phase A（机上ブート）の給電はこの純正アダプタのみを使う。** 昇圧ハーネスは `:451` の①〜④が未通過の間は Orin に接続しない。
+> **Phase A（机上ブート）の給電はこの純正アダプタのみを使う。** 昇圧ハーネスは `:451` の①〜④が未通過の間は Orin に接続しない。（→ **2026-09-04 に①〜④全通過＝末尾追記 P-9c**・以後の接続は解禁。机上開発は引き続き AC＝P-9b）
 
 ### P-2. 昇圧 DC-DC の着荷判定（`:442` の状態更新）
 
@@ -630,7 +630,7 @@ M1 単騎フェーズは**実際の部屋（room scale）**を走り、ジオラ
 
 ただし**着手できることと、順序を省けることは別**である。`:451` の順序（初通電前の導通・＋/−分離の確認 → ① 出力測定 → ② 19.0V → ③ 再確認しポット固定 → ④ 極性確認 → Orin 接続）は**一段も飛ばさない**。P-4 の通り本モジュールは**短絡保護も逆接保護も持たない**ため、この順序を守らなければ壊れるのは Orin だけでなくモジュール自身でもある。
 
-`# TODO(期限あり)` メーカー保証は**初期不良のみ・到着後 1 週間**（P-4）。着荷 8/21–22 起算で期限は **8/28–29 頃**。`:451` ①（Orin 非接続での出力測定）が初期不良判定を兼ねるため、**この期間内に実施する**。
+`# TODO(期限あり)` メーカー保証は**初期不良のみ・到着後 1 週間**（P-4）。着荷 8/21–22 起算で期限は **8/28–29 頃**。`:451` ①（Orin 非接続での出力測定）が初期不良判定を兼ねるため、**この期間内に実施する**。（→ **close＝末尾追記 P-9c**: 実施は期限超過の 9/4 だったが初期不良なし）
 
 ### P-3. microSD 書き込み経路の確定（`:411` の「SD カードリーダーが前提」を充足）
 
@@ -672,9 +672,9 @@ M1 単騎フェーズは**実際の部屋（room scale）**を走り、ジオラ
 
 メーカーは「**入力電圧が可変するような電源を使う場合、出力電圧も入力電圧に応じて可変する**ので、出力電圧の設定は必ずテスターで確認してから使用すること」と明記する。本プロジェクトの入力は 3S バッテリー＝**12.6V→9.6V まで変動する**（`:302` 系）。
 
-→ したがって `:451` の②で 19.0V に合わせても、**バッテリー消耗時に出力が変わらない保証はない**。`:336-345` の実測①〜④で**バッテリー電圧を振ったときの出力電圧**を必ず記録する。`# TODO(要検討)` 出力が上振れする挙動なら Orin 上限 20V に触れうるため、**設定は満充電（高い入力）側で行い、低入力側での挙動を実測で確認する**——この設定タイミングの規定は本追記時点では**未裁定**。
+→ したがって `:451` の②で 19.0V に合わせても、**バッテリー消耗時に出力が変わらない保証はない**。`:336-345` の実測①〜④で**バッテリー電圧を振ったときの出力電圧**を必ず記録する。`# TODO(要検討)` 出力が上振れする挙動なら Orin 上限 20V に触れうるため、**設定は満充電（高い入力）側で行い、低入力側での挙動を実測で確認する**——この設定タイミングの規定は本追記時点では**未裁定**。（→ **裁定・実施済＝末尾追記 P-9c**: 満充電側 12.68V で 19.03V に設定。低入力側の実測は残）
 
-`# TODO(期限あり)` **メーカー保証は初期不良のみ・商品到着後 1 週間**。着荷が 8/21–22 なら期限は **8/28–29 頃**。`:451` の①（Orin 非接続で出力を測る）は初期不良判定を兼ねるため、**この期間内に実施する**。
+`# TODO(期限あり)` **メーカー保証は初期不良のみ・商品到着後 1 週間**。着荷が 8/21–22 なら期限は **8/28–29 頃**。`:451` の①（Orin 非接続で出力を測る）は初期不良判定を兼ねるため、**この期間内に実施する**。（→ **close＝末尾追記 P-9c**: 実施は期限超過の 9/4 だったが初期不良なし）
 
 > 出典: Amazon.co.jp 商品ページ `B01N3L2NY2`（NFJ・メーカー型番 `O242`）の商品説明・製品仕様（参照日 2026-08-23）。`# TODO(到着後)` メーカーが「入荷ロットにより外観・デザイン等が異なる場合がある」と明記しているため、現物の端子配列とボリューム位置は実物で確認する。
 
@@ -688,7 +688,7 @@ M1 単騎フェーズは**実際の部屋（room scale）**を走り、ジオラ
 
 1. **step 8「Install Jetson Orin Nano board」**の部品リストは `Jetson Orin Nano board *1`・`M2.5x5mm round head screw *4`・`Patch antenna acrylic board *1`・`M2.5x16+6mm single-pass copper pillar`（オーバーレイは ×2 に見えるが紙説明書 p06 は ×3。`# TODO(現物確認)`）・`Patch antenna`。**専用取付板・3D プリント部品・中間プレートは一切登場しない**——ボードは車体側に立てた銅柱へ **M2.5×5mm ネジ ×4 で直接ネジ止め**される。アクリル板は名称どおりパッチアンテナ用であり Orin の下敷きではない。
 2. 搭載ボードは**ファン付き・裏面に M.2 スロット 2 連＋ラベル**の外観で、**純正 Jetson Orin Nano Developer Kit と外観一致**（製品ページの選択肢名も「Orin NANO SUPER-8GB」= NVIDIA の Super Dev Kit 呼称。ただし**断定は現物合わせ**）。
-3. **step 9 = T-MINI PLUS LiDAR**（`T-MINI PLUS LiDAR adapter board *1`・M3×6mm ×3・M2×10+4mm 銅柱 ×2）、**step 12 = top cover 取り付けで完成**。つまり**公式構成では Orin を搭載したまま top cover が閉まる**＝`11-m1-assembly-manual.md` `:229` の 🔴 高さ干渉（34.8mm 厚）は**公式配置なら不発生の傍証**（最終確定は実物）。
+3. **step 9 = T-MINI PLUS LiDAR**（`T-MINI PLUS LiDAR adapter board *1`・M3×6mm ×3・M2×10+4mm 銅柱 ×2）、**step 12 = top cover 取り付けで完成**。つまり**公式構成では Orin を搭載したまま top cover が閉まる**＝`11-m1-assembly-manual.md` `:231` の 🔴 高さ干渉（34.8mm 厚）は**公式配置なら不発生の傍証**（最終確定は実物）。
 
 **NVIDIA 側の一次資料**（`:416` の補強）:
 
@@ -795,8 +795,8 @@ Phase 1 は次を別々に扱う:
 | 子フォルダ | ファイル | サイズ | 取得 | 本プロジェクトでの位置づけ |
 |---|---|---|---|---|
 | STM32 firmware for expansion board | `ROS-Driver-Board-FW-master.zip` | 879KB | ✅ | **仕様の一次ソース**。`car_type=0x0A` / `CAR_M1_MAX_SPEED=700` / `ENABLE_IWDG=0` の確定根拠（P-7a・P-7c） |
-| 〃 | `rosmaster_V3.6.5.hex` | 245KB | ✅ | 搭載 FW 版の照合用。**書き込まない**（stock FW 置換は現行方針で不採用＝`:328`） |
-| OrinNano | `Rosmaster.zip` | 324.8MB | ✅ | 公式 Python lib（`Rosmaster_Lib`）の実体。**参照のみ**（`:323` により実装には使わない） |
+| 〃 | `rosmaster_V3.6.5.hex` | 245KB | ✅ | 搭載 FW 版の照合用 ＋ **ロールバック用 golden image として保全**（[ADR-0013](../adr/0013-stm32-command-stream-watchdog.md) accepted 2026-09-09・前提ゲート (c) の UART ISP 書き戻し実証に使う）。書き込むのはロールバック実証・復旧時のみ（フルスクラッチ置換の不採用＝`:328` は不変） |
+| OrinNano | `Rosmaster.zip` | 324.8MB | ✅ | 公式 Python lib（`Rosmaster_Lib`）の実体。旧: **参照のみ**（`:323` により実装には使わない）→ **#550 で裁定変更＝robot image の実行時依存**（wire フレーミングは自作せず本 lib へ委譲。正本 = [`ws/src/warehouse_m1_driver/CLAUDE.md`](../../ws/src/warehouse_m1_driver/CLAUDE.md)、導入手順は末尾追記 **P-8**） |
 | 〃 | `ros2_kilted.zip` | 13.9MB | ✅ | 参考（distro 差分の確認用） |
 | 〃 | `ros2_ws.zip` | 17.2MB | ✅ | 汎用 ROS 2 学習 workspace。M1 固有ドライバではない（P-7d で保存対象外と判定済） |
 | 〃 | `ultralytics.zip` | 565.1MB | ✅ | 知覚の参考のみ。**AGPL-3.0・zip 内に `.env` あり**（P-7d の取り扱い注意） |
@@ -807,13 +807,13 @@ Phase 1 は次を別々に扱う:
 
 ### P-7e-2. 「どのコードが必要か」の裁定（`:323` の再確認）
 
-**結論は変わらない**——ベンダーの ROS 2 スタック（`yahboom_ws` / `yahboomcar_ws` / `Rosmaster_Lib`）は**実装の依存物にしない**。理由:
+**ベンダーの ROS 2 スタック（`yahboom_ws` / `yahboomcar_ws`）は実装の依存物にしない**（この結論は不変）。（→ **#550 で `Rosmaster_Lib` のみ裁定変更**: `FUNC_MOTION=0x12` の wire フレーミングは自作せず本 lib へ委譲＝**robot image の実行時依存**。理由と seam は [`ws/src/warehouse_m1_driver/CLAUDE.md`](../../ws/src/warehouse_m1_driver/CLAUDE.md) が正本、導入手順は末尾追記 **P-8**。以下 1.〜3. は ROS 2 スタック 2 本については今も有効）理由:
 
-1. **ライセンス**: `Rosmaster_Lib` は Proprietary 表記・PyPI 未配布・配布経路が Google Drive。`ultralytics` は AGPL-3.0。**再配布・コード流用は個別確認まで不可**（P-7d）。
+1. **ライセンス**: `Rosmaster_Lib` は Proprietary 表記・PyPI 未配布・配布経路が Google Drive。`ultralytics` は AGPL-3.0。**再配布・コード流用は個別確認まで不可**（P-7d）。（→ #550 後もこの制約は不変: `Rosmaster_Lib` は**実機へ pip install するだけ**で **repo へ commit しない・vendoring しない・再配布しない**＝P-8）
 2. **安全レイヤと非互換**: 公式サンプル（例 `Rosmaster/auto_drive/yolov5_auto.py`）は検出結果から `set_car_motion()` を直接呼ぶ＝ **L0' / L1 / L2 を迂回する**構造。本プロジェクトは全 `/cmd_vel` を L0' の単一絞り点に通す（`:325`）。
-3. **代替が成立している**: プロトコルは公式 xlsx とソースで完全に判明済（`0xFF/0xFC/LEN/FUNC/CHECKSUM`・`FUNC_MOTION=0x12`・40ms auto-report＝`:323` / P-6b）。自前 ROS 2 ノード（[`ws/src/warehouse_m1_driver/`](../../ws/src/warehouse_m1_driver/CLAUDE.md)）で足りる。
+3. **代替が成立している**: プロトコルは公式 xlsx とソースで完全に判明済（`0xFF/0xFC/LEN/FUNC/CHECKSUM`・`FUNC_MOTION=0x12`・40ms auto-report＝`:323` / P-6b）。自前 ROS 2 ノード（[`ws/src/warehouse_m1_driver/`](../../ws/src/warehouse_m1_driver/CLAUDE.md)）で足りる（→ **#550 修正**: ノード側の L0'・watchdog・odom は自前のまま、**フレーム組立だけは vendor lib へ委譲**＝P-8。プロトコルが判明済である事実は変わらず、委譲理由は「wire 形が本 repo の凍結 docs 外＝工場 FW と実績のある単一実装に寄せる」）。
 
-**したがってベンダーコードの役割は「実装の依存」ではなく「仕様の裏取り資料」**。取得済み 4 本 ＋ FW 2 本は *読むため* に置いてある。非取得 4 本（計 5.2GB）は、この裁定が覆らない限り**取りに行かない**。
+**したがってベンダーコードの役割は、`Rosmaster_Lib` を除き「実装の依存」ではなく「仕様の裏取り資料」**。取得済み 4 本 ＋ FW 2 本は *読むため* に置いてある（**例外 = `py_install_V3.3.9.zip`（`Rosmaster_Lib`）だけは実機へ導入する成果物**＝P-8）。非取得 4 本（計 5.2GB）は、この裁定が覆らない限り**取りに行かない**。
 
 ### P-7e-3. 後続セッションが実際に参照する手順
 
@@ -836,3 +836,95 @@ unzip -p ~/Developer/mwr-vendor-code-cache-20260824/ROS-Driver-Board-FW-master.z
 守ること: ① 実行しない・展開前に `unzip -t` と path traversal 検査（P-7d） ② `ultralytics` 内の `.env` は**読まない・commit しない**（`.claude/rules/safety.md`） ③ 引用は必ず zip 内 path と行で残す（docs-first） ④ **repo へバイナリを置かない**——台帳は [`docs/assets/m1-vendor/README.md`](../assets/m1-vendor/README.md)（untracked・sha256 付き）。
 
 `# TODO(未取得)` Yahboom `ROSMASTER M1-V1.0.STEP`（`:761` の 3D Model フォルダ・約67.8MB）は quota exceeded のまま。fallback マウント設計が必要になった時点で再取得する（Q-8）。
+
+---
+
+## 【2026-08-31 追記】`Rosmaster_Lib` を実行時依存へ格上げ（#550 裁定変更）とボード導入手順（P-8）
+
+> **本節は P-7e-2（`:810`「ベンダーの ROS 2 スタックは実装の依存物にしない」）の一部を上書きする**。上書きされるのは **`Rosmaster_Lib` 1 本だけ**で、`yahboom_ws` / `yahboomcar_ws` / `ultralytics` / `dify` は従来どおり**非依存**（取りに行かない）。
+> **裁定の正本は [`ws/src/warehouse_m1_driver/CLAUDE.md`](../../ws/src/warehouse_m1_driver/CLAUDE.md)**（`## 前提・未確定 (TODO)` の「シリアル層は #550 で裁定変更のうえ結線済」行 ＋ `## 【2026-08-26 追記】serial driver node スライス`）。本節はハード側 doc として **入手・導入・検証の手順**だけを持つ。
+
+### P-8-1. 何がどう変わったか（自作シリアル層 → vendor lib 委譲）
+
+| | 変更前（`:323` / P-7e-2 の当初裁定） | 変更後（#550・現行） |
+|---|---|---|
+| `FUNC_MOTION=0x12` フレーム組立 | **自前実装**（`HEAD=0xFF, DEVICE_ID=0xFC, LEN, FUNC, payload…, CHECKSUM`） | **vendor `Rosmaster_Lib` へ委譲**（`set_car_motion` / `reset_car_state`） |
+| `Rosmaster_Lib` の位置づけ | 参照のみ（読む資料） | **robot image の実行時依存**（dev host には不要） |
+| L0' 速度クランプ・W-1/W-2 停止・odom | 自前 | **自前のまま不変**（`clamp_body_velocity` 必経＝`:325`-`:329` 残課題 7） |
+| ROS 2 スタック（`yahboom_ws` 等） | 非依存 | **非依存のまま** |
+
+**委譲した理由**（#550）: wire のフレーム形は**本 repo の凍結 docs の範囲外**であり、工場出荷 STM32 ファームが実際にテストされている実装は vendor lib 1 本しかない。自作すると「docs に無い契約を発明する」ことになり、かつ実機不在のまま検証できない（`.claude/rules/docs-first.md`）。**安全側（L0' クランプ）は委譲していない**——`Rosmaster_Lib` を呼ぶのはクランプ済み値だけを渡す最下流の backend seam であり、全 `cmd_vel` は依然として単一の絞り点を通る。
+
+### P-8-2. ボードへの導入手順（Jetson 実機のみ・repo に置かない）
+
+入手元は既存キャッシュ（P-7e-3 `:820`・`:826`）。**新規ダウンロードは不要**:
+
+```bash
+# 1) 開発機 (Mac) → Jetson へ転送（jetson CLI の経路は jetson/02 §9 を使う）
+scp ~/Developer/mwr-vendor-code-cache-20260824/py_install_V3.3.9.zip <jetson>:/tmp/
+
+# 2) Jetson 側（ROS を source していないシェルで実行）
+unzip -t /tmp/py_install_V3.3.9.zip          # 展開前の健全性・path traversal 検査（P-7d）
+unzip -d /tmp/rosmaster_lib /tmp/py_install_V3.3.9.zip
+pip install --user /tmp/rosmaster_lib/<展開されたパッケージ>   # 実体名は unzip -l で確認してから指定
+```
+
+**守ること（P-7d / `.claude/rules/safety.md` の継続）**:
+
+- **repo へ commit しない・vendoring しない・再配布しない**（Proprietary 表記＝`:812`）。`ws/src/**` に取り込まず、あくまで **robot image 側の外部依存**として置く。
+- 展開は `/tmp` 等の repo 外で行う。`pip install --user` はユーザ領域に閉じる（system site-packages を汚さない）。
+- `# TODO(Phase 1・未 doc 化)` ボード上の作業シェルは **ROS を source していない状態**で行う（旧 ROS pytest プラグインが新しい pytest と衝突した運用上の実測メモ。**現時点で docs 化された正本が無い**ため、実機で再現を確認したうえで [jetson/02](../jetson/02-remote-access-and-dev-link.md) 側へ正式に記録する）。
+- **dev host（Mac / CI）には入れない**。`RosmasterBackend` は lazy import 設計で、host の R-26 unit は fake backend で通る（doc16 §11 fake seam）。
+
+### P-8-3. 検証（導入できたことの確認）
+
+```bash
+python3 -c "from Rosmaster_Lib import Rosmaster"     # import が通ること（ROS 非 source シェル）
+ros2 run warehouse_m1_driver m1_probe                # read-only プローブ（motion 送信なし）
+```
+
+`m1_probe` は car_type / version / battery / encoder×4 を読むだけで**モータを回さない**。これは [mode-m1/03 §2](../mode-m1/03-joystick-teleop-bringup.md) の M1 ゲート内プローブと同一のもので、`get_car_type()` の結果は [ADR-0010](../adr/0010-raise-speed-cap-to-platform-max.md) の pin 値確定にも使う。**モータを回す確認は車輪を浮かせた状態で M1 ゲートとして行う**（同 doc §1）。
+
+`# TODO(Phase 1)` 実機未着のため、**上記手順は未実行**（`pip install` の対象パッケージ名・aarch64 での import 可否・`python3` と `--user` パスの整合は実機で確定する）。udev symlink `/dev/myserial`・CH340（`1a86:7523`）・115200 8N1 の実機セットアップも同じセッションで潰す（残課題 5 / 10 ＝ `:323` / `:334`）。
+
+## 【2026-09-05 追記】充電・保管・開発時の電源運用（P-9）— T 型コネクタが唯一の遮断手段
+
+> **番号注記**: P-8（`Rosmaster_Lib` 導入手順・#579）は本節より先に land 済——本節は続番の **P-9**。
+> 2026-09-04/05 の実機検証（`:451` テスターゲート①〜④の実施＋ T 挿しっぱなし放置の実測）で確定した**電源運用の正本**。対象 layer: 給電系は **L0 未満（ハードウェア）**（`:347` と同じ扱い）。シャットダウン手順の正本は [../jetson/02-remote-access-and-dev-link.md](../jetson/02-remote-access-and-dev-link.md) §8。用語は [../GLOSSARY.md](../GLOSSARY.md)「T 挿抜運用」。
+
+### P-9a. 構造的事実 — 昇圧タップはメインスイッチより上流（「充電時はスイッチ OFF」を満たせない）
+
+Yahboom 公式バッテリ取扱注意（References `:470` の URL・再参照日 2026-09-05）は「**When charging the battery, please turn off the main power switch on the expansion board**」と、充電時に拡張ボードのメインスイッチを OFF にするよう指示する。しかし本プロジェクトの昇圧ハーネス（`:427-428` の図）は**バッテリーの T プラグ直後で分岐**しており、Orin レグは**メインスイッチ（拡張ボード上）より上流**。スイッチを OFF にしても Orin レグは通電したまま＝公式指示を**スイッチ操作では物理的に満たせない**（2026-09-04/05 実機確認）。
+
+**→ T 型コネクタの切り離しが、本構成における唯一の遮断手段。** ⚠️ 抜くのは**バッテリー直後の T**（`:427` の `バッテリー(メス) ⇔ [T型オス 30cm]` 接合部＝WFR-3 分岐点より上流）。**拡張ボード側の `[T型メス 30cm]` を抜いても Orin レグは通電したまま**で遮断にならない。以下「T を抜く」は全てバッテリー直後の T を指す。
+
+この構造は次の 2 つの実害を生む（いずれも実測または一次情報で確認）:
+
+1. **充電**: 充電器は **12.6V/2A・DC4017 プラグ**（[11-m1-assembly-manual.md:19](11-m1-assembly-manual.md) §1.1）で、**バッテリーパック直結の充電ピグテール**に挿す。充電口が T 型の負荷口とは**別口**であることは 2026-09-04 現物確認（[11-m1-assembly-manual.md:55](11-m1-assembly-manual.md) §2 手順4 は取り回しのみ記載）。T を挿したまま充電すると、**Orin アイドル分（DC 入力実測 約5W＝[../jetson/02-remote-access-and-dev-link.md:239](../jetson/02-remote-access-and-dev-link.md)・昇圧効率込みの 12V 側換算で約 0.4–0.5A）が充電器の満充電終止判定を妨げて満充電を検出できず**（終止電流の仕様は未入手＝機構は推定・現象は実機で確認）、Orin 高負荷時（銘板上限 45W＝P-1）では 12V 側約 4A ＞ 充電器 2A で**充電中でも正味放電**になる。公式も「Do not use the battery while charging」（同 URL）と充電中使用を禁じており、結論はこの一次情報だけでも成立する。**充電は必ず T を抜いてから**。
+2. **保管**: **T を挿したままにすると Orin は給電と同時に自動起動**し（Dev Kit の既定動作・実機確認）、**約半日で保管下限 11.1V（`:303` / `:470`）を割った**（2026-09-04→05 実測）。この間 **9.6V 低電圧ブザーは鳴らない**——ブザーは拡張ボード ERF01 実装（`:716`・公式も「the buzzer of the expansion board」）＝**メインスイッチ下流**で、スイッチ OFF の保管状態では無通電。昇圧 DC-DC（O242・P-4）にも **UVLO（低電圧遮断）の記載は無い**。つまり**この系には過放電を自動で止める機構が存在しない**——止めるのは運用（T 抜き）だけ。過放電 floor の決定記録は [../adr/0005-l0-battery-brownout-floor.md](../adr/0005-l0-battery-brownout-floor.md)（現行 cutoff 無し・実装は将来 phase・閾値は実機実測待ち）＝本実測はその「cutoff 無し」の実害を M1 実機で確認した初の証跡。
+
+### P-9b. 確定運用（2026-09-05・operator 決定）
+
+| 場面 | 電源 | 操作 |
+|---|---|---|
+| **走行時のみ** | バッテリー | **T を挿す**（＝Orin 自動起動）。走行セッション終了で下の抜去手順へ |
+| **開発（机上）** | 純正 19V AC アダプタ（P-1） | 常時通電運用（[../jetson/02-remote-access-and-dev-link.md](../jetson/02-remote-access-and-dev-link.md) §9・[../GLOSSARY.md](../GLOSSARY.md)）どおり。バッテリーは使わない・T は抜いたまま |
+| **充電** | 充電器 12.6V/2A | **T を抜いてから**充電ピグテールに挿す。完了（緑ランプ）後は充電器を外す（過充電回避・公式指示） |
+| **保管** | なし | **T を抜く**（メインスイッチ OFF では Orin レグを遮断できない）。保管電圧 11.1–11.7V（`:303`） |
+
+- **T を抜く前に必ず `jetson halt`**（[../jetson/02-remote-access-and-dev-link.md:208](../jetson/02-remote-access-and-dev-link.md) §8・fail-closed ラッパー・YES 確認付き）。通電中の突然断はファイルシステム破壊リスク（同 §8）。
+- 任意改善（記録のみ・未採用）: **ヒューズ下流にインラインスイッチ**を追加すると、T 挿抜時のスパークと挿抜回数（コネクタ摩耗）を減らせる。採否・部材選定は未裁定＝`# TODO(任意・Phase B 以降)`。
+
+### P-9c. テスターゲート①〜④の実測記録（2026-09-04 通過・P-4/P-6a を実測レベルで close）
+
+`:451` の手順①〜④を 2026-09-04 に実施し**全て通過**＝Phase A（`:623`）の昇圧ハーネス接続が解禁された:
+
+| 項目 | 実測値 | 含意 |
+|---|---|---|
+| ① 初期出力（Orin 非接続） | **23.93V** | **Orin 上限 20V 超え**＝手順①を飛ばして接続していたら破壊していた（`:451` の警告が実測で裏付いた） |
+| ②③ 設定後出力 | **19.03V**（ポット固定） | 目標 19.0V に整定 |
+| 設定時入力 | **12.68V（満充電側）** | P-4 `:675` の「設定は満充電（高い入力）側で行う」を採用＝**設定タイミングの未裁定を close**。低入力側での出力挙動の実測は残（`:336-345` の実測①〜④で記録する） |
+| ④ 極性 | **ERF01 T 型電源入力（J1）＝バッテリー赤線が＋**・**DC プラグケーブル（`:443` 調達分・型番 `O412`＝2026-09-04 の operator 実測記録より。`:443`/購入台帳に型番記載が無いため本行が初記録）＝赤線がセンタープラス**を実証 | P-6a の回路図読みとハーネス極性が**実測で確定**。`:451` ④ 完了 |
+
+- ① の実施（9/4）は P-4 `:677` の初期不良保証期限（8/28–29 頃）を過ぎていたが、**初期不良は無かった**（出力可変・整定・設定保持とも正常）＝同 `# TODO(期限あり)` は結果として close。
+- 未実施のまま残るもの: `:453` のリプル実測・`:336-345` の負荷実測②〜④（いずれも Phase A/B で実施）。`:443` の 2.5/2.1 兼用 DC プラグは実挿し・通電・Orin ブートまで確認済（本節の T 挿し実測がその証跡）だが、**走行振動下での緩みは未確認**。

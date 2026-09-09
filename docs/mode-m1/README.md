@@ -13,6 +13,7 @@
 | [02-m1-driver-and-watchdog](02-m1-driver-and-watchdog.md) | `warehouse_m1_driver` serial node 設計（L0' 結線 = G-l）＋ **watchdog 多層停止設計**（STM32 側 watchdog 不在の調査確定・G-g 実機確認手順） |
 | [03-joystick-teleop-bringup](03-joystick-teleop-bringup.md) | 物理起動の最初の目標 = **joystick 手動走行**。成功の 3 段ゲート（M0 給電 / M1 疎通 / M2 ROS 走行）・実機プローブ・joy 経路設計 |
 | [04-runtime-speed-limiter](04-runtime-speed-limiter.md) | OQ-T3 の設計解: Nav2 `speed_limit_topic` による**走行中速度上限の動的変更**。三層モデル（起動基準値 = `_operating_vx_max`/RewrittenYaml ／ runtime 帯 = `nav2_msgs/SpeedLimit` ／ L0' 最終クランプ不変） |
+| [05-operation-state-and-stop-authority](05-operation-state-and-stop-authority.md) | **運転状態と停止権限の担当分離**（2026-09-07 確定）: L2=新規タスク許可／teleop=発生源ゲート／Guardian=停止条件／driver=停止上乗せ。Emergency の「イベント/現在状態」分離・操作者非常停止 latch・6 状態機械の不採用 |
 
 ## 関連 ADR（正本は docs/adr/ — 移動・複製しない）
 
@@ -29,6 +30,7 @@ ADR 本体は [docs/adr/](../adr/README.md) の `NNNN-slug.md` 連番が**正準
 | [0010](../adr/0010-raise-speed-cap-to-platform-max.md) | 凍結契約 `MAX_LINEAR_VELOCITY = 0.3 m/s` を**プラットフォーム上限へ再定義**（値 = 実機 car_type のファーム clamp。公式 V3.6.5 の M1 候補 = **`0x0A` → 0.7 m/s**・実機確認待ち）。運用値は config が持ち、**L0' クランプは方向保存・暴走バックストップとして維持**＝[02](02-m1-driver-and-watchdog.md) の serial driver slice での結線（G-l）が引き上げの前提条件。運用値を走行中に切り替える経路は [04](04-runtime-speed-limiter.md) | accepted（値 pin は実機確認 + S-SPEED 実測待ち・コードは 0.3 のまま） |
 | ADR-0011（ros2_control 採否） | **未裁定・未起票**。Phase 1 は本ツリー [02](02-m1-driver-and-watchdog.md) の Python driver で進め、ros2_control は Phase 2 TARGET 候補として別途裁定する（本ツリーは先取りしない）＝[02 §5](02-m1-driver-and-watchdog.md) | 未裁定（番号は [adr/README](../adr/README.md) で予約済） |
 | [0012](../adr/0012-speed-band-no-l2-best-effort.md) | 速度帯（[04](04-runtime-speed-limiter.md) の②）は **L2 Policy Gate 非経由**の **best-effort 制御面**（最小安全方針の docs 初出・04 §6 の OQ-R1〜R7 一括裁定）。クランプ `min(帯値, ①, MAX_LINEAR_VELOCITY)`（①=launch が MPPI へ注入する解決値を同一 launch から publisher param で受ける）・**20Hz 周期送出**・`percentage=false`・publisher は `gesture_detector` 同居（package 名は 09 OQ-13 従属）。hard 安全床（①・凍結契約・L0'）は不変 | accepted（2026-08-30・スライス 1-2 実装済＝publisher node + R-26 unit + bringup 配線。既定 safe-OFF・帯実値は未） |
+| [0013](../adr/0013-stm32-command-stream-watchdog.md) | **W-3（MCU communication watchdog）を vendor V3.6.5 ソースへの additive 追記で実装する**方向（[02:64](02-m1-driver-and-watchdog.md)「埋められない」↔ doc10 G-g「追加せよ」の衝突解消）。clamp・IK 不変・前提ゲート 4 点（U-5 / ライセンス / stock hex 書き戻し実証 / G-g 抜線試験）通過まで書き込まない。W-4 緩和は G-h で別裁定 | **accepted**（2026-09-09 オペレーター採用・実装は前提ゲート 4 点通過後） |
 
 ## 本ツリーへの authoring 方針（何をここに書き、何を書かないか）
 
@@ -50,3 +52,4 @@ ADR 本体は [docs/adr/](../adr/README.md) の `NNNN-slug.md` 連番が**正準
 - [04](04-runtime-speed-limiter.md) = OQ-T3（走行中の速度上限変更）の設計解 doc を同ラウンド（2026-08-28）で新設。経路選定確定 → **実装スライス 1-2（2026-08-30）で publisher node + R-26 unit + bringup 配線まで実装済**（既定 safe-OFF＝下記スライス行）。
 - 「## 関連 ADR」索引を新設（2026-08-28）。**ADR 本体は [docs/adr/](../adr/README.md) から移動・複製しない**方針を明文化し、本ツリーは分野別ビュー（索引）のみを持つ。
 - [04](04-runtime-speed-limiter.md) §6 の OQ-R1〜R7 は **[ADR-0012](../adr/0012-speed-band-no-l2-best-effort.md) で一括裁定**（2026-08-30・L2 非経由・帯 = best-effort 制御面）。残未決 = OQ-T1（最速段実値）/ OQ-T2（帯遷移時間窓）/ `V_FLOOR` / 帯遷移過渡の実測回帰。実装スライス 1-2（2026-08-30）: `warehouse_perception` 新設（OQ-13 裁定）＋ publisher node ＋ R-26 unit、続けて **bringup 配線・`speed_bands.*` config キー・`reset_period` 明示**まで実装済（既定 `enabled: false`）——残スライスは [04 追補③末尾の統一リスト](04-runtime-speed-limiter.md)（帯 config 実値・過渡実測回帰・単一 publisher の runtime アサート〔現状は静的 lint〕・producer `gesture_detector`）。
+- [05](05-operation-state-and-stop-authority.md) を新設（2026-09-07・オペレーター採用戦略の書き起こし）: 運転状態と停止権限の担当分離。確定 = 担当 4 分離・Emergency 現在状態の L2 共有（`set_emergency` 未配線の穴 → **#593 の level mirror で充足済み**・同 doc §3 が意味論の正本）・driver 停止上乗せ（既定無効）・操作者非常停止 latch。未決 = OQ-OP1〜OP7（topic 契約・解除時の残 goal 確認・standalone MCP の扱い等）。実装は同 doc §8 の順。

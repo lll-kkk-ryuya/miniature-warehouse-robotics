@@ -116,3 +116,25 @@ Yahboom ROSMASTER M1 の公式 STM32 source V3.6.5 は入手済みだが、stock
 - `# TODO(Phase 1)` `cmd_vel_timeout_s` の運用値は実機で確定（doc mode-m1/02 §3 W-1）。
 - `# TODO(Phase 1)` odom スライス（`get_motor_encoder` 差分 + M1 実測幾何。X3 幾何のファーム報告は使わない＝mode-m1/02 §1-3）。
 - `# TODO(Phase 1)` 実機ファーム版と調査ソース V3.5.1 の一致確認（U-5・`m1_probe`）。
+
+## 【2026-09-08 追記】stop overlay（停止上乗せ）core スライス（doc05 §8 順序 5 の先行 core）
+
+設計正本: [docs/mode-m1/05-operation-state-and-stop-authority.md](../../../docs/mode-m1/05-operation-state-and-stop-authority.md) §4（停止上乗せの状態表・R-26 ①〜⑧）/ §3-2（鮮度原則: 不明・stale → fail-closed）。**既定は機能無効**（doc05:68 — standalone M0-M2 bring-up = [mode-m1/03:50](../../../docs/mode-m1/03-joystick-teleop-bringup.md) を壊さない）。「safe-OFF」とは呼ばない（doc05:59）。**W-3（ホスト死）の代替ではない**。
+
+### 提供 (produce) — 本スライスで追加
+
+- `M1DriverCore(backend, cmd_timeout_s=..., stop_overlay_enabled=False)` — 新 kwarg（既定 False・省略時は従来と bit 等価）。
+- `M1DriverCore.on_stop_state(stop_requested: bool, valid_until: float, now: float)` — 停止上乗せの状態 feed（将来の ROS 配線が呼ぶ seam）。`valid_until` は注入 monotonic 時計上の絶対期限。**非有限・非正・逆行する期限 → 無許可扱い**（doc05 §4 ②）。無効時は no-op。
+- `M1DriverCore.stop_overlay_enabled`（read-only property）。
+- ROS param **`stop_overlay_enabled`**（`driver_node.py`・既定 `False`）→ core へ注入。**producer 購読は本スライスで配線しない**（下記 TODO）。
+- **新しいトピック / 型 / JSON スキーマは産まない**（doc03 契約のまま・`warehouse_interfaces` 無変更）。
+
+### テスト（R-26）
+
+- `tests/unit/test_m1_stop_overlay.py`（18 関数 / 25 ケース）— fake backend + fake clock・doc05 §4 由来の spec オラクル。①停止要求→ゼロ ②無効期限（非有限/非正/逆行/過去）→無許可 ③初期=停止側 ④**無効時 bit 等価**（pre-existing-API core との backend call 列完全一致 = negative oracle）⑤有効時も clamp 必経 ⑥W-1 と AND 合成（別ノブ）⑦W-2 不干渉 ⑧壁時計不使用（source pin）。
+- **mutation 4 本全 KILLED**（2026-09-08 実測・commit 後に driver_core.py 実ファイル差替え+try/finally 復元方式。PYTHONPATH 影方式は conftest が勝つため不可 = 上記 2026-08-06 の教訓）: M1 停止要求無視（ハーネス自己チェック）/ M2 既定を有効へ反転 / M3 stale 分岐素通し / M4 有効時 clamp 迂回。
+
+### 前提・未確定 (TODO)
+
+- `# TODO(doc05 OQ-OP1/OP2)` **producer channel の ROS 配線は未実装（意図的 defer）**: 停止上乗せが購読する topic 名・型・周期・鮮度閾値は doc03 additive 追記と同一 PR で確定してから `driver_node.py` に subscription を足す（doc05 §3-2 は本書で発明しない、と明記）。それまで統合構成で `stop_overlay_enabled:=true` にすると **feed 不在 = 常時停止側**（fail-closed・設計どおり）。
+- `# TODO(Phase 1)` 統合 bringup での有効化（launch 設定の切り分け: 単体=無効 / 統合=明示有効。doc05:68）。

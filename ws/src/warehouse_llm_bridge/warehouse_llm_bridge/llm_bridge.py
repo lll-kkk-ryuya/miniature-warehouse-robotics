@@ -45,11 +45,14 @@ import threading
 import time
 
 import rclpy
+from geometry_msgs.msg import Twist
 from rclpy.node import Node
+from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
 from std_msgs.msg import String
 from warehouse_interfaces.config import load_config
 from warehouse_interfaces.paths import warehouse_env
 from warehouse_interfaces.stores import FileGenStore, FileIdempotencyStore, FileStateStore
+from warehouse_mcp_server.emergency_sync import EmergencyLevelMirror, clear_after_from_config
 from warehouse_mcp_server.gen_check import GenChecker
 from warehouse_mcp_server.nav2_client import Nav2RestForwarder
 from warehouse_mcp_server.tools import WarehouseTools
@@ -92,6 +95,22 @@ DEFAULT_NAV2_BRIDGE_BASE_URL = "http://localhost:8645"
 # traffic_mode values that route motion through the Nav2 Bridge (doc15:211-219).
 # Mode C (open-rmf) routes via Open-RMF instead — no Nav2 Bridge forwarder.
 NAV2_BRIDGE_MODES = frozenset({"none", "simple"})
+# Fleet namespaces (doc03 topic contract; same tuple as the Guardian / State Cache).
+# Cross-checked against config robots: by tests/unit/test_emergency_mirror_wiring.py —
+# a bot added in config without a subscription here would be fail-open (the Guardian
+# estops it but the L2 mirror never hears about it).
+_BOTS: tuple[str, ...] = ("bot1", "bot2")
+# Sweep cadence for the Guardian-estop mirror (doc12 【2026-09-07 追補】): clear
+# latency is AT LEAST emergency_clear_after_s + this period — the RELIABLE/depth-10
+# subscription may redeliver a queued burst after a gap and each late sample restamps
+# the silence window at RECEIVE time, pushing the clear later (safe direction: the
+# hold only lasts longer) — and always after the 0.5s twist_mux expiry, so L2 opens
+# only once the physical override has lapsed. Known residual startup window (accepted,
+# mode-m1/05 §3-2 / mode-x-er/10:459-461): after a bridge restart the mirror is empty
+# until DDS discovery completes, so a dispatch during a held estop can be
+# phantom-accepted — motion stays physically blocked (twist_mux prio100) and the
+# Guardian cancels goals every tick.
+EMERGENCY_SWEEP_PERIOD_S = 0.1
 
 
 class LlmBridge(Node):
@@ -167,6 +186,29 @@ class LlmBridge(Node):
             # base defaults 0.5/2.0; doc12 §stale 判定). Absent block => defaults.
             config=cfg,
         )
+        # Guardian estop -> Policy Gate emergency mirror (doc12 【2026-09-07 追補】,
+        # #592). The Guardian holds an estop as a LEVEL signal on
+        # /bot{n}/cmd_vel/emergency (re-asserted every 50ms tick, doc12:185); this
+        # node marshals it into the L2 mirror so check_emergency actually fires:
+        # a message flags the bot, silence > policy_gate.emergency_clear_after_s
+        # (fail-closed, tighten-only floor) clears it on the sweep timer. One
+        # monotonic clock for both paths. QoS mirrors the Guardian's RELIABLE
+        # publisher (emergency_guardian.py reliable_qos; ros2.md explicit-QoS).
+        self._emergency_mirror = EmergencyLevelMirror(
+            self._tools.policy_gate.set_emergency, clear_after_from_config(cfg)
+        )
+        estop_qos = QoSProfile(
+            reliability=ReliabilityPolicy.RELIABLE, history=HistoryPolicy.KEEP_LAST, depth=10
+        )
+        for bot in _BOTS:
+            # b=bot binds the loop variable per-callback (late-binding closure pitfall).
+            self.create_subscription(
+                Twist,
+                f"/{bot}/cmd_vel/emergency",
+                lambda _msg, b=bot: self._emergency_mirror.on_stop_signal(b, time.monotonic()),
+                estop_qos,
+            )
+        self.create_timer(EMERGENCY_SWEEP_PERIOD_S, self._sweep_emergency_mirror)
         # Commander cadence is config-driven (cfg["cycle"], doc08:121-128 / README:88-91):
         # the configured TOTAL span minus typical response = the post-response idle wait.
         # Fail-open to the doc08 design default when the block is absent/malformed.
@@ -263,6 +305,10 @@ class LlmBridge(Node):
             f"cycle_wait={cycle_wait}s, seed_tasks={len(seed_tasks)}, prompt={prompt_src}, "
             f"langfuse_owner={langfuse_owner}, session={session_id})"
         )
+
+    def _sweep_emergency_mirror(self) -> None:
+        """Clear mirrored estops whose level signal has gone silent (timer cb)."""
+        self._emergency_mirror.sweep(time.monotonic())
 
     def _publish_reasoning(self, text: str) -> None:
         self._reasoning_pub.publish(String(data=text))

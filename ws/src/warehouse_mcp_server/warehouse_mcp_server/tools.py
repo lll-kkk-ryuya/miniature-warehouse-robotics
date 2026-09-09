@@ -128,6 +128,16 @@ class WarehouseTools:
         self._escalations: dict[str, dict] = {}
         self._negotiation_seq = 0
 
+    @property
+    def policy_gate(self) -> PolicyGate:
+        """The gate (L2), exposed so the hosting node can feed ``set_emergency``.
+
+        Consumed by the ``EmergencyLevelMirror`` wiring in ``llm_bridge``
+        (doc12 【2026-09-07 追補】, #592): read-only access — tools remain the
+        only dispatch path through the gate.
+        """
+        return self._policy_gate
+
     # ── wire entry: dispatch by tool name (server.py stdio boundary) ────────
 
     async def dispatch(self, name: str, arguments: dict) -> dict[str, Any]:
@@ -284,12 +294,37 @@ class WarehouseTools:
         # `or {}` (not get(default)): a present-but-null "robots" must not reach
         # len() / .get() and crash a read-only tool.
         robots = state.get("robots") or {}
+        # Two INDEPENDENT emergency systems, deliberately kept in separate keys
+        # (doc12:631 裁定 — never merge them): "emergency" is the State Cache
+        # /emergency/event ring (append-only log, NO clear protocol — a listed
+        # bot may long since be fine; doc12:399-405), while "l2_emergency_holds"
+        # is the level state the Policy Gate is enforcing RIGHT NOW (Guardian
+        # estop mirror, auto-clears on silence; doc12 【2026-09-07 追補②】).
+        ring = state.get("emergency")
+        if not isinstance(ring, dict):
+            # Fail-open to the empty labeled shape: a malformed extra key must
+            # degrade, never raise — dispatch() converts only TypeError, so an
+            # AttributeError here would escape onto the wire (the module
+            # docstring's invariant). Same guard discipline as
+            # self_action_gate._validate_live_state on this very key.
+            ring = {}
+        active = ring.get("active")
+        history = ring.get("history")
         payload = {
             "status": "ok",
             "timestamp": state.get("timestamp"),
             "robots": robots,
+            "emergency": {
+                "active": active if isinstance(active, list) else [],
+                "history": history if isinstance(history, list) else [],
+            },
+            "l2_emergency_holds": sorted(self._policy_gate.emergency_holds()),
         }
-        self._audit.record("get_fleet_status", "executed", {"robots": len(robots)})
+        self._audit.record(
+            "get_fleet_status",
+            "executed",
+            {"robots": len(robots), "l2_emergency_holds": len(payload["l2_emergency_holds"])},
+        )
         return payload
 
     # ── tool 4: get_task_queue ──────────────────────────────────────────────

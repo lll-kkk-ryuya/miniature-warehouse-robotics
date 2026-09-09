@@ -134,6 +134,11 @@ mode_x_er:
 policy_gate:
   stale_after_s: 0.5         # s: robot_stale（dispatch 拒否・cancel/charging は許可）。上限=既定・より小のみ可
   unavailable_after_s: 2.0   # s: robot_unavailable（全コマンド拒否）。上限=既定・より小のみ可
+  # Guardian estop level 信号（/bot{n}/cmd_vel/emergency）の無信号がこの秒数を超えたら
+  # robot_in_emergency を解除（doc12 【2026-09-07 追補】/ #592・実装 warehouse_mcp_server.emergency_sync）。
+  # こちらは既定 1.0 が「下限」（floor・tighten-only の向きが鮮度窓と逆）: より大＝長く塞ぐ＝厳しい方向のみ許可。
+  # fail-closed: 非数値・非有限・<=0・既定より小(<1.0)は起動拒否。twist_mux 失効 0.5s より必ず後に開く。
+  emergency_clear_after_s: 1.0
 
 # runtime 速度帯（三層モデルの層② = docs/mode-m1/04-runtime-speed-limiter.md §2・裁定 = ADR-0012）。
 # additive / safe-OFF・既定 OFF＝未設定なら従来挙動（①起動基準値のみ）に落ちる（doc09:406 と同規律。

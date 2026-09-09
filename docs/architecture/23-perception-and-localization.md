@@ -13,7 +13,7 @@ Status: **DRAFT / TARGET 設計提案**（CURRENT 構成は変更しない。ス
 | 参照 | 何の正本か |
 |---|---|
 | [shared/09-navigation-internals](../shared/09-navigation-internals.md) | AMCL / Nav2 / 2D costmap（**CURRENT の正本**） |
-| [03-software-architecture](03-software-architecture.md) | トピック契約カタログ（:113 = plumbing 除外規約） |
+| [03-software-architecture](03-software-architecture.md) | トピック契約カタログ（:115 = plumbing 除外規約） |
 | [12-infrastructure-common](12-infrastructure-common.md) | 安全レイヤー L0-L3・cmd_vel 挿入トポロジ（:526-541） |
 | [shared/02-hardware-design](../shared/02-hardware-design.md) | M1 実寸・HP60C・T-mini Plus・給電 |
 | [ADR-0008](../adr/0008-ros2-distro-humble-for-rosmaster-m1.md) | Humble / Isaac ROS 3.x / Gazebo 未決 |
