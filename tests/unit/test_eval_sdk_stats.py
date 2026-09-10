@@ -13,6 +13,7 @@ Each expected value is a hand-computed literal from the *reference* formula
 oracle (.claude/rules/safety.md, doc20 §9), mutation-red on the named guard step.
 """
 
+import inspect
 import math
 import random
 
@@ -665,3 +666,7 @@ def test_time_series_accumulator_agrees_with_the_batch_helpers_it_streams() -> N
         share = fraction_at_or_below(values, 0.0)
         assert share is not None
         assert totals.at_or_below / totals.samples == pytest.approx(share)
+    # The oracle is only independent while the two implementations are: if either helper ever
+    # delegates to the other, this differential check becomes a tautology that agrees with
+    # itself no matter what the arithmetic does.
+    assert "TimeSeriesAccumulator" not in inspect.getsource(trapezoid_integral)

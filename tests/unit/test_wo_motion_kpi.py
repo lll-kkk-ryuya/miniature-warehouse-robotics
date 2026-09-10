@@ -1311,6 +1311,9 @@ def test_run_motion_stats_of_a_sampleless_snapshot_is_all_none() -> None:
         SeriesTotals(samples=0, at_or_below=0, integral=0.0, t_first=0.0, t_last=0.0), speed_cap=0.3
     )
     assert empty.samples == 0
+    # ``None``, not the snapshot's ``at_or_below``: passing that count through would render
+    # "5 idle of 0". Nothing is computable in this branch, and the idle count is no exception.
+    assert empty.idle_samples is None
     assert empty.idle_ratio is None
     assert empty.t_first is None and empty.t_last is None
     assert empty.duration is None and empty.integral_abs_speed is None
@@ -1337,6 +1340,14 @@ def test_run_motion_to_dict_discloses_its_own_bounds_with_the_cap_last() -> None
         "speed_budget_utilisation",
         "speed_cap",
     ]
+    # …and the counts must survive the mapping, not just the field order. Hand count against
+    # ε = 0.01 m/s on this fixture's |v| = [0.0, 0.2]: 2 samples, exactly ONE of them (the 0.0)
+    # at or below ε, so 1/2. Asserted THROUGH ``to_dict`` because that is where a remap lives:
+    # ``"idle_samples": self.samples`` (or the reverse) leaves every dataclass field correct
+    # and only the payload wrong, which a key-order assertion cannot see.
+    assert payload["samples"] == 2
+    assert payload["idle_samples"] == 1
+    assert payload["idle_ratio"] == pytest.approx(0.5)
     assert payload["t_first"] == 10.0 and payload["t_last"] == 10.5
     assert payload["duration"] == pytest.approx(0.5)
     assert payload["integral_abs_speed"] == pytest.approx(0.05)  # 0.5 s · (0 + 0.2)/2
@@ -1438,3 +1449,83 @@ def test_format_report_renders_the_run_scope_on_its_own_line() -> None:
     run_line = next(line for line in rendered.splitlines() if "run_motion bot1:" in line)
     assert "'samples': 3" in run_line
     assert "'duration': 2.0" in run_line
+
+
+@pytest.mark.unit
+def test_one_garbage_twist_degrades_the_run_integral_without_taking_the_report_down() -> None:
+    """A run total is monotone and never evicts, so a single absurd ``|v|`` overflows ``∫|v|dt``
+    to ``inf`` for the rest of the process — unlike the window, which heals as soon as the
+    offending sample ages out. Publishing that raw would make the WHOLE report unserialisable
+    (``json.dumps(..., allow_nan=False)`` is what a JSON KPI sink uses), so the poisoned fields
+    degrade to ``None`` while the counts — still perfectly good evidence — keep reporting.
+
+    Hand: stamps [0, 4, 8, 9, 10] with |v| = [0.1, 1e308, 0.1, 0.1, 0.1]. The first trapezoid
+    alone is 4·(0.1 + 1e308)/2 = 2e308 > DBL_MAX ⇒ ``inf``, and every later (finite) trapezoid
+    leaves it there. Five samples were accepted; none sat at or below ε = 0.01 m/s.
+    """
+    acc = MotionAccumulator()
+    for t, v in zip([0.0, 4.0, 8.0, 9.0, 10.0], [0.1, 1e308, 0.1, 0.1, 0.1], strict=True):
+        assert acc.add("bot1", t, 0.0, 0.0, v) is True
+    totals = acc.run_totals()["bot1"]
+    assert math.isinf(totals.integral)  # the accumulator really is poisoned, permanently…
+    stats = run_motion_stats(totals, speed_cap=0.3)
+    assert stats.integral_abs_speed is None  # …and the report says "not computable", not inf
+    assert stats.speed_budget_utilisation is None  # the ratio cannot outlive its numerator
+    # What survived is still published: the counts, the span and the disclosed denominator.
+    assert stats.samples == 5
+    assert stats.idle_samples == 0
+    assert stats.idle_ratio == pytest.approx(0.0)
+    assert stats.duration == pytest.approx(10.0)
+    assert stats.speed_cap == 0.3
+    json.dumps(stats.to_dict(), allow_nan=False)  # raises if an inf/nan ever leaks into to_dict
+
+
+@pytest.mark.unit
+def test_extreme_stamps_degrade_the_run_span_rather_than_publishing_inf() -> None:
+    """``t_last − t_first`` overflows even though each stamp is finite: −1e308 → 1e308 is
+    ``inf``, and the trapezoid between two zero-speed samples across it is ``inf · 0 = nan``.
+    Both read "not computable"; ``t_first``/``t_last`` stay raw because they are the evidence
+    for *why* the span is not computable."""
+    acc = MotionAccumulator()
+    assert acc.add("bot1", -1e308, 0.0, 0.0, 0.0) is True
+    assert acc.add("bot1", 1e308, 0.0, 0.0, 0.0) is True
+    stats = run_motion_stats(acc.run_totals()["bot1"], speed_cap=0.3)
+    assert stats.duration is None
+    assert stats.integral_abs_speed is None
+    assert stats.speed_budget_utilisation is None
+    assert stats.samples == 2 and stats.idle_samples == 2
+    assert stats.t_first == -1e308 and stats.t_last == 1e308
+    json.dumps(stats.to_dict(), allow_nan=False)
+    # A finite integral does not rescue the ratio: three zero-speed samples keep ``∫|v|dt`` at a
+    # perfectly good 0.0 while the span is still ``inf``, and 0.0/(cap·inf) would report a
+    # utilisation of 0.0 beside a ``duration`` of ``None`` — "measured zero" for something that
+    # was never measurable.
+    wide = MotionAccumulator()
+    for stamp in (-1e308, 0.0, 1e308):
+        assert wide.add("bot1", stamp, 0.0, 0.0, 0.0) is True
+    spanning = run_motion_stats(wide.run_totals()["bot1"], speed_cap=0.3)
+    assert spanning.integral_abs_speed == pytest.approx(0.0)
+    assert spanning.duration is None
+    assert spanning.speed_budget_utilisation is None
+
+
+@pytest.mark.unit
+def test_a_sampleless_run_snapshot_puts_no_ghost_robot_in_the_report() -> None:
+    """The run comprehension mirrors the window's ``if samples`` filter: no evidence → no entry.
+    Without it, a 0-sample snapshot conjures an all-``None`` row for a robot nothing was ever
+    measured for, and ``format_report`` prints it as a run line beside real ones."""
+    report = compute_kpis(
+        _audit_rows(),
+        motion=MotionInputs(
+            samples={"ghost": []},
+            run_totals={
+                "ghost": SeriesTotals(
+                    samples=0, at_or_below=0, integral=0.0, t_first=0.0, t_last=0.0
+                )
+            },
+        ),
+    )
+    assert report.run_motion == {}
+    assert report.smoothness == {}  # the window filter the run one mirrors
+    assert report.to_dict()["run_motion"] == {}
+    assert "ghost" not in format_report(report)

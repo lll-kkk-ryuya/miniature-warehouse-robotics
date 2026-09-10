@@ -525,8 +525,10 @@ def _budget_ratio(integral: float | None, duration: float, speed_cap: float | No
     Shared by both scopes (window and whole run) so the two can differ only in *what they
     integrated*, never in how a missing or degenerate denominator is handled.
 
-    Undefined = no integral, no cap injected, an unusable cap (non-finite / non-positive), a
-    ``T`` that does not advance, and a ``v_max·T`` product that underflows to ``0.0`` — a
+    Undefined = no integral, a non-finite integral, no cap injected, an unusable cap (non-finite /
+    non-positive), a ``T`` that does not advance **or is not finite** (stamps far enough apart to
+    overflow their difference bound no measurable span, and a report whose ``duration`` reads
+    ``None`` must not carry a utilisation), and a ``v_max·T`` product that underflows to ``0.0`` — a
     denormal cap such as ``5e-324`` passes ``config._validate_safety`` (finite, > 0, ≤ 0.3) yet
     leaves no divisible budget. Never ``0.0`` for those — that is the ``eval_sdk.stats``
     "no data ≠ measured zero" convention, and here it is the difference between "this robot
@@ -536,7 +538,7 @@ def _budget_ratio(integral: float | None, duration: float, speed_cap: float | No
         return None
     if speed_cap is None or not math.isfinite(speed_cap) or speed_cap <= 0:
         return None
-    if not duration > 0:  # NaN-safe
+    if not (math.isfinite(duration) and duration > 0):  # NaN-safe; ``inf`` is not a span either
         return None
     denominator = speed_cap * duration
     if not denominator > 0:  # NaN-safe; a denormal cap underflows the product to 0.0
@@ -646,20 +648,42 @@ class RunMotionStats:
     * ``samples`` / ``idle_samples`` — every sample the run ever accepted, and how many of them
       sat at ``|v| ≤ ε``. Published as counts, not only as their ratio, so a reader can see how
       much evidence the ratio rests on (the ``command_decisions`` precedent in ``kpi.py``).
-      ``idle_samples`` is ``None`` only if the totals were accumulated without a threshold, which
-      :class:`MotionAccumulator` never does.
+      ``idle_samples`` is ``None`` when the totals were accumulated without a threshold (which
+      :class:`MotionAccumulator` never does) **or** when the snapshot carries no samples at all:
+      a 0-sample run has nothing to have been idle *of*, so the count reads "not computable"
+      rather than a bare number beside ``samples=0``.
     * ``idle_ratio`` — doc21 §17 ①'s ``(|v| ≤ ε) ÷ 総サンプル数``, over the run. **Sample-count**
       based exactly like the window one, so it equals a *time* ratio only under uniform sampling
       — and over a whole run the odom rate has more opportunity to drift than inside one window.
     * ``integral_abs_speed`` — ``∫|v|dt`` over the run, accumulated trapezoid-by-trapezoid on the
       real stamps. Related to but **not** ``distance_traveled``: that one is the pose-to-pose
       path length ``pᵢ``, this one integrates the reported velocity, and the two diverge whenever
-      odom's twist and its pose disagree (they are separate fields of the same message).
+      odom's twist and its pose disagree (they are separate fields of the same message). That the
+      run numerator is the **twist integral** is an adjudication, not an accident: doc21 §17 ②
+      (``docs/architecture/21-eval-sdk-extraction.md:460``) originally named
+      ``DistanceAccumulator.totals()`` (pᵢ) as the run-scope ``∫|v|dt``, and #632 revised it to
+      this — pᵢ is a pose-delta quantity accumulated over a *different* sample set (it keeps
+      samples ``MotionAccumulator.add`` drops), so the two cannot be the same number, and using
+      the window's own formula is what keeps the two scopes comparable. pᵢ is still disclosed,
+      separately, as ``KpiReport.distance_traveled``.
+      It integrates straight **through** an odom outage: a gap of Δt between two moving samples
+      is credited Δt·(|v₁|+|v₂|)/2 whether or not the robot moved during it (CLAUDE.md void 16;
+      the run mean rate ``samples/duration`` is what exposes this, as ``sample_rate_hz`` does for
+      the window). The exact treatment is #632 B2.
     * ``duration`` — ``t_last − t_first``, the run's own span. Not "seconds since the node
       started": a robot that never published odom has no run to measure.
     * ``speed_budget_utilisation`` / ``speed_cap`` — doc21 §17 ② (iii) over the run and the
       ``v_max`` it was divided by, republished for the window's disclosure reason (the cap is an
       environment tunable, so the number alone is not comparable across runs). **Unclamped**.
+
+    **These totals can freeze silently.** ``TimeSeriesAccumulator.add`` requires a strictly
+    advancing stamp, so a stamp source that stops advancing — a sim/clock reset, a bag restart,
+    a ``/clock`` that jumps backwards — makes it reject *every* later sample, and the run totals
+    then stay exactly as they were for the rest of the process while odom keeps flowing. Nothing
+    in this dataclass says so on its own: the only way to detect it is to compare consecutive
+    reports (``samples``/``t_last`` that stop moving while the node is plainly alive). A
+    ``rejected`` counter that would make it a single-report observation is **#632 B4**, not added
+    here.
 
     ``None`` means "not computable from this run", never "measured zero" — the ``eval_sdk.stats``
     convention the window half follows.
@@ -698,13 +722,22 @@ def run_motion_stats(totals: SeriesTotals, *, speed_cap: float | None = None) ->
     integrating (knowing neither what ε means nor what a speed cap is), this turns those totals
     into the two named metrics. The window twin is :func:`smoothness_stats`; the guards are
     deliberately identical, so a reader comparing the two scopes is comparing scopes and nothing
-    else:
+    else — **with one asymmetry, spelled out under ``duration``/``integral_abs_speed`` below**:
 
     * ``idle_ratio`` — ``None`` for a run with no samples, else ``idle_samples / samples``.
     * ``speed_budget_utilisation`` — ``None`` below **two** samples (one point spans no time, no
       matter what stamps a hand-built snapshot claims), and ``None`` for every degenerate
       denominator :func:`_budget_ratio` lists. Reported **unclamped**: a run above its budget is
       information, the ``detour_factors`` stance.
+    * ``duration`` / ``integral_abs_speed`` — ``None`` rather than ``inf``/``nan``. Both are
+      derived from totals that are **monotone and never evicted**, which is where the symmetry
+      with the window ends: a single garbage twist (one ``|v| = 1e308`` message overflows the
+      running integral) or a pair of extreme stamps poisons them **for the life of the process**,
+      whereas the window heals itself as soon as the offending sample ages out of the ring
+      buffer. So these two degrade to ``None`` and **stay** ``None`` until a restart —
+      :meth:`MotionAccumulator.clear` would reset them but is never called on the live path.
+      Publishing the raw ``inf``/``nan`` instead would take the *whole* report down at
+      ``json.dumps(..., allow_nan=False)``, which is the failure this guard trades away.
 
     ``speed_cap`` is injected (``MotionInputs.speed_cap``, from config
     ``safety.max_linear_velocity``); absent — the offline-CLI case — only the utilisation is
@@ -716,7 +749,10 @@ def run_motion_stats(totals: SeriesTotals, *, speed_cap: float | None = None) ->
         # ``SmoothnessStats`` treatment of an empty window.
         return RunMotionStats(
             samples=0,
-            idle_samples=totals.at_or_below,
+            # ``None``, not ``totals.at_or_below``: passing a count through would print
+            # "5 idle of 0". The rest of this branch already reads "not computable"; the idle
+            # count says the same thing rather than describing samples that do not exist.
+            idle_samples=None,
             idle_ratio=None,
             t_first=None,
             t_last=None,
@@ -725,7 +761,14 @@ def run_motion_stats(totals: SeriesTotals, *, speed_cap: float | None = None) ->
             speed_budget_utilisation=None,
             speed_cap=speed_cap,
         )
-    duration = totals.t_last - totals.t_first  # = t_last − t_first, NOT the absolute end stamp
+    duration_raw = totals.t_last - totals.t_first  # = t_last − t_first, NOT the absolute end stamp
+    # Degrade a poisoned total to ``None`` instead of publishing ``inf``/``nan`` (docstring): the
+    # run totals never evict, so one extreme twist or stamp pair reaches ``to_dict()`` forever,
+    # and ``json.dumps(..., allow_nan=False)`` raises on the whole report rather than on the one
+    # field that is unusable. ``t_first``/``t_last`` stay raw — they are the *evidence* for why
+    # the span is not computable.
+    duration = duration_raw if math.isfinite(duration_raw) else None
+    integral = totals.integral if math.isfinite(totals.integral) else None
     return RunMotionStats(
         samples=totals.samples,
         idle_samples=totals.at_or_below,
@@ -733,9 +776,12 @@ def run_motion_stats(totals: SeriesTotals, *, speed_cap: float | None = None) ->
         t_first=totals.t_first,
         t_last=totals.t_last,
         duration=duration,
-        integral_abs_speed=totals.integral,
+        integral_abs_speed=integral,
+        # The guarded integral is what the ratio divides, so a run that lost its integral cannot
+        # report a utilisation either; ``_budget_ratio`` refuses ``None`` and every degenerate
+        # denominator (including a span that is not finite).
         speed_budget_utilisation=(
-            None if totals.samples < 2 else _budget_ratio(totals.integral, duration, speed_cap)
+            None if totals.samples < 2 else _budget_ratio(integral, duration_raw, speed_cap)
         ),
         speed_cap=speed_cap,
     )

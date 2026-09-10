@@ -465,6 +465,10 @@ def compute_kpis(
         run_motion = {
             robot: run_motion_stats(totals, speed_cap=motion.speed_cap)
             for robot, totals in motion.run_totals.items()
+            # Mirror of the window's ``if samples`` above: no evidence → no entry. A totals
+            # snapshot with zero samples describes a robot nothing was ever measured for, and
+            # publishing an all-``None`` row for it would put a ghost robot in the report.
+            if totals.samples
         }
 
     # ``rate`` is the eval_sdk zero-denominator guard (doc21:184); behaviour is unchanged from

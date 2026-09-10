@@ -650,15 +650,25 @@ def test_kpi_collector_reports_the_run_scope_beside_the_window() -> None:
     # No new topic and no new parameter for the run scope: it rides the odom callback the node
     # already has (doc21 §17 ③ / #632 — report fields only). One subscription construct in
     # ``__init__`` (the per-robot comprehension over ``/bot{n}/odom``) is the whole input surface.
-    init = _kpi_collector_method("__init__")
-    subscriptions = [
-        call
-        for call in ast.walk(init)
+    # Ratcheted on the TOPICS, module-wide, rather than on a call count inside ``__init__``:
+    # a count says "one construct here", which a harmless refactor (moving the comprehension
+    # into a helper, splitting it per robot) breaks while the input surface is unchanged, and
+    # which a *harmful* change (swapping odom for another topic) passes. The set below is the
+    # node's entire input surface.
+    tree = ast.parse(_KPI_COLLECTOR_PY.read_text())
+    topics = {
+        ast.unparse(call.args[1]).replace("'", '"')
+        for call in ast.walk(tree)
         if isinstance(call, ast.Call)
         and isinstance(call.func, ast.Attribute)
         and call.func.attr == "create_subscription"
-    ]
-    assert len(subscriptions) == 1, "the run scope must add no subscription (odom is the source)"
+        and len(call.args) >= 2
+    }
+    assert topics == {'f"/{robot}/odom"'}, (
+        f"kpi_collector's input surface changed: {sorted(topics)}. The run scope adds no topic; "
+        "if a NEW subscription is deliberate, add it to this set in the same commit."
+    )
+    init = _kpi_collector_method("__init__")
     declared = {
         call.args[0].value
         for call in ast.walk(init)
