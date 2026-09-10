@@ -127,7 +127,7 @@ install space には `warehouse-m1-driver.egg-link` のような **develop 形�
   相対パスを `diff_path` に書く。clean なら両方 `null`。**「dirty だった」で終わらせず、何が違ったかを後から出せる**ようにする。
 - `host.l4t` — `/etc/nv_tegra_release` の `# R36 (release), REVISION: 4.4` から `R36.4.4` を組む。取れなければ `null`。
   `ros_distro` — env `ROS_DISTRO`、無ければ `/opt/ros/<x>` の唯一の候補、それも無ければ `null`。
-- `deps` — §2 のとおり `rosdep check`（read-only）の結果。値は `ok` | `unsatisfied` | `skipped`。
+- `deps` — §2 のとおり `rosdep check`（read-only）の結果。値は `ok` | `unsatisfied` | `skipped` | `error`（rosdep は走ったが鍵を解決できない＝`ROS_DISTRO` 未設定など。`unsatisfied` は空）。rosdep には常に `ROS_DISTRO` を渡す（`build.sh` は underlay を source・直接実行時は `/opt/ros/<x>` から補完）。
 - `colcon.args` — dev は `["--symlink-install"]`、prod は `[]`。`packages` = `colcon list --names-only` の行数、取れなければ `src/*/package.xml` の数に fallback。
   `log_dir` = `<ws>/log/latest_build` の symlink 解決先を `<ws>` 基点の相対で。`duration_s` は小数 1 桁。
 - `colcon.forced` — 安全ガード（motion stack 稼働中）を `--force` で乗り越えて build したとき `true`、平時は `false`。**forced build も build-info を書く**——install space が実際に変わった以上、記録しない方が嘘になる。
@@ -189,7 +189,7 @@ deploy/jetson/bin/build.sh [--profile dev|prod] [--force] [--skip-rosdep] [--all
 build 前に `rosdep check --from-paths <ws>/src --ignore-src` を**実行して記録するだけ**にする（install はしない）。理由は 2 つ——
 apt install は sudo を要する（§1 の禁止）ことと、**依存不足は「build の失敗」より先に「起動時の import エラー」として出る**ため、
 記録しておかないと切り分けが遅れること。非 0 のときは `System dependencies have not been satisfied:` 以降の `apt\t<pkg>` 行を
-`deps.unsatisfied` に列挙する。`rosdep` 不在または `--skip-rosdep` なら `deps.rosdep_check="skipped"`。
+`deps.unsatisfied` に列挙する。`rosdep` 不在または `--skip-rosdep` なら `deps.rosdep_check="skipped"`。鍵を解決できない出力（`Cannot locate rosdep definition`）は `"error"`＝ほぼ `ROS_DISTRO` 未設定（実測 2026-09-10: 未設定だと ROS 鍵が全滅し pydantic だけが残る）。`preflight.sh --arrival` は env ファイルの `ROS_DISTRO` を rosdep に渡し、解決失敗は「未充足」と区別して WARN する。
 
 **ボード実測の 6 件（2026-09-10）**:
 
