@@ -1089,8 +1089,8 @@ def test_resolve_speed_cap_falls_back_with_a_warning(value: object) -> None:
 
 @pytest.mark.unit
 def test_the_hard_cap_is_imported_never_retyped_in_this_lane() -> None:
-    """``warehouse_interfaces.safety`` is explicit: "import them directly and do NOT hardcode
-    0.3 / 20 / 10 elsewhere" (safety.py:8-12). Scan the package's own source for a literal
+    """``warehouse_interfaces.safety`` is explicit: "0.3 / 20 / 10 are the canonical HARD CAPS …
+    import them directly and do NOT hardcode them elsewhere" (safety.py:8-12). Scan for a literal
     ``0.3`` — parsed, so a ``0.3`` inside a docstring or comment (which is *documentation* of
     the imported constant) does not trip it, while a re-typed default would. ``rglob`` rather
     than ``glob``: a cap re-typed one directory down is exactly as wrong, and a scan that cannot
