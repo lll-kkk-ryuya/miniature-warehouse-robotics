@@ -346,7 +346,7 @@ UNKNOWN と表示（clean と断定しない）。警告は `JETSON_UPTIME_WARN`
 | 2 | `/ssd/{warehouse,maps,recordings,bags}`（`ruyuya` 所有）+ `/ssd/docker`（root） | recordings は [doc22 未決 #7](../architecture/22-web-observability.md) の SSD 置き場に対応 |
 | 3 | docker data-root → `/ssd/docker` ＋ `docker.service` に `RequiresMountsFor=/ssd` drop-in | **fail-closed**: SSD 不在なら docker は起動しない（microSD への silent 書込みを構造的に排除）。boot 順序実測: `ssd.mount` → **+8s** → `docker.service` |
 | 4 | **ROS 2 Humble**（`ros-humble-ros-base` + `ros-dev-tools` + `ros-humble-joy` + `python3-serial`・公式 ros2-apt-source 方式） | 実機 Ubuntu 22.04.5 jammy ＝ [ADR-0008:16](../adr/0008-ros2-distro-humble-for-rosmaster-m1.md) と一致。systemd/udev 先行 upgrade + `apt --no-remove` で nvidia-l4t 系の削除カスケードを遮断 |
-| 5 | repo clone `/ssd/warehouse` → symlink **`/opt/warehouse`**（規約パス＝[setup/jetson-deploy.md:47](../setup/jetson-deploy.md)） | `v0.x` タグ未発行のため **main SHA 固定が暫定**（タグ発行後にタグ固定へ）。ws **16 pkg `colcon build` 成功**・`ros2 pkg list` で warehouse 15 pkg 可視・`clamp_body_velocity`（L0'）import 確認 |
+| 5 | repo clone `/ssd/warehouse` → symlink **`/opt/warehouse`**（規約パス＝[setup/jetson-deploy.md:47](../setup/jetson-deploy.md)） | `v0.x` タグ未発行のため **main SHA 固定が暫定**（タグ発行後にタグ固定へ）。ws **16 pkg `colcon build` 成功**・`ros2 pkg list` で warehouse 15 pkg 可視・`clamp_body_velocity`（L0'）import 確認。記録付き build（build-info v0・走行中 build 拒否）＝[jetson/03 §1](03-build-deploy-run-and-run-records.md) |
 | 6 | `/etc/warehouse/warehouse.env`（`ROS_DISTRO=humble`） | 雛形 [env.example の `jazzy` 記述](../../deploy/jetson/env/warehouse.env.example) を踏まない。`TRAFFIC_MODE` / `MAP` は**未決マークのまま**（prod traffic 変更は安全レビュー PR＝[mode-m1/01](../mode-m1/01-mode-boundary-and-traffic.md)） |
 
 補足: `ruyuya` へ `input` / `dialout` グループ付与（joy の `/dev/input/event*`・M1 シリアルの
