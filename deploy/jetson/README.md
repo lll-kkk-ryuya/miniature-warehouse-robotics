@@ -32,11 +32,16 @@ guardian が**異常終了/クラッシュしても nav2 を停止**する（`Re
 | `bin/install.sh` | unit/env/サービスアカウント導入（enable/start しない） |
 | `bin/preflight.sh` | 到着前 static check + 到着後 G0/G1/G7 読み取り preflight（enable/start しない） |
 | `bin/healthcheck.sh` | unit liveness + state.json 鮮度 + Hermes 到達性（監視 scaffold） |
+| `bin/build.sh` + `bin/mwr_build.py` | **記録付き build**（`install/.mwr-build-info.json` + `log/build-info/` 履歴）。走行中は拒否（exit 3・`--force` で上書き）・**enable/restart しない**（切替は jetson-deploy.md §8） |
+| `bin/record-run.sh` + `bin/mwr_run_record.py` | **観測のみの走行記録**（bag + node/topic/param snapshot + build 由来）。何も起動せず publish しない |
+
+> **build / 走行記録の正本**: [docs/jetson/03-build-deploy-run-and-run-records.md](../../docs/jetson/03-build-deploy-run-and-run-records.md)（schema `mwr-build-info.v0` / `mwr-run-record.v0`・dev/prod profile 方針・exit code）。
 
 ## クイックスタート（prod・安全ゲート通過後）
 
 ```bash
-# 1. リリースタグを /opt/warehouse に clone（doc19:6 / doc19:118）し colcon build
+# 1. リリースタグを /opt/warehouse に clone（doc19:6 / doc19:118）し
+#    deploy/jetson/bin/build.sh --profile prod（素の colcon build は打たない＝記録が残らない）
 # 2. secrets を配置（config/prod/.env + ~/.hermes/.env, doc19 §4）
 deploy/jetson/bin/preflight.sh --offline  # 到着前/導入前の静的検査
 sudo deploy/jetson/bin/install.sh          # 導入のみ

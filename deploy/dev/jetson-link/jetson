@@ -393,6 +393,19 @@ if [ -d "$repo_dir/.git" ]; then
 else
   kv repo none
 fi
+
+# What is actually built and installed there -- a clone at some SHA says nothing
+# about what the board would run.  deploy/jetson/bin/build.sh leaves this record;
+# absent it (or absent python3), "none" is information, not an error.
+build_info="$repo_dir/ws/install/.mwr-build-info.json"
+if [ -r "$build_info" ]; then
+  b=$(python3 -c 'import json,sys
+d = json.load(open(sys.argv[1]))
+print("%s profile=%s dirty=%s" % (d.get("build_id"), d.get("profile"), d.get("source", {}).get("dirty")))' "$build_info" 2>/dev/null)
+  if [ -n "${b:-}" ]; then kv build "$b"; else kv build none; fi
+else
+  kv build none
+fi
 PROBE
 )
   rc=$?
@@ -403,7 +416,7 @@ PROBE
 
   local line k v
   local host=unknown uptime=unknown epoch=0 tunnel=unknown
-  local disk_pct='' disk_free=unknown nvme=unknown ros=none wrapper=no repo=none
+  local disk_pct='' disk_free=unknown nvme=unknown ros=none wrapper=no repo=none build=none
   local boot_prev=unknown boot_unclean=0
   while IFS= read -r line; do
     [[ -n $line ]] || continue
@@ -421,6 +434,7 @@ PROBE
       (ros)       ros=$v ;;
       (wrapper)   wrapper=$v ;;
       (repo)      repo=$v ;;
+      (build)     build=$v ;;
     esac
   done <<< "$out"
 
@@ -502,6 +516,10 @@ PROBE
   [[ $repo_disp != /* ]] && repo_disp="~/${repo_disp}"
   [[ $repo == none ]] && say "  repo     not cloned yet (${repo_disp})" \
                       || say "  repo     ${repo_disp} @ ${repo}"
+
+  # A clone at some SHA is not what runs; the installed build is.
+  [[ $build == none ]] && say "  build    no build-info (build with deploy/jetson/bin/build.sh)" \
+                       || say "  build    ${build}"
   return 0
 }
 

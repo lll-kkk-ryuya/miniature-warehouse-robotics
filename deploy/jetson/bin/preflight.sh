@@ -275,6 +275,38 @@ run_arrival_checks() {
     [[ -d "${repo}" ]] && pass "WAREHOUSE_REPO exists" || warn "WAREHOUSE_REPO missing: ${repo:-unset}"
     [[ -d "${ws}" ]] && pass "WAREHOUSE_WS exists" || warn "WAREHOUSE_WS missing: ${ws:-unset}"
     [[ -f "${ws}/install/setup.bash" ]] && pass "workspace install/setup.bash exists" || warn "workspace not built yet"
+
+    # What is installed, and from which commit? deploy/jetson/bin/build.sh leaves
+    # this record; a hand-typed `colcon build` does not, which is the point.
+    local build_info="${ws}/install/.mwr-build-info.json"
+    if [[ -f "${build_info}" ]]; then
+      local py_bi build_summary
+      py_bi="$(python_cmd)" || py_bi="python3"
+      build_summary="$("${py_bi}" -c 'import json,sys
+d = json.load(open(sys.argv[1]))
+print("%s profile=%s dirty=%s" % (d.get("build_id"), d.get("profile"), d.get("source", {}).get("dirty")))' "${build_info}" 2>/dev/null)" || build_summary=""
+      if [[ -n "${build_summary}" ]]; then
+        pass "build-info: ${build_summary}"
+      else
+        warn "build-info present but unreadable: ${build_info}"
+      fi
+    else
+      warn "no build-info; build with deploy/jetson/bin/build.sh"
+    fi
+
+    # Declared dependencies only, read-only: report, never install.
+    if have rosdep && [[ -d "${ws}/src" ]]; then
+      local rosdep_out rosdep_rc=0
+      rosdep_out="$(rosdep check --from-paths "${ws}/src" --ignore-src 2>&1)" || rosdep_rc=$?
+      if [[ "${rosdep_rc}" -eq 0 ]]; then
+        pass "rosdep: all declared deps satisfied"
+      else
+        local rosdep_pkgs
+        rosdep_pkgs="$(printf '%s\n' "${rosdep_out}" \
+          | awk -F'\t' '$1 == "apt" { print $2 }' | tr '\n' ' ' | sed 's/[[:space:]]*$//')"
+        warn "rosdep unsatisfied: ${rosdep_pkgs:-see rosdep check --from-paths ${ws}/src --ignore-src}"
+      fi
+    fi
     [[ -f "${config_dir}/warehouse.base.yaml" ]] && pass "warehouse.base.yaml exists" || fail "warehouse.base.yaml missing"
     [[ -f "${config_dir}/prod/warehouse.yaml" ]] && pass "prod overlay exists" || fail "prod overlay missing"
     [[ -f "${map_path}" ]] && pass "WAREHOUSE_MAP exists" || warn "WAREHOUSE_MAP not found yet: ${map_path:-unset}"
