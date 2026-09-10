@@ -67,6 +67,34 @@ BAG_SIGINT_TIMEOUT_S = 20.0
 BAG_SIGTERM_TIMEOUT_S = 10.0
 DUMP_ERROR_CHARS = 200
 
+# `ros2 param dump` prints whatever a node declared, and a run record travels — bags get
+# copied off the board and shared. So a leaf whose NAME reads as a credential never has
+# its value written (docs/jetson/03 §3). Matching is on the name, never the value: a
+# value-side heuristic would both miss ("hunter2") and destroy legitimate settings.
+# Token match keeps `keyframe_threshold` intact while catching `api_key`; the substring
+# set catches the run-together spellings (`mytoken`, `dbpassword`).
+REDACT_NAME_TOKENS = frozenset(
+    {
+        "key",
+        "keys",
+        "password",
+        "passwd",
+        "secret",
+        "secrets",
+        "token",
+        "tokens",
+        "credential",
+        "credentials",
+        "auth",
+    }
+)
+REDACT_NAME_SUBSTRINGS = ("password", "passwd", "secret", "token", "credential", "apikey")
+REDACTED_VALUE = "'<redacted>'"
+# A dump line is `<indent><name>: <value>`; a nested block opener has nothing after the
+# colon. List items ("- foo") and the node header ("/my_node:") do not match by design.
+_PARAM_KEY_RE = re.compile(r"^(?P<indent>[ \t]*)(?P<name>[A-Za-z_][A-Za-z0-9_.-]*):(?P<rest>.*)$")
+_NAME_SPLIT_RE = re.compile(r"[^a-z0-9]+")
+
 EXIT_OK = 0
 EXIT_USAGE = 4
 
@@ -239,6 +267,7 @@ def build_record(
             "snapshot_dir": "parameters/",
             "nodes_dumped": [],
             "dump_errors": {},
+            "redacted": {},
             "parameter_events_recorded": parameter_events_recorded,
         },
         "calibration": {"index": "calibration/hashes.json", "count": calibration_count},
@@ -274,12 +303,58 @@ def _capture(cmd: list[str], destination: Path) -> list[str]:
     return [line.strip() for line in proc.stdout.splitlines() if line.strip()]
 
 
+def is_sensitive_parameter(name: str) -> bool:
+    """True when *name* reads as a credential rather than as a setting."""
+    lowered = name.lower()
+    if any(needle in lowered for needle in REDACT_NAME_SUBSTRINGS):
+        return True
+    return any(part in REDACT_NAME_TOKENS for part in _NAME_SPLIT_RE.split(lowered) if part)
+
+
+def redact_parameter_dump(text: str) -> tuple[str, list[str]]:
+    """Return (*text to write*, *names redacted*) for one ``ros2 param dump`` output.
+
+    The NAME stays and only the value goes: a reader has to be able to see that
+    something was hidden, otherwise the omission is indistinguishable from a parameter
+    that was never declared. A sensitive name that opens a nested block takes its whole
+    subtree with it — the secret may sit one level down.
+    """
+    kept: list[str] = []
+    redacted: list[str] = []
+    skip_indent: int | None = None
+    for line in text.splitlines():
+        stripped = line.strip()
+        indent = len(line) - len(line.lstrip())
+        if skip_indent is not None:
+            if stripped and indent > skip_indent:
+                continue
+            skip_indent = None
+        match = _PARAM_KEY_RE.match(line)
+        if match is not None and is_sensitive_parameter(match["name"]):
+            kept.append(f"{match['indent']}{match['name']}: {REDACTED_VALUE}")
+            redacted.append(match["name"])
+            if not match["rest"].strip():
+                skip_indent = indent
+            continue
+        kept.append(line)
+    body = "\n".join(kept)
+    if body and text.endswith("\n"):
+        body += "\n"
+    return body, redacted
+
+
 def dump_parameters(
     ros2_cmd: list[str], nodes: list[str], destination: Path
-) -> tuple[list[str], dict[str, str]]:
-    """Best-effort ``ros2 param dump`` per node. Failures are recorded, never fatal."""
+) -> tuple[list[str], dict[str, str], dict[str, list[str]]]:
+    """Best-effort ``ros2 param dump`` per node. Failures are recorded, never fatal.
+
+    Credential-looking values are stripped before anything is written, and a dump whose
+    redaction raises is NOT written at all: the whole point of the pass is that nothing
+    sensitive reaches the run directory, so it fails closed and reports the node instead.
+    """
     dumped: list[str] = []
     errors: dict[str, str] = {}
+    redacted: dict[str, list[str]] = {}
     if nodes:
         destination.mkdir(parents=True, exist_ok=True)
     for node in nodes:
@@ -297,9 +372,16 @@ def dump_parameters(
             detail = (proc.stderr or f"exit {proc.returncode}").strip()
             errors[node] = detail[:DUMP_ERROR_CHARS]
             continue
-        (destination / f"{node.replace('/', '_')}.yaml").write_text(proc.stdout, encoding="utf-8")
+        try:
+            text, hidden = redact_parameter_dump(proc.stdout)
+        except Exception as exc:  # fail closed — an un-redactable dump is not written
+            errors[node] = f"redaction failed: {exc}"[:DUMP_ERROR_CHARS]
+            continue
+        (destination / f"{node.replace('/', '_')}.yaml").write_text(text, encoding="utf-8")
         dumped.append(node)
-    return dumped, errors
+        if hidden:
+            redacted[node] = hidden
+    return dumped, errors, redacted
 
 
 def _install_stop_handlers(stop: threading.Event) -> list[tuple[int, Any]]:
@@ -507,11 +589,12 @@ def main(argv: list[str] | None = None) -> int:
             captured_at = _stamp(_now())
             nodes = _capture([*ros2_cmd, "node", "list"], run_dir / "runtime" / "nodes.txt")
             _capture([*ros2_cmd, "topic", "list", "-t"], run_dir / "runtime" / "topics.txt")
-            dumped, dump_errors = dump_parameters(ros2_cmd, nodes, run_dir / "parameters")
+            dumped, dump_errors, redacted = dump_parameters(ros2_cmd, nodes, run_dir / "parameters")
 
             record["runtime"]["captured_at"] = captured_at
             record["parameters"]["nodes_dumped"] = dumped
             record["parameters"]["dump_errors"] = dump_errors
+            record["parameters"]["redacted"] = redacted
             record["parameters"]["parameter_events_recorded"] = parameter_events_recorded
             write_json_atomic(record_path, record)
 

@@ -224,6 +224,7 @@ def test_dry_run_emits_the_record_and_creates_nothing(
         "snapshot_dir",
         "nodes_dumped",
         "dump_errors",
+        "redacted",  # additive in v0 — docs/jetson/03 §3 redaction + §6 の裁定
         "parameter_events_recorded",
     ]
     assert list(record["data"]) == ["storage", "bag", "record_mode", "topics", "bag_exit_code"]
@@ -532,3 +533,113 @@ def test_stop_bag_sigints_the_recorders_own_session_and_reaps_it(tmp_path: Path)
         if proc.poll() is None:  # pragma: no cover - only reached if the assert above failed
             proc.kill()
             proc.wait()
+
+
+# ── parameter redaction: a run record travels, so credentials must not ────────
+
+# One node's dump, hand-written: a legitimate setting that merely contains "key", a
+# flat credential, a credential one level down, and a credential-named BLOCK.
+_SECRET_DUMP = """/hermes_bridge:
+  ros__parameters:
+    use_sim_time: false
+    keyframe_threshold: 0.5
+    api_key: sk-live-abc123
+    hermes:
+      base_url: http://host.docker.internal:8642
+      token: t-999
+    credentials:
+      user: bob
+      password: hunter2
+    max_linear_velocity: 0.3
+"""
+
+
+def _fake_dump_cmd(tmp_path: Path, payload: str) -> Path:
+    """A stand-in for ``ros2`` that answers any argv with *payload* on stdout."""
+    path = tmp_path / "fake-ros2-dump"
+    path.write_text(
+        f"#!{sys.executable}\nimport sys\nsys.stdout.write({payload!r})\n", encoding="utf-8"
+    )
+    path.chmod(0o755)
+    return path
+
+
+def test_redaction_replaces_credential_values_and_keeps_their_names() -> None:
+    """Expected output is written out by hand — an independent oracle, not a re-run.
+
+    The NAME survives on purpose: without it, a hidden parameter is indistinguishable
+    from one that was never declared.
+    """
+    text, hidden = rr.redact_parameter_dump(_SECRET_DUMP)
+
+    assert text == (
+        "/hermes_bridge:\n"
+        "  ros__parameters:\n"
+        "    use_sim_time: false\n"
+        "    keyframe_threshold: 0.5\n"
+        "    api_key: '<redacted>'\n"
+        "    hermes:\n"
+        "      base_url: http://host.docker.internal:8642\n"
+        "      token: '<redacted>'\n"
+        "    credentials: '<redacted>'\n"
+        "    max_linear_velocity: 0.3\n"
+    )
+    assert hidden == ["api_key", "token", "credentials"]
+    # The block's children went with it; nothing secret survives anywhere in the text.
+    for secret in ("sk-live-abc123", "t-999", "hunter2", "bob"):
+        assert secret not in text
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["keyframe_threshold", "max_linear_velocity", "car_type", "monkey_mode", "deadman_button"],
+)
+def test_a_setting_that_merely_resembles_a_credential_survives(name: str) -> None:
+    """Over-redaction destroys the record's usefulness, so "key" matches as a WORD."""
+    assert rr.is_sensitive_parameter(name) is False
+
+
+@pytest.mark.parametrize(
+    "name", ["api_key", "token", "mytoken", "db_password", "AUTH_TOKEN", "client.secret", "passwd"]
+)
+def test_credential_shaped_names_are_caught(name: str) -> None:
+    assert rr.is_sensitive_parameter(name) is True
+
+
+def test_dump_parameters_writes_the_redacted_file_and_reports_what_it_hid(tmp_path: Path) -> None:
+    destination = tmp_path / "parameters"
+    dumped, errors, redacted = rr.dump_parameters(
+        [str(_fake_dump_cmd(tmp_path, _SECRET_DUMP))], ["/hermes_bridge"], destination
+    )
+
+    assert dumped == ["/hermes_bridge"]
+    assert errors == {}
+    assert redacted == {"/hermes_bridge": ["api_key", "token", "credentials"]}
+    written = (destination / "_hermes_bridge.yaml").read_text(encoding="utf-8")
+    assert "hunter2" not in written
+    assert "use_sim_time: false" in written  # the rest of the dump is untouched
+
+
+def test_dump_parameters_writes_nothing_when_redaction_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Fail closed: a dump we cannot redact never reaches the run directory.
+
+    Writing the raw text on a redaction error would defeat the whole pass precisely in
+    the case we understand least, so the node is reported as an error instead.
+    """
+
+    def boom(_text: str) -> tuple[str, list[str]]:
+        raise RuntimeError("regex exploded")
+
+    monkeypatch.setattr(rr, "redact_parameter_dump", boom)
+    destination = tmp_path / "parameters"
+
+    dumped, errors, redacted = rr.dump_parameters(
+        [str(_fake_dump_cmd(tmp_path, _SECRET_DUMP))], ["/hermes_bridge"], destination
+    )
+
+    assert dumped == []
+    assert redacted == {}
+    assert "redaction failed" in errors["/hermes_bridge"]
+    assert not (destination / "_hermes_bridge.yaml").exists()

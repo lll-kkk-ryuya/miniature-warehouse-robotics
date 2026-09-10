@@ -70,6 +70,11 @@ PIP_EXCEPTIONS = ["python3-pydantic"]
 
 GUARD_UNIT = "warehouse.target"
 GUARD_PGREP_PATTERNS = ("warehouse_m1_driver", "ros2 launch warehouse_bringup")
+# `systemctl is-active` words that mean the stack is up, or on its way up or down.
+# Only "active" exits 0, so the guard reads the printed state and not the return code:
+# a target that is `activating` has already begun pulling units up, and one that is
+# `deactivating` has not finished putting the wheels down. Both are a moving robot.
+GUARD_LIVE_STATES = ("active", "activating", "deactivating", "reloading")
 
 ROSDEP_MARKER = "System dependencies have not been satisfied:"
 _ROSDEP_APT_RE = re.compile(r"^apt\t(\S+)")
@@ -128,11 +133,17 @@ def stack_is_running() -> str | None:
     A missing systemctl/pgrep (a Mac dev host, a minimal container) reads as
     "unknown", which is deliberately NOT a refusal — this guard exists to stop a
     rebuild under a moving robot, not to gate development hosts.
+
+    Any of GUARD_LIVE_STATES counts as live, not just "active": the transitional
+    words are exactly the window in which a target is bringing the driver up (or has
+    not yet finished taking it down), which is the worst moment to swap the install
+    space underneath it.
     """
     if shutil.which("systemctl"):
         proc = _run(["systemctl", "is-active", GUARD_UNIT])
-        if proc is not None and proc.stdout.strip() == "active":
-            return f"systemctl is-active {GUARD_UNIT} == active"
+        state = "" if proc is None else proc.stdout.strip()
+        if state in GUARD_LIVE_STATES:
+            return f"systemctl is-active {GUARD_UNIT} == {state}"
     if shutil.which("pgrep"):
         for pattern in GUARD_PGREP_PATTERNS:
             proc = _run(["pgrep", "-f", pattern])

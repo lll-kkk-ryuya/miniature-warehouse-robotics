@@ -472,3 +472,46 @@ def test_run_rosdep_reports_error_not_a_verdict_when_keys_cannot_resolve(
     monkeypatch.delenv("ROS_DISTRO", raising=False)
     monkeypatch.setattr(mb, "detect_ros_distro", lambda: None)
     assert mb.run_rosdep(tmp_path, _fake_rosdep(tmp_path), skip=False) == ("error", [])
+
+
+# ── the guard also holds while systemd is mid-transition ──────────────────────
+
+
+@pytest.mark.parametrize("state", ["active", "activating", "deactivating", "reloading"])
+def test_guard_refuses_while_the_unit_is_live_or_in_transition(
+    state: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A transitional target is still a robot that can move.
+
+    ``systemctl is-active`` exits 0 only for "active" and prints the state word for the
+    rest, so the guard has to read stdout. A target that is ``activating`` has already
+    begun pulling the driver up, and one that is ``deactivating`` has not finished
+    putting the wheels down — swapping the install space in that window is exactly what
+    this guard exists to stop.
+    """
+    ws = _repo(tmp_path)
+    body = "echo active" if state == "active" else f"echo {state}\nexit 3"
+    stub = _bin_dir(tmp_path, "systemctl", body)
+    monkeypatch.setenv("PATH", f"{stub}{os.pathsep}{os.environ['PATH']}")
+    fake = _fake_cmd(tmp_path, "fake-colcon-ok", 0)
+
+    assert mb.main(["--ws", str(ws), "--colcon-cmd", str(fake)]) == 3
+    assert not (ws / "install").exists()
+
+
+@pytest.mark.parametrize("state", ["inactive", "failed", "unknown"])
+def test_guard_lets_a_stack_that_is_not_up_through(
+    state: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The refusal is scoped to the live words — a dead or failed unit must not block.
+
+    Widening the guard to "anything systemctl prints" would make every dev board
+    unbuildable the moment a unit had ever failed.
+    """
+    ws = _repo(tmp_path)
+    stub = _bin_dir(tmp_path, "systemctl", f"echo {state}\nexit 3")
+    monkeypatch.setenv("PATH", f"{stub}{os.pathsep}{os.environ['PATH']}")
+    fake = _fake_cmd(tmp_path, "fake-colcon-ok", 0)
+
+    assert mb.main(["--ws", str(ws), "--colcon-cmd", str(fake)]) == 0
+    assert (ws / "install" / ".mwr-build-info.json").exists()
