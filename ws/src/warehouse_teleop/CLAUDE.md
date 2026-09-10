@@ -1,6 +1,6 @@
 # warehouse_teleop — キーボード teleop（動作確認の足場）
 
-- **担当トラック / ブランチ**: track:teleop / `feat/teleop`（#158）
+- **担当トラック / ブランチ**: track:skeleton（安全隣接の変更は track:safety-state 併記） / `feat/teleop`（#158）
 - **Phase**: 1（実機不要・bring-up / sim 手動ドライブ utility）
 - **ビルド**: ament_python
 - **ノード / モジュール**:
