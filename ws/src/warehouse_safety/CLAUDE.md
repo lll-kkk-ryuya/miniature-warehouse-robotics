@@ -43,3 +43,32 @@
 - # ✅(#126) /emergency/event の edge-trigger 化（`gl.EdgeLatch`: 立ち上がり `(bot, reason)` のみ発行、解消→再発で再発火）。物理停止 cmd_vel/Nav2 cancel は毎 tick 維持＝level。State Cache 側 active/history 50件 ring は維持。残: 近接の collision_monitor 委譲（**cmd_vel 挿入トポロジは doc12 §「collision_monitor 委譲: cmd_vel 挿入トポロジ」で ✅ 確定 #126**＝twist_mux nav2(prio10) 上流に挟む・emergency prio100 不変。配線 impl は nav-traffic 所有 doc16:193 に触れるため調整で defer）／blocked の progress_checker 完全委譲（nav_status feed＝Phase-2）。**freshness（pose 途絶）・progress_checker 委譲の明文化・collision_monitor トポロジは ✅#126 実装/確定済（上記）**
 - ✅(PR#287/#293) negotiation abort → `/negotiation/abort` 実装済（estop 時のみ・上記 produce §13 参照）＝旧 `TODO(Mode-A) defer` は解消。
 - ~~# TODO(nav-traffic) twist_mux.yaml を warehouse_bringup/config/ へ移設~~ → 完了（#40, nav-traffic）。本パッケージ `config/` は空。
+
+## 【2026-09-10 追記】終了経路（Humble 正常停止 = exit 0）
+
+`emergency_guardian`（**L1** 反射安全ノード・`.claude/rules/layer-annotation.md`）の `main()` を
+`warehouse_teleop/warehouse_teleop/node_runtime.py` が定める **3 規則**へ書き換えた（**参照実装であって
+import はしていない**＝依存してよい共有 package は `warehouse_interfaces` / `warehouse_description` の 2 つだけ
+`.claude/rules/parallel-workflow.md:71-74`。3 規則をインラインで写す）:
+
+1. 正常停止 = `KeyboardInterrupt`（SIGINT）**または** `ExternalShutdownException`（SIGTERM）を握って normal return。
+2. spin 後に ROS context を触る処理は `rclpy.ok()` ガード付き best-effort にする（本ノードは該当なし＝
+   `finally` は `destroy_node()` + `try_shutdown()` のみで、終了時に publish しない）。
+3. 素の `rclpy.shutdown()` ではなく `rclpy.try_shutdown()`（冪等）。
+
+**実害の根拠**: Jetson 実測（ROS 2 Humble / rclpy 3.3.21・2026-09-10）で rclpy のシグナルハンドラは `finally`
+より先に context を破棄するため、旧・教科書パターン（`suppress(KeyboardInterrupt)` ＋ 素の `rclpy.shutdown()`）は
+SIGINT / SIGTERM とも **exit 1**（entry point 実行ファイル直呼びで実測）。`deploy/jetson/systemd/warehouse-safety.service:30`
+は `Type=simple`＋`Restart=on-failure` なので、通常停止での非ゼロ exit が `status=1/FAILURE` として journal に残り
+本物のクラッシュが埋もれる（`Restart=` は stop job には効かないが、stop 以外の終了では `StartLimitIntervalSec=0` と
+合わさって L1 が無駄に再起動する）。**本番 `ExecStart` は `ros-exec.sh ros2 run …` 越し（main PID = ラッパ）で、systemd が
+見る exit code は未実測＝#634 のボード確認項目**（unit 一覧は [docs/setup/jetson-deploy.md](../../../docs/setup/jetson-deploy.md)）。
+
+**安全は終了時メッセージに依存しない**: estop 権限は 50ms ループが毎 tick 再アサートする
+`/bot{n}/cmd_vel/emergency` の zero `Twist`（twist_mux prio 100・level）であって、終了経路で送る何かではない。
+R-40 の `gc.disable()` / `gc.freeze()` は従来どおり `main()` 内に残す（挙動不変）。
+
+**テスト**: `tests/unit/test_node_shutdown_lifecycle.py`（repo 全体ラチェット・AST pin）。本ノードは
+`KNOWN_UNSAFE_STOP_ON_HUMBLE` baseline から削除済＝以後この形を崩すと `regressed` で CI 赤。
+
+**残件**: 3 規則の共通化先（`warehouse_interfaces` への lazy-import か新 shared package か）は #634 で裁定。裁定まで各 package が 3 規則を写す＝暫定 (b)。参照実装 = `ws/src/warehouse_teleop/warehouse_teleop/node_runtime.py`（import はしない）。本 PR: #638。

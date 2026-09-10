@@ -27,3 +27,29 @@
 - # TODO(Phase 2) status を Nav2 nav_status と統合（現状は velocity から best-effort）
 - # TODO(Phase 2) emergency active の clear/resolution プロトコル（active が未解決 event のみ反映するように）。Guardian 側 edge-trigger は ✅#126 実装済（rising edge のみ発行＝重複は出ない）。active/history は依然 50 件 ring で bound（distinct/再発 event は蓄積しうるため defense 維持）
 - 非有限 pose/velocity/heading は setter で drop（last-good 保持）→ state.json に NaN/Infinity を出さない（RFC-8259 valid）。battery NaN・scan inf/nan も同様に drop。
+
+## 【2026-09-10 追記】終了経路（Humble 正常停止 = exit 0）
+
+`state_cache`（layer 帰属は**未定 F3・暫定 Safety**＝`.claude/rules/layer-annotation.md`「帰属未定は未定と書く」）
+の `main()` を `warehouse_teleop/warehouse_teleop/node_runtime.py` が定める **3 規則**へ書き換えた
+（**参照実装であって import はしていない**＝依存してよい共有 package は `warehouse_interfaces` /
+`warehouse_description` の 2 つだけ `.claude/rules/parallel-workflow.md:71-74`。3 規則をインラインで写す）:
+
+1. 正常停止 = `KeyboardInterrupt`（SIGINT）**または** `ExternalShutdownException`（SIGTERM）を握って normal return。
+2. spin 後に ROS context を触る処理は `rclpy.ok()` ガード付き best-effort にする（本ノードは該当なし＝
+   `finally` は `destroy_node()` + `try_shutdown()` のみ。終了時に最後の書き出しはしない＝直前の 100ms tick が
+   `FileStateStore` の atomic `tmp` + `os.replace` で既に着地している）。
+3. 素の `rclpy.shutdown()` ではなく `rclpy.try_shutdown()`（冪等）。
+
+**実害の根拠**: Jetson 実測（ROS 2 Humble / rclpy 3.3.21・2026-09-10）で rclpy のシグナルハンドラは `finally`
+より先に context を破棄するため、旧・教科書パターン（`suppress(KeyboardInterrupt)` ＋ 素の `rclpy.shutdown()`）は
+SIGINT / SIGTERM とも **exit 1**（entry point 実行ファイル直呼びで実測）。`deploy/jetson/systemd/warehouse-state-cache.service:24`
+は `Type=simple`＋`Restart=on-failure` なので、通常停止での非ゼロ exit が `status=1/FAILURE` として journal に残り
+本物のクラッシュが埋もれる（`Restart=` は stop job には効かず、stop 以外の終了では無駄な再起動になる）。**本番 `ExecStart` は
+`ros-exec.sh ros2 run …` 越しで systemd が見る exit code は未実測＝#634 のボード確認項目**（unit 一覧は
+[docs/setup/jetson-deploy.md](../../../docs/setup/jetson-deploy.md)）。
+
+**テスト**: `tests/unit/test_node_shutdown_lifecycle.py`（repo 全体ラチェット・AST pin）。本ノードは
+`KNOWN_UNSAFE_STOP_ON_HUMBLE` baseline から削除済＝以後この形を崩すと `regressed` で CI 赤。
+
+**残件**: 3 規則の共通化先（`warehouse_interfaces` への lazy-import か新 shared package か）は #634 で裁定。裁定まで各 package が 3 規則を写す＝暫定 (b)。参照実装 = `ws/src/warehouse_teleop/warehouse_teleop/node_runtime.py`（import はしない）。本 PR: #638。
