@@ -32,7 +32,9 @@ always closed out (``ended_at`` / ``duration_s`` / ``bag_exit_code``) — an une
 error there propagates to the caller rather than being swallowed, but never over a live
 ``ros2 bag record``.
 
-Pure stdlib, Python 3.10 compatible (ROS 2 Humble / Ubuntu 22.04 —
+Pure stdlib except the parameter-redaction pass, which parses YAML with PyYAML —
+if it is missing the pass fails CLOSED (that node's dump is not written) and the
+recording itself carries on. Python 3.10 compatible (ROS 2 Humble / Ubuntu 22.04 —
 docs/adr/0008-ros2-distro-humble-for-rosmaster-m1.md).
 """
 
@@ -88,11 +90,11 @@ REDACT_NAME_TOKENS = frozenset(
         "auth",
     }
 )
+# `key` and `auth` are TOKEN-only on purpose: as substrings they would eat
+# `keyframe_threshold` and `oauth_url`, and a record stripped of its settings is as
+# useless as one full of secrets.
 REDACT_NAME_SUBSTRINGS = ("password", "passwd", "secret", "token", "credential", "apikey")
-REDACTED_VALUE = "'<redacted>'"
-# A dump line is `<indent><name>: <value>`; a nested block opener has nothing after the
-# colon. List items ("- foo") and the node header ("/my_node:") do not match by design.
-_PARAM_KEY_RE = re.compile(r"^(?P<indent>[ \t]*)(?P<name>[A-Za-z_][A-Za-z0-9_.-]*):(?P<rest>.*)$")
+REDACTED_VALUE = "<redacted>"
 _NAME_SPLIT_RE = re.compile(r"[^a-z0-9]+")
 
 EXIT_OK = 0
@@ -311,36 +313,51 @@ def is_sensitive_parameter(name: str) -> bool:
     return any(part in REDACT_NAME_TOKENS for part in _NAME_SPLIT_RE.split(lowered) if part)
 
 
+def _redact_tree(node: Any, path: str, hidden: list[str]) -> Any:
+    """Copy *node*, replacing every sensitive mapping value with REDACTED_VALUE."""
+    if isinstance(node, dict):
+        clean: dict[Any, Any] = {}
+        for name, value in node.items():
+            here = f"{path}.{name}" if path else str(name)
+            if isinstance(name, str) and is_sensitive_parameter(name):
+                clean[name] = REDACTED_VALUE  # the whole value goes, list or subtree alike
+                hidden.append(here)
+            else:
+                clean[name] = _redact_tree(value, here, hidden)
+        return clean
+    if isinstance(node, list):
+        return [_redact_tree(item, f"{path}[{index}]", hidden) for index, item in enumerate(node)]
+    return node
+
+
 def redact_parameter_dump(text: str) -> tuple[str, list[str]]:
-    """Return (*text to write*, *names redacted*) for one ``ros2 param dump`` output.
+    """Return (*text to write*, *paths redacted*) for one ``ros2 param dump`` output.
+
+    The dump is PARSED and re-emitted rather than filtered line by line. A line filter
+    looks right on the flat case and quietly leaks the shapes YAML actually uses: a
+    block sequence prints its items at the KEY's own indent (``api_keys:`` then
+    ``- sk-live-…``) and a multi-line string continues below its key, so both survive a
+    scan that only rewrites the key's line — while still being reported as redacted,
+    which is worse than not redacting at all. Walking the parsed tree cannot miss them.
 
     The NAME stays and only the value goes: a reader has to be able to see that
     something was hidden, otherwise the omission is indistinguishable from a parameter
-    that was never declared. A sensitive name that opens a nested block takes its whole
-    subtree with it — the secret may sit one level down.
+    that was never declared. Paths are dotted (``hermes.token``) so two same-named keys
+    in different subtrees stay distinguishable.
+
+    Raises (unparseable dump, or PyYAML absent) so the caller can fail closed — this
+    function never returns text it has not proved it walked. Formatting is normalised
+    by the round-trip; ``ros2 param dump`` carries no comments to lose.
     """
-    kept: list[str] = []
-    redacted: list[str] = []
-    skip_indent: int | None = None
-    for line in text.splitlines():
-        stripped = line.strip()
-        indent = len(line) - len(line.lstrip())
-        if skip_indent is not None:
-            if stripped and indent > skip_indent:
-                continue
-            skip_indent = None
-        match = _PARAM_KEY_RE.match(line)
-        if match is not None and is_sensitive_parameter(match["name"]):
-            kept.append(f"{match['indent']}{match['name']}: {REDACTED_VALUE}")
-            redacted.append(match["name"])
-            if not match["rest"].strip():
-                skip_indent = indent
-            continue
-        kept.append(line)
-    body = "\n".join(kept)
-    if body and text.endswith("\n"):
-        body += "\n"
-    return body, redacted
+    import yaml  # local: the rest of this recorder is stdlib-only (module docstring)
+
+    parsed = yaml.safe_load(text)
+    if parsed is None:
+        return "", []
+    hidden: list[str] = []
+    cleaned = _redact_tree(parsed, "", hidden)
+    dumped = yaml.safe_dump(cleaned, default_flow_style=False, sort_keys=False, allow_unicode=True)
+    return dumped, hidden
 
 
 def dump_parameters(

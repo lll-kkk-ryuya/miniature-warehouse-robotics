@@ -477,7 +477,9 @@ def test_run_rosdep_reports_error_not_a_verdict_when_keys_cannot_resolve(
 # ── the guard also holds while systemd is mid-transition ──────────────────────
 
 
-@pytest.mark.parametrize("state", ["active", "activating", "deactivating", "reloading"])
+@pytest.mark.parametrize(
+    "state", ["active", "activating", "deactivating", "reloading", "maintenance", "refreshing"]
+)
 def test_guard_refuses_while_the_unit_is_live_or_in_transition(
     state: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -487,7 +489,9 @@ def test_guard_refuses_while_the_unit_is_live_or_in_transition(
     rest, so the guard has to read stdout. A target that is ``activating`` has already
     begun pulling the driver up, and one that is ``deactivating`` has not finished
     putting the wheels down — swapping the install space in that window is exactly what
-    this guard exists to stop.
+    this guard exists to stop. The match is a DENY list, so a word this code has never
+    heard of (a newer systemd's ``maintenance`` / ``refreshing``) refuses rather than
+    waving the build through.
     """
     ws = _repo(tmp_path)
     body = "echo active" if state == "active" else f"echo {state}\nexit 3"
@@ -515,3 +519,19 @@ def test_guard_lets_a_stack_that_is_not_up_through(
 
     assert mb.main(["--ws", str(ws), "--colcon-cmd", str(fake)]) == 0
     assert (ws / "install" / ".mwr-build-info.json").exists()
+
+
+def test_guard_stays_quiet_when_systemctl_says_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An empty read is "unknown host", not "live" — the deny list must not invert that.
+
+    A systemctl that exists but answers nothing (a container, a broken install) has to
+    keep behaving like the missing-binary case documented on ``stack_is_running``.
+    """
+    ws = _repo(tmp_path)
+    stub = _bin_dir(tmp_path, "systemctl", "exit 4")
+    monkeypatch.setenv("PATH", f"{stub}{os.pathsep}{os.environ['PATH']}")
+    fake = _fake_cmd(tmp_path, "fake-colcon-ok", 0)
+
+    assert mb.main(["--ws", str(ws), "--colcon-cmd", str(fake)]) == 0

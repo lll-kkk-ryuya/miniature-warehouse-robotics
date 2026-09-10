@@ -537,21 +537,30 @@ def test_stop_bag_sigints_the_recorders_own_session_and_reaps_it(tmp_path: Path)
 
 # ── parameter redaction: a run record travels, so credentials must not ────────
 
-# One node's dump, hand-written: a legitimate setting that merely contains "key", a
-# flat credential, a credential one level down, and a credential-named BLOCK.
-_SECRET_DUMP = """/hermes_bridge:
-  ros__parameters:
-    use_sim_time: false
-    keyframe_threshold: 0.5
-    api_key: sk-live-abc123
-    hermes:
-      base_url: http://host.docker.internal:8642
-      token: t-999
-    credentials:
-      user: bob
-      password: hunter2
-    max_linear_velocity: 0.3
-"""
+# The dump shapes that a line-by-line filter gets wrong. Built with the same dumper
+# `ros2 param dump` uses, so the list and the multi-line string come out in YAML's real
+# layout: a block sequence indents its items at the KEY's own column, and a long string
+# continues on the lines below its key. The expected OUTPUT below is hand-written.
+_SECRET_PARAMS = {
+    "/hermes_bridge": {
+        "ros__parameters": {
+            "use_sim_time": False,
+            "keyframe_threshold": 0.5,
+            "api_key": "sk-live-abc123",
+            "api_keys": ["sk-live-AAA", "sk-live-BBB"],
+            "private_key": "-----BEGIN-----\nSECRETLINE\n-----END-----",
+            "hermes": {"base_url": "http://host.docker.internal:8642", "token": "t-999"},
+            "credentials": {"user": "bob", "password": "hunter2"},
+            "max_linear_velocity": 0.3,
+        }
+    }
+}
+_SECRETS = ("sk-live-abc123", "sk-live-AAA", "sk-live-BBB", "SECRETLINE", "t-999", "hunter2", "bob")
+
+
+def _secret_dump() -> str:
+    yaml = pytest.importorskip("yaml")
+    return yaml.safe_dump(_SECRET_PARAMS, default_flow_style=False, sort_keys=False)
 
 
 def _fake_dump_cmd(tmp_path: Path, payload: str) -> Path:
@@ -570,32 +579,63 @@ def test_redaction_replaces_credential_values_and_keeps_their_names() -> None:
     The NAME survives on purpose: without it, a hidden parameter is indistinguishable
     from one that was never declared.
     """
-    text, hidden = rr.redact_parameter_dump(_SECRET_DUMP)
+    text, hidden = rr.redact_parameter_dump(_secret_dump())
 
     assert text == (
         "/hermes_bridge:\n"
         "  ros__parameters:\n"
         "    use_sim_time: false\n"
         "    keyframe_threshold: 0.5\n"
-        "    api_key: '<redacted>'\n"
+        "    api_key: <redacted>\n"
+        "    api_keys: <redacted>\n"
+        "    private_key: <redacted>\n"
         "    hermes:\n"
         "      base_url: http://host.docker.internal:8642\n"
-        "      token: '<redacted>'\n"
-        "    credentials: '<redacted>'\n"
+        "      token: <redacted>\n"
+        "    credentials: <redacted>\n"
         "    max_linear_velocity: 0.3\n"
     )
-    assert hidden == ["api_key", "token", "credentials"]
-    # The block's children went with it; nothing secret survives anywhere in the text.
-    for secret in ("sk-live-abc123", "t-999", "hunter2", "bob"):
-        assert secret not in text
+    assert hidden == [
+        "/hermes_bridge.ros__parameters.api_key",
+        "/hermes_bridge.ros__parameters.api_keys",
+        "/hermes_bridge.ros__parameters.private_key",
+        "/hermes_bridge.ros__parameters.hermes.token",
+        "/hermes_bridge.ros__parameters.credentials",
+    ]
+
+
+@pytest.mark.parametrize("secret", _SECRETS)
+def test_no_credential_survives_any_dump_shape(secret: str) -> None:
+    """The shapes that defeat a line filter: a list value, and a multi-line string.
+
+    Both print BELOW their key, so rewriting the key's line alone leaves the secret in
+    the file while still reporting it as redacted — a false assurance, which is worse
+    than no redaction. Parsing the dump instead of scanning it is what closes this.
+    """
+    text, _ = rr.redact_parameter_dump(_secret_dump())
+    assert secret not in text
+
+
+def test_redaction_refuses_a_dump_it_cannot_parse() -> None:
+    """Unparseable input raises so the caller fails closed — it is never passed through."""
+    with pytest.raises(Exception):  # noqa: B017 - any parser error must reach the caller
+        rr.redact_parameter_dump("/node:\n  ros__parameters:\n   bad: [unclosed\n")
 
 
 @pytest.mark.parametrize(
     "name",
-    ["keyframe_threshold", "max_linear_velocity", "car_type", "monkey_mode", "deadman_button"],
+    [
+        "keyframe_threshold",
+        "max_linear_velocity",
+        "car_type",
+        "monkey_mode",
+        "deadman_button",
+        "oauth_url",
+        "turnkey_mode",
+    ],
 )
 def test_a_setting_that_merely_resembles_a_credential_survives(name: str) -> None:
-    """Over-redaction destroys the record's usefulness, so "key" matches as a WORD."""
+    """Over-redaction destroys the record, so `key` and `auth` match as WORDS only."""
     assert rr.is_sensitive_parameter(name) is False
 
 
@@ -609,14 +649,15 @@ def test_credential_shaped_names_are_caught(name: str) -> None:
 def test_dump_parameters_writes_the_redacted_file_and_reports_what_it_hid(tmp_path: Path) -> None:
     destination = tmp_path / "parameters"
     dumped, errors, redacted = rr.dump_parameters(
-        [str(_fake_dump_cmd(tmp_path, _SECRET_DUMP))], ["/hermes_bridge"], destination
+        [str(_fake_dump_cmd(tmp_path, _secret_dump()))], ["/hermes_bridge"], destination
     )
 
     assert dumped == ["/hermes_bridge"]
     assert errors == {}
-    assert redacted == {"/hermes_bridge": ["api_key", "token", "credentials"]}
+    assert redacted["/hermes_bridge"][0] == "/hermes_bridge.ros__parameters.api_key"
     written = (destination / "_hermes_bridge.yaml").read_text(encoding="utf-8")
-    assert "hunter2" not in written
+    for secret in _SECRETS:
+        assert secret not in written
     assert "use_sim_time: false" in written  # the rest of the dump is untouched
 
 
@@ -626,7 +667,8 @@ def test_dump_parameters_writes_nothing_when_redaction_fails(
     """Fail closed: a dump we cannot redact never reaches the run directory.
 
     Writing the raw text on a redaction error would defeat the whole pass precisely in
-    the case we understand least, so the node is reported as an error instead.
+    the case we understand least (an unparseable dump, or PyYAML missing on the board),
+    so the node is reported as an error instead.
     """
 
     def boom(_text: str) -> tuple[str, list[str]]:
@@ -636,7 +678,7 @@ def test_dump_parameters_writes_nothing_when_redaction_fails(
     destination = tmp_path / "parameters"
 
     dumped, errors, redacted = rr.dump_parameters(
-        [str(_fake_dump_cmd(tmp_path, _SECRET_DUMP))], ["/hermes_bridge"], destination
+        [str(_fake_dump_cmd(tmp_path, _secret_dump()))], ["/hermes_bridge"], destination
     )
 
     assert dumped == []
