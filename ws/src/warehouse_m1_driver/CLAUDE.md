@@ -116,7 +116,7 @@ Yahboom ROSMASTER M1 の公式 STM32 source V3.6.5 は入手済みだが、stock
 - `# TODO(Phase 1)` `cmd_vel_timeout_s` の運用値は実機で確定（doc mode-m1/02 §3 W-1）。
 - `# TODO(Phase 1)` odom スライス（`get_motor_encoder` 差分 + M1 実測幾何。X3 幾何のファーム報告は使わない＝mode-m1/02 §1-3）。
 - `# TODO(Phase 1)` 実機ファーム版と調査ソース V3.5.1 の一致確認（U-5・`m1_probe`）。
-- **実機 flash の `car_type` は 2026-09-10 に `0x0A`（`CAR_MECANUM_M1`）へ書換え済**（工場出荷は `0x02`＝X3 PLUS だった）。**FW version は 3.6**（vendor lib は major.minor のみ公開）＝上記 U-5 の版一致確認はこの値で行う。**ROS param `car_type` は既定 `-1`（送らない）のまま運用する**——非負値を渡すと `RosmasterBackend.__init__` が起動のたびに flash 書換え＋MCU リセット（リセット中は serial 沈黙・auto-report 欠落。書換え後 3 秒待って復帰を確認済）を起こす。記録と契約 pin への含意は [`docs/adr/0010-raise-speed-cap-to-platform-max.md`](../../../docs/adr/0010-raise-speed-cap-to-platform-max.md) の **2026-09-10 追補**、実機手順は [`docs/shared/02-hardware-design.md`](../../../docs/shared/02-hardware-design.md) **P-8-3**。**電源断（メインスイッチ OFF→ON）をまたぐ保持は未再確認**（`# TODO(実機)`）。
+- **実機 flash の `car_type` は 2026-09-10 に `0x0A`（`CAR_MECANUM_M1`）へ書換え済**（工場出荷は `0x02`＝X3 PLUS だった）。**FW version は 3.6**（vendor lib は major.minor のみ公開）＝上記 U-5 の版一致確認はこの値で行う。**ROS param `car_type` は既定 `-1`（送らない）のまま運用する**——非負値を渡すと `RosmasterBackend.__init__` が起動のたびに flash 書換えを繰り返す（通常パーサでは MCU リセット無し・即時反映。永続する値を毎回書き直すだけで意味が無い）。記録と契約 pin への含意は [`docs/adr/0010-raise-speed-cap-to-platform-max.md`](../../../docs/adr/0010-raise-speed-cap-to-platform-max.md) の **2026-09-10 追補**、実機手順は [`docs/shared/02-hardware-design.md`](../../../docs/shared/02-hardware-design.md) **P-8-3**。**電源断（メインスイッチ OFF→ON）をまたぐ保持は未再確認**（`# TODO(実機)`）。
 
 ## 【2026-09-08 追記】stop overlay（停止上乗せ）core スライス（doc05 §8 順序 5 の先行 core）
 

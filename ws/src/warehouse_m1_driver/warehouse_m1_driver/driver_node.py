@@ -53,7 +53,7 @@ class M1DriverNode(Node):
         # udev alias on the robot image, docs/shared/02-hardware-design.md).
         self.declare_parameter("serial_device", "")
         # <0 == do not send. Flash holds 0x0A (M1) since 2026-09-10; any value
-        # >= 0 re-writes flash + resets the MCU at start (ADR-0010 addendum).
+        # >= 0 re-writes flash at every start (persists; ADR-0010 addendum).
         self.declare_parameter("car_type", -1)
         self.declare_parameter("cmd_vel_timeout_s", DEFAULT_CMD_TIMEOUT_S)
         # Watchdog tick period. Implementation detail (not a safety

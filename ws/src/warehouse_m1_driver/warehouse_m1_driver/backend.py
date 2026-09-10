@@ -43,7 +43,7 @@ class RosmasterBackend:
     ``car_type`` stays optional: the official FW V3.6.5 does have a dedicated
     M1 type (``CAR_MECANUM_M1 = 0x0A``), and the robot's flash was set to it
     on 2026-09-10 (ADR-0010, 2026-09-10 addendum). Passing a value re-writes
-    flash and resets the MCU, so None is the normal-operation choice.
+    flash on every start (it persists), so None is the normal-operation choice.
     """
 
     def __init__(self, com: str | None = None, car_type: int | None = None) -> None:
