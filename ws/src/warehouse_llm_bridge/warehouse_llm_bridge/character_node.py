@@ -29,6 +29,7 @@ import contextlib
 import threading
 
 import rclpy
+from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from std_msgs.msg import String
 from warehouse_interfaces.config import load_config
@@ -189,7 +190,8 @@ class CharacterLlm(Node):
 
     def shutdown(self) -> None:
         """Stop the asyncio loop (best-effort)."""
-        self._loop.call_soon_threadsafe(self._loop.stop)
+        with contextlib.suppress(RuntimeError):  # loop already stopped (as in XErBridge.shutdown)
+            self._loop.call_soon_threadsafe(self._loop.stop)
 
 
 def main() -> None:
@@ -198,12 +200,17 @@ def main() -> None:
     node = CharacterLlm()
     node.start()
     try:
-        with contextlib.suppress(KeyboardInterrupt):
-            rclpy.spin(node)
+        rclpy.spin(node)
+    except (KeyboardInterrupt, ExternalShutdownException):
+        # SIGINT -> KeyboardInterrupt; SIGTERM -> ExternalShutdownException. Humble tears the
+        # context down before this finally runs, so both are a NORMAL stop (exit 0) rather
+        # than a failure -- see warehouse_teleop/warehouse_teleop/node_runtime.py.
+        pass
     finally:
+        # asyncio-only (loop.stop via call_soon_threadsafe), no ROS context use.
         node.shutdown()
         node.destroy_node()
-        rclpy.shutdown()
+        rclpy.try_shutdown()
 
 
 if __name__ == "__main__":

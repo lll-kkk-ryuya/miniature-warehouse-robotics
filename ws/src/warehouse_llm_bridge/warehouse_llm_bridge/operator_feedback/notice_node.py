@@ -83,6 +83,7 @@ try:
     # x_er_bridge.py:72-101 so the pure helpers above/below stay importable (and collectable
     # by plain pytest) on a host without ROS (doc16 §11).
     import rclpy
+    from rclpy.executors import ExternalShutdownException
     from rclpy.node import Node
     from std_msgs.msg import String
 except ImportError as exc:  # pragma: no cover - only in a rclpy-less (pure pytest) env
@@ -452,7 +453,7 @@ class DrainWorker:
         """Stop the worker and WAIT for its final flush. True iff the worker finished.
 
         Joining matters: without it the caller (``main()``) proceeds to ``destroy_node()`` /
-        ``rclpy.shutdown()`` while the daemon worker may still be mid-drain, which would both
+        ``rclpy.try_shutdown()`` while the daemon worker may still be mid-drain, which would both
         drop queued notices and let a sink log through an already destroyed node. A ``False``
         return means the join expired (a wedged sink) — the caller reports it rather than
         hanging, since the daemon thread cannot block process exit.
@@ -550,11 +551,17 @@ if _NODE_IMPORT_ERROR is None:
 
         def shutdown(self) -> None:
             """Stop the drain worker and WAIT for its final flush before teardown."""
-            if not self._worker.shutdown():
-                self.get_logger().warning(
-                    f"drain worker did not finish within {_SHUTDOWN_JOIN_S}s; "
-                    f"{self._driver.pending} queued notice(s) may be dropped"
-                )
+            flushed = self._worker.shutdown()  # the join that protects queued notices
+            # The warning is BEST-EFFORT only: on a Humble stop the context is ALREADY down
+            # when main()'s finally calls us, and logging through a dead context raises
+            # RCLError / InvalidHandle (private RuntimeError subclasses) -- which would turn a
+            # routine stop into exit 1, the very thing this path exists to avoid.
+            if not flushed and rclpy.ok():
+                with contextlib.suppress(RuntimeError):  # context died between check and call
+                    self.get_logger().warning(
+                        f"drain worker did not finish within {_SHUTDOWN_JOIN_S}s; "
+                        f"{self._driver.pending} queued notice(s) may be dropped"
+                    )
 
 
 def main() -> None:
@@ -567,12 +574,17 @@ def main() -> None:
     node = OperatorFeedbackNode()
     node.start()
     try:
-        with contextlib.suppress(KeyboardInterrupt):
-            rclpy.spin(node)
+        rclpy.spin(node)
+    except (KeyboardInterrupt, ExternalShutdownException):
+        # SIGINT -> KeyboardInterrupt; SIGTERM -> ExternalShutdownException. Humble tears the
+        # context down before this finally runs, so both are a NORMAL stop (exit 0).
+        pass
     finally:
+        # Joins the drain worker (<= _SHUTDOWN_JOIN_S) so the final flush lands; its warning
+        # on a wedged sink is rclpy.ok()-guarded because the context is already gone here.
         node.shutdown()
         node.destroy_node()
-        rclpy.shutdown()
+        rclpy.try_shutdown()
 
 
 if __name__ == "__main__":
