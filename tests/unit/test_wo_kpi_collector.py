@@ -612,3 +612,72 @@ def test_kpi_collector_injects_the_resolved_speed_cap_into_motion_inputs() -> No
         and isinstance(val.value, ast.Name)
         and val.value.id == "self"
     ), "speed_cap must be wired to self._speed_cap (the init-resolved cap)"
+
+
+@pytest.mark.unit
+def test_kpi_collector_reports_the_run_scope_beside_the_window() -> None:
+    # Same orphan guard as speed_cap / pattern_d (#2), for doc21 §17 ③'s run scope (#632):
+    # MotionAccumulator would keep the run totals whether or not anyone read them, so a
+    # ``_report`` that never passes ``run_totals=`` leaves ``KpiReport.run_motion`` empty
+    # forever on the live path — with every unit test still green, because they call
+    # ``compute_kpis`` directly. AST on source (the node imports rclpy).
+    report = _kpi_collector_method("_report")
+    calls = [
+        c
+        for c in ast.walk(report)
+        if isinstance(c, ast.Call) and isinstance(c.func, ast.Name) and c.func.id == "MotionInputs"
+    ]
+    assert calls, "_report must build MotionInputs(...)"
+    keywords = {k.arg: k.value for k in calls[0].keywords}
+    value = keywords.get("run_totals")
+    assert (
+        isinstance(value, ast.Call)
+        and isinstance(value.func, ast.Attribute)
+        and value.func.attr == "run_totals"
+        and isinstance(value.func.value, ast.Attribute)
+        and value.func.value.attr == "_motion"
+    ), "run_totals must be wired to self._motion.run_totals() (the accumulator, not the window)"
+    # …fed by the SAME accumulator the window comes from: two accumulators would mean two
+    # different streams reported as one run.
+    window = keywords.get("samples")
+    assert (
+        isinstance(window, ast.Call)
+        and isinstance(window.func, ast.Attribute)
+        and window.func.attr == "series"
+        and isinstance(window.func.value, ast.Attribute)
+        and window.func.value.attr == value.func.value.attr
+    ), "the window and the run totals must come from one accumulator"
+    # No new topic and no new parameter for the run scope: it rides the odom callback the node
+    # already has (doc21 §17 ③ / #632 — report fields only). One subscription construct in
+    # ``__init__`` (the per-robot comprehension over ``/bot{n}/odom``) is the whole input surface.
+    # Ratcheted on the TOPICS, module-wide, rather than on a call count inside ``__init__``:
+    # a count says "one construct here", which a harmless refactor (moving the comprehension
+    # into a helper, splitting it per robot) breaks while the input surface is unchanged, and
+    # which a *harmful* change (swapping odom for another topic) passes. The set below is the
+    # node's entire input surface.
+    tree = ast.parse(_KPI_COLLECTOR_PY.read_text())
+    topics = {
+        ast.unparse(call.args[1]).replace("'", '"')
+        for call in ast.walk(tree)
+        if isinstance(call, ast.Call)
+        and isinstance(call.func, ast.Attribute)
+        and call.func.attr == "create_subscription"
+        and len(call.args) >= 2
+    }
+    assert topics == {'f"/{robot}/odom"'}, (
+        f"kpi_collector's input surface changed: {sorted(topics)}. The run scope adds no topic; "
+        "if a NEW subscription is deliberate, add it to this set in the same commit."
+    )
+    init = _kpi_collector_method("__init__")
+    declared = {
+        call.args[0].value
+        for call in ast.walk(init)
+        if isinstance(call, ast.Call)
+        and isinstance(call.func, ast.Attribute)
+        and call.func.attr == "declare_parameter"
+        and call.args
+        and isinstance(call.args[0], ast.Constant)
+    }
+    assert not {p for p in declared if "run_total" in p or "run_motion" in p}, (
+        f"the run scope must add no ROS parameter; saw {sorted(declared)}"
+    )

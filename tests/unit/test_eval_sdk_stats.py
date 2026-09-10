@@ -6,18 +6,22 @@ throughput — the Tier-1 aggregate arithmetic (the domain composition lives in
 ``tests/unit/test_wo_tier1_kpi.py``).
 doc21 §17 additions: fraction_at_or_below / trapezoid_integral — the arithmetic behind idle 率
 (§17 ①) and 速度予算消化率 (§17 ② (iii)); the ε, the cap and the window stay in the domain
-(``tests/unit/test_wo_motion_kpi.py``).
+(``tests/unit/test_wo_motion_kpi.py``). ``TimeSeriesAccumulator`` (#632) is their streaming form
+for doc21 §17 ③'s whole-run scope: same inclusive count, same trapezoid area, O(1) memory.
 Each expected value is a hand-computed literal from the *reference* formula
 (AllenAct / Habitat / siva82kb), not a re-derivation of the implementation — R-26 independent
 oracle (.claude/rules/safety.md, doc20 §9), mutation-red on the named guard step.
 """
 
+import inspect
 import math
 import random
 
 import pytest
 from eval_sdk.stats import (
     DistanceAccumulator,
+    SeriesTotals,
+    TimeSeriesAccumulator,
     distance_traveled,
     fraction_at_or_below,
     jain_fairness_index,
@@ -555,3 +559,114 @@ def test_trapezoid_integral_undefined_cases_and_length_mismatch() -> None:
     assert trapezoid_integral([0.0, 1.0], [1.0, math.nan]) is None  # non-finite result
     with pytest.raises(ValueError, match="equal length"):
         trapezoid_integral([0.0, 1.0, 2.0], [1.0, 1.0])
+
+
+# ── TimeSeriesAccumulator: the streaming form of the two above (doc21 §17 ③) ──
+
+
+@pytest.mark.unit
+def test_time_series_accumulator_totals_are_hand_computed_on_a_non_uniform_grid() -> None:
+    # SAME fixture as the batch trapezoid test above, fed one point at a time: t = [0, 1, 3],
+    # y = [2, 4, 4] ⇒ 1·(2+4)/2 = 3 plus 2·(4+4)/2 = 8 ⇒ ∫ = 11. Weighting both steps equally
+    # (a uniform-dt reading) would give 7; a rectangle rule on the left sample would give 10.
+    # With the line at 2, exactly one point (the first, sitting ON it) is at or below ⇒ 1 of 3.
+    acc = TimeSeriesAccumulator(2.0)
+    for t, y in ((0.0, 2.0), (1.0, 4.0), (3.0, 4.0)):
+        assert acc.add("a", t, y) is True
+    totals = acc.totals()["a"]
+    assert totals.integral == pytest.approx(11.0)
+    assert totals.samples == 3
+    assert totals.at_or_below == 1  # `<` instead of `<=` would count 0
+    assert (totals.t_first, totals.t_last) == (0.0, 3.0)
+
+
+@pytest.mark.unit
+def test_time_series_accumulator_first_point_opens_the_series_without_area() -> None:
+    # One point bounds no area — a measured 0.0 over a zero-length span, not a missing value.
+    acc = TimeSeriesAccumulator()
+    assert acc.add("a", 4.0, 7.0) is True
+    only = acc.totals()["a"]
+    assert (only.samples, only.integral) == (1, 0.0)
+    assert only.t_first == only.t_last == 4.0
+    # …and the second point contributes exactly its own trapezoid: 2·(7+9)/2 = 16.
+    assert acc.add("a", 6.0, 9.0) is True
+    assert acc.totals()["a"].integral == pytest.approx(16.0)
+
+
+@pytest.mark.unit
+def test_time_series_accumulator_rejects_non_advancing_and_non_finite_points() -> None:
+    # The acceptance rules a trapezoid needs, applied once: a duplicate stamp, a clock that went
+    # backwards and any non-finite field are refused — and refusal leaves EVERY total untouched
+    # (a rejected point that still moved ``t_last`` would corrupt the next trapezoid).
+    acc = TimeSeriesAccumulator(1.0)
+    assert acc.add("a", 1.0, 2.0) is True
+    assert acc.add("a", 1.0, 99.0) is False  # same stamp
+    assert acc.add("a", 0.5, 99.0) is False  # backwards
+    assert acc.add("a", math.nan, 1.0) is False
+    assert acc.add("a", math.inf, 1.0) is False
+    assert acc.add("a", 2.0, math.nan) is False
+    assert acc.add("a", 2.0, math.inf) is False
+    assert acc.totals()["a"] == SeriesTotals(
+        samples=1, at_or_below=0, integral=0.0, t_first=1.0, t_last=1.0
+    )
+    # A rejected FIRST point creates no label at all (nothing to report about it).
+    assert acc.add("b", math.nan, 0.0) is False
+    assert "b" not in acc.totals()
+
+
+@pytest.mark.unit
+def test_time_series_accumulator_keeps_labels_apart_and_forgets_on_clear() -> None:
+    acc = TimeSeriesAccumulator(0.5)
+    acc.add("a", 0.0, 0.0)
+    acc.add("a", 1.0, 0.0)
+    acc.add("b", 0.0, 4.0)
+    # "b" advancing to t = 0.5 must not be judged against "a"'s stamps (or vice versa).
+    assert acc.add("b", 0.5, 4.0) is True
+    totals = acc.totals()
+    assert totals["a"].at_or_below == 2 and totals["a"].integral == pytest.approx(0.0)
+    assert totals["b"].at_or_below == 0 and totals["b"].integral == pytest.approx(2.0)
+    acc.clear()
+    assert acc.totals() == {}
+
+
+@pytest.mark.unit
+def test_time_series_accumulator_threshold_is_injected_and_must_be_finite() -> None:
+    # No threshold ⇒ nothing is counted, and that is reported as None ("not counted"), never as
+    # a counted 0 — the percentile / rate no-data convention.
+    plain = TimeSeriesAccumulator()
+    plain.add("a", 0.0, -5.0)
+    assert plain.threshold is None
+    assert plain.totals()["a"].at_or_below is None
+    assert TimeSeriesAccumulator(0.25).threshold == 0.25
+    for bad in (math.nan, math.inf, -math.inf):
+        with pytest.raises(ValueError, match="finite"):
+            TimeSeriesAccumulator(bad)
+
+
+@pytest.mark.unit
+def test_time_series_accumulator_agrees_with_the_batch_helpers_it_streams() -> None:
+    # Cross-check against the two batch functions on random data: streaming the points must give
+    # the same count and the same area as having the whole series in hand. Those two are anchored
+    # by their own hand-computed goldens above, so this pins the STREAMING (never re-deriving the
+    # trapezoid rule from the accumulator's own code).
+    rng = random.Random(20260910)
+    for _ in range(40):
+        n = rng.randint(2, 25)
+        times, t = [], rng.uniform(0.0, 5.0)
+        for _ in range(n):
+            t += rng.uniform(0.01, 0.5)  # strictly advancing, deliberately non-uniform
+            times.append(t)
+        values = [rng.uniform(-1.0, 1.0) for _ in range(n)]
+        acc = TimeSeriesAccumulator(0.0)
+        for stamp, value in zip(times, values, strict=True):
+            assert acc.add("a", stamp, value) is True
+        totals = acc.totals()["a"]
+        assert totals.samples == n
+        assert totals.integral == pytest.approx(trapezoid_integral(times, values))
+        share = fraction_at_or_below(values, 0.0)
+        assert share is not None
+        assert totals.at_or_below / totals.samples == pytest.approx(share)
+    # The oracle is only independent while the two implementations are: if either helper ever
+    # delegates to the other, this differential check becomes a tautology that agrees with
+    # itself no matter what the arithmetic does.
+    assert "TimeSeriesAccumulator" not in inspect.getsource(trapezoid_integral)

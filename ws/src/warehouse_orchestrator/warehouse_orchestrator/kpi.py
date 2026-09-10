@@ -51,7 +51,11 @@ renders exactly as before; ``to_dict()`` gains three keys holding empty containe
 no existing key changes value or disappears).
 ``idle 率`` and ``速度予算消化率`` are now defined by doc21 §17 ①② and composed in ``motion`` as
 ``SmoothnessStats.{idle_ratio,speed_budget_utilisation}``; this module only threads the injected
-``MotionInputs.speed_cap`` through (CLAUDE.md voids 15). ``decision latency`` is doc08:497
+``MotionInputs.speed_cap`` through (CLAUDE.md voids 15). Both also exist at **whole-run** scope
+as :attr:`KpiReport.run_motion` (doc21 §17 ③'s follow-up, #632), composed from
+``MotionInputs.run_totals`` against the same injected cap and likewise empty when the caller
+supplies nothing — so one report can now carry the windowed and the run reading of the same
+metric, each labelled with the bounds it was measured over. ``decision latency`` is doc08:497
 (Langfuse-derived), delegated to #434.
 """
 
@@ -92,8 +96,10 @@ from warehouse_orchestrator.motion import (
     MotionAccumulator,
     MotionInputs,
     MotionSample,
+    RunMotionStats,
     SmoothnessStats,
     detour_factors,
+    run_motion_stats,
     smoothness_stats,
 )
 
@@ -127,8 +133,10 @@ __all__ = [
     "MotionAccumulator",
     "MotionInputs",
     "MotionSample",
+    "RunMotionStats",
     "SmoothnessStats",
     "detour_factors",
+    "run_motion_stats",
     "smoothness_stats",
     "cancelled_task_ids",
     "robot_load_fairness",
@@ -286,6 +294,10 @@ class KpiReport:
     detour_factors: dict[str, float] = field(default_factory=dict)
     # Per-robot 軌道平滑性 over the retained odom window (doc21:306's SPARC / LDLJ / N_MU).
     smoothness: dict[str, SmoothnessStats] = field(default_factory=dict)
+    # Per-robot doc21 §17 ①② over the WHOLE RUN (§17 ③'s follow-up, #632) — the twin of the
+    # window-scoped pair inside :attr:`smoothness`. Empty unless the caller supplies
+    # ``MotionInputs.run_totals``, so an audit-only or window-only caller is unaffected.
+    run_motion: dict[str, RunMotionStats] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -309,6 +321,10 @@ class KpiReport:
             "distance_traveled": dict(self.distance_traveled),
             "detour_factors": dict(self.detour_factors),
             "smoothness": {robot: stats.to_dict() for robot, stats in self.smoothness.items()},
+            # doc21 §17 ③'s run-whole twin (#632), appended at the END so every previously
+            # published key keeps its position (additive — the KPI output contract is not frozen,
+            # CLAUDE.md voids 9, but a positional consumer must not break over a new scope).
+            "run_motion": {robot: stats.to_dict() for robot, stats in self.run_motion.items()},
         }
 
 
@@ -429,16 +445,30 @@ def compute_kpis(
     distances: dict[str, float] = {}
     detours: dict[str, float] = {}
     smoothness: dict[str, SmoothnessStats] = {}
+    run_motion: dict[str, RunMotionStats] = {}
     if motion is not None:
         distances = dict(motion.distances)
         detours = detour_factors(motion.distances, motion.optimal_distances)
         # ``speed_cap`` = v_max for doc21 §17 ②, resolved once by the node from config
         # ``safety.max_linear_velocity``; ``None`` (offline CLI) simply leaves the utilisation
-        # unreported rather than substituting a literal cap here.
+        # unreported rather than substituting a literal cap here. The SAME cap feeds both
+        # scopes — the budget a run was measured against does not change with the window.
         smoothness = {
             robot: smoothness_stats(samples, speed_cap=motion.speed_cap)
             for robot, samples in motion.samples.items()
             if samples
+        }
+        # doc21 §17 ③'s run-whole twin (#632). Kept separate from ``smoothness`` on purpose:
+        # a robot can have run totals with no live window (nothing recent) and vice versa
+        # (a caller that supplies only one of the two), and conflating them would report one
+        # scope's number under the other's name.
+        run_motion = {
+            robot: run_motion_stats(totals, speed_cap=motion.speed_cap)
+            for robot, totals in motion.run_totals.items()
+            # Mirror of the window's ``if samples`` above: no evidence → no entry. A totals
+            # snapshot with zero samples describes a robot nothing was ever measured for, and
+            # publishing an all-``None`` row for it would put a ghost robot in the report.
+            if totals.samples
         }
 
     # ``rate`` is the eval_sdk zero-denominator guard (doc21:184); behaviour is unchanged from
@@ -465,6 +495,7 @@ def compute_kpis(
         distance_traveled=distances,
         detour_factors=detours,
         smoothness=smoothness,
+        run_motion=run_motion,
     )
 
 
@@ -575,6 +606,10 @@ def format_report(report: KpiReport) -> str:
         lines.append(f"  detour_factor {robot}: {factor}")
     for robot, stats in sorted(report.smoothness.items()):
         lines.append(f"  smoothness {robot}: {stats.to_dict()}")
+    # doc21 §17 ③'s run-whole scope (#632) — its own line, so the window numbers above are never
+    # read as run numbers. Absent unless ``MotionInputs.run_totals`` was supplied.
+    for robot, stats in sorted(report.run_motion.items()):
+        lines.append(f"  run_motion {robot}: {stats.to_dict()}")
     return "\n".join(lines)
 
 

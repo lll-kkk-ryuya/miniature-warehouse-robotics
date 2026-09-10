@@ -19,6 +19,10 @@ doc21 §17 ①② idle 率 / 速度予算消化率). That is report-only: **no n
 new Langfuse score** — ``_send_scores`` is untouched by that family (Issue #432 DoD). The only
 new input is a *read* of the existing config tunable ``safety.max_linear_velocity`` (v_max for
 §17 ②), resolved once at startup and injected via ``MotionInputs.speed_cap``.
+
+That accumulator additionally keeps O(1) **whole-run** totals (doc21 §17 ③ / #632), reported
+beside the windowed ones as ``MotionInputs.run_totals``. Same subscription, same callback, same
+report — no extra parameter, subscription or state on this node.
 """
 
 import contextlib
@@ -163,6 +167,10 @@ class KpiCollector(Node):
                     distances=self._distances.totals(),
                     # v_max for doc21 §17 ② (resolved once at startup from config).
                     speed_cap=self._speed_cap,
+                    # Whole-run counterpart of ``samples`` (doc21 §17 ③, #632): accumulated by
+                    # the SAME accumulator inside the SAME subscription, so this adds no
+                    # producer, topic, parameter or message — only a second reporting scope.
+                    run_totals=self._motion.run_totals(),
                 ),
             )
         except OSError as exc:  # never let a transient read error kill the node
