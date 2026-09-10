@@ -40,10 +40,10 @@ class MotionBackend(Protocol):
 class RosmasterBackend:
     """Vendor Rosmaster_Lib transport (robot-only; imported lazily).
 
-    ``car_type`` is optional on purpose: M1 has no dedicated car_type value
-    (docs/shared/02-hardware-design.md V-1) and the correct value is confirmed
-    by the on-robot probe (docs/mode-m1/03 §2). When None, the library / MCU
-    default is left untouched.
+    ``car_type`` stays optional: the official FW V3.6.5 does have a dedicated
+    M1 type (``CAR_MECANUM_M1 = 0x0A``), and the robot's flash was set to it
+    on 2026-09-10 (ADR-0010, 2026-09-10 addendum). Passing a value re-writes
+    flash on every start (it persists), so None is the normal-operation choice.
     """
 
     def __init__(self, com: str | None = None, car_type: int | None = None) -> None:
