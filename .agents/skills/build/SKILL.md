@@ -16,3 +16,11 @@ Run the ROS 2 workspace build and test flow.
 
 If dependencies are missing, report the missing dependency and the command that
 failed before installing anything.
+
+## On the robot (`/opt/warehouse`)
+
+- Do not run bare `colcon build`. Use `deploy/jetson/bin/build.sh`: it records the
+  build, refuses while the motion stack runs, and never restarts systemd units.
+- `colcon test` is optional until doc20 Phase 3 — the merge gate is `pytest tests/unit`.
+- Rules: `.claude/rules/build-deploy-run.md` (Build != Deploy != Run; physical runs
+  are recorded with `deploy/jetson/bin/record-run.sh`).
