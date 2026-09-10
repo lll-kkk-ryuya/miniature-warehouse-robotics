@@ -8,7 +8,10 @@ What these pin down (docs/jetson/03-build-deploy-run-and-run-records.md):
   * the dirty-tree evidence chain: ``diff_sha256`` must hash the file that was
     actually saved, or the record lies about what was built;
   * the prod policy (no dirty tree, no untagged commit without an explicit override);
-  * the safety guard: no rebuild under a running stack unless forced.
+  * the safety guard: no rebuild under a running stack unless forced — and a forced
+    build IS recorded, flagged ``colcon.forced``, because the install space changed;
+  * ``--dry-run`` nulls (exit_code / duration_s / log_dir): a dry run has no build to
+    describe, and a zero there would read as a clean, instant build.
 
 Pure logic + subprocess against throwaway git repos → ``unit``, NOT ``safety``: this is
 build provenance tooling, not an Emergency Guardian / Policy Gate / speed-clamp invariant.
@@ -154,7 +157,14 @@ def test_dry_run_emits_the_record_without_touching_the_workspace(
     assert list(payload) == TOP_KEYS
     assert list(payload["source"]) == SOURCE_KEYS
     assert list(payload["deps"]) == ["rosdep_check", "unsatisfied", "pip_exceptions"]
-    assert list(payload["colcon"]) == ["args", "packages", "exit_code", "log_dir", "duration_s"]
+    assert list(payload["colcon"]) == [
+        "args",
+        "packages",
+        "exit_code",
+        "log_dir",
+        "duration_s",
+        "forced",
+    ]
     assert payload["profile"] == "dev"
     assert payload["colcon"]["exit_code"] is None
     assert payload["colcon"]["args"] == ["--symlink-install"]
@@ -170,6 +180,35 @@ def test_dry_run_emits_the_record_without_touching_the_workspace(
     # ...and nothing written.
     assert not (ws / "install").exists()
     assert not (ws / "log").exists()
+
+
+def test_dry_run_nulls_every_field_that_only_a_real_build_could_fill(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """No build ran, so no exit code, no elapsed time, no log dir — and zeroes would lie.
+
+    ``packages`` is the exception: it is a property of the tree, countable without
+    building. The oracle is the number of package.xml files this test wrote (2).
+    """
+    ws = _repo(tmp_path)
+    for name in ("warehouse_alpha", "warehouse_beta"):
+        package = ws / "src" / name
+        package.mkdir(parents=True)
+        (package / "package.xml").write_text(f"<package><name>{name}</name></package>\n")
+    (ws / "src" / "not_a_package").mkdir()  # no package.xml → not counted
+    (ws / "log").mkdir()
+    (ws / "log" / "build_2026-09-10_12-52-05").mkdir()
+    (ws / "log" / "latest_build").symlink_to("build_2026-09-10_12-52-05")
+
+    assert mb.main(["--ws", str(ws), "--dry-run"]) == 0
+
+    colcon = json.loads(capsys.readouterr().out)["colcon"]
+    assert colcon["exit_code"] is None
+    assert colcon["duration_s"] is None
+    # A stale log/latest_build from an EARLIER build must not be claimed as this one's.
+    assert colcon["log_dir"] is None
+    assert colcon["forced"] is False
+    assert colcon["packages"] == 2
 
 
 def test_missing_workspace_is_a_usage_error(tmp_path: Path) -> None:
@@ -199,6 +238,8 @@ def test_successful_build_writes_history_and_the_current_pointer(tmp_path: Path)
     assert current["colcon"]["exit_code"] == 0
     assert current["colcon"]["args"] == ["--symlink-install"]
     assert isinstance(current["colcon"]["duration_s"], float)
+    # Nothing was running (see the inert_guard fixture), so nothing was overridden.
+    assert current["colcon"]["forced"] is False
     assert (ws / "install" / ".mwr-build-info.json").read_text(encoding="utf-8").endswith("}\n")
 
 
@@ -308,14 +349,43 @@ def test_guard_refuses_while_the_stack_looks_live(
     assert not (ws / "log").exists()
 
 
-def test_guard_is_overridable_with_force(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_forced_build_is_recorded_in_both_files_and_flagged(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """--force overrides the guard, and the record says so.
+
+    The install space really did change, so suppressing the record would leave the
+    pointer describing a build that no longer exists. ``forced`` is how a later reader
+    (or a post-mortem) learns the build happened under a live stack.
+    """
     ws = _repo(tmp_path)
     active = _bin_dir(tmp_path, "systemctl", "echo active")
     monkeypatch.setenv("PATH", f"{active}{os.pathsep}{os.environ['PATH']}")
     fake = _fake_cmd(tmp_path, "fake-colcon-ok", 0)
 
     assert mb.main(["--ws", str(ws), "--colcon-cmd", str(fake), "--force"]) == 0
-    assert (ws / "install" / ".mwr-build-info.json").is_file()
+
+    current = json.loads((ws / "install" / ".mwr-build-info.json").read_text(encoding="utf-8"))
+    history = sorted((ws / "log" / "build-info").glob("*.json"))
+    assert len(history) == 1
+    assert json.loads(history[0].read_text(encoding="utf-8")) == current
+    assert current["colcon"]["forced"] is True
+    assert current["colcon"]["exit_code"] == 0
+
+
+def test_force_without_a_live_stack_is_not_a_forced_build(tmp_path: Path) -> None:
+    """``forced`` records an override that HAPPENED, not a flag that was typed.
+
+    Operators park --force in their shell history; if the flag alone set the field,
+    every routine build would read as "built under a moving robot" and the signal dies.
+    """
+    ws = _repo(tmp_path)  # inert_guard: nothing is running
+    fake = _fake_cmd(tmp_path, "fake-colcon-ok", 0)
+
+    assert mb.main(["--ws", str(ws), "--colcon-cmd", str(fake), "--force"]) == 0
+
+    current = json.loads((ws / "install" / ".mwr-build-info.json").read_text(encoding="utf-8"))
+    assert current["colcon"]["forced"] is False
 
 
 def test_a_matching_pgrep_also_stops_the_build(

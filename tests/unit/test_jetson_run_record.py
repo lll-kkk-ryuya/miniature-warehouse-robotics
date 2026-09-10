@@ -9,10 +9,16 @@ What these pin down (docs/jetson/03-build-deploy-run-and-run-records.md):
     ``null`` with a warning instead of refusing when there is no build-info;
   * ``parameter_events_recorded`` — the flag that says whether the bag can be replayed
     with parameters, which is false the moment someone narrows ``--topics``;
-  * ``--dry-run`` really is inert: no directory, no ROS call.
+  * ``--dry-run`` really is inert: no directory, no ROS call;
+  * the bag's LIFECYCLE: once ``ros2 bag record`` is up, it is always stopped and the
+    record always closed out, even when a capture or a write blows up half-way. An
+    orphaned recorder holds the bag open and silently keeps writing to the SSD, so this
+    is the one behaviour worth spending real processes on.
 
-Pure logic → ``unit``, NOT ``safety``. No ROS, no network: every test stops before the
-first ``ros2`` invocation. The script is loaded by path (``deploy/`` is not a package).
+Pure logic → ``unit``, NOT ``safety``. No ROS, no network: the lifecycle tests drive a
+FAKE ``ros2`` written into tmp_path (a python script answering the four read-only queries
+this recorder makes), never a real one. The script under test is loaded by path
+(``deploy/`` is not a package) so monkeypatch can reach its module globals.
 """
 
 from __future__ import annotations
@@ -20,7 +26,10 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
+import os
+import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -76,6 +85,88 @@ def pinned_date(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def _run(bags: Path, ws: Path, *extra: str) -> int:
     return rr.main(["--bags-dir", str(bags), "--ws", str(ws), "--dry-run", *extra])
+
+
+# ── fake ros2 (lifecycle tests only) ──────────────────────────────────────────
+
+# Answers exactly the four read-only queries mwr_run_record makes. `bag record` is the
+# interesting one: it installs a SIGINT handler that exits 0 (like rosbag2 closing its
+# files), lays down a metadata.yaml, and only THEN drops its pid — so the pidfile's
+# existence means "fully up", which is what lets these tests be deterministic instead of
+# racing the interpreter's start-up.
+_FAKE_ROS2_BODY = '''
+"""Stand-in for the ros2 CLI. Never imported: run as a subprocess by the tests."""
+import os
+import signal
+import sys
+import time
+
+argv = sys.argv[1:]
+
+if argv[:2] == ["node", "list"]:
+    sys.stdout.write("/m1_driver\\n/joy\\n")
+    sys.exit(0)
+
+if argv[:2] == ["topic", "list"]:
+    sys.stdout.write("/bot1/cmd_vel [geometry_msgs/msg/Twist]\\n")
+    sys.exit(0)
+
+if argv[:2] == ["param", "dump"]:
+    sys.stdout.write("%s:\\n  ros__parameters:\\n    use_sim_time: false\\n" % argv[2])
+    sys.exit(0)
+
+if argv[:2] == ["bag", "record"]:
+    signal.signal(signal.SIGINT, lambda *_a: sys.exit(0))
+    destination = argv[argv.index("-o") + 1]
+    os.makedirs(destination, exist_ok=True)
+    with open(os.path.join(destination, "metadata.yaml"), "w") as handle:
+        handle.write("rosbag2_bagfile_information:\\n  version: 5\\n")
+    with open(os.environ["FAKE_BAG_PIDFILE"], "w") as handle:
+        handle.write(str(os.getpid()))
+    time.sleep(300)
+    sys.exit(0)
+
+sys.stderr.write("fake ros2: unsupported argv %r\\n" % (argv,))
+sys.exit(2)
+'''
+
+# Same shape as the fake bag: its own session, SIGINT → exit 0, ready-file last.
+_SIGINT_CHILD = (
+    "import pathlib, signal, sys, time; "
+    "signal.signal(signal.SIGINT, lambda *a: sys.exit(0)); "
+    "pathlib.Path(sys.argv[1]).write_text('ready', encoding='utf-8'); "
+    "time.sleep(30)"
+)
+
+
+def _fake_ros2(tmp_path: Path) -> Path:
+    """Write the fake ros2 CLI and make it executable (shebang = this interpreter)."""
+    path = tmp_path / "fake-ros2"
+    path.write_text(f"#!{sys.executable}{_FAKE_ROS2_BODY}", encoding="utf-8")
+    path.chmod(0o755)
+    return path
+
+
+def _wait_for(path: Path, timeout: float = 5.0) -> None:
+    """Block until *path* exists, so a test never races a subprocess' start-up."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if path.exists():
+            return
+        time.sleep(0.02)
+    raise AssertionError(f"{path} never appeared within {timeout}s")
+
+
+def _assert_dead(pid: int, timeout: float = 5.0) -> None:
+    """The orphan oracle: signal 0 must raise ProcessLookupError within *timeout*."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return
+        time.sleep(0.02)
+    raise AssertionError(f"the bag process {pid} is still alive after {timeout}s")
 
 
 # ── run_id allocation ─────────────────────────────────────────────────────────
@@ -324,3 +415,120 @@ def test_a_missing_calibration_file_is_a_usage_error(tmp_path: Path) -> None:
     assert (
         _run(tmp_path / "bags", tmp_path / "ws", "--calibration", str(tmp_path / "gone.yaml")) == 4
     )
+
+
+# ── the bag's lifecycle (a real child process, a fake ros2) ───────────────────
+
+
+def test_a_whole_run_captures_the_graph_and_closes_the_record_out(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """One full pass: bag up → snapshot → duration elapses → bag reaped → record closed."""
+    bags = tmp_path / "bags"
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    pidfile = tmp_path / "bag.pid"
+    monkeypatch.setenv("FAKE_BAG_PIDFILE", str(pidfile))
+
+    exit_code = rr.main(
+        [
+            "--bags-dir",
+            str(bags),
+            "--ws",
+            str(ws),
+            "--duration",
+            "1",
+            "--capture-delay",
+            "0.2",
+            "--ros2-cmd",
+            str(_fake_ros2(tmp_path)),
+        ]
+    )
+
+    assert exit_code == 0
+    run_dir = bags / "20260910-001"
+    assert (run_dir / "runtime" / "nodes.txt").read_text(encoding="utf-8").splitlines() == [
+        "/m1_driver",
+        "/joy",
+    ]
+    topics = (run_dir / "runtime" / "topics.txt").read_text(encoding="utf-8")
+    assert topics == "/bot1/cmd_vel [geometry_msgs/msg/Twist]\n"
+    assert (run_dir / "parameters" / "_m1_driver.yaml").is_file()
+    assert (run_dir / "parameters" / "_joy.yaml").is_file()
+    assert (run_dir / "rosbag2" / "metadata.yaml").is_file()
+
+    record = json.loads((run_dir / "run-record.json").read_text(encoding="utf-8"))
+    assert record["ended_at"] is not None
+    assert record["duration_s"] >= 1
+    assert record["data"]["bag_exit_code"] == 0
+    assert record["parameters"]["nodes_dumped"] == ["/m1_driver", "/joy"]
+    assert record["parameters"]["dump_errors"] == {}
+    assert record["runtime"]["captured_at"] is not None
+    assert record["runtime"]["capture_delay_s"] == 0.2  # float, not int
+    _assert_dead(int(pidfile.read_text(encoding="utf-8")))
+
+
+def test_a_capture_that_blows_up_still_reaps_the_bag_and_closes_the_record(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The orphan test: a live recorder must not outlive the process that started it.
+
+    Without the try/finally this leaves ``ros2 bag record`` running unattended, filling
+    the SSD with a bag nothing will ever close. The error is still raised — it is a real
+    failure and must not be swallowed — but only AFTER the recorder is stopped.
+    """
+    bags = tmp_path / "bags"
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    pidfile = tmp_path / "bag.pid"
+    monkeypatch.setenv("FAKE_BAG_PIDFILE", str(pidfile))
+
+    def explode(cmd: list[str], destination: Path) -> list[str]:
+        # Break only once the recorder is demonstrably up, so this pins the try/finally
+        # instead of a lucky race against the fake's start-up.
+        _wait_for(pidfile)
+        raise OSError("disk full")
+
+    monkeypatch.setattr(rr, "_capture", explode)
+
+    with pytest.raises(OSError, match="disk full"):
+        rr.main(
+            [
+                "--bags-dir",
+                str(bags),
+                "--ws",
+                str(ws),
+                "--duration",
+                "1",
+                "--capture-delay",
+                "0.2",
+                "--ros2-cmd",
+                str(_fake_ros2(tmp_path)),
+            ]
+        )
+
+    _assert_dead(int(pidfile.read_text(encoding="utf-8")))
+    record = json.loads((bags / "20260910-001" / "run-record.json").read_text(encoding="utf-8"))
+    assert record["ended_at"] is not None
+    assert record["duration_s"] is not None
+    assert record["data"]["bag_exit_code"] == 0
+
+
+def test_stop_bag_sigints_the_recorders_own_session_and_reaps_it(tmp_path: Path) -> None:
+    """SIGINT (not SIGKILL) so rosbag2 closes its files, and only ITS group — never ours."""
+    ready = tmp_path / "ready"
+    proc = subprocess.Popen(
+        [sys.executable, "-c", _SIGINT_CHILD, str(ready)], start_new_session=True
+    )
+    try:
+        _wait_for(ready)
+        # If this were false, stop_bag's killpg would be aimed at the test runner.
+        assert os.getpgid(proc.pid) != os.getpgid(0)
+
+        started = time.monotonic()
+        assert rr.stop_bag(proc) == 0
+        assert time.monotonic() - started < rr.BAG_SIGINT_TIMEOUT_S
+    finally:
+        if proc.poll() is None:  # pragma: no cover - only reached if the assert above failed
+            proc.kill()
+            proc.wait()

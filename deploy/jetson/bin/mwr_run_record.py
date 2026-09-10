@@ -26,7 +26,11 @@ Layout under ``<bags-dir>/<run_id>/``:
 Test-only hook: ``MWR_RUN_RECORD_TODAY=YYYYMMDD`` pins the date used to allocate the
 run_id so the sequencing can be tested hermetically. It has no production use.
 
-Exit codes: 0 normal (including a run stopped with Ctrl-C), 4 usage error.
+Exit codes: 0 normal (including a run stopped with Ctrl-C), 4 usage error. Once the bag
+is running, every later step is wrapped so the recorder is ALWAYS stopped and the record
+always closed out (``ended_at`` / ``duration_s`` / ``bag_exit_code``) — an unexpected
+error there propagates to the caller rather than being swallowed, but never over a live
+``ros2 bag record``.
 
 Pure stdlib, Python 3.10 compatible (ROS 2 Humble / Ubuntu 22.04 —
 docs/adr/0008-ros2-distro-humble-for-rosmaster-m1.md).
@@ -144,9 +148,16 @@ def resolve_safety(ws: Path) -> tuple[float | None, str]:
     if value is None:
         candidate = ws / "src" / "warehouse_interfaces"
         if candidate.is_dir():
+            # Borrow <ws>/src for one import, then hand sys.path back exactly as it was:
+            # this helper must not leave a workspace shadowing later imports (it also
+            # runs in-process under pytest, where a leaked entry would cross tests).
+            saved_path = list(sys.path)
             sys.path.insert(0, str(candidate))
             importlib.invalidate_caches()
-            value = _load_max_velocity()
+            try:
+                value = _load_max_velocity()
+            finally:
+                sys.path[:] = saved_path
     if value is None:
         _warn("could not import warehouse_interfaces.safety; safety.max_linear_velocity_mps=null.")
         return None, "unavailable"
@@ -289,6 +300,28 @@ def dump_parameters(
         (destination / f"{node.replace('/', '_')}.yaml").write_text(proc.stdout, encoding="utf-8")
         dumped.append(node)
     return dumped, errors
+
+
+def _install_stop_handlers(stop: threading.Event) -> list[tuple[int, Any]]:
+    """Route SIGINT/SIGTERM into *stop* and hand back the handlers they replaced.
+
+    Registered BEFORE the recorder is spawned: a Ctrl-C landing in the window between
+    ``Popen`` and this registration would kill us outright and leave the bag running.
+    """
+    saved: list[tuple[int, Any]] = []
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        # ValueError = not the main thread (a harness calling main()); Ctrl-C still works.
+        with contextlib.suppress(ValueError):
+            saved.append((sig, signal.signal(sig, lambda _signum, _frame: stop.set())))
+    return saved
+
+
+def _restore_stop_handlers(saved: list[tuple[int, Any]]) -> None:
+    """Give the process its own signal handling back (main() is also called in-process)."""
+    for sig, handler in saved:
+        # TypeError = the previous handler was not set from Python; nothing to restore.
+        with contextlib.suppress(ValueError, TypeError):
+            signal.signal(sig, handler)
 
 
 def stop_bag(proc: subprocess.Popen[bytes]) -> int | None:
@@ -455,44 +488,52 @@ def main(argv: list[str] | None = None) -> int:
         args.storage,
     ]
     bag_cmd += ["-a"] if topics is None else topics
-    try:
-        bag = subprocess.Popen(bag_cmd, start_new_session=True)
-    except OSError as exc:
-        _warn(f"could not start {' '.join(bag_cmd)}: {exc}")
-        return EXIT_USAGE
 
     stop = threading.Event()
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        # ValueError = not the main thread (a harness calling main()); Ctrl-C still works.
-        with contextlib.suppress(ValueError):
-            signal.signal(sig, lambda _signum, _frame: stop.set())
+    saved_handlers = _install_stop_handlers(stop)
+    try:
+        try:
+            bag = subprocess.Popen(bag_cmd, start_new_session=True)
+        except OSError as exc:
+            _warn(f"could not start {' '.join(bag_cmd)}: {exc}")
+            return EXIT_USAGE
 
-    stop.wait(args.capture_delay)
-    captured_at = _stamp(_now())
-    nodes = _capture([*ros2_cmd, "node", "list"], run_dir / "runtime" / "nodes.txt")
-    _capture([*ros2_cmd, "topic", "list", "-t"], run_dir / "runtime" / "topics.txt")
-    dumped, dump_errors = dump_parameters(ros2_cmd, nodes, run_dir / "parameters")
+        # From here a recorder is LIVE. Everything below is best-effort observation, so
+        # any failure in it (a capture, a param dump, a full disk under write_json_atomic)
+        # must still reach the close-out below — otherwise the run leaks an orphan
+        # `ros2 bag record` holding the bag open. Hence `finally`, not `except`.
+        try:
+            stop.wait(args.capture_delay)
+            captured_at = _stamp(_now())
+            nodes = _capture([*ros2_cmd, "node", "list"], run_dir / "runtime" / "nodes.txt")
+            _capture([*ros2_cmd, "topic", "list", "-t"], run_dir / "runtime" / "topics.txt")
+            dumped, dump_errors = dump_parameters(ros2_cmd, nodes, run_dir / "parameters")
 
-    record["runtime"]["captured_at"] = captured_at
-    record["parameters"]["nodes_dumped"] = dumped
-    record["parameters"]["dump_errors"] = dump_errors
-    record["parameters"]["parameter_events_recorded"] = parameter_events_recorded
-    write_json_atomic(record_path, record)
+            record["runtime"]["captured_at"] = captured_at
+            record["parameters"]["nodes_dumped"] = dumped
+            record["parameters"]["dump_errors"] = dump_errors
+            record["parameters"]["parameter_events_recorded"] = parameter_events_recorded
+            write_json_atomic(record_path, record)
 
-    if args.duration is None:
-        print(f"{PROG}: recording — press Ctrl-C to stop.")
-        stop.wait()
-    else:
-        stop.wait(args.duration)
+            if args.duration is None:
+                print(f"{PROG}: recording — press Ctrl-C to stop.")
+                stop.wait()
+            else:
+                stop.wait(args.duration)
+        finally:
+            # Stop the bag BEFORE the closing write: if the write is itself what fails,
+            # the exception still propagates, but never over a still-running recorder.
+            bag_exit = stop_bag(bag)
+            ended = _now()
+            record["ended_at"] = _stamp(ended)
+            record["duration_s"] = round((ended - started).total_seconds(), 1)
+            record["data"]["bag_exit_code"] = bag_exit
+            write_json_atomic(record_path, record)
 
-    bag_exit = stop_bag(bag)
-    ended = _now()
-    record["ended_at"] = _stamp(ended)
-    record["duration_s"] = round((ended - started).total_seconds(), 1)
-    record["data"]["bag_exit_code"] = bag_exit
-    write_json_atomic(record_path, record)
-    print(f"{PROG}: run {run_id} closed ({record['duration_s']}s) → {record_path}")
-    return EXIT_OK
+        print(f"{PROG}: run {run_id} closed ({record['duration_s']}s) → {record_path}")
+        return EXIT_OK
+    finally:
+        _restore_stop_handlers(saved_handlers)
 
 
 if __name__ == "__main__":

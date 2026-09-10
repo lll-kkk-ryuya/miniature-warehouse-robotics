@@ -16,9 +16,19 @@ Source of truth: docs/jetson/03-build-deploy-run-and-run-records.md
 (schema ``mwr-build-info.v0``, the profile policy and the exit codes below).
 
 Outputs (always relative to the workspace given by --ws):
-  log/build-info/<build_id>.json   every run, even a failed one (history)
+  log/build-info/<build_id>.json   every run, even a failed or forced one (history)
   log/build-info/<build_id>.diff   when the work tree is dirty (``git diff HEAD``)
   install/.mwr-build-info.json     only when colcon exited 0 (the current build)
+
+``colcon.forced`` is true exactly when the guard below fired AND --force overrode it.
+A forced build is still recorded in BOTH files: the install space really did change, so
+suppressing the record would make the pointer describe a build that no longer exists —
+the warning belongs in the record, not only on stderr.
+
+``--dry-run`` writes nothing and probes nothing: ``colcon.exit_code``, ``duration_s`` and
+``log_dir`` are null (no build ran, so there is no code, no clock and no log to name),
+``colcon.packages`` counts ``src/*/package.xml``, ``deps.rosdep_check`` is "skipped" and
+``colcon.forced`` is false. Only the git provenance is real.
 
 Exit codes:
   0  build ok
@@ -391,6 +401,7 @@ def main(argv: list[str] | None = None) -> int:
     ws = ws.resolve()
 
     # (a) safety guard — skipped entirely on --dry-run (which must not probe the system).
+    forced = False
     if not args.dry_run:
         reason = stack_is_running()
         if reason is not None:
@@ -400,6 +411,7 @@ def main(argv: list[str] | None = None) -> int:
                     "Stop the run first, or re-run with --force."
                 )
                 return EXIT_GUARD
+            forced = True
             _warn(f"WARNING: building while the stack looks live ({reason}) — --force given.")
 
     # (b) git facts + profile policy.
@@ -451,9 +463,12 @@ def main(argv: list[str] | None = None) -> int:
         colcon = {
             "args": colcon_args,
             "packages": count_package_xml(ws),
+            # No build ran: there is no exit code, no elapsed time and no log directory
+            # to point at. Zeroes here would read as "built instantly, cleanly".
             "exit_code": None,
-            "log_dir": resolve_log_dir(ws),
-            "duration_s": 0.0,
+            "log_dir": None,
+            "duration_s": None,
+            "forced": False,
         }
         payload = build_payload(
             build_id=build_id,
@@ -490,6 +505,7 @@ def main(argv: list[str] | None = None) -> int:
             "exit_code": exit_code,
             "log_dir": resolve_log_dir(ws),
             "duration_s": duration_s,
+            "forced": forced,
         },
     )
 
