@@ -150,7 +150,7 @@ prod の tag 必須は「prod デプロイは git タグ」（[architecture/19:1
 
 ### 安全ガード（build ≠ deploy ≠ run の強制）
 
-- **走行中は拒否**（exit 3）: `systemctl is-active warehouse.target` が active、または `pgrep -f warehouse_m1_driver` /
+- **走行中は拒否**（exit 3）: `systemctl is-active warehouse.target` が **`inactive` / `failed` / `unknown` 以外の何かを返したとき**（＝**deny リスト**。`active` はもちろん `activating` / `deactivating` / `reloading`、さらに**この実装が知らない状態語**〔新しい systemd の `maintenance` / `refreshing` 等〕も「走行中」とみなす＝**未知の語で素通しさせない**。`is-active` は `active` のときだけ exit 0 なので、判定は**表示された状態語**で行い戻り値では行わない。target が unit を引き上げ始めた瞬間・車輪を降ろし切っていない瞬間が、install space を差し替える最悪のタイミング）、または `pgrep -f warehouse_m1_driver` /
   `pgrep -f "ros2 launch warehouse_bringup"` が hit したとき。**`--force` はガードを外すだけ**で記録は通常どおり残り、
   **`colcon.forced=true`** で区別される（stderr 警告つき）＝走行中に書き換えた事実を消さない。forced build を使ったら**報告で明示する**。
   `systemctl` / `pgrep` が無い環境（Mac）は「不明」として続行。
@@ -253,7 +253,7 @@ notes.md                 ← --notes "<text>" 指定時のみ
   "firmware": { "version": null, "car_type": null, "source": null, "binary_sha256": null },
   "launch": { "entrypoint": null, "args": [] },
   "runtime": { "nodes": "runtime/nodes.txt", "topics": "runtime/topics.txt", "captured_at": null, "capture_delay_s": 5.0 },
-  "parameters": { "snapshot_dir": "parameters/", "nodes_dumped": [], "dump_errors": {}, "parameter_events_recorded": true },
+  "parameters": { "snapshot_dir": "parameters/", "nodes_dumped": [], "dump_errors": {}, "redacted": {}, "parameter_events_recorded": true },
   "calibration": { "index": "calibration/hashes.json", "count": 0 },
   "safety": { "max_linear_velocity_mps": 0.3, "source": "warehouse_interfaces.safety.MAX_LINEAR_VELOCITY", "car_type": null },
   "data": { "storage": "sqlite3", "bag": "rosbag2/", "record_mode": "all", "topics": null, "bag_exit_code": null }
@@ -271,6 +271,16 @@ notes.md                 ← --notes "<text>" 指定時のみ
 - `runtime` — bag 開始から `capture_delay_s`（既定 `5.0`・`--capture-delay`）後に `ros2 node list` / `ros2 topic list -t` を取り、`captured_at` を書く。値は **float**＝短い走行を潰さないよう `--capture-delay 0.5` のような秒未満も渡せる。
 - `parameters` — 取得した node ごとに `ros2 param dump <node>` を保存。失敗は `dump_errors[node] = "<stderr 先頭 200 字>"`。
   `parameter_events_recorded` は `record_mode == "all"` なら true、`topics` 指定時は `/parameter_events` が含まれていれば true。
+- **秘匿値の除去（redaction・書き出す前に必ず通す）** — `ros2 param dump` は node が宣言した値をそのまま吐き、走行記録は**持ち出される**（bag をボードから複製して共有する）。そこで **パラメータ名が資格情報に読めるもの**は値を `<redacted>` に置換してから保存する。
+  - **行を書き換えるのではなく、dump を parse して木を歩き、書き戻す**（PyYAML）。行フィルタは平坦なケースだけ正しく見え、**YAML が実際に使う形で漏らす**——block sequence は要素を**キーと同じ桁**に出し（`api_keys:` の次行が `- sk-live-…`）、複数行文字列はキーの**下の行**に続くため、キー行だけ書き換える走査では値が残る。しかも `redacted` には「隠した」と載る＝**何もしないより悪い偽の安心**になる。木を歩けば構造上取りこぼせない。
+  - **判定は名前だけ・値は見ない**。値側のヒューリスティクスは取りこぼす（`hunter2`）うえ、正当な設定値を壊す。
+  - **語（token）一致**: `_` `.` `-` で区切った**語**が `key` / `keys` / `password` / `passwd` / `secret` / `secrets` / `token` / `tokens` / `credential` / `credentials` / `auth` のいずれかなら一致。ゆえに `api_key` は落ち、**`keyframe_threshold` / `oauth_url` / `turnkey_mode` は残る**。
+  - **連結綴りの部分一致**は `password` / `passwd` / `secret` / `token` / `credential` / `apikey` **のみ**（`mytoken` を拾う）。**`key` と `auth` は語一致だけ**——部分一致にすると `keyframe_threshold` や `oauth_url` まで消え、設定を失った記録は秘密だらけの記録と同じくらい使えない。
+  - **名前は残し、値だけ落とす**。「隠した」ことが見えないと、宣言されていないパラメータと区別が付かない。落とした位置は **dump のルートからのドット表記**（`/hermes_bridge.ros__parameters.hermes.token`・list は `accounts[0].token`）で `parameters.redacted[node] = ["<path>", …]` に記録する（**名前・パス自体は秘密ではない**／同名キーが別 subtree にあっても区別できる）。
+  - **値が list でも入れ子 map でも、その value ごと落ちる**（`credentials:` が map を開いていれば配下すべて、`api_keys:` が list なら要素すべて）。
+  - **fail-closed**: parse できない dump・**PyYAML が無い環境**では例外になり、その node の**ファイルを書かない**。`dump_errors[node] = "redaction failed: …"` を残して次へ進む（`ros2 param dump` 自体の失敗と同じ扱い＝**走行は止めない**）。**限界も明示する**——閉じられるのは「壊れた入力／読めない入力」であって、「parse に成功したが名前規則が拾えなかった」場合は落ちない。名前規則は上記の語彙が全てで、それ以外の綴りの秘匿 param は**規則を足すまで残る**。
+  - 書き戻しで**整形は正規化される**（引用符・折り返し・空行）。`ros2 param dump` はコメントを持たないため失われる情報は無い。
+  - **現状 `ws/src/**` に資格情報を ROS param として宣言している node は 0 件**（2026-09-10 実測）。この pass は**将来の混入に対する予防**であり、今日の記録内容は変わらない。鍵の正本は `config/<env>/.env` と `~/.hermes/.env`（[.claude/rules/environments.md](../../.claude/rules/environments.md) §Secrets）で、ROS param には載せない。
 - `safety.max_linear_velocity_mps` — 凍結契約 `warehouse_interfaces.safety.MAX_LINEAR_VELOCITY`
   （`ws/src/warehouse_interfaces/warehouse_interfaces/safety.py:18` ＝ `0.3`）を **import して書く**（値を写経しない）。
   import 失敗時は `null` と `source="unavailable"`。`car_type` は `firmware.car_type` の写し。
@@ -385,6 +395,7 @@ sudo systemctl restart warehouse.target            # ← 切替は build.sh の�
 | `deployment` の実体化 | **未決**（build = deploy である限り `null`。別マシン build を始める時に設計する） |
 | 新語彙（`driver lease` / `operation_manager` 等） | **導入しない**（[GLOSSARY.md](../GLOSSARY.md) に無い語を発明しない） |
 | `deps.pip_exceptions` の一般化 | **未決**。v0 は固定 1 件。pip 導入物が増えたら §2 の表と併せて更新する |
+| param redaction で schema を上げるか | **上げない（裁定済・2026-09-10）**。`parameters.redacted` は**追加のみ**で既存フィールドを変えず、`mwr-run-record.v0` を厳密検証する consumer は存在しない（`run_manifest.v1` と違い unknown key を fail-closed で弾く読み手が無い＝§「run-record は `run_manifest.v1` ではない」）。既存フィールドの削除・改名・型変更を伴う変更が来たときに v1 へ上げる |
 
 ---
 
