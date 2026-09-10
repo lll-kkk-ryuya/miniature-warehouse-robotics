@@ -49,9 +49,10 @@ The **odom-sourced** Tier-1 entries of doc21:310 followed in a second slice and 
 scaffold. With nothing supplied every audit-sourced number is bit-identical and ``format_report``
 renders exactly as before; ``to_dict()`` gains three keys holding empty containers (additive —
 no existing key changes value or disappears).
-``idle 率`` and ``速度予算消化率`` remain unimplemented: doc21:310 names them and no doc defines
-them (CLAUDE.md voids 15). ``decision latency`` is doc08:497 (Langfuse-derived), delegated to
-#434.
+``idle 率`` and ``速度予算消化率`` are now defined by doc21 §17 ①② and composed in ``motion`` as
+``SmoothnessStats.{idle_ratio,speed_budget_utilisation}``; this module only threads the injected
+``MotionInputs.speed_cap`` through (CLAUDE.md voids 15). ``decision latency`` is doc08:497
+(Langfuse-derived), delegated to #434.
 """
 
 import argparse
@@ -378,7 +379,8 @@ def compute_kpis(
     leaves :attr:`KpiReport.completion` as ``None``.
 
     ``motion`` carries the odom-sourced Tier-1 inputs (doc21:310) the ``kpi_collector`` node
-    accumulates from ``/bot{n}/odom``; ``None`` (the offline-CLI default) leaves
+    accumulates from ``/bot{n}/odom``, plus the ``speed_cap`` it resolved from config for
+    doc21 §17 ②; ``None`` (the offline-CLI default) leaves
     :attr:`KpiReport.distance_traveled`, :attr:`~KpiReport.detour_factors` and
     :attr:`~KpiReport.smoothness` empty — every audit-sourced number is then bit-identical to the
     previous slice (``to_dict()`` still gains the three keys, holding empty containers).
@@ -430,8 +432,13 @@ def compute_kpis(
     if motion is not None:
         distances = dict(motion.distances)
         detours = detour_factors(motion.distances, motion.optimal_distances)
+        # ``speed_cap`` = v_max for doc21 §17 ②, resolved once by the node from config
+        # ``safety.max_linear_velocity``; ``None`` (offline CLI) simply leaves the utilisation
+        # unreported rather than substituting a literal cap here.
         smoothness = {
-            robot: smoothness_stats(samples) for robot, samples in motion.samples.items() if samples
+            robot: smoothness_stats(samples, speed_cap=motion.speed_cap)
+            for robot, samples in motion.samples.items()
+            if samples
         }
 
     # ``rate`` is the eval_sdk zero-denominator guard (doc21:184); behaviour is unchanged from
