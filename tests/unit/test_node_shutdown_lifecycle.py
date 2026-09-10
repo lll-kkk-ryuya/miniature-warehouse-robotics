@@ -66,10 +66,7 @@ KNOWN_UNSAFE_STOP_ON_HUMBLE: frozenset[str] = frozenset(
         "warehouse_llm_bridge/warehouse_llm_bridge/x_er_bridge.py",
         "warehouse_nav2_bridge/warehouse_nav2_bridge/nav2_bridge.py",
         "warehouse_orchestrator/warehouse_orchestrator/kpi_collector.py",
-        "warehouse_perception/warehouse_perception/speed_band_node.py",
         "warehouse_sim/warehouse_sim/battery_publisher.py",
-        "warehouse_traffic/warehouse_traffic/traffic_manager.py",
-        "warehouse_traffic/warehouse_traffic/virtual_scan.py",
         "warehouse_web_bridge/warehouse_web_bridge/web_bridge_node.py",
     }
 )

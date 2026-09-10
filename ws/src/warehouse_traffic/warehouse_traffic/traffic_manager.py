@@ -16,7 +16,6 @@ The Node holds/releases the waiting bot's goal; physical stop is via twist_mux p
 same yield decision (11a:362-365).
 """
 
-import contextlib
 import math
 import time
 
@@ -25,6 +24,7 @@ from action_msgs.msg import GoalStatus
 from geometry_msgs.msg import PoseStamped
 from nav2_msgs.action import NavigateToPose
 from rclpy.action import ActionClient
+from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 
 from warehouse_traffic.traffic_logic import (
@@ -196,11 +196,19 @@ def main() -> None:
     rclpy.init()
     node = TrafficManagerNode()
     try:
-        with contextlib.suppress(KeyboardInterrupt):
-            rclpy.spin(node)
+        rclpy.spin(node)
+    except (KeyboardInterrupt, ExternalShutdownException):
+        # SIGINT -> KeyboardInterrupt; SIGTERM -> ExternalShutdownException (Humble tears the
+        # context down before this finally runs). Both are a normal stop, not a failure: this is a
+        # hand-started diagnostic wrapper (and the #125 yield demo driver), so exiting 1 on Ctrl-C
+        # makes every routine demo run look broken and hides a real crash in the same traceback.
+        # Nothing is released on the way out and nothing needs to be: the aisle locks live in this
+        # process only, and a held bot is stopped by producing no nav2 cmd_vel (twist_mux), never
+        # by a message published here.
+        pass
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        rclpy.try_shutdown()
 
 
 if __name__ == "__main__":

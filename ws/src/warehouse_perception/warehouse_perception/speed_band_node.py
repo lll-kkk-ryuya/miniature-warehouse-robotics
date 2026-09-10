@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import rclpy
 from nav2_msgs.msg import SpeedLimit
+from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from std_msgs.msg import String
 
@@ -109,9 +110,19 @@ def main() -> None:
     node = SpeedBandPublisher()
     try:
         rclpy.spin(node)
+    except (KeyboardInterrupt, ExternalShutdownException):
+        # SIGINT -> KeyboardInterrupt; SIGTERM -> ExternalShutdownException (Humble tears the
+        # context down before this finally runs). Both are a normal stop, not a failure: the node
+        # is launched per bot by nav2_bringup.launch.py under warehouse-nav2.service
+        # (Type=simple), so a non-zero exit on a routine stop is journalled as status=1/FAILURE
+        # (and off the stop path Restart=on-failure would restart the unit for nothing).
+        # No final SpeedLimit is sent on the way out and none is needed: the band is best-effort
+        # (ADR-0012 Decision 1), MPPI drops the applied limit by itself after reset_period of
+        # inactivity (Decision 5), and the real floor is L0' = the frozen contract (Decision 9).
+        pass
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        rclpy.try_shutdown()
 
 
 if __name__ == "__main__":
