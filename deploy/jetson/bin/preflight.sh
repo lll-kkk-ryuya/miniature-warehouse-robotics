@@ -294,12 +294,22 @@ print("%s profile=%s dirty=%s" % (d.get("build_id"), d.get("profile"), d.get("so
       warn "no build-info; build with deploy/jetson/bin/build.sh"
     fi
 
-    # Declared dependencies only, read-only: report, never install.
+    # Declared dependencies only, read-only: report, never install. rosdep needs
+    # ROS_DISTRO to resolve any ros-* key; without it every ROS key prints "Cannot
+    # locate rosdep definition" and only the non-ROS keys would be reported, which
+    # reads like an almost-clean workspace (seen on the board 2026-09-10).
     if have rosdep && [[ -d "${ws}/src" ]]; then
-      local rosdep_out rosdep_rc=0
-      rosdep_out="$(rosdep check --from-paths "${ws}/src" --ignore-src 2>&1)" || rosdep_rc=$?
-      if [[ "${rosdep_rc}" -eq 0 ]]; then
-        pass "rosdep: all declared deps satisfied"
+      local rosdep_out rosdep_rc=0 rosdep_distro
+      rosdep_distro="${ros_distro:-${ROS_DISTRO:-}}"
+      if [[ -n "${rosdep_distro}" ]]; then
+        rosdep_out="$(ROS_DISTRO="${rosdep_distro}" rosdep check --from-paths "${ws}/src" --ignore-src 2>&1)" || rosdep_rc=$?
+      else
+        rosdep_out="$(rosdep check --from-paths "${ws}/src" --ignore-src 2>&1)" || rosdep_rc=$?
+      fi
+      if printf '%s\n' "${rosdep_out}" | grep -q "Cannot locate rosdep definition"; then
+        warn "rosdep: could not resolve keys (ROS_DISTRO=${rosdep_distro:-unset}); no dependency verdict"
+      elif [[ "${rosdep_rc}" -eq 0 ]]; then
+        pass "rosdep: all declared deps satisfied (ROS_DISTRO=${rosdep_distro:-unset})"
       else
         local rosdep_pkgs
         rosdep_pkgs="$(printf '%s\n' "${rosdep_out}" \

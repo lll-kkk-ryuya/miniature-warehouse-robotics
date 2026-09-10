@@ -73,6 +73,9 @@ GUARD_PGREP_PATTERNS = ("warehouse_m1_driver", "ros2 launch warehouse_bringup")
 
 ROSDEP_MARKER = "System dependencies have not been satisfied:"
 _ROSDEP_APT_RE = re.compile(r"^apt\t(\S+)")
+# rosdep cannot resolve a single ros-* key without ROS_DISTRO; it then prints this per
+# key and only non-ROS keys survive, which would read as a nearly clean workspace.
+ROSDEP_UNRESOLVED = "Cannot locate rosdep definition"
 _L4T_RE = re.compile(r"#\s*R(\d+)\s*\(release\).*REVISION:\s*([0-9.]+)")
 
 EXIT_OK = 0
@@ -87,12 +90,15 @@ PROG = "mwr_build"
 # ── small process helpers ─────────────────────────────────────────────────────
 
 
-def _run(cmd: list[str], cwd: Path | None = None) -> subprocess.CompletedProcess[str] | None:
+def _run(
+    cmd: list[str], cwd: Path | None = None, env: dict[str, str] | None = None
+) -> subprocess.CompletedProcess[str] | None:
     """Run *cmd* capturing text output. Returns None when the binary is absent."""
     try:
         return subprocess.run(
             cmd,
             cwd=None if cwd is None else str(cwd),
+            env=env,
             capture_output=True,
             text=True,
             check=False,
@@ -237,17 +243,30 @@ def parse_unsatisfied(text: str) -> list[str]:
 
 
 def run_rosdep(ws: Path, rosdep_cmd: str, skip: bool) -> tuple[str, list[str]]:
-    """Return (status, unsatisfied). Read-only: this never installs anything."""
+    """Return (status, unsatisfied). Read-only: this never installs anything.
+
+    Statuses: ``ok`` / ``unsatisfied`` / ``skipped`` (no rosdep, no src, --skip-rosdep) /
+    ``error`` (rosdep ran but could not resolve keys — almost always a missing
+    ROS_DISTRO, so the env gets one from the underlay when the caller did not export it).
+    """
     src = ws / "src"
     if skip or not src.is_dir():
         return "skipped", []
+    env = dict(os.environ)
+    if not env.get("ROS_DISTRO"):
+        distro = detect_ros_distro()
+        if distro:
+            env["ROS_DISTRO"] = distro
     cmd = [*rosdep_cmd.split(), "--from-paths", str(src), "--ignore-src"]
-    proc = _run(cmd, cwd=ws)
+    proc = _run(cmd, cwd=ws, env=env)
     if proc is None:
         return "skipped", []
+    text = proc.stdout + proc.stderr
+    if ROSDEP_UNRESOLVED in text:
+        return "error", []
     if proc.returncode == 0:
         return "ok", []
-    return "unsatisfied", parse_unsatisfied(proc.stdout + proc.stderr)
+    return "unsatisfied", parse_unsatisfied(text)
 
 
 # ── (d) colcon ────────────────────────────────────────────────────────────────

@@ -432,3 +432,43 @@ def test_l4t_is_null_off_tegra(tmp_path: Path) -> None:
     other = tmp_path / "other"
     other.write_text("not a tegra release file\n", encoding="utf-8")
     assert mb.detect_l4t(other) is None
+
+
+# ── rosdep needs ROS_DISTRO ───────────────────────────────────────────────────
+
+
+def _fake_rosdep(tmp_path: Path) -> str:
+    """A rosdep stand-in: resolves keys only when ROS_DISTRO is set, like the real one."""
+    fake = tmp_path / "fake_rosdep.py"
+    fake.write_text(
+        "import os, sys\n"
+        "if not os.environ.get('ROS_DISTRO'):\n"
+        "    print('ERROR[warehouse_traffic]: Cannot locate rosdep definition for [action_msgs]')\n"
+        "    sys.exit(1)\n"
+        "print('System dependencies have not been satisfied:')\n"
+        "print('apt\\tros-humble-twist-mux')\n"
+        "sys.exit(1)\n",
+        encoding="utf-8",
+    )
+    return f"{sys.executable} {fake}"
+
+
+def test_run_rosdep_supplies_ros_distro_from_the_underlay_when_not_exported(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "src").mkdir()
+    monkeypatch.delenv("ROS_DISTRO", raising=False)
+    monkeypatch.setattr(mb, "detect_ros_distro", lambda: "humble")
+    assert mb.run_rosdep(tmp_path, _fake_rosdep(tmp_path), skip=False) == (
+        "unsatisfied",
+        ["ros-humble-twist-mux"],
+    )
+
+
+def test_run_rosdep_reports_error_not_a_verdict_when_keys_cannot_resolve(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "src").mkdir()
+    monkeypatch.delenv("ROS_DISTRO", raising=False)
+    monkeypatch.setattr(mb, "detect_ros_distro", lambda: None)
+    assert mb.run_rosdep(tmp_path, _fake_rosdep(tmp_path), skip=False) == ("error", [])
