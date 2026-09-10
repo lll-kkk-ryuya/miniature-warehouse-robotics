@@ -61,7 +61,7 @@ cd /opt/warehouse
 
 ```bash
 source /opt/ros/humble/setup.bash
-cd /opt/warehouse/ws && colcon build && cd /opt/warehouse
+cd /opt/warehouse/ws && colcon build && cd /opt/warehouse   # 記録付きの同等手順 = deploy/jetson/bin/build.sh --profile prod（../jetson/03-build-deploy-run-and-run-records.md §1）
 ```
 
 ## 4. Secrets（コミット厳禁）
@@ -138,7 +138,7 @@ systemctl status warehouse.target
 
 ```bash
 cd /opt/warehouse && sudo git fetch --tags && sudo git checkout v0.y
-source /opt/ros/humble/setup.bash && (cd ws && colcon build)
+source /opt/ros/humble/setup.bash && (cd ws && colcon build)   # 記録付き = deploy/jetson/bin/build.sh --profile prod（../jetson/03-build-deploy-run-and-run-records.md §1）
 sudo /opt/warehouse/deploy/jetson/bin/install.sh   # unit 差分反映
 sudo systemctl restart warehouse.target
 ```
