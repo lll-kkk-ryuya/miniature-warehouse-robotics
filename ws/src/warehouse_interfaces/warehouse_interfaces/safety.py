@@ -5,11 +5,11 @@ doc15) and the Emergency Guardian (``warehouse_safety``, 50ms reflex, doc12), so
 the speed cap / battery thresholds never diverge across lanes. Encodes
 ``.claude/rules/safety.md``. Pure stdlib — unit-testable without ROS.
 
-⚠️ These are the canonical HARD CAPS, not tunables: import them directly and do
-NOT hardcode 0.3 / 20 / 10 elsewhere. The config value ``safety.max_linear_velocity``
-is an environment tunable that ``warehouse_interfaces.config.load_config`` validates
-to be ≤ ``MAX_LINEAR_VELOCITY`` — config may lower the operational speed, never
-raise it above this code-enforced ceiling.
+⚠️ 0.3 / 20 / 10 are the canonical HARD CAPS, not tunables: import them directly and do NOT
+hardcode them elsewhere. ``IDLE_SPEED_EPS`` (module end) shares the import-never-retype rule
+but is NOT a cap — it is an observation/status threshold; no actuation path may clamp to it.
+The config value ``safety.max_linear_velocity`` is an environment tunable that ``load_config``
+validates to be ≤ ``MAX_LINEAR_VELOCITY`` — config may lower the operational speed, never raise.
 """
 
 import math
@@ -104,3 +104,20 @@ def validate_battery_scale(scale: str) -> str:
             f"expected one of {BATTERY_PERCENTAGE_SCALES}"
         )
     return scale
+
+
+# ── Idle / stopped threshold (#642 / doc12 【2026-09-10 追補】 / doc21 §17 ①) ─────────────────
+# The speed at or below which a robot counts as STOPPED, for STATUS DERIVATION and observation
+# KPIs: ``|linear| <= IDLE_SPEED_EPS`` is "idle", above it is "moving" (strict ``>``, so the
+# boundary value itself is idle). Single source for its two consumers — the State Cache
+# (``warehouse_state.aggregator.derive_status``, doc12) and the orchestrator's idle ratio
+# (``warehouse_orchestrator.motion``, doc21 §17 ①, window and whole-run scope alike) — so the two
+# lanes can never disagree about what "stopped" means: import it, never re-type 0.01 (the same
+# rule MAX_LINEAR_VELOCITY states above).
+#
+# NOT an actuation cap: ``clamp_velocity`` does not consult it, and neither does any speed
+# enforcement in L0 (firmware) / L0' (m1_driver) / L1 (Emergency Guardian) / L2 (Policy Gate).
+# The hard speed ceiling is MAX_LINEAR_VELOCITY alone. Appended at the end of the module rather
+# than beside that cap because docs pin this file by line below it (clamp_velocity ``:25-33``,
+# ``battery_is_critical`` ``:41-43``) and a mid-file insert would drift every one of them (#165).
+IDLE_SPEED_EPS: float = 0.01  # m/s

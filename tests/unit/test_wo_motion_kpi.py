@@ -59,8 +59,9 @@ degrading to ``None`` instead of ``0.0`` or a raise.
 
 No ROS, no live SDK: ``motion`` is rclpy-free (doc16 §11) and numpy is only needed by SPARC,
 whose tests skip when the optional ``eval_sdk[stats]`` extra is absent. One test imports
-``warehouse_state`` (cross-lane) **on purpose** — pinning the borrowed ε against its owner is
-exactly what keeps production code from importing it.
+``warehouse_state`` (cross-lane) **on purpose** — since #642 both lanes import ε from the frozen
+contract, and asserting that they hold the *same object* is what keeps either of them from
+quietly re-typing the literal while production code still imports only ``warehouse_interfaces``.
 """
 
 import ast
@@ -71,7 +72,7 @@ from pathlib import Path
 
 import pytest
 from eval_sdk.stats import SeriesTotals, ldlj, n_movement_units, sparc
-from warehouse_interfaces.safety import MAX_LINEAR_VELOCITY
+from warehouse_interfaces.safety import IDLE_SPEED_EPS, MAX_LINEAR_VELOCITY
 from warehouse_orchestrator import motion as motion_module
 from warehouse_orchestrator.audit_reader import parse_lines
 from warehouse_orchestrator.kpi import compute_kpis, format_report
@@ -790,29 +791,36 @@ def test_utilisation_is_none_for_a_window_too_short_to_span_time() -> None:
 
 
 @pytest.mark.unit
-def test_idle_epsilon_matches_the_state_cache_constant_it_borrows() -> None:
-    """doc21 §17 ① fixes ε at the value ``warehouse_state.aggregator`` already calls "idle", so
-    the KPI and the State Cache cannot disagree about what "stopped" means.
+def test_idle_epsilon_is_the_one_frozen_contract_constant() -> None:
+    """#642: ε is frozen as ``warehouse_interfaces.safety.IDLE_SPEED_EPS`` and BOTH consumers
+    import it, so the KPI and the State Cache cannot disagree about what "stopped" means.
 
-    ``warehouse_state`` is another track: production code must NOT import it
+    Before #642 the two lanes held mirrored ``0.01`` literals and this test could only assert
+    they were *equal* — which pinned the value but left "which one is canonical" undecided
+    (doc21 §17 follow-up (1)). The assertion is now IDENTITY: a lane that re-types the literal
+    instead of importing the contract fails here even though its value is still 0.01.
+
+    ``warehouse_state`` is another track and production code must NOT import it
     (``.claude/rules/parallel-workflow.md`` §2.1 — this lane depends only on
-    ``warehouse_interfaces``), so the two literals are pinned equal HERE instead, the
-    ``"bridge"``/``"hermes_plugin"`` cross-check precedent (CLAUDE.md line 34). If that lane
-    retunes its epsilon, this goes red and the divergence is a decision rather than a surprise.
-    doc21 §17 records the residual: ε is that lane's private constant, frozen nowhere.
+    ``warehouse_interfaces``); a *test* may cross lanes to check exactly that.
 
     Imported plainly, NOT via ``importorskip``: a pin that skips itself when the owner is
     unimportable is not a pin. ``tests/unit/test_state_cache.py`` already imports this module
     unguarded, so CI requires it importable and an import failure here is a red test.
     """
+    from warehouse_interfaces import safety
     from warehouse_state import aggregator
 
-    assert motion_module.IDLE_SPEED_EPS == aggregator._MOVING_EPS
-    # …and the borrowed semantics really are "≤ ε is idle" (derive_status says "moving" iff
+    assert motion_module.IDLE_SPEED_EPS is safety.IDLE_SPEED_EPS
+    assert aggregator.IDLE_SPEED_EPS is safety.IDLE_SPEED_EPS
+    # …and the frozen semantics really are "≤ ε is idle" (derive_status says "moving" iff
     # |linear| > ε), checked at the boundary rather than assumed.
-    assert aggregator.derive_status(motion_module.IDLE_SPEED_EPS) == "idle"
-    assert aggregator.derive_status(-motion_module.IDLE_SPEED_EPS) == "idle"
-    assert aggregator.derive_status(motion_module.IDLE_SPEED_EPS * 1.1) == "moving"
+    assert aggregator.derive_status(safety.IDLE_SPEED_EPS) == "idle"
+    assert aggregator.derive_status(-safety.IDLE_SPEED_EPS) == "idle"
+    assert aggregator.derive_status(safety.IDLE_SPEED_EPS * 1.1) == "moving"
+    # Reverse travel is the only case that exercises the ``abs()`` on the moving side: drop it
+    # and a bare ``linear > ε`` reports a robot backing up at full speed as "idle".
+    assert aggregator.derive_status(-safety.IDLE_SPEED_EPS * 1.1) == "moving"
 
 
 # ── composition into KpiReport (additive: audit-only callers are unaffected) ──
@@ -1081,8 +1089,8 @@ def test_resolve_speed_cap_falls_back_with_a_warning(value: object) -> None:
 
 @pytest.mark.unit
 def test_the_hard_cap_is_imported_never_retyped_in_this_lane() -> None:
-    """``warehouse_interfaces.safety`` is explicit: "import them directly and do NOT hardcode
-    0.3 / 20 / 10 elsewhere" (safety.py:8-12). Scan the package's own source for a literal
+    """``warehouse_interfaces.safety`` is explicit: "0.3 / 20 / 10 are the canonical HARD CAPS …
+    import them directly and do NOT hardcode them elsewhere" (safety.py:8-12). Scan for a literal
     ``0.3`` — parsed, so a ``0.3`` inside a docstring or comment (which is *documentation* of
     the imported constant) does not trip it, while a re-typed default would. ``rglob`` rather
     than ``glob``: a cap re-typed one directory down is exactly as wrong, and a scan that cannot
@@ -1101,6 +1109,54 @@ def test_the_hard_cap_is_imported_never_retyped_in_this_lane() -> None:
         f"re-typed hard cap 0.3 at {offenders}: import MAX_LINEAR_VELOCITY (safety.py:8-12). "
         "If this is an unrelated 0.3 (a timeout, a ratio), name it a module constant so this "
         "scan stays a cap check."
+    )
+
+
+@pytest.mark.unit
+def test_the_idle_epsilon_is_imported_never_retyped_in_this_lane() -> None:
+    """The ε twin of the scan above (#642). The identity assertions catch a lane that rebinds
+    the *module* name, but not one that writes ``0.01`` inside a function — a local shadow keeps
+    ``motion.IDLE_SPEED_EPS`` pointing at the contract while the arithmetic quietly uses its own
+    copy, and every value assertion still passes because the numbers agree *today*. Parsing the
+    source catches the spellings that re-type ε at the use site: a bare literal, a folded
+    literal-only expression (``10 / 1000``) and ``float("0.01")`` — including the one that
+    matters most here, ε passed straight into ``fraction_at_or_below`` at the call site. It
+    does NOT catch a value computed from a name (``eps_mm / 1000``) — that still needs a
+    reader. Same shape as the state-cache scan, so a re-typed threshold fails in either lane.
+    """
+
+    def _statically_is_eps(node: ast.AST) -> bool:
+        """True if this expression *is* ε spelled out instead of imported.
+
+        Folds literal-only expressions, so ``10 / 1000`` (a ``BinOp``) and ``float("0.01")``
+        (whose ``Constant`` is a ``str``) fail the same way a bare ``0.01`` does — both re-type
+        ε at the use site while ``module.IDLE_SPEED_EPS`` still points at the contract, so the
+        identity asserts and every value assertion stay green. Anything containing a name fails
+        to evaluate and is skipped, which is what keeps the legitimate re-export shape
+        ``IDLE_SPEED_EPS = safety.IDLE_SPEED_EPS`` from tripping this.
+        """
+        if not isinstance(node, ast.expr) or isinstance(node, ast.Name):
+            return False
+        try:
+            value = eval(ast.unparse(node), {"__builtins__": {}}, {"float": float})  # noqa: S307
+        except Exception:
+            return False
+        return isinstance(value, float) and value == IDLE_SPEED_EPS
+
+    package = Path(motion_module.__file__).parent
+    offenders = [
+        f"{path.name}:{node.lineno}"
+        for path in sorted(package.rglob("*.py"))
+        if "__pycache__" not in path.parts
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
+        if _statically_is_eps(node)
+    ]
+    assert offenders == [], (
+        f"re-typed idle threshold 0.01 at {offenders}: import IDLE_SPEED_EPS "
+        "(safety.py / doc12 【2026-09-10 追補】). NOTE this fires on ANY 0.01 in the package, "
+        "including an unrelated tolerance or timer period — moving it into a named module "
+        "constant does NOT silence the scan; if it genuinely is not ε, exclude that "
+        "(file, lineno) here explicitly with a comment saying why."
     )
 
 
