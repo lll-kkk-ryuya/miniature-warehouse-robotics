@@ -96,7 +96,7 @@ Decision 3（:24）の「現状未結線」と References（:74）の同旨は**
 - **含意（0.7 m/s 候補は揺るがない）**: 公式 STM32 source V3.6.5 `Source/APP/app_mecanum.h` において `CAR_MECANUM_MAX`(0x02) と `CAR_MECANUM_M1`(0x0A) の差は **APB（旋回幾何 (幅+長)/2）214.1mm vs 189.5mm だけ**で、`MECANUM_MAX_CIRCLE_MM == MECANUM_M1_CIRCLE_MM == 251.327` と `CAR_X3_PLUS_MAX_SPEED == CAR_M1_MAX_SPEED == 700` は**同値**。したがって **直進速度と 700mm/s clamp は車種によらず同一**＝Decision 1（:22）の契約 pin 候補 **0.7 m/s は 0x02 のままでも影響を受けない**。違いが出るのは yaw だけで、0x02 では指令 yaw rate に対し車輪が 214.1/189.5 ≈ **1.13 倍速く**回り、報告値 / odometry の yaw rate は同率で**過小読み**になる。
 - **`FUNC_MOTION` のペイロード car_type バイトでは上書きできない**: 同 V3.6.5 `Source/APP/protocol.c` の `FUNC_MOTION` ハンドラはこのバイトを **`& 0x80` の yaw-adjust フラグにしか使わない**。逆運動学と clamp は **flash 由来の `g_car_type`** が支配する＝フレーム側で車種を差し替える逃げ道は無い。
 - **処置（2026-09-10 12:55 頃）**: `Rosmaster_Lib.set_car_type(10)`（`FUNC_SET_CAR_TYPE=0x15` + `SAVE_VERIFY=0x5F` → firmware 側は `Motion_Set_Car_Type` + `Flash_Set_CarType` + 50ms 後 `Bsp_Reset_MCU`）で flash を **`0x0A`（`CAR_MECANUM_M1`）** へ書換えた。**MCU リセット後の読み戻し = 10**・battery 12.6 V・version 3.6。
-- **運用規則（ドライバ param）**: flash は永続するので、`m1_driver` の ROS param **`car_type` は既定 `-1`（＝送らない）のまま運用する**。非負値を渡すと `RosmasterBackend.__init__` が**起動のたびに** flash 書換え＋MCU リセットを起こし、リセット中（約 3 秒）は serial 沈黙・auto-report 欠落が入る。
+- **運用規則（ドライバ param）**: flash は永続するので、`m1_driver` の ROS param **`car_type` は既定 `-1`（＝送らない）のまま運用する**。非負値を渡すと `RosmasterBackend.__init__` が**起動のたびに** flash 書換え＋MCU リセットを起こし、リセット中は serial 沈黙・auto-report 欠落が入る（本作業では書換え後 3 秒待って復帰を確認した＝リセット所要時間の実測ではない）。
 - **`get_car_type_from_machine()` の `-1` は証拠にならない**: vendor lib 3.3.9 の実装は 20×1ms しか待たずタイムアウトで `-1` を返す＝**偽 `-1` は普通に出る**。判定はリトライして非負値を得てから行う。
 
 **§Open 1 の残り（未決）**:
