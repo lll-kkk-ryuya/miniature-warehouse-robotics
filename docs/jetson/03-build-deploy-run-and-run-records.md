@@ -150,7 +150,7 @@ prod の tag 必須は「prod デプロイは git タグ」（[architecture/19:1
 
 ### 安全ガード（build ≠ deploy ≠ run の強制）
 
-- **走行中は拒否**（exit 3）: `systemctl is-active warehouse.target` が active、または `pgrep -f warehouse_m1_driver` /
+- **走行中は拒否**（exit 3）: `systemctl is-active warehouse.target` が **`active` / `activating` / `deactivating` / `reloading`**（＝**起動途中・停止途中も「走行中」とみなす**。`is-active` は `active` のときだけ exit 0 なので、判定は**表示された状態語**で行い戻り値では行わない。target が unit を引き上げ始めた瞬間・車輪を降ろし切っていない瞬間が、install space を差し替える最悪のタイミング）、または `pgrep -f warehouse_m1_driver` /
   `pgrep -f "ros2 launch warehouse_bringup"` が hit したとき。**`--force` はガードを外すだけ**で記録は通常どおり残り、
   **`colcon.forced=true`** で区別される（stderr 警告つき）＝走行中に書き換えた事実を消さない。forced build を使ったら**報告で明示する**。
   `systemctl` / `pgrep` が無い環境（Mac）は「不明」として続行。
@@ -253,7 +253,7 @@ notes.md                 ← --notes "<text>" 指定時のみ
   "firmware": { "version": null, "car_type": null, "source": null, "binary_sha256": null },
   "launch": { "entrypoint": null, "args": [] },
   "runtime": { "nodes": "runtime/nodes.txt", "topics": "runtime/topics.txt", "captured_at": null, "capture_delay_s": 5.0 },
-  "parameters": { "snapshot_dir": "parameters/", "nodes_dumped": [], "dump_errors": {}, "parameter_events_recorded": true },
+  "parameters": { "snapshot_dir": "parameters/", "nodes_dumped": [], "dump_errors": {}, "redacted": {}, "parameter_events_recorded": true },
   "calibration": { "index": "calibration/hashes.json", "count": 0 },
   "safety": { "max_linear_velocity_mps": 0.3, "source": "warehouse_interfaces.safety.MAX_LINEAR_VELOCITY", "car_type": null },
   "data": { "storage": "sqlite3", "bag": "rosbag2/", "record_mode": "all", "topics": null, "bag_exit_code": null }
@@ -271,6 +271,13 @@ notes.md                 ← --notes "<text>" 指定時のみ
 - `runtime` — bag 開始から `capture_delay_s`（既定 `5.0`・`--capture-delay`）後に `ros2 node list` / `ros2 topic list -t` を取り、`captured_at` を書く。値は **float**＝短い走行を潰さないよう `--capture-delay 0.5` のような秒未満も渡せる。
 - `parameters` — 取得した node ごとに `ros2 param dump <node>` を保存。失敗は `dump_errors[node] = "<stderr 先頭 200 字>"`。
   `parameter_events_recorded` は `record_mode == "all"` なら true、`topics` 指定時は `/parameter_events` が含まれていれば true。
+- **秘匿値の除去（redaction・書き出す前に必ず通す）** — `ros2 param dump` は node が宣言した値をそのまま吐き、走行記録は**持ち出される**（bag をボードから複製して共有する）。そこで **パラメータ名が資格情報に読めるもの**は値を `'<redacted>'` に置換してから保存する。
+  - **判定は名前だけ・値は見ない**。値側のヒューリスティクスは取りこぼす（`hunter2`）うえ、正当な設定値を壊す。
+  - **token 一致＋連結綴りの部分一致**: `key` / `password` / `passwd` / `secret` / `token` / `credential` / `auth`（＋複数形）を`_` `.` `-` で区切った**語**として見る。ゆえに `api_key` は落ち、`keyframe_threshold` は残る。`mytoken` のような連結は部分一致で拾う。
+  - **名前は残し、値だけ落とす**。「隠した」ことが見えないと、宣言されていないパラメータと区別が付かない。落とした名前は`parameters.redacted[node] = ["<name>", …]` に記録する（**名前自体は秘密ではない**）。
+  - **入れ子は subtree ごと落とす**（`credentials:` が block を開いていたらその配下すべて）＝秘密が 1 段下にあるため。
+  - **fail-closed**: redaction が例外を投げた dump は**ファイルを書かない**。`dump_errors[node] = "redaction failed: …"` を残して次へ進む（`ros2 param dump` 自体の失敗と同じ扱い＝走行は止めない）。
+  - **現状 `ws/src/**` に資格情報を ROS param として宣言している node は 0 件**（2026-09-10 実測）。この pass は**将来の混入に対する予防**であり、今日の記録内容は変わらない。鍵の正本は `config/<env>/.env` と `~/.hermes/.env`（[.claude/rules/environments.md](../../.claude/rules/environments.md) §Secrets）で、ROS param には載せない。
 - `safety.max_linear_velocity_mps` — 凍結契約 `warehouse_interfaces.safety.MAX_LINEAR_VELOCITY`
   （`ws/src/warehouse_interfaces/warehouse_interfaces/safety.py:18` ＝ `0.3`）を **import して書く**（値を写経しない）。
   import 失敗時は `null` と `source="unavailable"`。`car_type` は `firmware.car_type` の写し。
@@ -385,6 +392,7 @@ sudo systemctl restart warehouse.target            # ← 切替は build.sh の�
 | `deployment` の実体化 | **未決**（build = deploy である限り `null`。別マシン build を始める時に設計する） |
 | 新語彙（`driver lease` / `operation_manager` 等） | **導入しない**（[GLOSSARY.md](../GLOSSARY.md) に無い語を発明しない） |
 | `deps.pip_exceptions` の一般化 | **未決**。v0 は固定 1 件。pip 導入物が増えたら §2 の表と併せて更新する |
+| param redaction で schema を上げるか | **上げない（裁定済・2026-09-10）**。`parameters.redacted` は**追加のみ**で既存フィールドを変えず、`mwr-run-record.v0` を厳密検証する consumer は存在しない（`run_manifest.v1` と違い unknown key を fail-closed で弾く読み手が無い＝§「run-record は `run_manifest.v1` ではない」）。既存フィールドの削除・改名・型変更を伴う変更が来たときに v1 へ上げる |
 
 ---
 
