@@ -12,10 +12,9 @@ it (``11a:317``).
 The geometry lives in the rclpy-free ``virtual_scan_logic`` module (host-testable).
 """
 
-import contextlib
-
 import rclpy
 from geometry_msgs.msg import PoseWithCovarianceStamped
+from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from sensor_msgs.msg import LaserScan
 
@@ -84,11 +83,20 @@ def main() -> None:
     rclpy.init()
     node = VirtualScanNode()
     try:
-        with contextlib.suppress(KeyboardInterrupt):
-            rclpy.spin(node)
+        rclpy.spin(node)
+    except (KeyboardInterrupt, ExternalShutdownException):
+        # SIGINT -> KeyboardInterrupt; SIGTERM -> ExternalShutdownException (Humble tears the
+        # context down before this finally runs). Both are a normal stop, not a failure: the node
+        # is launched by bringup.launch.py under warehouse-nav2.service (Type=simple), so a
+        # non-zero exit on a routine stop is journalled as status=1/FAILURE (and off the stop
+        # path Restart=on-failure would restart the unit for nothing). Nothing is published on the
+        # way out, and nothing depends on a final scan: the stream is already suppressed whenever
+        # the robots are more than SUPPRESSION_RANGE apart (11a:310), so consumers must cope with
+        # it simply stopping. The physical stop is twist_mux prio-100 / Layer 0, never this topic.
+        pass
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        rclpy.try_shutdown()
 
 
 if __name__ == "__main__":
