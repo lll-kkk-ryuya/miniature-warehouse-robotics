@@ -44,6 +44,7 @@
 - 短期 handoff / local memory は [local-memory.md](local-memory.md) を参照する（設計正本ではなく、再開用の実行状態メモ）。
 - **docs を追加・追記するとき**: 正本ルート特定 → **双方向リンク**（forward＋backlink）→ `docs/GLOSSARY.md` の正準用語を参照/追補 → `origin/main` で裏取り → #165 行ズレ回避 → 整合ゲート。手順は skill [.claude/skills/docs-authoring/SKILL.md](skills/docs-authoring/SKILL.md)、規約は [.claude/rules/docs-authoring-and-glossary.md](rules/docs-authoring-and-glossary.md)。設計を対話で詰めながら glossary/ADR を書き起こす入口は `/grill-with-docs`（[skills/grill-with-docs/SKILL.md](skills/grill-with-docs/SKILL.md) = [grilling](skills/grilling/SKILL.md)＋[domain-modeling](skills/domain-modeling/SKILL.md)）。skill 自体を書く語彙は [.claude/skills/writing-great-skills/SKILL.md](skills/writing-great-skills/SKILL.md)。用語集の正準は [docs/GLOSSARY.md](../docs/GLOSSARY.md)。
 - **開発 skill 群**（Matt Pocock 系を適応・docs-first 準拠）: 実装ループ [/implement](skills/implement/SKILL.md)、コードレビュー [/code-review](skills/code-review/SKILL.md)（Standards⊥Spec・docs↔契約は [/consistency-audit](skills/consistency-audit/SKILL.md)）、runtime バグ [/diagnosing-bugs](skills/diagnosing-bugs/SKILL.md)（feedback-loop-first）、自レーン再開 [/session-handoff](skills/session-handoff/SKILL.md)。安全 unit の質（独立オラクル・mutation）は [docs/architecture/20 §9](../docs/architecture/20-dev-quality-and-testing.md)、fake seam 設計は doc16 §11。
+- **Build ≠ Deploy ≠ Run（ボードのビルド・走行記録）**: ボードでは素の `colcon build` を打たず `deploy/jetson/bin/build.sh`、実機走行は `record-run.sh` で記録。詳細 → [.claude/rules/build-deploy-run.md](rules/build-deploy-run.md)・正本 [docs/jetson/03](../docs/jetson/03-build-deploy-run-and-run-records.md)
 
 ## LLM支援ルール作成 / プロダクト化構想
 
@@ -93,3 +94,5 @@
 - `docs/GLOSSARY.md` - 正準用語集（単語帳）。`docs/README.md` から索引
 - `docs/adr/` - Architectural Decision Records（hard-to-reverse な決定記録）
 - `.claude/skills/docs-authoring/` + `.claude/rules/docs-authoring-and-glossary.md` - doc 追加・追記の規律（双方向リンク・用語集・裏取り・整合ゲート）
+- `docs/jetson/02-remote-access-and-dev-link.md` - Mac↔Jetson アクセス経路・ボード基盤（§9.6）・実機作業 runbook
+- `docs/jetson/03-build-deploy-run-and-run-records.md` - Build/Deploy/Run 分離・ビルド記録（build-info v0）・走行記録（run-record v0）の正本
