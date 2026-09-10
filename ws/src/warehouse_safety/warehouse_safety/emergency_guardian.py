@@ -21,7 +21,6 @@ Caveats:
   control; the ESP32 Layer 0 is the final physical-stop guarantee.
 """
 
-import contextlib
 import gc
 import json
 import time
@@ -32,6 +31,7 @@ from action_msgs.srv import CancelGoal
 from geometry_msgs.msg import PoseWithCovarianceStamped, Twist
 from nav_msgs.msg import Odometry
 from rclpy.client import Client
+from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.publisher import Publisher
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
@@ -357,15 +357,29 @@ class EmergencyGuardian(Node):
 
 def main() -> None:
     rclpy.init()
-    node = EmergencyGuardian()
-    gc.disable()  # R-40: reduce GC jitter on the 50ms loop (best-effort)
-    gc.freeze()  # promote setup objects to the permanent generation
+    node: EmergencyGuardian | None = None
     try:
-        with contextlib.suppress(KeyboardInterrupt):
-            rclpy.spin(node)
+        # Constructed inside the try (as node_runtime.run_node does): a refused start
+        # (validate_battery_scale) still reaches try_shutdown() and still exits non-zero.
+        node = EmergencyGuardian()
+        gc.disable()  # R-40: reduce GC jitter on the 50ms loop (best-effort)
+        gc.freeze()  # promote setup objects to the permanent generation
+        rclpy.spin(node)
+    except (KeyboardInterrupt, ExternalShutdownException):
+        # SIGINT -> KeyboardInterrupt; SIGTERM -> ExternalShutdownException (Humble tears the
+        # context down before this finally runs). Both are a normal stop, not a failure.
+        # Measured on the entry point: the textbook pattern exited 1 on both signals. Under
+        # warehouse-safety.service (Type=simple) that is journalled as status=1/FAILURE on a
+        # routine stop, and off the stop path Restart=on-failure + StartLimitIntervalSec=0
+        # would restart L1 for nothing. (What systemd sees through the unit's `ros2 run`
+        # wrapper is a #634 board item.) Nothing here is a safety guarantee -- the estop
+        # authority is the level-re-asserted twist_mux prio-100 zero on the 50ms loop,
+        # never a message published on the way out.
+        pass
     finally:
-        node.destroy_node()
-        rclpy.shutdown()
+        if node is not None:
+            node.destroy_node()
+        rclpy.try_shutdown()
 
 
 if __name__ == "__main__":

@@ -10,13 +10,13 @@ All aggregation logic lives in the rclpy-free ``aggregator`` module so it is
 unit-testable without ROS (doc16 §11); this node only marshals ROS messages.
 """
 
-import contextlib
 import json
 from datetime import datetime
 
 import rclpy
 from geometry_msgs.msg import PoseWithCovarianceStamped
 from nav_msgs.msg import Odometry
+from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import BatteryState, LaserScan
@@ -129,13 +129,24 @@ class StateCacheNode(Node):
 
 def main() -> None:
     rclpy.init()
-    node = StateCacheNode()
+    node: StateCacheNode | None = None
     try:
-        with contextlib.suppress(KeyboardInterrupt):
-            rclpy.spin(node)
+        node = StateCacheNode()  # inside the try: a refused start still reaches try_shutdown()
+        rclpy.spin(node)
+    except (KeyboardInterrupt, ExternalShutdownException):
+        # SIGINT -> KeyboardInterrupt; SIGTERM -> ExternalShutdownException (Humble tears the
+        # context down before this finally runs). Both are a normal stop, not a failure.
+        # Measured on the entry point: the textbook pattern exited 1 on both signals. Under
+        # warehouse-state-cache.service (Type=simple) that is journalled as status=1/FAILURE
+        # on a routine stop, and off the stop path Restart=on-failure would restart the unit
+        # for nothing. (What systemd sees through the unit's `ros2 run` wrapper is a #634
+        # board item.) No final write is attempted here -- the last 100ms tick already
+        # landed atomically (FileStateStore tmp + os.replace).
+        pass
     finally:
-        node.destroy_node()
-        rclpy.shutdown()
+        if node is not None:
+            node.destroy_node()
+        rclpy.try_shutdown()
 
 
 if __name__ == "__main__":
