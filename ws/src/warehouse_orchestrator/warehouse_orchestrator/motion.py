@@ -61,14 +61,20 @@ new producer, topic, contract or score:
   count — which is why it takes ``MotionInputs.samples``. The **raw** series is counted, not the
   low-passed one: the doc21:306 pre-filter belongs to the differentiation the spectral pair does
   (module docstring above), and averaging speeds across a window boundary would move samples over
-  the ε line that the odometer never reported there.
+  the ε line that the odometer never reported there. It is a **sample-count** ratio per §17 ①,
+  therefore jitter-blind: it equals a *time* ratio only under uniform sampling (an odom burst while
+  parked over-reports idle *time*). So one window now carries **three** jitter treatments — the
+  spectral pair takes a mean-rate approximation, ② integrates on the real stamps, ① counts raw.
 * **``speed_budget_utilisation``** = ``∫|v|dt ÷ (v_max · T)`` over the window, ``T = window_end −
   window_start`` (doc21 §17 ② の (iii)). The integral is the trapezoid rule on the window's own
-  jittery stamps (``eval_sdk.stats.trapezoid_integral``); doc21 §17 ② records that ``mean|v|/cap``
-  is its discrete estimator **under uniform sampling**, so the two agree there and diverge exactly
-  when odom jitters. ``v_max`` is **injected** (``MotionInputs.speed_cap``, from config
-  ``safety.max_linear_velocity``) rather than hardcoded — ``warehouse_interfaces.safety`` is the
-  single source of the 0.3 m/s hard cap and forbids re-typing it elsewhere. No cap → ``None``
+  jittery stamps (``eval_sdk.stats.trapezoid_integral``); doc21 §17 ② calls ``mean|v|/cap`` a
+  discrete *estimator*, not an identity: the trapezoid rule half-weights both endpoints, so the
+  two coincide only on an endpoint-balanced window (``mean|v| == (|v_first|+|v_last|)/2``), which
+  uniform spacing does not guarantee — see ``tests/unit/test_wo_motion_kpi.py::
+  test_utilisation_is_a_trapezoid_not_a_mean_even_on_a_uniform_grid``. Jitter is a second,
+  independent source of divergence. ``v_max`` is **injected** (``MotionInputs.speed_cap``, from
+  config ``safety.max_linear_velocity``) rather than hardcoded — ``warehouse_interfaces.safety``
+  is the single source of the 0.3 m/s hard cap and forbids re-typing it elsewhere. No cap → ``None``
   ("not computable"), never ``0.0``. Values > 1 are reported **raw**, the ``detour_factors``
   stance below: a robot above its budget is information, not something to launder behind a clamp.
 * **decision latency** — still not here: doc08:497 derives it from the Langfuse
@@ -269,7 +275,9 @@ def resolve_speed_cap(value: object, *, fallback: float) -> tuple[float, str | N
     in this lane — ``safety.py`` is explicit that it must be imported, not hardcoded. Usable =
     a finite, strictly positive ``int``/``float``; ``bool`` is rejected (it is an ``int`` in
     Python and ``True`` m/s is not a speed cap) and so is a string (this value comes from parsed
-    YAML, not from an rclpy string param — unlike ``motion_buffer_samples``).
+    YAML, not from an rclpy string param — unlike ``motion_buffer_samples``). ``None`` is the
+    **optional key being absent**, which ``config._validate_safety`` explicitly permits, so it
+    reports "is not set" rather than being described as a malformed speed.
 
     **Not enforced here: the ceiling.** ``warehouse_interfaces.config.load_config`` already
     validates ``safety.max_linear_velocity ≤ MAX_LINEAR_VELOCITY`` (config may lower the
@@ -281,9 +289,20 @@ def resolve_speed_cap(value: object, *, fallback: float) -> tuple[float, str | N
     def _fallback(reason: str) -> tuple[float, str]:
         return fallback, f"safety.max_linear_velocity={value!r} {reason}; using {fallback}"
 
+    if value is None:
+        # An ABSENT key, not a misconfiguration: ``config._validate_safety`` only validates
+        # ``safety.max_linear_velocity`` ``if cap is not None``, so a correct minimal config
+        # simply omits it. Saying "is not a speed" here made every such startup log look broken.
+        return _fallback("is not set")
     if isinstance(value, bool) or not isinstance(value, int | float):
         return _fallback("is not a speed")
-    numeric = float(value)
+    try:
+        numeric = float(value)
+    except (OverflowError, TypeError, ValueError):
+        # ``10**400`` is an ``int`` (so it clears the isinstance check) yet has no float image.
+        # The contract of this resolver is "never an exception" — degrade like any other
+        # unusable value.
+        return _fallback("is not a speed")
     if not math.isfinite(numeric):
         return _fallback("is not a finite speed")
     if numeric <= 0:
@@ -324,14 +343,23 @@ class SmoothnessStats:
     ``sparc`` / ``ldlj`` / ``n_movement_units`` are the three indicators doc21:306 names (SPARC
     recommended; larger/less-negative = smoother for both spectral ones, fewer reversals =
     smoother for N_MU). ``mean_speed`` / ``max_speed`` are **descriptive statistics of the
-    window, not a KPI**; ``mean_speed`` doubles as doc21 §17 ②'s uniform-sampling estimator of
-    ``speed_budget_utilisation`` (``mean|v|/cap``), which is what makes the two comparable.
+    window, not a KPI**; ``mean_speed`` doubles as doc21 §17 ②'s discrete estimator of
+    ``speed_budget_utilisation`` (``mean|v|/cap``) — an estimator that agrees only on an
+    endpoint-balanced window (the trapezoid rule half-weights the two endpoints).
 
     ``idle_ratio`` and ``speed_budget_utilisation`` are the two Tier-1 metrics doc21 §17 ①②
     define, over this same window (§17 ③): the share of samples at or below
     :data:`IDLE_SPEED_EPS`, and ``∫|v|dt ÷ (v_max·T)``. The latter is ``None`` unless a cap was
     injected (``MotionInputs.speed_cap``) and the window spans a measurable ``T``; it is reported
     unclamped, so a value above 1.0 means the window really did outrun the configured budget.
+
+    ``speed_cap`` republishes the ``v_max`` that utilisation was divided by, ``None`` when none was
+    injected. It is an **environment tunable**, not a constant: ``load_config`` accepts any
+    ``0 < cap ≤ 0.3`` and an overlay (or ``WAREHOUSE__SAFETY__MAX_LINEAR_VELOCITY``) may lower it,
+    so run A at cap 0.3 and run B at cap 0.15 report 0.5 and 1.0 for the *same* trajectory — with
+    nothing in ``to_dict()`` / ``kpi_report --json`` to tell them apart unless the denominator ships
+    with the number. Same disclosure principle as ``smooth_window`` / ``window_start`` /
+    ``window_end``: a reader must be able to see what was measured *against*.
 
     ``smooth_window`` / ``filtered_samples`` describe the doc21:306 pre-filter. The width is
     reported **always**; ``filtered_samples`` is the number of low-passed samples that actually
@@ -362,6 +390,7 @@ class SmoothnessStats:
     n_movement_units: int | None
     idle_ratio: float | None
     speed_budget_utilisation: float | None
+    speed_cap: float | None
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -381,6 +410,10 @@ class SmoothnessStats:
             # voids 9, but a consumer reading it positionally must not be broken by a new metric).
             "idle_ratio": self.idle_ratio,
             "speed_budget_utilisation": self.speed_budget_utilisation,
+            # The denominator the line above was divided by — an environment tunable, so the
+            # number alone is not comparable across runs (class docstring). Appended AFTER the
+            # metric it explains, keeping the additive key order.
+            "speed_cap": self.speed_cap,
         }
 
 
@@ -430,7 +463,9 @@ def _speed_budget_utilisation(
     """doc21 §17 ② (iii): ``∫|v|dt ÷ (v_max·T)`` over the window — ``None`` when undefined.
 
     Undefined = no cap injected, an unusable cap (non-finite / non-positive), a window too short
-    or non-advancing for either the integral or ``T`` (both then come back ``None``/≤ 0). Never
+    or non-advancing for either the integral or ``T`` (both then come back ``None``/≤ 0), and a
+    ``v_max·T`` product that underflows to ``0.0`` — a denormal cap such as ``5e-324`` passes
+    ``config._validate_safety`` (finite, > 0, ≤ 0.3) yet leaves no divisible budget. Never
     ``0.0`` for those — that is the ``eval_sdk.stats`` "no data ≠ measured zero" convention, and
     here it is the difference between "this robot crawled" and "nobody told us the budget".
     """
@@ -442,9 +477,13 @@ def _speed_budget_utilisation(
     duration = samples[-1].t - samples[0].t  # = window_end − window_start (doc21 §17 ②)
     if not duration > 0:  # NaN-safe; ``trapezoid_integral`` already rejects a flat/reversed axis
         return None
-    value = integral / (speed_cap * duration)
-    # Deliberately UNCLAMPED (> 1 is a window that outran its budget) — only a non-finite result,
-    # which no finite input can produce, degrades to "not computable".
+    denominator = speed_cap * duration
+    if not denominator > 0:  # NaN-safe; a denormal cap underflows the product to 0.0
+        return None
+    value = integral / denominator
+    # Deliberately UNCLAMPED (> 1 is a window that outran its budget). A non-finite result is still
+    # possible from finite inputs (a tiny cap can overflow the ratio) and the product can underflow
+    # to 0, so both degrade to "not computable".
     return value if math.isfinite(value) else None
 
 
@@ -507,6 +546,9 @@ def smoothness_stats(
         idle_ratio=fraction_at_or_below(speeds, IDLE_SPEED_EPS),
         # doc21 §17 ② (iii): raw |v| again, integrated on the window's own stamps.
         speed_budget_utilisation=_speed_budget_utilisation(samples, speeds, speed_cap),
+        # …and the denominator it used, republished so two runs at different caps are
+        # distinguishable in the report itself (class docstring).
+        speed_cap=speed_cap,
     )
 
 

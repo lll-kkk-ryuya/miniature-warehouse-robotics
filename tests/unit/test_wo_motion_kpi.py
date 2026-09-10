@@ -38,10 +38,15 @@ the ``lᵢ ≤ 0`` filter.
 defined are now defined and composed here. Their oracles are hand counts and hand-integrated
 windows, and each of these mutations turns a listed assertion red: relaxing the ε comparison from
 ``≤`` to ``<`` (the fixture puts a sample EXACTLY on ε), counting the signed series instead of
-|v|, counting the low-passed series instead of the raw one, replacing the trapezoid integral with
-``mean_speed·T`` (red even on a uniform grid — the endpoints are half-weighted), ignoring the
-window's real stamps in favour of a uniform dt, hardcoding the 0.3 m/s cap instead of using the
-injected one, and reporting ``0.0`` instead of ``None`` when no cap was supplied.
+|v| **for ①**, integrating the signed series instead of |v| **for ②** (a reversal fixture, added
+in the post-merge review — every earlier utilisation window was all-positive, so ② could not tell
+the two apart), counting the low-passed series instead of the raw one, replacing the trapezoid
+integral with ``mean_speed·T`` (red even on a uniform grid — the endpoints are half-weighted),
+ignoring the window's real stamps in favour of a uniform dt, taking ``T`` from the absolute end
+stamp instead of the window span (odom stamps are epoch seconds), raising ``trapezoid_integral``'s
+two-point floor to three, hardcoding the 0.3 m/s cap instead of using the injected one, dropping
+the guard on a ``v_max·T`` product that underflows to ``0.0``, and reporting ``0.0`` instead of
+``None`` when no cap was supplied.
 
 No ROS, no live SDK: ``motion`` is rclpy-free (doc16 §11) and numpy is only needed by SPARC,
 whose tests skip when the optional ``eval_sdk[stats]`` extra is absent. One test imports
@@ -658,7 +663,7 @@ def test_utilisation_is_a_trapezoid_not_a_mean_even_on_a_uniform_grid() -> None:
     profile is not endpoint-balanced.
 
     v = [0, 0.3, 0.3, 0] at dt = 0.1 ⇒ ∫ = 0.1·(0.15+0.30+0.15) = 0.06 over T = 0.3, cap = 0.3
-    ⇒ 0.0666…/0.09 = 2/3, while mean|v|/cap = 0.15/0.3 = 0.5. Replacing the integral with
+    ⇒ 0.06/0.09 = 2/3, while mean|v|/cap = 0.15/0.3 = 0.5. Replacing the integral with
     ``mean_speed·T`` therefore turns this red even without any timestamp jitter.
     """
     stats = smoothness_stats(_series([0.0, 0.3, 0.3, 0.0]), speed_cap=0.3)
@@ -683,6 +688,48 @@ def test_utilisation_integrates_on_the_windows_own_jittery_stamps() -> None:
     assert stats.mean_speed == pytest.approx(0.1)  # mean/cap would be 1/3
     assert stats.speed_budget_utilisation != pytest.approx(1 / 3)
     assert stats.speed_budget_utilisation != pytest.approx(4 / 9)  # uniform-dt reading
+
+
+@pytest.mark.unit
+def test_utilisation_uses_the_window_span_not_the_absolute_end_stamp() -> None:
+    """``T = window_end − window_start`` (doc21 §17 ②), not the end stamp. Odom stamps are
+    ABSOLUTE clock seconds (``kpi_collector._on_odom``: ``stamp.sec + stamp.nanosec*1e-9``),
+    so the same window shifted to a wall-clock epoch must report the same number: ∫ = 0.06
+    over T = 0.3 with cap 0.3 ⇒ 2/3, whether the window opens at t = 0 or at t = 1.7e9."""
+    at_zero = smoothness_stats(_series([0.0, 0.3, 0.3, 0.0]), speed_cap=0.3)
+    at_epoch = smoothness_stats(_series([0.0, 0.3, 0.3, 0.0], t0=1_700_000_000.0), speed_cap=0.3)
+    assert at_zero.speed_budget_utilisation == pytest.approx(2 / 3)
+    # rel=1e-5: epoch-magnitude stamps cost ~6 significant digits of dt precision, which is
+    # itself the reason this metric must never be read as more than ~5 digits.
+    assert at_epoch.speed_budget_utilisation == pytest.approx(2 / 3, rel=1e-5)
+
+
+@pytest.mark.unit
+def test_utilisation_integrates_the_magnitude_so_reversals_still_consume_budget() -> None:
+    """doc21 §17 ② integrates ``|v|``: a bot that drives forward, reverses, then drives
+    forward again spent its budget the whole time — it did not stand still. Hand: |v| ≡ 0.2
+    over T = 2 s ⇒ ∫ = 0.4; cap 0.2 ⇒ 0.4/(0.2·2) = 1.0. Integrating the SIGNED series
+    cancels to ∫ = 0 ⇒ 0.0, and mean(signed)/cap would be 1/3."""
+    stats = smoothness_stats(_stamped([0.0, 1.0, 2.0], [0.2, -0.2, 0.2]), speed_cap=0.2)
+    assert stats.speed_budget_utilisation == pytest.approx(1.0)
+    assert stats.idle_ratio == 0.0  # |v| = 0.2 everywhere: nothing is at or below ε
+
+
+@pytest.mark.unit
+def test_utilisation_is_none_when_the_budget_product_underflows() -> None:
+    """A denormal cap must degrade, never raise. ``config._validate_safety`` ACCEPTS
+    ``5e-324`` (it is a float, finite, > 0 and ≤ 0.3), yet ``cap · T`` underflows the product to
+    exactly ``0.0`` for any short window — and ``_report`` catches only ``OSError``, so an
+    unguarded division would kill the rclpy timer callback rather than skipping one KPI.
+
+    Hand: ``5e-324 · 0.03`` is ``0.0`` in IEEE-754 double, so the metric is "not computable" —
+    and every other field of the window still reports.
+    """
+    window = [MotionSample(0.0, 0.0, 0.0, 0.1), MotionSample(0.03, 0.0, 0.0, 0.1)]
+    stats = smoothness_stats(window, speed_cap=5e-324)
+    assert stats.speed_budget_utilisation is None
+    assert stats.speed_cap == 5e-324  # the unusable denominator is still disclosed
+    assert stats.mean_speed == pytest.approx(0.1)
 
 
 @pytest.mark.unit
@@ -725,6 +772,11 @@ def test_utilisation_is_none_for_a_window_too_short_to_span_time() -> None:
     empty = smoothness_stats([], speed_cap=0.3)
     assert empty.speed_budget_utilisation is None
     assert empty.idle_ratio is None
+    # …and the floor is exactly TWO, asserted from the POSITIVE side so raising it to three
+    # (``trapezoid_integral``'s ``len(times) < 2`` → ``< 3``) is not an equivalent mutation:
+    # ∫ = 0.1·0.2 = 0.02 over T = 0.1 with cap 0.2 ⇒ 1.0.
+    pair = smoothness_stats(_series([0.2, 0.2]), speed_cap=0.2)
+    assert pair.speed_budget_utilisation == pytest.approx(1.0)
 
 
 @pytest.mark.unit
@@ -738,8 +790,13 @@ def test_idle_epsilon_matches_the_state_cache_constant_it_borrows() -> None:
     ``"bridge"``/``"hermes_plugin"`` cross-check precedent (CLAUDE.md line 34). If that lane
     retunes its epsilon, this goes red and the divergence is a decision rather than a surprise.
     doc21 §17 records the residual: ε is that lane's private constant, frozen nowhere.
+
+    Imported plainly, NOT via ``importorskip``: a pin that skips itself when the owner is
+    unimportable is not a pin. ``tests/unit/test_state_cache.py`` already imports this module
+    unguarded, so CI requires it importable and an import failure here is a red test.
     """
-    aggregator = pytest.importorskip("warehouse_state.aggregator")
+    from warehouse_state import aggregator
+
     assert motion_module.IDLE_SPEED_EPS == aggregator._MOVING_EPS
     # …and the borrowed semantics really are "≤ ε is idle" (derive_status says "moving" iff
     # |linear| > ε), checked at the boundary rather than assumed.
@@ -847,9 +904,10 @@ def test_compute_kpis_threads_the_speed_cap_through_to_the_report() -> None:
 def test_the_two_new_metrics_are_appended_after_every_existing_key() -> None:
     """Additive in the literal sense: the previously published keys keep their order and the
     doc21 §17 pair sits at the END (the KPI output contract is not frozen — CLAUDE.md voids 9 —
-    but a positional reader must not be broken by a new metric)."""
+    but a positional reader must not be broken by a new metric). ``speed_cap`` — the denominator
+    disclosure — is appended after the metric it explains, so it is LAST."""
     keys = list(smoothness_stats(_series([0.1, 0.2, 0.3]), speed_cap=0.3).to_dict())
-    assert keys[:-2] == [
+    assert keys[:-3] == [
         "samples",
         "window_start",
         "window_end",
@@ -862,7 +920,33 @@ def test_the_two_new_metrics_are_appended_after_every_existing_key() -> None:
         "ldlj",
         "n_movement_units",
     ]
-    assert keys[-2:] == ["idle_ratio", "speed_budget_utilisation"]
+    assert keys[-3:] == ["idle_ratio", "speed_budget_utilisation", "speed_cap"]
+    assert keys[-1] == "speed_cap"
+
+
+@pytest.mark.unit
+def test_the_report_publishes_the_cap_the_utilisation_was_divided_by() -> None:
+    """The cap is an ENVIRONMENT TUNABLE, not a constant: ``load_config`` accepts any
+    ``0 < cap ≤ 0.3`` and an overlay may lower it, so the same trajectory reports 0.5 under a
+    0.3 m/s cap and 1.0 under a 0.15 m/s one. Without the denominator in the payload nothing in
+    ``to_dict()`` / ``kpi_report --json`` can tell those two runs apart — the same disclosure
+    ``smooth_window`` / ``window_start`` / ``window_end`` already make.
+
+    Hand-computed: |v| ≡ 0.15 over T = 0.2 ⇒ ∫ = 0.03; at cap 0.3 that is 0.5, at cap 0.15 it is
+    1.0 — one number, two meanings, separated only by the published cap.
+    """
+    window = _series([0.15, 0.15, 0.15])
+    nominal = smoothness_stats(window, speed_cap=0.3)
+    strict = smoothness_stats(window, speed_cap=0.15)
+    assert nominal.speed_budget_utilisation == pytest.approx(0.5)
+    assert strict.speed_budget_utilisation == pytest.approx(1.0)
+    assert nominal.speed_cap == 0.3
+    assert strict.speed_cap == 0.15
+    assert nominal.to_dict()["speed_cap"] == 0.3
+    # Injected 0.2 is republished verbatim; no cap injected leaves it absent, never a guessed 0.3.
+    assert smoothness_stats(window, speed_cap=0.2).speed_cap == 0.2
+    assert smoothness_stats(window).speed_cap is None
+    assert smoothness_stats(window).to_dict()["speed_cap"] is None
 
 
 @pytest.mark.unit
@@ -949,19 +1033,29 @@ def test_resolve_speed_cap_accepts_a_usable_speed() -> None:
     speed, never raise it), so duplicating that rule in an observation helper would give the
     safety cap two owners."""
     assert resolve_speed_cap(0.25, fallback=0.3) == (0.25, None)
-    assert resolve_speed_cap(1, fallback=0.3) == (1.0, None)  # int → float, ceiling not ours
+    cap, warning = resolve_speed_cap(1, fallback=0.3)  # int → float, ceiling not ours
+    assert (cap, warning) == (1.0, None)
+    assert isinstance(cap, float)  # `1 == 1.0`, so the type is what has to be asserted
 
 
 @pytest.mark.unit
 @pytest.mark.parametrize(
-    "value", [None, 0, 0.0, -0.3, math.nan, math.inf, -math.inf, True, False, "0.3", [0.3], {}]
+    "value",
+    [None, 0, 0.0, -0.3, math.nan, math.inf, -math.inf, True, False, "0.3", [0.3], {}, 10**400],
 )
 def test_resolve_speed_cap_falls_back_with_a_warning(value: object) -> None:
     """An unusable cap yields the caller's fallback **and says so**, never raises: a KPI
     denominator must not stop the collector (the ``resolve_motion_buffer_samples`` /
     ``resolve_pattern_d`` fail-open precedent). ``True``/``False`` are rejected because ``bool``
     is an ``int`` in Python; a string is rejected because this value comes from parsed YAML, not
-    from an rclpy string parameter."""
+    from an rclpy string parameter. ``10**400`` is the case that made "never raises" literally
+    false: it IS an ``int``, so it clears the isinstance check, and ``float()`` on it raises
+    ``OverflowError`` (no float image) — the contract now catches that too.
+
+    ``None`` also lands here but is NOT a misconfiguration: ``safety.max_linear_velocity`` is an
+    optional key (``config._validate_safety`` validates it only ``if cap is not None``), so its
+    message says "is not set" while the asserted substrings — the key name and the fallback —
+    still hold."""
     cap, warning = resolve_speed_cap(value, fallback=0.3)
     assert cap == 0.3
     assert warning is not None
@@ -974,14 +1068,21 @@ def test_the_hard_cap_is_imported_never_retyped_in_this_lane() -> None:
     """``warehouse_interfaces.safety`` is explicit: "import them directly and do NOT hardcode
     0.3 / 20 / 10 elsewhere" (safety.py:8-12). Scan the package's own source for a literal
     ``0.3`` — parsed, so a ``0.3`` inside a docstring or comment (which is *documentation* of
-    the imported constant) does not trip it, while a re-typed default would."""
+    the imported constant) does not trip it, while a re-typed default would. ``rglob`` rather
+    than ``glob``: a cap re-typed one directory down is exactly as wrong, and a scan that cannot
+    see it would report a clean bill of health."""
     package = Path(motion_module.__file__).parent
     offenders = [
         f"{path.name}:{node.lineno}"
-        for path in sorted(package.glob("*.py"))
+        for path in sorted(package.rglob("*.py"))
+        if "__pycache__" not in path.parts
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
         if isinstance(node, ast.Constant)
         and isinstance(node.value, float)
         and node.value == MAX_LINEAR_VELOCITY
     ]
-    assert offenders == []
+    assert offenders == [], (
+        f"re-typed hard cap 0.3 at {offenders}: import MAX_LINEAR_VELOCITY (safety.py:8-12). "
+        "If this is an unrelated 0.3 (a timeout, a ratio), name it a module constant so this "
+        "scan stays a cap check."
+    )

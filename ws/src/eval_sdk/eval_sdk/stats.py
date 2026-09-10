@@ -25,8 +25,8 @@ doc21 §17 additions: ``fraction_at_or_below`` (share of samples under a caller-
 ``trapezoid_integral`` (``∫ v dt`` on a non-uniform grid) — the arithmetic behind the two Tier-1
 metrics doc21 §17 ①② define (idle 率 / 速度予算消化率). Same layer rule (doc21:178): the epsilon,
 the speed cap and the observation window are all decided in the domain
-(``warehouse_orchestrator.motion``); neither the threshold's *meaning* nor a domain word appears
-here.
+(``warehouse_orchestrator.motion``). No domain word or threshold appears in the **signatures or
+logic**; the docstrings name their domain consumer only, the same way ``rate`` names 介入率 above.
 
 Reuse origin (doc21 §12.1 / :406, with ``# adapted from …`` attribution at each site):
 ``spl_metric`` = allenai/allenact verbatim (MIT); ``success_rate``/``soft_spl`` = Habitat写経
