@@ -86,3 +86,28 @@
   | M5 deadman を level で armed（再確認） | 4 | `test_cold_start_held_deadman_does_not_arm` |
   クリーン 0 fail・復元後 `git diff` 空。**M3（CLEAR の `neutral_seen=False` だけを外す）は依然 EQUIVALENT**（`if not latched` ガードにより「latched ⇒ neutral_seen False」が不変条件で、CLEAR 時の値は必ず False）——冗長だが明示的な構築として残し、不変条件自体をケース (19) で pin した（挙動 oracle ではない）。
 - **未決・残件**: ①**実機 `jstest` で index 確定**（M1 ゲート・[mode-m1/03 §2](../../../docs/mode-m1/03-joystick-teleop-bringup.md)）——現既定は Yahboom 一次表からの導出であり実測ではない。②**doc05 OQ-OP3（解除時の残 goal 確認）は本スライスの範囲外**（teleop は goal を持たない。担保は Guardian/L2 側）。③統合構成の mux 入力（`/cmd_vel/teleop`）追加は bringup 所有のまま未着手＝doc05 §8 順序 4。④運転モード購読（§6 fail-closed・OQ-OP6）は未実装。⑤node 配線（param/topic/QoS/publish 条件）の AST pin unit は無い（doc05:173 が #593 で挙げた同型の残件・先例 `tests/unit/test_speed_band_bringup_wiring.py`）。⑥**S-3: array param（`int[]` 1 本で estop 群を渡す形）は実機で型推論を確認していない**——本スライスは `estop_button` / `estop_button_alt` の **int 2 個**で回避した。統合するなら実機 param 型の確認が先。⑦**SP-6: param epoch が非対称**——`_estop_cfg`（ボタン/chord/deadzone）は**起動時スナップショット**、`joy_to_twist` に渡す軸・cap は**毎サンプル live 読み**。`read_only` 宣言で epoch を揃えるのは次スライス。⑧**`autorepeat_rate` / `sticky_buttons` を強制する場所がコードにも launch にも無い**（mode-m1/03:52 は前提として書いてあるが、`joy_node` の param を固定する launch はまだ書いていない＝運用手順に依存している）。⑨**Guardian 再起動で latch が乖離する窓**——teleop は engage を rising edge でしか publish せず level 再送しないため、latch 中に Guardian が落ちて上がると Guardian 側だけ停止理由が抜ける（経路 A＝teleop 自身のゼロ送出は効き続ける）。裁定は doc05 §10 に記載。
+
+### 終了経路（2026-09-10・実機 SIGTERM/SIGINT で発見した #622 の回帰 → package 共通 `node_runtime` に一般化）
+
+**実測（Jetson・ROS 2 Humble・rclpy 3.3.21・2026-09-10・タイマー無しの裸ノードで 4 パターン×2 シグナル）**: rclpy のシグナルハンドラは `main()` の `finally` より**先に** context を破棄する（SIGINT/SIGTERM とも `finally` 時点で `rclpy.ok()` は False）。その前提で:
+
+| `main()` の書き方 | SIGINT（Ctrl-C） | SIGTERM（`systemctl stop` / `timeout`） |
+|---|---|---|
+| `suppress(KeyboardInterrupt)` ＋ 素の `rclpy.shutdown()`（教科書パターン・repo の **13 ノード**） | **exit 1**（`RCLError: failed to shutdown: rcl_shutdown already called`） | **exit 1**（`ExternalShutdownException` 未捕捉） |
+| `except (KeyboardInterrupt, ExternalShutdownException)` ＋ `rclpy.try_shutdown()`（本 package） | exit 0 | exit 0 |
+| `except KeyboardInterrupt` ＋ 自前 SIGTERM handler ＋ `if rclpy.ok()` ガード（`m1_driver`） | exit 0 | exit 0・**ただしタイマー保有が前提**（Python 側 handler は `rcl_wait` を起こせず、タイマーの無いノードは次イベントまで固まる＝プローブで実測） |
+
+exit 1 の実害: `deploy/jetson/systemd/*.service` は `Restart=on-failure` なので**通常停止が失敗として journal に残り、本物のクラッシュが同じ Traceback ノイズに埋もれる**（[docs/setup/jetson-deploy.md](../../../docs/setup/jetson-deploy.md) systemd unit 一覧）。
+
+- **提供 (produce・package 内 API)**: `node_runtime.run_node(factory, args=, spin=, on_exit=)` / `best_effort(action)` / `NORMAL_STOP_EXCEPTIONS` / `context_is_live()`。両 entry point（`teleop_joy` / `teleop_keyboard`）は `main()` を `run_node` に委譲する。**3 規則**: ①正常停止 = `KeyboardInterrupt` または `ExternalShutdownException`（exit 0）②終了後に context を触るもの（最後のゼロ twist 等）は `best_effort`＝context 消失時はスキップ・途中死の `RuntimeError`（`RCLError` / `InvalidHandle` の公開基底）だけ握る（それより広く握らない＝本物のバグは表に出す）③`rclpy.try_shutdown()`（冪等）。**安全はこのゼロに依存しない**（W-1 = [mode-m1/02:62](../../../docs/mode-m1/02-m1-driver-and-watchdog.md) が最終受信から 0.5 s でブレーキ）。keyboard 版は `on_exit` で「ゼロ（best-effort）→ **端末復元（必ず）**」の順を固定し、`q` の quit フラグ loop は `spin=` に渡す。
+- **置き場所が package-local な理由**: 依存してよい共有 package は `warehouse_interfaces` / `warehouse_description` の 2 つだけ（[parallel-workflow.md:71](../../../.claude/rules/parallel-workflow.md)）で、`warehouse_interfaces` は rclpy を持たない純 Python 契約 package（[doc16:89](../../../docs/architecture/16-repository-and-conventions.md)）。共通化先（新 shared package か interfaces への lazy-import 追加か）は docs 裁定＝追補 Issue。他 package は当面 3 規則を写す。
+- **テスト**: `tests/unit/test_node_shutdown_lifecycle.py`（AST pin・rclpy 非導入ホストで動く・`@safety`）— **A)** `node_runtime` の 3 規則（例外 tuple・`try_shutdown` のみ・`best_effort` の「ガード→action→`RuntimeError` だけ」・`on_exit`→`destroy_node`→`try_shutdown` の順と入れ子 finally）**B)** 両 entry point の委譲・`on_exit` の中身・keyboard の stop→restore 順 **C) repo 全体のラチェット**: `rclpy.init` を呼ぶか `run_node` に委譲する全 top-level `main()` を分類し、危険パターンの集合が baseline `KNOWN_UNSAFE_STOP_ON_HUMBLE`（13 ノード）と**完全一致**することを要求（直したら baseline から消す・新規ノードが危険なら CI 赤）。分類器自体は実測表の 3 行＋反例 2 行の合成ソースで自己検証。**mutation 6/6 KILLED**（2026-09-10・下表）。
+  | 変異 | red |
+  |---|---|
+  | `try_shutdown` → 素の `shutdown` | A |
+  | tuple から `ExternalShutdownException` を落とす | A |
+  | `best_effort` の `rclpy.ok()` ガード撤去 | A |
+  | `except RuntimeError` → `except Exception` | A |
+  | keyboard `_stop_and_restore` の順序反転 | B |
+  | 教科書パターンの新ノードを ws/src に追加 | C（regressed として名指し） |
+- **残件（追補 Issue・本 PR では触らない＝編集境界）**: ①baseline 13 ノードの修正（優先順 = Humble ボードで systemd 常駐する `emergency_guardian`〔`warehouse-safety.service` は `Restart=on-failure`〕・`state_cache`・`llm_bridge`、次に M1 経路の `speed_band_node`）②`m1_driver` の SIGTERM 経路がタイマー依存である点の明文化（`driver_node.py` のコメント）③`nav2_bridge` / `web_bridge` は uvicorn が signal handler を差し替えるため実害は**未確認**（baseline に含めたまま実測で裁定）④共通化先の docs 裁定（doc16 §11 or doc20）と [docs/setup/jetson-deploy.md](../../../docs/setup/jetson-deploy.md) への「正常停止 = exit 0」の明記。

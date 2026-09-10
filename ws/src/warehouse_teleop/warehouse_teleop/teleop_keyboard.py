@@ -40,6 +40,7 @@ from warehouse_teleop.keymap import (
     decode_key,
     key_to_twist,
 )
+from warehouse_teleop.node_runtime import best_effort, run_node
 
 # termios/tty/select are POSIX-only and only needed for live raw input. Guard the
 # import so the module loads on any platform and the node can still run headless.
@@ -203,10 +204,14 @@ class TeleopKeyboard(Node):
         self._pub.publish(msg)
 
     def stop(self) -> None:
-        """Publish a single zero Twist (used on quit / shutdown)."""
+        """Publish a single zero Twist (used on quit / shutdown).
+
+        Best-effort on the way out: on a Humble SIGINT/SIGTERM the context is
+        already gone when main()'s exit hook runs (see node_runtime), and the
+        idle stop_timeout / m1_driver W-1 are the real guarantees, not this zero.
+        """
         self._vx, self._wz = 0.0, 0.0
-        with contextlib.suppress(Exception):
-            self._publish(0.0, 0.0)
+        best_effort(lambda: self._publish(0.0, 0.0))
 
     def _log_help(self) -> None:
         self.get_logger().info(
@@ -215,21 +220,24 @@ class TeleopKeyboard(Node):
         )
 
 
+def _spin_until_quit(node: TeleopKeyboard) -> None:
+    # spin_once loop (not rclpy.spin) so the 'q' quit flag, set inside the timer
+    # callback, can break us out — shutdown stays in main(), not a callback.
+    while rclpy.ok() and not node.shutdown_requested:
+        rclpy.spin_once(node, timeout_sec=0.1)
+
+
+def _stop_and_restore(node: TeleopKeyboard) -> None:
+    # Order matters: the courtesy zero first (skipped once the context is gone),
+    # then the terminal — which must ALWAYS come back, whatever happened before.
+    node.stop()
+    node.restore_terminal()
+
+
 def main(args: list[str] | None = None) -> None:
-    rclpy.init(args=args)
-    node = TeleopKeyboard()
-    try:
-        # spin_once loop (not rclpy.spin) so the 'q' quit flag, set inside the
-        # timer callback, can break us out — shutdown stays in main(), not a callback.
-        with contextlib.suppress(KeyboardInterrupt):
-            while rclpy.ok() and not node.shutdown_requested:
-                rclpy.spin_once(node, timeout_sec=0.1)
-    finally:
-        node.stop()
-        node.restore_terminal()
-        node.destroy_node()
-        with contextlib.suppress(Exception):
-            rclpy.shutdown()
+    # Lifecycle (init / normal-stop exceptions / try_shutdown) is the shared
+    # node_runtime idiom; this node contributes its quit-flag loop and exit hook.
+    run_node(TeleopKeyboard, args=args, spin=_spin_until_quit, on_exit=_stop_and_restore)
 
 
 if __name__ == "__main__":

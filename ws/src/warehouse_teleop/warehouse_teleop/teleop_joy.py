@@ -40,7 +40,6 @@ from __future__ import annotations
 
 import math
 
-import rclpy
 from geometry_msgs.msg import Twist
 from rclpy.node import Node
 from rclpy.publisher import Publisher
@@ -74,6 +73,7 @@ from warehouse_teleop.joymap import (
     operator_estop_disarm,
     operator_estop_step,
 )
+from warehouse_teleop.node_runtime import best_effort, run_node
 
 
 class TeleopJoy(Node):
@@ -239,22 +239,21 @@ class TeleopJoy(Node):
         self._pub.publish(msg)
 
     def publish_stop(self) -> None:
+        """Best-effort final zero twist for the shutdown path.
+
+        A courtesy, never a safety dependency: m1_driver's W-1 (docs/mode-m1/02
+        §3) brakes 0.5 s after our last message anyway. ``best_effort`` skips the
+        publish once Humble's signal handler has torn the context down (see
+        :mod:`warehouse_teleop.node_runtime`) instead of dying with a traceback.
+        """
         self._latest = (0.0, 0.0, 0.0)
-        self._on_timer()
+        best_effort(self._on_timer)
 
 
 def main(args: list[str] | None = None) -> None:
-    rclpy.init(args=args)
-    node = TeleopJoy()
-    try:
-        rclpy.spin(node)
-    except KeyboardInterrupt:
-        pass
-    finally:
-        node.publish_stop()
-        node.destroy_node()
-        if rclpy.ok():
-            rclpy.shutdown()
+    # Lifecycle (init / spin / normal-stop exceptions / try_shutdown) is the shared
+    # node_runtime idiom; this node only contributes its best-effort final zero.
+    run_node(TeleopJoy, args=args, on_exit=TeleopJoy.publish_stop)
 
 
 if __name__ == "__main__":
