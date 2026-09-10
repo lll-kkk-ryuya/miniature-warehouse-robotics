@@ -85,3 +85,23 @@ Decision 3（:24）の「現状未結線」と References（:74）の同旨は**
 - **契約 pin（0.7m/s 候補）の残ブロッカーは §Open 1（:63 搭載 FW 版 / `get_car_type_from_machine()==0x0A` の実機確認）**（Decision 1 :22 のとおり contract PR は実機確認後）。**config 運用値の確定は §Open 2（:64 S-SPEED 実測）**。contract PR の DoD は Decision 5（:26-29 派生再導出・C-3 改訂 PR と同期）で、§Open 3-5（governance / check_speed_cap / t_react）も残る。実機 M0-M2 ゲート（[mode-m1/03](../mode-m1/03-joystick-teleop-bringup.md)）は未実施。
 - **契約値は 0.3 のまま不変**（`warehouse_interfaces.safety.MAX_LINEAR_VELOCITY`）＝本追補にコード変更は無い。
 - **速度帯（ジェスチャ③）の制御面の裁定は [ADR-0012](0012-speed-band-no-l2-best-effort.md)（2026-08-30 accepted）**: Decision 2 が config 注入に委ねた帯割りの runtime 経路を「L2 非経由・best-effort・hard 床（①起動基準値・凍結契約・L0'）不変」と確定した（ADR-0012 側は [mode-m1/02](../mode-m1/02-m1-driver-and-watchdog.md) の L0' 結線済を前提として参照済＝本行で双方向化）。
+
+---
+
+## 【2026-09-10 追補】§Open 1 の実機確認 — car_type は工場出荷 0x02（X3 PLUS）→ 0x0A（M1）へ書換え済・FW 3.6（Status・Decision の行は不変）
+
+§Open 1（:63）の「搭載 FW version / `get_car_type_from_machine()==0x0A`」を実機で確認した。**Status（:3）と Decision（:22 以降）は決定時点の記述として保存**し、以下の観測と処置のみを追記する。
+
+- **観測（2026-09-10 12:42 JST・read-only `m1_probe`・motion 送信なし）**: 電池セッション（T 挿し＋メインスイッチ ON → USB の順）で `get_car_type_from_machine()` = **2（`CAR_MECANUM_MAX`＝X3 PLUS）**・`get_version()` = **3.6**（vendor lib は major.minor しか公開せず patch は読めない）・battery **12.6 V**・encoder (0,0,0,0)×3 不変。**出荷 flash は M1 車種ではなく X3 PLUS 車種を保持していた**＝§Open 1 が期待した `0x0A` は「否」。実機手順・給電順序の正本は [../shared/02-hardware-design.md](../shared/02-hardware-design.md) **P-8-3 / P-9d**。
+- **含意（0.7 m/s 候補は揺るがない）**: 公式 STM32 source V3.6.5 `Source/APP/app_mecanum.h` において `CAR_MECANUM_MAX`(0x02) と `CAR_MECANUM_M1`(0x0A) の差は **APB（旋回幾何 (幅+長)/2）214.1mm vs 189.5mm だけ**で、`MECANUM_MAX_CIRCLE_MM == MECANUM_M1_CIRCLE_MM == 251.327` と `CAR_X3_PLUS_MAX_SPEED == CAR_M1_MAX_SPEED == 700` は**同値**。したがって **直進速度と 700mm/s clamp は車種によらず同一**＝Decision 1（:22）の契約 pin 候補 **0.7 m/s は 0x02 のままでも影響を受けない**。違いが出るのは yaw だけで、0x02 では指令 yaw rate に対し車輪が 214.1/189.5 ≈ **1.13 倍速く**回り、報告値 / odometry の yaw rate は同率で**過小読み**になる。
+- **`FUNC_MOTION` のペイロード car_type バイトでは上書きできない**: 同 V3.6.5 `Source/APP/protocol.c` の `FUNC_MOTION` ハンドラはこのバイトを **`& 0x80` の yaw-adjust フラグにしか使わない**。逆運動学と clamp は **flash 由来の `g_car_type`** が支配する＝フレーム側で車種を差し替える逃げ道は無い。
+- **処置（2026-09-10 12:55 頃）**: `Rosmaster_Lib.set_car_type(10)`（`FUNC_SET_CAR_TYPE=0x15` + `SAVE_VERIFY=0x5F` → firmware 側は `Motion_Set_Car_Type` + `Flash_Set_CarType` + 50ms 後 `Bsp_Reset_MCU`）で flash を **`0x0A`（`CAR_MECANUM_M1`）** へ書換えた。**MCU リセット後の読み戻し = 10**・battery 12.6 V・version 3.6。
+- **運用規則（ドライバ param）**: flash は永続するので、`m1_driver` の ROS param **`car_type` は既定 `-1`（＝送らない）のまま運用する**。非負値を渡すと `RosmasterBackend.__init__` が**起動のたびに** flash 書換え＋MCU リセットを起こし、リセット中（約 3 秒）は serial 沈黙・auto-report 欠落が入る。
+- **`get_car_type_from_machine()` の `-1` は証拠にならない**: vendor lib 3.3.9 の実装は 20×1ms しか待たずタイムアウトで `-1` を返す＝**偽 `-1` は普通に出る**。判定はリトライして非負値を得てから行う。
+
+**§Open 1 の残り（未決）**:
+
+- `# TODO(実機・現物)` **520 モータラベルの目視確認**と**メカナムホイール径 80mm 相当のノギス実測**は未実施（`m1_probe` では読めない＝現物作業）。
+- `# TODO(実機)` **完全な電源断（メインスイッチ OFF→ON）をまたぐ `car_type = 0x0A` の保持は未再確認**（書換え直後の MCU リセット後読み戻しのみ確認済）。次の実機セッション冒頭の `m1_probe` で確認する。
+
+**結論**: §Open 1 のうち **FW 版 / car_type の半分は閉じた**（3.6 / `0x0A` へ確定）。一方 Decision 1（:22）の contract PR は、残る現物確認（モータラベル・ホイール径・電源断保持）と **§Open 2（:64 S-SPEED 実測）**、および **Decision 5（:26-29 派生再導出）** の DoD 充足を待つ。**契約値は 0.3 のまま不変**（`warehouse_interfaces.safety.MAX_LINEAR_VELOCITY`）＝本追補にコード変更は無い。
