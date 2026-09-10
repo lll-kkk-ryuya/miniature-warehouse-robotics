@@ -1,5 +1,8 @@
 """Tests for the shared safety contract (warehouse_interfaces.safety)."""
 
+import ast
+from pathlib import Path
+
 import pytest
 from warehouse_interfaces.safety import (
     BATTERY_CRITICAL_PCT,
@@ -83,6 +86,69 @@ def test_idle_speed_eps_is_not_an_actuation_cap() -> None:
     assert clamp_velocity(IDLE_SPEED_EPS / 2) == IDLE_SPEED_EPS / 2
     assert clamp_velocity(-IDLE_SPEED_EPS / 2) == -IDLE_SPEED_EPS / 2
     assert clamp_velocity(IDLE_SPEED_EPS) == IDLE_SPEED_EPS
+
+
+_EPS_NAME = "IDLE_SPEED_EPS"
+
+# Packages whose job is ACTUATION — turning a decision into motion, or physically stopping it:
+# L0' host-side clamp / L1 Emergency Guardian (50ms reflex) / L2 Policy Gate. Layer map =
+# docs/productization/01-commercial-box-map.md:184-185 (L2 Governance / L1 Safety) and :186 (L0').
+_ACTUATION_PACKAGE_DIRS = (
+    "ws/src/warehouse_m1_driver",
+    "ws/src/warehouse_safety",
+    "ws/src/warehouse_mcp_server",
+)
+
+
+@pytest.mark.safety
+def test_no_actuation_package_binds_the_idle_epsilon() -> None:
+    """doc12 【2026-09-10 追補】 declares ε observation-only; this turns that into a gate.
+
+    The module docstring (safety.py:8-12) says "no actuation path may clamp to it", and
+    ``test_idle_speed_eps_is_not_an_actuation_cap`` above pins the one function that could leak
+    it today. Neither stops a NEW leak: the moment a driver or a guardian reaches for ε it can
+    gate motion on it, and these layers would then carry a second, quieter speed threshold
+    beside the only one they are allowed to enforce (``MAX_LINEAR_VELOCITY``) — invisible to a
+    scan that looks at ``clamp_velocity`` alone, and in the layers where a wrong threshold
+    moves a real robot. Binding the name is the reviewable event, so the ban is on the binding
+    rather than on a guess about the use: ``from ... import IDLE_SPEED_EPS`` (aliased or not)
+    and the attribute form ``safety.IDLE_SPEED_EPS`` alike. The observation lanes
+    (``warehouse_state`` / ``warehouse_orchestrator``) are deliberately absent — they MUST
+    import it; their own scans ban re-typing the literal instead.
+    """
+    repo_root = Path(__file__).resolve().parents[2]
+    offenders: list[str] = []
+    for package in _ACTUATION_PACKAGE_DIRS:
+        root = repo_root / package
+        # A renamed/moved package would make ``rglob`` yield nothing and this pass vacuously —
+        # fail loudly instead, so the list gets re-pointed in the PR that moves the package.
+        assert root.is_dir(), f"{package} is gone — re-point _ACTUATION_PACKAGE_DIRS"
+        for path in sorted(root.rglob("*.py")):
+            if "__pycache__" in path.parts:
+                continue
+            rel = path.relative_to(repo_root)
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            for node in ast.walk(tree):
+                if isinstance(node, ast.ImportFrom):
+                    offenders += [
+                        f"{rel}:{node.lineno} from {node.module} import {_EPS_NAME}"
+                        for alias in node.names
+                        if alias.name == _EPS_NAME
+                    ]
+                elif isinstance(node, ast.Import):
+                    offenders += [
+                        f"{rel}:{node.lineno} import {alias.name}"
+                        for alias in node.names
+                        if alias.name.split(".")[-1] == _EPS_NAME
+                    ]
+                elif isinstance(node, ast.Attribute) and node.attr == _EPS_NAME:
+                    offenders.append(f"{rel}:{node.lineno} <expr>.{_EPS_NAME}")
+    assert offenders == [], (
+        f"actuation package binds {_EPS_NAME} at {offenders}: ε is an observation/status "
+        "threshold (doc12 【2026-09-10 追補】 / safety.py:8-12), NOT a cap — the only speed "
+        "threshold L0'/L1/L2 may enforce is MAX_LINEAR_VELOCITY. If an actuation layer really "
+        "needs an idle notion, settle it with the contract owner first (#642), do not import ε."
+    )
 
 
 @pytest.mark.safety

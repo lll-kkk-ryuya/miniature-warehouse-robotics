@@ -5,11 +5,11 @@ doc15) and the Emergency Guardian (``warehouse_safety``, 50ms reflex, doc12), so
 the speed cap / battery thresholds never diverge across lanes. Encodes
 ``.claude/rules/safety.md``. Pure stdlib — unit-testable without ROS.
 
-⚠️ These are the canonical HARD CAPS, not tunables: import them directly and do
-NOT hardcode 0.3 / 20 / 10 elsewhere. The config value ``safety.max_linear_velocity``
-is an environment tunable that ``warehouse_interfaces.config.load_config`` validates
-to be ≤ ``MAX_LINEAR_VELOCITY`` — config may lower the operational speed, never
-raise it above this code-enforced ceiling.
+⚠️ 0.3 / 20 / 10 are the canonical HARD CAPS, not tunables: import them directly and do NOT
+hardcode them elsewhere. ``IDLE_SPEED_EPS`` (module end) shares the import-never-retype rule
+but is NOT a cap — it is an observation/status threshold; no actuation path may clamp to it.
+The config value ``safety.max_linear_velocity`` is an environment tunable that ``load_config``
+validates to be ≤ ``MAX_LINEAR_VELOCITY`` — config may lower the operational speed, never raise.
 """
 
 import math

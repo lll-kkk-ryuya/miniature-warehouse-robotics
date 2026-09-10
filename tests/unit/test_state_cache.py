@@ -213,6 +213,12 @@ def test_status_boundary_is_the_frozen_idle_epsilon() -> None:
     assert derive_status(-IDLE_SPEED_EPS) == "idle"
     assert derive_status(IDLE_SPEED_EPS * 1.1) == "moving"
     assert derive_status(-IDLE_SPEED_EPS * 1.1) == "moving"
+    # Non-finite never reaches here from ``build_snapshot`` (``set_velocity`` drops it —
+    # aggregator.py:151-153), but ``derive_status`` is public and read cross-lane, so pin the
+    # IEEE outcome rather than leaving it implied: ``abs(nan) > ε`` is False -> "idle" (unknown
+    # is NOT reported as motion), ``abs(inf) > ε`` is True -> "moving".
+    assert derive_status(float("nan")) == "idle"
+    assert derive_status(float("inf")) == "moving"
 
 
 @pytest.mark.unit
@@ -223,23 +229,45 @@ def test_the_idle_epsilon_is_imported_never_retyped_in_this_lane() -> None:
     ``0.01`` written inside a function, which would shadow the import locally while
     ``aggregator.IDLE_SPEED_EPS`` still points at the contract and every value assertion still
     passes (the numbers agree until someone retunes ε — exactly the split #642 removed).
-    Parsing the source closes that hole. Mirrors the 0.3 hard-cap scan the orchestrator lane
-    already runs (``tests/unit/test_wo_motion_kpi.py``), applied to this lane's ε.
+    Parsing the source catches the spellings that re-type ε at the use site: a bare literal, a
+    folded literal-only expression (``10 / 1000``) and ``float("0.01")``. It does NOT catch a
+    value computed from a name (``eps_mm / 1000``) — that one still needs a reader. Mirrors the
+    0.3 hard-cap scan the orchestrator lane already runs (``tests/unit/test_wo_motion_kpi.py``),
+    applied to this lane's ε.
     """
+
+    def _statically_is_eps(node: ast.AST) -> bool:
+        """True if this expression *is* ε spelled out instead of imported.
+
+        Folds literal-only expressions, so ``10 / 1000`` (a ``BinOp``) and ``float("0.01")``
+        (whose ``Constant`` is a ``str``) fail the same way a bare ``0.01`` does — both re-type
+        ε at the use site while ``module.IDLE_SPEED_EPS`` still points at the contract, so the
+        identity asserts and every value assertion stay green. Anything containing a name fails
+        to evaluate and is skipped, which is what keeps the legitimate re-export shape
+        ``IDLE_SPEED_EPS = safety.IDLE_SPEED_EPS`` from tripping this.
+        """
+        if not isinstance(node, ast.expr) or isinstance(node, ast.Name):
+            return False
+        try:
+            value = eval(ast.unparse(node), {"__builtins__": {}}, {"float": float})  # noqa: S307
+        except Exception:
+            return False
+        return isinstance(value, float) and value == IDLE_SPEED_EPS
+
     package = Path(aggregator_module.__file__).parent
     offenders = [
         f"{path.name}:{node.lineno}"
         for path in sorted(package.rglob("*.py"))
         if "__pycache__" not in path.parts
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
-        if isinstance(node, ast.Constant)
-        and isinstance(node.value, float)
-        and node.value == IDLE_SPEED_EPS
+        if _statically_is_eps(node)
     ]
     assert offenders == [], (
         f"re-typed idle threshold 0.01 at {offenders}: import IDLE_SPEED_EPS "
-        "(safety.py / doc12 【2026-09-10 追補】). If this is an unrelated 0.01 (a tolerance, a "
-        "timer period), name it a module constant so this scan stays an ε check."
+        "(safety.py / doc12 【2026-09-10 追補】). NOTE this fires on ANY 0.01 in the package, "
+        "including an unrelated tolerance or timer period — moving it into a named module "
+        "constant does NOT silence the scan; if it genuinely is not ε, exclude that "
+        "(file, lineno) here explicitly with a comment saying why."
     )
 
 
