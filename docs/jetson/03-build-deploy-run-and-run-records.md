@@ -113,7 +113,8 @@ install space には `warehouse-m1-driver.egg-link` のような **develop 形�
     "packages": 17,
     "exit_code": 0,
     "log_dir": "log/build_2026-09-10_12-52-05",
-    "duration_s": 18.7
+    "duration_s": 18.7,
+    "forced": false
   },
   "deployment": null
 }
@@ -127,8 +128,9 @@ install space には `warehouse-m1-driver.egg-link` のような **develop 形�
 - `host.l4t` — `/etc/nv_tegra_release` の `# R36 (release), REVISION: 4.4` から `R36.4.4` を組む。取れなければ `null`。
   `ros_distro` — env `ROS_DISTRO`、無ければ `/opt/ros/<x>` の唯一の候補、それも無ければ `null`。
 - `deps` — §2 のとおり `rosdep check`（read-only）の結果。値は `ok` | `unsatisfied` | `skipped`。
-- `colcon.args` — dev は `["--symlink-install"]`、prod は `[]`。`packages` = `colcon list --names-only` の行数。
+- `colcon.args` — dev は `["--symlink-install"]`、prod は `[]`。`packages` = `colcon list --names-only` の行数、取れなければ `src/*/package.xml` の数に fallback。
   `log_dir` = `<ws>/log/latest_build` の symlink 解決先を `<ws>` 基点の相対で。`duration_s` は小数 1 桁。
+- `colcon.forced` — 安全ガード（motion stack 稼働中）を `--force` で乗り越えて build したとき `true`、平時は `false`。**forced build も build-info を書く**——install space が実際に変わった以上、記録しない方が嘘になる。
 - `deployment` — **予約フィールド（常に `null`）**。別マシンで build した成果物を配布する運用になったとき
   `{deployment_id, robot_id, artifact_sha256, units[]}` を入れる。**今はロボット上で build するので build = deploy**——「省略」ではなく「予約」。
 
@@ -149,8 +151,9 @@ prod の tag 必須は「prod デプロイは git タグ」（[architecture/19:1
 ### 安全ガード（build ≠ deploy ≠ run の強制）
 
 - **走行中は拒否**（exit 3）: `systemctl is-active warehouse.target` が active、または `pgrep -f warehouse_m1_driver` /
-  `pgrep -f "ros2 launch warehouse_bringup"` が hit したとき。`--force` で続行できるが、その build は **build-info を書かない**
-  （stderr 警告のみ）＝走行中に書き換えた install space を「記録済みの正しい状態」に見せない。`systemctl` / `pgrep` が無い環境（Mac）は「不明」として続行。
+  `pgrep -f "ros2 launch warehouse_bringup"` が hit したとき。**`--force` はガードを外すだけ**で記録は通常どおり残り、
+  **`colcon.forced=true`** で区別される（stderr 警告つき）＝走行中に書き換えた事実を消さない。forced build を使ったら**報告で明示する**。
+  `systemctl` / `pgrep` が無い環境（Mac）は「不明」として続行。
 - **`systemctl restart` / `enable` / `start` を絶対に呼ばない**。切替は [setup/jetson-deploy.md:137-147](../setup/jetson-deploy.md) §8 の
   別工程であり、`install.sh` が enable/start しない設計（[setup/jetson-deploy.md:87](../setup/jetson-deploy.md)）と同じ規律。
 - **sudo を使わない・ssh を使わない**。
@@ -161,11 +164,22 @@ prod の tag 必須は「prod デプロイは git タグ」（[architecture/19:1
 deploy/jetson/bin/build.sh [--profile dev|prod] [--force] [--skip-rosdep] [--allow-untagged] [--dry-run]
 ```
 
-`--dry-run` は colcon / rosdep を走らせず、書く予定の JSON を stdout に出す（git 情報は実際に読む）。書いた記録は 2 箇所に出す:
+（このほか `--colcon-cmd "<cmd>"` / `--rosdep-cmd "<cmd>"` があるが、**外部コマンドを差し替えるテスト用の seam** でありオペレータ向けフラグではない。）
 
-- `deploy/jetson/bin/preflight.sh --arrival`（`run_arrival_checks`・`preflight.sh:239-285`）の
-  `workspace install/setup.bash exists` の直後に、**build-info の有無**（無ければ warn）と **rosdep check**（§2・read-only）を足す。
-- Mac 側 `jetson status`（remote probe・`jetson:392` の `kv repo` 直後）に `build` 行を足す。現状 probe は
+| exit | 意味 |
+|---|---|
+| 0 | 成功 |
+| 1 | `colcon` 失敗 |
+| 2 | prod ポリシー違反（dirty・untagged） |
+| 3 | 安全ガード（走行中） |
+| 4 | usage（`<ws>` が git work tree でない・不在を含む） |
+
+`--dry-run` は colcon / rosdep を走らせず、書く予定の JSON を stdout に出す（git 情報は実際に読む）。このとき `colcon.exit_code` / `duration_s` /
+`log_dir` は `null`・`packages` は `src/*/package.xml` の数・`deps.rosdep_check="skipped"`・`forced=false` となり、**ファイルは何も書かない**。書いた記録は 2 箇所に出す:
+
+- `deploy/jetson/bin/preflight.sh` の `run_arrival_checks`（`--arrival`）で、
+  `workspace install/setup.bash exists` の直後に **build-info の有無**（無ければ warn）と **rosdep check**（§2・read-only）を足す。
+- Mac 側 `jetson status`（`deploy/dev/jetson-link/jetson` の `cmd_status` → `readiness` が回す remote PROBE の `kv build` 行）。現状 probe は
   `git rev-parse --short HEAD` しか出さない＝**「どの SHA が置いてあるか」は分かるが「その SHA で build したか」は分からない**。`build_id` がその穴を塞ぐ。
 
 ---
@@ -238,7 +252,7 @@ notes.md                 ← --notes "<text>" 指定時のみ
   },
   "firmware": { "version": null, "car_type": null, "source": null, "binary_sha256": null },
   "launch": { "entrypoint": null, "args": [] },
-  "runtime": { "nodes": "runtime/nodes.txt", "topics": "runtime/topics.txt", "captured_at": null, "capture_delay_s": 5 },
+  "runtime": { "nodes": "runtime/nodes.txt", "topics": "runtime/topics.txt", "captured_at": null, "capture_delay_s": 5.0 },
   "parameters": { "snapshot_dir": "parameters/", "nodes_dumped": [], "dump_errors": {}, "parameter_events_recorded": true },
   "calibration": { "index": "calibration/hashes.json", "count": 0 },
   "safety": { "max_linear_velocity_mps": 0.3, "source": "warehouse_interfaces.safety.MAX_LINEAR_VELOCITY", "car_type": null },
@@ -254,7 +268,7 @@ notes.md                 ← --notes "<text>" 指定時のみ
 - `firmware.version` / `car_type` — v0 では **CLI の手入力**（`--fw-version 3.6 --car-type 10`）。指定時 `source="cli"`。
   `binary_sha256` は予約（常に `null`）＝**読めないものを読めたことにしない**。
 - `launch.entrypoint` — `--launch "<コマンド文字列>"` の写し。**record-run 自身は何も起動しない・何も publish しない（観測のみ）**。
-- `runtime` — bag 開始から `capture_delay_s`（既定 5・`--capture-delay`）後に `ros2 node list` / `ros2 topic list -t` を取り、`captured_at` を書く。
+- `runtime` — bag 開始から `capture_delay_s`（既定 `5.0`・`--capture-delay`）後に `ros2 node list` / `ros2 topic list -t` を取り、`captured_at` を書く。値は **float**＝短い走行を潰さないよう `--capture-delay 0.5` のような秒未満も渡せる。
 - `parameters` — 取得した node ごとに `ros2 param dump <node>` を保存。失敗は `dump_errors[node] = "<stderr 先頭 200 字>"`。
   `parameter_events_recorded` は `record_mode == "all"` なら true、`topics` 指定時は `/parameter_events` が含まれていれば true。
 - `safety.max_linear_velocity_mps` — 凍結契約 `warehouse_interfaces.safety.MAX_LINEAR_VELOCITY`
@@ -264,8 +278,11 @@ notes.md                 ← --notes "<text>" 指定時のみ
   `rosbag2-storage-default-plugins` しか入っていない（実測 2026-09-10）。**`--storage mcap` を使ってよいのは
   `ros-humble-rosbag2-storage-mcap` 導入後だけ**（format 採否自体は要 spike＝[productization/05:406](../productization/05-decision-observability-and-tooling.md)）。
 - `data.record_mode` — 既定 `all`（`ros2 bag record -a`＝`/parameter_events` と `/rosout` も掴む）。`--topics "/a /b"` 指定で `topics` になり配列を記録。
+  **`ros2 bag record` へ topic は位置引数で渡す**（Humble に `--topics` は無い）。record-run 自身の `--topics "/a /b"` という受け口の表記は据え置き。
 - **終了** — SIGINT / SIGTERM または `--duration <s>` で bag プロセスへ SIGINT → 待機 → `ended_at`・`duration_s`・`bag_exit_code` を書く。
   json は開始直後に一度書き、以後は上書き（atomic: tmp → rename）＝**途中で電源が落ちても「走った」記録は残る**。
+- **bag を孤児にしない** — bag 起動後の処理は `try/finally` で必ず停止処理（SIGINT → 20 s → SIGTERM → 10 s）に到達し、
+  SIGINT/SIGTERM ハンドラは **bag 起動より前**に登録する。capture や JSON 書出しが失敗しても、記録プロセスだけ死んで bag が走り続ける状態を作らない。
 
 ### run-record は `run_manifest.v1` ではない
 
@@ -283,6 +300,13 @@ deploy/jetson/bin/record-run.sh [--bags-dir DIR] [--ws PATH] [--robot-id bot1] [
     [--topics "/a /b"] [--storage sqlite3|mcap] [--capture-delay 5] [--duration S] \
     [--calibration FILE ...] [--notes TEXT] [--dry-run]
 ```
+
+（`--ros2-cmd "<cmd>"` もあるが、`ros2` 実体を差し替える**テスト用の seam** でありオペレータ向けフラグではない。）
+
+| exit | 意味 |
+|---|---|
+| 0 | 正常 |
+| 4 | usage（`ros2` 不在＝ディレクトリを作る前に終了・`bags_dir` が作れない） |
 
 ### 拡張点（予約）
 
@@ -353,7 +377,7 @@ sudo systemctl restart warehouse.target            # ← 切替は build.sh の�
 | CI で `colcon build` / `colcon test` を回す | **やらない**（`colcon test` は Phase 3＝[architecture/20:76](../architecture/20-dev-quality-and-testing.md)）。CI 追加は governance の別 PR |
 | ROS スタックを Jetson 上で Docker 化 | **やらない**。prod は native systemd（[setup/jetson-deploy.md:151-159](../setup/jetson-deploy.md) の unit 一覧）。Docker は稼働しているが data-root が `/ssd` の別用途（[jetson/02:347](02-remote-access-and-dev-link.md)） |
 | Isaac ROS の導入 | **やらない**（ボードに 0 パッケージ・導入予定なし。Humble 用 3.2 の cuVSLAM に depth 入力経路が無い＝[architecture/23:440](../architecture/23-perception-and-localization.md) の blocked 判断） |
-| fake / モータ無し runner | **v0 では作らない**。seam は既にある（`warehouse_m1_driver` の `MotionBackend` Protocol＝`backend.py:24`）が、M1 ゲートは read-only プローブ＋**車輪を浮かせる**で担保する |
+| fake / モータ無し runner | **v0 では作らない**。seam は既にある（`warehouse_m1_driver` の `MotionBackend` Protocol）が、M1 ゲートは read-only プローブ＋**車輪を浮かせる**で担保する |
 | MCAP | plugin（`ros-humble-rosbag2-storage-mcap`）導入まで **`--storage mcap` を使わない**。format 採否は要 spike（[productization/05:406](../productization/05-decision-observability-and-tooling.md)） |
 | `v0.1.0` タグ | **未発行**。§5 prod 手順と `--allow-untagged` の廃止はこれ待ち（[setup/jetson-deploy.md:54-58](../setup/jetson-deploy.md)） |
 | `robot_id` の正本 | **未決**。v0 は doc03 の `/bot{n}` に合わせた既定値 `bot1` を置くだけで、config / env の正本化はしない |
@@ -373,4 +397,4 @@ sudo systemctl restart warehouse.target            # ← 切替は build.sh の�
 - 別物・観測: [docs/productization/09-run-manifest-and-plugin-composition.md:42-65](../productization/09-run-manifest-and-plugin-composition.md) / [docs/productization/09-run-manifest-and-plugin-composition.md:153-162](../productization/09-run-manifest-and-plugin-composition.md)（`run_manifest.v1`＝**別物**）/ [docs/productization/05-decision-observability-and-tooling.md:406](../productization/05-decision-observability-and-tooling.md)（bag format 要 spike）/ [docs/productization/01-commercial-box-map.md:174](../productization/01-commercial-box-map.md) / [docs/productization/01-commercial-box-map.md:194](../productization/01-commercial-box-map.md)（layer 対応表・帰属未定）
 - 走行ゲート: [docs/mode-m1/03-joystick-teleop-bringup.md:8-12](../mode-m1/03-joystick-teleop-bringup.md)（M0/M1/M2）/ [docs/mode-m1/03-joystick-teleop-bringup.md:50](../mode-m1/03-joystick-teleop-bringup.md)（standalone＝twist_mux なし）/ [docs/mode-m1/02-m1-driver-and-watchdog.md:60-65](../mode-m1/02-m1-driver-and-watchdog.md)（W-1〜W-4）/ [docs/mode-m1/02-m1-driver-and-watchdog.md:70](../mode-m1/02-m1-driver-and-watchdog.md)（G-g 車輪浮かせ）
 - 用語: [docs/GLOSSARY.md](../GLOSSARY.md) §11「ビルド記録（build-info）」「走行記録（run record）」（双方向）
-- 実装: `deploy/jetson/bin/build.sh` / `mwr_build.py` / `record-run.sh` / `mwr_run_record.py`、`deploy/jetson/bin/preflight.sh:239-285`（arrival）、`deploy/dev/jetson-link/jetson:385-396`（status probe）／ 凍結契約 `ws/src/warehouse_interfaces/warehouse_interfaces/safety.py:18`／ 規約 `.claude/rules/build-deploy-run.md`（要点のみ・正本は本 doc）
+- 実装（コードは churn するので **symbol で指し `path:line` で固定しない**＝[.claude/rules/session-orchestration.md](../../.claude/rules/session-orchestration.md) §8）: `deploy/jetson/bin/build.sh` / `mwr_build.py` / `record-run.sh` / `mwr_run_record.py`、`deploy/jetson/bin/preflight.sh` の `run_arrival_checks`（arrival）、`deploy/dev/jetson-link/jetson` の `cmd_status` → `readiness`（status probe の `kv build` 行）／ 凍結契約 `ws/src/warehouse_interfaces/warehouse_interfaces/safety.py:18`／ 規約 `.claude/rules/build-deploy-run.md`（要点のみ・正本は本 doc）
