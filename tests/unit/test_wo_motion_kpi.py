@@ -48,6 +48,15 @@ two-point floor to three, hardcoding the 0.3 m/s cap instead of using the inject
 the guard on a ``v_max·T`` product that underflows to ``0.0``, and reporting ``0.0`` instead of
 ``None`` when no cap was supplied.
 
+**doc21 §17 ③ run-whole additions (#632).** The same two metrics now also exist over the entire
+run (``MotionAccumulator.run_totals`` → ``run_motion_stats`` → ``KpiReport.run_motion``), and the
+tests at the end of this file are what keeps that scope honest: run totals accumulated at
+``add()`` time rather than re-derived from the ring buffer (a fixture whose window and run
+answers deliberately differ), ``|v|`` rather than the signed series in both the ε count and the
+integral (a reversal fixture), ``T = t_last − t_first`` rather than the end stamp (an epoch
+fixture), the two-sample floor asserted from the positive side, and every degenerate cap
+degrading to ``None`` instead of ``0.0`` or a raise.
+
 No ROS, no live SDK: ``motion`` is rclpy-free (doc16 §11) and numpy is only needed by SPARC,
 whose tests skip when the optional ``eval_sdk[stats]`` extra is absent. One test imports
 ``warehouse_state`` (cross-lane) **on purpose** — pinning the borrowed ε against its owner is
@@ -61,7 +70,7 @@ import random
 from pathlib import Path
 
 import pytest
-from eval_sdk.stats import ldlj, n_movement_units, sparc
+from eval_sdk.stats import SeriesTotals, ldlj, n_movement_units, sparc
 from warehouse_interfaces.safety import MAX_LINEAR_VELOCITY
 from warehouse_orchestrator import motion as motion_module
 from warehouse_orchestrator.audit_reader import parse_lines
@@ -75,6 +84,7 @@ from warehouse_orchestrator.motion import (
     detour_factors,
     resolve_motion_buffer_samples,
     resolve_speed_cap,
+    run_motion_stats,
     sample_rate_hz,
     smoothness_stats,
 )
@@ -1004,7 +1014,8 @@ def test_resolve_motion_buffer_samples_accepts_a_usable_depth() -> None:
 
 @pytest.mark.unit
 @pytest.mark.parametrize(
-    "value", [0, -1, -4096, 4096.5, math.nan, math.inf, "", "abc", None, True, False, [4096]]
+    "value",
+    [0, -1, -4096, 4096.5, math.nan, math.inf, "", "abc", None, True, False, [4096], 10**400],
 )
 def test_resolve_motion_buffer_samples_falls_back_with_a_warning(value: object) -> None:
     """Unusable values fall back to the default **and say so**, never raise: an observation
@@ -1014,6 +1025,11 @@ def test_resolve_motion_buffer_samples_falls_back_with_a_warning(value: object) 
     ``KpiCollector.__init__``, where only a live ROS node could execute it, and ``int("")``
     would have raised there rather than falling back. ``True``/``False`` are rejected on
     purpose: ``bool`` is an ``int`` in Python and a 1-sample ring buffer is never intended.
+
+    ``10**400`` is the case that made "never raises" literally false here (#632 A2), the hole
+    ``resolve_speed_cap`` had already closed: it IS an ``int``, so it clears the isinstance
+    check, and ``float()`` on it raises ``OverflowError`` — which is neither ``TypeError`` nor
+    ``ValueError``, so the old ``except`` let it escape into ``KpiCollector.__init__``.
     """
     depth, warning = resolve_motion_buffer_samples(value)
     assert depth == DEFAULT_MOTION_BUFFER_SAMPLES
@@ -1086,3 +1102,339 @@ def test_the_hard_cap_is_imported_never_retyped_in_this_lane() -> None:
         "If this is an unrelated 0.3 (a timeout, a ratio), name it a module constant so this "
         "scan stays a cap check."
     )
+
+
+# ── doc21 §17 ③ run-whole scope (#632): the twin of the window pair above ─────
+
+
+def _run_totals(velocities: list[float], *, dt: float = 1.0, t0: float = 0.0, depth: int = 4096):
+    """Feed a window through the REAL accumulator and hand back its run totals.
+
+    Deliberately routed through ``MotionAccumulator.add`` rather than constructing a
+    ``SeriesTotals`` by hand: what is under test is that the run scope is fed by the same
+    accepted samples as the window, so a fixture that bypassed ``add`` would prove nothing.
+    """
+    acc = MotionAccumulator(max_samples=depth)
+    for i, v in enumerate(velocities):
+        assert acc.add("bot1", t0 + i * dt, 0.0, 0.0, v) is True
+    return acc.run_totals()["bot1"]
+
+
+@pytest.mark.unit
+def test_run_totals_outlive_ring_buffer_eviction() -> None:
+    """The whole point of doc21 §17 ③'s run scope: an evicted sample leaves the *window* and
+    stays in the *run*. Recomputing the run from ``series()`` would silently truncate it at
+    ``max_samples`` — the one mutation this fixture exists to kill.
+
+    Six samples at dt = 1 s, |v| = [0, 0, 0, 0.4, 0.4, 0.4], into a 3-deep buffer:
+
+    * window = the last three ⇒ 0 of 3 idle, ∫ = 0.4·1 + 0.4·1 = 0.8 over T = 2 s;
+    * run     = all six       ⇒ 3 of 6 idle, ∫ = 0 + 0 + 0.2 + 0.4 + 0.4 = 1.0 over T = 5 s.
+
+    Every number therefore differs between the two scopes, including the utilisation at a
+    0.5 m/s cap: 0.8/(0.5·2) = 0.8 for the window against 1.0/(0.5·5) = 0.4 for the run.
+    """
+    acc = MotionAccumulator(max_samples=3)
+    for i, v in enumerate([0.0, 0.0, 0.0, 0.4, 0.4, 0.4]):
+        assert acc.add("bot1", float(i), 0.0, 0.0, v) is True
+
+    window = smoothness_stats(acc.series()["bot1"], speed_cap=0.5)
+    assert window.samples == 3
+    assert window.idle_ratio == pytest.approx(0.0)
+    assert window.speed_budget_utilisation == pytest.approx(0.8)
+
+    totals = acc.run_totals()["bot1"]
+    assert totals.samples == 6
+    assert totals.at_or_below == 3
+    assert totals.integral == pytest.approx(1.0)
+    assert (totals.t_first, totals.t_last) == (0.0, 5.0)
+
+    run = run_motion_stats(totals, speed_cap=0.5)
+    assert run.samples == 6 and run.idle_samples == 3
+    assert run.idle_ratio == pytest.approx(0.5)
+    assert run.integral_abs_speed == pytest.approx(1.0)
+    assert run.duration == pytest.approx(5.0)
+    assert run.speed_budget_utilisation == pytest.approx(0.4)
+
+
+@pytest.mark.unit
+def test_run_totals_accept_exactly_what_the_window_accepts() -> None:
+    """One validation path: a sample the ring buffer refuses must not reach the run totals
+    either, or the two scopes would describe different streams. Each refusal below is a rule
+    the window already had — an unnamed robot, a non-finite field (``x`` is checked by
+    ``MotionAccumulator``, ``t``/``v`` by the accumulator it delegates to), a stamp that does
+    not advance — and none of them may move ``samples`` or ``t_last``.
+    """
+    acc = MotionAccumulator()
+    assert acc.add("bot1", 1.0, 0.0, 0.0, 0.5) is True
+    assert acc.add("", 2.0, 0.0, 0.0, 0.5) is False  # unnamed robot
+    assert acc.add("bot1", 1.0, 0.0, 0.0, 0.5) is False  # duplicate stamp
+    assert acc.add("bot1", 0.5, 0.0, 0.0, 0.5) is False  # clock went backwards
+    assert acc.add("bot1", 2.0, math.nan, 0.0, 0.5) is False  # non-finite x
+    assert acc.add("bot1", 2.0, 0.0, math.inf, 0.5) is False  # non-finite y
+    assert acc.add("bot1", math.nan, 0.0, 0.0, 0.5) is False  # non-finite stamp
+    assert acc.add("bot1", 2.0, 0.0, 0.0, math.nan) is False  # non-finite velocity
+    assert acc.run_totals() == {
+        "bot1": SeriesTotals(samples=1, at_or_below=0, integral=0.0, t_first=1.0, t_last=1.0)
+    }
+    assert [sample.t for sample in acc.series()["bot1"]] == [1.0]
+    # …and the next legitimate sample still integrates from the surviving one: 1 s · 0.5 = 0.5.
+    assert acc.add("bot1", 2.0, 0.0, 0.0, 0.5) is True
+    assert acc.run_totals()["bot1"].integral == pytest.approx(0.5)
+
+
+@pytest.mark.unit
+def test_run_totals_isolate_robots_and_clear_forgets_both_scopes() -> None:
+    """``clear()`` is a reset affordance, so it resets *both* scopes — leaving the run totals
+    behind would produce a report whose two halves describe different runs."""
+    acc = MotionAccumulator()
+    acc.add("bot1", 0.0, 0.0, 0.0, 0.0)
+    acc.add("bot2", 0.0, 0.0, 0.0, 0.4)
+    assert acc.add("bot2", 0.5, 0.0, 0.0, 0.4) is True  # bot1's stamps must not gate bot2's
+    totals = acc.run_totals()
+    assert set(totals) == {"bot1", "bot2"}
+    assert totals["bot1"].at_or_below == 1  # |v| = 0 ≤ ε
+    assert totals["bot2"].at_or_below == 0
+    assert totals["bot2"].integral == pytest.approx(0.2)  # 0.5 s · 0.4 m/s
+    acc.clear()
+    assert acc.run_totals() == {}
+    assert acc.series() == {}
+
+
+@pytest.mark.unit
+def test_run_idle_ratio_counts_the_magnitude_at_or_below_epsilon() -> None:
+    """doc21 §17 ① at run scope — same ε, same inclusive comparison, same |v|.
+
+    Hand count of ``[0.0, -0.01, 0.011, -0.5, 0.005]``: |v| = ``[0, 0.01, 0.011, 0.5, 0.005]``,
+    three of five at or below ε = 0.01 ⇒ 0.6. ``<=``→``<`` drops the sample sitting EXACTLY on ε
+    (0.4); counting the SIGNED series would sweep in −0.01 and −0.5 (0.8).
+    """
+    run = run_motion_stats(_run_totals([0.0, -0.01, 0.011, -0.5, 0.005]))
+    assert run.idle_samples == 3
+    assert run.idle_ratio == pytest.approx(0.6)
+    # A run that never moved is fully idle; one that never stopped is a measured 0.0, not None.
+    assert run_motion_stats(_run_totals([0.0] * 4)).idle_ratio == 1.0
+    assert run_motion_stats(_run_totals([0.2] * 4)).idle_ratio == 0.0
+
+
+@pytest.mark.unit
+def test_run_integral_takes_the_magnitude_so_reversals_still_consume_budget() -> None:
+    """doc21 §17 ② integrates ``|v|``: a bot that drove forward, reversed, then drove forward
+    again spent its budget throughout — it did not stand still. Hand: |v| ≡ 0.2 over T = 2 s
+    ⇒ ∫ = 0.4, and at cap 0.2 that is 0.4/(0.2·2) = 1.0. Accumulating the SIGNED velocity
+    cancels the two trapezoids to ∫ = 0 ⇒ 0.0, which is what this fixture exists to catch (a
+    run of all-positive speeds cannot tell the two apart)."""
+    run = run_motion_stats(_run_totals([0.2, -0.2, 0.2]), speed_cap=0.2)
+    assert run.integral_abs_speed == pytest.approx(0.4)
+    assert run.speed_budget_utilisation == pytest.approx(1.0)
+    assert run.idle_ratio == 0.0  # |v| = 0.2 everywhere: nothing is at or below ε
+
+
+@pytest.mark.unit
+def test_run_utilisation_uses_the_span_not_the_absolute_end_stamp() -> None:
+    """``T = t_last − t_first`` (doc21 §17 ②), never the end stamp. Odom stamps are ABSOLUTE
+    clock seconds (``kpi_collector._on_odom``), so the same run shifted to a wall-clock epoch
+    must report the same number: |v| = [0, 0.3, 0.3, 0] at dt = 0.1 ⇒ ∫ = 0.06 over T = 0.3,
+    and at cap 0.3 that is 2/3 whether the run opens at t = 0 or at t = 1.7e9. Reading ``T``
+    off ``t_last`` happens to agree at t = 0 — which is exactly why the epoch half is here."""
+    profile = [0.0, 0.3, 0.3, 0.0]
+    at_zero = run_motion_stats(_run_totals(profile, dt=0.1), speed_cap=0.3)
+    at_epoch = run_motion_stats(_run_totals(profile, dt=0.1, t0=1.7e9), speed_cap=0.3)
+    assert at_zero.duration == pytest.approx(0.3)
+    assert at_zero.speed_budget_utilisation == pytest.approx(2 / 3)
+    # rel=1e-5: epoch-magnitude stamps cost ~6 significant digits of dt precision, which is
+    # itself the reason this metric must never be read as more than ~5 digits.
+    assert at_epoch.duration == pytest.approx(0.3, rel=1e-5)
+    assert at_epoch.speed_budget_utilisation == pytest.approx(2 / 3, rel=1e-5)
+    assert at_epoch.t_first == pytest.approx(1.7e9)
+
+
+@pytest.mark.unit
+def test_run_utilisation_floor_is_two_samples() -> None:
+    """A single point spans no time, so there is nothing to divide — but it is still a sample,
+    which is why the idle ratio survives it and the utilisation does not.
+
+    The floor is asserted from the POSITIVE side too (raising it to three would otherwise be an
+    equivalent mutation): two samples 0.1 s apart at |v| = 0.2 ⇒ ∫ = 0.02 over T = 0.1, at cap
+    0.2 ⇒ 1.0.
+    """
+    single = run_motion_stats(_run_totals([0.0]), speed_cap=0.3)
+    assert single.samples == 1
+    assert single.speed_budget_utilisation is None
+    assert single.idle_ratio == 1.0
+    assert single.duration == 0.0 and single.integral_abs_speed == 0.0
+    pair = run_motion_stats(_run_totals([0.2, 0.2], dt=0.1), speed_cap=0.2)
+    assert pair.speed_budget_utilisation == pytest.approx(1.0)
+    # …and the guard is on the SAMPLE COUNT, not only on the span: a hand-built snapshot that
+    # claims a 5 s span from one sample is still not divisible (5.0/(0.5·5) = 2.0 if it were).
+    impossible = SeriesTotals(samples=1, at_or_below=0, integral=5.0, t_first=0.0, t_last=5.0)
+    assert run_motion_stats(impossible, speed_cap=0.5).speed_budget_utilisation is None
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("cap", [None, 0.0, -0.3, math.nan, math.inf])
+def test_run_utilisation_is_none_without_a_usable_cap(cap: float | None) -> None:
+    """No cap (the offline-CLI default) or an unusable one ⇒ "not computable", never 0.0 — the
+    ``eval_sdk.stats`` no-data convention. The counts are unaffected: they need no cap."""
+    run = run_motion_stats(_run_totals([0.1, 0.2, 0.3]), speed_cap=cap)
+    assert run.speed_budget_utilisation is None
+    assert run.speed_cap is cap or run.speed_cap == cap  # the unusable value is still disclosed
+    assert run.idle_ratio == 0.0
+    assert run.integral_abs_speed == pytest.approx(0.4)  # 1·0.15 + 1·0.25
+
+
+@pytest.mark.unit
+def test_run_utilisation_is_unclamped_and_survives_a_budget_underflow() -> None:
+    """Above budget is *information*, the ``detour_factors`` stance: |v| ≡ 0.5 over T = 2 s
+    ⇒ ∫ = 1.0, against a 0.3 m/s cap that is 1.0/0.6 = 5/3, not a laundered 1.0.
+
+    And a denormal cap must degrade rather than raise: ``5e-324`` passes
+    ``config._validate_safety`` (finite, > 0, ≤ 0.3) yet ``cap · T`` underflows to exactly
+    ``0.0`` for a 0.03 s run — and ``_report`` catches only ``OSError``, so an unguarded
+    division would kill the rclpy timer callback rather than skipping one KPI.
+    """
+    over = run_motion_stats(_run_totals([0.5, 0.5, 0.5]), speed_cap=0.3)
+    assert over.speed_budget_utilisation == pytest.approx(5 / 3)
+    assert over.speed_budget_utilisation > 1.0
+    tiny = run_motion_stats(_run_totals([0.1, 0.1], dt=0.03), speed_cap=5e-324)
+    assert tiny.speed_budget_utilisation is None
+    assert tiny.speed_cap == 5e-324  # the unusable denominator is still disclosed
+    assert tiny.integral_abs_speed == pytest.approx(0.003)
+
+
+@pytest.mark.unit
+def test_run_motion_stats_of_a_sampleless_snapshot_is_all_none() -> None:
+    """A run with no samples has no span, no ratio and no integral — "not measured", the
+    treatment ``smoothness_stats`` gives an empty window. (``TimeSeriesAccumulator`` never emits
+    such a snapshot; this pins the defensive branch for a hand-built one.)"""
+    empty = run_motion_stats(
+        SeriesTotals(samples=0, at_or_below=0, integral=0.0, t_first=0.0, t_last=0.0), speed_cap=0.3
+    )
+    assert empty.samples == 0
+    assert empty.idle_ratio is None
+    assert empty.t_first is None and empty.t_last is None
+    assert empty.duration is None and empty.integral_abs_speed is None
+    assert empty.speed_budget_utilisation is None
+    assert empty.speed_cap == 0.3  # still discloses what it would have divided by
+
+
+@pytest.mark.unit
+def test_run_motion_to_dict_discloses_its_own_bounds_with_the_cap_last() -> None:
+    """Each scope must publish the bounds it was measured over, or a reader cannot tell a
+    windowed ``idle_ratio`` from a run one (doc21 §17 ③ declares the coexistence). The window
+    publishes ``window_start``/``window_end``/``samples``; this publishes
+    ``t_first``/``t_last``/``duration``/``samples`` — and the cap comes LAST, after the metric it
+    explains, the ordering ``SmoothnessStats.to_dict`` already uses."""
+    payload = run_motion_stats(_run_totals([0.0, 0.2], dt=0.5, t0=10.0), speed_cap=0.2).to_dict()
+    assert list(payload) == [
+        "samples",
+        "idle_samples",
+        "idle_ratio",
+        "t_first",
+        "t_last",
+        "duration",
+        "integral_abs_speed",
+        "speed_budget_utilisation",
+        "speed_cap",
+    ]
+    assert payload["t_first"] == 10.0 and payload["t_last"] == 10.5
+    assert payload["duration"] == pytest.approx(0.5)
+    assert payload["integral_abs_speed"] == pytest.approx(0.05)  # 0.5 s · (0 + 0.2)/2
+    assert payload["speed_budget_utilisation"] == pytest.approx(0.5)  # 0.05/(0.2·0.5)
+    assert payload["speed_cap"] == 0.2
+
+
+@pytest.mark.unit
+def test_compute_kpis_reports_both_scopes_from_one_accumulator() -> None:
+    """The live composition: the node hands over the SAME accumulator's window and run totals,
+    and the report carries both — under different keys, with the same injected cap.
+
+    Fixture = the eviction one above, so the two scopes must disagree: window 0.0 idle /
+    0.8 utilisation over 3 samples, run 0.5 idle / 0.4 utilisation over 6.
+    """
+    acc = MotionAccumulator(max_samples=3)
+    for i, v in enumerate([0.0, 0.0, 0.0, 0.4, 0.4, 0.4]):
+        acc.add("bot1", float(i), 0.0, 0.0, v)
+    report = compute_kpis(
+        _audit_rows(),
+        motion=MotionInputs(samples=acc.series(), run_totals=acc.run_totals(), speed_cap=0.5),
+    )
+    assert report.smoothness["bot1"].samples == 3
+    assert report.smoothness["bot1"].idle_ratio == pytest.approx(0.0)
+    assert report.run_motion["bot1"].samples == 6
+    assert report.run_motion["bot1"].idle_ratio == pytest.approx(0.5)
+    assert report.run_motion["bot1"].speed_budget_utilisation == pytest.approx(0.4)
+    payload = report.to_dict()
+    assert payload["run_motion"]["bot1"]["idle_ratio"] == pytest.approx(0.5)
+    assert payload["smoothness"]["bot1"]["idle_ratio"] == pytest.approx(0.0)
+    # The audit-sourced family is untouched by either scope (additive).
+    assert payload["acceptance_rate"] == pytest.approx(1.0)
+
+
+@pytest.mark.unit
+def test_compute_kpis_threads_the_same_cap_into_the_run_scope() -> None:
+    """``MotionInputs.speed_cap`` is the denominator of BOTH scopes: the same run reported under
+    a 0.2 m/s cap and a 0.3 m/s cap must differ. Hand: |v| = [0, 0.2, 0.2, 0] on stamps
+    [0, 0.1, 0.5, 0.6] ⇒ ∫ = 0.1·0.1 + 0.4·0.2 + 0.1·0.1 = 0.10 over T = 0.6, so 0.10/(0.2·0.6)
+    = 5/6 against 0.10/(0.3·0.6) = 5/9. A ``compute_kpis`` that dropped the cap on the way to
+    the run scope would report ``None``; a hardcoded 0.3 would report 5/9 twice."""
+    acc = MotionAccumulator()
+    for t, v in zip([0.0, 0.1, 0.5, 0.6], [0.0, 0.2, 0.2, 0.0], strict=True):
+        acc.add("bot1", t, 0.0, 0.0, v)
+    totals = acc.run_totals()
+    strict = compute_kpis(_audit_rows(), motion=MotionInputs(run_totals=totals, speed_cap=0.2))
+    nominal = compute_kpis(_audit_rows(), motion=MotionInputs(run_totals=totals, speed_cap=0.3))
+    assert strict.run_motion["bot1"].speed_budget_utilisation == pytest.approx(5 / 6)
+    assert nominal.run_motion["bot1"].speed_budget_utilisation == pytest.approx(5 / 9)
+    # The offline CLI supplies no cap: unreported, never a guessed 0.3 and never 0.0.
+    capless = compute_kpis(_audit_rows(), motion=MotionInputs(run_totals=totals))
+    assert capless.run_motion["bot1"].speed_budget_utilisation is None
+    assert capless.run_motion["bot1"].idle_ratio == pytest.approx(0.5)  # 2 of 4 at |v| = 0
+
+
+@pytest.mark.unit
+def test_the_run_scope_is_additive_for_every_caller_that_supplies_nothing() -> None:
+    """Audit-only (``motion=None``) and window-only callers keep their previous output: the
+    audit numbers are unchanged, ``run_motion`` is an empty container rather than a missing key
+    (so "not measured" stays distinguishable from "measured empty"), the new ``to_dict`` key is
+    appended LAST so a positional reader is not broken, and ``format_report`` renders no
+    ``run_motion`` line at all."""
+    audit_only = compute_kpis(_audit_rows())
+    assert audit_only.run_motion == {}
+    assert audit_only.acceptance_rate == pytest.approx(1.0)
+    payload = audit_only.to_dict()
+    assert payload["run_motion"] == {}
+    assert list(payload)[-1] == "run_motion"
+    assert list(payload)[-4:] == [
+        "distance_traveled",
+        "detour_factors",
+        "smoothness",
+        "run_motion",
+    ]
+    assert "run_motion" not in format_report(audit_only)
+    # A window-only caller (no run totals supplied) is equally unaffected.
+    window_only = compute_kpis(
+        _audit_rows(), motion=MotionInputs(samples={"bot1": _series([0.1, 0.2, 0.3])})
+    )
+    assert window_only.run_motion == {}
+    assert "run_motion" not in format_report(window_only)
+
+
+@pytest.mark.unit
+def test_format_report_renders_the_run_scope_on_its_own_line() -> None:
+    """Rendered separately from ``smoothness`` so the window numbers are never read as run
+    numbers — and only when run totals were supplied."""
+    acc = MotionAccumulator()
+    for t, v in zip([0.0, 1.0, 2.0], [0.0, 0.4, 0.4], strict=True):
+        acc.add("bot1", t, 0.0, 0.0, v)
+    rendered = format_report(
+        compute_kpis(
+            _audit_rows(),
+            motion=MotionInputs(samples=acc.series(), run_totals=acc.run_totals(), speed_cap=0.4),
+        )
+    )
+    assert "run_motion bot1:" in rendered
+    assert "smoothness bot1:" in rendered
+    run_line = next(line for line in rendered.splitlines() if "run_motion bot1:" in line)
+    assert "'samples': 3" in run_line
+    assert "'duration': 2.0" in run_line

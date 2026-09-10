@@ -23,10 +23,14 @@ them.
 
 doc21 §17 additions: ``fraction_at_or_below`` (share of samples under a caller-supplied line) and
 ``trapezoid_integral`` (``∫ v dt`` on a non-uniform grid) — the arithmetic behind the two Tier-1
-metrics doc21 §17 ①② define (idle 率 / 速度予算消化率). Same layer rule (doc21:178): the epsilon,
-the speed cap and the observation window are all decided in the domain
-(``warehouse_orchestrator.motion``). No domain word or threshold appears in the **signatures or
-logic**; the docstrings name their domain consumer only, the same way ``rate`` names 介入率 above.
+metrics doc21 §17 ①② define (idle 率 / 速度予算消化率). ``TimeSeriesAccumulator`` is the streaming
+counterpart of those two (doc21 §17 ③ asks for a whole-run scope "like ``DistanceAccumulator``"):
+the same inclusive count and the same trapezoid area, kept per label in O(1) memory so a consumer
+that retains only a bounded window can still report over the whole stream. Same layer rule
+(doc21:178): the epsilon, the speed cap and the observation window are all decided in the domain
+(``warehouse_orchestrator.motion``) — the accumulator's threshold is **injected**, never a constant
+here. No domain word or threshold appears in the **signatures or logic**; the docstrings name their
+domain consumer only, the same way ``rate`` names 介入率 above.
 
 Reuse origin (doc21 §12.1 / :406, with ``# adapted from …`` attribution at each site):
 ``spl_metric`` = allenai/allenact verbatim (MIT); ``success_rate``/``soft_spl`` = Habitat写経
@@ -488,3 +492,130 @@ def trapezoid_integral(times: Sequence[float], values: Sequence[float]) -> float
             return None
         total += span * (values[i] + values[i + 1]) / 2.0
     return total if math.isfinite(total) else None
+
+
+# ── streaming counterparts: whole-stream totals in O(1) memory ────────────────
+#
+# :func:`fraction_at_or_below` and :func:`trapezoid_integral` both need the entire series in hand.
+# A live consumer that keeps only a bounded window cannot call them over the whole stream — the
+# gap :class:`DistanceAccumulator` already closes for path length. This is the same trick for a
+# ``y(t)`` series: a count and a trapezoid area are both additive, so each label needs nothing but
+# its running totals plus the previous point.
+
+
+@dataclass
+class _RunningSeries:
+    """Mutable per-label state of :class:`TimeSeriesAccumulator` (totals + the previous point)."""
+
+    samples: int
+    at_or_below: int
+    integral: float
+    t_first: float
+    t_last: float
+    y_last: float
+
+
+@dataclass(frozen=True)
+class SeriesTotals:
+    """Immutable snapshot of one label's whole-stream totals (:meth:`TimeSeriesAccumulator.totals`).
+
+    * ``samples`` — points accepted for this label (≥ 1: a label exists only once one was).
+    * ``at_or_below`` — how many satisfied ``y <= threshold``, or ``None`` when the accumulator
+      was built without a threshold ("not counted", distinct from a counted ``0``).
+    * ``integral`` — ``∫ y dt`` by the trapezoid rule over the accepted points, ``0.0`` for a
+      single point (one point bounds no area — a real measurement, not a missing one).
+    * ``t_first`` / ``t_last`` — the span these totals cover. Equal for a single point.
+
+    Deliberately *not* a ratio or a rate: the denominators (which window, which cap) are the
+    caller's, exactly as ``fraction_at_or_below`` takes its threshold from the caller.
+    """
+
+    samples: int
+    at_or_below: int | None
+    integral: float
+    t_first: float
+    t_last: float
+
+
+class TimeSeriesAccumulator:
+    """Whole-stream totals of a ``y(t)`` series per label, kept in O(1) memory per label.
+
+    The streaming form of :func:`fraction_at_or_below` + :func:`trapezoid_integral`, and the
+    ``y(t)`` counterpart of :class:`DistanceAccumulator`: fed one point per message, it answers
+    "how many points sat at or below the line" and "what is ``∫ y dt``" for the **whole** stream,
+    while a caller's own ring buffer answers the same questions for a recent window. Keeping both
+    is the point — a bounded window and a whole-stream total are different measurements, and
+    re-deriving the latter from the former would silently truncate it at the buffer depth.
+
+    ``threshold`` is **injected** and may be omitted; it must be finite (a non-finite line is a
+    caller programming error, the stance :func:`fraction_at_or_below` takes). ``label`` is any
+    opaque key, like :class:`DistanceAccumulator`'s.
+
+    Acceptance rules — the same ones a trapezoid integral needs, applied once here so a caller
+    pairing this with its own retention cannot end up with two disagreeing notions of "a sample":
+
+    * a non-finite ``t`` or ``y`` is rejected (it would poison every total);
+    * a ``t`` that does not strictly advance is rejected (a duplicate stamp, a clock reset or a
+      replayed log spans no measurable interval — :func:`trapezoid_integral` refuses the same);
+    * the first accepted point opens the series and contributes **no** area.
+
+    :meth:`add` reports whether the point was kept, so a caller can count drops or — better —
+    make its own retention conditional on the same answer.
+    """
+
+    def __init__(self, threshold: float | None = None) -> None:
+        if threshold is not None and not math.isfinite(threshold):
+            raise ValueError("TimeSeriesAccumulator threshold must be finite")
+        self._threshold = threshold
+        self._labels: dict[str, _RunningSeries] = {}
+
+    @property
+    def threshold(self) -> float | None:
+        """The injected ``y <= threshold`` line, or ``None`` when nothing is being counted."""
+        return self._threshold
+
+    def _counted(self, y: float) -> int:
+        """1 iff ``y`` is at or below an injected threshold — inclusive, like the batch form."""
+        return 1 if (self._threshold is not None and y <= self._threshold) else 0
+
+    def add(self, label: str, t: float, y: float) -> bool:
+        """Fold one ``(t, y)`` point into ``label``'s totals; return ``True`` iff it was kept."""
+        if not (math.isfinite(t) and math.isfinite(y)):
+            return False
+        series = self._labels.get(label)
+        if series is None:
+            self._labels[label] = _RunningSeries(
+                samples=1,
+                at_or_below=self._counted(y),
+                integral=0.0,  # one point bounds no area
+                t_first=t,
+                t_last=t,
+                y_last=y,
+            )
+            return True
+        if not t > series.t_last:  # NaN-safe; a non-advancing stamp is not a new point
+            return False
+        # One trapezoid, weighted by its OWN spacing (the increment of trapezoid_integral).
+        series.integral += (t - series.t_last) * (series.y_last + y) / 2.0
+        series.samples += 1
+        series.at_or_below += self._counted(y)
+        series.t_last = t
+        series.y_last = y
+        return True
+
+    def totals(self) -> dict[str, SeriesTotals]:
+        """Snapshot of every label's totals; labels that accepted nothing are simply absent."""
+        return {
+            label: SeriesTotals(
+                samples=series.samples,
+                at_or_below=(series.at_or_below if self._threshold is not None else None),
+                integral=series.integral,
+                t_first=series.t_first,
+                t_last=series.t_last,
+            )
+            for label, series in self._labels.items()
+        }
+
+    def clear(self) -> None:
+        """Forget every label's totals (test/reset affordance, like ``MotionAccumulator.clear``)."""
+        self._labels.clear()

@@ -81,6 +81,18 @@ new producer, topic, contract or score:
   ``generation.latency``, not from audit+odom; Issue #432 delegates it to the A-4 query helper
   (#434).
 
+**Both metrics also exist at whole-run scope (doc21 §17 ③, #632).** §17 ③ fixed the *window* as
+the default and left "run 全体版が要るなら ``DistanceAccumulator`` 同様の軽量な idle-time / ∫|v|dt
+累算器を足す" as an explicit follow-up; :class:`MotionAccumulator` now keeps exactly that (an
+:class:`eval_sdk.stats.TimeSeriesAccumulator`, O(1) per robot) and :func:`run_motion_stats`
+composes the same two metrics from it into :class:`RunMotionStats`. Same formulas, same ε, same
+injected cap — **only the scope differs**, so the pair answers "was it idle *just now*" and "was
+it idle *this run*" without either question borrowing the other's answer. Deriving the run values
+from the window would have silently truncated them at ``max_samples``, which is why they are
+accumulated at ``add()`` time instead. The report then carries both, each disclosing its own
+bounds (``window_start``/``window_end`` vs ``t_first``/``t_last``/``duration``) — the two-scope
+coexistence doc21 §17 ③ already declares for ``distance_traveled`` beside ``smoothness``.
+
 **Producer note (doc21:187 / doc21:189).** doc21:187 lists 軌道平滑性's data source as the
 *existing* ``/bot{n}/odom``, but ``DistanceAccumulator`` keeps only a running total and the
 previous point, so no series survives its call. :class:`MotionAccumulator` closes that gap
@@ -107,6 +119,8 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 
 from eval_sdk.stats import (
+    SeriesTotals,
+    TimeSeriesAccumulator,
     fraction_at_or_below,
     ldlj,
     low_pass,
@@ -156,9 +170,11 @@ __all__ = [
     "MotionSample",
     "MotionAccumulator",
     "MotionInputs",
+    "RunMotionStats",
     "SmoothnessStats",
     "resolve_motion_buffer_samples",
     "resolve_speed_cap",
+    "run_motion_stats",
     "sample_rate_hz",
     "smoothness_stats",
     "detour_factors",
@@ -192,6 +208,15 @@ class MotionAccumulator:
     dropped rather than silently corrupting the sample-rate estimate. :meth:`add` reports
     whether the sample was kept so a caller can count drops; the node ignores it (fail-open —
     a KPI buffer must never disturb the run).
+
+    **Two scopes, one validation path (doc21 §17 ③).** Alongside the bounded window it also folds
+    every accepted sample into an :class:`eval_sdk.stats.TimeSeriesAccumulator` keyed by the same
+    robot, giving the **whole-run** idle count and ``∫|v|dt`` doc21 §17 ③ asks for "like
+    ``DistanceAccumulator``" — in O(1) memory, so ring-buffer eviction never touches them
+    (:meth:`run_totals`). That accumulator *is* the stamp/velocity guard: this method checks the
+    two fields it owns alone (``x``/``y``) and then defers, so the window and the run totals
+    cannot end up disagreeing about which samples exist. The ε it counts against is
+    :data:`IDLE_SPEED_EPS` — injected, since ``eval_sdk`` holds no domain threshold (doc21:178).
     """
 
     def __init__(self, *, max_samples: int = DEFAULT_MOTION_BUFFER_SAMPLES) -> None:
@@ -199,6 +224,9 @@ class MotionAccumulator:
             raise ValueError("max_samples must be a positive integer")
         self._max_samples = max_samples
         self._series: dict[str, deque[MotionSample]] = {}
+        # Whole-run totals (doc21 §17 ③): unbounded in time, O(1) in memory, fed |v| so a
+        # reversal spends budget instead of cancelling it (doc21 §17 ②).
+        self._run = TimeSeriesAccumulator(IDLE_SPEED_EPS)
 
     @property
     def max_samples(self) -> int:
@@ -206,16 +234,24 @@ class MotionAccumulator:
         return self._max_samples
 
     def add(self, robot: str, t: float, x: float, y: float, v: float) -> bool:
-        """Append one sample for ``robot``; return ``True`` iff it was kept."""
+        """Append one sample for ``robot``; return ``True`` iff it was kept.
+
+        Kept ⇒ it entered **both** scopes (the ring buffer and the run totals). The stamp and
+        velocity guards live in the run accumulator (class docstring), so there is exactly one
+        place that decides what "a sample" is.
+        """
         if not robot:
             return False
-        if not all(math.isfinite(value) for value in (t, x, y, v)):
+        if not (math.isfinite(x) and math.isfinite(y)):
+            return False
+        # Validates ``t``/``v`` (finite, strictly advancing) AND folds the whole-run totals; the
+        # ring buffer only ever holds what this accepted. ``abs(v)``: |v| is what both doc21 §17
+        # metrics are defined on (① counts it against ε, ② integrates it).
+        if not self._run.add(robot, t, abs(v)):
             return False
         series = self._series.get(robot)
         if series is None:
             series = self._series[robot] = deque(maxlen=self._max_samples)
-        elif series and t <= series[-1].t:
-            return False  # stamp did not advance -> not a new sample
         series.append(MotionSample(t, x, y, v))
         return True
 
@@ -223,9 +259,25 @@ class MotionAccumulator:
         """Snapshot of the retained window per robot (oldest → newest); empty robots omitted."""
         return {robot: list(samples) for robot, samples in self._series.items() if samples}
 
+    def run_totals(self) -> dict[str, SeriesTotals]:
+        """Whole-run totals per robot — sample count, ``|v| ≤ ε`` count, ``∫|v|dt``, span.
+
+        The **run** half of doc21 §17 ③'s two coexisting time scopes; :meth:`series` is the
+        window half. Unaffected by ``max_samples``: an evicted sample is gone from the window
+        but stays in these totals, which is the entire reason they are accumulated rather than
+        recomputed from :meth:`series`. Compose them with :func:`run_motion_stats`.
+        """
+        return self._run.totals()
+
     def clear(self) -> None:
-        """Forget every retained sample (not called on the live path; test/reset affordance)."""
+        """Forget every retained sample **and** the run totals (test/reset affordance).
+
+        Not called on the live path (the only caller is a unit test), so "reset means reset" is
+        the least surprising reading: leaving the run totals behind would produce a report whose
+        two scopes describe different runs.
+        """
         self._series.clear()
+        self._run.clear()
 
 
 def resolve_motion_buffer_samples(value: object) -> tuple[int, str | None]:
@@ -251,7 +303,11 @@ def resolve_motion_buffer_samples(value: object) -> tuple[int, str | None]:
         return _fallback("is not a sample count")
     try:
         numeric = float(value)
-    except (TypeError, ValueError):
+    except (OverflowError, TypeError, ValueError):
+        # ``10**400`` is an ``int`` (so it clears the isinstance check) yet has no float image —
+        # ``float()`` raises ``OverflowError``, which is neither a ``TypeError`` nor a
+        # ``ValueError``. Same hole ``resolve_speed_cap`` closed below; the contract of this
+        # resolver is "never an exception", so it degrades like any other unusable value.
         return _fallback("is not a sample count")
     if not math.isfinite(numeric) or numeric != int(numeric):
         return _fallback("is not a whole number of samples")
@@ -327,13 +383,19 @@ class MotionInputs:
       from config ``safety.max_linear_velocity`` (fallback = the imported
       ``warehouse_interfaces.safety.MAX_LINEAR_VELOCITY`` hard cap). ``None`` — the default, and
       what the offline CLI supplies — means the utilisation is simply **not computable** and is
-      reported as ``None``, never as ``0.0``.
+      reported as ``None``, never as ``0.0``. It is the denominator of **both** scopes below.
+    * ``run_totals`` — the **whole-run** counterpart of ``samples``
+      (:meth:`MotionAccumulator.run_totals`), from which the same two doc21 §17 ①② metrics are
+      composed over the entire run instead of the retained window (doc21 §17 ③'s follow-up, #632).
+      Empty — the default, and what the offline CLI supplies — means no run-scope metric is
+      reported at all, exactly as an empty ``samples`` reports no window-scope one.
     """
 
     samples: Mapping[str, Sequence[MotionSample]] = field(default_factory=dict)
     distances: Mapping[str, float] = field(default_factory=dict)
     optimal_distances: Mapping[str, float] = field(default_factory=dict)
     speed_cap: float | None = None
+    run_totals: Mapping[str, SeriesTotals] = field(default_factory=dict)
 
 
 @dataclass
@@ -457,34 +519,50 @@ def _guarded(fn: Callable[..., float], *args: object) -> float | None:
     return value if math.isfinite(value) else None
 
 
-def _speed_budget_utilisation(
-    samples: Sequence[MotionSample], speeds: Sequence[float], speed_cap: float | None
-) -> float | None:
-    """doc21 §17 ② (iii): ``∫|v|dt ÷ (v_max·T)`` over the window — ``None`` when undefined.
+def _budget_ratio(integral: float | None, duration: float, speed_cap: float | None) -> float | None:
+    """doc21 §17 ② (iii) as pure division: ``∫|v|dt ÷ (v_max·T)`` — ``None`` when undefined.
 
-    Undefined = no cap injected, an unusable cap (non-finite / non-positive), a window too short
-    or non-advancing for either the integral or ``T`` (both then come back ``None``/≤ 0), and a
-    ``v_max·T`` product that underflows to ``0.0`` — a denormal cap such as ``5e-324`` passes
-    ``config._validate_safety`` (finite, > 0, ≤ 0.3) yet leaves no divisible budget. Never
-    ``0.0`` for those — that is the ``eval_sdk.stats`` "no data ≠ measured zero" convention, and
-    here it is the difference between "this robot crawled" and "nobody told us the budget".
+    Shared by both scopes (window and whole run) so the two can differ only in *what they
+    integrated*, never in how a missing or degenerate denominator is handled.
+
+    Undefined = no integral, no cap injected, an unusable cap (non-finite / non-positive), a
+    ``T`` that does not advance, and a ``v_max·T`` product that underflows to ``0.0`` — a
+    denormal cap such as ``5e-324`` passes ``config._validate_safety`` (finite, > 0, ≤ 0.3) yet
+    leaves no divisible budget. Never ``0.0`` for those — that is the ``eval_sdk.stats``
+    "no data ≠ measured zero" convention, and here it is the difference between "this robot
+    crawled" and "nobody told us the budget".
     """
+    if integral is None or not math.isfinite(integral):
+        return None
     if speed_cap is None or not math.isfinite(speed_cap) or speed_cap <= 0:
         return None
-    integral = trapezoid_integral([sample.t for sample in samples], speeds)
-    if integral is None:
-        return None
-    duration = samples[-1].t - samples[0].t  # = window_end − window_start (doc21 §17 ②)
-    if not duration > 0:  # NaN-safe; ``trapezoid_integral`` already rejects a flat/reversed axis
+    if not duration > 0:  # NaN-safe
         return None
     denominator = speed_cap * duration
     if not denominator > 0:  # NaN-safe; a denormal cap underflows the product to 0.0
         return None
     value = integral / denominator
-    # Deliberately UNCLAMPED (> 1 is a window that outran its budget). A non-finite result is still
-    # possible from finite inputs (a tiny cap can overflow the ratio) and the product can underflow
-    # to 0, so both degrade to "not computable".
+    # Deliberately UNCLAMPED (> 1 is a run/window that outran its budget). A non-finite result is
+    # still possible from finite inputs (a tiny cap can overflow the ratio), so it degrades too.
     return value if math.isfinite(value) else None
+
+
+def _speed_budget_utilisation(
+    samples: Sequence[MotionSample], speeds: Sequence[float], speed_cap: float | None
+) -> float | None:
+    """doc21 §17 ② (iii) over the retained **window** — ``None`` when undefined.
+
+    ``T`` = ``window_end − window_start``; the integral is the trapezoid rule on the window's own
+    (jittery) stamps. Every guard is :func:`_budget_ratio`'s; the early cap check here only
+    avoids integrating a window nothing could be divided by.
+    """
+    if speed_cap is None or not math.isfinite(speed_cap) or speed_cap <= 0:
+        return None
+    integral = trapezoid_integral([sample.t for sample in samples], speeds)
+    if integral is None:  # fewer than 2 samples / a non-advancing axis: no window to divide
+        return None
+    duration = samples[-1].t - samples[0].t  # = window_end − window_start (doc21 §17 ②)
+    return _budget_ratio(integral, duration, speed_cap)
 
 
 def smoothness_stats(
@@ -548,6 +626,117 @@ def smoothness_stats(
         speed_budget_utilisation=_speed_budget_utilisation(samples, speeds, speed_cap),
         # …and the denominator it used, republished so two runs at different caps are
         # distinguishable in the report itself (class docstring).
+        speed_cap=speed_cap,
+    )
+
+
+@dataclass(frozen=True)
+class RunMotionStats:
+    """doc21 §17 ①② over the **whole run** — the twin of the window fields in
+    :class:`SmoothnessStats` (doc21 §17 ③'s follow-up, #632).
+
+    Same two metrics, same ε (:data:`IDLE_SPEED_EPS`), same cap, same formulas — only the scope
+    differs. doc21 §17 ③ already declares that one report carries two time scopes (whole-run
+    ``distance_traveled`` beside a windowed ``smoothness``); these fields make that explicit for
+    the two §17 metrics instead of leaving a reader to guess which one a bare ``idle_ratio``
+    meant, so **each scope discloses its own bounds**: the window publishes
+    ``window_start``/``window_end``/``samples``, this publishes ``t_first``/``t_last``/
+    ``duration``/``samples``.
+
+    * ``samples`` / ``idle_samples`` — every sample the run ever accepted, and how many of them
+      sat at ``|v| ≤ ε``. Published as counts, not only as their ratio, so a reader can see how
+      much evidence the ratio rests on (the ``command_decisions`` precedent in ``kpi.py``).
+      ``idle_samples`` is ``None`` only if the totals were accumulated without a threshold, which
+      :class:`MotionAccumulator` never does.
+    * ``idle_ratio`` — doc21 §17 ①'s ``(|v| ≤ ε) ÷ 総サンプル数``, over the run. **Sample-count**
+      based exactly like the window one, so it equals a *time* ratio only under uniform sampling
+      — and over a whole run the odom rate has more opportunity to drift than inside one window.
+    * ``integral_abs_speed`` — ``∫|v|dt`` over the run, accumulated trapezoid-by-trapezoid on the
+      real stamps. Related to but **not** ``distance_traveled``: that one is the pose-to-pose
+      path length ``pᵢ``, this one integrates the reported velocity, and the two diverge whenever
+      odom's twist and its pose disagree (they are separate fields of the same message).
+    * ``duration`` — ``t_last − t_first``, the run's own span. Not "seconds since the node
+      started": a robot that never published odom has no run to measure.
+    * ``speed_budget_utilisation`` / ``speed_cap`` — doc21 §17 ② (iii) over the run and the
+      ``v_max`` it was divided by, republished for the window's disclosure reason (the cap is an
+      environment tunable, so the number alone is not comparable across runs). **Unclamped**.
+
+    ``None`` means "not computable from this run", never "measured zero" — the ``eval_sdk.stats``
+    convention the window half follows.
+    """
+
+    samples: int
+    idle_samples: int | None
+    idle_ratio: float | None
+    t_first: float | None
+    t_last: float | None
+    duration: float | None
+    integral_abs_speed: float | None
+    speed_budget_utilisation: float | None
+    speed_cap: float | None
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "samples": self.samples,
+            "idle_samples": self.idle_samples,
+            "idle_ratio": self.idle_ratio,
+            "t_first": self.t_first,
+            "t_last": self.t_last,
+            "duration": self.duration,
+            "integral_abs_speed": self.integral_abs_speed,
+            "speed_budget_utilisation": self.speed_budget_utilisation,
+            # The denominator the line above was divided by, LAST — the ordering
+            # ``SmoothnessStats.to_dict`` uses for the same disclosure.
+            "speed_cap": self.speed_cap,
+        }
+
+
+def run_motion_stats(totals: SeriesTotals, *, speed_cap: float | None = None) -> RunMotionStats:
+    """Compose doc21 §17 ①② over one robot's whole-run totals (:meth:`MotionAccumulator.run_totals`).
+
+    The pure domain half: :class:`eval_sdk.stats.TimeSeriesAccumulator` did the counting and the
+    integrating (knowing neither what ε means nor what a speed cap is), this turns those totals
+    into the two named metrics. The window twin is :func:`smoothness_stats`; the guards are
+    deliberately identical, so a reader comparing the two scopes is comparing scopes and nothing
+    else:
+
+    * ``idle_ratio`` — ``None`` for a run with no samples, else ``idle_samples / samples``.
+    * ``speed_budget_utilisation`` — ``None`` below **two** samples (one point spans no time, no
+      matter what stamps a hand-built snapshot claims), and ``None`` for every degenerate
+      denominator :func:`_budget_ratio` lists. Reported **unclamped**: a run above its budget is
+      information, the ``detour_factors`` stance.
+
+    ``speed_cap`` is injected (``MotionInputs.speed_cap``, from config
+    ``safety.max_linear_velocity``); absent — the offline-CLI case — only the utilisation is
+    ``None``, every count still reports.
+    """
+    if totals.samples < 1:
+        # Defensive: ``TimeSeriesAccumulator.totals()`` never emits a 0-sample label, so this is
+        # for a hand-built snapshot. A run with no samples has no span and no ratio — the
+        # ``SmoothnessStats`` treatment of an empty window.
+        return RunMotionStats(
+            samples=0,
+            idle_samples=totals.at_or_below,
+            idle_ratio=None,
+            t_first=None,
+            t_last=None,
+            duration=None,
+            integral_abs_speed=None,
+            speed_budget_utilisation=None,
+            speed_cap=speed_cap,
+        )
+    duration = totals.t_last - totals.t_first  # = t_last − t_first, NOT the absolute end stamp
+    return RunMotionStats(
+        samples=totals.samples,
+        idle_samples=totals.at_or_below,
+        idle_ratio=(None if totals.at_or_below is None else totals.at_or_below / totals.samples),
+        t_first=totals.t_first,
+        t_last=totals.t_last,
+        duration=duration,
+        integral_abs_speed=totals.integral,
+        speed_budget_utilisation=(
+            None if totals.samples < 2 else _budget_ratio(totals.integral, duration, speed_cap)
+        ),
         speed_cap=speed_cap,
     )
 
