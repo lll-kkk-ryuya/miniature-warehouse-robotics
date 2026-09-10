@@ -7,6 +7,7 @@ from warehouse_interfaces.safety import (
     BATTERY_PERCENTAGE_SCALE_DEFAULT,
     BATTERY_SCALE_FRACTION,
     BATTERY_SCALE_PERCENT,
+    IDLE_SPEED_EPS,
     MAX_LINEAR_VELOCITY,
     battery_allows_new_task,
     battery_is_critical,
@@ -55,6 +56,33 @@ def test_battery_is_critical(pct: float, crit: bool) -> None:
 @pytest.mark.safety
 def test_thresholds_ordered() -> None:
     assert BATTERY_CRITICAL_PCT < BATTERY_LOW_PCT
+
+
+@pytest.mark.safety
+def test_idle_speed_eps_is_001() -> None:
+    # #642 / doc12 【2026-09-10 追補】: the ONE idle threshold both the State Cache
+    # (derive_status) and the orchestrator's idle ratio import instead of re-typing.
+    assert IDLE_SPEED_EPS == 0.01
+    assert isinstance(IDLE_SPEED_EPS, float)
+
+
+@pytest.mark.safety
+def test_idle_speed_eps_sits_below_the_speed_cap() -> None:
+    # A threshold at/above the hard cap would report every legal speed as "idle"; a
+    # non-positive one would report nothing as idle (a stopped robot would read "moving").
+    assert 0 < IDLE_SPEED_EPS < MAX_LINEAR_VELOCITY
+
+
+@pytest.mark.safety
+def test_idle_speed_eps_is_not_an_actuation_cap() -> None:
+    # Independent oracle for "observation only" (doc12 【2026-09-10 追補】): the clamp is
+    # defined by MAX_LINEAR_VELOCITY alone, so a sub-ε request passes through UNCHANGED
+    # instead of being snapped to 0.0 ("too slow to matter") or up to ε. If ε ever leaks
+    # into clamp_velocity, this goes red — the L0/L0'/L1/L2 speed enforcement must not
+    # acquire a second, quieter threshold.
+    assert clamp_velocity(IDLE_SPEED_EPS / 2) == IDLE_SPEED_EPS / 2
+    assert clamp_velocity(-IDLE_SPEED_EPS / 2) == -IDLE_SPEED_EPS / 2
+    assert clamp_velocity(IDLE_SPEED_EPS) == IDLE_SPEED_EPS
 
 
 @pytest.mark.safety

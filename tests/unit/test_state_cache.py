@@ -5,14 +5,17 @@ Imports ONLY the rclpy-free ``warehouse_state.aggregator`` + the frozen
 (conftest.py puts ``ws/src/warehouse_state`` on sys.path).
 """
 
+import ast
 import json
 import math
 import sys
+from pathlib import Path
 
 import pytest
-from warehouse_interfaces.safety import BATTERY_SCALE_FRACTION
+from warehouse_interfaces.safety import BATTERY_SCALE_FRACTION, IDLE_SPEED_EPS
 from warehouse_interfaces.schemas import StateSnapshot
 from warehouse_interfaces.stores import FileStateStore
+from warehouse_state import aggregator as aggregator_module
 from warehouse_state.aggregator import (
     BatterySample,
     EmergencyEvent,
@@ -20,6 +23,7 @@ from warehouse_state.aggregator import (
     ScanSample,
     StateAggregator,
     VelocitySample,
+    derive_status,
     min_valid_range,
     quaternion_to_yaw,
 )
@@ -193,6 +197,50 @@ def test_status_derivation() -> None:
     snap = agg.build_snapshot("t")
     assert snap["robots"]["bot1"]["status"] == "moving"
     assert snap["robots"]["bot2"]["status"] == "idle"
+
+
+@pytest.mark.unit
+def test_status_boundary_is_the_frozen_idle_epsilon() -> None:
+    """This lane's own pin on doc12 【2026-09-10 追補】 / #642: "moving" iff |linear| > ε.
+
+    ε comes from the frozen contract, so this asserts IDENTITY as well as the boundary — a
+    re-typed local ``0.01`` would keep every value here equal and still be wrong (the whole
+    point of #642 was that equality does not say which constant is canonical).
+    """
+    assert aggregator_module.IDLE_SPEED_EPS is IDLE_SPEED_EPS
+    # Strict ">": the ε sample itself is idle, in both directions of travel.
+    assert derive_status(IDLE_SPEED_EPS) == "idle"
+    assert derive_status(-IDLE_SPEED_EPS) == "idle"
+    assert derive_status(IDLE_SPEED_EPS * 1.1) == "moving"
+    assert derive_status(-IDLE_SPEED_EPS * 1.1) == "moving"
+
+
+@pytest.mark.unit
+def test_the_idle_epsilon_is_imported_never_retyped_in_this_lane() -> None:
+    """ε lives in the frozen contract (#642), so the literal has no business in this package.
+
+    The identity assertion above catches a rebound *module* attribute; it cannot catch a
+    ``0.01`` written inside a function, which would shadow the import locally while
+    ``aggregator.IDLE_SPEED_EPS`` still points at the contract and every value assertion still
+    passes (the numbers agree until someone retunes ε — exactly the split #642 removed).
+    Parsing the source closes that hole. Mirrors the 0.3 hard-cap scan the orchestrator lane
+    already runs (``tests/unit/test_wo_motion_kpi.py``), applied to this lane's ε.
+    """
+    package = Path(aggregator_module.__file__).parent
+    offenders = [
+        f"{path.name}:{node.lineno}"
+        for path in sorted(package.rglob("*.py"))
+        if "__pycache__" not in path.parts
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
+        if isinstance(node, ast.Constant)
+        and isinstance(node.value, float)
+        and node.value == IDLE_SPEED_EPS
+    ]
+    assert offenders == [], (
+        f"re-typed idle threshold 0.01 at {offenders}: import IDLE_SPEED_EPS "
+        "(safety.py / doc12 【2026-09-10 追補】). If this is an unrelated 0.01 (a tolerance, a "
+        "timer period), name it a module constant so this scan stays an ε check."
+    )
 
 
 @pytest.mark.unit
