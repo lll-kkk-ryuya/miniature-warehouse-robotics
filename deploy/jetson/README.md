@@ -51,7 +51,7 @@ deploy/jetson/bin/healthcheck.sh
 ## 忠実度ギャップと実機投入前ゲート（#127）
 
 現状ソフトは **Mac M4(arm64) + tiryoh(ARM64)** で検証中。実 Jetson Orin Nano Super
-（arm64 Ubuntu 24.04）との **忠実度ギャップ**（GPU/CUDA・実時間性 R-40・micro-ROS 2台 R-37・
+（arm64 Ubuntu 22.04 / JetPack 6.2・ADR-0008）との **忠実度ギャップ**（GPU/CUDA・実時間性 R-40・micro-ROS 2台 R-37・
 8GB ユニファイドメモリ R-38）と、**実機投入前ゲート（G0-G7・合否基準付き）**の正本は
 [docs/jetson/01-fidelity-and-validation.md](../../docs/jetson/01-fidelity-and-validation.md)。
 要点は [doc19 §7](../../docs/architecture/19-environments-and-config.md) にも固定。
