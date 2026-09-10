@@ -56,3 +56,7 @@ firmware/.pio/
 # Run artifacts: out/runs/<run_id>/{manifest.yaml,effective_composition.json}
 # (docs/productization/09-run-manifest-and-plugin-composition.md:48 — run outputs, never committed)
 out/runs/
+
+# ベンダー資料キャッシュ: 意図的に untracked（repo にバイナリを置かず sha256 台帳のみ）
+# docs/shared/02-hardware-design.md:782
+docs/assets/
