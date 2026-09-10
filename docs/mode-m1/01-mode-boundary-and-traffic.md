@@ -50,3 +50,15 @@
 - [architecture/12-infrastructure-common.md](../architecture/12-infrastructure-common.md)（cmd_vel 挿入トポロジ・:550 Mode C 向け real-scan-only 変種の defer）
 - [nav2_bringup.launch.py:126](../../ws/src/warehouse_bringup/launch/nav2_bringup.launch.py) / [collision_monitor.yaml](../../ws/src/warehouse_bringup/config/collision_monitor.yaml)（launch gate 実体）
 - [.claude/rules/environments.md](../../.claude/rules/environments.md)（prod config 変更 = 安全レビュー必須）
+
+## 【2026-09-10 追記】常駐（systemd）の位置づけ — Mode M1 走行スタックの unit は未定義
+
+> M1 bring-up のたびに「常駐サービスにするのか / `systemctl enable` すべきか」を迷わないための位置づけ。**結論: Mode M1 は当面 enable しない・手起動が正**。本節は欠落を「未定義である」と明示するだけで、**unit を発明しない**（[.claude/rules/docs-first.md](../../.claude/rules/docs-first.md)）。
+
+1. **既存の unit 一覧は 2 台 micro-ROS 構成のもの**: [setup/jetson-deploy.md:151-159](../setup/jetson-deploy.md) の表は `warehouse-microros-agent.service`（micro-ROS Agent = WiFi/UDP）を起点に State Cache → Emergency Guardian → Nav2 → LLM Bridge へ連なる（起動順の記述 = [setup/jetson-deploy.md:104](../setup/jetson-deploy.md)）。
+2. **`warehouse-microros-agent.service` は Mode M1 では N/A**: ROSMASTER M1 は拡張ボードと **USB シリアル 115200 8N1 直結**（`/dev/myserial`）であり、**micro-ROS / WiFi UDP を使わない**（[02:23](../shared/02-hardware-design.md)）。起点 unit が無効である以上、表の依存鎖もそのままでは M1 に載らない。
+3. **Mode M1 走行スタックの unit は未定義**: `m1_driver`（**L0'**）/ `joy_node` / `teleop_joy` に対応する unit は `deploy/jetson/systemd/` にも [setup/jetson-deploy.md:165](../setup/jetson-deploy.md)「Phase 1 で追加する unit」にも**無い**（後者は MCP Server / nav2 bridge / WO Bridge ＝ Mode A/B 系）。
+4. **現状の正は手起動**（`ros2 run` の正本コマンド = [03 §5](03-joystick-teleop-bringup.md)）で、**`systemctl enable` しない**。これは既存の姿勢と整合する: `install.sh` は unit を**入れるだけで enable/start しない**（[setup/jetson-deploy.md:23](../setup/jetson-deploy.md)）／ bring-up ボードは導入節そのものを**意図的 defer** 中（[setup/jetson-deploy.md:93-95](../setup/jetson-deploy.md)）。
+5. **常駐化の設計は残件**（本 doc では決めない）: どの node を常駐にするか・**deadman を持つ `teleop_joy` を常駐にしてよいか**（電源投入だけで操作入力経路が上がる是非）・`After=` の起点を何にするか。扱う経路は §3 表 #2 / #3 と同じ jetson/setup rescope PR。
+
+- ⚠️ §3 表 #2（[setup/jetson-deploy.md:113-114](../setup/jetson-deploy.md) が prod = `open-rmf` を指示（§3 表 #2 が書く `:103-104` は stale pin＝同表は中段行のため本 PR では触らず、jetson/setup rescope PR で同時に直す） ＝ 本 doc と矛盾）は**未解消のまま**。本節はその表に行を足していない（中段挿入で下流の行 pin を割らないため）。
