@@ -76,10 +76,6 @@ _SKIP_DIR_NAMES = {"test", "tests", "build", "install", "log", "__pycache__"}
 # the spin, rclpy.try_shutdown()).
 KNOWN_UNSAFE_STOP_ON_HUMBLE: frozenset[str] = frozenset(
     {
-        "warehouse_llm_bridge/warehouse_llm_bridge/character_node.py",
-        "warehouse_llm_bridge/warehouse_llm_bridge/llm_bridge.py",
-        "warehouse_llm_bridge/warehouse_llm_bridge/operator_feedback/notice_node.py",
-        "warehouse_llm_bridge/warehouse_llm_bridge/x_er_bridge.py",
         "warehouse_nav2_bridge/warehouse_nav2_bridge/nav2_bridge.py",
         "warehouse_orchestrator/warehouse_orchestrator/kpi_collector.py",
         "warehouse_sim/warehouse_sim/battery_publisher.py",
