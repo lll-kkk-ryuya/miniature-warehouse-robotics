@@ -130,6 +130,7 @@ from eval_sdk.stats import (
     throughput,
     trapezoid_integral,
 )
+from warehouse_interfaces.safety import IDLE_SPEED_EPS
 
 # Ring-buffer depth per robot. ENGINEERING BOUND (memory), not a KPI threshold: at ~30 Hz odom
 # this is ~2 minutes of recent motion per robot (~130 KB for 2 bots) and keeps a long-running
@@ -152,16 +153,15 @@ DEFAULT_SMOOTHING_WINDOW = 5
 # publishes whether it fired.
 _MIN_SPECTRAL_SAMPLES = 3
 
-# doc21 §17 ①: the speed below which (|v| ≤ ε) a window sample counts as idle. **A borrowed
-# documented value, not a second constant and not an import**: ``warehouse_state.aggregator``
-# already reports a bot "idle" at ``abs(linear) <= _MOVING_EPS`` with ``_MOVING_EPS = 0.01`` m/s
-# (aggregator.py:32 / :105-111), and doc21 §17 ① fixes ε at that same 0.01 m/s so the KPI and the
-# State Cache never disagree about what "stopped" means. It is NOT imported: ``warehouse_state``
-# is another track and this lane depends only on ``warehouse_interfaces``
-# (.claude/rules/parallel-workflow.md §2.1), so the two literals are pinned equal by a cross-check
-# unit test instead (the ``"bridge"``/``"hermes_plugin"`` precedent in ``score_send``).
-# doc21 §17 also records the residual: ε is owned privately by that lane, not frozen anywhere.
-IDLE_SPEED_EPS: float = 0.01  # m/s
+# doc21 §17 ① fixes ε — the speed at or below which (|v| ≤ ε) a sample counts as idle — at the
+# same value the State Cache calls "idle", so the KPI and ``derive_status`` can never disagree
+# about what "stopped" means. Since #642 that value is **imported from the frozen contract**
+# (``warehouse_interfaces.safety.IDLE_SPEED_EPS`` = 0.01 m/s, doc12 【2026-09-10 追補】) rather than
+# mirrored as a second literal pinned equal by a cross-check test — the contract, not either
+# lane, now owns it. ``warehouse_state`` is still NOT imported: this lane depends on
+# ``warehouse_interfaces`` alone, which is exactly the dependency
+# .claude/rules/parallel-workflow.md §2.1 allows. Kept in ``__all__`` below so
+# ``motion.IDLE_SPEED_EPS`` and every existing importer keep working unchanged.
 
 __all__ = [
     "DEFAULT_MOTION_BUFFER_SAMPLES",

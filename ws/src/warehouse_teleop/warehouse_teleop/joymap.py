@@ -39,7 +39,7 @@ from warehouse_interfaces.safety import MAX_LINEAR_VELOCITY, clamp_velocity
 DEFAULT_AXIS_LINEAR_X: int = 1
 DEFAULT_AXIS_LINEAR_Y: int = 0
 DEFAULT_AXIS_ANGULAR: int = 2
-# Yahboom PC/PCS mode primary table (LED red, 8 axes / 15 buttons, ref
+# Yahboom PC/PCS primary table (8 axes / 15 buttons = the mode test = 03 §5-2, NOT LED colour; ref
 # 2026-09-09 http://www.yahboom.net/public/upload/upload-html/1690197586/Handle%20control.html
 # via docs/mode-m1/03:52). The old default 4 was the X-BOX-mode L1, which is
 # the Y button in PC/PCS mode. Every index stays a ros param: confirm with

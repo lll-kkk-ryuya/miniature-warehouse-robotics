@@ -38,3 +38,37 @@
 - **ゲート**: host `ruff`/`pytest`(unit+safety 全緑)/`check_consistency.py`=0 ERROR、container `colcon build`(9 pkg)＋launch-introspection＋全 pytest 54 緑（skip 0）。
 
 > #1 雛形の `traffic_manager` スタブを実装で置換済（#8）。
+
+## 【2026-09-10 追記】終了経路（Humble 正常停止 = exit 0）
+
+`virtual_scan` / `traffic_manager`（**L2 Box の Traffic**＝`.claude/rules/layer-annotation.md:26`。ただし
+`TRAFFIC_MODE=none` 構成では非アクティブ）の `main()` を
+`warehouse_teleop/warehouse_teleop/node_runtime.py` が定める **3 規則**へ書き換えた（**参照実装であって
+import はしていない**＝依存してよい共有 package は `warehouse_interfaces` / `warehouse_description` の 2 つだけ
+`.claude/rules/parallel-workflow.md:71-74`。3 規則をインラインで写す）:
+
+1. 正常停止 = `KeyboardInterrupt`（SIGINT）**または** `ExternalShutdownException`（SIGTERM）を握って normal return。
+2. spin 後に ROS context を触る処理は `rclpy.ok()` ガード付き best-effort にする（**両ノードとも該当なし**＝
+   `finally` は `destroy_node()` + `try_shutdown()` のみで、終了時に publish も lock 解放もしない）。
+3. 素の `rclpy.shutdown()` ではなく `rclpy.try_shutdown()`（冪等）。
+
+**実害の根拠**: Jetson 実測（ROS 2 Humble / rclpy 3.3.21・2026-09-10）で rclpy のシグナルハンドラは `finally`
+より先に context を破棄するため、旧・教科書パターン（`suppress(KeyboardInterrupt)` ＋ 素の `rclpy.shutdown()`）は
+SIGINT / SIGTERM とも **exit 1**。`virtual_scan` は `bringup.launch.py` が起動し
+（[docs/mode-a/11a-traffic-mode-a.md:317](../../../docs/mode-a/11a-traffic-mode-a.md)＝Mode C では launch 側
+`IfCondition` で起動抑止）、prod では `deploy/jetson/systemd/warehouse-nav2.service:30` の `Type=simple`＋`Restart=on-failure`
+配下で走るので、通常停止での非ゼロ exit が `status=1/FAILURE` として journal に残り本物のクラッシュが埋もれる
+（`Restart=` は stop job には効かず、stop 以外の終了で無駄な再起動になる。本番 `ExecStart` は `ros2 launch` 越しで
+systemd が見る exit code は未実測＝#634 のボード確認項目）
+（[docs/setup/jetson-deploy.md:158](../../../docs/setup/jetson-deploy.md) systemd unit 一覧）。`traffic_manager`
+は手起動の診断ラッパ（+ #125 yield デモ駆動）で、Ctrl-C のたびに exit 1 になると通常のデモ実行が壊れて見える。
+
+**安全は終了時メッセージに依存しない**: `virtual_scan` は相手が `SUPPRESSION_RANGE` より遠ければそもそも発行を
+止める 10Hz ストリーム（11a:310）＝購読側は「止まること」を前提に扱う。`traffic_manager` の aisle lock は本
+プロセス内にしかなく、待機 bot の物理停止は「nav2 cmd_vel を出さない」こと（twist_mux）であって終了時の
+メッセージではない（11a §9.2 / 本パッケージ docstring）。挙動は終了コード以外不変。
+
+**テスト**: `tests/unit/test_node_shutdown_lifecycle.py`（repo 全体ラチェット・AST pin）。両ノードは
+`KNOWN_UNSAFE_STOP_ON_HUMBLE` baseline から削除済＝以後この形を崩すと `regressed` で CI 赤。
+
+**残件**: 3 規則の共通化先（`warehouse_interfaces` への lazy-import か新 shared package か）は #634 で裁定。裁定まで各 package が 3 規則を写す＝暫定 (b)。参照実装 = `ws/src/warehouse_teleop/warehouse_teleop/node_runtime.py`（import はしない）。

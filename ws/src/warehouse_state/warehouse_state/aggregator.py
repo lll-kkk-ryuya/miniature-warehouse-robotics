@@ -23,13 +23,13 @@ from dataclasses import dataclass
 
 from warehouse_interfaces.safety import (
     BATTERY_PERCENTAGE_SCALE_DEFAULT,
+    IDLE_SPEED_EPS,
     normalize_battery_percent,
     validate_battery_scale,
 )
 from warehouse_interfaces.schemas import StateSnapshot
 
 _BOTS: tuple[str, ...] = ("bot1", "bot2")
-_MOVING_EPS = 0.01  # m/s; below this |linear| the bot is reported "idle"
 _EMERGENCY_HISTORY_MAX = 50
 _EMERGENCY_ACTIVE_MAX = 50  # bound active too: distinct/recurring events still accrue (no
 # clear/resolution protocol yet; the Guardian edge-triggers since #126 so duplicates don't)
@@ -103,12 +103,12 @@ def min_valid_range(
 
 
 def derive_status(linear: float) -> str:
-    """Best-effort motion status from linear velocity.
+    """Best-effort motion status: "moving" iff ``abs(linear) > IDLE_SPEED_EPS``, else "idle".
 
-    Phase-2 TODO: replace with Nav2 goal-status / BehaviorTree integration
-    (moving / idle / blocked); the State Cache has no nav_status feed yet.
+    ε = the frozen contract's idle threshold (#642), imported above and never re-typed. Phase-2
+    TODO: replace with Nav2 goal-status/BehaviorTree (moving/idle/blocked); no nav_status feed yet.
     """
-    return "moving" if abs(linear) > _MOVING_EPS else "idle"
+    return "moving" if abs(linear) > IDLE_SPEED_EPS else "idle"
 
 
 class StateAggregator:

@@ -46,6 +46,7 @@ import time
 
 import rclpy
 from geometry_msgs.msg import Twist
+from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
 from std_msgs.msg import String
@@ -361,12 +362,21 @@ def main() -> None:
     node = LlmBridge()
     node.start()
     try:
-        with contextlib.suppress(KeyboardInterrupt):
-            rclpy.spin(node)
+        rclpy.spin(node)
+    except (KeyboardInterrupt, ExternalShutdownException):
+        # SIGINT -> KeyboardInterrupt; SIGTERM -> ExternalShutdownException. On Humble the
+        # signal handler tears the context down BEFORE this finally runs, so both are a
+        # NORMAL stop and must return normally (exit 0). Under warehouse-bridge.service
+        # (Type=simple, deploy/jetson/systemd/warehouse-bridge.service:27) a non-zero exit on
+        # a routine stop is journalled as status=1/FAILURE, and off the stop path
+        # Restart=on-failure would restart the unit for nothing. (What systemd sees through
+        # the unit's `ros2 run` wrapper is a #634 board item.)
+        pass
     finally:
+        # Pure flag flip (Scheduler.stop), no ROS/context use -> safe after the context died.
         node.shutdown()
         node.destroy_node()
-        rclpy.shutdown()
+        rclpy.try_shutdown()
 
 
 if __name__ == "__main__":

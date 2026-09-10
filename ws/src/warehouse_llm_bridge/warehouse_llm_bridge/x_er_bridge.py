@@ -79,6 +79,7 @@ try:
     # inter-module IF). Guarded together so the pure helpers stay collectable.
     import rclpy
     from geometry_msgs.msg import Twist
+    from rclpy.executors import ExternalShutdownException
     from rclpy.logging import get_logger
     from rclpy.node import Node
     from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
@@ -496,16 +497,21 @@ def main() -> None:
         get_logger("x_er_bridge").error(
             f"x_er_bridge startup refused (fail-closed, docs/mode-x-er/08 §6): {exc!r}"
         )
-        rclpy.shutdown()
+        rclpy.try_shutdown()  # idempotent (the context is still up here, but keep one idiom)
         raise SystemExit(1) from exc
     node.start()
     try:
-        with contextlib.suppress(KeyboardInterrupt):
-            rclpy.spin(node)
+        rclpy.spin(node)
+    except (KeyboardInterrupt, ExternalShutdownException):
+        # SIGINT -> KeyboardInterrupt; SIGTERM -> ExternalShutdownException. Humble tears the
+        # context down before this finally runs, so both are a NORMAL stop (exit 0). This is
+        # the STOP path only: the startup refusal above keeps its fail-closed exit 1.
+        pass
     finally:
+        # asyncio-only (a threadsafe flag set, already RuntimeError-guarded), no context use.
         node.shutdown()
         node.destroy_node()
-        rclpy.shutdown()
+        rclpy.try_shutdown()
 
 
 if __name__ == "__main__":

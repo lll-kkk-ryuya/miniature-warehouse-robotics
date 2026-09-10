@@ -159,3 +159,45 @@
 - **消費 (consume)**: `eval_sdk.seed.derive_plugin_trace_id` / `eval_sdk.tracer.LangfuseTracer` の fail-open ヘルパ（`_client`/`_open`/`_propagate_attributes`/`_close_cm`/`_close`。`robotics/observability.py` の `LangfuseTranscriptTracer` と同じ借用契約＝**langfuse を直 import せず v4.9 API 面を eval_sdk 1 箇所に閉じる**）。凍結契約 `warehouse_interfaces`・`eval_sdk` は無編集。新 SDK API なし（`create_trace_id` / `start_as_current_observation(trace_context=)` / `propagate_attributes` は `langfuse-api-contract` CI job が既に pin）。
 - **テスト**: `tests/unit/test_trace_enrich_option_d.py`（22 本・langfuse 非 import／network・credential 不使用）。doc08:533 語彙・fallback 綴り・owner ルーティング（Pattern A は enricher を持たない＋trace label 不変 pin）・**critical path 外**（turn body 中は未スケジュール／既定 spawn は次 loop iteration まで遅延）・plugin trace id の `H::H` 再導出・fail-open 7 態（langfuse 不在／client 例外／trace id 導出失敗／span 失敗／propagate 失敗／enricher raise／spawner raise）。
 - **residual（隠さない）**: ① **実 plugin trace への着地は未検証**（実 Langfuse への書込みは #88 human/credential gate。本レーンは offline fake まで）。live で見るべき点は 2 つに特定済（installed langfuse 4.9.0 の実体を offline read）: (i) `propagate_attributes` の docstring は「Pre-existing spans will NOT be retroactively updated」と述べる（`_client/propagation.py`）——ただし対象は span であり我々がラベルするのは trace **レコード**なので、backend の merge 挙動が未知点。(ii) `trace_context` 指定 span は `langfuse.internal.as_root` を立てる（`_client/client.py`）ため plugin trace に as-root observation が **2 本**並び、trace の name/tags/session をどちらが供給するかは server 側挙動。② 非生産 cycle（timeout/outage/invalid）でも enrich を予約する＝Pattern A と同じ挙動だが、plugin が trace を mint しなかった cycle では enrichment 単独の trace になりうる（live で要確認）。③ enricher は Pattern A と同じ `session_id` を書くため、plugin 側が独自の session grouping を持つ場合は上書きになる（live で要確認）。④ `prompt_version=None` は langfuse 側で文字列 `"None"` に coerce される（`propagate_attributes` の metadata 仕様）＝Pattern A と同一挙動のため本 PR では変更しない。⑤ **session drift 時も自前導出 id を enrich する**: `hermes_client._detect_session_drift` が echo 不一致を検出した cycle ではplugin は別 id で trace を mint しているため、②と同型の phantom trace になる（抑止には「Hermes が我々の id で応答した」per-gen 信号を `HermesClient` から共有する必要があり、decide 経路への新規結合になるので本 PR では配線しない）。⑥ **env-gated live test 未追加**（`tests/live/test_langfuse_trace_tags_live.py` が Pattern A 側の先例。Option-D 版＝enrich→`trace.get(trace_id)` で doc08:533 の着地と既存 trace field の生存を確認する sibling は follow-up。本レーンの編集境界外）。⑦ **doc08 側に D-path writer の記述が無い**（doc08:533 は `LangfuseTracer` の `extra_tags`/`extra_metadata` のみを writer として読める）。`spike/langfuse-plugin-d/MANAGED-PROMPT-DECISION.md` の Status 節も「swaps → NoopTracer」のままで本実装により falsify 済。→ **【2026-09-09 解消】follow-up docs PR で追補済**: doc08:533（D-path writer=`PluginTraceEnricher`・`TraceIdentity` 単一語彙）＋doc08:331（非 tool observation `prompt-enrich` 注記）を in-line 追補・spike Status 節に superseded 注記（いずれも doc08 行ズレゼロ）。
+
+## 【2026-09-10 追記】終了経路（Humble 正常停止 = exit 0）— llm_bridge / character_llm / x_er_bridge / operator_feedback
+
+本 package の 4 つの entry point（[setup.py](setup.py) `console_scripts`）の `main()` を、
+`ws/src/warehouse_teleop/warehouse_teleop/node_runtime.py` が定める **3 規則**へ揃えた。
+**参照実装であって import はしていない**（依存してよい共有 package は `warehouse_interfaces` /
+`warehouse_description` の 2 つのみ＝[.claude/rules/parallel-workflow.md:71-74](../../../.claude/rules/parallel-workflow.md)。3 規則をインラインで写す）:
+
+1. 正常停止 = `KeyboardInterrupt`（SIGINT）**または** `ExternalShutdownException`（SIGTERM）を握って normal return（exit 0）。
+2. spin 後に ROS context を触る処理は `rclpy.ok()` ガード付き best-effort（握るのは `RuntimeError` のみ＝`RCLError`/`InvalidHandle` の public 基底）。
+3. 素の `rclpy.shutdown()` ではなく `rclpy.try_shutdown()`（冪等）。
+
+**実害の根拠**: Jetson 実測（ROS 2 Humble / rclpy 3.3.21・2026-09-10・素の probe node）で rclpy の
+signal handler は `main()` の `finally` より**先に** context を破棄するため、旧・教科書パターン
+（`suppress(KeyboardInterrupt)` ＋ 素の `rclpy.shutdown()`）は SIGINT / SIGTERM とも **exit 1**。
+`llm_bridge` は [`warehouse-bridge.service`](../../../deploy/jetson/systemd/warehouse-bridge.service)（`Type=simple`＋`Restart=on-failure`・
+[docs/setup/jetson-deploy.md:159](../../../docs/setup/jetson-deploy.md) systemd unit 一覧）で常駐するので、
+通常停止での非ゼロ exit が `status=1/FAILURE` として journal に残り、本物のクラッシュがその traceback ノイズに埋もれる
+（`Restart=` は stop job には効かず、stop 以外の終了で無駄な再起動になる。本番 `ExecStart` は `ros-exec.sh ros2 run …` 越しで
+systemd が見る exit code は未実測＝#634 のボード確認項目）。
+
+**layer 注記**（[.claude/rules/layer-annotation.md](../../../.claude/rules/layer-annotation.md)）: 4 ノードとも **L4**（`llm_bridge`/`character_node`/
+`x_er_bridge` = commander・`operator_feedback/notice_node.py` = L4 Operator Feedback Box の観測面・SUBSCRIBE-ONLY で 0 actuation）。
+**L2/L1/L0 は無変更**＝停止経路が安全を担保しているわけではない（estop 権限は Guardian が 50ms tick で
+level 再表明する twist_mux prio-100 のゼロ Twist、走行の最終保証は m1_driver の W-1 freshness brake
+＝[docs/mode-m1/02-m1-driver-and-watchdog.md:62](../../../docs/mode-m1/02-m1-driver-and-watchdog.md)）。
+
+**終了時に「失われるもの / 失われないもの」**（ノード別・隠さない）:
+
+| node | 失われないもの | 失われうるもの（許容の理由） |
+|---|---|---|
+| `llm_bridge`（L4） | `Scheduler.stop()` は純フラグ反転（`scheduler.py` `stop`）＝context 非接触なので context 破棄後でも安全。audit / gen / idempotency store はサイクル中に atomic 着地済 | 進行中サイクルの publish（cycle loop は **daemon thread**＝プロセス終了で切られる）。exit code には影響しない（例外は daemon thread 側に留まる）。dispatch 済 goal の帰趨は Nav2 側の話 |
+| `character_llm`（L4） | — | 進行中の交渉ターン（`shutdown()` は asyncio loop の停止のみ。loop が既に閉じていれば `RuntimeError` を `suppress`＝`XErBridge.shutdown` と同形） |
+| `x_er_bridge`（L4） | **起動拒否は失敗のまま（exit 1）**＝[docs/mode-x-er/08-x-er-bridge-node-spec.md](../../../docs/mode-x-er/08-x-er-bridge-node-spec.md) §6 fail-closed を維持。本変更は **stop 経路のみ**（起動拒否側の `rclpy.shutdown()` は idiom 統一のため `try_shutdown()` にしたが、context は生きており挙動同値） | 進行中サイクル（`shutdown()` は threadsafe な stop flag のセットのみ・既に `RuntimeError` guard 済） |
+| `operator_feedback`（L4・観測面） | `DrainWorker.shutdown()` の **最大 2.0 s join**（`_SHUTDOWN_JOIN_S`）は据え置き＝停止直前に enqueue された notice も最終 drain で配信される | join がタイムアウトしたときの**警告ログ**。以前は context 破棄後に `get_logger().warning(...)` を呼びうる＝正常停止を exit 1 に変えていた。今は `rclpy.ok()` ガード付き best-effort（キュー保護そのものである join は先に必ず走る） |
+
+**残件（未決・隠さない）**:
+- `operator_feedback` の drain join（最大 2.0 s）と systemd の `TimeoutStopSec` の関係は未検討。現状 `deploy/jetson/systemd/*.service` に `TimeoutStopSec` の記述は無く（既定 90 s）、また operator_feedback 用の unit 自体まだ無い（launch composition 含め follow-up）。unit を起こすときに 2.0 s < `TimeoutStopSec` を明示的に確認すること。
+- `rclpy.ok()` ガードは **host unit では pin できない**（host に rclpy が無く `OperatorFeedbackNode` を実体化できない＝`tests/unit/test_operator_feedback_node.py` は `DrainWorker` 等の純部分のみ）。ガード撤去は既存/新規 unit を赤にしない＝**実機依存**。3 規則側（`main()` の形）は `tests/unit/test_node_shutdown_lifecycle.py` の repo 全体ラチェット（AST）で pin されており、4 ノードは `KNOWN_UNSAFE_STOP_ON_HUMBLE` baseline から削除済（13 → 9 entries）＝以後この形を崩すと `regressed` で CI 赤。
+- 実機での exit code 確認（`ros2 run` は 143 を被せるため entry point 直呼びで見る必要がある）は本レーン未実施＝ボード側 follow-up。
+
+**残件（共通化）**: 3 規則の共通化先（`warehouse_interfaces` への lazy-import か新 shared package か）は #634 で裁定。裁定まで各 package が 3 規則を写す＝暫定 (b)。参照実装 = `ws/src/warehouse_teleop/warehouse_teleop/node_runtime.py`（import はしない）。

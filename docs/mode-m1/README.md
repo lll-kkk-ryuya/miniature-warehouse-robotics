@@ -11,7 +11,7 @@
 |---------|------|
 | [01-mode-boundary-and-traffic](01-mode-boundary-and-traffic.md) | Mode A/B/C との境界・traffic_mode の裁定（collision_monitor 常時起動 = G-k の構造的解決）・stg/prod config とのギャップ |
 | [02-m1-driver-and-watchdog](02-m1-driver-and-watchdog.md) | `warehouse_m1_driver` serial node 設計（L0' 結線 = G-l）＋ **watchdog 多層停止設計**（STM32 側 watchdog 不在の調査確定・G-g 実機確認手順） |
-| [03-joystick-teleop-bringup](03-joystick-teleop-bringup.md) | 物理起動の最初の目標 = **joystick 手動走行**。成功の 3 段ゲート（M0 給電 / M1 疎通 / M2 ROS 走行）・実機プローブ・joy 経路設計 |
+| [03-joystick-teleop-bringup](03-joystick-teleop-bringup.md) | 物理起動の最初の目標 = **joystick 手動走行**。成功の 3 段ゲート（M0 給電 / M1 疎通 / M2 ROS 走行）・実機プローブ・joy 経路設計・**§5 実機コマンド正本（`joy_node` param・`jstest`/`/joy` 判定）** |
 | [04-runtime-speed-limiter](04-runtime-speed-limiter.md) | OQ-T3 の設計解: Nav2 `speed_limit_topic` による**走行中速度上限の動的変更**。三層モデル（起動基準値 = `_operating_vx_max`/RewrittenYaml ／ runtime 帯 = `nav2_msgs/SpeedLimit` ／ L0' 最終クランプ不変） |
 | [05-operation-state-and-stop-authority](05-operation-state-and-stop-authority.md) | **運転状態と停止権限の担当分離**（2026-09-07 確定）: L2=新規タスク許可／teleop=発生源ゲート／Guardian=停止条件／driver=停止上乗せ。Emergency の「イベント/現在状態」分離・操作者非常停止 latch・6 状態機械の不採用 |
 
