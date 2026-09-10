@@ -4,6 +4,9 @@ Phase-1.5a additions (doc21 §14 Step1.5a / §13.1): SR/SPL/SoftSPL + jerk/SPARC
 Phase-1.5b additions (doc21 §14 Step1.5b / §6 :184-186): rate / Jain fairness / makespan /
 throughput — the Tier-1 aggregate arithmetic (the domain composition lives in
 ``tests/unit/test_wo_tier1_kpi.py``).
+doc21 §17 additions: fraction_at_or_below / trapezoid_integral — the arithmetic behind idle 率
+(§17 ①) and 速度予算消化率 (§17 ② (iii)); the ε, the cap and the window stay in the domain
+(``tests/unit/test_wo_motion_kpi.py``).
 Each expected value is a hand-computed literal from the *reference* formula
 (AllenAct / Habitat / siva82kb), not a re-derivation of the implementation — R-26 independent
 oracle (.claude/rules/safety.md, doc20 §9), mutation-red on the named guard step.
@@ -16,9 +19,11 @@ import pytest
 from eval_sdk.stats import (
     DistanceAccumulator,
     distance_traveled,
+    fraction_at_or_below,
     jain_fairness_index,
     jerk,
     ldlj,
+    low_pass,
     makespan,
     n_movement_units,
     path_lengths,
@@ -30,6 +35,7 @@ from eval_sdk.stats import (
     spl_metric,
     success_rate,
     throughput,
+    trapezoid_integral,
 )
 from eval_sdk.stats import _third_difference as _raw_third_diff  # no-lowpass reference
 
@@ -284,6 +290,61 @@ def test_jerk_too_short_and_even_window() -> None:
         jerk(list(range(10)), 0.1, smooth_window=4)  # even window rejected
 
 
+# ── low_pass (the doc21:306 pre-filter, public since #616) ───────────────────
+
+
+@pytest.mark.unit
+def test_low_pass_is_a_valid_mode_centered_moving_average() -> None:
+    """Hand-computed: means of [1,2,3] / [2,3,4] / [3,4,5] over a width-3 window, and
+    'valid' mode so the output is ``n − window + 1`` long (no fabricated edge samples)."""
+    assert low_pass([1.0, 2.0, 3.0, 4.0, 5.0], 3) == pytest.approx([2.0, 3.0, 4.0])
+    assert len(low_pass([0.0] * 30, 5)) == 26
+    assert low_pass([1.0, 2.0], 5) == []  # shorter than one window -> nothing is valid
+
+
+@pytest.mark.unit
+def test_low_pass_attenuates_noise_without_moving_a_constant() -> None:
+    """The property that makes it a low-pass: a constant survives untouched (DC gain 1) while
+    zero-mean noise is damped. Independent of how the average is implemented."""
+    rng = random.Random(616)
+    assert low_pass([0.3] * 12, 5) == pytest.approx([0.3] * 8)
+    noisy = [0.3 + rng.uniform(-0.05, 0.05) for _ in range(200)]
+    assert _rms([v - 0.3 for v in low_pass(noisy, 5)]) < _rms([v - 0.3 for v in noisy]) / 1.5
+
+
+@pytest.mark.unit
+def test_low_pass_window_of_one_is_the_identity() -> None:
+    """Documented escape hatch (used by tests to exhibit unfiltered numbers) — and it must be a
+    copy, not the caller's list."""
+    signal = [0.1, 0.2, 0.3]
+    passed = low_pass(signal, 1)
+    assert passed == signal
+    assert passed is not signal
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("window", [0, -1, 2, 4, 100])
+def test_low_pass_rejects_windows_that_cannot_be_centered(window: int) -> None:
+    """A centered average needs a middle sample, so the width must be a positive ODD integer —
+    the same contract ``jerk``'s ``smooth_window`` enforces (fail-loud: a bad width is a
+    programming error, not live data). ``window=100`` is even, not merely too long."""
+    with pytest.raises(ValueError):
+        low_pass([0.1] * 10, window)
+
+
+@pytest.mark.unit
+def test_low_pass_is_the_same_filter_jerk_applies() -> None:
+    """doc21:306 is one clause: the pre-filter a domain composer puts in front of SPARC/LDLJ
+    must be the one ``jerk`` already uses, not a second implementation that could drift.
+    Oracle = the 3rd finite difference of the low-passed signal, built here from the two public
+    pieces, must equal ``jerk`` end to end."""
+    dt = 0.1
+    signal = [0.1, 0.4, 0.35, 0.6, 0.55, 0.8, 0.7, 1.0, 0.9, 1.2, 1.1, 1.4]
+    assert jerk(signal, dt, smooth_window=5) == pytest.approx(
+        _raw_third_diff(low_pass(signal, 5), dt)
+    )
+
+
 # ── ldlj (log dimensionless jerk, stdlib, doc21:306) ──────────────────────────
 
 
@@ -441,3 +502,56 @@ def test_throughput_is_count_per_duration_with_guards() -> None:
     assert throughput(5, None) is None  # composes with makespan([]) → None
     with pytest.raises(ValueError, match="non-negative"):
         throughput(-1, 10.0)
+
+
+# ── doc21 §17 ①② arithmetic: fraction_at_or_below / trapezoid_integral ────────
+
+
+@pytest.mark.unit
+def test_fraction_at_or_below_counts_by_hand_and_includes_the_boundary() -> None:
+    # Hand count, not a re-derivation: of [0.0, 0.005, 0.01, 0.011, 0.5] the values ≤ 0.01 are
+    # 0.0, 0.005 and 0.01 — three of five = 0.6. The middle one sits EXACTLY on the threshold and
+    # must count, which is what separates the documented `<=` from a `<`  (that would give 0.4).
+    assert fraction_at_or_below([0.0, 0.005, 0.01, 0.011, 0.5], 0.01) == pytest.approx(0.6)
+    # A threshold everything clears / nothing clears: 1.0 and a measured 0.0 (never None).
+    assert fraction_at_or_below([1.0, 2.0, 3.0], 3.0) == 1.0
+    assert fraction_at_or_below([1.0, 2.0, 3.0], 0.9) == 0.0
+
+
+@pytest.mark.unit
+def test_fraction_at_or_below_undefined_and_invalid_cases() -> None:
+    assert fraction_at_or_below([], 0.01) is None  # no data ≠ measured zero (percentile rule)
+    # An unknown sample is not evidence of smallness: NaN lands in the denominator only, so one
+    # NaN beside one qualifying sample is 1/2 — not 1/1 (filtered out) and not 2/2 (counted).
+    assert fraction_at_or_below([math.nan, 0.0], 0.01) == pytest.approx(0.5)
+    assert fraction_at_or_below([math.inf, -math.inf], 0.01) == pytest.approx(0.5)
+    for bad in (math.nan, math.inf, -math.inf):
+        with pytest.raises(ValueError, match="finite"):
+            fraction_at_or_below([0.0], bad)
+
+
+@pytest.mark.unit
+def test_trapezoid_integral_on_a_non_uniform_grid_is_hand_computed() -> None:
+    # t = [0, 1, 3], v = [2, 4, 4] → 1·(2+4)/2 = 3 and 2·(4+4)/2 = 8, so ∫ = 11. Weighting both
+    # steps equally (ignoring the 1 s vs 2 s spacing) would give 7; a rectangle rule on the left
+    # sample would give 2 + 8 = 10.
+    assert trapezoid_integral([0.0, 1.0, 3.0], [2.0, 4.0, 4.0]) == pytest.approx(11.0)
+    # A constant signal integrates to v·T on any grid, uniform or not (independent invariant).
+    assert trapezoid_integral([0.0, 0.1, 0.7, 1.5], [0.25] * 4) == pytest.approx(0.375)
+    # A symmetric triangle over 2 s peaking at 1.0: two half-triangles = 0.5 + 0.5.
+    assert trapezoid_integral([0.0, 1.0, 2.0], [0.0, 1.0, 0.0]) == pytest.approx(1.0)
+    # The floor is TWO points: one trapezoid, 2·(1+3)/2 = 4. Asserted from the POSITIVE side —
+    # the ``is None`` cases below cannot tell a ``len(times) < 2`` guard from a ``< 3`` one.
+    assert trapezoid_integral([0.0, 2.0], [1.0, 3.0]) == pytest.approx(4.0)
+
+
+@pytest.mark.unit
+def test_trapezoid_integral_undefined_cases_and_length_mismatch() -> None:
+    assert trapezoid_integral([], []) is None
+    assert trapezoid_integral([1.0], [5.0]) is None  # a single point spans no window
+    assert trapezoid_integral([0.0, 0.0, 1.0], [1.0, 1.0, 1.0]) is None  # duplicate stamp
+    assert trapezoid_integral([0.0, 2.0, 1.0], [1.0, 1.0, 1.0]) is None  # clock went backwards
+    assert trapezoid_integral([0.0, math.nan], [1.0, 1.0]) is None  # unmeasurable spacing
+    assert trapezoid_integral([0.0, 1.0], [1.0, math.nan]) is None  # non-finite result
+    with pytest.raises(ValueError, match="equal length"):
+        trapezoid_integral([0.0, 1.0, 2.0], [1.0, 1.0])

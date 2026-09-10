@@ -181,12 +181,12 @@ sink.flush()
 
 | KPI | 数学（汎用層） | producer / データ源（ドメイン） | 名前語彙 | emit |
 |---|---|---|---|---|
-| 介入率 intervention rate | `eval_sdk.stats`（rate） | 既存 audit の `escalation_response` 行（MCP ツール6 = [doc15:173](15-mcp-platform.md)・producer `warehouse_mcp_server/tools.py:354-388`・executed 集合 `kpi.py:62`） | nav 標準 `intervention_rate` | sink |
+| 介入率 intervention rate | `eval_sdk.stats`（rate） | 既存 audit の `escalation_response` 行（MCP ツール6 = [doc15:173](15-mcp-platform.md)・producer = `warehouse_mcp_server/tools.py` の tool6 `escalation_response`（executed 記帳は同関数末尾の `record("escalation_response","executed",…,robot=new_robot)`）・executed 集合 = `warehouse_orchestrator/kpi.py` の `COMMAND_TOOLS`） | nav 標準 `intervention_rate` | sink |
 | throughput / makespan | `eval_sdk.stats` | 既存 audit の完了 task（Tier0 で completion 源が来たら即） | 倉庫 manifest | sink |
-| fairness / 負荷均等 | `eval_sdk.stats`（gini/ratio helper・汎用） | 既存 audit `by_robot`（`kpi.py:315-316`） | 倉庫 manifest | sink |
-| 軌道平滑性（jerk・方向反転） | `eval_sdk.stats`（速度差分・汎用） | 既存 `/bot{n}/odom`（`kpi.py:97-140`） | nav 系 `smoothness` | sink |
+| fairness / 負荷均等 | `eval_sdk.stats`（gini/ratio helper・汎用） | 既存 audit `by_robot`（`warehouse_orchestrator/kpi.py` の `compute_kpis` が集計し `robot_load_fairness` が Jain 化） | 倉庫 manifest | sink |
+| 軌道平滑性（jerk・方向反転） | `eval_sdk.stats`（速度差分・汎用） | 既存 `/bot{n}/odom`（`warehouse_orchestrator/motion.py` の `MotionAccumulator`/`smoothness_stats`＝`kpi_collector` の既存 odom callback 内で列保持。§16） | nav 系 `smoothness` | sink |
 
-→ **実装場所 = ほぼドメイン（倉庫 `kpi.py` 拡張）＋ eval_sdk.stats の汎用 helper**。新 producer ゼロ・**Phase 3 を待たず着手可**・additive。
+→ **実装場所 = ほぼドメイン（倉庫 `kpi.py` / `motion.py` 拡張）＋ eval_sdk.stats の汎用 helper**。**新ノード不要**（audit 系は保持ゼロ／odom 系は既存 subscriber 内の bounded 列保持が要る＝§16 ①）・**Phase 3 を待たず着手可**・additive。
 
 ### Tier 2 — 新 producer が必要（中工数）
 
@@ -418,3 +418,54 @@ episode start は deadlock/conflict detector、route lock conflict、または t
 - 規約: [docs-first.md](../../.claude/rules/docs-first.md) / [parallel-workflow.md §4](../../.claude/rules/parallel-workflow.md)（contract）/ [doc16 §11](16-repository-and-conventions.md)（純コア・偽実装での独立検証）。
 - 外部標準・OSS（§12/§13 で評価）: Langfuse（MIT・ClickHouse 傘下・trace/observation/score）/ OpenTelemetry GenAI semconv（CNCF・gen_ai.* は Development）/ Habitat-Lab（SR/SPL/SoftSPL 定義正本・Anderson 2018）/ AllenAct `spl_metric`（MIT・コピー元）/ nuPlan・iGibson（harness パターン）/ SPARC=Balasubramanian 2015（平滑性・siva82kb 照合元）/ SCT=Yokoyama 2021 / Inspect-AI（agent eval・物理 outcome 非対応）/ numpy・scipy（BSD）。
 - 経緯: #108/#109/#115（live-join 決定的 trace_id）/ #73（クロスレーン trace_id 合意）/ #88（Langfuse live human-gate）。
+
+---
+
+## 16. 実装追補（odom 由来 Tier-1 で確定した点・#613 → #616 post-merge review）
+
+§6 Tier-1 表 / §13.1 :306 / §13.2 :310 に対して、**実装が確定させた事実だけ**を記録する（新しい指標定義をここで作らない）。実装 = `ws/src/warehouse_orchestrator/warehouse_orchestrator/motion.py`（合成 `kpi.py` / 配線 `kpi_collector.py`）。**観測面のみ＝新トピック・新契約・新 score 送信ゼロ**。
+
+① **:189 の改稿記録（「新 producer ゼロ」→「新ノード不要」）** — #613 land 時点の :189 は無条件に**「新 producer ゼロ」**だった。しかし audit 系 Tier-1 が保持ゼロで成立するのに対し、odom 系（軌道平滑性）は速度**列**が要り、`eval_sdk.stats.DistanceAccumulator` は総和と直前1点しか持たないので保持ゼロでは算出できない。実装は**新ノード・新トピック・新契約を足さず**、`kpi_collector` が既に張っている `/bot{n}/odom` subscription の内側に **bounded ring buffer**（`MotionAccumulator`・既定 4096 sample ＝ 約30 Hz で約2分・要約した窓は毎回 report に開示）を置いて解決した。この実態に合わせ、#616 で :189 の当該句を**「新ノード不要（audit 系は保持ゼロ／odom 系は既存 subscriber 内の bounded 列保持が要る）」へ改稿**した（誤りの訂正であって、読み替えの追加ではない）。Tier 2 (:195-197) の★は本来どおり「新ノードが要る」意味であり、この改稿は及ばない。
+
+② **velocity の源 = odom メッセージの signed twist（pose 差分ではない）** — :301 (a) は「odom pose 列」を挙げるが、:306 の N_MU（速度符号反転数）は**符号**を要求し、pose 差分から作った速度は非負なので符号反転を原理的に検出できない。実装は `/bot{n}/odom` 自身の `twist.twist.linear.x` を採用する（per-robot 線速度の正準フィールド＝[doc12:262](12-infrastructure-common.md)（State Cache が `/{bot}/odom` を購読）/ [doc12:340](12-infrastructure-common.md)（`velocity{linear,angular}`）。他トラックのモジュールは import せず documented field を独立に読む）。SPARC / LDLJ には同じ系列の |v| を与える。
+
+③ **:306「3階微分前に low-pass 必須」は SPARC / LDLJ の入力にも適用する（#616 で実装）** — odom が速度を直接くれるため残る微分は指標の内側にあり（LDLJ = 速度の2階差分／SPARC = その正規化スペクトル）、規範句はその**入力**に掛かる。実装は `eval_sdk.stats.low_pass`（`jerk()` が同じ :306 のために内部で使う centered moving average と同一物）で |v| を平滑してから両指標へ渡す。**幅（既定 5 sample）は工学的チューニング値であって domain しきい値ではない**——:306 は「low-pass すること」だけを規定し幅を規定しない——ので、`SmoothnessStats.smooth_window` に**毎回**、`filtered_samples`（= spectral 指標へ実際に渡った平滑後サンプル数）に**到達したときのみ**開示する（未到達は `None`＝幅未満／床未満／peak 0／レート不定のいずれか。理由の区別はしない）。**N_MU には掛けない**（微分を含まず、平滑は数えるべき反転そのものを消すため）。実測効果: 9 sample のジッタ窓で LDLJ −8.34 → −3.06（生値は sampling noise を jerk として読んでいた）。
+
+> **⚠ 未決（doc owner 判断待ち・#616 で開示）— SPARC にも掛けるべきか**。:306 の規範句は文字どおりには**微分**に掛かる。LDLJ は速度の2階差分＝位置の3階微分そのものなので適用は疑いない。一方 **SPARC は微分せず**（正規化スペクトルの弧長）、**自前の帯域制限 `fc`=10 Hz を既に持ち**、:306 が照合元とする siva82kb 実装は前置フィルタを掛けない。さらに幅5・fs=30 の移動平均は最初のヌルが **6 Hz** ＝ SPARC が積分する 0–10 Hz 帯**の内側**に落ちるため、二重の帯域制限になる（実測: `_JITTERY9` で SPARC −2.05（生）→ −1.70（平滑））。**#616 は Issue DoD どおり SPARC/LDLJ の双方に適用して land した**が、これは :306 が決着させていない判断であり、外す場合は `smoothness_stats(..., smooth_window=1)` 相当の1行（SPARC 側だけ生 |v| を渡す）で可逆。**N_MU の noise 感度も同様に :306 未規定**（平滑すれば偽反転は減るが真の反転も消える）。
+
+④ **fs の効き方（:306 の2指標で非対称）** — SPARC は `fc`=10 Hz の帯域カットが絶対 Hz なので **fs で値が動く**（`tests/unit/test_wo_motion_kpi.py` の振幅不変性 fixture の**未平滑** profile `[0.05,0.18,0.29,0.30,0.27,0.14,0.06,0.02]` を `eval_sdk.stats.sparc` に直接与えると fs=10 で −2.5515・fs=30 で −1.4097。`smoothness_stats` 経由では③の平滑が入るため値は別になる）。LDLJ は `dur³`·Σ`jerk²`·`dt` で fs が代数的に相殺し **fs 不変**（fs=1/10/30 で 15 桁一致）。実装は窓の実測レート `(n−1)/(t_last−t_first)` を両者へ渡す。**均一サンプリング仮定は残件**（odom のジッタは平均レートで吸収している）。
+
+⑤ **:310 の未定義2項目は引き続き実装しない** — `idle 率` と `速度予算消化率` は :310 に名前があるだけで、分子・分母・観測窓・しきい値のいずれも本 doc にも他 doc にも無い。**発明せず未実装**とし、材料（`mean_speed` / `max_speed` / `sample_rate_hz` / 窓境界）を report に出す（要約のみ。速度予算消化率の**近似**推定 (i) はこの要約から足りるが、確定式 (iii) と idle 率に要る per-sample 系列＋スタンプは consumer 内の `MotionInputs.samples`＝§17 ①②）。定義が確定した時点で（既存の保持材料から）導出できる。**その定義の確定＝分子・分母・観測窓は §17** で行う（本節＝§16 は「実装が確定させた事実」だけを記録する charter のため、新定義は §17 に置く）。
+
+> 実装ノート（produce/consume・voids）= [`ws/src/warehouse_orchestrator/CLAUDE.md`](../../ws/src/warehouse_orchestrator/CLAUDE.md) / テスト = `tests/unit/test_wo_motion_kpi.py`。
+
+---
+
+## 17. §13.2 Tier-1 未定義項目の確定（idle 率 / 速度予算消化率 / 観測窓・非一様サンプリング）
+
+§16 が「実装が確定させた事実だけを記録する（新しい指標定義を作らない）」charter だったのに対し、本節は §16 ④⑤ が doc owner 判断へ送り残した **§13.2 の 2 つの空白＝定義そのもの**を埋める: (a) :310 の未定義2指標 `idle 率` / `速度予算消化率` の分子・分母・観測窓・しきい値を確定し、(b) Tier-1 の観測窓と非一様サンプリングの扱いを明文化する。狙いは、後続の実装 slice が **doc に無い判断をコードで発明せず**（[docs-first.md:6](../../.claude/rules/docs-first.md)）、#613 が既に露出した材料（`SmoothnessStats.{mean_speed,max_speed,sample_rate_hz,window_start,window_end,samples}` / `MotionInputs.{samples,distances}`）から算出できるようにすること。**本節は docs のみ＝新契約・新 producer・新 score・コード変更ゼロ**。確定した式は report フィールド／offline 純関数の水準にとどめ、**score 送信も契約凍結もしない**（#432 の他 Tier-1 と同じく差し替えは非破壊。KPI 出力契約は未凍結＝[CLAUDE.md](../../ws/src/warehouse_orchestrator/CLAUDE.md) voids 9）。
+
+① **`idle 率`（idle ratio）の定義を確定** — 争点は「停止」の判定源:
+
+- **task-lifecycle / audit 源は不可**: command audit は**コマンドの発行のみ**を記録する（producer = `warehouse_mcp_server` の `record()`＝`{timestamp, tool, result∈{executed,rejected,error}, detail, robot}`）ので、「停止/移動再開」の遷移も idle 区間も持たない。live 完了源は Phase 3a（:245／完了 task 窓の空白 :185）。よって audit / task-lifecycle からは idle 区間を復元できない。
+- **速度 ε 源（採用）**: odom 由来 |v| 系列（`motion.MotionAccumulator` が既に窓保持・§16 ①）に対し `|v| ≤ ε` を idle とする。ε は既存の `warehouse_state.aggregator.derive_status`（`_MOVING_EPS = 0.01` m/s・`|linear| ≤ ε → "idle"` を報告）と**同一値を借りて第2定数を作らない**。ただし `derive_status` は**別トラック（`warehouse_state`）所有・凍結契約ではない**ため、ε の所有と凍結は follow-up で確認する（cross-track の値借用であり import はしない＝documented value を独立に読む。§16 ② の twist 源採用と同流儀）。
+- **確定定義**: `idle 率 = (観測窓内で |v| ≤ ε=0.01 m/s のサンプル数) ÷ (窓の総サンプル数)`（一様サンプリング下では時間割合に一致）。分子＝idle サンプル、分母＝窓の総サンプル、観測窓＝§17 ③ の ring buffer 窓（smoothness と同一スコープ）、しきい値 ε＝0.01 m/s。N_MU（:306）と違い**符号は不要**（idle は速度の大きさのみ）。
+- **導出には窓の per-sample |v| 系列が要る**（要約 `mean_speed` / `max_speed` からは ε 下回りサンプル数を復元できない）。系列は既に `MotionInputs.samples`（=`MotionAccumulator.series`）で consumer に渡っているので、後続 slice は **新 producer / topic / 契約なし**で `SmoothnessStats` に additive な `idle_ratio` を足すだけでよい（#616 が `smooth_window` / `filtered_samples` を additive 追加したのと同型）。**§16 ⑤ の「材料のみ report に出す」は速度予算消化率には十分だが idle 率には不十分**（後者は per-sample 系列が要る）——この非対称を本項で訂正する。
+
+② **`速度予算消化率`（speed-budget utilisation）の定義を確定** — 上限（cap＝v_max）は **config `safety.max_linear_velocity`**（環境 tunable。`warehouse_interfaces.config.load_config` が `0 < cap ≤ MAX_LINEAR_VELOCITY` を検証＝config は hard cap **0.3 m/s** を**下げることしかできない**。base 値 = 0.3・`config/warehouse.base.yaml`）。hard cap 0.3 自体（`warehouse_interfaces.safety.MAX_LINEAR_VELOCITY`・:254「コードで強制」）は**上限（ceiling）であり分母そのものではない**（config 不読時の fallback・再タイプ禁止＝import する）。overlay で cap を下げた run と 0.3 の run は同じ軌道で異なる値を報告するため、**解決した cap を report に毎回開示する**（`SmoothnessStats.speed_cap`・`smooth_window` / `window_*` と同じ開示原則）。3 候補:
+
+- **(i)** `mean|v| ÷ cap` — 最安。既出 `SmoothnessStats.mean_speed` から即算（`mean_speed / cap`）。問い＝「平均でどれだけ上限を使ったか」。
+- **(ii)** `time-at-cap ÷ run time` — cap 近傍の滞在時間比。問い＝「どれだけ上限に張り付いたか」＝**飽和率**であり消化率とは別（Tier-2 の速度上限違反 :311 と近縁）。
+- **(iii)** `∫|v|dt ÷ (v_max·T)` — 窓内実移動距離 ÷（cap × 窓時間）。予算（=`v_max·T`＝その窓で到達し得た最大距離）に対する消化（=`∫|v|dt`＝実距離）の、最も字義通りの読み。
+- **確定 = (iii)**。「予算に対する消化」の字義に最も忠実。(i) は (iii) の**近似**推定量にすぎない: 台形則は両端点を半重みにするため、一様サンプリング下でも両者が一致するのは **endpoint-balanced 窓**（`mean|v| = (|v_first|+|v_last|)/2`）のときだけで、jitter はそれとは独立な第 2 の乖離源。したがって **(iii) の算出には per-sample 系列とスタンプが要り、要約 `mean_speed` だけでは足りない**（§17 ① が §16 ⑤ に施した訂正と同じ非対称。`mean_speed/cap` は近似値として併記可）。(ii) は別指標（飽和率）として分離し、消化率には採らない。`∫|v|dt` は窓内＝`MotionInputs.samples` の台形則、run 全体＝`DistanceAccumulator.totals()`（pᵢ）。観測窓（§17 ③）に合わせるなら**窓内積分**、`T = window_end − window_start`。
+
+③ **Tier-1 観測窓と非一様サンプリングの明文化** — doc21 は Tier-1 の観測窓を規定していなかった（:185 throughput 窓・[CLAUDE.md](../../ws/src/warehouse_orchestrator/CLAUDE.md) voids 11③ と同じ空白）。実装が確定させた事実:
+
+- `distance_traveled`(pᵢ) と `detour factor`(pᵢ/lᵢ・:310／:304-305) は `DistanceAccumulator` 由来＝**run 全体**（起動〜現在の総距離・単調）。
+- `smoothness`（SPARC/LDLJ/N_MU・:306）は ring buffer 由来＝**直近窓のみ**（既定 `motion_buffer_samples`=4096・≈30 Hz で約2分・§16 ①）。
+- → **同一 report 内に「run 全体」と「直近窓」の2つの時間スコープが同居**する。窓境界は `SmoothnessStats.{window_start,window_end,samples}` で毎回開示（§16 ①）。**idle 率・速度予算消化率（§17 ①②）は smoothness と同じ窓スコープを既定**とする（材料が同じ ring buffer 由来のため）。run 全体版が要るなら `DistanceAccumulator` 同様の軽量な idle-time / ∫|v|dt 累算器を足す（本節では**窓スコープを確定**・run 全体版は follow-up）。
+- **非一様サンプリング**: SPARC / LDLJ は**一様サンプリングを仮定**するが odom は jitter する。実装は窓の**平均レート** `fs = (n−1) ÷ (t_last − t_first)`（=`sample_rate_hz`・`eval_sdk.stats.throughput` を再利用）を両指標へ渡し、ジッタを平均レートで吸収する（§16 ④）。一方 §17 ② は実スタンプで台形積分し、§17 ① は生サンプル数の割合（jitter 非補正＝parked 中の odom burst は idle *時間*を過大に見せ、odom 欠落区間は ② が跨いで積分する一方 ① には見えない）＝**同一窓に jitter の扱いが 3 通り同居**する。**残件＝厳密な扱い**（等間隔リサンプル/補間 vs 平均レート近似・3 通りの整理）は未決＝follow-up。fs の効き方の非対称（SPARC は fs 依存・LDLJ は fs 不変）は §16 ④ に既述。
+
+> **本節が確定していないこと（follow-up）**: (1) ε=0.01 m/s の所有・凍結（現状 `warehouse_state.aggregator.derive_status` 私有・別トラック）、(2) 非一様 odom の厳密なリサンプル方針、(3) idle 率 / 速度予算消化率を run 全体窓へ広げるか。いずれも report フィールド水準の**非破壊**であり、確定後に additive 実装する。
+>
+> 参照: §13.2 :310（未定義2項目）・§13.1 :306（3階微分前 low-pass）・§13.1 :304-305（SPL・detour 分母 lᵢ）・§16 ①④⑤（実装が確定させた事実）・:245（Phase 3a completion 源）・:254（0.3 m/s 強制）・:189（新ノード不要）／実装ノート = [`ws/src/warehouse_orchestrator/CLAUDE.md`](../../ws/src/warehouse_orchestrator/CLAUDE.md) voids 15/16。

@@ -563,3 +563,52 @@ def test_kpi_collector_resolves_pattern_d_at_init() -> None:
         isinstance(n, ast.Attribute) and n.attr == "_pattern_d" for n in ast.walk(init)
     )
     assert assigns_pattern_d, "__init__ must set self._pattern_d"
+
+
+@pytest.mark.unit
+def test_kpi_collector_injects_the_resolved_speed_cap_into_motion_inputs() -> None:
+    # Same orphan guard as pattern_d (#2): a cap resolved at init that never reaches
+    # MotionInputs leaves doc21 §17 ② permanently None on the live path. AST on source
+    # (the node imports rclpy).
+    init = _kpi_collector_method("__init__")
+    call_names = {
+        c.func.id
+        for c in ast.walk(init)
+        if isinstance(c, ast.Call) and isinstance(c.func, ast.Name)
+    }
+    assert "resolve_speed_cap" in call_names, "__init__ must resolve the cap once at startup"
+    assert any(
+        isinstance(n, ast.Constant) and n.value == "max_linear_velocity" for n in ast.walk(init)
+    ), "the cap must come from config safety.max_linear_velocity"
+    # …and from the SAFETY section specifically. The bare-constant check above cannot tell
+    # ``cfg.get("safety")`` from ``cfg.get("motion")`` (a mutation that silently leaves the cap
+    # at its fallback forever), so pin both lookup keys at the ``.get(...)`` call sites.
+    lookup_keys = {
+        call.args[0].value
+        for call in ast.walk(init)
+        if isinstance(call, ast.Call)
+        and isinstance(call.func, ast.Attribute)
+        and call.func.attr == "get"
+        and call.args
+        and isinstance(call.args[0], ast.Constant)
+    }
+    assert {"safety", "max_linear_velocity"} <= lookup_keys, (
+        f"the cap must be read as config safety.max_linear_velocity; saw .get() keys {lookup_keys}"
+    )
+    assert any(isinstance(n, ast.Name) and n.id == "MAX_LINEAR_VELOCITY" for n in ast.walk(init)), (
+        "the fallback must be the IMPORTED hard cap, never a retyped 0.3"
+    )
+    report = _kpi_collector_method("_report")
+    calls = [
+        c
+        for c in ast.walk(report)
+        if isinstance(c, ast.Call) and isinstance(c.func, ast.Name) and c.func.id == "MotionInputs"
+    ]
+    assert calls, "_report must build MotionInputs(...)"
+    val = {k.arg: k.value for k in calls[0].keywords}.get("speed_cap")
+    assert (
+        isinstance(val, ast.Attribute)
+        and val.attr == "_speed_cap"
+        and isinstance(val.value, ast.Name)
+        and val.value.id == "self"
+    ), "speed_cap must be wired to self._speed_cap (the init-resolved cap)"

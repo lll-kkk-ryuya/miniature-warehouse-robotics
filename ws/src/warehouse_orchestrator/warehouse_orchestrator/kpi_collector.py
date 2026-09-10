@@ -14,9 +14,11 @@ accumulates from ``/bot{n}/odom`` (doc09:79) and stays 0 until robots/sim run (P
 any prerequisite missing every send no-ops (fail-open). See ``warehouse_orchestrator/CLAUDE.md``.
 
 The **same** odom subscription also feeds a bounded :class:`~warehouse_orchestrator.motion.
-MotionAccumulator` for the odom-sourced Tier-1 KPIs (doc21:310 軌道平滑性 / detour factor). That
-is report-only: **no new topic, no new contract and no new Langfuse score** — ``_send_scores``
-is untouched by that family (Issue #432 DoD).
+MotionAccumulator` for the odom-sourced Tier-1 KPIs (doc21:310 軌道平滑性 / detour factor, plus
+doc21 §17 ①② idle 率 / 速度予算消化率). That is report-only: **no new topic, no new contract and no
+new Langfuse score** — ``_send_scores`` is untouched by that family (Issue #432 DoD). The only
+new input is a *read* of the existing config tunable ``safety.max_linear_velocity`` (v_max for
+§17 ②), resolved once at startup and injected via ``MotionInputs.speed_cap``.
 """
 
 import contextlib
@@ -26,6 +28,7 @@ import rclpy
 from nav_msgs.msg import Odometry
 from rclpy.node import Node
 from warehouse_interfaces.config import load_config
+from warehouse_interfaces.safety import MAX_LINEAR_VELOCITY
 
 from warehouse_orchestrator.audit_reader import AuditEntry, read_audit_log
 from warehouse_orchestrator.kpi import (
@@ -38,6 +41,8 @@ from warehouse_orchestrator.motion import (
     DEFAULT_MOTION_BUFFER_SAMPLES,
     MotionAccumulator,
     MotionInputs,
+    resolve_motion_buffer_samples,
+    resolve_speed_cap,
 )
 from warehouse_orchestrator.score_send import resolve_pattern_d, resolve_provider, send_scores
 from warehouse_orchestrator.trace_id import run_id as env_run_id
@@ -82,18 +87,31 @@ class KpiCollector(Node):
             self.get_logger().warning(f"config load failed; assuming Pattern A: {exc}")
             cfg = {}
         self._pattern_d = resolve_pattern_d(cfg)
+        # v_max for doc21 §17 ② 速度予算消化率. Read from the SAME operational tunable the rest of
+        # the stack obeys (``safety.max_linear_velocity``, config/warehouse.base.yaml), with the
+        # imported hard cap as the fallback — ``warehouse_interfaces.safety`` is explicit that
+        # 0.3 must never be re-typed. ``cfg`` is already fail-open above (``{}`` on a bad load),
+        # and the decision itself is the pure ``resolve_speed_cap`` so the fallback branch is
+        # unit-testable without a live node; here we only log what it decided.
+        safety_cfg = cfg.get("safety") if isinstance(cfg, dict) else None
+        self._speed_cap, cap_warning = resolve_speed_cap(
+            safety_cfg.get("max_linear_velocity") if isinstance(safety_cfg, dict) else None,
+            fallback=MAX_LINEAR_VELOCITY,
+        )
+        if cap_warning is not None:
+            self.get_logger().warning(cap_warning)
 
         self._distances = DistanceAccumulator()
-        # Recent odom window for the smoothness KPIs. A non-positive param falls back to the
-        # default with a warning rather than raising — an observation buffer must never stop the
-        # node (the ``resolve_pattern_d`` precedent: unknown value -> safe default + warning).
-        buffer_samples = int(self.get_parameter("motion_buffer_samples").value)
-        if buffer_samples < 1:
-            self.get_logger().warning(
-                f"motion_buffer_samples={buffer_samples} is not positive; "
-                f"using {DEFAULT_MOTION_BUFFER_SAMPLES}"
-            )
-            buffer_samples = DEFAULT_MOTION_BUFFER_SAMPLES
+        # Recent odom window for the smoothness KPIs. An unusable param falls back to the default
+        # with a warning rather than raising — an observation buffer must never stop the node (the
+        # ``resolve_pattern_d`` precedent: unknown value -> safe default + warning). The decision
+        # itself is the pure ``resolve_motion_buffer_samples`` so it is unit-testable without a
+        # live node; here we only log what it decided.
+        buffer_samples, buffer_warning = resolve_motion_buffer_samples(
+            self.get_parameter("motion_buffer_samples").value
+        )
+        if buffer_warning is not None:
+            self.get_logger().warning(buffer_warning)
         self._motion = MotionAccumulator(max_samples=buffer_samples)
         self._langfuse = LangfuseScoreSink()
 
@@ -108,6 +126,7 @@ class KpiCollector(Node):
             f"exclude_cancelled={self._exclude_cancelled}, langfuse={self._langfuse.enabled}, "
             f"provider={self._provider or 'unset'}, "
             f"langfuse_owner={'hermes_plugin (Option D)' if self._pattern_d else 'bridge (Pattern A)'}, "
+            f"speed_cap={self._speed_cap} m/s, "
             f"run_id={'set' if (self._run_id or env_run_id()) else 'unset'})"
         )
 
@@ -137,10 +156,13 @@ class KpiCollector(Node):
                 entries,
                 exclude_cancelled=self._exclude_cancelled,
                 # ``optimal_distances`` stays empty: the lᵢ oracle (KNOWN_LOCATIONS + planner,
-                # doc21:303-304) has no producer before Phase 3a, so detour factors are absent
-                # rather than guessed.
+                # doc21:301 データ源 (c) / doc21:304) has no producer before Phase 3a, so detour
+                # factors are absent rather than guessed.
                 motion=MotionInputs(
-                    samples=self._motion.series(), distances=self._distances.totals()
+                    samples=self._motion.series(),
+                    distances=self._distances.totals(),
+                    # v_max for doc21 §17 ② (resolved once at startup from config).
+                    speed_cap=self._speed_cap,
                 ),
             )
         except OSError as exc:  # never let a transient read error kill the node

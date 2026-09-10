@@ -21,6 +21,13 @@ arithmetic the warehouse KPI core composes — ``rate`` (intervention / rejectio
 rule as above (doc21:178): the numbers are pre-selected by the domain, this module only divides
 them.
 
+doc21 §17 additions: ``fraction_at_or_below`` (share of samples under a caller-supplied line) and
+``trapezoid_integral`` (``∫ v dt`` on a non-uniform grid) — the arithmetic behind the two Tier-1
+metrics doc21 §17 ①② define (idle 率 / 速度予算消化率). Same layer rule (doc21:178): the epsilon,
+the speed cap and the observation window are all decided in the domain
+(``warehouse_orchestrator.motion``). No domain word or threshold appears in the **signatures or
+logic**; the docstrings name their domain consumer only, the same way ``rate`` names 介入率 above.
+
 Reuse origin (doc21 §12.1 / :406, with ``# adapted from …`` attribution at each site):
 ``spl_metric`` = allenai/allenact verbatim (MIT); ``success_rate``/``soft_spl`` = Habitat写経
 (facebookresearch/habitat-lab, MIT); ``sparc``/``ldlj``/``n_movement_units`` = siva82kb/smoothness
@@ -210,6 +217,30 @@ def _centered_moving_average(signal: Sequence[float], window: int) -> list[float
     if n < window:
         return []
     return [sum(signal[j : j + window]) / window for j in range(n - window + 1)]
+
+
+def low_pass(signal: Sequence[float], window: int = 5) -> list[float]:
+    """Centered moving-average low-pass — the pre-filter doc21:306 mandates, as a public name.
+
+    doc21:306 requires a low-pass **before** the derivative chain of the 平滑性 family ("3階微分前
+    に low-pass 必須" — raw differentiation blows up odom noise). :func:`jerk` has always applied
+    it internally; this exposes the *same* filter so a domain composer can put the identical
+    pre-filter in front of the other indicators doc21:306 names (SPARC / LDLJ) instead of
+    re-implementing one, or none at all.
+
+    'valid' mode, exactly like :func:`jerk`'s internal smoothing: the output is
+    ``len(signal) − window + 1`` long (every output sample is an average of a full window, so no
+    edge is fabricated) and ``[]`` when the signal is shorter than one window. Spacing is
+    unchanged, so the sample rate of the filtered series equals the input's — a caller may reuse
+    its ``fs``. ``window`` must be a positive **odd** integer (a centered average needs a middle
+    sample); ``window=1`` is the identity. It is a caller tuning parameter, **not** a domain
+    threshold — doc21 fixes *that* a low-pass is applied, never its width.
+    """
+    if window < 1 or window % 2 == 0:
+        raise ValueError("window must be a positive odd integer")
+    if window == 1:
+        return list(signal)
+    return _centered_moving_average(signal, window)
 
 
 def _third_difference(signal: Sequence[float], dt: float) -> list[float]:
@@ -405,3 +436,55 @@ def throughput(count: int, duration: float | None) -> float | None:
     if duration is None or duration <= 0:
         return None
     return count / duration
+
+
+def fraction_at_or_below(values: Sequence[float], threshold: float) -> float | None:
+    """Share of samples satisfying ``value <= threshold`` — ``|{v : v ≤ θ}| / |values|``.
+
+    The generic counting half of a "how much of this window was below a line" ratio; the *line*
+    (and what being below it means) stays in the domain, exactly like ``d_thresh`` never entering
+    :func:`spl`. Comparison is **inclusive** (``<=``): a sample sitting exactly on the threshold
+    counts, so a caller documenting "≤ ε" gets what it says.
+
+    Empty input → ``None`` (the :func:`percentile` / :func:`rate` convention: "no data" stays
+    distinguishable from a measured ``0.0``). A non-finite ``threshold`` raises ``ValueError`` —
+    that is a caller programming error, not data, the stance :func:`low_pass` takes on its width.
+
+    Non-finite *values* are compared, not filtered: by IEEE-754 a ``nan`` satisfies no comparison,
+    so it lands in the denominator but never in the numerator (an unknown sample is not evidence
+    that the quantity was small), ``+inf`` likewise, and ``-inf`` counts. Callers that must not
+    see them filter upstream.
+    """
+    if not math.isfinite(threshold):
+        raise ValueError("fraction_at_or_below threshold must be finite")
+    if not values:
+        return None
+    return sum(1 for value in values if value <= threshold) / len(values)
+
+
+def trapezoid_integral(times: Sequence[float], values: Sequence[float]) -> float | None:
+    """``∫ value dt`` by the trapezoid rule on a possibly **non-uniform** time grid.
+
+    ``Σᵢ (tᵢ₊₁ − tᵢ)·(vᵢ + vᵢ₊₁)/2`` — each step weighted by its own spacing, so a jittery
+    sampler (odom) is integrated as it was actually sampled rather than through a uniform-dt
+    assumption. Under exactly uniform spacing this equals ``mean(values) · (t_last − t_first)``
+    only up to the trapezoid rule's half-weighted endpoints; the two are *not* interchangeable on
+    a jittery grid, which is the whole reason this exists.
+
+    ``None`` (undefined, not ``0.0``) for fewer than 2 points, for a time axis that does not
+    strictly advance (a duplicate stamp, a clock reset, a reversed series — the span it would
+    integrate over is not a measurable window), and for a non-finite result (a non-finite input
+    propagates rather than being silently dropped). Mismatched lengths raise ``ValueError``: a
+    caller pairing the wrong two sequences is a programming error, the stance :func:`spl` takes.
+    """
+    if len(times) != len(values):
+        raise ValueError("times and values must be equal length")
+    if len(times) < 2:
+        return None
+    total = 0.0
+    for i in range(len(times) - 1):
+        span = times[i + 1] - times[i]
+        if not span > 0:  # NaN-safe: a non-advancing stamp makes the window unmeasurable
+            return None
+        total += span * (values[i] + values[i + 1]) / 2.0
+    return total if math.isfinite(total) else None

@@ -17,32 +17,80 @@ Scope — the **odom** half of doc21 §13.2 Tier 1
   define one, and :func:`eval_sdk.stats.jerk` returns a *series* with no documented reduction.
 * **detour factor** — doc21:310 states the formula inline, ``pᵢ/lᵢ``. ``pᵢ`` = the odom travel
   distance already accumulated by ``eval_sdk.stats.DistanceAccumulator`` (no new source);
-  ``lᵢ`` = the shortest-path oracle, which per doc21:303-304 comes from KNOWN_LOCATIONS + the
-  planner at reset and has **no producer before Phase 3a** (doc21:409). It is therefore an
-  *externally supplied* map, exactly like the ``completions`` scaffold in
-  :func:`warehouse_orchestrator.kpi.pair_completion_times`, and stays empty in dev.
+  ``lᵢ`` = the shortest-path oracle, which per doc21:301 (データ源 (c)) comes from
+  KNOWN_LOCATIONS + the planner and per doc21:304 is taken once at reset, and has **no producer
+  before Phase 3a** (doc21:409). It is therefore an *externally supplied* map, exactly like the
+  ``completions`` scaffold in :func:`warehouse_orchestrator.kpi.pair_completion_times`, and stays
+  empty in dev.
 
-**Deliberately NOT here — documented design voids (do not invent, see CLAUDE.md voids 15):**
+**Low-pass before the derivative chain (doc21:306, normative).** doc21:306 defines 平滑性 as the
+3rd time-derivative of position and requires 「3階微分前に low-pass 必須」 because raw
+differentiation blows odom noise up. ``/bot{n}/odom`` already hands us the *velocity* leg of that
+chain, so the two remaining differentiations happen inside the metrics (LDLJ takes the 2nd
+difference of the speed profile; SPARC takes its spectrum) — the mandate applies to their input.
+:func:`smoothness_stats` therefore low-passes the |v| profile with
+``eval_sdk.stats.low_pass`` (the identical centered moving average
+:func:`eval_sdk.stats.jerk` applies for the same doc21:306 clause) **before** handing it to
+``sparc``/``ldlj``. Measured effect on a 9-sample jittery window: LDLJ −8.34 → −3.06 — the raw
+number was reading sampling noise as jerk. ``smooth_window`` is a caller tuning parameter, not a
+domain threshold (doc21 fixes *that* a low-pass runs, never its width), so the width used and the
+resulting input length are republished in every :class:`SmoothnessStats`.
 
-* **idle 率** — doc21:310 names it and nothing in ``docs/`` defines numerator, denominator or a
-  "stopped" threshold. Computing it needs either a task-lifecycle source (the audit log records
-  *issuance* only) or a speed epsilon that only ``warehouse_state.aggregator.derive_status``
-  owns (a different track's constant). Not implemented.
-* **速度予算消化率** — doc21:310 names it and no doc gives the ratio (mean-speed ÷ cap? time at
-  cap ÷ run time? ∫|v|dt ÷ v_max·T?). Instead of guessing, :class:`SmoothnessStats` publishes the
-  measured **ingredients** (``mean_speed`` / ``max_speed`` over the window) so whoever pins the
-  definition in doc21 can derive it without a schema change.
-* **decision latency** — doc08:497 derives it from the Langfuse ``generation.latency``, not from
-  audit+odom; Issue #432 delegates it to the A-4 query helper (#434).
+**N_MU is deliberately NOT low-passed.** doc21:306 attaches the low-pass to the differentiation
+("3階微分前"), and 速度符号反転数 differentiates nothing — it counts sign changes of the signed
+velocity. Filtering it would erase the very reversals it measures. Its noise sensitivity is
+unaddressed by doc21 and is carried as a residual (CLAUDE.md void 17) rather than resolved by
+invention.
 
-**Producer note (doc21:189 vs the code).** doc21:187 lists 軌道平滑性's data source as the
-*existing* ``/bot{n}/odom`` with 「新 producer ゼロ」, but ``DistanceAccumulator`` keeps only a
-running total and the previous point, so no series survives its call — the gap recorded as
-CLAUDE.md void 12. :class:`MotionAccumulator` closes it **inside the subscription the collector
-already has**: no new topic, no new node, no new message type, no new contract and no new score
-send. ``max_samples`` is an engineering memory bound (a ring buffer), **not** a domain threshold;
-the measured window is republished in every :class:`SmoothnessStats` so a reader always knows
-what was summarised.
+**Open point — SPARC's filter is a judgement doc21 does not settle** (disclosed in doc21 §16 ③,
+CLAUDE.md void 17). LDLJ's case is airtight (its 2nd difference of speed *is* position's 3rd
+derivative). SPARC differentiates nothing, already band-limits itself at ``fc`` = 10 Hz, and the
+siva82kb implementation doc21:306 names as the 照合元 does not pre-filter — and a 5-wide moving
+average at 30 Hz has its first null at 6 Hz, *inside* that band, so the two limits compound
+(measured: SPARC −2.05 raw → −1.70 filtered on the 9-sample fixture). Issue #616's DoD asks for
+both spectral inputs to be pre-filtered and that is what ships; reversing it for SPARC alone is a
+one-line change, which is why the decision is documented rather than hidden.
+
+**idle 率 / 速度予算消化率 — defined by doc21 §17 ①②, implemented here (previously voids).** Both
+were carried as "named in doc21:310, defined nowhere" until doc21 §17 pinned numerator,
+denominator and window; this module now composes them from the *same* retained window, with no
+new producer, topic, contract or score:
+
+* **``idle_ratio``** = (samples with ``|v| ≤ IDLE_SPEED_EPS``) ÷ (samples in the window)
+  (doc21 §17 ①). Needs the **per-sample** |v| series — the summary pair cannot reconstruct a
+  count — which is why it takes ``MotionInputs.samples``. The **raw** series is counted, not the
+  low-passed one: the doc21:306 pre-filter belongs to the differentiation the spectral pair does
+  (module docstring above), and averaging speeds across a window boundary would move samples over
+  the ε line that the odometer never reported there. It is a **sample-count** ratio per §17 ①,
+  therefore jitter-blind: it equals a *time* ratio only under uniform sampling (an odom burst while
+  parked over-reports idle *time*). So one window now carries **three** jitter treatments — the
+  spectral pair takes a mean-rate approximation, ② integrates on the real stamps, ① counts raw.
+* **``speed_budget_utilisation``** = ``∫|v|dt ÷ (v_max · T)`` over the window, ``T = window_end −
+  window_start`` (doc21 §17 ② の (iii)). The integral is the trapezoid rule on the window's own
+  jittery stamps (``eval_sdk.stats.trapezoid_integral``); doc21 §17 ② calls ``mean|v|/cap`` a
+  discrete *estimator*, not an identity: the trapezoid rule half-weights both endpoints, so the
+  two coincide only on an endpoint-balanced window (``mean|v| == (|v_first|+|v_last|)/2``), which
+  uniform spacing does not guarantee — see ``tests/unit/test_wo_motion_kpi.py::
+  test_utilisation_is_a_trapezoid_not_a_mean_even_on_a_uniform_grid``. Jitter is a second,
+  independent source of divergence. ``v_max`` is **injected** (``MotionInputs.speed_cap``, from
+  config ``safety.max_linear_velocity``) rather than hardcoded — ``warehouse_interfaces.safety``
+  is the single source of the 0.3 m/s hard cap and forbids re-typing it elsewhere. No cap → ``None``
+  ("not computable"), never ``0.0``. Values > 1 are reported **raw**, the ``detour_factors``
+  stance below: a robot above its budget is information, not something to launder behind a clamp.
+* **decision latency** — still not here: doc08:497 derives it from the Langfuse
+  ``generation.latency``, not from audit+odom; Issue #432 delegates it to the A-4 query helper
+  (#434).
+
+**Producer note (doc21:187 / doc21:189).** doc21:187 lists 軌道平滑性's data source as the
+*existing* ``/bot{n}/odom``, but ``DistanceAccumulator`` keeps only a running total and the
+previous point, so no series survives its call. :class:`MotionAccumulator` closes that gap
+**inside the subscription the collector already has**: no new topic, no new node, no new message
+type, no new contract and no new score send. That is why doc21:189 now reads 「新ノード不要」
+rather than the 「新 producer ゼロ」 it carried when #613 landed — the wording was revised in
+#616 and the change is recorded in doc21 §16 ①, not silently reinterpreted here.
+``max_samples`` is an engineering memory bound (a ring buffer), **not** a domain threshold; the
+measured window is republished in every :class:`SmoothnessStats` so a reader always knows what
+was summarised.
 
 **Velocity source.** ``v`` is the odom message's own signed linear velocity
 (``twist.twist.linear.x``) rather than a re-differentiation of pose: doc12:340 makes
@@ -58,7 +106,16 @@ from collections import deque
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 
-from eval_sdk.stats import ldlj, n_movement_units, rate, sparc, throughput
+from eval_sdk.stats import (
+    fraction_at_or_below,
+    ldlj,
+    low_pass,
+    n_movement_units,
+    rate,
+    sparc,
+    throughput,
+    trapezoid_integral,
+)
 
 # Ring-buffer depth per robot. ENGINEERING BOUND (memory), not a KPI threshold: at ~30 Hz odom
 # this is ~2 minutes of recent motion per robot (~130 KB for 2 bots) and keeps a long-running
@@ -66,17 +123,42 @@ from eval_sdk.stats import ldlj, n_movement_units, rate, sparc, throughput
 # SmoothnessStats.{samples,window_start,window_end}.
 DEFAULT_MOTION_BUFFER_SAMPLES = 4096
 
-# Shortest sample count the spectral metrics accept. Borrowed from the ONE documented floor in
-# the maths layer (``eval_sdk.stats.ldlj``: "needs at least 3 samples") instead of inventing a
-# second constant; SPARC's own degenerate cases are caught by :func:`_guarded` below.
+# Width of the doc21:306 pre-filter applied to the |v| profile before the spectral metrics.
+# ENGINEERING TUNING PARAMETER, not a domain threshold: doc21:306 mandates *that* a low-pass runs
+# before the differentiation, never its width. 5 = the default ``eval_sdk.stats.jerk`` already
+# uses for the same clause, so both smoothness paths filter identically; at ~30 Hz odom it spans
+# ~0.17 s. Must stay a positive odd integer (a centered average needs a middle sample).
+DEFAULT_SMOOTHING_WINDOW = 5
+
+# Shortest sample count the spectral metrics accept, applied to the LOW-PASSED series (that is
+# what they actually consume). Borrowed from the ONE documented floor in the maths layer
+# (``eval_sdk.stats.ldlj``: "needs at least 3 samples") instead of inventing a second constant;
+# SPARC has no floor of its own — it happily returns a number for 2 samples — so this guard is
+# the only thing keeping a degenerate window out of it, and ``SmoothnessStats.filtered_samples``
+# publishes whether it fired.
 _MIN_SPECTRAL_SAMPLES = 3
+
+# doc21 §17 ①: the speed below which (|v| ≤ ε) a window sample counts as idle. **A borrowed
+# documented value, not a second constant and not an import**: ``warehouse_state.aggregator``
+# already reports a bot "idle" at ``abs(linear) <= _MOVING_EPS`` with ``_MOVING_EPS = 0.01`` m/s
+# (aggregator.py:32 / :105-111), and doc21 §17 ① fixes ε at that same 0.01 m/s so the KPI and the
+# State Cache never disagree about what "stopped" means. It is NOT imported: ``warehouse_state``
+# is another track and this lane depends only on ``warehouse_interfaces``
+# (.claude/rules/parallel-workflow.md §2.1), so the two literals are pinned equal by a cross-check
+# unit test instead (the ``"bridge"``/``"hermes_plugin"`` precedent in ``score_send``).
+# doc21 §17 also records the residual: ε is owned privately by that lane, not frozen anywhere.
+IDLE_SPEED_EPS: float = 0.01  # m/s
 
 __all__ = [
     "DEFAULT_MOTION_BUFFER_SAMPLES",
+    "DEFAULT_SMOOTHING_WINDOW",
+    "IDLE_SPEED_EPS",
     "MotionSample",
     "MotionAccumulator",
     "MotionInputs",
     "SmoothnessStats",
+    "resolve_motion_buffer_samples",
+    "resolve_speed_cap",
     "sample_rate_hz",
     "smoothness_stats",
     "detour_factors",
@@ -146,6 +228,88 @@ class MotionAccumulator:
         self._series.clear()
 
 
+def resolve_motion_buffer_samples(value: object) -> tuple[int, str | None]:
+    """Resolve the ``motion_buffer_samples`` node parameter → ``(depth, warning or None)``.
+
+    Pure (no rclpy) so the fallback is reachable from a unit test: it used to live inline in
+    ``KpiCollector.__init__``, where only a live ROS node could exercise it, and an unreachable
+    fallback is an untested fallback. Same shape as ``score_send.resolve_pattern_d`` — an
+    unusable value yields the safe default plus a message the caller logs, never an exception:
+    an observation buffer must not stop the node (fail-open).
+
+    Unusable = non-positive, non-integral (``4096.5``), or not a number at all (an empty string
+    is what rclpy hands back for an unset string-typed override). ``True``/``False`` are rejected
+    as well — ``bool`` is an ``int`` in Python and a 1-sample ring buffer is never intended.
+    """
+
+    def _fallback(reason: str) -> tuple[int, str]:
+        return DEFAULT_MOTION_BUFFER_SAMPLES, (
+            f"motion_buffer_samples={value!r} {reason}; using {DEFAULT_MOTION_BUFFER_SAMPLES}"
+        )
+
+    if isinstance(value, bool) or not isinstance(value, int | float | str):
+        return _fallback("is not a sample count")
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return _fallback("is not a sample count")
+    if not math.isfinite(numeric) or numeric != int(numeric):
+        return _fallback("is not a whole number of samples")
+    depth = int(numeric)
+    if depth < 1:
+        return _fallback("is not positive")
+    return depth, None
+
+
+def resolve_speed_cap(value: object, *, fallback: float) -> tuple[float, str | None]:
+    """Resolve the config ``safety.max_linear_velocity`` → ``(v_max, warning or None)``.
+
+    The ``v_max`` denominator of doc21 §17 ②. Pure (no rclpy, no config I/O) for the
+    :func:`resolve_motion_buffer_samples` reason: the fallback branch must be reachable from a
+    unit test, and the node should only *log* what this decided. Fail-open in the same shape —
+    an unusable value yields ``fallback`` plus a message, never an exception, because a KPI
+    denominator must not stop the collector.
+
+    ``fallback`` is supplied by the caller (the node passes
+    ``warehouse_interfaces.safety.MAX_LINEAR_VELOCITY``) so the 0.3 m/s hard cap is never re-typed
+    in this lane — ``safety.py`` is explicit that it must be imported, not hardcoded. Usable =
+    a finite, strictly positive ``int``/``float``; ``bool`` is rejected (it is an ``int`` in
+    Python and ``True`` m/s is not a speed cap) and so is a string (this value comes from parsed
+    YAML, not from an rclpy string param — unlike ``motion_buffer_samples``). ``None`` is the
+    **optional key being absent**, which ``config._validate_safety`` explicitly permits, so it
+    reports "is not set" rather than being described as a malformed speed.
+
+    **Not enforced here: the ceiling.** ``warehouse_interfaces.config.load_config`` already
+    validates ``safety.max_linear_velocity ≤ MAX_LINEAR_VELOCITY`` (config may lower the
+    operational speed, never raise it); re-checking it in an observation helper would duplicate a
+    safety rule that is owned elsewhere. A value above the cap is therefore passed through — and
+    it would show up as a *smaller* utilisation, which is why the resolved cap is logged.
+    """
+
+    def _fallback(reason: str) -> tuple[float, str]:
+        return fallback, f"safety.max_linear_velocity={value!r} {reason}; using {fallback}"
+
+    if value is None:
+        # An ABSENT key, not a misconfiguration: ``config._validate_safety`` only validates
+        # ``safety.max_linear_velocity`` ``if cap is not None``, so a correct minimal config
+        # simply omits it. Saying "is not a speed" here made every such startup log look broken.
+        return _fallback("is not set")
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return _fallback("is not a speed")
+    try:
+        numeric = float(value)
+    except (OverflowError, TypeError, ValueError):
+        # ``10**400`` is an ``int`` (so it clears the isinstance check) yet has no float image.
+        # The contract of this resolver is "never an exception" — degrade like any other
+        # unusable value.
+        return _fallback("is not a speed")
+    if not math.isfinite(numeric):
+        return _fallback("is not a finite speed")
+    if numeric <= 0:
+        return _fallback("is not positive")
+    return numeric, None
+
+
 @dataclass(frozen=True)
 class MotionInputs:
     """The odom-side inputs :func:`warehouse_orchestrator.kpi.compute_kpis` accepts.
@@ -157,12 +321,19 @@ class MotionInputs:
       (``eval_sdk.stats.DistanceAccumulator.totals``). Deliberately not derived from ``samples``:
       that buffer is bounded, the accumulator sees every message.
     * ``optimal_distances`` — lᵢ, the shortest-path oracle. **No producer before Phase 3a**
-      (doc21:303-304, :409), so it is empty in dev and every detour factor is simply absent.
+      (doc21:301 データ源 (c) / doc21:304 / doc21:409), so it is empty in dev and every detour
+      factor is simply absent.
+    * ``speed_cap`` — v_max, the denominator of doc21 §17 ②'s 速度予算消化率, injected by the node
+      from config ``safety.max_linear_velocity`` (fallback = the imported
+      ``warehouse_interfaces.safety.MAX_LINEAR_VELOCITY`` hard cap). ``None`` — the default, and
+      what the offline CLI supplies — means the utilisation is simply **not computable** and is
+      reported as ``None``, never as ``0.0``.
     """
 
     samples: Mapping[str, Sequence[MotionSample]] = field(default_factory=dict)
     distances: Mapping[str, float] = field(default_factory=dict)
     optimal_distances: Mapping[str, float] = field(default_factory=dict)
+    speed_cap: float | None = None
 
 
 @dataclass
@@ -172,8 +343,34 @@ class SmoothnessStats:
     ``sparc`` / ``ldlj`` / ``n_movement_units`` are the three indicators doc21:306 names (SPARC
     recommended; larger/less-negative = smoother for both spectral ones, fewer reversals =
     smoother for N_MU). ``mean_speed`` / ``max_speed`` are **descriptive statistics of the
-    window, not a KPI**: they are the ingredients of the undefined 速度予算消化率 (module
-    docstring), published so the metric can be pinned in doc21 later without a schema change.
+    window, not a KPI**; ``mean_speed`` doubles as doc21 §17 ②'s discrete estimator of
+    ``speed_budget_utilisation`` (``mean|v|/cap``) — an estimator that agrees only on an
+    endpoint-balanced window (the trapezoid rule half-weights the two endpoints).
+
+    ``idle_ratio`` and ``speed_budget_utilisation`` are the two Tier-1 metrics doc21 §17 ①②
+    define, over this same window (§17 ③): the share of samples at or below
+    :data:`IDLE_SPEED_EPS`, and ``∫|v|dt ÷ (v_max·T)``. The latter is ``None`` unless a cap was
+    injected (``MotionInputs.speed_cap``) and the window spans a measurable ``T``; it is reported
+    unclamped, so a value above 1.0 means the window really did outrun the configured budget.
+
+    ``speed_cap`` republishes the ``v_max`` that utilisation was divided by, ``None`` when none was
+    injected. It is an **environment tunable**, not a constant: ``load_config`` accepts any
+    ``0 < cap ≤ 0.3`` and an overlay (or ``WAREHOUSE__SAFETY__MAX_LINEAR_VELOCITY``) may lower it,
+    so run A at cap 0.3 and run B at cap 0.15 report 0.5 and 1.0 for the *same* trajectory — with
+    nothing in ``to_dict()`` / ``kpi_report --json`` to tell them apart unless the denominator ships
+    with the number. Same disclosure principle as ``smooth_window`` / ``window_start`` /
+    ``window_end``: a reader must be able to see what was measured *against*.
+
+    ``smooth_window`` / ``filtered_samples`` describe the doc21:306 pre-filter. The width is
+    reported **always**; ``filtered_samples`` is the number of low-passed samples that actually
+    reached ``sparc``/``ldlj`` (``samples − window + 1``) and is ``None`` whenever none did.
+    Reported for the same reason as ``window_start``/``window_end`` — the numbers summarise a
+    *transformed* window and a reader must be able to see which one. ``None`` here means the
+    spectral pair was **never called**, which is what makes the ``_MIN_SPECTRAL_SAMPLES`` floor
+    observable at all (a metric that raised and a metric that was skipped both leave a ``None``
+    score, and with numpy absent ``sparc`` always raises). It does **not** say which of the four
+    reasons applied — window shorter than the filter, fewer than ``_MIN_SPECTRAL_SAMPLES``
+    filtered samples, an all-zero (peak 0) window, or an unusable ``sample_rate_hz``.
 
     ``None`` means "not computable from this window" (too few samples, an unusable sample rate,
     a never-moving robot, or numpy absent) — never "measured zero", the ``rate`` / ``percentile``
@@ -184,11 +381,16 @@ class SmoothnessStats:
     window_start: float | None
     window_end: float | None
     sample_rate_hz: float | None
+    smooth_window: int
+    filtered_samples: int | None
     mean_speed: float | None
     max_speed: float | None
     sparc: float | None
     ldlj: float | None
     n_movement_units: int | None
+    idle_ratio: float | None
+    speed_budget_utilisation: float | None
+    speed_cap: float | None
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -196,11 +398,22 @@ class SmoothnessStats:
             "window_start": self.window_start,
             "window_end": self.window_end,
             "sample_rate_hz": self.sample_rate_hz,
+            "smooth_window": self.smooth_window,
+            "filtered_samples": self.filtered_samples,
             "mean_speed": self.mean_speed,
             "max_speed": self.max_speed,
             "sparc": self.sparc,
             "ldlj": self.ldlj,
             "n_movement_units": self.n_movement_units,
+            # doc21 §17 ①②, appended at the END so every previously published key keeps its
+            # position and value (additive — the KPI output contract is not frozen, CLAUDE.md
+            # voids 9, but a consumer reading it positionally must not be broken by a new metric).
+            "idle_ratio": self.idle_ratio,
+            "speed_budget_utilisation": self.speed_budget_utilisation,
+            # The denominator the line above was divided by — an environment tunable, so the
+            # number alone is not comparable across runs (class docstring). Appended AFTER the
+            # metric it explains, keeping the additive key order.
+            "speed_cap": self.speed_cap,
         }
 
 
@@ -211,6 +424,14 @@ def sample_rate_hz(samples: Sequence[MotionSample]) -> float | None:
     nominally periodic but jitters, so this reports the window's average rate — the definition
     of "samples per second", not an estimator choice (a median/modal Δt would be one). The
     uniformity assumption itself is a residual, listed in the PR.
+
+    The two metrics use ``fs`` very differently, which decides what this number can get wrong:
+    **SPARC's value moves with it** (its ``fc`` = 10 Hz band cut is in absolute Hz — the same
+    profile scores −2.55 at fs = 10 and −1.41 at fs = 30), while **LDLJ is algebraically
+    fs-invariant** (``dur³``·Σ``jerk²``·``dt`` cancels every power of ``fs``; verified identical
+    to 15 significant digits at fs = 1 / 10 / 30). So a mis-estimated rate silently biases SPARC
+    only; LDLJ still needs *uniform* spacing for its finite differences to mean anything, it just
+    does not care what the spacing is.
 
     Reuses ``eval_sdk.stats.throughput`` (count per unit time — a sample rate *is* that) to
     inherit its non-positive-duration guard. ``None`` for fewer than 2 samples or a non-advancing
@@ -236,32 +457,98 @@ def _guarded(fn: Callable[..., float], *args: object) -> float | None:
     return value if math.isfinite(value) else None
 
 
-def smoothness_stats(samples: Sequence[MotionSample]) -> SmoothnessStats:
-    """Compose doc21:306's three smoothness indicators over one robot's retained window."""
+def _speed_budget_utilisation(
+    samples: Sequence[MotionSample], speeds: Sequence[float], speed_cap: float | None
+) -> float | None:
+    """doc21 §17 ② (iii): ``∫|v|dt ÷ (v_max·T)`` over the window — ``None`` when undefined.
+
+    Undefined = no cap injected, an unusable cap (non-finite / non-positive), a window too short
+    or non-advancing for either the integral or ``T`` (both then come back ``None``/≤ 0), and a
+    ``v_max·T`` product that underflows to ``0.0`` — a denormal cap such as ``5e-324`` passes
+    ``config._validate_safety`` (finite, > 0, ≤ 0.3) yet leaves no divisible budget. Never
+    ``0.0`` for those — that is the ``eval_sdk.stats`` "no data ≠ measured zero" convention, and
+    here it is the difference between "this robot crawled" and "nobody told us the budget".
+    """
+    if speed_cap is None or not math.isfinite(speed_cap) or speed_cap <= 0:
+        return None
+    integral = trapezoid_integral([sample.t for sample in samples], speeds)
+    if integral is None:
+        return None
+    duration = samples[-1].t - samples[0].t  # = window_end − window_start (doc21 §17 ②)
+    if not duration > 0:  # NaN-safe; ``trapezoid_integral`` already rejects a flat/reversed axis
+        return None
+    denominator = speed_cap * duration
+    if not denominator > 0:  # NaN-safe; a denormal cap underflows the product to 0.0
+        return None
+    value = integral / denominator
+    # Deliberately UNCLAMPED (> 1 is a window that outran its budget). A non-finite result is still
+    # possible from finite inputs (a tiny cap can overflow the ratio) and the product can underflow
+    # to 0, so both degrade to "not computable".
+    return value if math.isfinite(value) else None
+
+
+def smoothness_stats(
+    samples: Sequence[MotionSample],
+    *,
+    smooth_window: int = DEFAULT_SMOOTHING_WINDOW,
+    speed_cap: float | None = None,
+) -> SmoothnessStats:
+    """Compose doc21:306's three smoothness indicators + doc21 §17 ①② over one robot's window.
+
+    ``smooth_window`` = width of the doc21:306 low-pass applied to the |v| profile before the
+    spectral pair (module docstring). Widening it filters harder and shortens the analysed series
+    by ``window − 1``; ``1`` disables the filter and is **not** doc21-compliant — it exists so a
+    test (or a future doc decision, see the module docstring's open point) can exhibit the
+    unfiltered numbers, not as a production setting. It does **not** touch ``idle_ratio``, which
+    counts the raw series (doc21 §17 ①, module docstring).
+
+    ``speed_cap`` = v_max for doc21 §17 ②, injected from config by the node
+    (``MotionInputs.speed_cap``). Absent — the default and the offline-CLI case — the utilisation
+    is ``None``; every other number is unaffected.
+
+    Note the one deliberate exception to this module's fail-open stance: an even or non-positive
+    ``smooth_window`` propagates ``ValueError`` out of ``eval_sdk.stats.low_pass`` rather than
+    degrading to ``None``. That is a caller programming error, not live data — every *data*
+    failure (numpy absent, a degenerate window) still becomes ``None`` via :func:`_guarded`. No
+    ROS parameter reaches this argument today, so the live path cannot trigger it.
+    """
     signed = [sample.v for sample in samples]
     speeds = [abs(v) for v in signed]
     rate_hz = sample_rate_hz(samples)
     peak = max(speeds) if speeds else None
     mean_speed = (sum(speeds) / len(speeds)) if speeds else None
 
+    # doc21:306 — low-pass BEFORE the metrics differentiate/transform. ``mean_speed``/``max_speed``
+    # stay raw: they describe the window that was measured, not the one that was analysed.
+    filtered = low_pass(speeds, smooth_window)
     spectral_ok = (
-        rate_hz is not None
-        and len(speeds) >= _MIN_SPECTRAL_SAMPLES
-        and peak is not None
-        and peak > 0
+        rate_hz is not None and len(filtered) >= _MIN_SPECTRAL_SAMPLES and max(filtered) > 0
     )
     return SmoothnessStats(
         samples=len(samples),
         window_start=samples[0].t if samples else None,
         window_end=samples[-1].t if samples else None,
         sample_rate_hz=rate_hz,
+        smooth_window=smooth_window,
+        filtered_samples=len(filtered) if spectral_ok else None,
         mean_speed=mean_speed,
         max_speed=peak,
-        # |v| profile for the spectral pair (both are defined on a speed profile, doc21:306) …
-        sparc=_guarded(sparc, speeds, rate_hz) if spectral_ok else None,
-        ldlj=_guarded(ldlj, speeds, rate_hz) if spectral_ok else None,
-        # … but the SIGNED series for N_MU, whose whole content is sign reversals.
+        # Low-passed |v| profile for the spectral pair (both are defined on a speed profile,
+        # doc21:306) at the window's own measured rate …
+        sparc=_guarded(sparc, filtered, rate_hz) if spectral_ok else None,
+        ldlj=_guarded(ldlj, filtered, rate_hz) if spectral_ok else None,
+        # … but the RAW SIGNED series for N_MU, whose whole content is sign reversals (a low-pass
+        # would erase them and doc21:306 attaches the filter to the differentiation, not to this).
         n_movement_units=n_movement_units(signed) if samples else None,
+        # doc21 §17 ①: counted on the RAW |v| series (the filter belongs to the differentiation,
+        # and smoothing would migrate samples across the ε line the odometer never reported them
+        # on). ``fraction_at_or_below`` already returns ``None`` for an empty window.
+        idle_ratio=fraction_at_or_below(speeds, IDLE_SPEED_EPS),
+        # doc21 §17 ② (iii): raw |v| again, integrated on the window's own stamps.
+        speed_budget_utilisation=_speed_budget_utilisation(samples, speeds, speed_cap),
+        # …and the denominator it used, republished so two runs at different caps are
+        # distinguishable in the report itself (class docstring).
+        speed_cap=speed_cap,
     )
 
 
