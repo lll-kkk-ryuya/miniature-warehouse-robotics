@@ -37,3 +37,7 @@
 - 環境別エンドポイント/モードのコード内ハードコード。
 - 環境差分を base に書く（base は共通のみ）。
 - dev のキーで prod へ接続、またはその逆。
+
+## References
+
+- [build-deploy-run.md](build-deploy-run.md)（`ROS_DISTRO`・prod タグ規約を消費する記録付き build。**build.sh は secrets を読まない**。走行記録は `ros2 param dump` の秘匿値を redaction＝鍵は ROS param に載せず本 rule §Secrets の `.env` が正本。本 rule を forward している側の backlink・#656）

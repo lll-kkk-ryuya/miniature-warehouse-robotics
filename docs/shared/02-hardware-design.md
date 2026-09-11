@@ -873,7 +873,7 @@ pip install --user /tmp/rosmaster_lib/<展開されたパッケージ>   # 実�
 
 - **repo へ commit しない・vendoring しない・再配布しない**（Proprietary 表記＝`:812`）。`ws/src/**` に取り込まず、あくまで **robot image 側の外部依存**として置く。
 - 展開は `/tmp` 等の repo 外で行う。`pip install --user` はユーザ領域に閉じる（system site-packages を汚さない）。
-- `# TODO(Phase 1・未 doc 化)` ボード上の作業シェルは **ROS を source していない状態**で行う（旧 ROS pytest プラグインが新しい pytest と衝突した運用上の実測メモ。**現時点で docs 化された正本が無い**ため、実機で再現を確認したうえで [jetson/02](../jetson/02-remote-access-and-dev-link.md) 側へ正式に記録する）。
+- ボード上の pytest は **ROS を source していないシェル**で行う（旧 ROS pytest プラグインが新しい pytest と衝突する）。**正本は [jetson/03 §4](../jetson/03-build-deploy-run-and-run-records.md)**（ボード pytest = py3.10 実走の唯一のオラクル）と [ADR-0008:155](../adr/0008-ros2-distro-humble-for-rosmaster-m1.md) / [:183](../adr/0008-ros2-distro-humble-for-rosmaster-m1.md)（検出器として機能した実例）＝2026-09-10 に docs 化済・本行の TODO は close。
 - **dev host（Mac / CI）には入れない**。`RosmasterBackend` は lazy import 設計で、host の R-26 unit は fake backend で通る（doc16 §11 fake seam）。
 
 ### P-8-3. 検証（導入できたことの確認）

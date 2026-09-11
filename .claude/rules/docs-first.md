@@ -54,3 +54,4 @@
 - [docs/README.md](../../docs/README.md) ドキュメントマップ / [docs/STATUS.md](../../docs/STATUS.md)
 - [doc16 §3](../../docs/architecture/16-repository-and-conventions.md)（契約の真実は docs）
 - [parallel-workflow.md §4](parallel-workflow.md) / [implementation-and-dependencies.md](implementation-and-dependencies.md)
+- [build-deploy-run.md](build-deploy-run.md)（ボードでは素の `colcon build` を打たず記録付き build / 走行記録＝本 rule を forward している側。backlink・#656）

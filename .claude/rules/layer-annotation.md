@@ -30,3 +30,4 @@
 - [docs/productization/01-commercial-box-map.md](../../docs/productization/01-commercial-box-map.md) §レイヤ annotation 対応表（正準）
 - [docs/mode-x-er/01-architecture-and-flow.md](../../docs/mode-x-er/01-architecture-and-flow.md)（レイヤ図）/ [docs/GLOSSARY.md](../../docs/GLOSSARY.md) §3
 - [docs-first.md](docs-first.md)（引用・実 Read 規律の親ルール）
+- [build-deploy-run.md](build-deploy-run.md)（ボードでは素の `colcon build` を打たず記録付き build / 走行記録＝本 rule を forward している側。backlink・#656）

@@ -203,3 +203,4 @@ squash マージは別コミットになるため `git branch --merged` は**偽
 - [docs/architecture/16 - リポジトリ構成と実装規約](../../docs/architecture/16-repository-and-conventions.md)
 - [docs/architecture/17 - 開発の進め方と分担](../../docs/architecture/17-development-workflow.md)
 - `.claude/rules/code-style.md` / `safety.md` / `ros2.md`
+- [build-deploy-run.md](build-deploy-run.md)（ボードでは素の `colcon build` を打たず記録付き build / 走行記録＝本 rule を forward している側。backlink・#656）
