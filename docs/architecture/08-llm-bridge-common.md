@@ -564,3 +564,4 @@ State Cache の emergency event ring は司令官 LLM へ **2 経路**で届く:
 - 定数は**単一定義** `warehouse_mcp_server.tools.EMERGENCY_HISTORY_LLM_MAX = 10`（`situation.py` が同一トラック import＝両表示面の split-brain 防止。#44 battery 正規化の単一ソース化と同型）。
 - **10 は暫定値（TODO Phase-2 実測確定）**: #126 の edge-trigger 化以降 distinct event のみが積まれるため、デモ run の現実的 event 数を包絡しつつ最悪 token を history 分について 1/5 化する。
 - 判断材料（2026-09-09 分析）: ②tool 経路は現行 deploy で未配線（[doc12:636](12-infrastructure-common.md)＝stdio 経路現用外・Hermes への warehouse MCP 未登録・Bridge は read-only tool を自発呼びしない）＝実効コストの主因は①の毎サイクル situation 経路。よって切詰めは consumer（表示）側のみで行い、producer 側の ring 再設計は Phase-2 clear protocol と同時に再訪する。
+- **Langfuse trace の射程**: 切詰めは `scheduler.py` が `self._llm.decide(situation)` に渡す payload そのものなので、**trace の input に載る emergency `history` も直近 10 件**になる。eval で「全件」が要るときの正本は state.json 側 50 件 ring（[doc12:342](12-infrastructure-common.md)）であって trace ではない（[doc12 2026-09-10 追補](12-infrastructure-common.md) から backlink 済）。

@@ -8,7 +8,7 @@
 | ゲート | 成功条件（反証可能な形） | 落ちたときに疑う場所 |
 |---|---|---|
 | **M0 給電** | バッテリー直タップ → ヒューズ 10A → 昇圧 12.6→19V → Orin が安定起動し、走行負荷中もブラウンアウトしない | 電源設計・配線・昇圧設定（テスターゲート = [02:451](../shared/02-hardware-design.md) 手順①〜④厳守） |
-| **M1 疎通** | Orin → 拡張ボード V3.0（CH340・115200）シリアル到達。`get_car_type()` / `get_motion_data()` が返り、**車輪を浮かせて**モータが回る | ケーブル・udev / permission・プロトコル |
+| **M1 疎通** | Orin → 拡張ボード V3.0（CH340・115200）シリアル到達。`get_car_type()` / `get_motion_data()` が返り、**車輪を浮かせて**モータが回る | **一次: L4T に `ch341.ko` が無い → out-of-tree ビルド**（[jetson/02 §10 :411](../jetson/02-remote-access-and-dev-link.md)）→ **二層目: brltty が CH340 を横取り**（[jetson/02 §10.6 :499](../jetson/02-remote-access-and-dev-link.md)）→ **起動順序: T 挿し＋主スイッチ ON → USB**（[02 P-9d :932](../shared/02-hardware-design.md)）。udev `/dev/myserial` / permission / プロトコルはその後（2026-09-09〜10 実機で確定した順） |
 | **M2 ROS 走行** | joystick → `/bot1/cmd_vel` → **m1_driver（`clamp_body_velocity` 必経）** → 実走。**かつ上限超指令を投げても wire に上限超が出ない**（negative test） | 実装（driver / 変換 node） |
 
 - **M2 が本体**。negative test を入れることでデモではなく**ゲート**になる = [mode-x-er/10:491 G-l](../mode-x-er/10-room-scale-safety-review.md) のクローズと同時達成。
@@ -18,11 +18,11 @@
 
 | # | 測るもの | 決まるもの |
 |---|---|---|
-| 1 | `get_car_type()`（**最優先**） | ファーム clamp 上限（公式 V3.6.5 の M1 = `0x0A`→**0.7** m/s）= [ADR-0010 §Open 1](../adr/0010-raise-speed-cap-to-platform-max.md) の pin 値 |
+| 1 | `get_car_type()`（**最優先**） | ファーム clamp 上限（公式 V3.6.5 の M1 = `0x0A`→**0.7** m/s）= [ADR-0010 §Open 1](../adr/0010-raise-speed-cap-to-platform-max.md) の pin 値。**2026-09-10 実測: 工場値は `0x02`（X3 PLUS）だった → `0x0A` へ書換え済・電源断をまたぐ保持も確認**（#631・[ADR-0010 2026-09-10 追補](../adr/0010-raise-speed-cap-to-platform-max.md)・手順 [02 P-8-3](../shared/02-hardware-design.md)）。到達の前提は [jetson/02 §10](../jetson/02-remote-access-and-dev-link.md)（ch341・brltty・udev）と [02 P-9d](../shared/02-hardware-design.md)（起動順序） |
 | 2 | モータラベルの RPM 印字 + ホイール径ノギス実測 | 理論最高速度・エンコーダ→距離換算（`ENCODER_CIRCLE_*` の選択 = [02 V-2 :543](../shared/02-hardware-design.md)） |
 | 3 | トレッド / ホイールベース実測 → `(W+L)/2` | ファーム X3 幾何（`MECANUM_APB 164.555`）とのズレ量 → `wz` 補正係数の要否（[02 §1-3](02-m1-driver-and-watchdog.md)） |
 | 4 | G-g watchdog 試験（[02 §4](02-m1-driver-and-watchdog.md)） | W-3 層の有無の確定 |
-| 5 | `get_version()` | 実機ファーム版と調査ソース（**V3.6.5** = [02 P-7a :746](../shared/02-hardware-design.md)。旧 V3.5.1 GitHub mirror は履歴確認のみ = [02:584](../shared/02-hardware-design.md)）の一致（U-5） |
+| 5 | `get_version()` | 実機ファーム版と調査ソース（**V3.6.5** = [02 P-7a :746](../shared/02-hardware-design.md)。旧 V3.5.1 GitHub mirror は履歴確認のみ = [02:584](../shared/02-hardware-design.md)）の一致（U-5）。**2026-09-10 実測 3.6**＝V3.6.5 系と major.minor で一致（vendor lib は patch を公開しない・#631） |
 | 6 | `get_motor_encoder()` が 4 値動くこと | 自前 odom（0x0D 経路）の前提 |
 
 ## 3. joy 経路設計

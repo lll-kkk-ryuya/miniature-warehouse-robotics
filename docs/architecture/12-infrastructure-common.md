@@ -660,3 +660,7 @@ Guardian の pose 監視を **AMCL 固定から config 切替（監視プロフ�
 - #642 で凍結契約に 1 定数を additive 追加し、両消費者が import する形へ移行。cross-check test は**同一オブジェクトの identity assert**（`is`）へ強化し、`_MOVING_EPS` は撤去した（外部 import は当該 test のみ＝実査済）。
 
 > 参照: :340（`status` フィールド定義）／ :520（`status` 値域ガードレール）／ [doc21:451](21-eval-sdk-extraction.md)・[doc21:452](21-eval-sdk-extraction.md)・[doc21:466](21-eval-sdk-extraction.md)・[doc21:469](21-eval-sdk-extraction.md)（idle 率の ε 源・確定定義・スコープ・follow-up (1)）／ 契約 = [`warehouse_interfaces/CLAUDE.md`](../../ws/src/warehouse_interfaces/CLAUDE.md)・実装ノート = [`warehouse_state/CLAUDE.md`](../../ws/src/warehouse_state/CLAUDE.md) / [`warehouse_orchestrator/CLAUDE.md`](../../ws/src/warehouse_orchestrator/CLAUDE.md)。
+
+## 【2026-09-10 追補】emergency event ring の LLM 表示面切詰め（doc08 追補への backlink）
+
+State Cache の emergency ring（:342 clear protocol の Phase-2 TODO ／ :405 `get_fleet_status()` で LLM へ返す）は **state.json 側 50 件のまま不変**。**LLM に見せる面だけ** `history` を直近 10 件に切詰める裁定と実装（#610・単一定義 `warehouse_mcp_server.tools.EMERGENCY_HISTORY_LLM_MAX = 10`・`situation.py` の top-level extra と `get_fleet_status` の両面）の正本は [doc08:554 §【2026-09-09 追補】](08-llm-bridge-common.md)。本 doc が定める producer（`aggregator` の 50/50 bound）・ring 長・`self_action_gate` の state.json 直読経路・L2 `l2_emergency_holds` は**変更なし**＝安全判断への入力は細らない。
