@@ -20,12 +20,12 @@ Status: **箱（skeleton）**。§2 の分担表は 2026-09-12 所見の**草案
 | 置き場所 | 機能 | layer / 時間階層 | リンク断時の挙動 |
 |---|---|---|---|
 | **Orin（車載）** | `navsat_transform` + 2 段 EKF（local: wheel + IMU（+ MOLA-LO）／ global: + GNSS）。map frame は datum 固定の UTM 系（[03](03-localization-gnss-and-ekf.md)） | 自律走行層（安全層外） | 自己完結 |
-| | Nav2 MPPI + rolling global costmap + waypoint follow（Humble: `fromLL` 変換 + 既存座標 goal） | L1 Navigation | 現在の waypoint 列を継続、または停止（`# TODO(裁定)`） |
+| | Nav2 MPPI + rolling global costmap + waypoint follow（Humble: `fromLL` 変換 + 既存座標 goal） | L1 Navigation | **停止**（リンク断 watchdog が stop_request を engage＝[05 §3](05-safety-envelope-and-intervention.md)。自律継続は法の枠外＝[01 §5](01-legal-envelope-japan.md)） |
 | | 屋外 3D 知覚 → 障害物層・歩道走行可能領域層、負障害物（縁石）検出（[04](04-perception-sidewalk-and-signals.md)） | costmap 入力 = 自律走行層 | 自己完結 |
 | | 歩行者用信号の検出・状態分類（TensorRT）。結果は perception producer | L4 知覚 | 自己完結 |
 | | 横断許可ゲート（青 かつ 点滅なし かつ 遠隔者承認トークン。fail-closed）（[05 §4](05-safety-envelope-and-intervention.md)） | L2 Governance | 承認が来ない = 渡らない |
 | | 新規 producer: リンク断 watchdog・GNSS 品質ゲート・ジオフェンス（[05 §3](05-safety-envelope-and-intervention.md)） | L1 Safety | 停止 |
-| | 映像の software encode（Orin Nano に HW エンコーダなし＝[06 §1](06-hardware-delta-and-base-selection.md)） | 観測面 | 解像度を落として CPU 予算を守る |
+| | 映像の software encode（Orin Nano に HW エンコーダなし＝本 doc References の NVIDIA フォーラム） | 観測面 | 解像度を落として CPU 予算を守る |
 | **PC（遠隔操作者卓）** | 映像・地図上位置・状態の監視、非常停止、手動 takeover、横断承認（[architecture/22](../architecture/22-web-observability.md) の console 拡張） | 観測面 + L1 stop producer | **法的必須層**。heartbeat が届かなければ Orin 側が止まる |
 | | 固定経路の記録（teach）と再生（repeat）: 随伴 teleop で走った RTK 軌跡から waypoint 列 + 横断ノードを作り、L3 task graph の入力へ投入（汎用経路計画は対象外・ユーザー決定） | L3 入力 | 投入済みミッションは Orin が保持 |
 | | rosbag / run record（[jetson/03](../jetson/03-build-deploy-run-and-run-records.md)）。Tailscale over LTE（[jetson/02 §9.7](../jetson/02-remote-access-and-dev-link.md:357)） | 観測面 | 記録欠落のみ |
@@ -44,7 +44,7 @@ Status: **箱（skeleton）**。§2 の分担表は 2026-09-12 所見の**草案
 
 ## 5. OPEN QUESTIONS（接頭辞 `OQ-OD2*`）
 
-- `OQ-OD20` リンク断時に「現在の waypoint 列を継続」するか「即停止」するか（法規は停止側＝[01 §5](01-legal-envelope-japan.md)）。
+- `OQ-OD20` リンク断の判定閾値（秒）と、停止までに現在の区間を安全に終える猶予を許すか（停止そのものは確定＝[01 §5](01-legal-envelope-japan.md)・[05 §3](05-safety-envelope-and-intervention.md)）。
 - `OQ-OD21` 固定経路の記録形式（緯度経度列 + 横断ノード注記 + 速度帯）と保管場所（走行記録 `mwr-run-record.v0` と同居させるか）。
 - `OQ-OD22` 横断承認の UI と、承認トークンの有効期限。
 

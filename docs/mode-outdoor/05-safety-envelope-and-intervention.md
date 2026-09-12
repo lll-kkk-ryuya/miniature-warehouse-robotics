@@ -23,7 +23,7 @@ Status: **箱（skeleton）**。§2 の流用表は 2026-09-12 所見の**草案
 | 手動 takeover | `teleop_joy` の deadman（[mode-m1/03:49](../mode-m1/03-joystick-teleop-bringup.md:49)）・/joy 鮮度 0.6 s（[:51](../mode-m1/03-joystick-teleop-bringup.md:51)）・非常停止 latch と再アーム（[:52](../mode-m1/03-joystick-teleop-bringup.md:52)・正本 [mode-m1/05 §5-6](../mode-m1/05-operation-state-and-stop-authority.md:113)） | PC 側の操作を LTE 越しに Orin へ運ぶ経路（DDS を流さず WS 経由）と Orin 側の `/joy` 再生 node（L4 入力側） |
 | 遠隔非常停止 | `/operator/stop_request` の engage / clear（経路 B・consumer = Emergency Guardian・L1） | PC 卓のボタンを同じ契約に載せる |
 | 通信断で停止 | 再アーム条件（解除・3 軸中立・deadman 押し直し）をそのまま使う | **リンク断 watchdog**（L1 Safety の新 producer・§3） |
-| 物理非常停止 | なし | 地上 60 cm 以上・前後 2 ボタン・赤/黄・**モータレグのリレーを切る**配線・Orin へ GPIO で latch・作動イベントの遠隔通知（§5） |
+| 物理非常停止 | なし（拡張ボードのメインスイッチ・T プラグ抜きは手が届く距離での操作＝[01 §3](01-legal-envelope-japan.md) の押しボタン要件を満たさない） | 地上 60 cm 以上・前後 2 ボタン・赤/黄・**モータレグのリレーを切る**配線・Orin へ GPIO で latch・作動イベントの遠隔通知（§5） |
 | fail-active 対策 | W-1 / W-2（ホスト内・[mode-m1/02 §3](../mode-m1/02-m1-driver-and-watchdog.md:64)） | W-3 = [ADR-0013](../adr/0013-stm32-command-stream-watchdog.md)（前提ゲート 4 点後）。屋外では W-4（手を掛けたまま）は遠隔で成立しないため、**物理非常停止 + W-3 が W-4 の代替**（§6） |
 
 ## 3. 新規 producer 3 点（何を書くか・すべて L1 Safety・R-26 unit 必須）
@@ -48,7 +48,7 @@ Status: **箱（skeleton）**。§2 の流用表は 2026-09-12 所見の**草案
 
 - 事実: stock FW に command timeout なし・IWDG 無効（[mode-m1/02 §1-2](../mode-m1/02-m1-driver-and-watchdog.md:25)・[shared/02:723](../shared/02-hardware-design.md:723)）。ホスト死・USB 断で MCU は最後の速度目標を保持して走り続ける。
 - `# TODO(設計)` W-3（[ADR-0013](../adr/0013-stm32-command-stream-watchdog.md)）の前提ゲート通過を**公道フェーズの前提条件**にするか、物理非常停止（§5）だけで足りるとするか（裁定）。
-- `# TODO(設計)` 走行主スイッチ（Orin レグのみ）を非常停止と誤認しない運用規律（[mode-m1/02 §3 W-4](../mode-m1/02-m1-driver-and-watchdog.md:65)）。
+- `# TODO(設計)` 走行主スイッチ（エーモン 4962・Orin レグのみ＝[shared/01:187](../shared/01-budget-and-procurement.md:187)）を非常停止と誤認しない運用規律（[mode-m1/02 §3 W-4](../mode-m1/02-m1-driver-and-watchdog.md:65)）。拡張ボードのメインスイッチは Orin レグを遮断できず（[shared/02:913](../shared/02-hardware-design.md:913)）、T プラグ抜きが現状唯一の全遮断（[shared/02:897](../shared/02-hardware-design.md:897)）。
 
 ## 7. R-26 unit 一覧（何を書くか）
 

@@ -24,13 +24,14 @@ Status: **箱（skeleton）**。§2 の導出表と §3 のリスク一覧は既
 
 ## 2. 車輪大径化と法定 6 km/h の関係（導出・実測未）
 
-前提（[ADR-0010:12-13](../adr/0010-raise-speed-cap-to-platform-max.md:12)）: STM32 ファームは車輪周長 251.327 mm（直径 80 mm 相当）の定数で各輪速度を計算し、**各輪 700 mm/s で切り捨てる**。理論無負荷は 0.86 m/s。車輪を大きくしてもファーム定数は変わらないため、**同じ指令で実速度が直径比で上がる**。ホスト側 L0' クランプ（m/s）も同じ比率で意味がずれ、自前 odom の車輪周長も書き換えが要る。
+前提（[ADR-0010:12-13](../adr/0010-raise-speed-cap-to-platform-max.md:12)）: STM32 ファームは車輪周長 251.327 mm（直径 80 mm 相当）の定数で各輪速度を計算し、**各輪 700 mm/s で切り捨てる**。理論無負荷は 0.86 m/s。車輪を大きくしてもファーム定数は変わらないため、**同じ指令で実速度が直径比で上がる**。ホスト側 L0' クランプ（m/s）も同じ比率で意味がずれ、自前 odom の車輪周長も書き換えが要る。無負荷列は 12 V 定格（205 rpm）換算で、満充電 12.6 V では約 1.05 倍、警報 9.6 V では約 0.8 倍になる。
 
 | 車輪直径 | FW clamp 時の実速度 | 無負荷理論の実速度 | 法定 6 km/h（1.667 m/s）判定 |
 |---|---|---|---|
 | 80 mm（現状） | 0.70 m/s = 2.5 km/h | 0.86 m/s = 3.1 km/h | 余裕 |
 | 100 mm | 0.88 m/s = 3.2 km/h | 1.08 m/s = 3.9 km/h | 可 |
 | 120 mm | 1.05 m/s = 3.8 km/h | 1.29 m/s = 4.6 km/h | 可 |
+| 140 mm（換装候補） | 1.23 m/s = 4.4 km/h | 1.51 m/s = 5.4 km/h（満充電で 5.7 km/h） | 可（**目標 ≥4 km/h を満たす**） |
 | 150 mm | 1.31 m/s = 4.7 km/h | 1.61 m/s = 5.8 km/h | 可（無負荷で上限に接近） |
 | 180 mm | 1.58 m/s = 5.7 km/h | 1.94 m/s = 7.0 km/h | **clamp 実速度が上限に接近・無負荷は超過** |
 | 200 mm | 1.75 m/s = 6.3 km/h | 2.15 m/s = 7.7 km/h | **枠外**（構造上 6 km/h を超えうる） |
@@ -52,9 +53,9 @@ Status: **箱（skeleton）**。§2 の導出表と §3 のリスク一覧は既
 | リスク | 根拠 |
 |---|---|
 | **fail-active**（ホスト死・USB 断で MCU が最後の速度目標を保持） | [mode-m1/02:25](../mode-m1/02-m1-driver-and-watchdog.md:25)。屋外では W-4 が遠隔で成立しない |
-| **モータ電源を切る手段がない**（走行主スイッチは Orin レグのみ） | [mode-m1/02 §3 W-4](../mode-m1/02-m1-driver-and-watchdog.md:65)・[05 §5](05-safety-envelope-and-intervention.md) |
+| **法定要件を満たす非常停止装置がない**（モータ電源を切れるのは拡張ボードのメインスイッチと T プラグ抜きだけ＝手が届く距離の操作。走行主スイッチ 4962 は Orin レグのみ） | [shared/02:897](../shared/02-hardware-design.md:897) / [:913](../shared/02-hardware-design.md:913) / [shared/01:187](../shared/01-budget-and-procurement.md:187) / [mode-m1/02 §3 W-4](../mode-m1/02-m1-driver-and-watchdog.md:65)・[05 §5](05-safety-envelope-and-intervention.md) |
 | **メカナムの横滑り**（横断勾配・切下げ斜面で車道側へ流れる、目地・砂利・濡れでスリップ → odom 劣化） | [shared/02:566](../shared/02-hardware-design.md:566)（Yahboom 自身がスリップ対策を説明） |
-| **段差**（剛体 80 mm 輪が越えられるのは半径の約 1/3 ≈ 13 mm。歩道切下げの縁石段差は標準 2 cm） | 一般則 + バリアフリー整備の標準値（`# TODO(出典 pin)`） |
+| **段差**（剛体 80 mm 輪が越えられるのは半径の約 1/3 ≈ 13 mm〔一般則〕。歩車道境界の段差は**標準 2 cm**） | 国土交通省「歩道の一般的構造に関する基準」（平成 17 年 2 月 3 日 国都街第 60 号・国道企第 102 号）<https://www.mlit.go.jp/road/sign/kijyun/pdf/20050203hodou.pdf> ／ 道路の移動等円滑化整備ガイドライン概要 <https://www.mlit.go.jp/kisha/kisha02/06/061218/061218_3.pdf>（参照日 2026-09-12。要旨は MLIT 掲載資料の検索結果で確認・原文 PDF の実 Read は `# TODO`） |
 | **電源の脆さ**（非安定化 12 V レール・定格 4 A・保護なし・サグで MCU リセット） | [shared/02:312](../shared/02-hardware-design.md:312) / [:318](../shared/02-hardware-design.md:318) |
 | **重心**（非常停止柱 60 cm 以上 + アンテナ + カメラ、幅 231 mm） | [shared/02:17](../shared/02-hardware-design.md:17) |
 | **25 Hz 報告**（0.7 m/s で 1 周期 28 mm の未観測走行） | [ADR-0010 Context 6](../adr/0010-raise-speed-cap-to-platform-max.md:17) |

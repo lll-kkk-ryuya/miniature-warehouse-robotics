@@ -50,7 +50,7 @@ Status: **記載済（一次情報）**。条文は e-Gov 法令検索の道路�
 | 幅 | 70 cm 以下 | 23.1 cm（同・全幅 231.4 mm） | 余裕 |
 | 高さ | 120 cm 以下。**センサー・カメラその他の通行時の周囲の状況を検知するための装置及びヘッドサポートを除いた部分の高さ** | 18.1 cm（同・全高 181.4 mm）。非常停止柱（§3・地上 60 cm 以上）を立てても余裕 | 余裕 |
 | 原動機 | 電動機 | 520 エンコーダモータ × 4（12 V） | 適合 |
-| 最高速度 | **6 km/h を超える速度を出すことができない**こと（構造上） | 凍結契約 0.3 m/s = 1.08 km/h。ファーム clamp 候補 0.7 m/s = 2.5 km/h（[ADR-0010:12-13](../adr/0010-raise-speed-cap-to-platform-max.md:12)・実機未確認）。**車輪大径化で比例して上がる**（[06 §2](06-hardware-delta-and-base-selection.md)） | 適合（80 mm 輪のとき） |
+| 最高速度 | **6 km/h を超える速度を出すことができない**こと（構造上） | 凍結契約 0.3 m/s = 1.08 km/h。ファーム clamp 候補 0.7 m/s = 2.5 km/h（[ADR-0010:12-13](../adr/0010-raise-speed-cap-to-platform-max.md:12)・実機未確認）。**車輪大径化で比例して上がる**（[06 §2](06-hardware-delta-and-base-selection.md)） | 適合（80 mm 輪のとき）。**換装後（140〜150 mm・決定済）は [06 §2](06-hardware-delta-and-base-selection.md) の導出で 6 km/h 未満。届出値は実測で確定** |
 | 突出部 | 歩行者に危害を及ぼすおそれがある鋭利な突出部がない | LiDAR・カメラ・アンテナのマウントは要カバー | 要対応 |
 | 非常停止装置 | 規則 1 条の 7 に適合（§3） | **未搭載** | **未適合** |
 | 標識 | 規則 5 条の 3 の様式（§4-1） | **未搭載** | **未適合** |
@@ -79,7 +79,7 @@ Status: **記載済（一次情報）**。条文は e-Gov 法令検索の道路�
 M1 の照合:
 
 - 車高 18.1 cm の車体に**地上 60 cm 以上のボタン**を置くには柱かマストが要る（GNSS アンテナ・カメラと同居＝[06 §5](06-hardware-delta-and-base-selection.md)）。
-- 「直ちに原動機を停止」は**モータ電源を切る**形で実装する（[05 §5](05-safety-envelope-and-intervention.md)）。走行主スイッチは Orin レグしか切らず、Orin だけ落ちると MCU が最後の速度目標を保持して走り続ける（fail-active・[mode-m1/02:25](../mode-m1/02-m1-driver-and-watchdog.md:25)）ため、**Orin の電源スイッチは非常停止装置にならない**。
+- 「直ちに原動機を停止」は**モータ電源を切る**形で実装する（[05 §5](05-safety-envelope-and-intervention.md)）。現状でモータ電源を切れるのは**拡張ボードのメインスイッチ**（[shared/02:897](../shared/02-hardware-design.md:897)）と**バッテリー直後の T プラグ抜き**（[shared/02:913](../shared/02-hardware-design.md:913)・[mode-m1/02 §3 W-4](../mode-m1/02-m1-driver-and-watchdog.md:65) の主電源カットオフ）だけで、いずれも車体に手を伸ばす操作＝**押しボタン・前後から操作可・地上 60 cm 以上・赤/黄・自己保持の要件を満たさない**。走行主スイッチ（エーモン 4962・[shared/01:187](../shared/01-budget-and-procurement.md:187)）は Orin レグしか切らず、Orin だけ落ちると MCU が最後の速度目標を保持して走り続ける（fail-active・[mode-m1/02:25](../mode-m1/02-m1-driver-and-watchdog.md:25)）ため、**Orin 側の電源断は非常停止装置にならない**。
 - 「解除操作を行わない限り再開しない」は、既存の操作者非常停止 latch（解除 ≠ 走行開始・[mode-m1/05 §5](../mode-m1/05-operation-state-and-stop-authority.md:113)）と同じ意味論。物理装置側でも自己保持にする。
 
 ## 4. 標識・届出・届出番号・体制
