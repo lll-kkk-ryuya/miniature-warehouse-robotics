@@ -32,8 +32,9 @@ that retains only a bounded window can still report over the whole stream. Same 
 here. No domain word or threshold appears in the **signatures or logic**; the docstrings name their
 domain consumer only, the same way ``rate`` names 介入率 above. ``SeriesTotals`` also carries two
 **diagnostics of the stream itself** (doc21 §17 ④ (#632 B2/B4)): ``rejected`` — how many ``add()``
-calls the acceptance rules refused, the only single-snapshot evidence that a stamp source stopped
-advancing — and ``max_gap``, the largest spacing between accepted points. Both are raw material:
+calls the acceptance rules refused (a symptom, not a cause: a stamp source that stopped advancing
+and a non-finite input are indistinguishable in this one number) — and ``max_gap``, the largest
+spacing between accepted points. Both are raw material:
 *how large a gap is too large* stays a caller threshold, exactly like ``d_thresh``.
 
 Reuse origin (doc21 §12.1 / :406, with ``# adapted from …`` attribution at each site):
