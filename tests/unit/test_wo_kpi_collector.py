@@ -681,3 +681,57 @@ def test_kpi_collector_reports_the_run_scope_beside_the_window() -> None:
     assert not {p for p in declared if "run_total" in p or "run_motion" in p}, (
         f"the run scope must add no ROS parameter; saw {sorted(declared)}"
     )
+
+
+@pytest.mark.unit
+def test_kpi_collector_derives_the_cap_source_from_the_resolver_warning() -> None:
+    # doc21 §17 ④ (#632 B3): the disclosed provenance must be READ OFF the same resolution the
+    # cap came from — a warning means ``resolve_speed_cap`` substituted the imported hard cap.
+    # A second, independently maintained source (a config re-read, a literal) would drift from
+    # the value it claims to describe. AST on source (the node imports rclpy), and the mapping is
+    # checked by EVALUATING the expression the node actually wrote, so an inverted
+    # ``"config" if cap_warning else "fallback"`` is red rather than merely mentioning both words.
+    init = _kpi_collector_method("__init__")
+    assigns = [
+        node
+        for node in ast.walk(init)
+        if isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Attribute) and target.attr == "_speed_cap_source"
+            for target in node.targets
+        )
+    ]
+    assert assigns, "__init__ must set self._speed_cap_source"
+    expression = ast.unparse(assigns[0].value)
+    assert "cap_warning" in expression, (
+        f"the source must be derived from the resolve_speed_cap warning; saw {expression}"
+    )
+    for warning, expected in (
+        (None, "config"),
+        ("safety.max_linear_velocity=None is not set", "fallback"),
+    ):
+        decided = eval(expression, {"__builtins__": {}}, {"cap_warning": warning})  # noqa: S307
+        assert decided == expected, (
+            f"a cap_warning of {warning!r} must read as {expected!r}; saw {decided!r}"
+        )
+
+
+@pytest.mark.unit
+def test_kpi_collector_injects_the_cap_source_into_motion_inputs() -> None:
+    # Same orphan guard as speed_cap / run_totals (#2): a provenance resolved at init that never
+    # reaches MotionInputs leaves every report unable to tell a configured cap from a fallback
+    # one — with every unit test still green, because they call ``compute_kpis`` directly.
+    report = _kpi_collector_method("_report")
+    calls = [
+        c
+        for c in ast.walk(report)
+        if isinstance(c, ast.Call) and isinstance(c.func, ast.Name) and c.func.id == "MotionInputs"
+    ]
+    assert calls, "_report must build MotionInputs(...)"
+    value = {k.arg: k.value for k in calls[0].keywords}.get("speed_cap_source")
+    assert (
+        isinstance(value, ast.Attribute)
+        and value.attr == "_speed_cap_source"
+        and isinstance(value.value, ast.Name)
+        and value.value.id == "self"
+    ), "speed_cap_source must be wired to self._speed_cap_source (the init-resolved provenance)"

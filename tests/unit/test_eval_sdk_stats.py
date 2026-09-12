@@ -609,9 +609,18 @@ def test_time_series_accumulator_rejects_non_advancing_and_non_finite_points() -
     assert acc.totals()["a"] == SeriesTotals(
         samples=1, at_or_below=0, integral=0.0, t_first=1.0, t_last=1.0
     )
-    # A rejected FIRST point creates no label at all (nothing to report about it).
+    # …which is exactly what this equality still says: ``rejected`` is excluded from ``__eq__``
+    # (it describes what never entered the series), so the assertion above keeps meaning "the
+    # refusals moved no total" while the count itself is asserted separately (#632 B4).
+    assert acc.totals()["a"].rejected == 6
+    # A label whose FIRST point was rejected reports itself with ``samples = 0`` (doc21 §17 ④ /
+    # #632 B4). Before that counter it was simply absent — indistinguishable from a stream that
+    # never spoke, which is the failure mode worth seeing.
     assert acc.add("b", math.nan, 0.0) is False
-    assert "b" not in acc.totals()
+    assert acc.totals()["b"] == SeriesTotals(
+        samples=0, at_or_below=0, integral=0.0, t_first=None, t_last=None
+    )
+    assert acc.totals()["b"].rejected == 1
 
 
 @pytest.mark.unit
@@ -670,3 +679,66 @@ def test_time_series_accumulator_agrees_with_the_batch_helpers_it_streams() -> N
     # delegates to the other, this differential check becomes a tautology that agrees with
     # itself no matter what the arithmetic does.
     assert "TimeSeriesAccumulator" not in inspect.getsource(trapezoid_integral)
+
+
+# ── doc21 §17 ④ (#632 B2/B4): the two stream diagnostics ─────────────────────
+
+
+@pytest.mark.unit
+def test_max_gap_is_the_largest_spacing_not_the_latest_one() -> None:
+    """``max_gap`` is a running MAXIMUM over the accepted spacings, not the last one.
+
+    Hand-built stamps 0, 0.1, 0.2, 1.1, 1.2 ⇒ Δt = [0.1, 0.1, 0.9, 0.1]: the widest hole sits in
+    the MIDDLE, so "keep the latest Δt" (0.1) and "keep the first" (0.1) both die here, and the
+    value must survive the two ordinary steps that follow it.
+    """
+    acc = TimeSeriesAccumulator()
+    assert acc.totals() == {}
+    for t in (0.0, 0.1, 0.2, 1.1, 1.2):
+        assert acc.add("a", t, 1.0) is True
+    assert acc.totals()["a"].max_gap == pytest.approx(0.9)
+    # …and it is None until a second point defines a spacing at all.
+    single = TimeSeriesAccumulator()
+    single.add("b", 5.0, 1.0)
+    assert single.totals()["b"].max_gap is None
+
+
+@pytest.mark.unit
+def test_rejected_counts_every_refusal_and_is_never_reset_by_a_later_success() -> None:
+    """``rejected`` is monotone per label: a refusal adds exactly one and an accepted point that
+    follows must not clear the history (that mutation would hide precisely the transient outage
+    the counter exists to record). Counted per label, so one noisy stream cannot inflate another.
+    """
+    acc = TimeSeriesAccumulator(1.0)
+    assert acc.add("a", 0.0, 0.0) is True
+    assert acc.totals()["a"].rejected == 0  # a clean stream reports a counted 0, not None
+    assert acc.add("a", 0.0, 0.0) is False  # duplicate stamp
+    assert acc.add("a", math.nan, 0.0) is False  # non-finite stamp
+    assert acc.add("a", 1.0, math.inf) is False  # non-finite value
+    assert acc.totals()["a"].rejected == 3
+    assert acc.add("a", 1.0, 0.0) is True  # a good point does NOT forgive the three refusals
+    assert acc.totals()["a"].rejected == 3
+    assert acc.totals()["a"].samples == 2
+    acc.add("b", 0.0, 0.0)
+    assert acc.totals()["b"].rejected == 0  # counted per label
+    acc.clear()
+    assert acc.totals() == {}  # a reset drops the counts with the totals it describes
+
+
+@pytest.mark.unit
+def test_a_frozen_stamp_source_shows_up_as_flat_samples_against_a_climbing_rejected() -> None:
+    """The doc21 §17 ④ (#632 B4) reading rule, at the generic layer: after a clock reset every
+    later point is refused, so ``samples``/``t_last`` freeze while ``rejected`` climbs. Nothing
+    re-seeds — the accumulator does NOT adopt the new stamp base — because trusting a reset clock
+    would splice two runs into one integral.
+    """
+    acc = TimeSeriesAccumulator(1.0)
+    for i in range(5):
+        assert acc.add("a", float(i), 2.0) is True
+    before = acc.totals()["a"]
+    for i in range(4):  # the clock jumped back to 0 and marches forward again
+        assert acc.add("a", float(i), 2.0) is False
+    after = acc.totals()["a"]
+    assert (after.samples, after.t_last) == (before.samples, before.t_last) == (5, 4.0)
+    assert after.integral == before.integral
+    assert (before.rejected, after.rejected) == (0, 4)
