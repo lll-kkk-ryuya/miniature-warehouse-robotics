@@ -49,6 +49,7 @@ Status: **箱（skeleton）**。§2 の流用表は 2026-09-12 所見の**草案
 - 事実: stock FW に command timeout なし・IWDG 無効（[mode-m1/02 §1-2](../mode-m1/02-m1-driver-and-watchdog.md:25)・[shared/02:723](../shared/02-hardware-design.md:723)）。ホスト死・USB 断で MCU は最後の速度目標を保持して走り続ける。
 - `# TODO(設計)` W-3（[ADR-0013](../adr/0013-stm32-command-stream-watchdog.md)）の前提ゲート通過を**公道フェーズの前提条件**にするか、物理非常停止（§5）だけで足りるとするか（裁定）。
 - `# TODO(設計)` 走行主スイッチ（エーモン 4962・Orin レグのみ＝[shared/01:187](../shared/01-budget-and-procurement.md:187)）を非常停止と誤認しない運用規律（[mode-m1/02 §3 W-4](../mode-m1/02-m1-driver-and-watchdog.md:65)）。拡張ボードのメインスイッチは Orin レグを遮断できず（[shared/02:913](../shared/02-hardware-design.md:913)）、T プラグ抜きが現状唯一の全遮断（[shared/02:897](../shared/02-hardware-design.md:897)）。
+- vendor FW の屋外に効く挙動（**低電圧 9.6 V × 2 s のラッチ停止＝電源再投入まで復帰不能**・ゼロ指令 = 短絡ブレーキ・yaw-adjust ビット・SBUS 中立デバウンス・再ビルド toolchain = Keil）は [07 §8](07-drivetrain-and-wheel-sizing.md)（車体側正本は [mode-m1/02](../mode-m1/02-m1-driver-and-watchdog.md) 末尾追補）。低電圧ラッチは **operational stop** として遠隔卓へ通知する producer 候補（`OQ-OD74`）。
 
 ## 7. R-26 unit 一覧（何を書くか）
 

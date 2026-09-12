@@ -44,7 +44,7 @@ Status: **箱（skeleton）**。節見出しと「何を書くか」だけを置
 | 2 | **RTK を入れるか** | **決定済（2026-09-12・ユーザー）: RTK GNSS は必ず入れる**。単独 GNSS は数 m の誤差で歩道幅を超える | [03](03-localization-gnss-and-ekf.md) / [06](06-hardware-delta-and-base-selection.md) |
 | 3 | **屋外知覚センサ** | passive stereo を推奨。HP60C（構造化光）は室内用へ格下げ | [04](04-perception-sidewalk-and-signals.md) / [06](06-hardware-delta-and-base-selection.md) |
 | 4 | **横断の権威**: 遠隔者承認を必須にするか、完全自動化を目標に置くか | 承認必須で設計し、承認の自動化は後段（法規と整合） | [05 §4](05-safety-envelope-and-intervention.md) |
-| 5 | **メカナムの扱い** | **決定済（2026-09-12・ユーザー）: タイヤ換装前提で最低 4 km/h（歩行速度）**。換装径（140 mm 級・保守基準で ≤147 mm・1:56 のまま）・car_type・ホスト側スケール補正・ホイールアーチ加工は [06 §2](06-hardware-delta-and-base-selection.md)。屋外ベース（B 案）は survey-first の調査対象 | [06 §2 / §4](06-hardware-delta-and-base-selection.md) |
+| 5 | **メカナムの扱い** | **決定済（2026-09-12・ユーザー）: タイヤ換装前提で最低 4 km/h（歩行速度）**。換装径（140 mm 級・保守基準で ≤147 mm・1:56 のまま）・**4WD 維持**・car_type・ホスト側スケール補正・前後ロアバンパ干渉の実測・案の比較（6 km/h は FW 定数修正 + 1:40 = 案 C・ADR 要 = `OQ-OD70`）は [07](07-drivetrain-and-wheel-sizing.md)（BOM は [06 §2](06-hardware-delta-and-base-selection.md)）。屋外ベース（B 案）は survey-first の調査対象 | [06 §2 / §4](06-hardware-delta-and-base-selection.md) |
 | 8 | **経路の性質** | **決定済（2026-09-12・ユーザー）: 特定の固定経路（teach-and-repeat 型）**。汎用経路計画は対象外 | [03 §3](03-localization-gnss-and-ekf.md) / [02](02-architecture-split-orin-pc-cloud.md) |
 | 9 | **進め方** | **決定済（2026-09-12・ユーザー）: survey-first**（仕様・既存 tool・企業事例・論文を調査してから採用を決める） | 本 doc §3 |
 | 6 | **契約と命名**: `KNOWN_LOCATIONS` の倉庫語彙（9 キー凍結）に屋外地点語彙を additive に足す contract PR が要るか。モード正準名 | 正準名は **Mode Outdoor**（[GLOSSARY §12](../GLOSSARY.md)）。地点語彙は additive 提案（contract ラベル） | [ADR-0009 Decision 5](../adr/0009-m1-room-scale-operation.md) / `warehouse_interfaces` |

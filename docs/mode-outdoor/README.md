@@ -2,7 +2,7 @@
 
 > **位置づけ**: ROSMASTER M1 単騎（[ADR-0006](../adr/0006-single-bot-first.md)）を**屋外の歩道**で A 地点から B 地点まで、**特定の固定経路（teach-and-repeat 型）を RTK-GNSS 主体に完全自律で走らせる**新しい実行構成モードの**正本ルート**（「完全自律」＝無人ではなく遠隔監視下で常時介入可能な自律。遠隔の人が操作できない自動操縦は法の枠外＝[01 §5](01-legal-envelope-japan.md)）。
 > **オペレーター指示（2026-09-12）**: 室内のジェスチャ召喚・standby HRI（[ADR-0009 Decision 2](../adr/0009-m1-room-scale-operation.md:21) の「ジェスチャ召喚を主役」）を**第一優先から外し、屋外設定を第一優先にする**。既存資産で組み、自己位置・知覚（信号）・GNSS・Orin / PC / クラウドの分担を設計する。
-> **Status**: **骨格のみ（箱）**。各 doc の「何を書くか」節に従って順次埋める。例外として **[01 法規包絡](01-legal-envelope-japan.md) だけは一次情報つきで記載済**（条文・警察庁資料を実 Read・参照日 2026-09-12）。
+> **Status**: **骨格のみ（箱）**。各 doc の「何を書くか」節に従って順次埋める。例外として **[01 法規包絡](01-legal-envelope-japan.md) と [07 駆動系と車輪径](07-drivetrain-and-wheel-sizing.md) は記載済**（07 = エージェントチーム 4 レーンの統合・設計値・実測未）、01 は一次情報つきで記載済（条文・警察庁資料を実 Read・参照日 2026-09-12）。
 > **決定の扱い**: 方針転換そのものは hard-to-reverse なので ADR 化する（**ADR-0014 予約**＝[adr/README](../adr/README.md)。裁定待ち＝[00 §4](00-mission-and-scope.md)）。本ツリーは ADR を複製せず、設計の中身を持つ。
 
 ## 本ツリーが持たないもの（重複禁止・参照で辿る）
@@ -24,7 +24,8 @@
 | [03-localization-gnss-and-ekf](03-localization-gnss-and-ekf.md) | 自己位置: RTK-GNSS + `navsat_transform` + 2 段 EKF（local/global）・datum・TF 単一所有の屋外版・**Humble 制約（FollowGPSWaypoints は Iron 以降 → fromLL + 既存座標 goal）** | 箱 |
 | [04-perception-sidewalk-and-signals](04-perception-sidewalk-and-signals.md) | 知覚: センサ前提（HP60C は屋外主センサにしない）・歩道走行可能領域・障害物/負障害物（縁石）・歩行者用信号の検出と状態分類・歩行者への進路譲り | 箱 |
 | [05-safety-envelope-and-intervention](05-safety-envelope-and-intervention.md) | 安全包絡と介入: 法が要求する 3 点（操作可能・通信断停止・物理非常停止）・既存停止資産の流用・新規 producer（リンク断 watchdog / GNSS 品質ゲート / ジオフェンス）・横断ゲート（L2）・fail-active 対策（ADR-0013） | 箱（草案表あり） |
-| [06-hardware-delta-and-base-selection](06-hardware-delta-and-base-selection.md) | ハード差分 BOM（GNSS・屋外カメラ・非常停止柱・標識・荷物箱・LTE）・**車輪大径化と法定 6 km/h の関係（ADR-0010 定数から導出）**・現状車体の屋外リスク・ベース選定 A/B | 箱（導出表あり） |
+| [06-hardware-delta-and-base-selection](06-hardware-delta-and-base-selection.md) | ハード差分 BOM（GNSS・屋外カメラ・非常停止柱・標識・荷物箱・LTE）・**車輪大径化と法定 6 km/h の関係（保守基準 ≤147 mm）**・現状車体の屋外リスク・ベース選定 A/B | 箱（§2 は [07](07-drivetrain-and-wheel-sizing.md) と同期） |
+| [07-drivetrain-and-wheel-sizing](07-drivetrain-and-wheel-sizing.md) | **駆動系と車輪径（記載済・設計値）**: 法定 6 km/h の判定方法（最大設定・往復 10 m・電池 ≥ 75 %）と FW clamp（車輪 167 rpm）から導く「法律ギリギリ径」（FW 190 mm / 物理 148 mm / 軸間 ≈ 185 mm → **実用 140〜147 mm・代表 144 mm＝最大設定 4.5 km/h・9.6 V で 4.1 km/h**。150 mm は FW clamp を構造と認める場合のみ）・モータ × 径の速度表・**4WD の要否（技術的に必要・メカナム放棄）**・トルク / 電力 / 停止距離・M1 機械制約（アーチ無し・前後バンパ・6 mm D 軸片持ち）・FW 挙動 5 点（低電圧ラッチ・短絡ブレーキ・yaw-adjust・SBUS・Keil toolchain）・選択肢 A〜F と Phase 1/2 推奨（6 km/h は FW 定数修正 + 1:40 = ADR 要）・実測ゲート G-W1〜8 | **記載済（設計値・実測未）** |
 
 ## 関連 ADR（正本は docs/adr/ — 移動・複製しない）
 
@@ -54,3 +55,4 @@
 - HTML 図解（[html-explainer](../../.claude/skills/html-explainer/SKILL.md)・Orin/PC/クラウド分担図）は未作成。
 - [01](01-legal-envelope-japan.md) の**法解釈グレー 3 点**（自律走行 + 随伴の扱い／「運送の用に供する」該当性／ソフト速度上限の「構造上」該当性）は事前相談で確定するまで**未決**として残す（[01 §10](01-legal-envelope-japan.md)）。
 - 02 / 05 / 06 の「草案表」は 2026-09-12 の所見の転記であり**裁定済ではない**。裁定後に本文へ昇格させるか破棄する。
+- **2026-09-12（後半）**: [07](07-drivetrain-and-wheel-sizing.md) を新設（エージェントチーム 4 レーン = 法規 / 駆動系物理 / 駆動方式・車体 / M1 実機制約の統合・数値再計算・一次情報再 Read）。06 §2 の保守基準（≤147 mm）に合わせ 07 の推奨径を **144 mm 級**に統合、「ホイールアーチ干渉」は**撤回**（アーチ無し・干渉は前後ロアバンパと前後輪どうし）。裁定待ちに **`OQ-OD70`（6 km/h を要件にするか＝案 C・ADR-0014 の一部）** を追加。同 PR で [01 追補②](01-legal-envelope-japan.md)（型式認定基準の実 Read = 最高速度試験・突出 8 mm・非常停止ボタン配置）と [mode-m1/02](../mode-m1/02-m1-driver-and-watchdog.md) 末尾追補（FW 挙動 5 点・Keil toolchain = ADR-0013 前提ゲートへの申し送り `OQ-OD75`）を追加。GLOSSARY §12 に「FW 換算速度」「車輪スケール k」を追補。

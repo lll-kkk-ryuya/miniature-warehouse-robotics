@@ -96,3 +96,20 @@ agent-team 調査（一次情報 = 工場 STM32 ファーム Rosmaster V3.5.1 C 
 - [ADR-0010](../adr/0010-raise-speed-cap-to-platform-max.md)（速度上限の再定義・L0' 結線が contract PR の前提条件）
 - [architecture/23-perception-and-localization.md](../architecture/23-perception-and-localization.md)（:163 TF 単一所有）
 - 一次ソース: Yahboom 拡張ボード V3.0 ファーム/ライブラリ（<https://github.com/Inouye165/Yahboom-Robot-Expansion-Board-V3.0>）— 参照日 2026-08-26。実機ファーム版との一致は G-g で確認（U-5）
+
+---
+
+## 【2026-09-12 追補】vendor FW V3.6.5 の屋外速度に効く挙動 5 点と再ビルド toolchain の実体（Mode Outdoor からの forward link）
+
+出典: 取得済み `ROS-Driver-Board-FW-master.zip`（[shared/02:797](../shared/02-hardware-design.md:797)・repo 外）の `Source/` を実 Read（2026-09-12）。屋外運用への含意と車輪径の裁定は [mode-outdoor/07 §8](../mode-outdoor/07-drivetrain-and-wheel-sizing.md) が持ち、本追補は**車体側の事実**だけを置く（§1-2 の「通信途絶停止なし・`ENABLE_IWDG=0`」に追加する形）。
+
+| # | 事実 | file:line | 帰結 |
+|---|---|---|---|
+| 1 | **低電圧はラッチ式ハード停止**: 9.6 V 以下（`return 96`）または 13.0 V 以上を `BAT_CHECK_COUNT 20` × 100 ms = **2 秒**連続で検出すると `g_system_enable = 0`。コメントどおり**リセット（電源再投入）でしか復帰しない**。6.5〜8.5 V の読みは「電池非装着」として無視 | `app_bat.c:11,13,58,83,94,108` | W-1〜W-4 とは別系統の**停止**。停動 4 A × 4 輪 = 16 A（非安定化レール定格 4 A・[shared/02:318](../shared/02-hardware-design.md:318)）で起こりうる。走行中の電圧監視（[shared/02:448](../shared/02-hardware-design.md:448) の `0x0A` 自動レポート）でこの閾値との距離を見る |
+| 2 | **ゼロ指令は短絡ブレーキ**: `Mecanum_Ctrl(0,0,0)` は即 `Motion_Stop(STOP_BRAKE)`（惰行 = `STOP_FREE` ではない） | `app_mecanum.c:34-38` | W-2 の二重停止（`set_car_motion(0,0,0)` + `0x0F`）はこの挙動を**使う**（変えない）。大径輪・高速時の通常停止はホスト側ランプダウンが要る |
+| 3 | **yaw-adjust ビット**: `ENABLE_YAW_ADJUST 1` は常時有効だが、発動はホストが `FUNC_MOTION` の car_type バイト bit 0x80 を立てたときだけ。有効時は IMU ヨー PID が左右輪に `∓g_offset_yaw` を足し、**指令 wz は目標に反映されない** | `config.h:26` / `protocol.c:525,534` | `m1_driver` は **0x80 = 0** を送る（現行 backend seam の確認事項・R-26 pin 候補） |
+| 4 | **通信途絶停止は無い（§1-2 と一致）**: `ENABLE_IWDG 0` かつ `IWDG_Init()` は宣言のみで呼び出し 0 件。SBUS 経路の `stop_count = 100` は**フレーム到達中の中立デバウンス**であり、リンク断 watchdog ではない | `config.h:17` / `bsp_wdg.h:5` / `app_sbus.c:122,151-170` | [ADR-0013](../adr/0013-stm32-command-stream-watchdog.md) の追記は SBUS 経路の `Motion_Stop(brake)` + カウンタ手法を雛形にできる |
+| 5 | **再ビルドの実体**: 配布 zip のプロジェクトは **Keil MDK（`rosmaster.uvprojx`・`<ToolsetName>ARM-ADS`・`<uAC6>0` = ARM Compiler 5）のみ**。Makefile / CMake / STM32CubeIDE / IAR プロジェクトは**無い**。`output/rosmaster_V3.6.5.hex` は Intel HEX テキスト 256,343 B（バイナリ換算 ≈ 86〜89 KiB・推定）で **MDK-Lite の 32 KB 制限を超える** | `rosmaster.uvprojx` / `output/` | 再ビルドには**有償 MDK-ARM + レガシー AC5**、または **arm-none-eabi-gcc への移植**（StdPeriph + FreeRTOS + `startup_stm32f10x_hd.s` の armasm 構文書き直し）が要る。書込は UART ISP（USART1 = PA9/PA10・`bsp_usart.c:72,78`・BOOT0）で可 = ADR-0013 Context と整合。**ADR-0013 前提ゲート (c) に toolchain 調達を加える提案（未裁定・`OQ-OD75`）**。ADR-0013 が引く公式 wiki の「STM32CubeIDE」は開発環境の一般案内で、配布ソースの実体は Keil |
+
+- **車輪大径化（[mode-outdoor/07 §9 案 A](../mode-outdoor/07-drivetrain-and-wheel-sizing.md)）に FW 再ビルドは不要**: FW の速度は `speed_mm = Δcounts × 100 × circle_mm / circle_pulse`（`app_motion.c:245`・M1 type = 251.327 mm / 2464 counts）で数えるため、実車輪径 D に対し **実速度 = FW 換算 × D/80 mm** の純スケール。各輪 clamp 700 は**車輪 167 rpm** の上限として残る（144 mm で 1.26 m/s・150 mm で 1.31 m/s）。ホスト側の車輪スケール k（[GLOSSARY §12](../GLOSSARY.md)）で吸収し、odom は `0x0D` 生カウント + 真の周長（§2 ⑥ の後続スライスで param 化）。
+- backlink: [mode-outdoor/07](../mode-outdoor/07-drivetrain-and-wheel-sizing.md)（§8）/ [mode-outdoor/06 §3](../mode-outdoor/06-hardware-delta-and-base-selection.md) / [ADR-0013](../adr/0013-stm32-command-stream-watchdog.md)
