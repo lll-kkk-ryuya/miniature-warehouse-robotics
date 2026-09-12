@@ -197,12 +197,12 @@ hard-to-reverse な設計判断とその理由を `NNNN-slug.md` で記録する
 
 ## mode-outdoor/ — Mode Outdoor: 屋外歩道 A→B 自律走行モード（設計提案・骨格）
 
-> 2026-09-12 新設（docs 先行・**骨格のみ**）。オペレーター指示で、室内のジェスチャ召喚・standby HRI（[ADR-0009 Decision 2](adr/0009-m1-room-scale-operation.md:21)）を第一優先から外し、**屋外の歩道を GNSS 主体で A→B 自律走行する構成を第一優先**にする。ADR-0014 は[番号予約のみ](adr/README.md)（ユーザー決定済 = 特定固定経路 teach-and-repeat・RTK 必須・タイヤ換装で ≥4 km/h・survey-first。残る裁定は [00 §4](mode-outdoor/00-mission-and-scope.md)）。本節の位置が mode 群の並びから外れているのは末尾追記原則（#165 行ズレ回避）による。
+> 2026-09-12 新設（docs 先行・**骨格のみ**）。オペレーター指示で、室内のジェスチャ召喚・standby HRI（[ADR-0009 Decision 2](adr/0009-m1-room-scale-operation.md:21)）を第一優先から外し、**屋外の歩道を GNSS 主体で A→B 自律走行する構成（遠隔監視下・常時介入可能）を第一優先**にする。ADR-0014 は[番号予約のみ](adr/README.md)（ユーザー決定済 = 特定固定経路 teach-and-repeat・RTK 必須・タイヤ換装で ≥4 km/h・survey-first。残る裁定は [00 §4](mode-outdoor/00-mission-and-scope.md)）。本節の位置が mode 群の並びから外れているのは末尾追記原則（#165 行ズレ回避）による。
 
 | ファイル | 内容 |
 |---------|------|
 | [README](mode-outdoor/README.md) | 位置づけ・境界（mode-m1 / doc23 との分担＝車体・停止権限は mode-m1、室内知覚は doc23 が正本のまま）・関連 ADR（0014 予約 / 0009 部分 supersede / 0013 / 0010 / 0008）・authoring 方針・残件 |
-| [00-mission-and-scope](mode-outdoor/00-mission-and-scope.md) | ミッション（歩道 A→B・GNSS 主体・完全自律）・スコープ IN/OUT・法的 2 段階（随伴通行 → 遠隔操作通行）・**ユーザー決定済 2 点 + 裁定待ち 5 点**・survey-first・流用する既存資産の仕分け |
+| [00-mission-and-scope](mode-outdoor/00-mission-and-scope.md) | ミッション（歩道 A→B・GNSS 主体・完全自律）・スコープ IN/OUT・法的 2 段階（随伴通行 → 遠隔操作通行）・**ユーザー決定済 4 点 + 裁定待ち 5 点**・survey-first・流用する既存資産の仕分け |
 | [01-legal-envelope-japan](mode-outdoor/01-legal-envelope-japan.md) | **法規包絡（一次情報・参照日 2026-09-12）**: 遠隔操作型小型車（法 2 条 1 項 11 号の 5）の定義・寸法 120×70×120 cm・6 km/h・非常停止装置（規則 1 条の 7 + 警察庁運用基準: 地上 60 cm 以上・前後 2 ボタン・赤/黄・直ちに原動機停止）・標識・届出（15 条の 3・1 週間前・番地まで・体制の想定項目）・「遠隔操作」の解釈（自動操縦の除外／随伴通行）・信号の意味・罰則・M1 照合・設計への写像・事前相談チェックリスト |
 | [02-architecture-split-orin-pc-cloud](mode-outdoor/02-architecture-split-orin-pc-cloud.md) | Orin（車載・リンク断でも自己完結）/ PC（遠隔操作者卓・法的必須層）/ クラウド（無くても走れる助言・記録）の 3 原則と分担表（草案）・通信・計算予算 |
 | [03-localization-gnss-and-ekf](mode-outdoor/03-localization-gnss-and-ekf.md) | 自己位置の屋外差分: doc23 §5-1 の GNSS「対象外」を反転・RTK + `navsat_transform` + 2 段 EKF・datum・TF 単一所有の屋外版・**Humble 制約（`FollowGPSWaypoints` は Iron 以降 → `fromLL` + 既存座標 goal）** |

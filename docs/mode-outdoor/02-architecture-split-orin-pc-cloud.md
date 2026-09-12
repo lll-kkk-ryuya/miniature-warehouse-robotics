@@ -19,9 +19,9 @@ Status: **箱（skeleton）**。§2 の分担表は 2026-09-12 所見の**草案
 
 | 置き場所 | 機能 | layer / 時間階層 | リンク断時の挙動 |
 |---|---|---|---|
-| **Orin（車載）** | `navsat_transform` + 2 段 EKF（local: wheel + IMU（+ MOLA-LO）／ global: + GNSS）。map frame は datum 固定の UTM 系（[03](03-localization-gnss-and-ekf.md)） | 自律走行層（安全層外） | 自己完結 |
+| **Orin（車載）** | `navsat_transform` + 2 段 EKF（local: wheel + IMU（+ MOLA-LO）／ global: + GNSS）。map frame は datum 固定の UTM 系（[03](03-localization-gnss-and-ekf.md)） | 帰属未定（暫定 L1 Navigation・EKF / navsat は正準表に行なし） | 自己完結 |
 | | Nav2 MPPI + rolling global costmap + waypoint follow（Humble: `fromLL` 変換 + 既存座標 goal） | L1 Navigation | **停止**（リンク断 watchdog が stop_request を engage＝[05 §3](05-safety-envelope-and-intervention.md)。自律継続は法の枠外＝[01 §5](01-legal-envelope-japan.md)） |
-| | 屋外 3D 知覚 → 障害物層・歩道走行可能領域層、負障害物（縁石）検出（[04](04-perception-sidewalk-and-signals.md)） | costmap 入力 = 自律走行層 | 自己完結 |
+| | 屋外 3D 知覚 → 障害物層・歩道走行可能領域層、負障害物（縁石）検出（[04](04-perception-sidewalk-and-signals.md)） | L1 Navigation（costmap 入力） | 自己完結 |
 | | 歩行者用信号の検出・状態分類（TensorRT）。結果は perception producer | L4 知覚 | 自己完結 |
 | | 横断許可ゲート（青 かつ 点滅なし かつ 遠隔者承認トークン。fail-closed）（[05 §4](05-safety-envelope-and-intervention.md)） | L2 Governance | 承認が来ない = 渡らない |
 | | 新規 producer: リンク断 watchdog・GNSS 品質ゲート・ジオフェンス（[05 §3](05-safety-envelope-and-intervention.md)） | L1 Safety | 停止 |

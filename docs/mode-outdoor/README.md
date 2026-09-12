@@ -1,6 +1,6 @@
 # mode-outdoor/ — Mode Outdoor: 屋外歩道 A→B 自律走行モード（設計提案・骨格）
 
-> **位置づけ**: ROSMASTER M1 単騎（[ADR-0006](../adr/0006-single-bot-first.md)）を**屋外の歩道**で A 地点から B 地点まで、**特定の固定経路（teach-and-repeat 型）を RTK-GNSS 主体に完全自律で走らせる**新しい実行構成モードの**正本ルート**。
+> **位置づけ**: ROSMASTER M1 単騎（[ADR-0006](../adr/0006-single-bot-first.md)）を**屋外の歩道**で A 地点から B 地点まで、**特定の固定経路（teach-and-repeat 型）を RTK-GNSS 主体に完全自律で走らせる**新しい実行構成モードの**正本ルート**（「完全自律」＝無人ではなく遠隔監視下で常時介入可能な自律。遠隔の人が操作できない自動操縦は法の枠外＝[01 §5](01-legal-envelope-japan.md)）。
 > **オペレーター指示（2026-09-12）**: 室内のジェスチャ召喚・standby HRI（[ADR-0009 Decision 2](../adr/0009-m1-room-scale-operation.md:21) の「ジェスチャ召喚を主役」）を**第一優先から外し、屋外設定を第一優先にする**。既存資産で組み、自己位置・知覚（信号）・GNSS・Orin / PC / クラウドの分担を設計する。
 > **Status**: **骨格のみ（箱）**。各 doc の「何を書くか」節に従って順次埋める。例外として **[01 法規包絡](01-legal-envelope-japan.md) だけは一次情報つきで記載済**（条文・警察庁資料を実 Read・参照日 2026-09-12）。
 > **決定の扱い**: 方針転換そのものは hard-to-reverse なので ADR 化する（**ADR-0014 予約**＝[adr/README](../adr/README.md)。裁定待ち＝[00 §4](00-mission-and-scope.md)）。本ツリーは ADR を複製せず、設計の中身を持つ。
@@ -18,7 +18,7 @@
 | ファイル | 内容 | 状態 |
 |---------|------|------|
 | [README](README.md) | 位置づけ・境界（mode-m1 / doc23 との分担）・関連 ADR・authoring 方針・残件 | 骨格 |
-| [00-mission-and-scope](00-mission-and-scope.md) | ミッション（歩道 A→B・GNSS 主体・完全自律）・スコープ IN/OUT・法的 2 段階（随伴 → 遠隔操作）・**ユーザー決定済 2 点（RTK 必須・タイヤ換装で ≥4 km/h）+ 裁定待ち 5 点**・survey-first・流用する既存資産 | 箱 |
+| [00-mission-and-scope](00-mission-and-scope.md) | ミッション（歩道 A→B・GNSS 主体・完全自律）・スコープ IN/OUT・法的 2 段階（随伴 → 遠隔操作）・**ユーザー決定済 4 点（特定固定経路・RTK 必須・タイヤ換装で ≥4 km/h・survey-first）+ 裁定待ち 5 点**・survey-first・流用する既存資産 | 箱 |
 | [01-legal-envelope-japan](01-legal-envelope-japan.md) | **法規包絡（日本・公道歩道）**: 遠隔操作型小型車の定義・寸法/速度/構造・非常停止装置（府令 + 警察庁運用基準）・標識・届出（事項・添付・期限）・通行ルール・信号の意味・罰則・M1 照合・設計への写像・事前相談チェックリスト | **記載済（一次情報・参照日 2026-09-12）** |
 | [02-architecture-split-orin-pc-cloud](02-architecture-split-orin-pc-cloud.md) | Orin（車載）/ PC（遠隔操作者卓）/ クラウドの分担: 3 原則・分担表・時間階層・リンク断時の挙動・通信・計算予算 | 箱（草案表あり） |
 | [03-localization-gnss-and-ekf](03-localization-gnss-and-ekf.md) | 自己位置: RTK-GNSS + `navsat_transform` + 2 段 EKF（local/global）・datum・TF 単一所有の屋外版・**Humble 制約（FollowGPSWaypoints は Iron 以降 → fromLL + 既存座標 goal）** | 箱 |
@@ -44,7 +44,7 @@
 - **既存正本へは複製せず追記**: 車体は mode-m1、知覚は doc23、ハードは shared/02 に末尾追補で forward link を置き、本ツリーからは相互リンクで辿る（本 README「本ツリーが持たないもの」を維持）。
 - **用語**は [GLOSSARY §12](../GLOSSARY.md)（Mode Outdoor・遠隔操作型小型車・遠隔操作通行 / 随伴通行・非常停止装置（法定）・横断ゲート・リンク断 watchdog・GNSS 品質ゲート・ジオフェンス）を正準にする。提案段階の語は「提案・未凍結」と明記。
 - **法規は一次情報で書く**: 条文（e-Gov）・警察庁資料・通達を実 Read し、**条番号 + 数値 + URL + 参照日**を残す。**本ツリーは法的助言ではない**。最終確認は届出先の警察署（事前相談）で行う（[01 §9](01-legal-envelope-japan.md)）。
-- **layer 注記**: 構成要素には L0–L4 / 観測面 / 自律走行層（安全層外）を併記する（[.claude/rules/layer-annotation.md](../../.claude/rules/layer-annotation.md)）。
+- **layer 注記**: 構成要素には L0–L4 / 観測面を併記する（[.claude/rules/layer-annotation.md](../../.claude/rules/layer-annotation.md)）。正準対応表（[productization/01:174](../productization/01-commercial-box-map.md:174)）に行が無い component（EKF / `navsat_transform` / MOLA-LO 等）は「**帰属未定（暫定 L1 Navigation）**」と書き、対応表への 1 行追記は governance PR で行う。doc12 の安全レイヤー 4 層（Layer 0–3）とは混ぜない。
 
 ## Status / 残件（隠さない）
 
