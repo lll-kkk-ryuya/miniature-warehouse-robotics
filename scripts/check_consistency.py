@@ -57,6 +57,7 @@ class Sources:
     """Frozen single-source-of-truth values, extracted by AST (no import side effects)."""
 
     max_linear_velocity: float
+    idle_speed_eps: float
     battery_critical_pct: int
     battery_low_pct: int
     robot_radius: float
@@ -86,13 +87,14 @@ def _module_consts(path: Path, names: set[str]) -> dict[str, object]:
 def load_sources() -> Sources:
     safety = _module_consts(
         IFACE / "safety.py",
-        {"MAX_LINEAR_VELOCITY", "BATTERY_CRITICAL_PCT", "BATTERY_LOW_PCT"},
+        {"MAX_LINEAR_VELOCITY", "IDLE_SPEED_EPS", "BATTERY_CRITICAL_PCT", "BATTERY_LOW_PCT"},
     )
     dims = _module_consts(DESC / "robot_dimensions.py", {"ROBOT_RADIUS"})
     loc = _module_consts(IFACE / "locations.py", {"_LOCATION_NAMES"})
     known = set(loc.get("_LOCATION_NAMES", ()))  # type: ignore[arg-type]
     s = Sources(
         max_linear_velocity=float(safety["MAX_LINEAR_VELOCITY"]),
+        idle_speed_eps=float(safety["IDLE_SPEED_EPS"]),
         battery_critical_pct=int(safety["BATTERY_CRITICAL_PCT"]),
         battery_low_pct=int(safety["BATTERY_LOW_PCT"]),
         robot_radius=float(dims["ROBOT_RADIUS"]),
@@ -401,7 +403,7 @@ def _git(*args: str, check_only: bool = False) -> str:
 # false negatives by design — the same narrow-FN-tolerated stance as the existing checks
 # (docs/dev/04-consistency-system.md §5). B4 is enumerated in doc04 §2 (severity table,
 # docs/dev/04-consistency-system.md:31) and §5 (limitations,
-# docs/dev/04-consistency-system.md:85).
+# docs/dev/04-consistency-system.md:96).
 #
 # doc-number → path: no frozen table exists, so ``docs/**/*.md`` is indexed by the
 # leading ``NN-`` prefix. A number owned by >1 file (e.g. ``03-software-architecture``
@@ -558,9 +560,102 @@ def check_cross_doc_line_refs(src: Sources, only) -> list[Finding]:
     return out
 
 
+# ── frozen safety numbers re-typed in docs (A3 speed cap / A4 idle ε) ─────────
+#
+# ``safety.py`` is the single source for the two numbers docs re-type most: the hard
+# speed cap ``MAX_LINEAR_VELOCITY = 0.3`` (safety.py:18) and the idle/stopped threshold
+# ``IDLE_SPEED_EPS = 0.01`` (module end, #649). ``load_sources`` already READ both, but no
+# check compared them (#652): flipping ε to 0.02 reddened ``tests/unit/test_safety.py``
+# while ~20 doc sites kept asserting 0.01 — exactly the drift this gate exists to stop.
+# On a mismatch the DOCS are wrong (docs-first.md: the frozen contract wins) — the message
+# says so; never "fix" safety.py to match a doc.
+#
+# SCOPE — only UNAMBIGUOUS forms, i.e. a line that NAMES the constant with the number next
+# to it (``MAX_LINEAR_VELOCITY = 0.3`` / ``MAX_LINEAR_VELOCITY 0.3`` / ``MAX_LINEAR_VELOCITY=0.3``
+# / `` `MAX_LINEAR_VELOCITY`（0.3） `` / ``IDLE_SPEED_EPS: float = 0.01``), or the ε form WITH
+# its unit (``ε=0.01 m/s``). The forms are tabulated in docs/dev/04-consistency-system.md:45
+# (§2 追加 check). Deliberately NOT matched (documented limits, same doc :102):
+#  - a bare ``0.3 m/s`` with no constant name — 138 such sites exist and most are OTHER speeds
+#    (0.15 / 0.2 m/s corridor and band values); guessing which one means the cap would either
+#    red the gate falsely or need a judgment call that belongs in /consistency-audit.
+#  - a bare ``ε = <n>`` without ``m/s``: ε is overloaded in this repo (doc23 uses ``ε=1e-6``
+#    for a robot_localization covariance floor), so the unit is what makes the form unambiguous.
+#  - the separator between name and number may contain only NON-word characters (plus the word
+#    ``float``), so prose such as ``IDLE_SPEED_EPS は doc12 §4 の 0.01`` is skipped rather than
+#    risk capturing the ``12`` of a doc number / the ``18`` of a ``safety.py:18`` line pin.
+#  - the number must carry a decimal point or an exponent (``0.3`` / ``0.010`` / ``1e-2``) for
+#    the same reason; a bare integer next to the name is not asserted to be the value.
+#  - a name of which the constant is only a SUFFIX — the left lookbehind exists so the env
+#    override ``WAREHOUSE__SAFETY__MAX_LINEAR_VELOCITY=0.25`` (shape: config.py:25) is NOT a
+#    finding: config LOWERS the cap by design (``0 < cap <= hard cap``), so such a line is a
+#    correct example, not drift. Do not drop the lookbehind (#652 review).
+# Narrow-FN by design — the same stance as A1/B4 (docs/dev/04-consistency-system.md §5).
+# Every occurrence of every form on a line is compared (not just the first): a line may re-type
+# the constant twice (``… = 0.3 …、M1 では … = 0.7 へ``) and the WRONG copy must still red.
+#
+# Defined at the END of the check section (not beside A1/A2) so the +N lines do not drift the
+# ``scripts/check_consistency.py:NNN`` pins that .claude/rules/status-maintenance.md holds into
+# the C1 check below (#165 class; ``.claude/**`` is governance-owned = not re-pinnable here).
+_SAFETY_NUM = r"(?:\d+\.\d+|\d+(?:\.\d+)?[eE][-+]?\d+)"
+_SAFETY_GAP = r"(?:[^\w\n]|float){0,20}"
+_EPS_SYMBOL_PAT = re.compile(r"ε\s*[=＝]\s*(" + _SAFETY_NUM + r")\s*m/s")
+
+
+def _const_copy_findings(
+    const: str, want: float, rule: str, extra_pats, source_ref: str, only
+) -> list[Finding]:
+    """ERROR on every doc line that re-types ``const`` with a value != the frozen one."""
+    pats = [
+        re.compile(r"(?<![A-Za-z0-9_])" + re.escape(const) + _SAFETY_GAP + "(" + _SAFETY_NUM + ")"),
+        *extra_pats,
+    ]
+    out: list[Finding] = []
+    for rel, ln, line in _iter_doc_lines(only):
+        if _NEGATION.search(line):
+            continue
+        for _pat, m in ((p, mm) for p in pats for mm in p.finditer(line)):
+            if abs(float(m.group(1)) - want) > 1e-9:
+                out.append(
+                    Finding(
+                        ERROR,
+                        rule,
+                        rel,
+                        ln,
+                        f"{const} asserted as {m.group(1)} but the frozen value is {want} "
+                        f"({source_ref}) — docs を凍結契約に合わせる（凍結定数側は変えない）.",
+                    )
+                )
+                break  # one finding per line (first MISMATCHING occurrence wins)
+    return out
+
+
+def check_speed_cap(src: Sources, only) -> list[Finding]:
+    return _const_copy_findings(
+        "MAX_LINEAR_VELOCITY",
+        src.max_linear_velocity,
+        "A3-speed-cap",
+        (),
+        "warehouse_interfaces/safety.py:18",
+        only,
+    )
+
+
+def check_idle_speed_eps(src: Sources, only) -> list[Finding]:
+    return _const_copy_findings(
+        "IDLE_SPEED_EPS",
+        src.idle_speed_eps,
+        "A4-idle-speed-eps",
+        (_EPS_SYMBOL_PAT,),
+        "warehouse_interfaces/safety.py, module end",
+        only,
+    )
+
+
 CHECKS = [
     check_robot_radius,
     check_battery_thresholds,
+    check_speed_cap,
+    check_idle_speed_eps,
     check_topic_custom,
     check_laser_frame,
     check_location_keys,

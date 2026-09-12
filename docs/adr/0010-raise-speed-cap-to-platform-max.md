@@ -63,7 +63,7 @@
 1. `# TODO(実機5分)` **搭載 FW version** / `get_car_type_from_machine()==0x0A` / 520 モータラベル / メカナムホイール実測径80mm相当を確認 → stock source と現物の一致を閉じ、契約 pin 候補 0.7m/s を確定する。
 2. `# TODO(実測)` **S-SPEED 実測**（bring-up の odom/EKF 稼働後）→ config 運用値の確定。
 3. `# TODO(governance)` [.claude/rules/safety.md:4](../../.claude/rules/safety.md) の「最大0.3 m/s」改訂（`.claude/**` は governance ブランチ→PR・人間承認）。
-4. `# TODO(dev-tooling)` `scripts/check_consistency.py` へ `check_speed_cap` 追加（`Sources.max_linear_velocity` は読込済・未使用＝追加コストほぼゼロ）＋ docs 約90箇所の 0.3 記述 sweep。
+4. **✅ `check_speed_cap`（`A3-speed-cap`）は #652 で追加済**（[dev/04 §2 追加 check](../dev/04-consistency-system.md)）。**残**: `# TODO(dev-tooling)` 定数名の無い裸の `0.3 m/s` 記述 sweep（約90箇所）は A3 の射程外＝手動／`/consistency-audit` 側。
 5. `# TODO(実測)` `t_react`（scan→制動の実効レイテンシ）実測（[mode-x-er/10 §5-3/S-5](../mode-x-er/10-room-scale-safety-review.md) と同一セッション）→ C-3 停止円の margin 確定。
 6. **wz（角速度）上限は今回も新設しない**（凍結契約は linear のみ＝既存方針維持。[test_m1_clamp.py:374](../../tests/unit/test_m1_clamp.py) が「wz に linear cap を適用しない」を pin 済）。
 
