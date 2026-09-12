@@ -99,21 +99,24 @@ report fields**: no new producer, topic, parameter, contract or score.
 
 * **B2 — a missing odom stretch is disclosed and gated, never interpolated.** doc21:467 leaves
   "the exact treatment of non-uniform odom" open; §17 ④ answers it for the one case that is not
-  jitter but absence. Every window now publishes its nominal period (``median_dt_s``, the median
-  of consecutive Δt) and its worst interruption (``max_gap_s``), and when
-  ``max_gap_s > gap_ratio_limit × median_dt_s`` the **spectral pair is withheld** — SPARC and
+  jitter but absence. Every window now publishes its nominal period (``nominal_dt_s``, the
+  **lower quartile** of consecutive Δt) and its worst interruption (``max_gap_s``), and when
+  ``max_gap_s > gap_ratio_limit × nominal_dt_s`` the **spectral pair is withheld** — SPARC and
   LDLJ are the two metrics that read a single ``fs`` as ground truth, so across a hole they
-  describe a long smooth motion nobody measured. Everything that survives a gap keeps reporting
-  (N_MU, ``idle_ratio``, the speed pair, ``speed_budget_utilisation``), and the ratio limit is
-  disclosed rather than buried. The run scope discloses ``max_gap_s`` only: it has no nominal
-  period to judge against (see :class:`RunMotionStats`), and the integral is untouched.
+  describe a long smooth motion nobody measured. The verdict itself rides along
+  (``spectral_gated``), so a ``None`` spectral pair no longer has to be guessed at. Everything
+  that survives a gap keeps reporting (N_MU, ``idle_ratio``, the speed pair,
+  ``speed_budget_utilisation``), and the ratio limit is disclosed rather than buried. The run
+  scope discloses ``max_gap_s`` only: it has no nominal period to judge against (see
+  :class:`RunMotionStats`), and the integral is untouched.
 * **B3 — the cap's provenance travels with the cap.** ``speed_cap`` alone cannot separate a
   deliberate 0.3 from a config that failed to load and fell back to the imported hard cap, so
   ``speed_cap_source ∈ {"config", "fallback"}`` is disclosed beside it in both scopes.
 * **B4 — a frozen stamp source is now a single-report observation.** Refused samples are counted
   (``RunMotionStats.rejected``) instead of vanishing; the acceptance rules are unchanged and
   nothing re-seeds itself. Two consecutive reports then separate "the robot went quiet" from
-  "the clock went backwards" (:class:`RunMotionStats`).
+  "this robot's samples are being refused" — the counter names the symptom, not which refusal
+  class caused it (:class:`RunMotionStats`).
 
 **Producer note (doc21:187 / doc21:189).** doc21:187 lists 軌道平滑性's data source as the
 *existing* ``/bot{n}/odom``, but ``DistanceAccumulator`` keeps only a running total and the
@@ -174,8 +177,20 @@ DEFAULT_SMOOTHING_WINDOW = 5
 # the ratio is disclosed, and 3.0 is the value it names as the tuning default, not a domain
 # threshold anybody may read as "the robot was stopped for 3 periods". Two missed frames at a
 # nominal period leave ratio 3.0 (not gated, ``>`` is strict); the third gates the window.
-# Republished in every ``SmoothnessStats.gap_ratio_limit`` so a reader can see what was applied.
+# Republished in every ``SmoothnessStats.gap_ratio_limit`` so a reader can see what was applied,
+# and substituted for an unusable caller value (non-finite or ``≤ 0``) rather than let one reach
+# ``json.dumps(..., allow_nan=False)`` — see :func:`smoothness_stats`.
 DEFAULT_GAP_RATIO_LIMIT = 3.0
+
+# Which quantile of the consecutive Δt is read as "the period the sampler actually ran at"
+# (:func:`_sampling_continuity`). The **lower quartile**, not the median: a window's Δt set is
+# bimodal once odom drops out (frames at the true period, holes at the outage length), and the
+# MEDIAN moves onto the outage value as soon as outages exceed half the intervals — at which point
+# ``max_gap ≈ nominal`` and the gate releases exactly on the streams it exists to catch. The lower
+# quartile stays on the true period for any outage share below 75 %. Not a domain threshold:
+# doc21 §17 ④ fixes *that* a nominal period is compared against the worst hole, never which
+# order statistic estimates it.
+_NOMINAL_DT_PERCENTILE = 25.0
 
 # Shortest sample count the spectral metrics accept, applied to the LOW-PASSED series (that is
 # what they actually consume). Borrowed from the ONE documented floor in the maths layer
@@ -514,21 +529,41 @@ class SmoothnessStats:
     state it, and ``None`` whenever ``speed_cap`` itself is ``None`` (there is no source for a
     denominator that does not exist).
 
-    ``median_dt_s`` / ``max_gap_s`` / ``gap_ratio_limit`` describe the window's **sampling
-    continuity** (doc21 §17 ④ / #632 B2). doc21:467 already records that odom jitters and that
-    this module hands the spectral pair one scalar ``fs``; a *gap* — an odom outage — is the case
-    where that approximation stops being a small error and becomes a fiction, because SPARC and
-    LDLJ read the missing interval as a long smooth stretch rather than as missing data. So the
-    nominal period (``median_dt_s``, the median of the consecutive Δt) and the worst interruption
-    (``max_gap_s``) are disclosed, and when ``max_gap_s > gap_ratio_limit × median_dt_s`` the
-    **spectral pair is withheld** (``sparc``/``ldlj``/``filtered_samples`` all ``None``) rather
-    than interpolated: doc21 §17 ④ chose disclose-and-gate over re-sampling, since inventing the
-    missing samples would produce a smoothness score for motion nobody observed. Everything that
-    does not assume uniform spacing keeps reporting through a gap — ``n_movement_units``,
-    ``idle_ratio`` (a raw sample count), ``mean_speed``/``max_speed`` and
+    ``nominal_dt_s`` / ``max_gap_s`` / ``gap_ratio_limit`` / ``spectral_gated`` describe the
+    window's **sampling continuity** (doc21 §17 ④ / #632 B2). doc21:467 already records that odom
+    jitters and that this module hands the spectral pair one scalar ``fs``; a *gap* — an odom
+    outage — is the case where that approximation stops being a small error and becomes a fiction,
+    because SPARC and LDLJ read the missing interval as a long smooth stretch rather than as
+    missing data. So the nominal period (``nominal_dt_s``, the **lower quartile** of the
+    consecutive Δt) and the worst interruption (``max_gap_s``) are disclosed, and when
+    ``max_gap_s > gap_ratio_limit × nominal_dt_s`` the **spectral pair is withheld**
+    (``sparc``/``ldlj``/``filtered_samples`` all ``None``) rather than interpolated: doc21 §17 ④
+    chose disclose-and-gate over re-sampling, since inventing the missing samples would produce a
+    smoothness score for motion nobody observed. ``spectral_gated`` publishes that verdict, which
+    is what separates "the gate withheld it" from the four *other* ways the pair can come back
+    ``None`` (too few samples, an unusable ``fs``, a never-moving window, numpy absent).
+    Everything that does not assume uniform spacing keeps reporting through a gap —
+    ``n_movement_units``, ``idle_ratio`` (a raw sample count), ``mean_speed``/``max_speed`` and
     ``speed_budget_utilisation`` (integrated on the real stamps, and still crediting the gap;
-    that asymmetry is the pre-existing residual doc21:467 carries, unchanged here). Both are
-    ``None`` for fewer than 2 samples (a single point defines no spacing).
+    that asymmetry is the pre-existing residual doc21:467 carries, unchanged here). The two Δt
+    numbers are ``None`` for fewer than 2 samples (a single point defines no spacing) and
+    ``None`` when they are not finite (``t = ±1e308`` stamps are accepted and make Δt ``inf``;
+    the report must survive ``json.dumps(..., allow_nan=False)`` — the gate still reads the raw
+    value, so degrading the *disclosure* changes no decision). ``gap_ratio_limit`` is the
+    **sanitised** limit actually applied, never the caller's raw argument.
+
+    **Two cliffs this gate keeps, stated rather than hidden.** (i) Once the outage share reaches
+    ~75 % of the intervals even the lower quartile lands on the outage value, ``max_gap ≈
+    nominal``, and the window is released — ``sample_rate_hz`` is then the tell (a 30 Hz stream
+    reporting 0.2 Hz was not measured at 30 Hz). (ii) A perfectly healthy but **bimodal** stream
+    whose two modes differ by more than ``gap_ratio_limit`` — paired 100 Hz/30 Hz arrivals, say —
+    is gated even though nothing was lost. That is the safe direction: a withheld number is
+    recoverable, a fabricated one is not.
+
+    **Dwell time.** The gate is evaluated over the *retained window*, so one transient outage
+    withholds the spectral pair until that Δt is evicted from the ring buffer — up to
+    ``max_samples`` samples (≈136 s, i.e. 4–5 reports, at the 4096 / 30 Hz / 30 s defaults).
+    ``max_gap_s`` is what says why the pair is missing while it lasts.
 
     ``None`` means "not computable from this window" (too few samples, an unusable sample rate,
     a never-moving robot, numpy absent, or — for the spectral pair — a gapped window) — never
@@ -550,9 +585,10 @@ class SmoothnessStats:
     speed_budget_utilisation: float | None
     speed_cap: float | None
     speed_cap_source: str | None
-    median_dt_s: float | None
+    nominal_dt_s: float | None
     max_gap_s: float | None
     gap_ratio_limit: float
+    spectral_gated: bool
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -579,9 +615,13 @@ class SmoothnessStats:
             # doc21 §17 ④ (#632 B3/B2), appended in turn: where the cap came from, then the
             # sampling-continuity trio whose test gates the spectral pair above.
             "speed_cap_source": self.speed_cap_source,
-            "median_dt_s": self.median_dt_s,
+            "nominal_dt_s": self.nominal_dt_s,
             "max_gap_s": self.max_gap_s,
             "gap_ratio_limit": self.gap_ratio_limit,
+            # …and the gate's own verdict LAST, so a ``None`` spectral pair above is readable
+            # without re-deriving the comparison (the four other reasons for ``None`` leave this
+            # ``False``).
+            "spectral_gated": self.spectral_gated,
         }
 
 
@@ -611,23 +651,39 @@ def sample_rate_hz(samples: Sequence[MotionSample]) -> float | None:
 
 
 def _sampling_continuity(samples: Sequence[MotionSample]) -> tuple[float | None, float | None]:
-    """``(median Δt, max Δt)`` over the window's consecutive stamps — doc21 §17 ④ (#632 B2).
+    """``(nominal Δt, max Δt)`` over the window's consecutive stamps — doc21 §17 ④ (#632 B2).
 
-    The **median** is the nominal period: unlike the mean (which is exactly what
-    :func:`sample_rate_hz` already reports, and which one long outage drags upward), it is the
-    period the sampler actually ran at, so the ratio below asks "how many normal frames fit in
-    the worst hole" instead of "how many post-outage frames do". Taken with
-    ``eval_sdk.stats.percentile`` at 50 rather than a second hand-rolled median.
+    The nominal period is the **lower quartile** (:data:`_NOMINAL_DT_PERCENTILE`), taken with
+    ``eval_sdk.stats.percentile`` rather than a second hand-rolled order statistic. Not the mean
+    (which is exactly what :func:`sample_rate_hz` already reports, and which one long outage drags
+    upward until it excuses itself) and **not the median**: a gapped window's Δt set is bimodal —
+    frames at the true period, holes at the outage length — so once outages exceed 50 % of the
+    intervals the median sits on the *outage* value, ``max_gap ≈ nominal``, and the gate releases
+    on precisely the worst streams (a 55 %-outage window of ten-second holes would publish SPARC
+    at fs ≈ 0.2 Hz). The lower quartile keeps naming the true period until outages pass 75 %.
 
     ``(None, None)`` for fewer than 2 samples — one point defines no spacing at all. Stamps are
     not re-validated here: the only producer, :meth:`MotionAccumulator.add`, already refuses a
     non-finite or non-advancing one, so every Δt is finite and positive by construction; a
-    hand-built window that is not gets whatever those comparisons say, and discloses it.
+    hand-built window that is not gets whatever those comparisons say (the caller degrades a
+    non-finite result before disclosing it, and the gate still sees the raw value).
     """
     if len(samples) < 2:
         return None, None
     deltas = [samples[i + 1].t - samples[i].t for i in range(len(samples) - 1)]
-    return percentile(deltas, 50.0), max(deltas)
+    return percentile(deltas, _NOMINAL_DT_PERCENTILE), max(deltas)
+
+
+def _finite_or_none(value: float | None) -> float | None:
+    """Disclose ``value`` only if it is a real number — the ``run_motion_stats`` degrade rule.
+
+    A window built from ``t = ±1e308`` stamps (accepted: both are finite and advancing) yields an
+    ``inf`` Δt, and one ``inf`` in the payload takes the **whole** report down at
+    ``json.dumps(..., allow_nan=False)``. The gate upstream still reads the raw value, so this
+    weakens no decision — it only keeps an unusable number out of the report, exactly as
+    :func:`run_motion_stats` already does for ``duration`` / ``integral_abs_speed`` / ``max_gap_s``.
+    """
+    return value if value is not None and math.isfinite(value) else None
 
 
 def _guarded(fn: Callable[..., float], *args: object) -> float | None:
@@ -719,9 +775,13 @@ def smoothness_stats(
     ``gap_ratio_limit`` = how many nominal periods the worst gap may span before the spectral
     pair is withheld (doc21 §17 ④ / #632 B2, default :data:`DEFAULT_GAP_RATIO_LIMIT`). Like
     ``smooth_window`` it is an **engineering tuning value**, so it is republished in every result;
-    raising it is how a caller says "this stream is expected to be lumpy". It is deliberately not
-    validated — a nonsensical limit (negative, ``nan``) only ever makes the gate fire always or
-    never, which the disclosed value explains, and this module does not raise on live data.
+    raising it is how a caller says "this stream is expected to be lumpy". An **unusable** limit
+    (``nan``, ``inf``, zero or negative) is replaced by :data:`DEFAULT_GAP_RATIO_LIMIT` for both
+    the gate and the disclosure — fail-open in the sense the rest of this module uses (never
+    raise on live data), but *not* fail-silent: a ``nan`` that reached the report would make
+    ``json.dumps(..., allow_nan=False)`` refuse the whole payload, and a ``0``/negative one would
+    gate every window while claiming a limit nobody could act on. What is published is therefore
+    always the limit that was actually applied.
 
     Note the one deliberate exception to this module's fail-open stance: an even or non-positive
     ``smooth_window`` propagates ``ValueError`` out of ``eval_sdk.stats.low_pass`` rather than
@@ -729,19 +789,26 @@ def smoothness_stats(
     failure (numpy absent, a degenerate window) still becomes ``None`` via :func:`_guarded`. No
     ROS parameter reaches this argument today, so the live path cannot trigger it.
     """
+    # An unusable limit is replaced BEFORE anything reads it, so the gate and the disclosure can
+    # never disagree and no ``nan``/``inf`` can reach ``json.dumps(..., allow_nan=False)``.
+    limit = (
+        gap_ratio_limit
+        if (math.isfinite(gap_ratio_limit) and gap_ratio_limit > 0)
+        else DEFAULT_GAP_RATIO_LIMIT
+    )
     signed = [sample.v for sample in samples]
     speeds = [abs(v) for v in signed]
     rate_hz = sample_rate_hz(samples)
     peak = max(speeds) if speeds else None
     mean_speed = (sum(speeds) / len(speeds)) if speeds else None
     # doc21 §17 ④ (#632 B2): nominal period and worst interruption of THIS window.
-    median_dt, max_gap = _sampling_continuity(samples)
-    # Gated ⇔ one hole spans more than ``gap_ratio_limit`` nominal periods. ``>`` is strict, so a
-    # window sitting exactly on the limit still reports (the limit is what is *allowed*). Both
-    # terms are known to be finite here for any window the accumulator produced; a hand-built
-    # window carrying a ``nan`` Δt simply fails the comparison and is NOT gated — the fail-open
-    # direction, since the spectral pair's own guards still apply below.
-    gapped = median_dt is not None and max_gap is not None and max_gap > gap_ratio_limit * median_dt
+    nominal_dt, max_gap = _sampling_continuity(samples)
+    # Gated ⇔ one hole spans more than ``limit`` nominal periods. ``>`` is strict, so a window
+    # sitting exactly on the limit still reports (the limit is what is *allowed*). The RAW Δt
+    # numbers are compared here, not the degraded disclosures below: an ``inf`` hole should gate,
+    # and a hand-built window carrying a ``nan`` Δt simply fails the comparison and is NOT gated
+    # — the fail-open direction, since the spectral pair's own guards still apply.
+    gapped = nominal_dt is not None and max_gap is not None and max_gap > limit * nominal_dt
 
     # doc21:306 — low-pass BEFORE the metrics differentiate/transform. ``mean_speed``/``max_speed``
     # stay raw: they describe the window that was measured, not the one that was analysed.
@@ -783,10 +850,16 @@ def smoothness_stats(
         # doc21 §17 ④ (#632 B3): no cap ⇒ no source. Reporting "config" beside a ``None``
         # denominator would describe where a number that does not exist came from.
         speed_cap_source=(speed_cap_source if speed_cap is not None else None),
-        # doc21 §17 ④ (#632 B2): the continuity evidence, disclosed whether or not it gated.
-        median_dt_s=median_dt,
-        max_gap_s=max_gap,
-        gap_ratio_limit=gap_ratio_limit,
+        # doc21 §17 ④ (#632 B2): the continuity evidence, disclosed whether or not it gated —
+        # degraded to ``None`` when it is not a real number, so one ``inf`` Δt cannot take the
+        # whole report down at ``json.dumps(..., allow_nan=False)`` (the gate above read the raw
+        # values, so nothing is weakened).
+        nominal_dt_s=_finite_or_none(nominal_dt),
+        max_gap_s=_finite_or_none(max_gap),
+        # The SANITISED limit — what was actually applied, never the caller's raw argument.
+        gap_ratio_limit=limit,
+        # …and the verdict, so a ``None`` spectral pair is attributable.
+        spectral_gated=gapped,
     )
 
 
@@ -843,13 +916,17 @@ class RunMotionStats:
     of the process while odom keeps flowing. ``rejected`` (doc21 §17 ④ / #632 B4) counts those
     refusals — the accumulator's own plus :meth:`MotionAccumulator.add`'s non-finite ``x``/``y``
     pre-guard, as one number — so the freeze is read off **two consecutive reports**: ``samples``
-    flat while ``rejected`` climbs = the stamps went backwards; both flat = the robot simply went
+    flat while ``rejected`` climbs = **this robot's samples are being refused**. The counter names
+    the *symptom*, not the cause: a stamp source that stopped advancing (sim/clock reset, bag
+    restart) and a pose that went non-finite (a diverged estimator) produce the identical
+    signature, because both refusal classes are merged into this one number; distinguishing them
+    needs the node's log, or a split counter (follow-up). Both counts flat = the robot simply went
     quiet. The receipt rule is **unchanged**: nothing is re-seeded and no stamp is forgiven, since
     trusting a reset clock would splice two runs into one integral. Monotone, and reported even
     for a 0-sample robot (that is the fully-broken case, and the one worth seeing).
     ``max_gap_s`` is the run-scope half of the same disclosure (#632 B2): the longest interval
     between two accepted samples, which is what ``integral_abs_speed`` integrated straight
-    through. Unlike the window there is **no run-scope gate** — the run has no ``median_dt`` to
+    through. Unlike the window there is **no run-scope gate** — the run has no nominal period to
     judge it against (an O(1) accumulator keeps no Δt distribution, and a run-long mean period is
     not the nominal one), so the run discloses the gap and leaves the reading to the consumer,
     while the window — which owns the two metrics that assume uniform spacing — is the scope that

@@ -538,12 +538,12 @@ class SeriesTotals:
     * ``rejected`` — how many :meth:`TimeSeriesAccumulator.add` calls this label *refused*
       (non-finite or non-advancing), accumulated since the accumulator was created. A label that
       only ever rejected is still reported, with ``samples = 0``: that is the one observation
-      which distinguishes "this stream stopped" from "this stream's stamps stopped advancing"
+      which distinguishes "this stream stopped" from "this stream's points are being refused"
       (a sim/clock reset freezes every later point out of the totals silently). Monotone, and
-      deliberately **excluded from equality**: this type describes the *accepted* series, so two
-      snapshots with identical totals describe the same measurement no matter how much was
-      dropped on the way — and an equality assertion about the totals must keep meaning "the
-      refusals left every total untouched".
+      an **ordinary compared field**: a frozen stream and a healthy one can carry identical
+      totals and differ only here, which is exactly the case this counter exists for, so two such
+      snapshots must not compare (or hash) equal. An assertion that "the refusals left every
+      total untouched" spells the expected count out instead.
     * ``max_gap`` — the largest spacing between two consecutive accepted points, ``None`` until
       two exist. The raw material for a caller-side "was this series interrupted" test; what
       counts as *too* large a gap is the caller's threshold, never one of this module's.
@@ -557,7 +557,7 @@ class SeriesTotals:
     integral: float
     t_first: float | None
     t_last: float | None
-    rejected: int = field(default=0, compare=False)
+    rejected: int = 0
     max_gap: float | None = None
 
 

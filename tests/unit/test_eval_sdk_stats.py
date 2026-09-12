@@ -606,19 +606,19 @@ def test_time_series_accumulator_rejects_non_advancing_and_non_finite_points() -
     assert acc.add("a", math.inf, 1.0) is False
     assert acc.add("a", 2.0, math.nan) is False
     assert acc.add("a", 2.0, math.inf) is False
+    # ``rejected`` is an ORDINARY compared field (#632 review), so the expected count is spelled
+    # out here rather than excused by ``compare=False``: the assertion still says "the refusals
+    # moved no total", and it now also says how many there were.
     assert acc.totals()["a"] == SeriesTotals(
-        samples=1, at_or_below=0, integral=0.0, t_first=1.0, t_last=1.0
+        samples=1, at_or_below=0, integral=0.0, t_first=1.0, t_last=1.0, rejected=6
     )
-    # …which is exactly what this equality still says: ``rejected`` is excluded from ``__eq__``
-    # (it describes what never entered the series), so the assertion above keeps meaning "the
-    # refusals moved no total" while the count itself is asserted separately (#632 B4).
     assert acc.totals()["a"].rejected == 6
     # A label whose FIRST point was rejected reports itself with ``samples = 0`` (doc21 §17 ④ /
     # #632 B4). Before that counter it was simply absent — indistinguishable from a stream that
     # never spoke, which is the failure mode worth seeing.
     assert acc.add("b", math.nan, 0.0) is False
     assert acc.totals()["b"] == SeriesTotals(
-        samples=0, at_or_below=0, integral=0.0, t_first=None, t_last=None
+        samples=0, at_or_below=0, integral=0.0, t_first=None, t_last=None, rejected=1
     )
     assert acc.totals()["b"].rejected == 1
 
@@ -701,6 +701,12 @@ def test_max_gap_is_the_largest_spacing_not_the_latest_one() -> None:
     single = TimeSeriesAccumulator()
     single.add("b", 5.0, 1.0)
     assert single.totals()["b"].max_gap is None
+    # The FIRST spacing counts too: stamps 0, 0.9, 1.0, 1.1 put the widest hole at the leading
+    # edge, so a running max that only opens on the third point (``samples > 2``) reports 0.1.
+    leading = TimeSeriesAccumulator()
+    for t in (0.0, 0.9, 1.0, 1.1):
+        assert leading.add("c", t, 1.0) is True
+    assert leading.totals()["c"].max_gap == pytest.approx(0.9)
 
 
 @pytest.mark.unit
@@ -723,6 +729,46 @@ def test_rejected_counts_every_refusal_and_is_never_reset_by_a_later_success() -
     assert acc.totals()["b"].rejected == 0  # counted per label
     acc.clear()
     assert acc.totals() == {}  # a reset drops the counts with the totals it describes
+
+
+@pytest.mark.unit
+def test_two_snapshots_differing_only_in_rejected_are_not_equal() -> None:
+    """``rejected`` participates in ``__eq__`` **and** ``__hash__`` (#632 review).
+
+    The case the counter exists for is precisely a stream whose totals froze: it carries the same
+    ``samples``/``integral``/bounds as a healthy one and differs **only** here, so "equal" would
+    be the report saying those two are the same measurement. A ``compare=False`` on the field
+    makes both assertions below pass vacuously, which is the mutation this pins.
+    """
+    frozen = SeriesTotals(samples=5, at_or_below=1, integral=2.0, t_first=0.0, t_last=4.0)
+    climbing = SeriesTotals(
+        samples=5, at_or_below=1, integral=2.0, t_first=0.0, t_last=4.0, rejected=1
+    )
+    assert frozen != climbing
+    assert hash(frozen) != hash(climbing)
+    # …and two snapshots that agree on everything, refusals included, still compare equal.
+    assert frozen == SeriesTotals(samples=5, at_or_below=1, integral=2.0, t_first=0.0, t_last=4.0)
+
+
+@pytest.mark.unit
+def test_rejected_is_counted_against_the_refusing_label_only() -> None:
+    """Per-label isolation with a healthy label opened FIRST — the ordering that kills a leak.
+
+    ``b`` is accepted before ``a`` ever speaks, so a counter kept per accumulator (or attributed
+    to "the most recently seen label") would charge ``a``'s three refusals to ``b``. Opening the
+    noisy label first hides that mutation, which is why ``b`` goes first here.
+    """
+    acc = TimeSeriesAccumulator(1.0)
+    assert acc.add("b", 0.0, 0.0) is True
+    assert acc.add("b", 1.0, 0.0) is True
+    assert acc.add("a", math.nan, 0.0) is False
+    assert acc.add("a", 0.0, math.inf) is False
+    assert acc.add("a", 2.0, 0.0) is True
+    assert acc.add("a", 2.0, 0.0) is False  # duplicate stamp
+    totals = acc.totals()
+    assert totals["a"].rejected == 3
+    assert totals["b"].rejected == 0
+    assert (totals["b"].samples, totals["a"].samples) == (2, 1)
 
 
 @pytest.mark.unit
