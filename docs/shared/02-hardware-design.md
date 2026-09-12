@@ -368,7 +368,7 @@ RPLiDAR A2（+10,000円）: 精度・回転速度が向上。予備費からの�
 | C-5 | 横速度 `linear.y` | `ws/src` / `firmware` に**実装 0 件**（grep 一致なし・テスト除く） | twist_mux → collision_monitor → ドライバを縦断で新規実装 | L0'–L2 |
 | C-6 | 駆動モデル | `nav2_params.yaml:52` `DifferentialMotionModel` / `:124` `vy_max: 0.0` / `:134` `motion_model: "DiffDrive"` | AMCL Omni / `vy_max > 0` / `motion_model: "Omni"` | L2 |
 | C-7 | sim プラグイン | Gazebo `diff_drive` | メカナム相当へ差し替え | L2 |
-| C-8 | **ベクトル速度クランプ** | `ws/src/warehouse_interfaces/warehouse_interfaces/safety.py:26-34` `clamp_velocity()` は**スカラー1軸** | **(vx, vy) の大きさ**でクランプする関数を追加（**【2026-08-17】L0' driver 側 `clamp.py:127` の hypot 実装で landed＝interfaces 無編集**） | L0' / L1 |
+| C-8 | **ベクトル速度クランプ** | `ws/src/warehouse_interfaces/warehouse_interfaces/safety.py:25-33` `clamp_velocity()` は**スカラー1軸** | **(vx, vy) の大きさ**でクランプする関数を追加（**【2026-08-17】L0' driver 側 `clamp.py:127` の hypot 実装で landed＝interfaces 無編集**） | L0' / L1 |
 
 > **C-8 は omni 化の前提条件であり、後回しにできない。** `vy ≠ 0` を許した状態で各軸を独立に 0.3 m/s クランプすると、対角合成が √(0.3² + 0.3²) = **0.424 m/s** となり `.claude/rules/safety.md` の 0.3 m/s ハードキャップを **41% 超過**する。C-5 と C-8 は同一 PR で入れること。R-26（独立オラクル・mutation で赤くなること）の対象（[20-dev-quality-and-testing.md](../architecture/20-dev-quality-and-testing.md) §9）。
 
