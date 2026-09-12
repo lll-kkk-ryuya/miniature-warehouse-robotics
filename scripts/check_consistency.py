@@ -585,7 +585,13 @@ def check_cross_doc_line_refs(src: Sources, only) -> list[Finding]:
 #    risk capturing the ``12`` of a doc number / the ``18`` of a ``safety.py:18`` line pin.
 #  - the number must carry a decimal point or an exponent (``0.3`` / ``0.010`` / ``1e-2``) for
 #    the same reason; a bare integer next to the name is not asserted to be the value.
+#  - a name of which the constant is only a SUFFIX — the left lookbehind exists so the env
+#    override ``WAREHOUSE__SAFETY__MAX_LINEAR_VELOCITY=0.25`` (shape: config.py:25) is NOT a
+#    finding: config LOWERS the cap by design (``0 < cap <= hard cap``), so such a line is a
+#    correct example, not drift. Do not drop the lookbehind (#652 review).
 # Narrow-FN by design — the same stance as A1/B4 (docs/dev/04-consistency-system.md §5).
+# Every occurrence of every form on a line is compared (not just the first): a line may re-type
+# the constant twice (``… = 0.3 …、M1 では … = 0.7 へ``) and the WRONG copy must still red.
 #
 # Defined at the END of the check section (not beside A1/A2) so the +N lines do not drift the
 # ``scripts/check_consistency.py:NNN`` pins that .claude/rules/status-maintenance.md holds into
@@ -599,20 +605,16 @@ def _const_copy_findings(
     const: str, want: float, rule: str, extra_pats, source_ref: str, only
 ) -> list[Finding]:
     """ERROR on every doc line that re-types ``const`` with a value != the frozen one."""
-    pats = [re.compile(re.escape(const) + _SAFETY_GAP + "(" + _SAFETY_NUM + ")"), *extra_pats]
+    pats = [
+        re.compile(r"(?<![A-Za-z0-9_])" + re.escape(const) + _SAFETY_GAP + "(" + _SAFETY_NUM + ")"),
+        *extra_pats,
+    ]
     out: list[Finding] = []
     for rel, ln, line in _iter_doc_lines(only):
         if _NEGATION.search(line):
             continue
-        for pat in pats:
-            m = pat.search(line)
-            if not m:
-                continue
-            try:
-                got = float(m.group(1))
-            except ValueError:  # unparseable → the line asserts no number; say nothing
-                break
-            if abs(got - want) > 1e-9:
+        for _pat, m in ((p, mm) for p in pats for mm in p.finditer(line)):
+            if abs(float(m.group(1)) - want) > 1e-9:
                 out.append(
                     Finding(
                         ERROR,
@@ -623,7 +625,7 @@ def _const_copy_findings(
                         f"({source_ref}) — docs を凍結契約に合わせる（凍結定数側は変えない）.",
                     )
                 )
-            break  # one finding per line (first matching form wins)
+                break  # one finding per line (first MISMATCHING occurrence wins)
     return out
 
 

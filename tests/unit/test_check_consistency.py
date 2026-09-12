@@ -282,6 +282,10 @@ def test_new_checks_are_registered():
         "通路帯は 0.15 m/s、狭所は 0.05 m/s",  # other speeds entirely
         "`MAX_LINEAR_VELOCITY` は safety.py:18 が正本",  # name, no number next to it
         "`min(帯値, MAX_LINEAR_VELOCITY)`）②`0.0`・非有限は停止",  # number of ANOTHER clause
+        # the constant is only a SUFFIX of the env-override name → NOT a copy of the cap.
+        # config LOWERS the cap by design (0 < cap <= hard cap), so a documented override
+        # asserting a DIFFERENT value is a correct example, not drift (shape: config.py:25).
+        "`WAREHOUSE__SAFETY__MAX_LINEAR_VELOCITY=0.25` で運用値を下げる",
         # negation-guarded prose (explaining an old value) → skipped like A1/A2
         "旧 `MAX_LINEAR_VELOCITY = 0.25` は誤り",
     ],
@@ -374,6 +378,24 @@ def test_one_finding_per_line_even_with_two_forms(tmp_path, monkeypatch):
     assert len(cc.check_idle_speed_eps(_src(), None)) == 1
 
 
+def test_a_second_copy_on_the_same_line_is_still_compared(tmp_path, monkeypatch):
+    """A line may re-type the constant twice — a RIGHT copy must not hide a WRONG one.
+
+    Contract: the line asserts both 0.3 (== frozen, silent) and 0.7 (!= frozen, ERROR).
+    Comparing only the first occurrence would let a cap revision land silently.
+    """
+    _write_doc(
+        tmp_path,
+        monkeypatch,
+        "ハード cap は `MAX_LINEAR_VELOCITY = 0.3 m/s`、M1 では `MAX_LINEAR_VELOCITY = 0.7 m/s` へ",
+    )
+    findings = cc.check_speed_cap(_src(), None)
+
+    assert len(findings) == 1  # still one finding per line
+    assert findings[0].level == cc.ERROR
+    assert "0.7" in findings[0].message  # the MISMATCHING copy, not the matching one
+
+
 def test_only_filter_limits_the_scan(tmp_path, monkeypatch):
     """`only` (per-file hook / pre-commit mode) must scope BOTH checks to the listed files."""
     clean = _write_doc(tmp_path, monkeypatch, "`MAX_LINEAR_VELOCITY = 0.3 m/s`", name="12-a.md")
@@ -386,10 +408,14 @@ def test_only_filter_limits_the_scan(tmp_path, monkeypatch):
 
 def test_checks_are_not_no_ops_on_the_live_corpus():
     """Guard against a silently non-matching regex: asking with a WRONG frozen value must
-    light up the real docs sites that DO name each constant (18 / 3 at the time of #652)."""
+    light up the real docs sites that DO name each constant (19 / 4 at the time of #652)."""
     cap_hits = cc._const_copy_findings("MAX_LINEAR_VELOCITY", -1.0, "A3", (), "x", None)
     eps_hits = cc._const_copy_findings(
         "IDLE_SPEED_EPS", -1.0, "A4", (cc._EPS_SYMBOL_PAT,), "x", None
     )
-    assert len(cap_hits) >= 5
-    assert len(eps_hits) >= 1
+    stopped = (
+        "{} regex stopped matching the live docs corpus (or the {} sites were rewritten) "
+        "— re-measure and update this floor"
+    )
+    assert len(cap_hits) >= 5, stopped.format("A3", "cap")
+    assert len(eps_hits) >= 3, stopped.format("A4", "ε")

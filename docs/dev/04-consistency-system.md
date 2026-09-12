@@ -27,7 +27,7 @@ check_consistency.py ─┤
 - **純 stdlib**（`ast` + `re` + `git`）。pydantic/ROS/pyyaml を import せず、**ゼロインストールでどこでも高速**（pre-commit/hook 友好）。
 - 単一ソースを **AST で読む**（複製しない）: `safety.py`（0.3 / 10 / 20）・`robot_dimensions.py`（`ROBOT_RADIUS=0.075`）・`locations.py`（`KNOWN_LOCATIONS` 9キー）・`config/warehouse.base.yaml`。
 - **重大度の精度設計**:
-  - **ERROR**（CI 赤）= 明白なドリフト: `A1` ROBOT_RADIUS 不一致 / `B1` config↔KNOWN_LOCATIONS 不一致 / `B2` 型表で `/llm/*`・`/wo/mission` が「カスタム」（doc16 §3 で `std_msgs/String` 確定）/ `B3` 旧 `laser` 系のセンサーフレーム名（凍結は `lidar_link`）/ `C1` STATUS が origin/main に**無い** SHA を固定。
+  - **ERROR**（CI 赤）= 明白なドリフト: `A1` ROBOT_RADIUS 不一致 / `B1` config↔KNOWN_LOCATIONS 不一致 / `B2` 型表で `/llm/*`・`/wo/mission` が「カスタム」（doc16 §3 で `std_msgs/String` 確定）/ `B3` 旧 `laser` 系のセンサーフレーム名（凍結は `lidar_link`）/ `C1` STATUS が origin/main に**無い** SHA を固定。 / `A3` MAX_LINEAR_VELOCITY 数値コピー / `A4` IDLE_SPEED_EPS 数値コピー（本節末「追加 check」）
   - **WARN**（surface のみ・CI 緑）= 要レビュー: `A2` battery 境界 `<`/`<=`（緊急停止文言で意図的な可能性・別トラック所有）/ `C1` STATUS SHA が**古い祖先**（次回 STATUS 更新で追従）/ `B4` cross-file `docNN:LINE`・`<path>.md:LINE` 参照の drift（参照先が EOF 超過／空行／表区切り／水平線＝アンカー喪失。#165 クラス。参照元の所有トラックが re-pin、bulk 自動修正しない §7.1）。
 - **誤検知ガード**: `矛盾/誤り/旧/conflict/deprecated/~~` を含む説明行は除外。`B2` は**テーブル行限定**（doc16 §3 の解決文＝散文は除外）。
 - 使い方:
@@ -51,7 +51,7 @@ check_consistency.py ─┤
 
 - 比較は**数値**（float 解釈）で行う。`0.010` / `1e-2` のような表記ゆれは**同値として素通し**、`0.02` のような値違いのみ ERROR。
 - ERROR 文言は **「docs を凍結契約に合わせる（凍結定数側は変えない）」** を明示する（[docs-first.md](../../.claude/rules/docs-first.md) / [consistency-check.md](../../.claude/rules/consistency-check.md)＝真実は凍結契約、docs が追従する）。
-- 由来: `Sources` は両定数を **load していたのに CHECKS に無く**、ε を `0.02` にしても docs 側 19 箇所が `0.01` を主張したまま緑だった（#649 レビュー指摘 → #652）。本ブランチの full-scan では **A3=19 箇所・A4=4 箇所**（本節の表を含む）がすべて一致＝ERROR 0。
+- 由来: `Sources` は両定数を **load していたのに CHECKS に無く**、ε を `0.02` にしても docs 側 19 箇所が `0.01` を主張したまま緑だった（#649 レビュー指摘 → #652）。本ブランチの full-scan では **A3=19 箇所・A4=4 箇所（`_NEGATION` により 2 箇所は別途スキップ）**（本節の表を含む）がすべて一致＝ERROR 0。
 
 ## 3. モデル判定 `/consistency-audit` skill
 
@@ -99,7 +99,7 @@ check_consistency.py ─┤
 - 現状 main で出る WARN（STATUS SHA ×2）は本 PR では**修正せず surface**（鮮度は次回 STATUS 更新で追従）。※ battery 境界 ×5 は #90 で解消済（doc 群を凍結 `safety.battery_is_critical` の `≤ 10%` に整合）。
 - **堅牢性**: checker 自身が落ちても（非UTF8・ソース欠落・定数が非リテラル式）traceback で全PRをブロックせず、`Z0-self-error` の **ERROR finding** として可視化する（`read_text(errors="replace")` + `main()` の try/except）。意味的監査は `/consistency-audit` skill 側へ。
 - **既知の検出限界（narrow FN・surface 言語が日本語前提の運用で許容）**: ①B1 config パーサは2スペース・top-level `locations:` 前提（4スペース/タブ/ネストにすると無音 no-op）。②引用ブロック内のテーブル行（`> | ... |`）は B2 が拾わない。③`_NEGATION` 除外は日本語中心（英語の "not/old" 等は未対応）。④A1 は `ROBOT_RADIUS`〔=/は/:〕値 の語形のみ（"robot radius is 0.1" のような定数名なし表現は拾わない）。新しい語形のドリフトが出たら該当 check を拡張する。
-- **`A3`/`A4` の既知の限界（#652・意図的に狭い）**: ①**定数名の無い裸の `0.3 m/s` は対象外**。docs には `0.3 m/s` 系の記述が 138 箇所あるが大半は**別の速度**（通路帯 0.15 / 0.2 m/s 等）で、どれが cap を指すかは判定＝`/consistency-audit` 側の仕事。機械側で推測すると誤検知で gate を壊す。②**`ε=<数値>` は単位 `m/s` 付きのみ**。ε はこの repo で多義（[doc23](../architecture/23-perception-and-localization.md) は robot_localization の covariance 置換 `ε=1e-6` に使う）ため、単位が曖昧性を解く条件。③定数名と数値の**間に入れるのは非単語文字（＋`float`）のみ**。「`IDLE_SPEED_EPS` は doc12 §4 の 0.01」のような散文は skip する（`doc12` の `12`・`safety.py:18` の `18` を値と誤読しないため）。④数値は**小数点か指数が必須**（`0.3` / `0.010` / `1e-2`）。名前の隣の裸の整数は値の主張と見なさない（同じ行 pin 誤読の回避）。いずれも既存方針と同じ **narrow-FN 許容**。
+- **`A3`/`A4` の既知の限界（#652・意図的に狭い）**: ①**定数名の無い裸の `0.3 m/s` は対象外**。docs には `0.3 m/s` 系の記述が 138 箇所あるが大半は**別の速度**（通路帯 0.15 / 0.2 m/s 等）で、どれが cap を指すかは判定＝`/consistency-audit` 側の仕事。機械側で推測すると誤検知で gate を壊す。②**`ε=<数値>` は単位 `m/s` 付きのみ**。ε はこの repo で多義（[doc23](../architecture/23-perception-and-localization.md) は robot_localization の covariance 置換 `ε=1e-6` に使う）ため、単位が曖昧性を解く条件。③定数名と数値の**間に入れるのは非単語文字（＋`float`）のみ**。「`IDLE_SPEED_EPS` は doc12 §4 の 0.01」のような散文は skip する（`doc12` の `12`・`safety.py:18` の `18` を値と誤読しないため）。④数値は**小数点か指数が必須**（`0.3` / `0.010` / `1e-2`）。名前の隣の裸の整数は値の主張と見なさない（同じ行 pin 誤読の回避）。⑤**`_NEGATION`（`旧`/`従来`/`矛盾`/`誤り` 等）を含む行は A1/A2 同様スキップ**＝現行値を主張していても同一行に `旧` 等があると無検査（本ツリーでは [STATUS.md:88](../STATUS.md) と [doc21:469](../architecture/21-eval-sdk-extraction.md) の 2 箇所＝ε の実効被覆は 6 中 4）。⑥**数値が定数名より前にある形**（`0.3 m/s（MAX_LINEAR_VELOCITY）`）は対象外（[mode-x-er/10:251](../mode-x-er/10-room-scale-safety-review.md)・[jetson/03:258](../jetson/03-build-deploy-run-and-run-records.md)）。⑦**走査範囲は `docs/**/*.md` のみ**＝`ws/src/*/CLAUDE.md` の定数コピー（6 ファイル・8 行・例 `ws/src/warehouse_interfaces/CLAUDE.md:13`）は対象外（`check_battery_thresholds` 踏襲）。⑧**code fence 内も走査する**（先例どおり）ため、旧値を引用する diff/履歴ブロックは `旧`/`従来` を同一行に置いて記述する（[ADR-0010](../adr/0010-raise-speed-cap-to-platform-max.md) 冒頭のような「前提値」記述も同様＝cap 改定時は数値を書き換えず `旧` で修飾する）。いずれも既存方針と同じ **narrow-FN 許容**。
 
 ## References
 - 公式: [hooks](https://code.claude.com/docs/en/hooks) / [hooks-guide](https://code.claude.com/docs/en/hooks-guide) / [skills](https://code.claude.com/docs/en/skills) / [sub-agents](https://code.claude.com/docs/en/sub-agents) / [memory](https://code.claude.com/docs/en/memory) / [settings](https://code.claude.com/docs/en/settings)
