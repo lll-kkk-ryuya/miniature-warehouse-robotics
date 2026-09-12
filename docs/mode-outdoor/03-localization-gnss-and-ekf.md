@@ -44,14 +44,14 @@ AMCL 直購読の Guardian pose 鮮度 guard（[23 §5-3 blocker ①](../archite
 | vyaw | ○ | ○ | × | × |
 
 - local EKF ＝ 室内構成の**そのまま**。global EKF ＝ local と同じ 3 入力 ＋ `odometry/gps`。
-- **N−1 differential ルール**（[23 B-4](../architecture/23-perception-and-localization.md:477)）の屋外適用: global EKF の絶対姿勢ソースが MOLA-LO と GNSS の 2 本になる → どちらか 1 本を `differential: true`。**推奨は MOLA-LO を differential 化**（GNSS が絶対原点の唯一の権威）[I]（`OQ-OD35`）。local 側は 1 本のままなので `differential: false` 維持。
+- **N−1 differential ルール**（[23 B-4](../architecture/23-perception-and-localization.md:477)）の屋外適用: global EKF の絶対姿勢ソースが MOLA-LO と GNSS の 2 本になる → どちらか 1 本を `differential: true`。**推奨は MOLA-LO を differential 化**（GNSS が絶対原点の唯一の権威）[I]（`OQ-OD35`）。**robot_localization 公式は「`navsat_transform_node` 経由の GPS は `_differential: false`」と明示**し、N−1 は目安で「共分散を十分大きくする」代替も併記する（`differential` は位置と姿勢の両方を差分化）[D]（[08 §4 #5](08-architecture-v2-reference-alignment.md))。local 側は 1 本のままなので `differential: false` 維持。
 - ジャンプの防御は differential ではなく `odomN_pose_rejection_threshold`（Mahalanobis）＝[23 B-4 anti-pattern](../architecture/23-perception-and-localization.md:480) を屋外でも守る。
 
 ### 2-3. `navsat_transform_node` の主要パラメータ（robot_localization humble-devel・[L]）
 
 | パラメータ | 屋外推奨 | 注記 |
 |---|---|---|
-| `datum: [lat, lon, yaw]` + `wait_for_datum: true` | **config 固定** | 起動ごとに原点が動かない（本 doc の要求）。route ファイル（§3-2）と**単一ソース** |
+| `datum: [lat, lon, yaw]` + `wait_for_datum: true` | **config 固定** | 起動ごとに原点が動かない（本 doc の要求）。route ファイル（§3-2）と**単一ソース**。**`datum` は `wait_for_datum: true` のときだけ宣言される**（単独指定は無効）[D]。レバーアームは NavSatFix の `frame_id` の TF で自動補正されるため **`gnss_link` = NavSatFix `frame_id` を一致させる**（一致しないと補正が無言で効かない）[D]（[08 §4 #6](08-architecture-v2-reference-alignment.md)） |
 | `use_local_cartesian` | **true 推奨** | UTM zone 跨ぎ・歪みを避け、局所 ENU 原点を使う（`OQ-OD34`） |
 | `broadcast_cartesian_transform` | **false** | TF 単一所有（§2-1）。旧名 `broadcast_utm_transform` は非推奨警告つきで受理 |
 | `zero_altitude` | true | `two_d_mode` と整合 |
@@ -77,8 +77,9 @@ Humble での可用性: `robot_localization` / `ublox` / `ntrip_client` / `rtcm_
 | A | L1 bridge（走行時に `fromLL` を毎回呼ぶ） | Nav2 公式 `FollowGPSWaypoints` と同形 | 安全経路に外部サービス依存を増やす。`navsat_transform` 未 ready で goal が落ちる。bridge は REST 応答と rclpy timer が同一 backend を共有（[nav2_bridge.py:18](../../ws/src/warehouse_nav2_bridge/warehouse_nav2_bridge/nav2_bridge.py:18) の注記）[D] | △ |
 | **B** | **L3 compile 段（teach 時に一度だけ lat/lon → map へ変換し、経路ファイルに x,y を焼く）** | `datum` 固定なら変換は**決定論的**。既存の座標 goal seam に**そのまま**乗る。R-26 unit でオラクル可能 | `datum` 変更時に再 compile（＝再現性としては利点） | **◎ 推奨** [I] |
 | C | B ＋ 起動時に `toLL` で逆変換照合 | datum ドリフトを起動時に検出 | 実装量 | ○（B の検証） |
+| **D** | **Nav2 Route Server（`nav2_route` 1.1.20・humble backport #5359）**に経路網（node/edge・route operations）を持たせ、B の compile 出力を graph ファイルにする | 経路網・区間イベント（横断・狭路）が標準機能。Waypoint Follower より固定経路に向く | Humble backport の成熟度・`nav2_bridge` seam との接続が未検証 | ○（`OQ-OD3D` / [08 §3-1](08-architecture-v2-reference-alignment.md)） |
 
-固定経路（teach-and-repeat）ゆえ走行時に緯度経度を解決する必要が構造的に無い。**裁定は `OQ-OD33`**。
+固定経路（teach-and-repeat）ゆえ走行時に緯度経度を解決する必要が構造的に無い。**裁定は `OQ-OD33`**（B か B+D か）。**外部レビューの「Route Server は Humble に無い」は誤り**（index.ros.org で humble 1.1.20 released・[08 §4 #4](08-architecture-v2-reference-alignment.md)）。
 
 ### 3-3. teach-and-repeat 経路ファイル（additive 提案・未凍結）
 
@@ -226,6 +227,7 @@ waypoint 間隔 vs rolling global costmap: 一辺 `W` の costmap 外に goal �
 - `OQ-OD3A` `nav2_bridge` の goal seam に yaw を通す additive 拡張を屋外の前提条件にするか。
 - `OQ-OD3B` rolling global costmap の一辺 `W` と waypoint 間隔（暫定 ≤ W/3）・`resolution`（0.01 → 0.05）・`track_unknown_space` の扱い。
 - `OQ-OD3C` 経路上の fix 維持率（urban canyon）の事前走査と、float 区間の帯付け。
+- `OQ-OD3D` Nav2 Route Server（humble 1.1.20）を経路正本に採るか（§3-2 案 D・[08 §7 OQ-OD81](08-architecture-v2-reference-alignment.md) と同一）。
 
 ## References
 

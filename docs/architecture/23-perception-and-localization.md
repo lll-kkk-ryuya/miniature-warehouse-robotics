@@ -70,7 +70,7 @@ Nav2 (per-bot, namespace /bot{n})
 |---|---|---|
 | **Voxel Layer** | **不採用**（retreat plan として保持） | nvblox と同機能の CPU 版。両方載せると同一 depth から 2 系統の 3D 表現＝8GB ユニファイドメモリ（[06:100](06-implementation-phases.md)）の二重消費・チューニング面が倍。**nvblox が S1 で落ちた場合の縮退先**としてのみ採用する |
 | **SmacPlannerHybrid** | **不採用** | 非ホロノミック曲率制約のプランナ。M1 はメカナムでその場回転可能＝曲率制約が本質でない。`tolerance`/`xy_goal_tolerance` の協調（`nav2_params.yaml:100-110,301-304`）は #125/#67 の live 実証値であり、プランナ交換はこれを壊す。**nvblox 統合とプランナ交換は独立の決定＝同一スライスで混ぜない** |
-| **Local Costmap の Static Layer** | 不採用 | rolling window に static は無意味（CURRENT も持たない） |
+| **Local Costmap の Static Layer** | 不採用 | Static（設計上の既知構造）の座は Global が持ち、Local は観測層に徹する＝CURRENT も持たない。**旧記述「rolling window に static は無意味」は誤り**（Humble の `static_layer.cpp` は rolling でも TF でセル毎に投影する）＝末尾追補 2026-09-12② |
 | **nvblox dynamic 層** | **不採用** | dynamic 分離は people segmentation マスク前提（**要外部裏取り**）。ジオラマに人はいない。動く物体＝相手ロボットは既存 **VirtualScan 契約**（[12:547](12-infrastructure-common.md) dual-consumer）が担当し depth 観測より正確。static TSDF only ＝ segmentation モデル分の GPU メモリを丸ごと節約（S1 に直接効く） |
 
 **Static Layer と Nvblox Layer の役割分離**: Static = 設計上の既知構造（周壁・棚・隘路壁。decay しない）／Nvblox = 観測された 3D 障害物の 2D 投影（LiDAR 面に映らない棚の張り出し・低い荷物・段差＝[02 §決定（2026-08-05: Superior 版 + HP60C 要件化）](../shared/02-hardware-design.md) が要件化済み。観測で消える）。混ぜると「既知の壁が観測されないから消える」事故が起きる。`track_unknown_space: true`（`nav2_params.yaml:258`）下で Nvblox Layer が未観測領域を `NO_INFORMATION` で塗ると Static の FREE を潰しうるため、**Nvblox Layer は marking 方向のみ（cost を上げる方向にのみ寄与）を既定**とする（plugin 実装の `updateCosts` が overwrite か max かは要外部裏取り＝§8 OQ-8）。
@@ -475,7 +475,7 @@ cuVSLAM は本プロジェクトの現行ハード＋現行 distro pin では成
 **初期構成は3入力とも `differential: false` / `relative: false`。**
 
 - 根拠: 公式ルール「絶対姿勢ソースが N 本なら N−1 本を differential に」。B-3 の割当（IMU=vyaw のみ）では**絶対姿勢ソースは MOLA 1本** → differential 不要。
-- **切替条件（凍結）**: 将来 IMU の絶対 yaw を融合する場合、**同一 PR で MOLA を `differential: true` に切替**える（N−1 ルール）。
+- **切替条件（rule of thumb・2026-09-12 に「凍結」から緩和）**: 将来 IMU の絶対 yaw を融合する場合、**同一 PR で MOLA を `differential: true` に切替**える（N−1 は公式の目安。**共分散を十分大きくして振動を抑える選択肢も公式に併記**され、`differential` は当該入力の**位置と姿勢の両方**を差分化する＝末尾追補 2026-09-12②）。
 - relative 不要の根拠: MOLA は既存 map 無し起動で **identity (0,0,0) から開始**（公式仕様）＝EKF と同時起動すれば odom 原点と一致する。旧 blocker ②（起動時原点ズレ）はこの構成では発生しない。
 - **anti-pattern**: differential でジャンプ（loop closure / 再初期化）を「隠す」のは誤り（Δpose/Δt が巨大速度 measurement になる）。正しい防御は `odom1_pose_rejection_threshold`（Mahalanobis ゲート）。
 - **edge case（→ B-10 OQ）**: MOLA だけを実行中に再起動すると原点が現在位置にリセットされ pose が跳ぶ。rejection threshold で吸収するか EKF 併再起動とするかは実装時判断。
@@ -795,3 +795,13 @@ G-8（C-3 = 部屋運用の前提条件）・G-10（Spin recovery の発火条�
 - **原則 P1（[:37](23-perception-and-localization.md:37)）・P2（[:41](23-perception-and-localization.md:41)）は屋外でも不変**。屋外知覚（歩道走行可能領域・負障害物・歩行者用信号）は costmap 層と L4 producer に閉じる（[mode-outdoor/04](../mode-outdoor/04-perception-sidewalk-and-signals.md)）。HP60C（構造化光）は屋外の主センサにしない（S2 の射程は室内）。
 - Nav2 の `FollowGPSWaypoints` は **Iron 以降**のため Humble（[ADR-0008](../adr/0008-ros2-distro-humble-for-rosmaster-m1.md)）では `fromLL` + 既存座標 goal で代替する（[mode-outdoor/03 §3](../mode-outdoor/03-localization-gnss-and-ekf.md)）。
 - 用語: [GLOSSARY §12](../GLOSSARY.md)（Mode Outdoor・GNSS 品質ゲート・ジオフェンス）。
+
+## 【2026-09-12 追補②】外部レビュー照合による 3 点の訂正（Local Static Layer の理由・cuVSLAM blocker の性質・differential の「凍結」）
+
+外部設計レビュー（2026-09-12）の指摘を一次情報で照合した結果（正本 = [mode-outdoor/08 §4](../mode-outdoor/08-architecture-v2-reference-alignment.md)）、本 doc の 3 記述を**同一行内で訂正**した（行番号は動かさない・[#165 教訓](../dev/03-retrospectives.md)）:
+
+1. **§2 表「Local Costmap の Static Layer」の理由**（[:73](23-perception-and-localization.md:73)）: 「rolling window に static は無意味」は**誤り**。Nav2 Humble の `nav2_costmap_2d/plugins/static_layer.cpp` は rolling window 時に `lookupTransform(map_frame_, global_frame_)` でセル毎に地図を投影し、`updateBounds` の早期 return は非 rolling に限定される（<https://github.com/ros-navigation/navigation2/blob/humble/nav2_costmap_2d/plugins/static_layer.cpp>・参照日 2026-09-12）。結論「採らない」は維持し、理由を「Static の座は Global が持つ・Local は観測層に徹する」へ差し替えた。
+2. **B-1 の cuVSLAM blocker の性質**（[:440](23-perception-and-localization.md:440) 周辺）: Isaac ROS **4.6.0（2026-08-18）は Jetson Orin を対応に追加**した（JetPack 7.2 / Ubuntu 24.04 / ROS 2 Jazzy 前提。Orin Nano の記述は無し）。したがって「RGBD 対応は Jazzy + Jetson Thor 専用（Orin は 4.x でサポート外）」という**ハード側の恒久的除外理由は成立しなくなり**、真の blocker は **[ADR-0008](../adr/0008-ros2-distro-humble-for-rosmaster-m1.md) の Humble pin**（Humble 系は Isaac ROS 3.2 ライン・最終 Update 15 = 2025-12-10・JetPack 6.x）である。HP60C がステレオ IR を出さない事実は不変。ADR-0008 を再訪する場合のトリガとして記録する（<https://nvidia-isaac-ros.github.io/releases/index.html>・参照日 2026-09-12）。
+3. **B-4 の「切替条件（凍結）」**（[:478](23-perception-and-localization.md:478)）: robot_localization 公式は「N−1 本を differential に、**または共分散を十分大きく**」と併記し、`differential` は入力の**位置と姿勢**を差分化する（<https://github.com/cra-ros-pkg/robot_localization/blob/humble-devel/doc/configuring_robot_localization.rst>・参照日 2026-09-12）。「凍結」を rule of thumb へ緩和した。屋外（GNSS）では公式指示どおり **GNSS 入力は `_differential: false`**（[mode-outdoor/03 §2-2](../mode-outdoor/03-localization-gnss-and-ekf.md)）。
+
+関連: [mode-outdoor/08](../mode-outdoor/08-architecture-v2-reference-alignment.md)（v2 分解・参照アーキテクチャ整合）/ [mode-outdoor/04 §6](../mode-outdoor/04-perception-sidewalk-and-signals.md)（keepout filter・nvblox ESDF スライスの限界）。

@@ -62,6 +62,10 @@ Status: **記載済（既存契約への写像・実装未）**。§2 の流用�
 - **ADR-0012 決定 11「単一 publisher 規律」**（[0012:28](../adr/0012-speed-band-no-l2-best-effort.md:28)）: `/bot{n}/speed_limit` の publisher は 1 本のみ。→ GNSS 品質ゲートは**第 2 の publisher になれない**。帯セレクタの**入力**として合流させ `min` を取る（`OQ-OD55`）。
 - **ADR-0012 Context 3**（[0012:14](../adr/0012-speed-band-no-l2-best-effort.md:14)）: Humble MPPI では帯が黙って消える経路が複数あり、帯値は厳密上界にならない。→ 「float に落ちたので減速して安全を確保する」は成立しない。**縮退で安全を担保するのは停止（stop_request）だけ**（`OQ-OD54`）。
 
+### 3-4. MRM（最小リスク挙動）の段分け（提案・[08 §3-4](08-architecture-v2-reference-alignment.md) が正本）
+
+本 doc の停止 producer は v2 では **12_Failsafe_MRM** に属し、停止は 4 段に分かれる: **MRM-0** 減速（帯・安全機構ではない）／ **MRM-A** 快適停止（経路保持・条件回復で自動再開・`OQ-OD83`）／ **MRM-B** 即時停止（prio100 ゼロ Twist・ラッチ・遠隔操作者の明示解除＝本 doc §3-2 の producer 群）／ **E-STOP**（法定・ハード・§5）。遷移は A → B の一方向のみ。`stop_request` を `(category, severity, resumable)` の 3 つ組へ additive 拡張する案は `OQ-OD82`（ISO 3691-4 の operational / protective 語彙）。
+
 ## 4. 横断ゲート（L2）
 
 - 状態機械 `approach → wait → cross → done`。`cross` へ遷移できるのは **「信号 = `GREEN`（[04 §4](04-perception-sidewalk-and-signals.md) の fail-closed 契約）かつ 遠隔操作者の承認トークン有効」の AND のみ**。`GREEN_FLASHING` / `RED` / `UNKNOWN` は開始禁止。
@@ -79,10 +83,10 @@ Status: **記載済（既存契約への写像・実装未）**。§2 の流用�
 ## 6. fail-active 対策
 
 - 事実: stock FW に command timeout なし・IWDG 無効（[mode-m1/02 §1-2](../mode-m1/02-m1-driver-and-watchdog.md:25)・[shared/02:723](../shared/02-hardware-design.md:723)）。ホスト死・USB 断で MCU は最後の速度目標を保持して走り続ける。
-- 屋外の代替: **物理非常停止（§5）+ W-3（[ADR-0013](../adr/0013-stm32-command-stream-watchdog.md)）**。W-3 を公道の前提条件にするかは `OQ-OD52`。ADR-0013 の前提ゲートに toolchain（配布ソースは Keil のみ）を加える申し送りは [07 §8-5](07-drivetrain-and-wheel-sizing.md)。
+- 屋外の代替: **物理非常停止（§5）+ W-3（[ADR-0013](../adr/0013-stm32-command-stream-watchdog.md)）**。W-3 を公道の前提条件にするかは `OQ-OD52`。速度が室内の約 4 倍になるため **W-4（手を掛けたまま）の代替余地は小さく、ADR-0013 前提ゲート (d)（G-g 抜線試験）の優先度が上がる**（[08 §4 #11](08-architecture-v2-reference-alignment.md)）。Talos ADU 型（状態機械 + watchdog を最下層ハードに置く）との統合像は `OQ-OD86`。ADR-0013 の前提ゲートに toolchain（配布ソースは Keil のみ）を加える申し送りは [07 §8-5](07-drivetrain-and-wheel-sizing.md)。
 - vendor FW の屋外に効く挙動（**低電圧 9.6 V × 2 s のラッチ停止＝電源再投入まで復帰不能**・ゼロ指令 = 短絡ブレーキ・yaw-adjust ビット・SBUS 中立デバウンス）は [07 §8](07-drivetrain-and-wheel-sizing.md)（車体側正本は [mode-m1/02](../mode-m1/02-m1-driver-and-watchdog.md) 末尾追補）。低電圧ラッチは **operational stop** として遠隔卓へ通知する producer 候補（`OQ-OD74`）。
 - 走行主スイッチ（エーモン 4962・Orin レグのみ＝[shared/01:187](../shared/01-budget-and-procurement.md:187)）を非常停止と誤認しない運用規律（[mode-m1/02 §3 W-4](../mode-m1/02-m1-driver-and-watchdog.md:65)）。拡張ボードのメインスイッチは Orin レグを遮断できず（[shared/02:913](../shared/02-hardware-design.md:913)）、T プラグ抜きが現状唯一の全遮断（[shared/02:897](../shared/02-hardware-design.md:897)）。
-- **recovery（BackUp / Spin）の collision_monitor BYPASS**（#233 ⑥）は R-42 200 mm 隘路の deadlock（[12:560](../architecture/12-infrastructure-common.md:560)）＝ジオラマ固有の根拠。歩道では recovery が車道側へ動く危険があり、**公道では BYPASS を再裁定**（`OQ-OD58`）。
+- **recovery（BackUp / Spin）の collision_monitor BYPASS**（#233 ⑥）は R-42 200 mm 隘路の deadlock（[12:560](../architecture/12-infrastructure-common.md:560)）＝ジオラマ固有の根拠。歩道では recovery が車道側へ動く危険があり、**公道では BYPASS を再裁定**（`OQ-OD58`）。選択肢は三択: (a) BYPASS 維持 (b) collision_monitor 経由 **(c) recovery 自体を無効化**（Humble の `behavior_plugins` は param 配列で空にでき、recovery を持たない BT も公式同梱 [D]）。**屋外初期プロファイル（[08 §5](08-architecture-v2-reference-alignment.md)）は (c) を推奨候補**とする（BYPASS の残留リスクが消える・[08 §4 #9](08-architecture-v2-reference-alignment.md)）。
 
 ## 7. R-26 unit 一覧（実装時・独立オラクル・mutation で赤くなること＝[architecture/20 §9](../architecture/20-dev-quality-and-testing.md)）
 
@@ -106,7 +110,7 @@ Status: **記載済（既存契約への写像・実装未）**。§2 の流用�
 - `OQ-OD55` ADR-0012 決定 11（`speed_limit` 単一 publisher）との整合: 帯セレクタの入力に合流させるか、屋外では帯セレクタ自体を差し替えるか。
 - `OQ-OD56` ジオフェンスの「横断時ポリゴン許可」は restrict-only 規律に反する。状態依存の許可拡大をどう安全に表現するか。
 - `OQ-OD57` Guardian の pose 源交代に伴う変位ゲート（motion_epsilon / odom_freshness）の意味（AMCL の motion-gated 沈黙は GNSS には無い）。
-- `OQ-OD58` recovery の collision_monitor BYPASS を公道で維持するか。
+- `OQ-OD58` recovery の collision_monitor BYPASS を公道で維持するか → **三択**（(a) 維持 / (b) monitor 経由 / (c) recovery 無効化）。屋外初期プロファイルは (c) を推奨候補（§6）。
 - `OQ-OD59` 横断中の承認失効・青点滅時の「引き返す」を L3 task graph の abort / reverse ノードとして持つか。
 - `OQ-OD5A` 語彙 gate の代替: `KNOWN_LOCATIONS` 9 キー（[locations.py:11-23](../../ws/src/warehouse_interfaces/warehouse_interfaces/locations.py:11)・`Command` の検証＝[schemas.py:160](../../ws/src/warehouse_interfaces/warehouse_interfaces/schemas.py:160)）を増やさず座標 goal seam を使う想定は「語彙 gate の穴」（[STATUS.md:150](../STATUS.md:150) H-4）。到達集合の制約をジオフェンスへ移す旨を明文化するか、`locations.py` に屋外語彙を additive で足すか（contract PR）。
 

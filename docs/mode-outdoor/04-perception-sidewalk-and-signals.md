@@ -53,7 +53,8 @@ Status: **記載済（設計値・一次情報つき・実装未）**。2026-09-
 | 案 | 可否 | 評価 |
 |---|---|---|
 | STVL（`spatio_temporal_voxel_layer`） | Humble release 有（2.3.4）[L] | 「欠落した地面」の marking は素直に書けない（decay は誤検出対策）。**採らない** |
-| 自作 cliff detector → 仮想 LaserScan | 可 | **本命**。下向き深度から「期待地面高より低い / 点が返らない」領域を検出し、その方位・距離に**仮想的な壁**を撃つ |
+| 自作 cliff detector → 仮想 LaserScan | 可 | **本命**。下向き深度から「期待地面高より低い / 点が返らない」領域を検出し、その方位・距離に**仮想的な壁**を撃つ。判定は CMU `terrain_analysis` 型（地面推定より下の点も同等コスト = `considerDrop`・点数不足セルは最大コスト = `noDataObstacle`＝**未観測 = 通行不可**）[L] |
+| elevation_mapping_cupy（ETH RSL） | main は ROS 1・ROS 2 は未マージブランチのみ・Humble バイナリ無し [D] | GPU 常駐で 6 kg 機・固定経路には過剰。**Phase 1 不採用**（[08 §4 #7](08-architecture-v2-reference-alignment.md)） |
 
 **推奨: 既存 VirtualScan パターンの流用（`/bot1/cliff_scan`・additive 提案・未凍結）**。本プロジェクトは「実在しない障害物を `sensor_msgs/LaserScan` で注入し、costmap と collision_monitor の **dual-consumer** で共有する」契約を既に持つ:
 
@@ -102,9 +103,10 @@ Status: **記載済（設計値・一次情報つき・実装未）**。2026-09-
 | Obstacle Layer ← `/bot1/cliff_scan`（新） | **追加**（`marking: true` / `clearing: false`） | §3。既存 virtual_scan と同じ書き方（[nav2_params.yaml:230](../../ws/src/warehouse_bringup/config/nav2_params.yaml:230)） |
 | Obstacle Layer ← 前方深度 → `pointcloud_to_laserscan` | **追加**（Humble バイナリ有 [L]） | 3D を 2D に潰すだけ＝GPU 0。段差・張り出しは cliff 経路で別に拾う |
 | `/map`（旧 Static Layer） | **再定義**: RTK 歩道ポリゴンをラスタ化した走行可能領域マップ（§2 案 C）。単独 publisher・decay しない性質はそのまま | global costmap の static_layer を外すか再定義するかは [03 §3-4](03-localization-gnss-and-ekf.md) #2 と同期 |
-| Nvblox Layer | **Phase 2 へ延期** | Isaac ROS **3.2 Update 1 で JetPack 6.2 + Orin Nano Super（Humble）対応**・3.2 で「Nav2 costmap 統合修正」[L]。ただし屋外は pose 焼き付き（[23:79](../architecture/23-perception-and-localization.md:79)）+ 歩行者（室内で dynamic 層不採用とした前提が逆転）+ GPU 予算。**4.6 系（Jazzy）の資料を誤参照しない**（`OQ-OD46`） |
+| Nvblox Layer | **Phase 2 へ延期** | Isaac ROS **3.2 Update 1 で JetPack 6.2 + Orin Nano Super（Humble）対応**・3.2 で「Nav2 costmap 統合修正」[L]。ただし屋外は pose 焼き付き（[23:79](../architecture/23-perception-and-localization.md:79)）+ 歩行者（室内で dynamic 層不採用とした前提が逆転）+ GPU 予算。**ESDF 2D スライスは「高さ帯内の障害物までの距離」だけを持ち、負障害物（段差下り）・傾斜を表現しない**（nvblox `esdf_integrator.h` [D]）＝Phase 2 に上がっても `cliff_scan` は残る。**4.6 系（Jazzy・JP7.2）の資料を誤参照しない**（`OQ-OD46`・[08 §4 #3,#8](08-architecture-v2-reference-alignment.md)） |
+| **Keepout Filter（`filters`）** | **追加（global・local の両方）** | 歩道ポリゴンの許可帯をマスク化。Nav2 公式は「global と local を同時に有効化」を best practice とし、**filters は layer plugins と分離＝Inflation Layer は keepout に自動適用されない**（膨張はマスク作成側で持つ）[D]（[08 §3-1](08-architecture-v2-reference-alignment.md)）。正本は [08 §2 02_Map_and_Route](08-architecture-v2-reference-alignment.md) |
 | Voxel Layer / STVL | 不採用（retreat plan） | [23:71](../architecture/23-perception-and-localization.md:71) の判断を踏襲 |
-| collision_monitor observation | **`scan` + `cliff_scan` のみ** | **P1 不変 = LaserScan のみ**（[23:37](../architecture/23-perception-and-localization.md:37)）。polygon 寸法は速度 4 倍で再設計 |
+| collision_monitor observation | **`scan` + `cliff_scan` のみ** | **P1 不変 = LaserScan のみ**（[23:37](../architecture/23-perception-and-localization.md:37)）＝設計上の選択（Humble の collision_monitor 自体は LaserScan / PointCloud2 / Range を取れる）。**Humble の action は stop / slowdown / approach の 3 種で `limit` は無い**（Iron 以降）[D] → polygon 再設計で `limit` を前提にしない（[08 §4 #10](08-architecture-v2-reference-alignment.md)） |
 
 メモリ / GPU の実数値は**未計測**。屋外 S1 として「idle → OAK-D ドライバ → +YOLO TensorRT → +cliff detector → +Nav2」の差分測定を室内 S1（[23 §7](../architecture/23-perception-and-localization.md:208)）と同じ手順で回す（[02 §4](02-architecture-split-orin-pc-cloud.md)）。
 
