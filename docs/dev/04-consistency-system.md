@@ -42,6 +42,17 @@ check_consistency.py ─┤
 ### 拡張（不変条件を増やす）
 `CHECKS` リストに関数を1つ足すだけ。新しい単一ソースは AST 抽出関数（`_module_consts`）を再利用。**docs 側の値を直接 import / 参照し、ハードコードしない**こと。
 
+### 追加 check（末尾追記・#652）
+
+| id | 重大度 | 何を pin するか | 対象となる語形（**曖昧でない形のみ**） |
+|---|---|---|---|
+| **`A3` speed-cap** | **ERROR** | docs 側の `MAX_LINEAR_VELOCITY` 数値コピー ↔ 凍結契約 `ws/src/warehouse_interfaces/warehouse_interfaces/safety.py:18`（`0.3`） | 定数名の直後に数値がある形: `MAX_LINEAR_VELOCITY = 0.3` / `MAX_LINEAR_VELOCITY=0.3` / `` `MAX_LINEAR_VELOCITY` 0.3 `` / `` `MAX_LINEAR_VELOCITY`（0.3） `` / `MAX_LINEAR_VELOCITY: float = 0.3` |
+| **`A4` idle-speed-eps** | **ERROR** | docs 側の `IDLE_SPEED_EPS` 数値コピー ↔ 同 `safety.py` 末尾（`0.01`・#649） | 上記と同じ定数名の形に加え、**単位付き ε 形** `ε=0.01 m/s` |
+
+- 比較は**数値**（float 解釈）で行う。`0.010` / `1e-2` のような表記ゆれは**同値として素通し**、`0.02` のような値違いのみ ERROR。
+- ERROR 文言は **「docs を凍結契約に合わせる（凍結定数側は変えない）」** を明示する（[docs-first.md](../../.claude/rules/docs-first.md) / [consistency-check.md](../../.claude/rules/consistency-check.md)＝真実は凍結契約、docs が追従する）。
+- 由来: `Sources` は両定数を **load していたのに CHECKS に無く**、ε を `0.02` にしても docs 側 19 箇所が `0.01` を主張したまま緑だった（#649 レビュー指摘 → #652）。本ブランチの full-scan では **A3=19 箇所・A4=4 箇所**（本節の表を含む）がすべて一致＝ERROR 0。
+
 ## 3. モデル判定 `/consistency-audit` skill
 
 [.claude/skills/consistency-audit/SKILL.md](../../.claude/skills/consistency-audit/SKILL.md)。`context: fork` + `agent: docs-reviewer` で**隔離コンテキスト**に重い grep&compare を逃がし findings だけ返す。決定論チェッカーを先に走らせ、その上で**機械では無理な**意味的・doc 跨ぎ矛盾（凍結契約 vs 例示 JSON、トピック契約 vs 実コード、doc08/`stop`・doc08a/`blocked` 類、鮮度、リンク腐敗）を judgment 監査する。
@@ -88,6 +99,7 @@ check_consistency.py ─┤
 - 現状 main で出る WARN（STATUS SHA ×2）は本 PR では**修正せず surface**（鮮度は次回 STATUS 更新で追従）。※ battery 境界 ×5 は #90 で解消済（doc 群を凍結 `safety.battery_is_critical` の `≤ 10%` に整合）。
 - **堅牢性**: checker 自身が落ちても（非UTF8・ソース欠落・定数が非リテラル式）traceback で全PRをブロックせず、`Z0-self-error` の **ERROR finding** として可視化する（`read_text(errors="replace")` + `main()` の try/except）。意味的監査は `/consistency-audit` skill 側へ。
 - **既知の検出限界（narrow FN・surface 言語が日本語前提の運用で許容）**: ①B1 config パーサは2スペース・top-level `locations:` 前提（4スペース/タブ/ネストにすると無音 no-op）。②引用ブロック内のテーブル行（`> | ... |`）は B2 が拾わない。③`_NEGATION` 除外は日本語中心（英語の "not/old" 等は未対応）。④A1 は `ROBOT_RADIUS`〔=/は/:〕値 の語形のみ（"robot radius is 0.1" のような定数名なし表現は拾わない）。新しい語形のドリフトが出たら該当 check を拡張する。
+- **`A3`/`A4` の既知の限界（#652・意図的に狭い）**: ①**定数名の無い裸の `0.3 m/s` は対象外**。docs には `0.3 m/s` 系の記述が 138 箇所あるが大半は**別の速度**（通路帯 0.15 / 0.2 m/s 等）で、どれが cap を指すかは判定＝`/consistency-audit` 側の仕事。機械側で推測すると誤検知で gate を壊す。②**`ε=<数値>` は単位 `m/s` 付きのみ**。ε はこの repo で多義（[doc23](../architecture/23-perception-and-localization.md) は robot_localization の covariance 置換 `ε=1e-6` に使う）ため、単位が曖昧性を解く条件。③定数名と数値の**間に入れるのは非単語文字（＋`float`）のみ**。「`IDLE_SPEED_EPS` は doc12 §4 の 0.01」のような散文は skip する（`doc12` の `12`・`safety.py:18` の `18` を値と誤読しないため）。④数値は**小数点か指数が必須**（`0.3` / `0.010` / `1e-2`）。名前の隣の裸の整数は値の主張と見なさない（同じ行 pin 誤読の回避）。いずれも既存方針と同じ **narrow-FN 許容**。
 
 ## References
 - 公式: [hooks](https://code.claude.com/docs/en/hooks) / [hooks-guide](https://code.claude.com/docs/en/hooks-guide) / [skills](https://code.claude.com/docs/en/skills) / [sub-agents](https://code.claude.com/docs/en/sub-agents) / [memory](https://code.claude.com/docs/en/memory) / [settings](https://code.claude.com/docs/en/settings)

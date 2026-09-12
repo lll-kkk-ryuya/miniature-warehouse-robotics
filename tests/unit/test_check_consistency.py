@@ -1,14 +1,20 @@
-"""Unit tests for ``scripts/check_consistency.py`` — focused on the B4 cross-file
-``doc:line`` reference drift check added for #177 (a regression guard for the #165
-class of bug, where inserting lines into a doc silently broke every ``docNN:LINE``
-reference pointing past the insertion).
+"""Unit tests for ``scripts/check_consistency.py``.
+
+Part 1 — the B4 cross-file ``doc:line`` reference drift check added for #177 (a
+regression guard for the #165 class of bug, where inserting lines into a doc silently
+broke every ``docNN:LINE`` reference pointing past the insertion).
+
+Part 2 — the A3/A4 frozen-safety-number checks added for #652 (docs re-typing
+``MAX_LINEAR_VELOCITY`` / ``IDLE_SPEED_EPS`` must match ``warehouse_interfaces.safety``).
 
 Pure-logic tests (no ROS / hardware) → ``unit`` marker, NOT ``safety``: this check is
 governance tooling, not an Emergency Guardian / Policy Gate / speed-clamp invariant.
 
 The checker is loaded by file path (it is a script, not a package module) and its
 module-level ``ROOT`` / ``DOCS`` globals are monkeypatched onto a synthetic temp tree,
-so the tests are hermetic and do not depend on the live repo corpus.
+so the tests are hermetic and do not depend on the live repo corpus — with two stated
+exceptions that must read the real sources: ``test_sources_expose_frozen_safety_numbers``
+(AST loader vs a real import) and ``test_checks_are_not_no_ops_on_the_live_corpus``.
 """
 
 from __future__ import annotations
@@ -211,3 +217,179 @@ def test_check_skips_per_file_mode(tmp_path, monkeypatch):
     # `only` set (per-file / pre-commit mode) → cross-file scan is a no-op
     only = [tmp_path / "docs" / "architecture" / "12-infra.md"]
     assert cc.check_cross_doc_line_refs(None, only) == []
+
+
+# ── A3 / A4: docs-side copies of the frozen safety numbers (#652) ──────────────
+#
+# Independent oracle: every expectation below is written from the CONTRACT (the doc
+# line asserts value V; the frozen value is F; V != F must be an ERROR that names
+# both), never from the checker's regexes. The frozen numbers are hand-written here
+# and cross-checked against warehouse_interfaces.safety in
+# ``test_sources_expose_frozen_safety_numbers``.
+
+_FROZEN_CAP = 0.3  # safety.py:18 MAX_LINEAR_VELOCITY
+_FROZEN_EPS = 0.01  # safety.py (module end) IDLE_SPEED_EPS
+
+
+def _src(cap=_FROZEN_CAP, eps=_FROZEN_EPS):
+    """A ``Sources`` carrying the two numbers the A3/A4 checks read."""
+    return cc.Sources(
+        max_linear_velocity=cap,
+        idle_speed_eps=eps,
+        battery_critical_pct=10,
+        battery_low_pct=20,
+        robot_radius=0.075,
+        known_locations=set(),
+    )
+
+
+def _write_doc(tmp_path, monkeypatch, text, name="12-infra.md"):
+    d = tmp_path / "docs" / "architecture"
+    d.mkdir(parents=True, exist_ok=True)
+    doc = d / name
+    doc.write_text(text if text.endswith("\n") else text + "\n", encoding="utf-8")
+    monkeypatch.setattr(cc, "ROOT", tmp_path)
+    monkeypatch.setattr(cc, "DOCS", tmp_path / "docs")
+    return doc
+
+
+def test_sources_expose_frozen_safety_numbers():
+    """The AST loader must surface BOTH numbers — an independent import is the oracle."""
+    from warehouse_interfaces.safety import IDLE_SPEED_EPS, MAX_LINEAR_VELOCITY
+
+    src = cc.load_sources()
+    assert src.max_linear_velocity == MAX_LINEAR_VELOCITY == _FROZEN_CAP
+    assert src.idle_speed_eps == IDLE_SPEED_EPS == _FROZEN_EPS
+
+
+def test_new_checks_are_registered():
+    assert cc.check_speed_cap in cc.CHECKS
+    assert cc.check_idle_speed_eps in cc.CHECKS
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        # covered forms asserting the CORRECT value → silent
+        "ハード速度上限 `MAX_LINEAR_VELOCITY = 0.3 m/s`（safety.py:18）",
+        "`MAX_LINEAR_VELOCITY=0.3` m/s を MCU 内で強制する",
+        "凍結値（`MAX_LINEAR_VELOCITY 0.3`）を floor とする",
+        "`MAX_LINEAR_VELOCITY`（0.3）は hard cap",
+        "MAX_LINEAR_VELOCITY: float = 0.3  # m/s",
+        "`MAX_LINEAR_VELOCITY` = 0.300 m/s",  # trailing zeros compare numerically
+        # OUT OF SCOPE by design (doc04 §5 known limits) → must stay silent
+        "速度上限は 0.25 m/s とする",  # bare number, constant not named
+        "通路帯は 0.15 m/s、狭所は 0.05 m/s",  # other speeds entirely
+        "`MAX_LINEAR_VELOCITY` は safety.py:18 が正本",  # name, no number next to it
+        "`min(帯値, MAX_LINEAR_VELOCITY)`）②`0.0`・非有限は停止",  # number of ANOTHER clause
+        # negation-guarded prose (explaining an old value) → skipped like A1/A2
+        "旧 `MAX_LINEAR_VELOCITY = 0.25` は誤り",
+    ],
+)
+def test_speed_cap_clean_lines(tmp_path, monkeypatch, line):
+    _write_doc(tmp_path, monkeypatch, line)
+    assert cc.check_speed_cap(_src(), None) == []
+
+
+@pytest.mark.parametrize(
+    "line, doc_value",
+    [
+        ("`MAX_LINEAR_VELOCITY = 0.25 m/s`", "0.25"),
+        ("MAX_LINEAR_VELOCITY=0.5", "0.5"),
+        ("MAX_LINEAR_VELOCITY: float = 0.8  # platform max", "0.8"),
+    ],
+)
+def test_speed_cap_mismatch_is_error(tmp_path, monkeypatch, line, doc_value):
+    _write_doc(tmp_path, monkeypatch, line)
+    findings = cc.check_speed_cap(_src(), None)
+
+    assert len(findings) == 1
+    f = findings[0]
+    assert f.level == cc.ERROR  # a wrong cap must RED the gate, not just warn
+    assert f.rule == "A3-speed-cap"
+    assert f.file.endswith("12-infra.md") and f.line == 1
+    assert doc_value in f.message  # the doc's value
+    assert "0.3" in f.message  # the frozen value
+    assert "docs を凍結契約に合わせる" in f.message  # direction of the fix
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        # covered forms asserting the CORRECT value → silent
+        "- **正本（単一ソース）**: `IDLE_SPEED_EPS: float = 0.01  # m/s`",
+        "`idle 率 = (|v| ≤ ε=0.01 m/s のサンプル数) ÷ 総数`",
+        "ε = 0.01 m/s",
+        "凍結先 = `warehouse_interfaces.safety.IDLE_SPEED_EPS`（0.01 m/s・#649）",
+        "`IDLE_SPEED_EPS` 0.010 m/s",  # textual form differs, value is equal
+        "`IDLE_SPEED_EPS` 1e-2 m/s",  # exponent form, value is equal
+        # OUT OF SCOPE by design (doc04 §5 known limits) → must stay silent
+        "|v| ≤ 0.01 m/s なら idle とみなす",  # bare number, constant not named
+        "robot_localization は 0 分散を ε=1e-6 に置換する",  # ε WITHOUT m/s = another ε
+        "`IDLE_SPEED_EPS` は doc12 §4 の定義に従う",  # prose gap: never capture the `12`
+        # negation-guarded prose → skipped like A1/A2
+        "従来の `IDLE_SPEED_EPS = 0.05` は使わない",
+    ],
+)
+def test_idle_speed_eps_clean_lines(tmp_path, monkeypatch, line):
+    _write_doc(tmp_path, monkeypatch, line)
+    assert cc.check_idle_speed_eps(_src(), None) == []
+
+
+@pytest.mark.parametrize(
+    "line, doc_value",
+    [
+        ("`IDLE_SPEED_EPS: float = 0.02`", "0.02"),
+        ("ε=0.02 m/s 以下を idle とする", "0.02"),
+        ("`IDLE_SPEED_EPS`（0.1 m/s）", "0.1"),
+        # the same two "textual form" arms as the clean cases, but WRONG — so a
+        # dropped exponent/trailing-zero arm cannot pass by simply matching nothing
+        ("`IDLE_SPEED_EPS` 2e-2 m/s", "2e-2"),
+        ("ε=0.020 m/s", "0.020"),
+    ],
+)
+def test_idle_speed_eps_mismatch_is_error(tmp_path, monkeypatch, line, doc_value):
+    _write_doc(tmp_path, monkeypatch, line)
+    findings = cc.check_idle_speed_eps(_src(), None)
+
+    assert len(findings) == 1
+    f = findings[0]
+    assert f.level == cc.ERROR
+    assert f.rule == "A4-idle-speed-eps"
+    assert f.file.endswith("12-infra.md") and f.line == 1
+    assert doc_value in f.message  # the doc's value
+    assert "0.01" in f.message  # the frozen value
+    assert "docs を凍結契約に合わせる" in f.message
+
+
+def test_checks_follow_the_frozen_value_not_a_hardcoded_one(tmp_path, monkeypatch):
+    """The comparison must read ``Sources`` — re-freezing ε to 0.02 flips the verdict."""
+    _write_doc(tmp_path, monkeypatch, "ε=0.02 m/s")
+    assert cc.check_idle_speed_eps(_src(eps=0.01), None) != []
+    assert cc.check_idle_speed_eps(_src(eps=0.02), None) == []
+
+
+def test_one_finding_per_line_even_with_two_forms(tmp_path, monkeypatch):
+    _write_doc(tmp_path, monkeypatch, "`IDLE_SPEED_EPS = 0.02`（ε=0.02 m/s）")
+    assert len(cc.check_idle_speed_eps(_src(), None)) == 1
+
+
+def test_only_filter_limits_the_scan(tmp_path, monkeypatch):
+    """`only` (per-file hook / pre-commit mode) must scope BOTH checks to the listed files."""
+    clean = _write_doc(tmp_path, monkeypatch, "`MAX_LINEAR_VELOCITY = 0.3 m/s`", name="12-a.md")
+    dirty = _write_doc(tmp_path, monkeypatch, "`MAX_LINEAR_VELOCITY = 0.25 m/s`", name="13-b.md")
+
+    assert cc.check_speed_cap(_src(), [clean]) == []  # the bad file is not in `only`
+    assert len(cc.check_speed_cap(_src(), [dirty])) == 1
+    assert len(cc.check_speed_cap(_src(), None)) == 1  # full scan sees it
+
+
+def test_checks_are_not_no_ops_on_the_live_corpus():
+    """Guard against a silently non-matching regex: asking with a WRONG frozen value must
+    light up the real docs sites that DO name each constant (18 / 3 at the time of #652)."""
+    cap_hits = cc._const_copy_findings("MAX_LINEAR_VELOCITY", -1.0, "A3", (), "x", None)
+    eps_hits = cc._const_copy_findings(
+        "IDLE_SPEED_EPS", -1.0, "A4", (cc._EPS_SYMBOL_PAT,), "x", None
+    )
+    assert len(cap_hits) >= 5
+    assert len(eps_hits) >= 1
