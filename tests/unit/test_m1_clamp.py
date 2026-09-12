@@ -122,7 +122,7 @@ def test_non_finite_anywhere_is_full_stop(vx: float, vy: float, wz: float) -> No
 @pytest.mark.safety
 @pytest.mark.parametrize("bad", NON_FINITE)
 def test_non_finite_is_not_snapped_to_cap(bad: float) -> None:
-    """非有限は「不明」→ 停止であって ±cap ではない（safety.py:26-34 と同型）。
+    """非有限は「不明」→ 停止であって ±cap ではない（safety.py:25-33 と同型）。
 
     ``max(-cap, min(v, cap))`` 系の素朴なクランプは +inf → +cap、-inf → -cap を
     返してしまう（＝知らない指令で全速前進）。
