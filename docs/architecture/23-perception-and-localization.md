@@ -785,3 +785,13 @@ G-8（C-3 = 部屋運用の前提条件）・G-10（Spin recovery の発火条�
 - **⚠️ 起動 gating（同 doc H-11・本 doc に無かった観点）**: `collision_active = traffic_mode != 'open-rmf'`（`nav2_bringup.launch.py:126`）が collision_monitor の node と lifecycle manager の両方を gate し、overlay の実値は dev=`none` / **stg・prod=`open-rmf`** である。**C-3 を改訂しても、`open-rmf` の env では L1 反射がそもそも起動しない。** 部屋運用の env / launch 構成の確認が別 gate として要る。
 - **layer 注記の齟齬（記録のみ）**: G-10 は Spin/BackUp 抑止を「**L2**（Nav2 behavior）」と注記するが、正準対応表（[productization/01:185](../productization/01-commercial-box-map.md)）では `nav2_params.yaml` / launch / `warehouse_bringup/config` は **L1**（Navigation）である。同 doc は正準表に従い **L1** で統一している。**本 doc の既存行は行安定のため変更しない**（本項を注記の正とする）。
 - **OQ-15（スキャン平面の実高さ）**: 立位の人に対する L1 有効性（[09 R-9](../mode-x-er/09-hand-raise-summon.md)）の前提として、同 doc §7-2 M-1 が測定手順を定義した（本 doc の OQ-15 と同一セッションで確定させる）。
+
+## 【2026-09-12 追補】屋外歩道自律走行（Mode Outdoor）への forward link — §5-1 GNSS 行の反転予告
+
+オペレーター指示（2026-09-12）で**屋外の歩道を GNSS 主体で A→B 自律走行する構成が第一優先**になった（正本ルート = [mode-outdoor/README](../mode-outdoor/README.md)・骨格のみ・ADR-0014 予約）。本 doc（室内 TARGET）は**置換しない**。屋外で反転・追加になる差分は mode-outdoor 側に置き、本追補は forward link だけを持つ:
+
+- **§5-1 分類表の GNSS / RTK-GNSS 行（[:141](23-perception-and-localization.md:141)）は屋外で反転する**。「対象外」の理由（屋内設置・0.01 m 地図でセル数個分・ジオラマ座標系・予算外）は屋外ではすべて消えるため、Mode Outdoor では **RTK-GNSS を global EKF の入力として採用**する（[mode-outdoor/03 §1-2](../mode-outdoor/03-localization-gnss-and-ekf.md)）。本表の行そのものは室内 TARGET の記録として**書き換えない**。
+- **§5-2 の TF 単一所有ルール（[:145](23-perception-and-localization.md:145)）・EKF 第 2 入力・冗長縮退の構造は屋外でも不変**。変わるのは `map→odom` の配信者（AMCL → global EKF + `navsat_transform`）。AMCL 直購読の Guardian pose freshness guard（§5-3 blocker ①）の屋外版 pose 源は GNSS 品質ゲート（[mode-outdoor/05 §3](../mode-outdoor/05-safety-envelope-and-intervention.md)）。
+- **原則 P1（[:37](23-perception-and-localization.md:37)）・P2（[:41](23-perception-and-localization.md:41)）は屋外でも不変**。屋外知覚（歩道走行可能領域・負障害物・歩行者用信号）は costmap 層と L4 producer に閉じる（[mode-outdoor/04](../mode-outdoor/04-perception-sidewalk-and-signals.md)）。HP60C（構造化光）は屋外の主センサにしない（S2 の射程は室内）。
+- Nav2 の `FollowGPSWaypoints` は **Iron 以降**のため Humble（[ADR-0008](../adr/0008-ros2-distro-humble-for-rosmaster-m1.md)）では `fromLL` + 既存座標 goal で代替する（[mode-outdoor/03 §3](../mode-outdoor/03-localization-gnss-and-ekf.md)）。
+- 用語: [GLOSSARY §12](../GLOSSARY.md)（Mode Outdoor・GNSS 品質ゲート・ジオフェンス）。
