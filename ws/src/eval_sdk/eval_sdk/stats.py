@@ -30,7 +30,12 @@ that retains only a bounded window can still report over the whole stream. Same 
 (doc21:178): the epsilon, the speed cap and the observation window are all decided in the domain
 (``warehouse_orchestrator.motion``) — the accumulator's threshold is **injected**, never a constant
 here. No domain word or threshold appears in the **signatures or logic**; the docstrings name their
-domain consumer only, the same way ``rate`` names 介入率 above.
+domain consumer only, the same way ``rate`` names 介入率 above. ``SeriesTotals`` also carries two
+**diagnostics of the stream itself** (doc21 §17 ④ (#632 B2/B4)): ``rejected`` — how many ``add()``
+calls the acceptance rules refused (a symptom, not a cause: a stamp source that stopped advancing
+and a non-finite input are indistinguishable in this one number) — and ``max_gap``, the largest
+spacing between accepted points. Both are raw material:
+*how large a gap is too large* stays a caller threshold, exactly like ``d_thresh``.
 
 Reuse origin (doc21 §12.1 / :406, with ``# adapted from …`` attribution at each site):
 ``spl_metric`` = allenai/allenact verbatim (MIT); ``success_rate``/``soft_spl`` = Habitat写経
@@ -513,18 +518,36 @@ class _RunningSeries:
     t_first: float
     t_last: float
     y_last: float
+    # Largest spacing between two accepted points so far, kept as a running max (O(1)); ``None``
+    # until a second point defines a spacing at all.
+    max_gap: float | None = None
 
 
 @dataclass(frozen=True)
 class SeriesTotals:
     """Immutable snapshot of one label's whole-stream totals (:meth:`TimeSeriesAccumulator.totals`).
 
-    * ``samples`` — points accepted for this label (≥ 1: a label exists only once one was).
+    * ``samples`` — points accepted for this label (``0`` only in the rejected-only snapshot
+      below: a label otherwise exists only once a point was accepted).
     * ``at_or_below`` — how many satisfied ``y <= threshold``, or ``None`` when the accumulator
       was built without a threshold ("not counted", distinct from a counted ``0``).
     * ``integral`` — ``∫ y dt`` by the trapezoid rule over the accepted points, ``0.0`` for a
       single point (one point bounds no area — a real measurement, not a missing one).
-    * ``t_first`` / ``t_last`` — the span these totals cover. Equal for a single point.
+    * ``t_first`` / ``t_last`` — the span these totals cover. Equal for a single point, and
+      ``None`` when nothing was ever accepted (a rejected-only label has no bounds — inventing a
+      ``0.0`` stamp for it would read as "measured at epoch 0").
+    * ``rejected`` — how many :meth:`TimeSeriesAccumulator.add` calls this label *refused*
+      (non-finite or non-advancing), accumulated since the accumulator was created. A label that
+      only ever rejected is still reported, with ``samples = 0``: that is the one observation
+      which distinguishes "this stream stopped" from "this stream's points are being refused"
+      (a sim/clock reset freezes every later point out of the totals silently). Monotone, and
+      an **ordinary compared field**: a frozen stream and a healthy one can carry identical
+      totals and differ only here, which is exactly the case this counter exists for, so two such
+      snapshots must not compare (or hash) equal. An assertion that "the refusals left every
+      total untouched" spells the expected count out instead.
+    * ``max_gap`` — the largest spacing between two consecutive accepted points, ``None`` until
+      two exist. The raw material for a caller-side "was this series interrupted" test; what
+      counts as *too* large a gap is the caller's threshold, never one of this module's.
 
     Deliberately *not* a ratio or a rate: the denominators (which window, which cap) are the
     caller's, exactly as ``fraction_at_or_below`` takes its threshold from the caller.
@@ -533,8 +556,10 @@ class SeriesTotals:
     samples: int
     at_or_below: int | None
     integral: float
-    t_first: float
-    t_last: float
+    t_first: float | None
+    t_last: float | None
+    rejected: int = 0
+    max_gap: float | None = None
 
 
 class TimeSeriesAccumulator:
@@ -560,7 +585,11 @@ class TimeSeriesAccumulator:
     * the first accepted point opens the series and contributes **no** area.
 
     :meth:`add` reports whether the point was kept, so a caller can count drops or — better —
-    make its own retention conditional on the same answer.
+    make its own retention conditional on the same answer. It *also* counts them itself
+    (``SeriesTotals.rejected``), because the caller that most needs the number is the one that
+    cannot see it: a stream whose stamps stop advancing keeps every total frozen while messages
+    keep arriving, and a report carrying only the totals cannot tell that apart from a robot
+    standing still. Comparing ``samples`` (flat) against ``rejected`` (climbing) can.
     """
 
     def __init__(self, threshold: float | None = None) -> None:
@@ -568,6 +597,9 @@ class TimeSeriesAccumulator:
             raise ValueError("TimeSeriesAccumulator threshold must be finite")
         self._threshold = threshold
         self._labels: dict[str, _RunningSeries] = {}
+        # Refusal counts live OUTSIDE ``_labels`` so a label that never had a point accepted is
+        # still reported (it is the most informative case: every sample refused).
+        self._rejected: dict[str, int] = {}
 
     @property
     def threshold(self) -> float | None:
@@ -578,10 +610,20 @@ class TimeSeriesAccumulator:
         """1 iff ``y`` is at or below an injected threshold — inclusive, like the batch form."""
         return 1 if (self._threshold is not None and y <= self._threshold) else 0
 
+    def _refuse(self, label: str) -> bool:
+        """Count one refusal for ``label`` and report the refusal (always ``False``)."""
+        self._rejected[label] = self._rejected.get(label, 0) + 1
+        return False
+
     def add(self, label: str, t: float, y: float) -> bool:
-        """Fold one ``(t, y)`` point into ``label``'s totals; return ``True`` iff it was kept."""
+        """Fold one ``(t, y)`` point into ``label``'s totals; return ``True`` iff it was kept.
+
+        Every refusal — and only a refusal — increments ``label``'s ``rejected`` count. The
+        acceptance rules themselves are unchanged by that counter: nothing is re-seeded, no
+        stamp is forgiven, and a refused point still leaves every total exactly as it was.
+        """
         if not (math.isfinite(t) and math.isfinite(y)):
-            return False
+            return self._refuse(label)
         series = self._labels.get(label)
         if series is None:
             self._labels[label] = _RunningSeries(
@@ -594,28 +636,56 @@ class TimeSeriesAccumulator:
             )
             return True
         if not t > series.t_last:  # NaN-safe; a non-advancing stamp is not a new point
-            return False
+            return self._refuse(label)
+        span = t - series.t_last
         # One trapezoid, weighted by its OWN spacing (the increment of trapezoid_integral).
-        series.integral += (t - series.t_last) * (series.y_last + y) / 2.0
+        series.integral += span * (series.y_last + y) / 2.0
         series.samples += 1
         series.at_or_below += self._counted(y)
+        # Running max over the spacings seen so far — O(1), so a caller that keeps no series can
+        # still ask how interrupted the stream was.
+        if series.max_gap is None or span > series.max_gap:
+            series.max_gap = span
         series.t_last = t
         series.y_last = y
         return True
 
     def totals(self) -> dict[str, SeriesTotals]:
-        """Snapshot of every label's totals; labels that accepted nothing are simply absent."""
-        return {
+        """Snapshot of every label's totals — including a label that only ever *rejected*.
+
+        A label with no accepted point reports ``samples = 0``, no bounds and its refusal count:
+        "we heard from it and kept nothing" is a measurement, and the one that a totals-only
+        reader would otherwise mistake for silence.
+        """
+        snapshot = {
             label: SeriesTotals(
                 samples=series.samples,
                 at_or_below=(series.at_or_below if self._threshold is not None else None),
                 integral=series.integral,
                 t_first=series.t_first,
                 t_last=series.t_last,
+                rejected=self._rejected.get(label, 0),
+                max_gap=series.max_gap,
             )
             for label, series in self._labels.items()
         }
+        for label, refusals in self._rejected.items():
+            if label not in snapshot:
+                snapshot[label] = SeriesTotals(
+                    samples=0,
+                    at_or_below=(0 if self._threshold is not None else None),
+                    integral=0.0,
+                    t_first=None,
+                    t_last=None,
+                    rejected=refusals,
+                )
+        return snapshot
 
     def clear(self) -> None:
-        """Forget every label's totals (test/reset affordance, like ``MotionAccumulator.clear``)."""
+        """Forget every label's totals (test/reset affordance, like ``MotionAccumulator.clear``).
+
+        The refusal counts go too: a reset that kept them would report drops against a stream
+        that, as far as the totals are concerned, has not started yet.
+        """
         self._labels.clear()
+        self._rejected.clear()

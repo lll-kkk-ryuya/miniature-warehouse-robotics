@@ -18,7 +18,9 @@ MotionAccumulator` for the odom-sourced Tier-1 KPIs (doc21:310 軌道平滑性 /
 doc21 §17 ①② idle 率 / 速度予算消化率). That is report-only: **no new topic, no new contract and no
 new Langfuse score** — ``_send_scores`` is untouched by that family (Issue #432 DoD). The only
 new input is a *read* of the existing config tunable ``safety.max_linear_velocity`` (v_max for
-§17 ②), resolved once at startup and injected via ``MotionInputs.speed_cap``.
+§17 ②), resolved once at startup and injected via ``MotionInputs.speed_cap`` — together with
+**where that value came from** (``speed_cap_source``, doc21 §17 ④ / #632 B3), which is read off
+the same resolution rather than from a second source.
 
 That accumulator additionally keeps O(1) **whole-run** totals (doc21 §17 ③ / #632), reported
 beside the windowed ones as ``MotionInputs.run_totals``. Same subscription, same callback, same
@@ -102,6 +104,11 @@ class KpiCollector(Node):
             safety_cfg.get("max_linear_velocity") if isinstance(safety_cfg, dict) else None,
             fallback=MAX_LINEAR_VELOCITY,
         )
+        # doc21 §17 ④ (#632 B3): WHERE the cap came from, derived from the same resolution — a
+        # warning means ``resolve_speed_cap`` substituted the imported hard cap (key absent,
+        # unreadable or malformed), and the resolved *value* alone cannot tell that apart from a
+        # config that deliberately says 0.3. Disclosed per report via ``MotionInputs``.
+        self._speed_cap_source = "fallback" if cap_warning is not None else "config"
         if cap_warning is not None:
             self.get_logger().warning(cap_warning)
 
@@ -130,7 +137,7 @@ class KpiCollector(Node):
             f"exclude_cancelled={self._exclude_cancelled}, langfuse={self._langfuse.enabled}, "
             f"provider={self._provider or 'unset'}, "
             f"langfuse_owner={'hermes_plugin (Option D)' if self._pattern_d else 'bridge (Pattern A)'}, "
-            f"speed_cap={self._speed_cap} m/s, "
+            f"speed_cap={self._speed_cap} m/s ({self._speed_cap_source}), "
             f"run_id={'set' if (self._run_id or env_run_id()) else 'unset'})"
         )
 
@@ -165,8 +172,11 @@ class KpiCollector(Node):
                 motion=MotionInputs(
                     samples=self._motion.series(),
                     distances=self._distances.totals(),
-                    # v_max for doc21 §17 ② (resolved once at startup from config).
+                    # v_max for doc21 §17 ② (resolved once at startup from config) …
                     speed_cap=self._speed_cap,
+                    # … and where it came from (doc21 §17 ④ / #632 B3): "config" vs "fallback",
+                    # so a report is readable without the startup log.
+                    speed_cap_source=self._speed_cap_source,
                     # Whole-run counterpart of ``samples`` (doc21 §17 ③, #632): accumulated by
                     # the SAME accumulator inside the SAME subscription, so this adds no
                     # producer, topic, parameter or message — only a second reporting scope.
