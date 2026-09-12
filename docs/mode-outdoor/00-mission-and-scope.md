@@ -8,7 +8,7 @@ Status: **箱（skeleton）**。節見出しと「何を書くか」だけを置
 
 ## 0. 位置づけ
 
-- 何を: 屋外の**歩道**を通って、**特定の地点 A から特定の地点 B まで**、GNSS などを使い**完全自律**で走る（オペレーター指示の原文要旨）。
+- 何を: 屋外の**歩道**を通って、**特定の地点 A から特定の地点 B まで**、GNSS などを使い**完全自律**で走る（オペレーター指示の原文要旨）。**経路は特定の固定経路（teach-and-repeat 型）であり、汎用の経路計画は対象外**（ユーザー決定 2026-09-12）。
 - なぜ: `# TODO(オペレーター)` 動画・営業資産・技術検証のどれを主目的にするか（[shared/05](../shared/05-video-storyboard.md) の再設計と連動）。
 - 前提: 単騎 M1（[ADR-0006](../adr/0006-single-bot-first.md)）・Humble（[ADR-0008](../adr/0008-ros2-distro-humble-for-rosmaster-m1.md)）・最小安全方針（[GLOSSARY §11「最小安全方針」](../GLOSSARY.md)）。**ただし公道は自機保護の最小線を超える法定要件が床になる**（[05 §0](05-safety-envelope-and-intervention.md)）。
 
@@ -22,6 +22,7 @@ Status: **箱（skeleton）**。節見出しと「何を書くか」だけを置
 
 | IN（案） | OUT（案） |
 |---|---|
+| **特定の固定経路**（teach-and-repeat 型・記録した経路の再生） | 汎用経路計画（任意の A/B を地図から探索） |
 | 歩道・路側帯の通行、横断歩道の横断（信号あり／なし） | 車道走行、自転車道、階段 |
 | 遠隔操作者（PC 卓）による監視・介入・手動 takeover | 遠隔操作者なしの完全無人運用（[01 §5](01-legal-envelope-japan.md) の自動操縦除外） |
 | 物の運送（小型荷物箱・固定） | 人の運送 |
@@ -33,16 +34,19 @@ Status: **箱（skeleton）**。節見出しと「何を書くか」だけを置
 2. **遠隔操作フェーズ**: PC 卓から監視・介入（法 15 条の 3 の届出・通行開始 1 週間前・標識と届出番号の表示）。
 3. どちらも**私有地（一般交通の用に供されない閉鎖区画）での先行検証**を前段に置く（[01 §10](01-legal-envelope-japan.md)「道路」の定義に注意）。
 
-## 4. オペレーター裁定待ち（決め方で設計が変わる 6 点）
+**進め方 = survey-first（ユーザー決定 2026-09-12）**: 仕様・既存 tool・企業事例・論文の調査を先に行い、その結果で採用を決める。本ツリーは箱を先に置き、調査結果で埋める（docs に無い契約・しきい値を調査前に発明しない）。
+
+## 4. 裁定事項（ユーザー決定済 2 点 + 裁定待ち 5 点）
 
 | # | 裁定事項 | 推奨（2026-09-12 所見） | 影響先 |
 |---|---|---|---|
 | 1 | **走行環境の段階**: 私有地 → 随伴（公道・届出不要） → 遠隔操作（届出） の順にするか | この順で進める。届出はコースを番地まで特定する必要があるため、コース確定が先 | [01](01-legal-envelope-japan.md) / [05](05-safety-envelope-and-intervention.md) |
-| 2 | **RTK を入れるか** | 入れる。単独 GNSS は数 m の誤差で歩道幅を超え、歩道内に留まる責務が知覚側へ全面移る | [03](03-localization-gnss-and-ekf.md) / [06](06-hardware-delta-and-base-selection.md) |
+| 2 | **RTK を入れるか** | **決定済（2026-09-12・ユーザー）: RTK GNSS は必ず入れる**。単独 GNSS は数 m の誤差で歩道幅を超える | [03](03-localization-gnss-and-ekf.md) / [06](06-hardware-delta-and-base-selection.md) |
 | 3 | **屋外知覚センサ** | passive stereo を推奨。HP60C（構造化光）は室内用へ格下げ | [04](04-perception-sidewalk-and-signals.md) / [06](06-hardware-delta-and-base-selection.md) |
 | 4 | **横断の権威**: 遠隔者承認を必須にするか、完全自動化を目標に置くか | 承認必須で設計し、承認の自動化は後段（法規と整合） | [05 §4](05-safety-envelope-and-intervention.md) |
-| 5 | **メカナムの扱い**: 平滑舗装限定で継続か、通常輪へ換装か、屋外ベースを別途選ぶか | A 案（M1 継続・私有地開発機）で進め、私有地実走後に B 案（屋外ベース）を判断 | [06 §4](06-hardware-delta-and-base-selection.md) |
+| 5 | **メカナムの扱い** | **決定済（2026-09-12・ユーザー）: タイヤ換装前提で最低 4 km/h（歩行速度）**。換装径（140〜150 mm・1:56 のまま）・car_type・ホスト側スケール補正・ホイールアーチ加工は [06 §2](06-hardware-delta-and-base-selection.md)。屋外ベース（B 案）は survey-first の調査対象 | [06 §2 / §4](06-hardware-delta-and-base-selection.md) |
 | 6 | **契約と命名**: `KNOWN_LOCATIONS` の倉庫語彙（9 キー凍結）に屋外地点語彙を additive に足す contract PR が要るか。モード正準名 | 正準名は **Mode Outdoor**（[GLOSSARY §12](../GLOSSARY.md)）。地点語彙は additive 提案（contract ラベル） | [ADR-0009 Decision 5](../adr/0009-m1-room-scale-operation.md) / `warehouse_interfaces` |
+| 7 | **速度契約の再導出**: ≥4 km/h 目標で FW clamp（FW 換算 mm/s）が実単位の cap でなくなり、**L0' ホスト clamp が唯一の実 cap**になる。[ADR-0010](../adr/0010-raise-speed-cap-to-platform-max.md)「platform max」と [ADR-0012](../adr/0012-speed-band-no-l2-best-effort.md) の再導出 | contract PR（`contract` ラベル・予告）で行う。裁定待ち | [06 §2](06-hardware-delta-and-base-selection.md) / `warehouse_interfaces.safety` |
 
 ## 5. 流用する既存資産（仕分け・草案）
 

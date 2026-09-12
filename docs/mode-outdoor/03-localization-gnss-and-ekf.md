@@ -27,9 +27,11 @@ Status: **箱（skeleton）**。室内 TARGET（[architecture/23](../architectur
 - Nav2 公式チュートリアル「Navigating using GPS Localization」は **`FollowGPSWaypoints` を ROS 2 Iron 以降の機能**と明記している。本プロジェクトは Humble（[ADR-0008](../adr/0008-ros2-distro-humble-for-rosmaster-m1.md)）。
 - 代替: `robot_localization` の **`fromLL` サービス**（Humble にあり）で緯度経度を map 座標に変換し、**既存の座標 goal**（`nav2_bridge` の additive 座標 goal・[ADR-0009 References](../adr/0009-m1-room-scale-operation.md) が指す `orientation.w = 1.0` 固定の seam）へ流す。変換の置き場所（L1 Navigation の bridge か L3 の compile 段か）は `# TODO(裁定)`。
 - `# TODO(設計)` rolling global costmap（幅・高さ）と waypoint 間隔。
+- **teach-and-repeat（ユーザー決定 2026-09-12）**: 経路は特定の固定経路。随伴 teleop で走った GNSS 軌跡（RTK fix のみ採用）から waypoint 列と横断ノードを生成し、再生時はその列を辿る。汎用の経路探索は対象外。
 
 ## 4. RTK（何を書くか）
 
+- **決定（2026-09-12・ユーザー）: RTK GNSS は必ず入れる**。
 - `# TODO(選定)` 受信機クラス（u-blox ZED-F9P 系 + NTRIP／QZSS CLAS 対応機）・アンテナ・取付高さ（非常停止柱と同居＝[06 §5](06-hardware-delta-and-base-selection.md)）。
 - `# TODO(設計)` 品質指標（fix / float / single・HDOP・衛星数）を **GNSS 品質ゲート**（[05 §3](05-safety-envelope-and-intervention.md)）へ供給する契約（topic・型は additive 提案）。
 - Nav2 公式の注意: 単独 GNSS は好条件で 1〜2 m、最大 10 m の誤差と頻繁なジャンプ。精度が要るなら RTK を強く推奨（cm 級）。

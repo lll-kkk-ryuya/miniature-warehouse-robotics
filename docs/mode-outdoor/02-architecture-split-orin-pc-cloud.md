@@ -13,7 +13,7 @@ Status: **箱（skeleton）**。§2 の分担表は 2026-09-12 所見の**草案
 
 1. **通信が切れても安全に止まれる機能は Orin に置く**（自己位置・局所計画・障害物・信号検出・停止 producer・物理非常停止）。
 2. **法的に人が握る停止・介入は PC（遠隔操作者卓）に置き、常時接続を前提にする**（監視・非常停止・手動 takeover・横断承認）。PC からの heartbeat が途絶えたら Orin 側が止める（[05 §3](05-safety-envelope-and-intervention.md)）。
-3. **無くても走れる助言・記録はクラウドに置く**（LLM / Gemini ER の状況説明・経路計算・NTRIP 補正・Langfuse）。切れたら「助言なし」に縮退して走行を継続する。
+3. **無くても走れる助言・記録はクラウドに置く**（LLM / Gemini ER の状況説明・NTRIP 補正・Langfuse。経路は特定の固定経路なので経路計算サービスは不要）。切れたら「助言なし」に縮退して走行を継続する。
 
 ## 2. 分担表（草案・未裁定）
 
@@ -27,7 +27,7 @@ Status: **箱（skeleton）**。§2 の分担表は 2026-09-12 所見の**草案
 | | 新規 producer: リンク断 watchdog・GNSS 品質ゲート・ジオフェンス（[05 §3](05-safety-envelope-and-intervention.md)） | L1 Safety | 停止 |
 | | 映像の software encode（Orin Nano に HW エンコーダなし＝[06 §1](06-hardware-delta-and-base-selection.md)） | 観測面 | 解像度を落として CPU 予算を守る |
 | **PC（遠隔操作者卓）** | 映像・地図上位置・状態の監視、非常停止、手動 takeover、横断承認（[architecture/22](../architecture/22-web-observability.md) の console 拡張） | 観測面 + L1 stop producer | **法的必須層**。heartbeat が届かなければ Orin 側が止まる |
-| | ミッション投入（A/B 指定 → OSM 歩道グラフで経路 → waypoint 列を L3 task graph の入力へ） | L3 入力 | 投入済みミッションは Orin が保持 |
+| | 固定経路の記録（teach）と再生（repeat）: 随伴 teleop で走った RTK 軌跡から waypoint 列 + 横断ノードを作り、L3 task graph の入力へ投入（汎用経路計画は対象外・ユーザー決定） | L3 入力 | 投入済みミッションは Orin が保持 |
 | | rosbag / run record（[jetson/03](../jetson/03-build-deploy-run-and-run-records.md)）。Tailscale over LTE（[jetson/02 §9.7](../jetson/02-remote-access-and-dev-link.md:357)） | 観測面 | 記録欠落のみ |
 | **クラウド** | Hermes Gateway（GCP）+ LLM / Gemini ER: 状況説明・例外時の選択肢提示・遠隔者向け要約 | L4 Non-RT | 「助言なし」に縮退して走行継続 |
 | | NTRIP 補正配信（外部サービス）、Langfuse・ログ集約 | 観測面 | RTK が float/single に落ちれば GNSS 品質ゲートが減速・停止 |
@@ -45,7 +45,7 @@ Status: **箱（skeleton）**。§2 の分担表は 2026-09-12 所見の**草案
 ## 5. OPEN QUESTIONS（接頭辞 `OQ-OD2*`）
 
 - `OQ-OD20` リンク断時に「現在の waypoint 列を継続」するか「即停止」するか（法規は停止側＝[01 §5](01-legal-envelope-japan.md)）。
-- `OQ-OD21` 経路計算をクラウドに置くか PC に置くか（PC で足りる見込み）。
+- `OQ-OD21` 固定経路の記録形式（緯度経度列 + 横断ノード注記 + 速度帯）と保管場所（走行記録 `mwr-run-record.v0` と同居させるか）。
 - `OQ-OD22` 横断承認の UI と、承認トークンの有効期限。
 
 ## References

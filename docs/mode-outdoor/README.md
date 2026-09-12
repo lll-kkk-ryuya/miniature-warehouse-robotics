@@ -1,6 +1,6 @@
 # mode-outdoor/ — Mode Outdoor: 屋外歩道 A→B 自律走行モード（設計提案・骨格）
 
-> **位置づけ**: ROSMASTER M1 単騎（[ADR-0006](../adr/0006-single-bot-first.md)）を**屋外の歩道**で A 地点から B 地点まで **GNSS を主体に完全自律で走らせる**新しい実行構成モードの**正本ルート**。
+> **位置づけ**: ROSMASTER M1 単騎（[ADR-0006](../adr/0006-single-bot-first.md)）を**屋外の歩道**で A 地点から B 地点まで、**特定の固定経路（teach-and-repeat 型）を RTK-GNSS 主体に完全自律で走らせる**新しい実行構成モードの**正本ルート**。
 > **オペレーター指示（2026-09-12）**: 室内のジェスチャ召喚・standby HRI（[ADR-0009 Decision 2](../adr/0009-m1-room-scale-operation.md:21) の「ジェスチャ召喚を主役」）を**第一優先から外し、屋外設定を第一優先にする**。既存資産で組み、自己位置・知覚（信号）・GNSS・Orin / PC / クラウドの分担を設計する。
 > **Status**: **骨格のみ（箱）**。各 doc の「何を書くか」節に従って順次埋める。例外として **[01 法規包絡](01-legal-envelope-japan.md) だけは一次情報つきで記載済**（条文・警察庁資料を実 Read・参照日 2026-09-12）。
 > **決定の扱い**: 方針転換そのものは hard-to-reverse なので ADR 化する（**ADR-0014 予約**＝[adr/README](../adr/README.md)。裁定待ち＝[00 §4](00-mission-and-scope.md)）。本ツリーは ADR を複製せず、設計の中身を持つ。
@@ -18,7 +18,7 @@
 | ファイル | 内容 | 状態 |
 |---------|------|------|
 | [README](README.md) | 位置づけ・境界（mode-m1 / doc23 との分担）・関連 ADR・authoring 方針・残件 | 骨格 |
-| [00-mission-and-scope](00-mission-and-scope.md) | ミッション（歩道 A→B・GNSS 主体・完全自律）・スコープ IN/OUT・法的 2 段階（随伴 → 遠隔操作）・**オペレーター裁定待ち 6 点**・流用する既存資産 | 箱 |
+| [00-mission-and-scope](00-mission-and-scope.md) | ミッション（歩道 A→B・GNSS 主体・完全自律）・スコープ IN/OUT・法的 2 段階（随伴 → 遠隔操作）・**ユーザー決定済 2 点（RTK 必須・タイヤ換装で ≥4 km/h）+ 裁定待ち 5 点**・survey-first・流用する既存資産 | 箱 |
 | [01-legal-envelope-japan](01-legal-envelope-japan.md) | **法規包絡（日本・公道歩道）**: 遠隔操作型小型車の定義・寸法/速度/構造・非常停止装置（府令 + 警察庁運用基準）・標識・届出（事項・添付・期限）・通行ルール・信号の意味・罰則・M1 照合・設計への写像・事前相談チェックリスト | **記載済（一次情報・参照日 2026-09-12）** |
 | [02-architecture-split-orin-pc-cloud](02-architecture-split-orin-pc-cloud.md) | Orin（車載）/ PC（遠隔操作者卓）/ クラウドの分担: 3 原則・分担表・時間階層・リンク断時の挙動・通信・計算予算 | 箱（草案表あり） |
 | [03-localization-gnss-and-ekf](03-localization-gnss-and-ekf.md) | 自己位置: RTK-GNSS + `navsat_transform` + 2 段 EKF（local/global）・datum・TF 単一所有の屋外版・**Humble 制約（FollowGPSWaypoints は Iron 以降 → fromLL + 既存座標 goal）** | 箱 |
@@ -48,7 +48,7 @@
 
 ## Status / 残件（隠さない）
 
-- **2026-09-12 新設（骨格・docs 先行）**。オペレーター裁定待ち 6 点（走行環境の段階 / RTK 採否 / 屋外知覚センサ / 横断の権威 / メカナムの扱い / 契約と命名）は [00 §4](00-mission-and-scope.md)。裁定後に ADR-0014 を起票し、本 README §関連 ADR と [adr/README](../adr/README.md) の予約行を実体へ差し替える。
+- **2026-09-12 新設（骨格・docs 先行）**。**ユーザー決定済**: 特定の固定経路（teach-and-repeat）・RTK 必須・タイヤ換装で ≥4 km/h・survey-first（仕様・既存 tool・企業事例・論文を調査してから採用を決める）。裁定待ち 5 点（走行環境の段階 / 屋外知覚センサ / 横断の権威 / 契約と命名 / 速度契約の再導出）は [00 §4](00-mission-and-scope.md)。裁定後に ADR-0014 を起票し、本 README §関連 ADR と [adr/README](../adr/README.md) の予約行を実体へ差し替える。
 - 索引: [docs/README.md](../README.md)「構成」ツリーと末尾の mode-outdoor 表に登録済（本 PR）。根 `.claude/CLAUDE.md`「Important Paths」への登録は **governance PR（別・人間承認）**。
 - [docs/STATUS.md](../STATUS.md) への反映は round 境界の refresh（orchestrator 所有）で行う。
 - HTML 図解（[html-explainer](../../.claude/skills/html-explainer/SKILL.md)・Orin/PC/クラウド分担図）は未作成。
