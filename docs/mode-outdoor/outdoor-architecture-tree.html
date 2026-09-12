@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Outdoor Architecture Tree — Mode Outdoor（01-09 機能ツリー・屋内 M1 との差分）</title>
+<style>
+  :root{
+    color-scheme: dark;
+    --bg:#1a1a1a; --bg2:#141414; --card:#222222; --card2:#262626; --surface:#2d2d2d;
+    --ink:#ededed; --muted:#c4c4c4; --faint:#8f8f8f; --line:#3a3a3a; --code:#141414;
+    --badge-ink:#1a1a1a; --head:#dcdcdc;
+    --box:#7aa2f7;     --box-bg:rgba(122,162,247,.13);
+    --sub:#9ece6a;     --sub-bg:rgba(158,206,106,.12);
+    --seam:#e0af68;    --seam-bg:rgba(224,175,104,.12);
+    --plugin:#bb9af7;  --plugin-bg:rgba(187,154,247,.12);
+    --demoted:#9a9a9a; --demoted-bg:rgba(154,154,154,.10);
+    --red:#f7768e; --yellow:#e0c07a; --teal:#7dcfff;
+    --mono:"SF Mono",ui-monospace,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);font-family:"Hiragino Sans","Noto Sans JP",sans-serif;line-height:1.55;padding:32px 20px 60px}
+  .wrap{max-width:1180px;margin:0 auto}
+  h1{font-size:21px;margin-bottom:4px;color:var(--head)}
+  h2{font-size:16px;margin:34px 0 10px;padding-left:10px;border-left:4px solid var(--teal);color:var(--head)}
+  .sub{color:var(--muted);font-size:12.5px;margin-bottom:14px}
+  .sub code,.foot code{font-family:var(--mono);font-size:11px}
+  a{color:var(--teal)}
+  .navbar{display:flex;flex-wrap:wrap;gap:10px;margin:10px 0 18px}
+  .navbar a{color:var(--teal);text-decoration:none;font-size:12.5px;border:1px solid var(--line);border-radius:6px;padding:4px 10px;background:var(--card)}
+  .navbar a.here{color:var(--ink);border-color:var(--teal)}
+  .legend{display:flex;flex-wrap:wrap;gap:8px 16px;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:9px 13px;font-size:12px;margin-bottom:16px}
+  .legend b{font-weight:600}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:12px}
+  .card.tree-card{overflow-x:auto}
+  .card h3{font-size:13.5px;margin-bottom:8px;color:var(--head)}
+  pre.tree{font-family:var(--mono);font-size:12.3px;line-height:1.62;white-space:pre;color:var(--ink)}
+  .t1{color:var(--box)} .t2{color:var(--sub)} .t3{color:var(--head)} .t4{color:var(--plugin)}
+  .t5{color:var(--teal)} .t6{color:var(--red)} .t7{color:var(--demoted)} .t8{color:var(--yellow)} .t9{color:var(--seam)}
+  .tx{color:var(--faint);opacity:.85} .td{color:var(--muted)}
+  .tn{color:var(--sub);font-weight:700} .tw{color:var(--yellow);font-weight:700}
+  table.diff{width:100%;border-collapse:collapse;font-size:12.5px}
+  table.diff th,table.diff td{border:1px solid var(--line);padding:6px 9px;text-align:left;vertical-align:top}
+  table.diff th{background:var(--card2);color:var(--head)}
+  table.diff td:first-child{white-space:nowrap}
+  .note{background:var(--card2);border:1px dashed var(--line);border-radius:8px;padding:8px 12px;font-size:12px;color:var(--muted);margin:10px 0}
+  .foot{color:var(--muted);font-size:11.5px;margin-top:26px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>Outdoor Architecture Tree — Mode Outdoor（01-09 機能ツリー・屋内 M1 との差分）</h1>
+<div class="sub">
+  屋外歩道 A→B（固定経路・teach-and-repeat・RTK 必須・遠隔操作型小型車）で「何を流用し・何を変え・何を新設し・何を採らないか」の全体地図。
+  データの流れは companion の <code>outdoor-localization-perception-flow.html</code>。正本は各 md（行末に併記）。
+  比較元（室内 M1 単騎）は <a href="../architecture/robot-architecture-tree.html"><code>architecture/robot-architecture-tree.html</code></a>。
+  行番号・引用は 2026-09-12 時点（<code>architecture/</code>・<code>mode-*</code> docs は file/§、code は symbol）。
+</div>
+<div class="navbar">
+  <a class="here" href="outdoor-architecture-tree.html">① Outdoor Tree（本頁）</a>
+  <a href="outdoor-localization-perception-flow.html">② Outdoor Runtime Data Flow（03/04/05 companion）</a>
+  <a href="../architecture/robot-architecture-tree.html">③ 室内 M1 Tree（比較元）</a>
+  <a href="README.md">④ docs/mode-outdoor/README</a>
+</div>
+<div class="legend">
+  <span class="t1">■ 01 Sensors</span><span class="t2">■ 02 Localization</span><span class="t3">■ 03 TF</span>
+  <span class="t4">■ 04 Outdoor Perception</span><span class="t5">■ 05 Navigation</span><span class="t6">■ 06 Control/安全</span>
+  <span class="t8">■ 08 信号・歩行者（Human Interaction）</span><span class="t9">■ 09 Remote Operation（法的必須層）</span><span class="t7">■ 07 Observability（横断帯）</span>
+  <span><b class="tn">★NEW/TARGET</b>・<b class="tw">⚠未確定/ドリフト</b>・<span class="tx">✗ 不採用（理由つきで残す）</span>・<span class="td">[提案] = 未凍結</span></span>
+</div>
+
+<div class="card tree-card"><h3>bot1/ — ROSMASTER M1（144 mm 通常輪へ換装・07）+ Orin Nano Super 8GB / ROS 2 Humble（ADR-0008 不変・ADR-0006 単騎・namespace bot1/ 継続）</h3>
+<pre class="tree">
+├── <span class="t1">01_Sensors/</span>                          <span class="td">正本: mode-outdoor/03 §4・04 §1・06 §1</span>
+│   ├── <span class="t1">wheel_encoders ×4</span> ── STM32 auto-report 40ms/25Hz ─▶ /bot1/odom          <span class="td">流用（local EKF の vx,vy）</span>
+│   ├── <span class="t1">imu_icm20948</span>（9軸）──────────────────────────────▶ /bot1/imu           <span class="td">流用</span> <span class="tw">⚠ 絶対 yaw は主系にしない（03 §4-3・OQ-OD31）</span>
+│   ├── <span class="t1">lidar_2d = T-mini Plus</span>（60 kLux 公称）──────────▶ /bot1/scan          <span class="td">流用</span> <span class="tw">⚠ 直射日光下は要実測（OQ-OD40）</span>
+│   ├── <span class="tn">★NEW gnss_receiver</span> = RTK（ZED-F9P 系 + NTRIP ／ QZSS CLAS）──▶ /bot1/gps/fix <span class="td">[提案]</span>   <span class="td">正本: 03 §4-1・選定 = OQ-OD37</span>
+│   │     ├─ <span class="tn">★NEW ntrip_client</span> ── RTCM を受信機へ（クラウド依存。CLAS なら不要＝LTE 断と故障モード独立）
+│   │     └─ 品質フィールド（fix/float/single・num_sv・h_acc）─▶ <span class="tn">gnss_quality_gate</span>（06）  <span class="td">NavSatFix 単体では fix/float を区別できない</span>
+│   ├── <span class="tn">★NEW outdoor_camera_front</span> = OAK-D Pro W / S2 W（on-device 深度＝Orin GPU 温存）  <span class="td">正本: 04 §1-2・確定 = OQ-OD43</span>
+│   │     └─▶ 信号分類・歩行者検出（08）・pointcloud_to_laserscan → obstacle 層（05）
+│   ├── <span class="tn">★NEW outdoor_camera_down</span> = 同系 1 台・10〜20° 下向き ─▶ cliff detector（04）
+│   ├── <span class="td">[virtual] /bot1/virtual_scan ── 器は流用。屋外は</span> <span class="tn">★/bot1/cliff_scan</span> <span class="td">[提案] を同じ dual-consumer 契約に流す（04 §3・doc12 §virtual_scan）</span>
+│   ├── <span class="tx">✗ depth_camera Nuwa HP60C ── 屋外主センサとして不採用（structured light は直射日光で不安定）。室内 ADR-0007 の射程は不変</span>
+│   ├── <span class="tx">✗ [external] 固定 RPLiDAR A1 ── 歩道 A→B では設置不能</span>
+│   └── <span class="tx">✗ 3D LiDAR（Livox Mid-360）── Phase 1 不採用（垂直下向き 7° で負障害物の主武器にならない）。Phase 2 の冗長化候補</span>
+│
+├── <span class="t2">02_Localization/</span>                     <span class="td">正本: mode-outdoor/03 §2・§5（室内 doc23 §5 の構造を継承）</span>
+│   ├── <span class="tn">★NEW navsat_transform_node</span> ── WGS84 → 局所直交（use_local_cartesian）・<span class="tn">datum を config 固定</span>・<span class="tx">✗ TF は配信しない</span>
+│   │     <span class="td">FromLL / ToLL / SetDatum サービス。fromLL 変換は L3 compile 段（teach 時に一度）= 03 §3-2 推奨・裁定 OQ-OD33</span>
+│   ├── <span class="t2">local ekf_node</span> <span class="tn">★ odom→base_link TF の唯一の配信者</span>   <span class="td">流用（odom0=wheel vx,vy／imu0=vyaw／odom1=mola_lo）</span>
+│   ├── <span class="tn">★NEW global ekf_node</span> <span class="tn">★ map→odom TF の唯一の配信者</span>   <span class="td">＝ AMCL の座を継ぐ（local と同じ 3 入力 + odometry/gps の x,y）</span>
+│   │     <span class="td">N−1 differential: 絶対姿勢ソースが MOLA-LO と GNSS の 2 本 → MOLA-LO を differential:true（提案・OQ-OD35）</span>
+│   ├── <span class="t2">mola_lo</span> ── 2D LiDAR odometry  <span class="tw">⚠ 屋外は縮退（構造物の少ない歩道）→ local 限定・pose_quality ゲート必須 = OQ-OD30 の提案回答</span> <span class="tw">⚠ GPLv3</span>
+│   ├── <span class="tx">✗ amcl ── 不採用（地図なし）。tf_broadcast:true が global EKF と map→odom を二重配信するため屋外 launch で起動しない</span>
+│   │     <span class="tw">⚠ Guardian の /bot1/amcl_pose 直購読は AMCL 不在で「恒久沈黙」する → pose 源を global EKF + /bot1/gnss/quality へ（03 §5）</span>
+│   ├── <span class="tx">✗ slam_toolbox ── 不採用（teach-and-repeat は軌跡列であって地図ではない）</span>
+│   └── <span class="tx">✗ cuvslam ── 据置不採用（HP60C 由来の blocked-by-hardware）</span>
+│
+├── <span class="t3">03_Coordinate_System_TF/</span>    <span class="td">各エッジの配信者は常に 1 ノード（launch 排他 + unit pin）＝規律は不変（doc23 §5-2）</span>
+│   map（datum 固定の局所直交系）── <span class="tn">global ekf_node</span>（AMCL から交代）
+│    └── bot1/odom ──────────── <span class="t2">local ekf_node</span>（唯一）
+│         └── bot1/base_link ── <span class="td">robot_state_publisher（URDF static）</span>
+│              ├── bot1/lidar_link <span class="td">（凍結）</span>／ bot1/imu_link <span class="td">（凍結）</span>／ bot1/camera_link <span class="td">（凍結済・URDF 実測待ち）</span>
+│              └── <span class="tn">★NEW bot1/gnss_link</span> ── FROZEN_LINK_NAMES 末尾へ additive（contract PR・robot_dimensions.py）
+│         <span class="tx">✗ m1_driver に odom TF を出させない（二重配信の温床）＝不変</span>
+│
+├── <span class="t4">04_Outdoor_Perception/</span>            <span class="tw">⚠ 全体が TARGET（Orin Nano 8GB 同居可否 = 02 §4 スパイクゲート先行）</span> <span class="td">正本: mode-outdoor/04</span>
+│   ├── <span class="tn">★NEW cliff_detector</span>（負障害物 = 縁石落ち・段差）── 下向き深度 → 期待地面高より低い / 点が無い方位に仮想壁
+│   │     └─▶ <span class="tn">/bot1/cliff_scan</span> <span class="td">[提案]（sensor_msgs/LaserScan・virtual_scan 契約の器を流用・marking:true / clearing:false）</span>
+│   │     <span class="tw">⚠ source_timeout は virtual_scan 型（沈黙可）でなく scan 型（途絶＝停止）に寄せる（OQ-OD44）</span>
+│   ├── <span class="tn">★NEW ground_plane / sidewalk polygon</span> ── Phase 1 = RTK ジオフェンス polygon（事前登録）+ 幾何的地面検出
+│   │     <span class="td">/map を「歩道ポリゴンをラスタ化した走行可能領域」に再定義（旧 Static Layer の座）</span>
+│   ├── <span class="tn">★Phase 2 sidewalk_segmentation</span>（TensorRT）── ジオフェンスの「検証器」（単独権威にしない・不一致で減速/停止）
+│   ├── pointcloud_to_laserscan（前方深度 → obstacle 層）  <span class="td">GPU 0・Humble バイナリ有</span>
+│   ├── <span class="tx">✗ nvblox_node（室内 TARGET）── Phase 2 へ延期（Isaac ROS 3.2 U1 で JP6.2 + Orin Nano Super は対応済だが、pose 焼き付き・歩行者・GPU 予算）</span>
+│   └── <span class="tx">✗ collision_monitor には入れない（原則 P1 = GPU/depth を反射経路に入れない）を継承</span>
+│
+├── <span class="t5">05_Navigation/  Nav2</span>               <span class="td">正本: mode-outdoor/03 §3（Humble 差分）</span>
+│   ├── <span class="t5">waypoint 再生</span> <span class="tn">★主戦力</span> ── teach で作った固定経路（waypoint 列 + 横断ノード + 速度帯）＝ route store（09）
+│   │     <span class="tx">✗ FollowGPSWaypoints（Iron 以降）</span> → 既存 nav2_bridge の座標 goal（go_to → goThroughPoses）を流用
+│   │     <span class="tw">⚠ 前提: orientation.w=1.0 固定の seam に yaw を通す additive 拡張（OQ-OD3A）</span>
+│   ├── bt_navigator ／ planner_server = NavfnPlanner   <span class="td">流用（固定経路ゆえ大域計画の比重は低下）</span>
+│   ├── controller_server = MPPI  <span class="td">流用（vx_max は契約 MAX_LINEAR_VELOCITY の再 pin = 07 §9・OQ-OD71 に従う）</span>
+│   ├── <span class="tw">⚠ behavior_server ── recovery の collision_monitor BYPASS（#233 ⑥）は公道で再裁定（根拠は 200mm 隘路 deadlock＝ジオラマ固有・OQ-OD58）</span>
+│   ├── speed_limit（nav2_msgs/SpeedLimit・単一 publisher）  <span class="td">流用</span> <span class="tw">⚠ 帯は安全機構ではない（ADR-0012）＝GNSS 劣化の「減速」は best-effort</span>
+│   └── costmap_2d/
+│        ├── global（map・<span class="tn">★rolling</span>・0.05 級）: <span class="tx">✗ static_layer（/map 不在）</span> or 再定義 /map ／ obstacle ◀ scan + <span class="tn">cliff_scan</span> + pcl2laser ／ inflation（要再調整）
+│        └── local（odom・<span class="tn">★8〜10 m・0.05 級</span>）: obstacle ◀ scan + <span class="tn">cliff_scan</span> ／ inflation ／ <span class="tx">✗ static_layer ／ ✗ voxel_layer ／ ✗ nvblox_layer（Phase 2）</span>
+│
+├── <span class="t6">06_Control_and_Safety/</span>              <span class="td">正本: doc12 §cmd_vel トポロジ（凍結）／ mode-outdoor/05 ／ mode-m1/02・05</span>
+│   ├── <span class="t6">safety_chain/ ★凍結トポロジ＝1 バイトも変えない（原則 P2）＝屋外でも不変の床（pose 非依存）</span>
+│   │     controller ─▶ /bot1/cmd_vel/nav2_raw
+│   │       └ <span class="t6">collision_monitor</span>（obs = scan + <span class="tn">cliff_scan</span> のみ。<span class="tx">✗ GPU/depth 禁止＝原則 P1</span>）─▶ /bot1/cmd_vel/nav2 (prio10)
+│   │       └ <span class="t6">twist_mux</span> ◀── /bot1/cmd_vel/emergency <span class="t6">(prio100 = FROZEN safety contract)</span> ─▶ /bot1/cmd_vel
+│   ├── <span class="t6">emergency_guardian</span>（L1・停止条件の単一判定点。<span class="tx">✗ 新しい許可判断ノードは作らない＝mode-m1/05</span>）─▶ /bot1/cmd_vel/emergency
+│   │     既存停止理由: near_collision / battery_critical / pose_stale（自動解除・不変）＋ operator_stop_request（latch・明示解除のみ）
+│   │     <span class="tn">★NEW 停止理由</span>（すべて L1 Safety・R-26 unit 必須・latch）:
+│   │       <span class="tn">link_loss</span>      ◀ <span class="tn">★link_loss_watchdog</span>（heartbeat 途絶・復帰しても自動 clear しない）
+│   │       <span class="tn">gnss_degraded</span>  ◀ <span class="tn">★gnss_quality_gate</span>（heading 未収束 = 発進禁止／float = 減速 best-effort／single・非有限・ロスト = 停止）
+│   │       <span class="tn">geofence_exit</span>  ◀ <span class="tn">★geofence</span>（歩道ポリゴン外・車道進入。<span class="tw">⚠ 横断時の許可拡大は restrict-only と要裁定 OQ-OD56</span>）
+│   │       <span class="tn">estop_hardware</span> ◀ <span class="tn">★物理非常停止の GPIO latch</span>
+│   │     <span class="td">合流 topic [提案]: /safety/stop_request（std_msgs/String JSON・reason_code 付き・/operator/stop_request と同型＝不正 payload は無視）→ consumer は Guardian 1 本（OQ-OD53）</span>
+│   │     <span class="tw">⚠ pose 源が /amcl_pose → global EKF + /bot1/gnss/quality（監視プロファイルの屋外初適用・OQ-OD39/57）</span>
+│   ├── ─▶ /bot1/stop_state（毎 50ms・{"stop_requested","valid_until"}）─▶ L0' 停止上乗せ   <span class="td">流用</span>
+│   ├── <span class="t6">m1_driver</span>（L0' 送信直前クランプ・W-1/W-2・停止上乗せ consumer）  <span class="td">流用</span> <span class="tn">★車輪スケール k（送信 v/k・odom は 0x0D 生カウント × 真の周長）</span>
+│   ├── <span class="tn">★NEW estop_relay</span> ── 法定・物理非常停止装置（01 §3 / 追補②）
+│   │     φ20 mm 以上・赤/黄・地上 60 cm 以上・前後 2 か所 or 上部中央 1 か所 ── <span class="tn">モータレグのリレーを切る</span>（バッテリー → 拡張ボード間）
+│   │     <span class="tx">✗ Orin レグは切らない（Orin だけ落とすと fail-active）</span> ─▶ Orin GPIO ─▶ latch ─▶ 停止理由 ─▶ 遠隔操作者へ通知（届出項目）
+│   ├── <span class="t6">stm32_firmware</span>（Yahboom V3.6.5）── <span class="tw">⚠ 通信途絶停止なし・IWDG 無効＝fail-active／⚠ 低電圧 9.6 V×2 s ラッチ停止（電源再投入まで復帰不能）／ゼロ指令＝短絡ブレーキ／yaw-adjust bit は 0（07 §8）</span>
+│   ├── <span class="tw">⚠ W-3（ADR-0013 additive fork）── 公道の前提にするか未裁定（OQ-OD52）。配布ソースは Keil MDK のみ＝toolchain 申し送り（OQ-OD75）</span>
+│   ├── <span class="tx">✗ W-4（手を掛けたまま）── 遠隔では成立しない。物理非常停止 + W-3 が代替</span>
+│   └── <span class="tw">⚠ ros2_control 未裁定（ADR-0011）</span>／<span class="tx">✗ micro-ROS 不使用</span>
+│
+├── <span class="t8">08_Human_Interaction/（信号・歩行者）</span>   <span class="td">正本: mode-outdoor/04 §4-5・05 §4</span>
+│   ├── <span class="tn">★NEW traffic_light_classifier</span>（TensorRT・L4 知覚・publish-only・0 actuation）
+│   │     out = GREEN / GREEN_FLASHING / RED / UNKNOWN（fail-closed）・時間窓多数決（GREEN 判定は非対称に厳しく）・<span class="tn">事前登録横断点の ROI で「自分の灯器」を検証</span>
+│   │     ─▶ <span class="tn">★crossing_gate</span>（L2・restrict-only profile）: approach → wait → cross → done ／ cross = 「GREEN ∧ 遠隔者承認トークン」の AND のみ
+│   │           <span class="tx">✗ 速度経路には触れない（L2-G8: L2 の出口は position goal のみ）</span>／<span class="tx">✗ LLM / ER は UNKNOWN を GREEN に昇格できない</span>
+│   ├── <span class="tn">★NEW pedestrian_detector</span> ── 前方 X m で slow 帯（best-effort）→ 近ければ停止（collision_monitor が最終担保）＝進路を譲る（法 14 条の 2）
+│   └── <span class="tx">✗ gesture_detector（室内 ADR-0007/0009）── 屋外 Phase 1 不採用（HP60C 入力不可・KNOWN_LOCATIONS snap 先が無い）。「publish-only・0 actuation」の型は信号 producer が継承</span>
+│
+└── <span class="t9">09_Remote_Operation/</span> <span class="tn">★NEW</span>        <span class="td">正本: mode-outdoor/02 §2-1・§3 ／ 法 = 01 §5・追補②（無線試験は直接目視できない場所から＝映像が法的前提）</span>
+      <span class="t9">＝ 法的必須層（通信が切れたら走ってはいけない）。07 観測帯とは縮退方針が逆なので 09 として分離</span>
+      ├── <span class="tn">★NEW operator_link_node</span>（Orin・web_bridge とは別プロセス・別 port・doc22 §2.2/§18 が予約した席）
+      │     in : WS 単一チャネル（Tailscale over LTE・DDS は WAN に流さない）
+      │     out: ① teleop 入力の再生 ─▶ 既存 teleop 経路（deadman・鮮度・latch 再アームの純ロジックを流用）─▶ /bot1/cmd_vel
+      │          ② /operator/stop_request（engage/clear・既存契約そのまま）  ③ 横断承認トークン ─▶ crossing_gate（08）
+      │     <span class="td">運ぶ意味の閉集合 = heartbeat / teleop / stop_request / 横断承認 / テレメトリ / 映像。新 package にも R-26 相当の AST pin（OQ-OD24）</span>
+      ├── <span class="tn">★NEW link_loss_watchdog</span> ── heartbeat 途絶で停止（→ 06 の停止理由）  <span class="tw">⚠ 周期 200 ms / 途絶 1.0 s は未凍結。単一ソース = warehouse_interfaces.safety（#642 先例・OQ-OD25）</span>
+      ├── <span class="tn">★NEW video_encoder</span>（software x264 / MJPEG）── <span class="tx">✗ NVENC 不在（Orin Nano・NVIDIA 公式）</span>。Phase 1 = 640×360@15fps 固定・適応制御なし
+      ├── <span class="tn">★NEW route_store</span> ── teach で作った waypoint 列 + 横断ノード + 速度帯（形式 = 03 §3-3 [提案]・OQ-OD21）。datum は navsat_transform と単一ソース
+      └── PC 遠隔操作者卓（別アプリ・別 owner）── 監視 / 非常停止 / 手動 takeover（全挙動）/ 横断承認   <span class="tx">✗ web/console（observe-only）とは統合しない（doc22 §2.2）</span>
+</pre>
+</div>
+
+<div class="card" style="border-left:4px solid var(--demoted)"><h3><span class="t7">07_Observability</span> — 横断帯（01-09 の全段に key join。run_id / gen_id / robot / timestamp で結合）＝流用</h3>
+<pre class="tree">
+① 判断 tier  <span class="t7">Langfuse</span>   ② event tier  <span class="t7">audit.jsonl / decision_event</span>   ③ 集計 tier  <span class="t7">OTel / Prometheus（未実装）</span>
+④ 生 tier    <span class="t7">rosbag2</span> <span class="tw">⚠未配線 → 公道では事故時の説明責任（立入検査対象 = 操作・通信履歴・位置情報）に直結し優先度が上がる</span>
+<span class="t7">web_bridge</span>（observe-only・R-26 AST pin）は<span class="tn">無改変</span>で屋外に持ち越す（操作面は 09 に分離）
+</pre>
+</div>
+
+<h2>室内 M1（比較元）との差分（屋外でこう変わる）</h2>
+<div class="card">
+<table class="diff">
+<tr><th>室内 M1 の裁定（robot-architecture-tree.html）</th><th>屋外での裁定</th><th>正本</th></tr>
+<tr><td>GNSS / RTK は ✗ 対象外</td><td><b>反転して必須</b>（ユーザー決定）。navsat_transform + global EKF で AMCL の座を継ぐ。datum 固定・TF は global EKF のみ</td><td>mode-outdoor/03 §1-2</td></tr>
+<tr><td>AMCL が map→odom・Guardian は /amcl_pose 直購読</td><td>AMCL 不採用。Guardian の pose 源を global EKF + <code>/bot1/gnss/quality</code>（主判定）へ。<b>AMCL 不在では guard が恒久沈黙</b>するため必須の変更</td><td>mode-outdoor/03 §5・05 §3</td></tr>
+<tr><td>04 = nvblox（HP60C 深度）</td><td>HP60C は屋外主センサ不可。OAK-D 系 ×2（前方 RGB＋下向き深度）。<b>負障害物は cliff_scan（virtual_scan 契約の器を流用）</b>。nvblox は Phase 2</td><td>mode-outdoor/04 §1・§3・§6</td></tr>
+<tr><td>05 = 全域 static costmap + 3 m rolling local</td><td>rolling global（0.05 級）・local 8〜10 m。static_layer は外すか「歩道ポリゴンのラスタ」に再定義。FollowGPSWaypoints（Iron+）は使わず既存座標 goal（yaw 拡張が前提）</td><td>mode-outdoor/03 §3-4</td></tr>
+<tr><td>06 safety_chain 凍結・Guardian 停止理由 4 種</td><td>凍結チェーンは<b>不変</b>。停止理由を 4 種追加（link_loss / gnss_degraded / geofence_exit / estop_hardware）し、合流 topic [提案] 1 本で Guardian に集約。<b>減速（帯）は安全機構に数えない</b></td><td>mode-outdoor/05 §3・ADR-0012</td></tr>
+<tr><td>物理非常停止なし（W-4 運用）</td><td>法定装置（60 cm 柱・φ20 mm・赤/黄・ラッチ）をモータレグ遮断で実装。W-4 は遠隔で成立しない → 物理非常停止 + W-3</td><td>mode-outdoor/05 §5-6・01 §3</td></tr>
+<tr><td>08 = gesture_detector（HP60C・KNOWN_LOCATIONS snap）</td><td>不採用。08 は信号分類（L4 producer）+ 横断ゲート（L2 restrict-only）+ 歩行者に置換。「publish-only・0 actuation」の型は継承</td><td>mode-outdoor/04 §4-5・05 §4</td></tr>
+<tr><td>（無し）遠隔操作</td><td><b>09 を新設</b>（法的必須層）。web_bridge（observe-only）とは別プロセス別 port = doc22 が予約した席。WS 単一チャネル・Tailscale・映像はソフトエンコード</td><td>mode-outdoor/02 §2-1・§3</td></tr>
+<tr><td>vx_max 0.3・凍結契約 0.3 m/s</td><td>144 mm 輪で最大設定 4.5 km/h（1.26 m/s）。契約 <code>MAX_LINEAR_VELOCITY</code> の再 pin は contract PR（未裁定）。FW clamp は MCU 側に残る</td><td>mode-outdoor/07 §2・§9</td></tr>
+</table>
+</div>
+<div class="note">未凍結の提案（[提案]）: <code>/bot1/gps/fix</code>・<code>/bot1/gnss/quality</code>・<code>/bot1/cliff_scan</code>・<code>/safety/stop_request</code>・<code>operator_link_node</code>・route ファイル形式・heartbeat 値。凍結は contract PR（<code>warehouse_interfaces</code>）と ADR-0014（裁定待ち = mode-outdoor/00 §4）で行う。</div>
+
+<div class="foot">
+  生成: 2026-09-12（エージェントチーム 3 レーン = 自己位置・RTK／知覚／アーキ・安全・通信 の統合。引用は執筆時に実 Read）。正本は各 md（<code>docs/mode-outdoor/02..07</code>・<code>docs/architecture/12</code>・<code>docs/architecture/22</code>・<code>docs/architecture/23</code>・<code>docs/mode-m1/02,05</code>・ADR-0004/0008/0012/0013）。
+  引用規約: <code>architecture/</code>・<code>mode-*</code> docs は file/§、code は symbol（<code>emergency_guardian.py</code> / <code>nav2_bridge.py</code> / <code>robot_dimensions.py</code>）。本 HTML は補足図解であり設計の正本ではない。
+</div>
+
+</div>
+</body>
+</html>

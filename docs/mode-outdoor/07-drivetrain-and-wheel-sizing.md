@@ -4,7 +4,7 @@
 Status: **記載済（設計値・一次情報つき・実測未）**。2026-09-12 のエージェントチーム 4 レーン（法規／駆動系物理／駆動方式・車体／M1 実機制約）の報告を統合し、数値は本 doc 執筆時に**再計算**、引用は**再 Read** した（[D]=一次情報を執筆者が実 Read・[L]=調査レーン報告で URL あり（執筆者未再読）・[I]=推論・計算）。実機の実測（§10）で確定するまで**設計値**として扱う。**2026-09-12 統合**: 径の推奨は [06 §2](06-hardware-delta-and-base-selection.md) が固定した法定判定の保守基準（満充電 12.6 V の無負荷実速度 < 6.0 km/h ＝ ≤147 mm）に合わせ **144 mm 級**とし、150 mm は「FW clamp を構造と認める場合のみ」に格下げした。
 
 > 正本ルート: [mode-outdoor/README](README.md)。本 doc は「車輪径・速度・駆動方式」の**裁定材料**に閉じる。差分 BOM・ベース選定は [06](06-hardware-delta-and-base-selection.md)、法規は [01](01-legal-envelope-japan.md)、速度上限の契約は [ADR-0010](../adr/0010-raise-speed-cap-to-platform-max.md)、ハードウェア実体は [shared/02](../shared/02-hardware-design.md)、車体ファームの挙動（driver / watchdog）は [mode-m1/02](../mode-m1/02-m1-driver-and-watchdog.md)（本 doc §8 の事実は同 doc 末尾追補へ forward link 済）。
-> レイヤ注記: 本 doc の対象は **L0'（ホスト送信直前クランプ・`m1_driver`）と MCU ファーム（L0 相当・vendor 所有）、および自律走行層の速度予算**。L2/L1 の契約は変えない（変更は [00 §4 行 7](00-mission-and-scope.md) の contract PR）。
+> レイヤ注記: 本 doc の対象は **L0'（ホスト送信直前クランプ・`m1_driver`）と MCU ファーム（L0 相当・vendor 所有）、および自律走行（Hard-RT・安全層外＝[23 §1](../architecture/23-perception-and-localization.md:21)）の速度予算**。L2/L1 の契約は変えない（変更は [00 §4 行 7](00-mission-and-scope.md) の contract PR）。
 
 ## 0. 要旨（結論）
 
@@ -16,7 +16,7 @@ Status: **記載済（設計値・一次情報つき・実測未）**。2026-09-
 
 **Q2. 4WD は必要か？** — 法的要件ではない。**技術的には「4 輪とも駆動・固定・接地荷重あり」が必要**（§4）: 歩道級の商用機にキャスタ採用例がない・2 cm 段差はキャスタでは越えられない・制動力が約 1.9 倍・勾配トルク余裕が 2 倍・M1 は既に 4 モータで追加費用ゼロ。**メカナムは屋外で放棄**する（濡れ・砂利・横断勾配でのスリップと横流れ）。
 
-**Q3. 周辺の懸念は？** — 重大度順: ① 速度が clamp と電池サグで 4.7 → 4.3 km/h（6 km/h は FW 改変が前提）② 2 cm 段差のトルク（150 mm で 0.75 N·m ＝ 定格超・停動未満）③ 6 mm D 軸の片持ちとギヤボックス出力軸受 ④ 低電圧ラッチ（9.6 V × 2 s で**電源再投入まで復帰不能**停止）⑤ 2D LiDAR 走査面下の死角 ⑥ 重心と停止距離 ⑦ odom スケール校正（§6・§7・§8）。
+**Q3. 周辺の懸念は？** — 重大度順: ① 速度が clamp と電池サグで 4.5 → 4.1 km/h（144 mm。6 km/h は FW 改変が前提）② 2 cm 段差のトルク（144 mm で 0.73 N·m ＝ 定格超・停動未満）③ 6 mm D 軸の片持ちとギヤボックス出力軸受 ④ 低電圧ラッチ（9.6 V × 2 s で**電源再投入まで復帰不能**停止）⑤ 2D LiDAR 走査面下の死角 ⑥ 重心と停止距離 ⑦ odom スケール校正（§6・§7・§8）。
 
 **推奨**: **Phase 1 = 144 mm 級（≤147 mm）通常輪・1:56 据え置き・stock FW・M1 car_type ＋ ホスト側車輪スケール k**（4.1〜4.5 km/h・満充電無負荷 5.8 km/h で「構造上 6 km/h 未満」を物理で満たし、FW clamp も MCU 側に残る）。**Phase 2（任意・ADR 要）= FW 定数修正 ＋ 1:40 L 型で 6 km/h**（[ADR-0013](../adr/0013-stm32-command-stream-watchdog.md) の additive fork と同じツールチェーン課題を共有＝§8-5）。
 
@@ -67,7 +67,7 @@ Status: **記載済（設計値・一次情報つき・実測未）**。2026-09-
 | (a) FW clamp が 6.0 km/h になる径 | `D = 1.667 × 60 / (π × 車輪 rpm@clamp)`（1:56: 167.1 rpm） | **190.5 mm** | 136.1 mm | 102.0 mm | これより大きいと最大設定が法定超 |
 | (b) 満充電無負荷が 6.0 km/h になる径（物理的に超えられない） | `D = 1.667 × 60 / (π × n0 × 1.05)` | **147.9 mm** | 101.1 mm | 91.0 mm | これ以下なら FW に頼らず物理で 6 km/h 未満 |
 | (c) 9.6 V 負荷で 6.0 km/h を維持できる径 | `D = 1.667 × 60 / (π × n0 × 0.80 × 0.925)` | 209.8 mm | 143.4 mm | 129.2 mm | 「6 km/h で走り続ける」ための径 |
-| (d) 機械上限（前後輪が当たる） | `D < 軸間 − 隙間`（軸間 ≈ 185 mm 推定） | **≈ 160〜170 mm** | 同左 | 同左 | 150 mm で隙間 ≈ 35 mm・160 mm で ≈ 25 mm [I] |
+| (d) 機械上限（前後輪が当たる） | `D < 軸間 − 隙間`（軸間 ≈ 185 mm 推定） | **≈ 160〜170 mm** | 同左 | 同左 | 144 mm で隙間 ≈ 41 mm・150 mm で ≈ 35 mm・160 mm で ≈ 25 mm [I] |
 
 **結論**: 1:56 のまま (a)(c) を満たす径（190〜210 mm）は (d) で入らない。**(b)(d) を同時に満たす最大 = 147 mm（市販代表 144 mm）** が「法律ギリギリ径」の実用解であり、その最大設定は 4.5 km/h。(a) の FW clamp を「構造」の根拠に認めるなら 150〜160 mm まで広がる（最大設定 4.7〜5.0 km/h）が、[06 §2](06-hardware-delta-and-base-selection.md) は保守側 (b) に基準を固定している（[01 §10](01-legal-envelope-japan.md) のグレーが事前相談で解けるまで）。6 km/h を**維持**したいなら径ではなくモータ回転数（1:40 L 型）と FW 定数の側で解く（§9 案 C）。
 
@@ -104,22 +104,22 @@ Status: **記載済（設計値・一次情報つき・実測未）**。2026-09-
 ### 4-3. 制動とトルク余裕（4WD vs 2WD）
 
 - 制動は摩擦限界 `a = μ·g·(制動輪荷重比)`。濡れタイル μ = 0.5 では **4WD 4.9 m/s²・2WD（荷重 55 %）2.7 m/s²** → 1.67 m/s からの純制動距離 **0.28 m vs 0.52 m**（約 1.9 倍）[I]。
-- 勾配 10 %・Crr 0.05・6 kg の必要推力 8.8 N に対し、1:56 / 150 mm の定格推力は **4WD 34.0 N（3.9 倍）・2WD 17.0 N（1.9 倍）**（§5）。
+- 勾配 10 %・Crr 0.05・6 kg の必要推力 8.8 N に対し、1:56 / 144 mm の定格推力は **4WD 35.4 N（4.0 倍）・2WD 17.7 N（2.0 倍）**（§5）。
 - 4 モータは既に搭載済（[shared/02:310](../shared/02-hardware-design.md:310) AM2861 × 4）。**4WD 維持の追加費用はゼロ**。
 
 **結論**: 4WD は法的には不要だが、段差・制動・勾配・追加費用のすべてで **4 輪固定・全輪駆動（skid-steer）を維持**する。M1 type の混合式は `vy = 0` なら左右差動に一致するため、**契約（`linear.y = 0` の diff-drive）は不変**（[shared/02:324](../shared/02-hardware-design.md:324)）。
 
-## 5. トルク・電力・航続（m = 6 kg・D = 150 mm）
+## 5. トルク・電力・航続（m = 6 kg・D = 144 mm）
 
-**利用可能推力**（`F = T / r`・r = 0.075 m）:
+**利用可能推力**（`F = T / r`・r = 0.072 m。150 mm なら 4 % 小さい）:
 
 | モータ | T 定格 / 停動 [N·m] | F/輪 定格 / 停動 [N] | 4WD 定格 / 停動 [N] | 2WD 定格 [N] |
 |---|---|---|---|---|
-| **1:56** | 0.637 / 0.814 | 8.5 / 10.9 | **34.0 / 43.4** | 17.0 |
-| 1:40 L | 0.431 / 0.981 | 5.8 / 13.1 | 23.0 / 52.3 | 11.5 |
-| 1:30 | 0.324 / 0.471 | 4.3 / 6.3 | 17.3 / 25.1 | 8.6 |
+| **1:56** | 0.637 / 0.814 | 8.9 / 11.3 | **35.4 / 45.2** | 17.7 |
+| 1:40 L | 0.431 / 0.981 | 6.0 / 13.6 | 24.0 / 54.5 | 12.0 |
+| 1:30 | 0.324 / 0.471 | 4.5 / 6.5 | 18.0 / 26.1 | 9.0 |
 
-**必要推力** `F = m·g·(sinθ + Crr·cosθ)`（6 kg・Crr 0.05）: 平地 2.9 N・5 % 5.9 N・10 % 8.8 N・15 % 11.6 N。**余裕率（4WD 定格）**: 1:56 = 11.6 / 5.8 / **3.9** / 2.9 倍、1:40 L = 7.8 / 3.9 / 2.6 / 2.0 倍、1:30 = 5.9 / 2.9 / 2.0 / 1.5 倍。摩擦天井（μ 0.6・N = 58.8 N）は 35 N なので、1:56 の 4WD 停動 43 N は**グリップ律速**＝トルク不足ではない [I]。
+**必要推力** `F = m·g·(sinθ + Crr·cosθ)`（6 kg・Crr 0.05）: 平地 2.9 N・5 % 5.9 N・10 % 8.8 N・15 % 11.6 N。**余裕率（4WD 定格）**: 1:56 = 12.0 / 6.0 / **4.0** / 3.0 倍、1:40 L = 8.2 / 4.1 / 2.7 / 2.1 倍、1:30 = 6.1 / 3.1 / 2.0 / 1.5 倍。摩擦天井（μ 0.6・N = 58.8 N）は 35 N なので、1:56 の 4WD 停動 45 N は**グリップ律速**＝トルク不足ではない [I]。
 
 **電力・航続**（電池 72 Wh・使用可 80 % = 57.6 Wh。3S 公称 11.1 V なら 66.6 Wh ＝ 約 −8 %）[I]:
 
@@ -153,14 +153,14 @@ Status: **記載済（設計値・一次情報つき・実測未）**。2026-09-
 | ホイールアーチ | **存在しない**。車輪頂点 80 mm ＞ 車体上面 74.58 mm（[shared/02:302](../shared/02-hardware-design.md:302)）＝車輪は側板の外側にあり車体より高い。前回所見（2026-09-12 午前）の「アーチ干渉」は**撤回** | [D] 寸法 ＋ 説明書表紙写真 | 高 |
 | 実際の干渉部位 | **前後ロアバンパ / スカート**（前後方向）。127 mm でタイヤ最前点が中心から 63.5 mm → バンパ張出し（≈ 全長 284.4 − 軸間 185 → 片側 ≈ 50 mm）を **≈ 14 mm** 超える、160 mm で ≈ 30 mm | [I]（軸間推定に依存） | 中・要現物 |
 | 軸間 / 輪距 | ≈ 185 / ≈ 194 mm（§1）。**前後輪が当たる径 ≈ 185 mm・実用 ≤ 160〜170 mm** | [I] | 中（STEP 取得か 5 分実測で確定） |
-| 地上高 | 現状 **推定 20〜30 mm**（最低点 = バッテリ底カバー or モータ胴）。150 mm 化で **+35 mm**。デッキ 74.58 → 109.6 mm・LiDAR 上面 147.5 → 182.5 mm（URDF / Nav2 の Z・重心がすべてずれる） | [I] | 低 |
+| 地上高 | 現状 **推定 20〜30 mm**（最低点 = バッテリ底カバー or モータ胴）。144 mm 化で **+32 mm**（150 mm なら +35 mm）。デッキ 74.58 → 106.6 mm・LiDAR 上面 147.5 → 179.5 mm（URDF / Nav2 の Z・重心がすべてずれる） | [I] | 低 |
 | 車輪取付 | 6 mm D 軸 → **6 mm 六角メタルカップリング**（イモネジ）→ 車輪。モータは側板内側に L 字ブラケット・軸が側板を貫通。幅広輪は**長いカップリング / スペーサ**で逃がす | Yahboom wheel-set / 520 motor 公式 [D]・説明書 p.3 [L] | 中 |
 | 純正の大径輪 | **無い**。Yahboom wheel-set の最大は通常輪 **85 mm**・メカナム **97 mm**（6 mm カップリング品）。127〜160 mm はサードパーティ ＋ 6 mm D 軸ハブが必須 | Yahboom wheel-set 公式（参照日 2026-09-12）[D] | 高 |
 | 市場クラス（6 mm D 軸・要見積） | (1) PU ソリッド 125〜144 mm スクータ輪（608 ベアリング）＋ **Pololu 6 mm 軸用スクータホイールアダプタ**（最短経路・幅 24〜29 mm）(2) Nexus 152 mm メカナム（600 g/輪・幅 55 mm＝屋外不採用）(3) AndyMark 6 in 空気入り（1/2 in 六角前提＝要変換・実質不適） | Pololu 2674 / 3281・Nexus 14101L / 18007・AndyMark [L] | 中 |
 | **6 mm D 軸の片持ち** | 37 mm 級ギヤモータの出力軸は**ブッシュ 1 個支持**で、ロボット重量の径方向荷重を受けるべきでない（Pololu 公式フォーラム）。径 1.9 倍で同じ牽引力に対する曲げモーメントも約 1.9 倍・段差衝撃はピーク。**緩和（優先順）**: ① 車輪ハブ内に 608 ベアリング 2 個 ＋ ピロー / フランジ軸受で径方向荷重を筐体で受け、モータ軸はトルク伝達のみ ② 片持ち長を最小化（幅 24〜29 mm 級・ハブ内側面をギヤボックス端面へ寄せる）③ ベルト / チェーンで軸分離 | Pololu forum 8629 / 5242 [L]・[I] | 中 |
 | 車輪質量 | 0.1 kg（純正 80 mm メカナム）→ 0.3〜0.7 kg/輪。回転慣性込みの等価質量 **+1〜2 kg**（加減速・停止距離・トルク余裕に効く） | [I] | 推定 |
 | タイヤ | 空気入り = 衝撃吸収に優れるがパンク・軸径変換 / **PU ソリッド・ノーパンク** = 保守不要（Hakobot・Scout Mini と同型）/ フォーム充填 = 重い。濡れ点字ブロックの μ は実測 | [L][I] | — |
-| 乗り上げ | 半径の 1/3 ≈ 25 mm が目安（150 mm）。**歩道の 2 cm 切り下げは幾何上は可**・トルクは §4-2 | [I] | — |
+| 乗り上げ | 半径の 1/3 ≈ 24 mm が目安（144 mm）。**歩道の 2 cm 切り下げは幾何上は可**・トルクは §4-2 | [I] | — |
 
 ## 8. ファーム挙動（屋外速度に効く 5 点・vendor V3.6.5 実ソース）
 
@@ -191,7 +191,7 @@ Status: **記載済（設計値・一次情報つき・実測未）**。2026-09-
 
 | # | 試験 | 確定するもの | 手順の正本 |
 |---|---|---|---|
-| G-W1 | **軸間・輪距・地上高・バンパ張出しの実測 5 分**（または `ROSMASTER M1-V1.0.STEP` 取得） | §1 / §7 の「推定」4 項目・径の機械上限 | [shared/02:779](../shared/02-hardware-design.md:779)（STEP 未取得） |
+| G-W1 | **軸間・輪距・地上高・バンパ張出しの実測 5 分**（または `ROSMASTER M1-V1.0.STEP` 取得） | §1 / §7 の「推定」4 項目・径の機械上限 | [shared/02:761](../shared/02-hardware-design.md:761)（STEP 未取得） |
 | G-W2 | **S-SPEED を型式認定基準の手順で**（水平 20 m・助走 10 m・測定 10 m・往復・電池 ≥ 75 %・最大設定・`V = 36/T`） | 届出に書く「構造上出すことができる最高の速度」・k の妥当性 | [01 追補②](01-legal-envelope-japan.md) / [ADR-0010 §Open 2](../adr/0010-raise-speed-cap-to-platform-max.md) |
 | G-W3 | 2 cm 段差乗り越え（前進・助走あり / なし・積載あり） | §4-2 のトルク余裕 | 本 doc |
 | G-W4 | **UMBmark**（直線 10 m 往復 + 方形路・前後両方向） | odom の車輪スケール k と有効転がり半径（3 % 誤差 = 200 m で 6 m） | 本 doc |
@@ -214,7 +214,7 @@ Status: **記載済（設計値・一次情報つき・実測未）**。2026-09-
 docs 内（file:line は執筆時に実 Read）:
 
 - [ADR-0010](../adr/0010-raise-speed-cap-to-platform-max.md)（[:12](../adr/0010-raise-speed-cap-to-platform-max.md:12) clamp / [:13](../adr/0010-raise-speed-cap-to-platform-max.md:13) 車輪定数 / [:17](../adr/0010-raise-speed-cap-to-platform-max.md:17) 25 Hz / [:28](../adr/0010-raise-speed-cap-to-platform-max.md:28) C-3 margin / [:56](../adr/0010-raise-speed-cap-to-platform-max.md:56) clamp 変更却下 / [:63](../adr/0010-raise-speed-cap-to-platform-max.md:63) 実機確認）/ [ADR-0013](../adr/0013-stm32-command-stream-watchdog.md)（additive fork・UART ISP）
-- [shared/02-hardware-design.md](../shared/02-hardware-design.md)（[:302](../shared/02-hardware-design.md:302) 寸法 / [:310](../shared/02-hardware-design.md:310) 拡張ボード / [:318](../shared/02-hardware-design.md:318) 12 V レール / [:324](../shared/02-hardware-design.md:324) `linear.y = 0` / [:433](../shared/02-hardware-design.md:433) ヒューズ / [:448](../shared/02-hardware-design.md:448) 電圧監視 / [:543](../shared/02-hardware-design.md:543)〜[:551](../shared/02-hardware-design.md:551) V-2 モータ表 / [:566](../shared/02-hardware-design.md:566) スリップ / [:585](../shared/02-hardware-design.md:585) 520 motor URL / [:749](../shared/02-hardware-design.md:749) FW 定数 / [:779](../shared/02-hardware-design.md:779) STEP 未取得 / [:797](../shared/02-hardware-design.md:797) FW ソース / [:812](../shared/02-hardware-design.md:812) ライセンス）
+- [shared/02-hardware-design.md](../shared/02-hardware-design.md)（[:302](../shared/02-hardware-design.md:302) 寸法 / [:310](../shared/02-hardware-design.md:310) 拡張ボード / [:318](../shared/02-hardware-design.md:318) 12 V レール / [:324](../shared/02-hardware-design.md:324) `linear.y = 0` / [:433](../shared/02-hardware-design.md:433) ヒューズ / [:448](../shared/02-hardware-design.md:448) 電圧監視 / [:543](../shared/02-hardware-design.md:543)〜[:551](../shared/02-hardware-design.md:551) V-2 モータ表 / [:566](../shared/02-hardware-design.md:566) スリップ / [:585](../shared/02-hardware-design.md:585) 520 motor URL / [:749](../shared/02-hardware-design.md:749) FW 定数 / [:761](../shared/02-hardware-design.md:761) STEP 未取得 / [:797](../shared/02-hardware-design.md:797) FW ソース / [:812](../shared/02-hardware-design.md:812) ライセンス）
 - [mode-m1/02-m1-driver-and-watchdog.md](../mode-m1/02-m1-driver-and-watchdog.md)（[:25](../mode-m1/02-m1-driver-and-watchdog.md:25) fail-active / [:31](../mode-m1/02-m1-driver-and-watchdog.md:31) 幾何ハードコード / [:64](../mode-m1/02-m1-driver-and-watchdog.md:64) W-3 / [:65](../mode-m1/02-m1-driver-and-watchdog.md:65) W-4 / 末尾追補 2026-09-12 = §8 の車体側正本）
 - [01 法規包絡](01-legal-envelope-japan.md)（§2 枠 / §3 非常停止 / §10 グレー / 追補② 型式認定基準）/ [00 §4](00-mission-and-scope.md) / [05](05-safety-envelope-and-intervention.md) / [06](06-hardware-delta-and-base-selection.md)
 - vendor FW V3.6.5 実ソース（zip = [shared/02:797](../shared/02-hardware-design.md:797)・repo 外）: `Source/APP/app_mecanum.h:11,31,35,37,39` / `app_mecanum.c:28-38,56-65` / `app_motion.h:8-17` / `app_motion.c:34-64,236-247,350-360` / `app_fourwheel.h:9,13` / `app_fourwheel.c:34,47-54` / `app_bat.c:11,13,58,83,94,108` / `app_sbus.c:122,151-170` / `config.h:17,26` / `protocol.c:525,534` / `Source/BSP/bsp_motor.h:87-89` / `bsp_wdg.h:5` / `bsp_usart.c:72,78` / `rosmaster.uvprojx` / `output/rosmaster_V3.6.5.hex`
