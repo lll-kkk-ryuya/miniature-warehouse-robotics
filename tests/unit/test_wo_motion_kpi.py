@@ -1087,28 +1087,54 @@ def test_resolve_speed_cap_falls_back_with_a_warning(value: object) -> None:
     assert "0.3" in warning
 
 
+# ── the re-typing scans: one fold-literal predicate, two frozen constants ─────
+
+
+def _statically_equals(node: ast.AST, value: float) -> bool:
+    """True if this expression *is* ``value`` spelled out instead of imported.
+
+    One predicate for both scans below (#653), so the cap and ε catch the same spellings.
+    Folds literal-only expressions, so ``3 / 10`` (a ``BinOp``) and ``float("0.3")`` (whose
+    ``Constant`` is a ``str``) fail the same way a bare ``0.3`` does — each re-types the
+    constant at the use site while the module-level name (the ``from … import``, or the
+    ``IDLE_SPEED_EPS = safety.IDLE_SPEED_EPS`` re-export) still points at the contract, so the
+    identity asserts and every value assertion stay green. Anything containing a name fails to
+    evaluate and is skipped, which is what keeps that legitimate re-export shape from tripping
+    this — and, for the same reason, a value computed from a name (``eps_mm / 1000``) is NOT
+    caught; that one still needs a reader.
+    """
+    if not isinstance(node, ast.expr) or isinstance(node, ast.Name):
+        return False
+    try:
+        folded = eval(ast.unparse(node), {"__builtins__": {}}, {"float": float})  # noqa: S307
+    except Exception:
+        return False
+    return isinstance(folded, float) and folded == value
+
+
 @pytest.mark.unit
 def test_the_hard_cap_is_imported_never_retyped_in_this_lane() -> None:
     """``warehouse_interfaces.safety`` is explicit: "0.3 / 20 / 10 are the canonical HARD CAPS …
-    import them directly and do NOT hardcode them elsewhere" (safety.py:8-12). Scan for a literal
-    ``0.3`` — parsed, so a ``0.3`` inside a docstring or comment (which is *documentation* of
-    the imported constant) does not trip it, while a re-typed default would. ``rglob`` rather
-    than ``glob``: a cap re-typed one directory down is exactly as wrong, and a scan that cannot
-    see it would report a clean bill of health."""
+    import them directly and do NOT hardcode them elsewhere" (safety.py:8-12). Scan for the cap
+    spelled out — parsed, so a ``0.3`` inside a docstring or comment (which is *documentation* of
+    the imported constant) does not trip it, while a re-typed default would. Since #653 the
+    predicate is ``_statically_equals``, shared with the ε twin below, so the folded spellings
+    (``3 / 10``, ``float("0.3")``) are caught here too. ``rglob`` rather than ``glob``: a cap
+    re-typed one directory down is exactly as wrong, and a scan that cannot see it would report
+    a clean bill of health."""
     package = Path(motion_module.__file__).parent
     offenders = [
         f"{path.name}:{node.lineno}"
         for path in sorted(package.rglob("*.py"))
         if "__pycache__" not in path.parts
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
-        if isinstance(node, ast.Constant)
-        and isinstance(node.value, float)
-        and node.value == MAX_LINEAR_VELOCITY
+        if _statically_equals(node, MAX_LINEAR_VELOCITY)
     ]
     assert offenders == [], (
         f"re-typed hard cap 0.3 at {offenders}: import MAX_LINEAR_VELOCITY (safety.py:8-12). "
-        "If this is an unrelated 0.3 (a timeout, a ratio), name it a module constant so this "
-        "scan stays a cap check."
+        "NOTE this fires on ANY 0.3 in the package, including an unrelated timeout or ratio — "
+        "moving it into a named module constant does NOT silence the scan; if it genuinely is "
+        "not the cap, exclude that (file, lineno) here explicitly with a comment saying why."
     )
 
 
@@ -1122,34 +1148,17 @@ def test_the_idle_epsilon_is_imported_never_retyped_in_this_lane() -> None:
     literal-only expression (``10 / 1000``) and ``float("0.01")`` — including the one that
     matters most here, ε passed straight into ``fraction_at_or_below`` at the call site. It
     does NOT catch a value computed from a name (``eps_mm / 1000``) — that still needs a
-    reader. Same shape as the state-cache scan, so a re-typed threshold fails in either lane.
+    reader. Same shape as the state-cache scan, so a re-typed threshold fails in either lane;
+    since #653 the predicate itself is shared with the cap scan above (``_statically_equals``),
+    so neither scan can drift into seeing fewer spellings than the other.
     """
-
-    def _statically_is_eps(node: ast.AST) -> bool:
-        """True if this expression *is* ε spelled out instead of imported.
-
-        Folds literal-only expressions, so ``10 / 1000`` (a ``BinOp``) and ``float("0.01")``
-        (whose ``Constant`` is a ``str``) fail the same way a bare ``0.01`` does — both re-type
-        ε at the use site while ``module.IDLE_SPEED_EPS`` still points at the contract, so the
-        identity asserts and every value assertion stay green. Anything containing a name fails
-        to evaluate and is skipped, which is what keeps the legitimate re-export shape
-        ``IDLE_SPEED_EPS = safety.IDLE_SPEED_EPS`` from tripping this.
-        """
-        if not isinstance(node, ast.expr) or isinstance(node, ast.Name):
-            return False
-        try:
-            value = eval(ast.unparse(node), {"__builtins__": {}}, {"float": float})  # noqa: S307
-        except Exception:
-            return False
-        return isinstance(value, float) and value == IDLE_SPEED_EPS
-
     package = Path(motion_module.__file__).parent
     offenders = [
         f"{path.name}:{node.lineno}"
         for path in sorted(package.rglob("*.py"))
         if "__pycache__" not in path.parts
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
-        if _statically_is_eps(node)
+        if _statically_equals(node, IDLE_SPEED_EPS)
     ]
     assert offenders == [], (
         f"re-typed idle threshold 0.01 at {offenders}: import IDLE_SPEED_EPS "
