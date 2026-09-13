@@ -33,6 +33,20 @@ class MotionBackend(Protocol):
     def reset_state(self) -> None:
         """Explicit BRAKE via the independent FUNC_RESET_STATE(0x0F) path."""
 
+    def read_encoders(self) -> tuple[int, int, int, int] | None:
+        """Raw cumulative int32 wheel counts (m1..m4), or None if unavailable.
+
+        The ONLY odometry input this driver trusts: the firmware's reported
+        body speed is computed with the X3 geometry constants and is wrong for
+        the M1, while these counts bypass them entirely
+        (docs/mode-m1/02-m1-driver-and-watchdog.md:29-33). Motor order follows
+        the firmware's ``Motion_Set_Speed(L1, L2, R1, R2)``: m1 front-left,
+        m2 rear-left, m3 front-right, m4 rear-right.
+
+        None means "no reading this cycle" (transport hiccup, no report yet) —
+        never a fabricated zero, which would read as "the robot stopped".
+        """
+
     def close(self) -> None:
         """Release the transport."""
 
@@ -64,6 +78,19 @@ class RosmasterBackend:
 
     def reset_state(self) -> None:
         self._bot.reset_car_state()
+
+    def read_encoders(self) -> tuple[int, int, int, int] | None:
+        # get_motor_encoder() returns the four int32 counters parsed from the
+        # 25 Hz FUNC_REPORT_ENCODER(0x0D) auto-report. Any vendor-side failure
+        # (missing method, serial hiccup, short/garbled tuple) degrades to
+        # "no sample" — an odometry gap is recoverable, an exception escaping
+        # into the rclpy timer would take the whole driver (and with it W-1)
+        # down while the firmware keeps the last setpoint latched.
+        try:
+            m1, m2, m3, m4 = self._bot.get_motor_encoder()
+            return int(m1), int(m2), int(m3), int(m4)
+        except Exception:  # noqa: BLE001 - deliberate: degrade, never die
+            return None
 
     def close(self) -> None:
         # Best-effort: some Rosmaster_Lib versions expose no close(); the
