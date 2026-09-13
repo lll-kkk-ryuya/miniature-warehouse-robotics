@@ -113,3 +113,24 @@ agent-team 調査（一次情報 = 工場 STM32 ファーム Rosmaster V3.5.1 C 
 
 - **車輪大径化（[mode-outdoor/07 §9 案 A](../mode-outdoor/07-drivetrain-and-wheel-sizing.md)）に FW 再ビルドは不要**: FW の速度は `speed_mm = Δcounts × 100 × circle_mm / circle_pulse`（`app_motion.c:245`・M1 type = 251.327 mm / 2464 counts）で数えるため、実車輪径 D に対し **実速度 = FW 換算 × D/80 mm** の純スケール。各輪 clamp 700 は**車輪 167 rpm** の上限として残る（144 mm で 1.26 m/s・150 mm で 1.31 m/s）。ホスト側の車輪スケール k（[GLOSSARY §12](../GLOSSARY.md)）で吸収し、odom は `0x0D` 生カウント + 真の周長（§2 ⑥ の後続スライスで param 化）。
 - backlink: [mode-outdoor/07](../mode-outdoor/07-drivetrain-and-wheel-sizing.md)（§8）/ [mode-outdoor/06 §3](../mode-outdoor/06-hardware-delta-and-base-selection.md) / [ADR-0013](../adr/0013-stm32-command-stream-watchdog.md)
+
+---
+
+## 【2026-09-13 追補②】⑥ encoder odom ＋ 車輪スケール k の実装スライス（branch `feat/m1-wheel-scale-odom`・PR pending）
+
+§2 ⑥「0x0D 受信 → エンコーダ差分 odom（M1 実測幾何）」と [mode-outdoor/07 §9 案 A'](../mode-outdoor/07-drivetrain-and-wheel-sizing.md)（150 mm 通常輪・k = D/80 mm）を `warehouse_m1_driver` に実装した（L0'・package-local・既定挙動 bit 等価・R-26 unit 61 本・mutation 11/11 KILLED）。
+
+| param | 既定 | 意味 |
+|---|---|---|
+| `wheel_scale` | 1.0 | clamp（実単位・凍結契約不変）の**後**に wire = 実速度 ÷ k。範囲 [1.0, 2.5] 外・非有限は **fail-closed**（全 command・全 tick が brake。1.0 fallback は 150 mm 装着時に fail-open になるため採らない） |
+| `yaw_scale` | 1.0 | wz のみ追加補正（FW 混合定数 APB 189.5 と実効輪距の差）。範囲 [0.2, 5.0] |
+| `lateral_enabled` | True | False で vy を clamp の前に 0（通常輪） |
+| `odom_enabled` | False | True で `/bot{n}/odom`（`nav_msgs/Odometry`・[doc03:77](../architecture/03-software-architecture.md:77)）を publish。**TF は出さない**（§2 ⑥「TF は出さない」・[doc23:163](../architecture/23-perception-and-localization.md:163)） |
+| `wheel_diameter_m` / `counts_per_rev` | 0.080 / 2464 | 真の周長 × `0x0D` 生カウントで積分（FW 報告速度 `0x0A` は使わない＝§1-3 帰結①②） |
+| `track_m` / `wheel_signs` | 0.194 / [1,1,1,1] | **PROVISIONAL**（導出値・符号未確認）。G-W1・`m1_probe` で確定 |
+| `odom_period_s` / `odom_twist_cov` / `odom_pose_cov` | 0.04 / 0.02 / 1e3 | FW 25 Hz 報告・共分散は暫定 |
+
+- backend seam に `read_encoders()`（vendor `get_motor_encoder()`・失敗は None＝その周期は publish しない。偽のゼロ速度を EKF に食わせない）。
+- モータ順は FW `Motion_Set_Speed(L1, L2, R1, R2)` = m1 前左・m2 後左・m3 前右・m4 後右。差動積分は左 = mean(m1, m2)・右 = mean(m3, m4)。
+- 運用値（k = 1.875・`wheel_diameter_m` 0.150・`lateral_enabled` False・`odom_enabled` True）は bringup/launch の param 注入で入れる（bringup 所有・別 PR）。契約 `MAX_LINEAR_VELOCITY` の実単位再 pin は contract PR（`OQ-OD71`）。
+- backlink: [mode-outdoor/07 追補③](../mode-outdoor/07-drivetrain-and-wheel-sizing.md) / [warehouse_m1_driver/CLAUDE.md](../../ws/src/warehouse_m1_driver/CLAUDE.md)（2026-09-13 節）

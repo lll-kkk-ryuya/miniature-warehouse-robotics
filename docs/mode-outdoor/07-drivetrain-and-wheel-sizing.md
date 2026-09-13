@@ -1,7 +1,7 @@
 # 07 — 駆動系と車輪径（法定 6 km/h・目標 ≥4 km/h・4WD の要否・懸念）
 
 作成日: 2026-09-12
-Status: **記載済（設計値・一次情報つき・実測未）**。2026-09-12 のエージェントチーム 4 レーン（法規／駆動系物理／駆動方式・車体／M1 実機制約）の報告を統合し、数値は本 doc 執筆時に**再計算**、引用は**再 Read** した（[D]=一次情報を執筆者が実 Read・[L]=調査レーン報告で URL あり（執筆者未再読）・[I]=推論・計算）。実機の実測（§10）で確定するまで**設計値**として扱う。**2026-09-12 統合**: 径の推奨は [06 §2](06-hardware-delta-and-base-selection.md) が固定した法定判定の保守基準（満充電 12.6 V の無負荷実速度 < 6.0 km/h ＝ ≤147 mm）に合わせ **144 mm 級**とし、150 mm は「FW clamp を構造と認める場合のみ」に格下げした。
+Status: **記載済（設計値・一次情報つき・実測未）**。2026-09-12 のエージェントチーム 4 レーン（法規／駆動系物理／駆動方式・車体／M1 実機制約）の報告を統合し、数値は本 doc 執筆時に**再計算**、引用は**再 Read** した（[D]=一次情報を執筆者が実 Read・[L]=調査レーン報告で URL あり（執筆者未再読）・[I]=推論・計算）。実機の実測（§10）で確定するまで**設計値**として扱う。**2026-09-12 統合**: 径の推奨は [06 §2](06-hardware-delta-and-base-selection.md) が固定した法定判定の保守基準（満充電 12.6 V の無負荷実速度 < 6.0 km/h ＝ ≤147 mm）に合わせ **144 mm 級**とし、150 mm は「FW clamp を構造と認める場合のみ」に格下げした。 **2026-09-13 ユーザー裁定: 150 mm（案 A'・FW clamp を「構造」の根拠として認める）を採用**＝末尾【2026-09-13 追補③】。144 mm は事前相談で clamp が構造と認められなかった場合の退避先（k を 1.8 に変えるだけ）。
 
 > 正本ルート: [mode-outdoor/README](README.md)。本 doc は「車輪径・速度・駆動方式」の**裁定材料**に閉じる。差分 BOM・ベース選定は [06](06-hardware-delta-and-base-selection.md)、法規は [01](01-legal-envelope-japan.md)、速度上限の契約は [ADR-0010](../adr/0010-raise-speed-cap-to-platform-max.md)、ハードウェア実体は [shared/02](../shared/02-hardware-design.md)、車体ファームの挙動（driver / watchdog）は [mode-m1/02](../mode-m1/02-m1-driver-and-watchdog.md)（本 doc §8 の事実は同 doc 末尾追補へ forward link 済）。
 > レイヤ注記: 本 doc の対象は **L0'（ホスト送信直前クランプ・`m1_driver`）と MCU ファーム（L0 相当・vendor 所有）、および自律走行（Hard-RT・安全層外＝[23 §1](../architecture/23-perception-and-localization.md:21)）の速度予算**。L2/L1 の契約は変えない（変更は [00 §4 行 7](00-mission-and-scope.md) の contract PR）。
@@ -232,3 +232,44 @@ docs 内（file:line は執筆時に実 Read）:
 - モータコントローラの安全機能: VESC CAN <https://github.com/vedderb/bldc/blob/master/documentation/comm_can.md> / ODrive CAN protocol（watchdog）<https://docs.odriverobotics.com/v/0.6.7/manual/can-protocol.html> [L]
 - ISO/TS 15066 の身体部位別限界（A3 解説）<https://www.automate.org/robotics/tech-papers/iso-ts-15066-explained> [L]
 - 歩道の構造（2 cm 段差・2 % 横断勾配）: [06 §3](06-hardware-delta-and-base-selection.md) の国土交通省基準 [D]
+
+---
+
+## 【2026-09-13 追補③】ユーザー裁定 = 150 mm（案 A'）・実装スライス 1・購入リスト
+
+### ③-1. 裁定と根拠
+
+- **裁定（2026-09-13・ユーザー）**: 車輪径は **150 mm** とし、法定「6 km/h を超える速度を出すことができない」の根拠として **stock FW の各輪 clamp（MCU 内・車輪 167 rpm）を「構造」に含める**（§2 表の 150 mm 行 = 最大設定 4.7 km/h・9.6 V 負荷 4.3 km/h・満充電無負荷 6.1 km/h）。[01 追補②](01-legal-envelope-japan.md) の型式認定基準が「速度を調整できるものは最大値にセットして実測」と定めるため、実測される最大値は clamp が決める 4.7 km/h になる。
+- **退避先**: 届出前の事前相談（[01 §9](01-legal-envelope-japan.md)）で「ファーム clamp は構造ではない」と判断された場合は **144 mm（案 A・満充電無負荷 5.8 km/h）へ戻す**。実装は車輪径を param 化してあるので、**k を 1.875 → 1.8、`wheel_diameter_m` を 0.150 → 0.144 に変えるだけ**（§③-2）。[06 §2](06-hardware-delta-and-base-selection.md) の保守基準（≤147 mm）はこの退避条件として残す。
+- 4WD 維持・メカナム放棄・その場旋回を使わない（円弧旋回）は §4 のとおり。
+
+### ③-2. 実装スライス 1（branch `feat/m1-wheel-scale-odom`・PR pending・L0'）
+
+`warehouse_m1_driver`（L0'・package-local・既定挙動は bit 等価）に以下を実装済（R-26 unit 61 本・mutation 11/11 KILLED・ruff/pytest/`check_consistency` 緑）:
+
+| 要素 | 内容 | 既定値 | 150 mm での値 |
+|---|---|---|---|
+| `wheel_scale`（車輪スケール k） | clamp（実単位・凍結契約 `MAX_LINEAR_VELOCITY` 不変）の**後**に wire = 実速度 ÷ k。**範囲 [1.0, 2.5] 外・非有限は fail-closed**（全 command・全 tick が brake。1.0 への fallback は 150 mm 装着時に 1.875 倍の fail-open になるため採らない） | 1.0 | **1.875** |
+| `yaw_scale` | wz にのみ追加で掛かる補正（FW の混合定数 APB 189.5 と skid-steer 実効輪距の差）。範囲 [0.2, 5.0] | 1.0 | 実測（G-W4/G-W9） |
+| `lateral_enabled` | False で vy を clamp の**前**に 0（通常輪は横移動不可） | True | **False** |
+| `odom_enabled` | True で `/bot1/odom`（`nav_msgs/Odometry`・[doc03:77](../architecture/03-software-architecture.md:77)）を publish。**TF は出さない**（[doc23:163](../architecture/23-perception-and-localization.md:163)） | False | **True** |
+| `wheel_diameter_m` / `counts_per_rev` | `0x0D` 生カウント × 真の周長で積分（FW の 80 mm / 2464 counts を使わない） | 0.080 / 2464 | **0.150** / 2464 |
+| `track_m` / `wheel_signs` | 差動積分の実効輪距・各輪の符号。**PROVISIONAL**（0.194 は導出値・符号は未確認） | 0.194 / [1,1,1,1] | G-W1 / `m1_probe` で確定 |
+| `odom_period_s` / covariance | FW 25 Hz 報告に合わせ 0.04 s。共分散は暫定（twist 0.02・pose 1e3） | — | 実測 |
+| backend seam | `read_encoders()`（vendor `get_motor_encoder()`・失敗は None＝publish しない） | — | — |
+
+車体側の正本 [mode-m1/02](../mode-m1/02-m1-driver-and-watchdog.md) 末尾追補②に同内容を forward link 済。**契約 `MAX_LINEAR_VELOCITY`（0.3 m/s）の実単位再 pin は本スライス範囲外**（`OQ-OD71`・contract PR）。運用値（k・径・odom）は bringup/launch の param 注入で入れる（bringup 所有＝別 PR）。
+
+### ③-3. 購入リスト
+
+[06 末尾【2026-09-13 追補】](06-hardware-delta-and-base-selection.md) に最小構成（約 3.1 万円・3 発注先）とオプションを置いた。**真の 150 mm で「608 ベアリング・幅 25〜35 mm・PU ソリッド」の国内即納品は見つからず**、経路は 2 つ: **(A) Pololu 144×29 mm ＋ 6 mm 軸アダプタ**（即納・k = 1.8・保守基準内）／**(B) 150 mm ウレタン車輪（12 mm 穴）＋ スタブ軸 ＋ フランジ軸受**（150 mm 厳守・片持ち解消も兼ねるが軸設計が要る）。裁定 = `OQ-OD76`。
+
+### ③-4. 追加の実測ゲート
+
+- **G-W9 その場旋回**: ゴム輪の舗装路 μ ≈ 0.7 では旋回に要るトルク（0.71 N·m/輪）が停動（0.81）の 9 割。固定経路では円弧旋回を基本にし、停止時の向き直しだけ実測で可否を決める。
+- G-W1（軸間・輪距・地上高・バンパ）→ `track_m` 確定、G-W4（UMBmark）→ k と `yaw_scale` 校正、`m1_probe` → `wheel_signs` 確定。
+
+### ③-5. OPEN QUESTIONS（追加）
+
+- `OQ-OD76` 車輪実体 (A) 144×29 即納 / (B) 150 mm ウレタン＋スタブ軸 の選択。
+- `OQ-OD77` 事前相談で「FW clamp = 構造」が否認された場合の手順（k / 径 param の切替と届出値の再実測）。
