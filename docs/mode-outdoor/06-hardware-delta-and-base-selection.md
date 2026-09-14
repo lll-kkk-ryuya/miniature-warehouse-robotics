@@ -209,3 +209,13 @@ Status: **箱（skeleton）**。§2 の導出表と §3 のリスク一覧は既
 - `OQ-OD65` 届出機（型式認定なし）に「上部中央 1 か所」（型式認定基準 4.1 ウ(イ)）を認めるか。届出資料②は「原則 2 か所」＝事前相談で確認。1 か所で設計し、2 個目を追加できる箱にしておく。
 - `OQ-OD66` SUS APC-S033 の外形寸法・IP・取付ブラケット（2020 フレーム適合）。IDEC XA1E の最小適用負荷（DC 12 V・≈ 0.15 A のコイル直列で問題ないか）。
 - `OQ-OD67` 非常停止作動の Orin 通知経路（モニタ接点 → DI か、STM32 無応答検知か）と `m1_driver` の停止理由への写像（[05 §3-2](05-safety-envelope-and-intervention.md)）。
+
+### ①-7. 電気系の裏取り（2026-09-14・一次情報を執筆者が再取得）
+
+| 事実 | 出典（参照日 2026-09-14） | 設計への反映 |
+|---|---|---|
+| エーモン **3236** = 4 極・**1a（NO のみ）**・DC 12 V・30 A 以下・コイル消費 150 mA。**3237** = 5 極・**1c**（A 接点 30 A / B 接点 20 A）・コイル 150 mA・配線は赤白黄 3 sq / 青黒 0.5 sq | <https://www.amon.jp/products2/detail.php?product_code=3237>（3236 は調査レーン確認） | 作動通知に B 接点を使えるので **3237 を推奨**（3236 でも可・通知はボタンの 1a で代用） |
+| MD520Z56（12 V・1:56）: **定格 0.3 A・ストール 4 A**・≤ 4 W・205 ± 10 rpm・6 mm D 軸 | <https://www.yahboom.net/public/upload/upload-html/1742005967/0.520%20motor%20introduction%20and%20usage.html> | 4 輪同時ストール ≈ **16 A**。拡張ボードレグのヒューズは **15〜20 A** で電線 2 sq 以上（前段の「既所有 10 A（エーモン 3367）」は Orin レグ用（[shared/02:433](../shared/02-hardware-design.md:433)）であり**流用しない**＝`OQ-OD61` の答えの一部） |
+| 拡張ボード: 入力は T 型 DC 12 V 1 系統・モータ／ロジックの分離入力なし・「An external metal switch can be connected **in parallel** with the onboard power switch」（PH2.0 metal key switch 口） | <https://www.yahboom.net/public/upload/upload-html/1703147265/1.%20Expansion%20Board%20Introduction.html> | **PH2.0 のキースイッチ口に非常停止を入れても遮断できない（並列）**。遮断は **T プラグ ＋ 線を外部で切る**（リレー a 接点）に限る |
+| IDEC XA1E 接点: Ith 5 A・DC-13 24 V **1 A**（Mouser 掲載データシート・調査レーン・`[一部未確認]`） | <https://www.mouser.com/catalog/specsheets/idec_XA_XW_EMOdatasheet.pdf> | コイル 150 mA の直列用途は余裕。**コイル並列に還流ダイオード**（1N4007 等）を入れて接点を保護 |
+| コイル保持 1.8 W（150 mA × 12 V） | 上記 amon.jp | 6 Ah 電池の ≈ 2.5 %/h。走行中のみ通電（メインスイッチ下流ではなく**幹線側から取る**なら保管時は T 抜きで落ちる） |
