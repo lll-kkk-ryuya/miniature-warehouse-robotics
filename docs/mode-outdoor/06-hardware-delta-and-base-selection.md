@@ -435,3 +435,5 @@ MonotaRO 小計 ¥5,153（税別 ≈ ¥4,685 ≥ ¥3,500 → 送料無料）。P
 買わないもの: #1077（M3×25 は #3281 用）、セットカラー、KFL08・カップリング、Yahboom 純正カップリング予備、非常停止部材（保留）。
 
 総額の目安（合格経路）: **≈ ¥22,000〜23,000**。
+
+【2026-09-14 追記・送料実額】Pololu 直販カート（#2674 ×5・約 75 g・目黒区宛）の配送選択肢: FedEx International Connect Plus **$25.45**（採用・追跡あり）／ FedEx International Priority $27.45 ／ UPS Worldwide Expedited $47.45 ／ UPS Saver $49.95 ／ USPS First-Class International $28.45（追跡なし）／ USPS Priority Mail Express $94.45。④-2〜④-8 の「USPS First-Class が最安・$15〜20」は**誤り**＝軽量小口でも FedEx Connect Plus が最安かつ追跡付き。注文合計 $61.10。
