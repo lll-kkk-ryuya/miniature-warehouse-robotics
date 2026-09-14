@@ -437,3 +437,5 @@ MonotaRO 小計 ¥5,153（税別 ≈ ¥4,685 ≥ ¥3,500 → 送料無料）。P
 総額の目安（合格経路）: **≈ ¥22,000〜23,000**。
 
 【2026-09-14 追記・送料実額】Pololu 直販カート（#2674 ×5・約 75 g・目黒区宛）の配送選択肢: FedEx International Connect Plus **$25.45**（採用・追跡あり）／ FedEx International Priority $27.45 ／ UPS Worldwide Expedited $47.45 ／ UPS Saver $49.95 ／ USPS First-Class International $28.45（追跡なし）／ USPS Priority Mail Express $94.45。④-2〜④-8 の「USPS First-Class が最安・$15〜20」は**誤り**＝軽量小口でも FedEx Connect Plus が最安かつ追跡付き。注文合計 $61.10。
+
+**発注記録（2026-09-14）**: Pololu Salesorder 1J597319 = #2674 ×5（$35.65）＋ S&H $27.45（FedEx International Priority・追跡あり）＝ **$63.10**・Tax $0。DigiKey 経由（¥10,568）より約 ¥1,000 安。残 = MonotaRO 5 点・ノギス（未発注）→ PU-150 4 点確認 → 注文 2。
