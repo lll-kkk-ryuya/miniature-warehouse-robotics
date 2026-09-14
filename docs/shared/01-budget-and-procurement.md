@@ -207,7 +207,7 @@ Amazon 注文番号 **503-9075392-6933438**（2026-09-06 着荷6点で確認）�
 
 ### H. 屋外モード・車輪換装 部材（2026-09-14 発注・Pololu 直販 ＋ MonotaRO ＋ Amazon）
 
-設計正本は [../mode-outdoor/06-hardware-delta-and-base-selection.md](../mode-outdoor/06-hardware-delta-and-base-selection.md) 末尾 ④-6（測定図）〜 ④-8（案 2 の裁定と購入リスト）。車輪は **150 mm 優先（シシク PU-150 ＋ Pololu #2674）**、退避は Amazon 6 インチ車いす前輪 → Pololu #3281。前提の実測（軸径 ≈ 6・側板外面→軸端 ≈ 19・D 面 15）は ④-7。
+設計正本は [../mode-outdoor/06-hardware-delta-and-base-selection.md](../mode-outdoor/06-hardware-delta-and-base-selection.md) 末尾 ④-6（測定図）・④-9（実測と候補リスト）・④-10（案 2 の裁定と確定購入リスト）。車輪は **150 mm 優先（シシク PU-150 ＋ Pololu #2674）**、退避は Amazon 6 インチ車いす前輪 → Pololu #3281。前提の実測（軸径 ≈ 6・側板外面→軸端 ≈ 19・D 面 15）は ④-9。
 
 **注文 1（3 か所同時・オペレーター発注済と申告 2026-09-14）**:
 
