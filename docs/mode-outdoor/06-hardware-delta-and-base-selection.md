@@ -352,3 +352,5 @@ DigiKey 日本のカートに #2674 ×1（税抜 ¥1,228）を入れると **運
 | AliExpress 等の互換品 | 「608 座を 6 mm D 軸に固定する」構造の互換品は検索で見つからず | — |
 
 **結論**: 確実な最安は **Pololu 直販 ＋ USPS First-Class International**。数量 5 なら本体 ≈ ¥5,350 ＋ 送料（カートで実測。第三者相場 $15〜22）。DigiKey 経由（¥6,754 ＋ ¥4,428）より ¥2,000〜3,000 安い見込み。朱雀技研が生きていれば国内送料で逆転する。
+
+**④-7 追記（2026-09-14・ユーザーが Pololu チェックアウト Step 2 で実測・#2674 ×1・東京宛）**: FedEx International Connect Plus **$25.45**（追跡・保険あり）／ FedEx International Priority $27.45 ／ UPS Worldwide Expedited $47.45 ／ UPS Worldwide Saver $49.95 ／ USPS First-Class International **$28.45（追跡なし）** ／ USPS Priority Mail Express International $94.45。→ 前段の「USPS First-Class が最安（$15〜22）」は**誤り**。**最安かつ追跡付きは FedEx International Connect Plus** で、Pololu 自身も国際便は FedEx/UPS を推奨・USPS を非推奨と明記。数量 5 の合計見込み ≈ $61（≈ ¥9,200）＝ DigiKey 日本（¥10,568）より約 ¥1,400 安く、追跡も付く。
