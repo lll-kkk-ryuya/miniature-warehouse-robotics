@@ -1,7 +1,6 @@
 # ドキュメントマップ
 
-> 📍 **プロジェクト現況**は [STATUS.md](STATUS.md)（随時更新の living doc）。
-> 📖 **用語の正本**は [GLOSSARY.md](GLOSSARY.md)（docs-authoring 単語帳：各語の 1 行定義＋検証済み canonical anchor。doc/Issue/PR を書く前に参照）。
+> 📍 **プロジェクト現況**は [STATUS.md](STATUS.md)（随時更新の living doc）。 📖 **用語の正本**は [GLOSSARY.md](GLOSSARY.md)（docs-authoring 単語帳：各語の 1 行定義＋検証済み canonical anchor。doc/Issue/PR を書く前に参照）。
 
 ## 構成
 
@@ -16,6 +15,7 @@ docs/
 ├── mode-a/          Mode A/B: LLM単独交通管理（Open-RMFなし）
 ├── mode-c/          Mode C: LLM + Open-RMF（主方針）
 ├── mode-m1/         Mode M1: ROSMASTER M1 単騎・部屋スケール実行モード（bring-up / driver / joystick）
+├── mode-outdoor/    Mode Outdoor: 屋外歩道 A→B 自律走行モード（設計提案・骨格・法規包絡 = 遠隔操作型小型車）
 ├── mode-x-er/       Mode X-ER: Gemini Robotics-ER 視覚タスク司令（設計提案）
 ├── mode-x-er-vla/   Mode X-ER-VLA: Gemini Robotics-ER + VLA 統合モード
 └── mode-x/          旧 Mode X 互換参照（新規設計は mode-x-er / mode-x-er-vla）
@@ -194,3 +194,22 @@ hard-to-reverse な設計判断とその理由を `NNNN-slug.md` で記録する
 | [0003-bridge-local-manifest-composition](adr/0003-bridge-local-manifest-composition.md) | bridge-local run manifest + fail-closed plugin composition を A案で標準化（manifest resolution 層／namespaced plugin code〔9-enum 非改変〕／advisory trust／ISOLATE_PLUGIN／safety-critical profile hash gate）。実装 = offline spike 済・配線 XER6 pending |
 | [0002-er-in-hermes-standard](adr/0002-er-in-hermes-standard.md) | ER-in-Hermes を標準 transport に採用（fork gateway 8644 一本で全 modality／`direct`=緊急 fallback／Langfuse Pattern A 現行・Pattern B は HLF gate 後）。実装は TARGET |
 | [0001-adopt-grill-with-docs-and-canonical-glossary](adr/0001-adopt-grill-with-docs-and-canonical-glossary.md) | docs authoring 規律として grill-with-docs skill 群＋単一正準 `docs/GLOSSARY.md`＋ADR 実践を採用 |
+
+## mode-outdoor/ — Mode Outdoor: 屋外歩道 A→B 自律走行モード（設計提案・骨格）
+
+> 2026-09-12 新設（docs 先行・**骨格のみ**）。オペレーター指示で、室内のジェスチャ召喚・standby HRI（[ADR-0009 Decision 2](adr/0009-m1-room-scale-operation.md:21)）を第一優先から外し、**屋外の歩道を GNSS 主体で A→B 自律走行する構成（遠隔監視下・常時介入可能）を第一優先**にする。ADR-0014 は[番号予約のみ](adr/README.md)（ユーザー決定済 = 特定固定経路 teach-and-repeat・RTK 必須・タイヤ換装で ≥4 km/h・survey-first。残る裁定は [00 §4](mode-outdoor/00-mission-and-scope.md)）。本節の位置が mode 群の並びから外れているのは末尾追記原則（#165 行ズレ回避）による。
+
+| ファイル | 内容 |
+|---------|------|
+| [README](mode-outdoor/README.md) | 位置づけ・境界（mode-m1 / doc23 との分担＝車体・停止権限は mode-m1、室内知覚は doc23 が正本のまま）・関連 ADR（0014 予約 / 0009 部分 supersede / 0013 / 0010 / 0008）・authoring 方針・残件 |
+| [00-mission-and-scope](mode-outdoor/00-mission-and-scope.md) | ミッション（歩道 A→B・GNSS 主体・完全自律）・スコープ IN/OUT・法的 2 段階（随伴通行 → 遠隔操作通行）・**ユーザー決定済 4 点 + 裁定待ち 5 点**・survey-first・流用する既存資産の仕分け |
+| [01-legal-envelope-japan](mode-outdoor/01-legal-envelope-japan.md) | **法規包絡（一次情報・参照日 2026-09-12）**: 遠隔操作型小型車（法 2 条 1 項 11 号の 5）の定義・寸法 120×70×120 cm・6 km/h・非常停止装置（規則 1 条の 7 + 警察庁運用基準: 地上 60 cm 以上・前後 2 ボタン・赤/黄・直ちに原動機停止）・標識・届出（15 条の 3・1 週間前・番地まで・体制の想定項目）・「遠隔操作」の解釈（自動操縦の除外／随伴通行）・信号の意味・罰則・M1 照合・設計への写像・事前相談チェックリスト |
+| [02-architecture-split-orin-pc-cloud](mode-outdoor/02-architecture-split-orin-pc-cloud.md) | Orin（車載・リンク断でも自己完結）/ PC（遠隔操作者卓・法的必須層）/ クラウド（無くても走れる助言・記録）の 3 原則と分担表（草案）・通信・計算予算 |
+| [03-localization-gnss-and-ekf](mode-outdoor/03-localization-gnss-and-ekf.md) | 自己位置の屋外差分: doc23 §5-1 の GNSS「対象外」を反転・RTK + `navsat_transform` + 2 段 EKF・datum・TF 単一所有の屋外版・**Humble 制約（`FollowGPSWaypoints` は Iron 以降 → `fromLL` + 既存座標 goal）** |
+| [04-perception-sidewalk-and-signals](mode-outdoor/04-perception-sidewalk-and-signals.md) | 知覚の屋外差分（P1/P2 不変）: センサ前提（HP60C 構造化光は屋外主センサにしない・T-mini Plus 60 kLux 要実測）・歩道走行可能領域・負障害物（縁石）・歩行者用信号の 3 状態分類（L4 producer）・進路譲り |
+| [05-safety-envelope-and-intervention](mode-outdoor/05-safety-envelope-and-intervention.md) | 安全包絡と介入: 法が要求する 3 点（常時操作可能・通信断停止・物理非常停止）・既存停止資産（deadman / latch / stop_request）の流用表・新規 producer（リンク断 watchdog / GNSS 品質ゲート / ジオフェンス）・横断ゲート（L2・青のみ・fail-closed）・fail-active 対策（ADR-0013） |
+| [06-hardware-delta-and-base-selection](mode-outdoor/06-hardware-delta-and-base-selection.md) | ハード差分 BOM（GNSS・屋外カメラ・非常停止柱・標識・荷物箱・LTE）・**車輪大径化と法定 6 km/h の導出表（ADR-0010 定数・190 mm 超で枠外）**・現状車体の屋外リスク（fail-active / 横滑り / 段差 / 電源 / 重心）・ベース選定 A/B |
+| [07-drivetrain-and-wheel-sizing](mode-outdoor/07-drivetrain-and-wheel-sizing.md) | **駆動系と車輪径（設計値・一次情報つき・実測未）**: 法定 6 km/h の判定（型式認定基準 = 最大設定・往復 10 m・電池 ≥ 75 %）× FW clamp（車輪 167 rpm）→ 法律ギリギリ径（FW 190 mm / 物理 148 mm / 軸間 ≈ 185 mm）＝**実用 140〜147 mm・代表 144 mm・最大設定 4.5 km/h・9.6 V で 4.1 km/h**（150 mm は FW clamp を構造と認める場合のみ）・**4WD は技術的に必要（メカナム放棄）**・懸念（段差トルク / 6 mm D 軸片持ち / 低電圧ラッチ / LiDAR 死角 / 重心）・選択肢 A〜F（6 km/h は FW 定数修正 + 1:40 = Phase 2・ADR 要）・実測ゲート G-W1〜8 |
+| [outdoor-architecture-tree](mode-outdoor/outdoor-architecture-tree.html) + [outdoor-localization-perception-flow](mode-outdoor/outdoor-localization-perception-flow.html) | HTML 図解 2 枚構成（2026-09-12）: ① 屋外 01-09 機能 Tree（流用 / 変更 / 新規 / 不採用・09 Remote Operation 新設・室内 M1 との差分表）② 屋外 Runtime Data Flow（RTK・2 段 EKF・`cliff_scan`・凍結 cmd_vel チェーン・遠隔操作リンク・停止理由の合流・GNSS 品質と Guardian pose 源・段階・OQ）。比較元は [architecture/robot-architecture-tree](architecture/robot-architecture-tree.html) / [perception-localization-flow](architecture/perception-localization-flow.html) |
+| [08-architecture-v2-reference-alignment](mode-outdoor/08-architecture-v2-reference-alignment.md) | **アーキテクチャ v2（提案・裁定待ち）**: Autoware / Apollo / DARPA Urban Challenge・SubT / Bertha / Nav2 の参照アーキテクチャとの整合 → 12 コンポーネント + 2 横断面（地図・経路の一級化／旧 06 の三分割／統治の集約）・MRM 4 段・operation mode 一級化・外部レビュー 11 主張の一次情報照合（Route Server は humble 1.1.20 backport 済）・屋外初期プロファイル（契約 0.3 m/s のまま）・実装順序と「確認実装」の範囲。図解 = [outdoor-architecture-tree](mode-outdoor/outdoor-architecture-tree.html)（v2） |
+| [09-external-review-v3-response](mode-outdoor/09-external-review-v3-response.md) | **外部レビュー v3（2026-09-14）への応答（提案・裁定待ち）**: 4 レーン照合（Nav2 humble 上流／外部製品・法規／自 docs／自 code）で 27 主張を判定 → 自 docs の誤り 4 件を訂正（Humble `collision_monitor` は per-source `source_timeout` 無し・途絶 fail-open／cuVSLAM blocker は Humble pin ではない（Isaac ROS 3.2 は Humble 公式）／`speed_limit 0` = 制限なし／近傍解像度）・v2.1 契約修正（期限付き走行許可 = `stop_state` 拡張・X2 → 許可失効・手動用 CM・制御 / 映像分離・運転状態 7 状態・横断 5 状態・停止の 3 分離・地図 4 用途・terrain・skid-steer・00_Platform_Contract）・ディレクトリー設計の写像・実装順序 v2.1・故障注入 11 項目・`OQ-OD88〜97` |
