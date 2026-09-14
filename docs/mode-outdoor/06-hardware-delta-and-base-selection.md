@@ -337,3 +337,18 @@ DigiKey 日本のカートに #2674 ×1（税抜 ¥1,228）を入れると **運
 **必要な道具**: ノギス（未所有・¥1,000 級）、六角レンチ 2 mm / 2.5 mm（同梱袋を確認・無ければ ¥500 級）、同梱ドライバー。
 
 結果はこの節の下に日付付きで追記する（`OQ-OD69`）。
+
+### ④-7. #2674 の販路の総当たり（2026-09-14・執筆者が各店を実 Read／ブラウザ確認）
+
+| 販路 | 結果 | 出典 |
+|---|---|---|
+| Pololu 直販 | $7.75（5 個以上 $7.13）。カートに「Estimate shipping」（国 + 郵便番号）があり **支払い前に USPS First-Class の実額が見える**。米国内以外に送料無料なし | <https://www.pololu.com/cart> |
+| DigiKey 日本（マーケットプレイス） | ¥1,350.80・送料 **固定 ¥4,428**（数量 5 でも同額・ユーザー実測） | [④-3](#④-3) |
+| 秋月電子 | #2674 なし（#1999 6 mm ハブのみ） | <https://akizukidenshi.com/catalog/g/g131931/> |
+| スイッチサイエンス／マルツ／千石／RobotShop 徳島／Mouser 日本 | #2674 の掲載なし（Mouser は検索がタイムアウト＝`[未確認]`） | [④-1](#④-1) |
+| Amazon.co.jp | 「Pololu scooter wheel adapter 6mm」0 件・「Pololu ホイールアダプター」は無関係品 1 件（ブラウザで確認） | — |
+| **朱雀技研（Suzaku Lab・Pololu 正規販売店・奈良）** | 検索インデックスには「Scooter ホイールアダプタ 6 mm 軸用」「Scooter/Skate ホイール」「マウントハブ 6 mm M3」の国内販売ページがある（<https://products.suzakugiken.jp/pololu/pololu-scooter-skate-wheel/>）。しかし **2026-09-14 時点で同ドメインは DNS 解決せず、Yahoo!ショッピング店（suzakulab）も「ページが見つかりません」**＝閉店または一時停止の可能性。ユーザーのブラウザで開ければ国内送料で買える唯一の販路（`OQ-OD70b`） | Yahoo 店 <https://store.shopping.yahoo.co.jp/suzakulab/> |
+| 海外の他店（The Pi Hut £7.50 在庫 2・日本は配送先一覧に無し／Opencircuit €10.10／Kamami・Botland・Core Electronics・Makersupplies 404） | 価格は VAT 込みで割高、送料も欧州・豪発で米国便より安くならない | <https://thepihut.com/pages/delivery> |
+| AliExpress 等の互換品 | 「608 座を 6 mm D 軸に固定する」構造の互換品は検索で見つからず | — |
+
+**結論**: 確実な最安は **Pololu 直販 ＋ USPS First-Class International**。数量 5 なら本体 ≈ ¥5,350 ＋ 送料（カートで実測。第三者相場 $15〜22）。DigiKey 経由（¥6,754 ＋ ¥4,428）より ¥2,000〜3,000 安い見込み。朱雀技研が生きていれば国内送料で逆転する。
