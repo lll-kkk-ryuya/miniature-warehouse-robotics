@@ -247,3 +247,32 @@ Status: **箱（skeleton）**。§2 の導出表と §3 のリスク一覧は既
 | 10 | ねじ緩み止め（ロックタイト 243 等） | #2674 のイモネジ・M3 の緩み対策（推奨） | ≈ ¥800 | <https://www.monotaro.com/s/q-%E3%83%AD%E3%83%83%E3%82%AF%E3%82%BF%E3%82%A4%E3%83%88%20243/> | D 面にイモネジを合わせた上で塗布 |
 
 発注順: #1 を 1 個 → 軸受・ボス幅を実測 → #1 残り 3 個 ＋ #2 ＋ #3 → 走行 → 必要なら #6・#7。
+
+## 【2026-09-14 追補④】Pololu 依存の最小化 — 国内代替の再確認・送料・一括注文（参照日 2026-09-14）
+
+> 問い（ユーザー）: Pololu の送料が高い。国内に代案は無いか。Pololu で買うなら一括で何を積むか。送料無料の閾値は無いか。調査レーン 1 本（国内代理店・国内代替品・送料）＋執筆者の一次情報再取得。
+
+### ④-1. 確定事実
+
+| 事実 | 出典 |
+|---|---|
+| Pololu 直販: 国際便は FedEx / UPS / USPS（Priority Mail Express Intl・**First-Class Intl＝最安・追跡なし**）。**送料無料は米国内のみ**。関税・税は受取人負担。送料はカート 2 段目で確定 | <https://www.pololu.com/ordering> / <https://www.pololu.com/blog/716/free-shipping-phase-two-lots-more-free-shipping> |
+| #2674 = $7.75（5 個以上 $7.13）。M4 止めねじ 2・M3×14 ×3 付属。608 座間隔 6 mm 以上の車輪に適合 | <https://www.pololu.com/product/2674> |
+| #3281 = $14.23（5 個以上 $13.09）・235 g/個 | <https://www.pololu.com/product/3281/specs> |
+| Pololu 公式の日本代理店: DigiKey Marketplace（米国 Pololu から直送）・RobotShop（徳島）・スイッチサイエンス・秋月電子・TechShare | <https://www.pololu.com/distributors> |
+| **DigiKey 日本**: #2674 税込 **¥1,350.80**・在庫 958・マーケットプレイス品（Pololu が約 1 日で出荷）・送料別途。#1083 税込 ¥2,257.20（2 個）。#3281 は掲載なし | <https://www.digikey.jp/ja/products/detail/pololu/2674/10449895> / <https://www.digikey.jp/ja/products/detail/pololu-corporation/1083/10449878> |
+| DigiKey マーケットプレイス品は**サプライヤ独自の送料**・DigiKey の「6,000 円以上送料無料」**対象外**・Incoterms CPT（関税・税は配達時徴収） | <https://www.digikey.jp/ja/help-support/dk-marketplace/marketplace-shipping-options> |
+| **秋月電子**: Pololu #1999「6 mm モーターシャフト用ハブ（2 個入・M3 穴・径 25.4 mm）」税込 ¥2,260・在庫あり（通販 24・秋葉原 3・八潮 3） | <https://akizukidenshi.com/catalog/g/g131931/> |
+| スイッチサイエンス: 6 mm 系ホイールアダプタ・ハブの掲載なし（4 mm ハブ ¥1,980 のみ）〔調査レーン〕。マルツ: Pololu はモータ類のみ〔調査レーン〕。千石・RobotShop 徳島・Mouser JP: #2674 掲載確認できず `[未確認]` | <https://www.switch-science.com/products/9068> |
+| 国内の「608 座の車輪を 6 mm D 軸に固定する既製品」= **見つからず**〔調査レーン・執筆者検索でも同結果〕。近いのは NEXUS 18007（6 mm ハブ・**ボルト穴付き車輪用**・ヴイストン ¥1,463）で 608 座には直結不可 | <https://www.vstone.co.jp/robotshop/index.php?main_page=product_info&products_id=3767> |
+| 個人輸入の少額免税: 課税価格（海外小売価格 × 0.6）の合計 **1 万円以下は関税・消費税とも免税**（＝小売 ¥16,666 まで） | <https://www.customs.go.jp/tetsuzuki/c-answer/imtsukan/1006_jr.htm> |
+
+### ④-2. 裁定案
+
+1. **送料を無くす手段は無い**（Pololu 直販・DigiKey 経由とも Pololu 直送で送料別）。代わりに **荷物を軽く・1 回で**済ませる: 車輪は国内（PU-150）、Pololu からは **#2674 だけ**。
+2. **一括注文の中身（推奨）**: #2674 ×5（4 ＋ 予備 1・5 個で単価 $7.13＝$35.65）。#3281（144 mm 車輪）は **PU-150 の軸受を実測して 608 でなかった場合のみ**追加（4 個 $56.92・+940 g で送料が上がる）。#1999 ハブは秋月で買えるので Pololu から買わない。M3 長ねじ・M4 止めねじ予備は国内。
+3. **順序**: PU-150 を 1 個先に取り寄せ（当日出荷）→ 軸受を実測（外径 22・幅 7 の 608 か）→ Pololu 注文を 1 回で確定。実測前に Pololu を発注しない（2 回目を避ける唯一の方法）。
+4. **DigiKey 日本 vs Pololu 直販**: どちらも Pololu 発送。DigiKey は円建て・税込表示、Pololu は USPS First-Class を選べる。**両方のカートに #2674 ×5 を入れて送料込み総額を比較**して安い方（小売合計 ≤ ¥16,666 なら輸入税は免税）。
+5. **国内完結の代案（いずれも加工か設計が要る＝手戻りゼロにならない）**: (a) 秋月 #1999 ハブ ＋ 自作ディスク ＋ 車輪ボスに M3 通し穴加工、(b) NEXUS 152 mm メカナム ＋ 18007（¥26k・メカナムに戻る＝非推奨）、(c) 経路 B スタブ軸（設計要）。
+
+`OQ-OD68` DigiKey マーケットプレイス（Pololu 直送）の日本向け実送料。カートで確認し本表へ追記。
