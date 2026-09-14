@@ -36,13 +36,14 @@ Status: **提案（裁定待ち = `OQ-OD80`）**。2026-09-12 のエージェン
 
 | v2 | 責務（1 行） | L 軸 | 現行 01〜09 から移るもの | 参照 |
 |---|---|---|---|---|
-| **01_Sensing** | 取得と時刻付与のみ。解釈しない | L4/L1 境界 | 01 そのまま（RTK 受信機・NTRIP・OAK-D ×2・T-mini・IMU・エンコーダ） | 全参照 |
+| **00_Platform_Contract**（v2.1 追加・2026-09-14） | 車体寸法・車輪半径・実効輪距・旋回校正・frame 名・停止時間予算・運用包絡・依存版の**単一正本**。走行指令を出さない | 前提（L 軸外・凍結契約と同格） | `warehouse_description`（URDF / frames / footprint）＋ `config/warehouse.base.yaml` の屋外 overlay ＋ [00](00-mission-and-scope.md) の運用条件 | 外部レビュー v3 §2（[09 §2-l](09-external-review-v3-response.md)） |
+| **01_Sensing** | 取得・時刻付与・変換（エンコーダ→Odometry・IMU 補正・カメラ内深度生成）まで。**行動判断をしない**（[09 §2-k](09-external-review-v3-response.md)・2026-09-14 語修正） | L4/L1 境界 | 01 そのまま（RTK 受信機・NTRIP・OAK-D ×2・T-mini・IMU・エンコーダ） | 全参照 |
 | **02_Map_and_Route ★新設** | 地図・**datum**・teach 経路（node/edge）・**keepout（許可帯）**・横断点レジストリ（`crossing_id`・ROI）・速度属性の**正本** | L3 | 02 の datum・04 の `/map` 再定義・09 の route_store・04 の横断点登録（`OQ-OD47`） | Autoware Map / Apollo map+routing / Bertha 地図属性 / Nav2 Route Server |
 | **03_Localization**（＋TF 配信責任契約） | 地図相対姿勢の推定・フレーム単一配信 | 自律走行（安全層外） | 02 + 03（TF は成果物であって段ではない → 03 の配下契約へ） | Autoware / Bertha / Talos positioning |
 | **04_Perception**（信号・歩行者を含む） | publish-only の認識。行動を決めない | L4 | 04 + 08 の `traffic_light_classifier` / `pedestrian_detector`。地形（terrain）検出をここへ | 全参照・Badue（信号検出は perception） |
 | **05_Mission_and_Route** | 次の waypoint + 速度上限 + 走行境界だけを出す。route event（横断・狭路・帰還）を Governance へ | L3 | 05 の「waypoint 再生」・09 の route_store の実行側・`fromLL` compile | CMU（最小契約）・Nav2 Route Server（Humble backport）・VT&R3 |
 | **06_Navigation** | Nav2: BT / planner / controller / costmap（keepout filter は global・local 両方）。**屋外初期プロファイルでは recovery 無効** | L1 Navigation | 05（Nav2 部分） | Nav2 |
-| **07_Safety_Layer** | 幾何停止（collision_monitor: scan + cliff_scan・per-source timeout）。pose 非依存・凍結 | L1 Safety | 06 の `safety_chain/`（collision_monitor） | Nav2 Collision Monitor（独立 safety layer）・Bertha |
+| **07_Safety_Layer** | 幾何停止（collision_monitor: scan + cliff_scan。**Humble は node-level `source_timeout` のみ・途絶は fail-open**＝[09 §1 #1](09-external-review-v3-response.md)）＋ 手動・遠隔経路用の第 2 CM（`OQ-OD88`）。**地図上の絶対位置に非依存**（センサ TF・時刻には依存）・凍結 | L1 Safety | 06 の `safety_chain/`（collision_monitor） | Nav2 Collision Monitor（独立 safety layer）・Bertha |
 | **08_Command_Gate** | **全コマンド源の単一合流点**（twist_mux: emergency prio100 > remote/teleop > nav2 prio10）・heartbeat | L1 | 06 の twist_mux | Autoware `vehicle_cmd_gate` / Apollo Guardian の位置 |
 | **09_Vehicle_Interface** | クランプ（k）・停止上乗せ・W-1/W-2・STM32 FW・**estop_relay（法定）**・W-3 | L0' / L0 | 06 の `m1_driver` / `stm32_firmware` / `estop_relay` | Talos ADU（状態機械 + watchdog をハードに） |
 | **10_Governance** | 「いま何をしてよいか」の一級状態: **operation mode（Stop / Auto / Remote / Manual）**・Policy Gate・**横断ゲート**・許可窓 | L2 | 08 の `crossing_gate`・09 の許可状態・既存 `warehouse_mcp_server` の Policy Gate・[mode-m1/05](../mode-m1/05-operation-state-and-stop-authority.md) の運転モード | Autoware operation mode / Apollo |
@@ -63,11 +64,11 @@ Status: **提案（裁定待ち = `OQ-OD80`）**。2026-09-12 のエージェン
 | route graph | node（RTK 座標 + yaw）/ edge（速度上限・縁石リップ有無・operator gate 必須・横断 `crossing_id`）。**Nav2 Route Server（`nav2_route` 1.1.20・humble backport）が候補**: 経路網 + route operations（区間イベント）を標準で持つ。自前 YAML（[03 §3-3](03-localization-gnss-and-ekf.md)）は fallback | index.ros.org / humble `package.xml` [D] |
 | keepout（許可帯） | 歩道ポリゴンを**マスク**にし `KeepoutFilter` を global と local の**両方**へ（Nav2 公式の best practice）。**Inflation Layer は keepout に自動適用されない**（filters は plugins と分離）→ 膨張はマスク作成側で持つ | Nav2 docs keepout tutorial [D] |
 | 横断点レジストリ | `crossing_id`・進入方位・灯器 ROI・想定距離（[04 §4](04-perception-sidewalk-and-signals.md)）。Bertha 型「地図に交通規則属性」 | Ziegler 2014 [L] |
-| 解像度分割 | 全域 0.05 m（100 m 角で 400 万セル）・近傍 0.01〜0.02 m。屋内の 0.01 m を全域に使わない | [03 §3-4](03-localization-gnss-and-ekf.md) #4 |
+| 解像度分割 | 全域 0.05 m（100 m 角で 400 万セル）・近傍（local 6〜10 m 角）も **0.05 級**（[03 §3-4](03-localization-gnss-and-ekf.md) #4 と統一・2026-09-14 訂正）。屋内の 0.01 m を全域に使わない。**セル解像度 ≠ 測位精度** | [03 §3-4](03-localization-gnss-and-ekf.md) #4 |
 
 ### 3-2. 08_Command_Gate（司令ゲート）
 
-- 現行 twist_mux（`emergency` prio100 > `nav2` prio10）を **Autoware `vehicle_cmd_gate` 相当**として明示する。入力源 = ① Nav2（auto）② teleop / 遠隔再生（external）③ Guardian（emergency）。**新しい速度源を足さない**（[mode-m1/05](../mode-m1/05-operation-state-and-stop-authority.md) の規律）。
+- 現行 twist_mux（`emergency` prio100 > `nav2` prio10）を **Autoware `vehicle_cmd_gate` の「選択」機能のみに相当**と位置づける（モード・操作権・指令期限・解除条件・最終クランプは 09 / 10 / 12 が担い、gate 全体 = 08 + 09 + 10 + 12＝[09 §2-c](09-external-review-v3-response.md)・2026-09-14 訂正）。入力源 = ① Nav2（auto）② teleop / 遠隔再生（external）③ Guardian（emergency）。**新しい速度源を足さない**（[mode-m1/05](../mode-m1/05-operation-state-and-stop-authority.md) の規律）。
 - heartbeat の途絶は Autoware `external_emergency_stop_heartbeat_timeout`・Apollo Guardian の 2.5 s・Talos ADU watchdog と同型（[02 §3-3](02-architecture-split-orin-pc-cloud.md)）。
 
 ### 3-3. 10_Governance（operation mode の一級化）
@@ -80,12 +81,12 @@ Status: **提案（裁定待ち = `OQ-OD80`）**。2026-09-12 のエージェン
 | 段 | トリガ例 | 挙動 | 実装点 | 解除 | Autoware 対応 |
 |---|---|---|---|---|---|
 | **MRM-0** | 混雑・float 縮退・歩行者接近 | 速度帯を下げる（**安全機構ではない**＝[ADR-0012](../adr/0012-speed-band-no-l2-best-effort.md)） | 06（`speed_limit`） | 自動 | — |
-| **MRM-A（快適停止）** | 測位品質低下・知覚劣化・軽度診断 NG・全軌道不成立 | **減速停止・経路保持**（再開可能） | 12 → 08（Nav2 の pause / BT halt or 帯 0） | 自動（条件回復 + 許可窓） | COMFORTABLE_STOP |
+| **MRM-A（快適停止）** | 測位品質低下・知覚劣化・軽度診断 NG・全軌道不成立 | **減速停止・経路保持**（再開可能） | 12 → 08（Nav2 の pause / BT halt ＋ 走行許可の撤回。**帯 0 は使わない**＝`speed_limit 0.0` は「制限なし」[mode-m1/04:71](../mode-m1/04-runtime-speed-limiter.md:71)・2026-09-14 訂正） | 自動（条件回復 + 許可窓） | COMFORTABLE_STOP |
 | **MRM-B（即時停止）** | 衝突リスク・リンク断・ジオフェンス逸脱・重度診断 NG | **prio100 ゼロ Twist・ラッチ** | 12（Emergency Guardian）→ 08 | **遠隔操作者の明示解除 + 再アーム** | EMERGENCY_STOP |
 | **E-STOP（法定）** | 物理押しボタン | 原動機直接停止（モータレグ遮断） | 09（ハード） | **人手の解除操作のみ** | — |
 | （不採用） | — | PULL_OVER | — | — | 歩道幅・固定経路では「寄せる先」が定義できない |
 
-- 遷移は **MRM-A → MRM-B の一方向のみ**（Autoware と同じ）。MRC（最小リスク状態）= 停止済み + 表示灯 + 遠隔者へ通知済み。
+- 遷移の「一方向」は**異常が残る間の深刻度低下を禁止する**意味に限定する（A→PAUSED→READY・ACTIVE→B・任意→E-STOP・B→READY（原因解除＋明示 reset）は必要＝[09 §2-e](09-external-review-v3-response.md)・2026-09-14 訂正）。MRC（最小リスク状態）= **停止＋保持が成立した状態**（車輪速度フィードバックで確認・ゼロ指令送信の事実ではない）。表示灯・遠隔者への通知は**別フラグ**（リンク断時はローカル保留・回復後送信）で MRC の成立条件に含めない。
 - 停止理由の契約は ISO 3691-4 の語彙で **operational stop（自動再開可）/ protective stop（人手復帰）** に型分けする案（`stop_request` を `(category, severity, resumable)` の 3 つ組へ additive 拡張＝`OQ-OD82`）。現行 `pose_stale` / `blocked_timeout` = operational、`near_collision` / `battery_critical` = protective。
 - **RTI（介入要求）**: 自律継続不能時に遠隔操作者へ手動化を要求する一級イベント（11 へ）。
 
@@ -95,8 +96,8 @@ Status: **提案（裁定待ち = `OQ-OD80`）**。2026-09-12 のエージェン
 |---|---|---|---|---|
 | 1 | Local の Static Layer は rolling でも重ねられる。「rolling なので無意味」は誤り | **誤った理由**（結論「採らない」は維持） | Nav2 humble `static_layer.cpp`: rolling 時は `lookupTransform(map_frame_, global_frame_)` でセル毎に変換投影・`updateBounds` の早期 return は非 rolling 限定 [D] | [doc23 §2 表](../architecture/23-perception-and-localization.md:73) の理由を「Static の座は `/map` 再定義が継ぐ・CURRENT 非保持」へ**同一行で訂正**＋ doc23 末尾追補 |
 | 2 | Keepout は global / local 両方。Inflation は自動適用されない | **正** | Nav2 keepout tutorial「global と local を同時に有効化」「filters は layer plugins と分離（inflation との干渉回避）」[D] | [04 §6](04-perception-sidewalk-and-signals.md) に keepout_filter 行を追加・§3-1 |
-| 3 | Isaac ROS 4.6（2026-08-18）で Orin 対応。「RGB-D は Thor 専用」は更新要。現行は JP7.2 / Jazzy | **条件付き**（事実は正・結論は不変） | Release Notes: 4.6.0 = 2026-08-18・Jetson Orin / JetPack 7.2 / Ubuntu 24.04 / Jazzy。Orin **Nano** の記述なし。Humble 系は 3.2 ライン（最終 U15 2025-12-10・JetPack 6.x）[D] | [doc23 B-1](../architecture/23-perception-and-localization.md:440) の blocker を「ハード」から **ADR-0008 の Humble pin** へ訂正（末尾追補）。[04 §6](04-perception-sidewalk-and-signals.md) の「4.6 系の資料を誤参照しない」は生存 |
-| 4 | Nav2 Route Server は Jazzy→Kilted 導入で Humble 標準ではない | **誤** | `nav2_route` 1.1.20 が humble ブランチに存在（backport #5359・2025-07-21）・index.ros.org で humble released [D]（執筆者が再確認） | [03 §3-2](03-localization-gnss-and-ekf.md) に案 D（Route Server）を追加・`OQ-OD3D`・§3-1 |
+| 3 | Isaac ROS 4.6（2026-08-18）で Orin 対応。「RGB-D は Thor 専用」は更新要。現行は JP7.2 / Jazzy | **条件付き**（事実は正・結論は不変） | Release Notes: 4.6.0 = 2026-08-18・Jetson Orin / JetPack 7.2 / Ubuntu 24.04 / Jazzy。Orin **Nano** の記述なし。Humble 系は 3.2 ライン（最終 U15 2025-12-10・JetPack 6.x）[D] | [doc23 B-1](../architecture/23-perception-and-localization.md:440) の blocker を「ハード」から **ADR-0008 の Humble pin** へ訂正（末尾追補）→ **2026-09-14 再訂正: Isaac ROS 3.2 は Humble + JetPack 6.1 / 6.2 + Orin が公式対象＝Humble pin は blocker ではない**。真の理由 = HP60C ステレオ IR 無し（ハード）＋ OAK-D 等を足す場合のカメラ同期要件・資源・検証負荷（[09 §1 #15](09-external-review-v3-response.md)・[doc23:804](../architecture/23-perception-and-localization.md:804) 同一行再訂正）。[04 §6](04-perception-sidewalk-and-signals.md) の「4.6 系の資料を誤参照しない」は生存 |
+| 4 | Nav2 Route Server は Jazzy→Kilted 導入で Humble 標準ではない | **誤** | `nav2_route` 1.1.20 が humble ブランチに存在（backport #5359・2025-07-21）・index.ros.org で humble released [D]（執筆者が再確認）・rosdistro humble `distribution.yaml` の navigation2 `1.1.20-1` の packages に `nav2_route` あり＝**バイナリ配布済** [D 2026-09-14]（機体導入・依存互換は未検証＝`OQ-OD3D/81` のまま） | [03 §3-2](03-localization-gnss-and-ekf.md) に案 D（Route Server）を追加・`OQ-OD3D`・§3-1 |
 | 5 | `differential` は位置と姿勢の両方を差分化。N−1 は目安で共分散調整も選択肢 | **正** | robot_localization docs: 「N−1 を differential に、**または共分散を十分大きく**」「navsat_transform 経由の GPS は `_differential: false`」[D] | [doc23 B-4](../architecture/23-perception-and-localization.md:478) の「凍結」を rule-of-thumb へ緩和・[03 §2-2](03-localization-gnss-and-ekf.md) に「GNSS は differential にしない」を根拠追加（`OQ-OD35` はほぼ決着） |
 | 6 | datum の固定・アンテナ取付位置の補正が必要 | **条件付き**（既に我々の立場） | `navsat_transform.cpp`: `datum` は `wait_for_datum: true` のときだけ宣言・レバーアームは NavSatFix `frame_id` の TF で自動補正 [D] | [03 §2-3](03-localization-gnss-and-ekf.md) に 2 点追記（`gnss_link` = NavSatFix `frame_id` 一致必須・`datum` 単独指定は無効） |
 | 7 | elevation_mapping_cupy は ROS 世代・移植状態の確認要 | **正**（ROS 2 は未マージ） | main は ROS 1（catkin）。ROS 2 は未マージブランチのみ・rosdistro 未リリース [D] | [04 §3](04-perception-sidewalk-and-signals.md) に 1 行追加。cliff detector 自作が本命のまま |
@@ -114,12 +115,12 @@ Status: **提案（裁定待ち = `OQ-OD80`）**。2026-09-12 のエージェン
 | 走行環境 | 乾燥・平坦な舗装路・私有地（または随伴通行）・監視者常時 | [01 §5](01-legal-envelope-japan.md) / 外部レビュー |
 | 速度 | **契約 `MAX_LINEAR_VELOCITY = 0.3 m/s` のまま**（車輪換装前でも実施可） | 契約変更なし＝contract PR 不要で現地データが取れる |
 | 経路 | teach-and-repeat 固定ルート・keepout マスク両 costmap・許可帯の外は lethal | §3-1 |
-| recovery | **無効**（`behavior_plugins: []` or recovery 無し BT） | §4 #9 |
+| recovery | **無効**（**recovery を持たない BT を先に指定し、その上で** `behavior_plugins: []`。既定 BT のまま plugins を空にすると Spin / Wait / BackUp の server 不在で BT 構築時に throw＝[09 §1 #20](09-external-review-v3-response.md)） | §4 #9 |
 | 未観測 | **通行不可**（`noDataObstacle` 型・`track_unknown_space`） | CMU / STEP [L] |
-| 停止 | per-source timeout（scan・cliff_scan・GNSS 品質・heartbeat）・MRM-A/B・E-STOP | §3-4 |
+| 停止 | センサ鮮度監視（X2: scan・cliff_scan・GNSS 品質・heartbeat）→ **走行許可の失効**（09。Humble CM は途絶で止まらない＝[09 §2-b](09-external-review-v3-response.md)）・MRM-A/B・E-STOP | §3-4 |
 | 再開 | 品質回復 + 明示再開条件（再アーム） | [05 §3](05-safety-envelope-and-intervention.md) |
 | 記録 | センサ・推定・指令・実速度・停止理由を run record で対応づけ | X1 |
-| 解像度 | 全域 0.05 m・近傍 0.01〜0.02 m | §3-1 |
+| 解像度 | 全域 0.05 m・近傍も 0.05 級（03 と統一・2026-09-14） | §3-1 |
 
 ## 6. 実装順序と「確認実装」の範囲
 
@@ -127,6 +128,7 @@ Status: **提案（裁定待ち = `OQ-OD80`）**。2026-09-12 のエージェン
 
 | 順 | 作る・確認するもの | 次へ進む条件 | 本 repo の対応 |
 |---|---|---|---|
+| 0 | **車体契約（00_Platform_Contract）と既存コードの照合・Humble CM 意味論の再裁定・09 の下位停止（W-3 / 独立監視回路 / 期限付き走行許可）**（2026-09-14 追加） | FW 停止挙動・CM 版・mux 配線・車輪 API・TF 担当が確定し、ホスト停止・シリアル断で止まる | [09 §4](09-external-review-v3-response.md)・[ADR-0013](../adr/0013-stm32-command-stream-watchdog.md)・`OQ-OD89/95/96` |
 | 1 | 屋外の運用条件・ルート幅・段差・傾斜・停止方法 | 走行・停止できる範囲が明確 | [00 §4](00-mission-and-scope.md) 裁定 1・[07 §10](07-drivetrain-and-wheel-sizing.md) G-W1 |
 | 2 | 現地でセンサと車体状態を記録 | 測位が弱い区間・路面が見えない区間を特定 | [03 §6](03-localization-gnss-and-ekf.md) L-4・[04 §7](04-perception-sidewalk-and-signals.md) P-5 |
 | 3 | 地図・許可帯・経由点・測位プロファイル | ルート全体で位置と向きの誤差を許容 | §3-1・[03](03-localization-gnss-and-ekf.md) |
@@ -139,7 +141,7 @@ Status: **提案（裁定待ち = `OQ-OD80`）**。2026-09-12 のエージェン
 1. 契約 additive（contract PR）: `gnss_link` を `FROZEN_LINK_NAMES` へ・`GnssQuality` 型・`stop_request` の `reason_code / category / resumable`・operation mode の追加状態。
 2. 純ロジック producer + R-26 unit: リンク断 watchdog・GNSS 品質ゲート・ジオフェンス・terrain monitor（`considerDrop` / `noDataObstacle` 型の判定関数）・compute tick jitter 監視・MRM 段選択器。
 3. route graph ファイル + compile ツール（`fromLL` を teach 時に一度）+ keepout マスク生成 + 横断点レジストリの検証（YAML → schema）。
-4. `operator_link_node` 骨格（WS 単一チャネル・運ぶ意味の閉集合・AST pin）と PC 卓の最小 UI。
+4. `operator_link_node` 骨格（WS 制御/映像 2 接続＝[09 §2-d](09-external-review-v3-response.md)・運ぶ意味の閉集合・AST pin）と PC 卓の最小 UI。
 5. 屋外初期プロファイル（Nav2 params overlay・recovery 無効・keepout filter・local 8〜10 m）と sim での回帰。
 
 **現地データ取得後に決めるもの**: RTK 受信機クラス（`OQ-OD37`）・屋外カメラ（`OQ-OD43`）・3D LiDAR の要否・車輪径の最終値（[07](07-drivetrain-and-wheel-sizing.md)）。
@@ -149,7 +151,7 @@ Status: **提案（裁定待ち = `OQ-OD80`）**。2026-09-12 のエージェン
 - `OQ-OD80` v2 分解（12 + 2）を採用するか。採用なら [outdoor-architecture-tree.html](outdoor-architecture-tree.html) を正本の索引にし、02〜07 の見出しの「箱名」を v2 に揃える（ユーザー裁定）。
 - `OQ-OD81` Nav2 Route Server（`nav2_route` 1.1.20 humble）を 02/05 の経路正本に採るか、自前 YAML（[03 §3-3](03-localization-gnss-and-ekf.md)）で始めるか（`OQ-OD3D` と同一）。
 - `OQ-OD82` `stop_request` を `(category, severity, resumable)` の 3 つ組へ additive 拡張するか（ISO 3691-4 語彙・operational / protective）。
-- `OQ-OD83` MRM-A（快適停止・経路保持・自動再開）の実装経路: Nav2 pause / BT halt / 帯 0 のどれか（帯は安全機構でないため MRM-A の主経路にしない）。
+- `OQ-OD83` MRM-A（快適停止・経路保持・自動再開）の実装経路: Nav2 pause / BT halt ＋ 走行許可撤回（**帯 0 は不可**＝`speed_limit 0.0` は「制限なし」・[09 §1 #14](09-external-review-v3-response.md)）。
 - `OQ-OD84` 運転モードを `STOP / AUTO / REMOTE / MANUAL` へ additive 拡張するか（[GLOSSARY §11 運転モード](../GLOSSARY.md) との整合・[mode-m1/05 §2](../mode-m1/05-operation-state-and-stop-authority.md) の「6 状態機械は採用しない」との両立）。
 - `OQ-OD85` X2 Diagnostics を DAG（Autoware diagnostics graph 型）にするか、既存の Guardian 監視プロファイル（[23 追補 A-5](../architecture/23-perception-and-localization.md:332)）の拡張で足りるか。
 - `OQ-OD86` Talos ADU 型（状態機械 + watchdog を最下層ハードに置く）を W-3（[ADR-0013](../adr/0013-stm32-command-stream-watchdog.md)）と estop_relay の統合像として持つか。
@@ -177,3 +179,7 @@ docs 内（file:line は執筆時に実 Read）:
 - Agha et al. NeBula arXiv:2103.11470 / Fan et al. STEP arXiv:2103.02828 / Tranzatto et al. Science Robotics 2022 doi:10.1126/scirobotics.abp9742 / Cao et al. ICRA 2022 arXiv:2110.14573（`terrainAnalysis.cpp` の `considerDrop` / `noDataObstacle`）/ Hudson et al. CSIRO arXiv:2104.09053 / VT&R3 <https://github.com/utiasASRL/vtr3> / Tsukuba Challenge IEEE ROBIO 2008・SII 2011 [L]
 - Yurtsever et al. IEEE Access 2020 doi:10.1109/ACCESS.2020.2983149 / Badue et al. ESWA 2021 doi:10.1016/j.eswa.2020.113816 [L]
 - ISO 3691-4:2023（operational / protective stop）/ ISO 23793-1:2024（MRM）/ ISO 13482:2014 [L]
+
+## 【2026-09-14 追補】外部レビュー v3 の反映（v2.1）
+
+正本 = [09](09-external-review-v3-response.md)（4 レーン照合・27 主張）。本 doc への同一行反映: §2（`00_Platform_Contract` 行追加・01 の「行動判断をしない」・07 の Humble fail-open と「地図上の絶対位置に非依存」）・§3-1（解像度を 03 と統一）・§3-2（twist_mux = 選択機能のみ）・§3-4（MRM-A の「帯 0」撤回・遷移「一方向」の意味限定・MRC 定義）・§4 #3（cuVSLAM 再訂正: Isaac ROS 3.2 は Humble 公式）・#4（`nav2_route` バイナリ配布 [D]）・§5（recovery は BT 先・停止行）・§6（順序 0 = 車体契約照合と 09 の下位停止・`operator_link_node` は 2 接続）・§7 `OQ-OD83`。**12 区分は維持**（レビュー判定と一致）。新規 OQ = `OQ-OD88`〜`97`（[09 §7](09-external-review-v3-response.md)）。

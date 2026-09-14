@@ -245,3 +245,14 @@ docs 内（file:line は執筆時に実 Read）:
 - rosdistro humble `distribution.yaml` <https://raw.githubusercontent.com/ros/rosdistro/master/humble/distribution.yaml>（robot_localization / ublox / ntrip_client / rtcm_msgs / nmea_navsat_driver）[L]
 - ublox ROS 2: `NavPVT.msg` <https://github.com/KumarRobotics/ublox/blob/ros2/ublox_msgs/msg/NavPVT.msg> / README（moving base）<https://github.com/KumarRobotics/ublox/blob/ros2/README.md> [L]
 - QZSS CLAS 受信機（ビズステーション Drogger）<https://www.bizstation.jp/ja/drogger/rtk_rcv_index.html> / <https://qzss.go.jp/info/archive/bizstation_221226.html> / RTK 基準局方式 <https://drogger.hatenadiary.jp/entry/RTK_GUIDE> [L]
+
+## 【2026-09-14 追補】外部レビュー v3 の反映（datum yaw の意味・受信機候補の分離・costmap 範囲の二択・品質ゲートの条件式）
+
+正本 = [09](09-external-review-v3-response.md)。
+
+1. **datum の yaw**: humble-devel `navsat_transform.cpp` は `datum` の yaw を `quat.setRPY(0, 0, datum_yaw)` → `imu.orientation`・`frame_id = base_link` として注入する＝**datum 設定時点の車体方位**として扱われる [D]。したがって「datum があるので絶対方位も解決」ではなく、§4-3 の通り**既知の位置・向きで起動する手順**と**再初期化条件**（GNSS 飛び・長時間停止後）を持ち、heading 初期化・収束を **READY 条件**（[09 §2-e](09-external-review-v3-response.md)）に入れる。参考: humble-devel の `navsat_transform_node.rst` には `datum` / `use_local_cartesian` の項が**無い**（コードには存在）→ 引用はコード側で行う。`broadcast_utm_transform` / `broadcast_cartesian_transform` は**スイッチ**であり、§2-3 の「配信しない構成」の言い回しを維持する（「出せない」とは書かない）。
+2. **受信機候補を 3 行に分離**（§4-1 の補足・`OQ-OD37`）: (A) ZED-F9P + NTRIP（L1 / L2。**F9P は L6 を受信しない**＝datasheet Table 7 [D]）／(B) ZED-F9P + **NEO-D9C**（D9C が L6 CLAS を受け `UBX-RXM-QZSSL6` を F9P へ供給＝datasheet §1.4.4 [D]・通信契約不要）／(C) Drogger 等の CLAS 対応一体機（ROS 2 ドライバ無し・NMEA 経由）。F9P 単体が CLAS を使えるとは解釈しない。
+3. **global costmap の範囲**（§3-4・`OQ-OD3B` の二択化＝`OQ-OD93`）: (i) 限定した経路範囲の **map 基準・固定範囲**（rolling 無し。範囲外の目的地を解かせない）／(ii) rolling（現案）。(ii) を採るなら **05 がウィンドウ内の中間目標を渡す契約**（waypoint 間隔 ≤ W/3 の暫定を含む）を明文化する。local は odom 基準 rolling のまま。
+4. **品質ゲートの条件式**（§4-2 の補足）: RTK FIX だけで許可帯からの安全距離を保証しない。走行条件 = 「車体端から許可帯端までの余裕 > 測位誤差の保守的上限 + 追従誤差 + 境界推定誤差」。共分散は安全保証値ではないため実環境の外れ値も評価。ジオフェンスは逸脱後でなく**予測位置 + 不確かさで先に止める**。Phase 1 で縮退走行を検証していなければ品質低下は停止（§4-2 `OQ-OD32` の段分けは維持）。
+5. **differential**（§2-2）: N−1 は主に複数の姿勢観測の説明で、MOLA-LO だから必ず true という規則ではない（[08 §4 #5](08-architecture-v2-reference-alignment.md) で緩和済）。LO の pose を差分化するか twist を使うかは共分散・相関・既存入力との重複で決める。wheel の位置と速度の二重投入にも注意。
+- 一次情報（参照日 2026-09-14）: `navsat_transform.cpp` <https://github.com/cra-ros-pkg/robot_localization/blob/humble-devel/src/navsat_transform.cpp> / `navsat_transform_node.rst` <https://github.com/cra-ros-pkg/robot_localization/blob/humble-devel/doc/navsat_transform_node.rst> / ZED-F9P-05B datasheet <https://content.u-blox.com/sites/default/files/documents/ZED-F9P-05B_DataSheet_UBXDOC-963802114-12824.pdf> / QZSS CLAS <https://qzss.go.jp/overview/services/sv06_clas.html>

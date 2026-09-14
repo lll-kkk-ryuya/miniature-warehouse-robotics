@@ -137,7 +137,7 @@
     <h3>Global Costmap <small>global_frame: map ・ rolling ・ 0.05 級（0.01 は 50 m 角で非現実）</small></h3>
     <div class="layer l-static"><b>/map（再定義）</b><span class="prop">[提案]</span><div class="note">RTK 歩道ポリゴンをラスタ化した「走行可能領域」。周壁は無い。単独 publisher・decay しない性質は流用。外す案と再定義案は 03 §3-4 #2 で同期</div></div>
     <div class="layer l-obs"><b>Obstacle Layer</b> ◀ scan + <b>cliff_scan</b> + pointcloud_to_laserscan<div class="note">virtual_scan の書き方（marking:true / clearing:false）をそのまま cliff_scan に</div></div>
-    <div class="layer l-infl"><b>Inflation Layer</b><div class="note">0.085 / 10.0 は 200 mm 隘路の live 実証値（#125）＝歩道幅・144 mm 輪・4.5 km/h で再調整</div></div>
+    <div class="layer l-infl"><b>Inflation Layer</b><div class="note">0.085 / 10.0 は 200 mm 隘路の live 実証値（#125）＝歩道幅・150 mm 輪（2026-09-13 裁定）で再調整</div></div>
     <div class="layer rejected"><b>nvblox_layer</b><div class="note">Phase 2（OQ-OD46）</div></div>
   </div>
   <div class="cmcard">
@@ -164,8 +164,8 @@
 <div class="cols2">
   <div>
     <div class="box b-remote"><b>PC 遠隔操作者卓</b>（別アプリ・別 owner）<div class="note">監視 / 非常停止 / 手動 takeover（前進・後退・停止・加減速・右左折の全挙動）/ 横断承認。<b>映像は法的前提</b>（無線の遠隔操作試験は「直接目視で確認できない場所から」）。web/console（observe-only）とは統合しない</div><span class="cite">mode-outdoor/02 §2-1・§2-2 ／ 01 追補② ／ doc22 §2.2</span></div>
-    <div class="arrow">▼<small>WS 単一チャネル（Tailscale over LTE・DDS は WAN に流さない）: heartbeat / teleop / stop_request / 横断承認 / テレメトリ / 映像</small></div>
-    <div class="box b-remote"><b>operator_link_node</b><span class="new">★NEW</span>（Orin・web_bridge とは別プロセス・別 port）<div class="note">① teleop 入力を既存 teleop 経路（deadman・鮮度・latch 再アームの純ロジック流用）へ再生 → <code>/bot1/cmd_vel</code>（twist_mux 経由）② <code>/operator/stop_request</code>（既存契約）③ 横断承認トークン → crossing_gate。運ぶ意味の閉集合を AST pin（OQ-OD24）</div><span class="cite">mode-outdoor/02 §2-1 ／ doc22 §1.3・§18（別プロセス別 port）</span></div>
+    <div class="arrow">▼<small>WS 制御/映像 2 接続（v2.1・Tailscale over LTE・DDS は WAN に流さない）: heartbeat / teleop / stop_request / 横断承認 / テレメトリ / 映像</small></div>
+    <div class="box b-remote"><b>operator_link_node</b><span class="new">★NEW</span>（Orin・web_bridge とは別プロセス・別 port）<div class="note">① teleop 入力を既存 teleop 経路（deadman・鮮度・latch 再アームの純ロジック流用）へ再生 → 手動用 CM（v2.1・OQ-OD88）→ <code>/bot1/cmd_vel</code>（twist_mux 経由）② <code>/operator/stop_request</code>（既存契約）③ 横断承認トークン → crossing_gate。運ぶ意味の閉集合を AST pin（OQ-OD24）</div><span class="cite">mode-outdoor/02 §2-1 ／ doc22 §1.3・§18（別プロセス別 port）</span></div>
     <div class="box b-remote"><b>video_encoder</b><span class="new">★NEW</span><div class="note">Orin Nano に NVENC 無し → software x264 / MJPEG。Phase 1 = 640×360@15fps 固定・適応制御なし</div><span class="cite">mode-outdoor/02 §3-3</span></div>
   </div>
   <div>
@@ -188,7 +188,7 @@
 <tr><td>global EKF <code>/bot1/odometry/filtered</code>（map）</td><td>ならない（GNSS が落ちても wheel + IMU で外挿し続ける＝MOLA-LO と同じ「出続ける」性質）</td><td>○ pose 源の本命・鮮度単独では不可</td></tr>
 <tr><td><code>/bot1/gnss/quality</code>（自己申告・提案）</td><td>なる（level / h_acc / heading_valid）</td><td>◎ 主判定。restrict-only（floor より締める方向のみ）を継承。floor 値は OQ-OD39</td></tr>
 </table>
-<div class="flow-note"><b>operational stop と protective stop は別物</b>（doc23 追補 A-3 と同型）: localization ロスト・リンク断・ジオフェンス逸脱は<b>運用停止</b>であり、protective の床（collision_monitor + twist_mux prio100 + L0' クランプ）は pose 非依存のまま屋外でも 1 枚も減らさない。正本: mode-outdoor/03 §5・05 §0。</div>
+<div class="flow-note"><b>operational stop と protective stop は別物</b>（doc23 追補 A-3 と同型）: localization ロスト・リンク断・ジオフェンス逸脱は<b>運用停止</b>であり、protective の床（collision_monitor + twist_mux prio100 + L0' クランプ）は地図上の絶対位置に非依存（センサ TF・時刻には依存＝v2.1 語修正）のまま屋外でも 1 枚も減らさない。正本: mode-outdoor/03 §5・05 §0。</div>
 
 <h2>6. 段階（前段が緑でないと進めない）</h2>
 <div class="phases">

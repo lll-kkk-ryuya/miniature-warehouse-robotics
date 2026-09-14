@@ -63,7 +63,7 @@ Status: **記載済（設計値・一次情報つき・実装未）**。2026-09-
 - collision_monitor 側: [collision_monitor.yaml:27-28](../../ws/src/warehouse_bringup/config/collision_monitor.yaml:27) / [:76](../../ws/src/warehouse_bringup/config/collision_monitor.yaml:76) / [:81-86](../../ws/src/warehouse_bringup/config/collision_monitor.yaml:81)（条件付き publisher ゆえ `source_timeout` を 0.0＝沈黙は故障でない）[D]
 - 生成側の形: [virtual_scan_logic.py:19](../../ws/src/warehouse_traffic/warehouse_traffic/virtual_scan_logic.py:19)（±15°）/ [:24](../../ws/src/warehouse_traffic/warehouse_traffic/virtual_scan_logic.py:24)（10 Hz）[D]
 
-**P1 を壊さない理由**: collision_monitor の observation source は **LaserScan のまま**。GPU / 深度は cliff detector の**内部**に閉じ、L1 が見るのは契約化された LaserScan 型だけ。ただし **`source_timeout` の扱いは virtual_scan 型（沈黙可）ではなく scan 型（途絶＝停止）に寄せる**べき: 崖は「近づいたときだけ現れる」のではなく「センサが死んだら見えなくなる」ものだから、沈黙を安全と解釈してはいけない [I]（`OQ-OD44`）。
+**P1 を壊さない理由**: collision_monitor の observation source は **LaserScan のまま**。GPU / 深度は cliff detector の**内部**に閉じ、L1 が見るのは契約化された LaserScan 型だけ。 **Humble 注記（2026-09-14）**: Humble の CM に per-source `source_timeout` は無く、途絶した source は点が消えるだけ（fail-open）。cliff_scan の途絶・無効深度（NaN / inf / 空 / 静止画）は **X2 の鮮度・品質監視 → 走行許可失効**で止める（[09 §2-b / 2-i](09-external-review-v3-response.md)）。depth 依存（カメラ・VPU・USB・時刻・外部パラメータ）は LaserScan 化しても消えない。ただし **`source_timeout` の扱いは virtual_scan 型（沈黙可）ではなく scan 型（途絶＝停止）に寄せる**べき: 崖は「近づいたときだけ現れる」のではなく「センサが死んだら見えなくなる」ものだから、沈黙を安全と解釈してはいけない [I]（`OQ-OD44`）。
 
 ## 4. 歩行者用信号の検出・状態分類
 
@@ -129,7 +129,7 @@ Status: **記載済（設計値・一次情報つき・実装未）**。2026-09-
 | Static Layer ← `/map` | **変更（再定義）** | 周壁は無い。RTK 歩道ポリゴンのラスタへ |
 | Obstacle Layer ← scan | **流用** | 60 kLux 公称・要実測 |
 | Obstacle Layer ← virtual_scan | **変更（用途差替）** | `/bot1/cliff_scan` に置換。**契約の形は 100 % 流用** |
-| Inflation Layer | **変更（値のみ）** | 0.085 は 200 mm 隘路の live 実証値（#125）。歩道幅・144 mm 輪・4.5 km/h で再調整 |
+| Inflation Layer | **変更（値のみ）** | 0.085 は 200 mm 隘路の live 実証値（#125）。歩道幅・150 mm 輪（2026-09-13 裁定＝[07](07-drivetrain-and-wheel-sizing.md)）で再調整 |
 | Local costmap rolling 3 m | **変更（値のみ）** | 0.3 m/s で 10 秒先 → 1.25 m/s で 2.4 秒。8〜10 m・0.05 級へ（`OQ-OD4A`） |
 | collision_monitor observation sources | **流用（+1 source）** | **P1 不変**。`scan` + `cliff_scan` |
 
@@ -163,3 +163,21 @@ docs 内（file:line は執筆時に実 Read）:
 - ZED 2i <https://store.stereolabs.com/products/zed-2i/> / zed-ros2-wrapper <https://github.com/stereolabs/zed-ros2-wrapper> [L] / Livox Mid-360 <https://www.livoxtech.com/mid-360/specs> / livox_ros_driver2 <https://github.com/Livox-SDK/livox_ros_driver2> [L] / librealsense JetPack 6 issue <https://github.com/realsenseai/librealsense/issues/14025> [L]
 - spatio_temporal_voxel_layer <https://index.ros.org/p/spatio_temporal_voxel_layer/> / pointcloud_to_laserscan <https://docs.ros.org/en/humble/p/pointcloud_to_laserscan/> [L]
 - ImVisible / LYTNet <https://github.com/samuelyu2002/ImVisible> / arXiv:1907.09706 / "Does your robot know when to cross the road?" <https://ieeexplore.ieee.org/document/10465985/> / Audio-Visual Traffic Light State Detection（IROS 2024）<https://arxiv.org/abs/2404.19281> / Ultralytics Jetson benchmarks <https://docs.ultralytics.com/guides/nvidia-jetson/> / SegFormer <https://arxiv.org/pdf/2105.15203> [L]
+
+## 【2026-09-14 追補】外部レビュー v3 の反映（terrain / cliff 契約・取付幾何・Humble CM 注記）
+
+正本 = [09 §2-i](09-external-review-v3-response.md)。§3 の `cliff_scan`（LaserScan 器の流用）は維持しつつ、**LaserScan だけでは表現できない情報**を別出力にする。
+
+| 項目 | 契約（提案・未凍結） |
+|---|---|
+| 観測結果 | `FLOOR_CONFIRMED` / `DROP_DETECTED` / `UNKNOWN` を区別（`UNKNOWN` は LaserScan に落ちない → 別 topic `/bot1/terrain/coverage`（案）で観測範囲・品質・許可境界を出し、停止判断（X2 → 走行許可）へ渡す） |
+| 無効深度 | NaN / inf / 0 / 空点群 / 有効画素過少 / 凍結フレーム（新しい stamp でも同一画像）を検出し「品質不成立」にする |
+| 走行許可 | 今から踏む領域 + 停止までに必要な領域（[05 追補 5](05-safety-envelope-and-intervention.md) の停止距離式）が**観測済み**であること |
+| 距離 | cliff 端までの距離は車体中心でなく**車輪接地点・footprint** で評価 |
+| 時刻 | 変換後も元の計測時刻を維持（古い depth に現在時刻を付け直さない） |
+| costmap | cliff 用 marking は分離し、別 scan の自由空間 raytracing で崖を消さない。時間経過・未観測で安全な床へ戻さず、**新しい床面観測でのみ clear** |
+| 後退・旋回 | 前方カメラだけでは後方・側面の接地点を保護できない → 初期は観測範囲外へ進ませない（帰還の長距離後退禁止＝[09 §2-h](09-external-review-v3-response.md)） |
+
+- **取付幾何**（§2 の下向き 10〜20° と `OQ-OD45` の補足）: 水平から下向き θ・カメラ高さ h で光軸が平面地面に当たる距離は `h / tan θ`（h = 0.30 m: 10° → 約 1.70 m・20° → 約 0.82 m）。これは**光軸の交点**であり視野全体の最近点ではない。車輪直前の死角・最小測距距離・垂直 FOV と併せて実測で決める。
+- 前方 depth を 2D へ落とす際は高さしきい値と地面傾き補正が要る。2D LiDAR は走査面外を見ない。人物分類の成功を幾何停止の前提にしない。耐候性（IP・逆光・濡れ面）は型番と運用条件ごとに試験。
+- **Humble 注記**は §3（[:66](04-perception-sidewalk-and-signals.md:66) 同一行）。`elevation_mapping_cupy` 行（§3・[D] 2026-09-12）はレビューが「未検証」としたが一次情報で確認済＝記述維持。Phase 2 で版・fork・commit を指定して再評価。

@@ -24,7 +24,7 @@ Status: **記載済（設計値・裁定待ち項目は明記）**。§2 の分�
 | | 屋外知覚: 前方 OAK-D（信号・歩行者）・下向き OAK-D → cliff detector → `/bot1/cliff_scan`・`pointcloud_to_laserscan`（[04](04-perception-sidewalk-and-signals.md)） | 自律走行（costmap 入力）/ L4 知覚（信号・歩行者） | 自己完結 |
 | | 横断ゲート（L2 restrict-only profile: 青 かつ 点滅なし かつ 承認トークン。fail-closed）（[05 §4](05-safety-envelope-and-intervention.md)） | L2 Governance | 承認が来ない = 渡らない |
 | | 新規 producer: リンク断 watchdog・GNSS 品質ゲート・ジオフェンス・物理非常停止の GPIO latch（[05 §3](05-safety-envelope-and-intervention.md)） | L1 Safety | 停止 |
-| | **`operator_link_node`（新・別プロセス・別 port）**: WS 単一チャネルの Orin 側終端。teleop 入力の再生・`stop_request`・横断承認・heartbeat（§2-1） | L4 入力側 + L1 stop producer | リンク断＝watchdog へ |
+| | **`operator_link_node`（新・別プロセス・別 port）**: WS 制御 / 映像 2 接続（v2.1）の Orin 側終端。teleop 入力の再生・`stop_request`・横断承認・heartbeat（§2-1） | L4 入力側 + L1 stop producer | リンク断＝watchdog へ |
 | | `video_encoder`（software x264 / MJPEG。Orin Nano に NVENC は無い＝NVIDIA 公式 [L]） | 観測面 | 解像度を落として CPU 予算を守る |
 | | `web_bridge`（既存・observe-only・**無改変**） | 観測面 | 観測欠落のみ |
 | **PC（遠隔操作者卓）** | 映像・地図上位置・状態の監視、**非常停止・手動 takeover（前進・後退・停止・加減速・右左折の全挙動）・横断承認**。web/console とは**別アプリ**（§2-1） | 観測面 + L1 stop producer | **法的必須層**。heartbeat が届かなければ Orin 側が止まる |
@@ -73,7 +73,7 @@ eProsima Fast DDS 公式は Simple Discovery の欠点として「ノード追�
 ### 3-3. Phase 1 の最小構成
 
 1. **トランスポート = Tailscale（既存）**。
-2. **アプリ層 = カスタム WS 単一チャネル 1 本**（web_bridge と同パターン・別プロセス別 port）。運ぶもの: ① heartbeat ② teleop 入力 ③ `stop_request` ④ 横断承認 ⑤ テレメトリ ⑥ 映像。これ以外は運ばない。
+2. **アプリ層 = カスタム WS を「制御」と「映像」の 2 接続に分ける**（2026-09-14 v2.1・[09 §2-d](09-external-review-v3-response.md)。同一 `operator_link_node`・web_bridge とは別プロセス別 port）。制御接続が運ぶもの: ① heartbeat ② teleop 入力 ③ `stop_request` ④ 横断承認 ⑤ 重要状態（小さな有界キュー・有限の指令期限・再接続時に駆動指令を破棄）。映像接続: ⑥ 映像 + 映像時刻（古いフレームは捨てる・解像度 / 帯域を適応）。テレメトリはベストエフォートで制御をブロックしない。これ以外は運ばない。
 3. **映像 = MJPEG over WS で開始 → x264（ultrafast / zerolatency）→ WebRTC は Phase 2**。Orin Nano に NVENC は無く libx264 が公式推奨（1080p ultrafast で ≈ 99 fps・CPU 1 コア 49 % の公式実測 [L]）→ 640×360@15 fps は十分に余裕 [I]。LTE 上りは変動が大きいので Phase 1 は**帯域を使い切らない絶対値で固定**し適応制御は入れない。
 
 | 方式 | 640×360@15 fps 概算 [I] | CPU | Phase |
@@ -103,7 +103,7 @@ eProsima Fast DDS 公式は Simple Discovery の欠点として「ノード追�
 - `OQ-OD23` 遠隔操作リンクの package / プロセス境界の凍結（`web_bridge` と別プロセス別 port は確定＝[22:99](../architecture/22-web-observability.md:99)。package 名・port を契約カタログに載せるか）。
 - `OQ-OD24` WS チャネルで運ぶ意味の閉集合を凍結し、R-26 相当の AST pin を新 package に課すか。zenoh / rosbridge を採らない理由を ADR 化するか。
 - `OQ-OD25` heartbeat 閾値の実装単一ソース（`warehouse_interfaces.safety` の凍結定数）と docs 正本の一本化（05 §3）。
-- `OQ-OD26` 映像の Phase 1 コーデックと、**映像断をリンク断 watchdog に含めるか**（映像は法的に操作の前提）。
+- `OQ-OD26` 映像の Phase 1 コーデックと、**映像断をリンク断 watchdog に含めるか**（映像は法的に操作の前提）。 → **v2.1 の方向（2026-09-14）**: 映像は制御と別接続にし、映像断は heartbeat と別に監視して映像鮮度に応じて遠隔速度上限を下げる（[09 §2-d](09-external-review-v3-response.md)・`OQ-OD90`）。
 - `OQ-OD27` teleop 入力の WS 再生経路に deadman 相当をどう作るか（物理スティック中立の観測が遠隔では別意味・`/joy` 鮮度 0.6 s の屋外版）。
 
 ## References
