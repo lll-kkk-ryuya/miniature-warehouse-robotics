@@ -219,3 +219,31 @@ Status: **箱（skeleton）**。§2 の導出表と §3 のリスク一覧は既
 | 拡張ボード: 入力は T 型 DC 12 V 1 系統・モータ／ロジックの分離入力なし・「An external metal switch can be connected **in parallel** with the onboard power switch」（PH2.0 metal key switch 口） | <https://www.yahboom.net/public/upload/upload-html/1703147265/1.%20Expansion%20Board%20Introduction.html> | **PH2.0 のキースイッチ口に非常停止を入れても遮断できない（並列）**。遮断は **T プラグ ＋ 線を外部で切る**（リレー a 接点）に限る |
 | IDEC XA1E 接点: Ith 5 A・DC-13 24 V **1 A**（Mouser 掲載データシート・調査レーン・`[一部未確認]`） | <https://www.mouser.com/catalog/specsheets/idec_XA_XW_EMOdatasheet.pdf> | コイル 150 mA の直列用途は余裕。**コイル並列に還流ダイオード**（1N4007 等）を入れて接点を保護 |
 | コイル保持 1.8 W（150 mA × 12 V） | 上記 amon.jp | 6 Ah 電池の ≈ 2.5 %/h。走行中のみ通電（メインスイッチ下流ではなく**幹線側から取る**なら保管時は T 抜きで落ちる） |
+
+## 【2026-09-14 追補③】車輪換装の購入品 — 必須 / 検討の分類（URL 付き・参照日 2026-09-14）
+
+> 非常停止装置の設計はユーザー指示で保留（追補②は記録のみ）。本節は**車輪換装だけ**の買い物リスト。価格は税込概算。URL は当日 WebSearch / WebFetch で実在を確認したもの（MonotaRO・Amazon は本文取得不可のため検索結果の題名で確認）。
+
+### 必須（4 輪換装の最小セット ≈ ¥15,000〜17,000 ＋ Pololu 送料）
+
+| # | 品名 | 数 | 単価 | URL | 注意 |
+|---|---|---|---|---|---|
+| 1 | シシク PU-150 ポリウレタン車輪（150×35・ボス幅 40・軸径 8 mm・JBB ラジアルボールベアリング・許容 75 kgf） | 4 | ¥2,418（MonotaRO・当日出荷） | <https://www.monotaro.com/g/01155713/> ／ 代替店 <https://www.bildy.jp/jobsite/c3052c3077-model-pu-150/258793> ／ <https://www.askul.co.jp/p/HX32191/> | **まず 1 個だけ買って軸受を実測**（外径 22 mm・幅 7 mm の 608 相当か）。608 でなければ #2 は使えない→ 検討 #4 か #5 へ |
+| 2 | Pololu #2674 Scooter Wheel Adapter for 6 mm Shaft | 4 | ≈ ¥1,165（$7.75 級）＋国際送料 ¥3,000〜5,000 | <https://www.pololu.com/product/2674> | 608 座を置換して 6 mm D 軸にイモネジ固定。#1 の実測後に発注 |
+| 3 | 六角穴付ボルト M3×30 と M3×35（現物合わせ・各 12 本） | 各 12 | ≈ ¥500 | <https://www.monotaro.com/s/c-104755/attr_f2-M3/>（M3 一覧から長さを選ぶ） | #2674 付属の M3×14 は 40 mm ボスを通らない |
+
+買い直さないもの: モータ MD520Z56（そのまま）・純正カップリング（#2674 に置換・外す）・モータドライバ・エンコーダ。
+
+### 検討（条件付き・代替）
+
+| # | 品名 | いつ要るか | 概算 | URL | 注意 |
+|---|---|---|---|---|---|
+| 4 | Amazon 6 インチ 車いす前輪（ソリッド PU・608ZZ・5 穴・ハブ厚 40 の出品） | #1 が 608 でなかったとき／安価に済ませたいとき | ≈ ¥1,000/個 | <https://www.amazon.co.jp/dp/B0B354CYCV> ／ 2 個セット <https://www.amazon.co.jp/dp/B0C986FRJT> ／ 前回確認 <https://www.amazon.co.jp/dp/B0DDMCYJVV> | 出品ごとに軸受（608ZZ）・ハブ厚・荷重の記載を確認。質量・荷重未記載の出品が多い |
+| 5 | Pololu Scooter/Skate Wheel 144×29 mm（#3281） | 150 mm 品が合わなかったときの退避（k = 1.8） | $14.23/個 | <https://www.pololu.com/product/3281> | #2674 と組合せ・M3×22 以上。Pololu 公式に適合明記 |
+| 6 | セットカラー 内径 6 mm（岩田製作所 標準） | 軸方向の位置決めが要るとき（#2674 のイモネジで足りる場合は不要） | ¥131〜 | <https://www.monotaro.com/s/q-%E3%82%BB%E3%83%83%E3%83%88%E3%82%AB%E3%83%A9%E3%83%BC%206mm/> | |
+| 7 | KFL08 フランジ軸受（内径 8 mm）×4 ＋ 6→8 mm リジッドカップリング ×4 | モータ軸露出長が 20 mm 以上あり、片持ちを解消したいとき | ≈ ¥1,600 ＋ ¥2,000〜4,000 | KFL08 <https://www.amazon.co.jp/dp/B08SWK5ZX8>（3 個）／ <https://www.amazon.co.jp/dp/B09P8KGGY8>（4 個）。カップリングは Amazon.co.jp「リジッドカップリング」カテゴリ <https://www.amazon.co.jp/b?node=3377492051> で「uxcell 6mm 8mm」（参考 <https://www.amazon.com/dp/B07PBYK8GD>） | 側板の加工が要る。まず #2674 直付けで走らせてから判断 |
+| 8 | 経路 B: TRUSCO TYSUW-150（150×40・穴径 `[要確認]`）／ ハンマー ウレタン B 車輪 150（穴径 12.2・幅 46・ボス幅 62） | 608 系の車輪が全滅したときのみ | ¥2,418／ ≈ ¥4,300 | <https://www.monotaro.com/p/1626/8787/> ／ <https://www.haikanbuhin.com/top/detail/asp/detail.asp?gcode=795136> | スタブ軸・軸受ブロック・カップリングの設計が必要。ボス幅 62 は幅方向の余裕を食う。**非推奨** |
+| 9 | Yahboom 純正 6 mm カップリング（520 用・内六角・6 mm 穴・18 mm）予備 | 現物の出力形状がフランジで変換ディスク自作にするとき | 未確認 | <https://category.yahboom.net/products/mecanum-wheel> | #2674 を使う経路では不要 |
+| 10 | ねじ緩み止め（ロックタイト 243 等） | #2674 のイモネジ・M3 の緩み対策（推奨） | ≈ ¥800 | <https://www.monotaro.com/s/q-%E3%83%AD%E3%83%83%E3%82%AF%E3%82%BF%E3%82%A4%E3%83%88%20243/> | D 面にイモネジを合わせた上で塗布 |
+
+発注順: #1 を 1 個 → 軸受・ボス幅を実測 → #1 残り 3 個 ＋ #2 ＋ #3 → 走行 → 必要なら #6・#7。
