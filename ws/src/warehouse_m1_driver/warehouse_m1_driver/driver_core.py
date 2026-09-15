@@ -31,7 +31,7 @@ The overlay composes with W-1 as an AND (either stale -> brake), never
 bypasses clamp_body_velocity, and — like everything else in this file — is
 NOT a substitute for W-3: it cannot stop the MCU when the host is dead.
 
-Wheel scale (車輪スケール, mode-outdoor/07 §9 案 A / A' — PR pending): the vendor
+Wheel scale (車輪スケール, mode-outdoor/07 §9 案 A / A' — landed in #674): the vendor
 STM32 firmware hardcodes the stock 80 mm mecanum geometry (circumference
 251.327 mm, ENCODER_CIRCLE_205 = 2464 counts per WHEEL revolution,
 CAR_M1_MAX_SPEED = 700 in firmware units;
@@ -58,7 +58,7 @@ DEFAULT_CMD_TIMEOUT_S: float = 0.5
 # ── wheel / yaw scale bounds (fail-closed config validation) ──────────────────
 # k = D / 0.080: 1.0 == the stock 80 mm wheels the firmware assumes (no
 # scaling, today's behaviour), 1.8 == 144 mm, 1.875 == 150 mm
-# (mode-outdoor/07 §9 案 A / A', PR pending). The upper bound comes from the
+# (mode-outdoor/07 §9 案 A / A', landed in #674). The upper bound comes from the
 # mechanical ceiling in the same doc §3 (d): the front/rear wheels collide
 # above roughly 170-200 mm, so k can never legitimately exceed 2.5.
 WHEEL_SCALE_MIN: float = 1.0
@@ -134,7 +134,7 @@ class M1DriverCore:
         # invalid (doc05 §4 R-26 ②) — a replayed/out-of-order stop-state must
         # not resurrect an older, longer permission.
         self._overlay_deadline_watermark: float | None = None
-        # Wheel scale (mode-outdoor/07 §9 案 A / A', PR pending). Defaults keep
+        # Wheel scale (mode-outdoor/07 §9 案 A / A', landed in #674). Defaults keep
         # today's behaviour bit-identically: k = 1.0 and yaw 1.0 mean the wire
         # value IS the actual value (x / 1.0 is exact in IEEE-754), and lateral
         # motion stays enabled (mecanum IK lives in the STM32).
@@ -195,10 +195,13 @@ class M1DriverCore:
         Applied AFTER the clamp on purpose: the clamp is the L0' choke point
         and must see the numbers a human reads on the robot (m/s, contract
         units, docs/mode-m1/02:53). Dividing by k >= 1 only ever shrinks the
-        wire value, so it cannot lift the wire past the clamp, and it keeps the
-        vendor lib's ``int16(v * 1000)`` packing well inside its range (an
+        linear wire values, so it cannot lift them past the clamp, and it keeps
+        the vendor lib's ``int16(v * 1000)`` packing well inside its range (an
         overflow there raises struct.error into a bare except and the frame
-        vanishes without stopping — ADR-0010 :15).
+        vanishes without stopping — ADR-0010 :15). ``wz`` is different: it is
+        not clamped today (existing TODO) and ``yaw_scale < 1`` ENLARGES its
+        wire value (up to 5x at 0.2), which lowers the packing overflow point
+        to ``32.767 * k * yaw_scale`` rad/s — recorded in CLAUDE.md.
         """
         return (
             vx / self._wheel_scale,
@@ -290,9 +293,12 @@ class M1DriverCore:
             # firmware's last PID target latched (doc02 V-1).
             self._backend.stop_brake()
             return
-        if not self._lateral_enabled:
+        if not self._lateral_enabled and math.isfinite(vy):
             # Before the clamp: the clamp must bound the vector that will
-            # actually be driven, not the one that was asked for.
+            # actually be driven, not the one that was asked for. A non-finite
+            # vy is left alone on purpose: the clamp then stops the WHOLE
+            # vector (doc02 §2 ①), instead of this line quietly turning a
+            # poisoned command into a forward drive.
             vy = 0.0
         if self._overlay_blocks(now):
             self._backend.stop_brake()

@@ -245,7 +245,7 @@ docs 内（file:line は執筆時に実 Read）:
 
 ### ③-2. 実装スライス 1（branch `feat/m1-wheel-scale-odom`・PR pending・L0'）
 
-`warehouse_m1_driver`（L0'・package-local・既定挙動は bit 等価）に以下を実装済（R-26 unit 61 本・mutation 11/11 KILLED・ruff/pytest/`check_consistency` 緑）:
+`warehouse_m1_driver`（L0'・package-local・既定挙動は bit 等価）に以下を実装済（R-26 unit 152 本〔wheel_scale 64 / odom 51 / 配線 AST 37〕・mutation 14/14 KILLED・ruff/pytest/`check_consistency` 緑）:
 
 | 要素 | 内容 | 既定値 | 150 mm での値 |
 |---|---|---|---|

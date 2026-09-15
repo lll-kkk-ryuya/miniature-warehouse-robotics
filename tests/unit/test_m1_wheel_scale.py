@@ -11,7 +11,7 @@ implementation):
   wheels of diameter D therefore makes the ACTUAL body speed
   ``wire value x (D / 80 mm)``.
 * So the host must send ``wire = actual / k`` with ``k = D / 0.080``
-  (1.8 at 144 mm, 1.875 at 150 mm) — mode-outdoor/07 §9 案 A / A' (PR pending).
+  (1.8 at 144 mm, 1.875 at 150 mm) — mode-outdoor/07 §9 案 A / A' (landed in #674).
 * The clamp stays FIRST and in ACTUAL units: the frozen contract
   ``warehouse_interfaces.safety.MAX_LINEAR_VELOCITY`` is unchanged by this
   slice, so what must never be exceeded is the speed of the real robot, i.e.
@@ -50,7 +50,7 @@ EPS = 1e-12
 #: recommended 144 mm (案 A), 150 mm (案 A'), and the mechanical ceiling.
 SPEC_SCALES = (1.0, 1.8, 1.875, 2.5)
 #: Outside [1.0, 2.5] / [0.2, 5.0] the value is a typo or a unit error, not a
-#: calibration: mode-outdoor/07 §3 (d) caps the usable diameter at ~170-200 mm
+#: calibration: mode-outdoor/07 §3 (d) caps the usable diameter at ~160-170 mm
 #: (the front and rear wheels collide above that), and k < 1 would mean a wheel
 #: SMALLER than the one the firmware assumes, which nothing in the design has.
 SPEC_INVALID_WHEEL_SCALES = (
@@ -267,6 +267,22 @@ def test_lateral_disabled_zeroes_vy_before_the_clamp() -> None:
     wire_vx, wire_vy, _ = dispatch(core, backend, CAP, CAP, 0.0)
     assert wire_vy == 0.0
     assert wire_vx == pytest.approx(CAP, rel=1e-12)
+
+
+@pytest.mark.parametrize("bad_vy", [math.nan, math.inf, -math.inf])
+def test_lateral_disabled_does_not_launder_a_non_finite_vy_into_motion(bad_vy: float) -> None:
+    """A poisoned command must stop the WHOLE vector, lateral on or off.
+
+    Zeroing vy before the clamp is only for finite values. If the override
+    swallowed a NaN/inf, the clamp would never see the poison and the robot
+    would drive (vx, wz) on a command the safety layer is required to reject
+    (doc02 §2 ①: any non-finite component -> (0, 0, 0)).
+    """
+    core, backend = make_core(wheel_scale=1.875, lateral_enabled=False)
+    assert dispatch(core, backend, 0.2, bad_vy, 0.1) == (0.0, 0.0, 0.0)
+    # And the identical input with lateral ON gives the same stop frame.
+    core_on, backend_on = make_core(wheel_scale=1.875, lateral_enabled=True)
+    assert dispatch(core_on, backend_on, 0.2, bad_vy, 0.1) == (0.0, 0.0, 0.0)
 
 
 def test_lateral_enabled_by_default_keeps_mecanum_translation() -> None:

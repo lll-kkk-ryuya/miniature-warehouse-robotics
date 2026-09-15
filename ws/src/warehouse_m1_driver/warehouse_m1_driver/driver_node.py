@@ -90,7 +90,7 @@ class M1DriverNode(Node):
         # a dead command stream, this guards a lying/dead stop-state producer
         # (doc05 §4 — do not merge the two into one param).
         self.declare_parameter("stop_state_max_validity_s", DEFAULT_STOP_STATE_MAX_VALIDITY_S)
-        # ── drivetrain (mode-outdoor/07 §9 案 A / A', PR pending) ─────────────
+        # ── drivetrain (mode-outdoor/07 §9 案 A / A', landed in #674) ───────────
         # k = wheel diameter / 0.080. 1.0 == the stock 80 mm mecanum wheels the
         # firmware assumes, so the default leaves the wire values untouched.
         # After a plain-wheel swap set BOTH: wheel_scale:=1.875 with
@@ -165,7 +165,7 @@ class M1DriverNode(Node):
             self.get_logger().error(
                 f"drivetrain config unusable -> HOLDING STOP: {self._core.config_error}. "
                 "Set wheel_scale = wheel diameter / 0.080 "
-                "(mode-outdoor/07 §9 案 A, PR pending) and restart."
+                "(mode-outdoor/07 §9 案 A / A', docs in main) and restart."
             )
 
         self.create_subscription(Twist, f"/{bot}/cmd_vel", self._on_cmd_vel, 10)
@@ -245,10 +245,9 @@ class M1DriverNode(Node):
         # header = bot{n}/odom, child = bot{n}/base_link.
         self._odom_frame_id = f"{bot}/{ODOM_FRAME}"
         self._odom_child_frame_id = f"{bot}/{BASE_FRAME}"
-        self._odom_pose_cov = diagonal_covariance(
-            float(self.get_parameter("odom_pose_cov").value),
-            float(self.get_parameter("odom_pose_cov").value),
-        )
+        pose_cov = float(self.get_parameter("odom_pose_cov").value)
+        # Pose: x and y are both integrated from the heading -> same trust.
+        self._odom_pose_cov = diagonal_covariance(pose_cov, pose_cov, lateral=pose_cov)
         self._odom_twist_cov = diagonal_covariance(
             float(self.get_parameter("odom_twist_cov").value),
             float(self.get_parameter("odom_twist_cov").value),

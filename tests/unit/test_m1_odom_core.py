@@ -40,7 +40,7 @@ pytestmark = [pytest.mark.safety, pytest.mark.unit]
 
 # ── spec literals (docs/shared/02-hardware-design.md:749) ────────────────────
 SPEC_COUNTS_PER_REV = 2464.0
-SPEC_WHEEL_D_150 = 0.150  # mode-outdoor/07 §9 案 A' (PR pending)
+SPEC_WHEEL_D_150 = 0.150  # mode-outdoor/07 §9 案 A' (landed in #674)
 SPEC_TRACK = 0.194  # PROVISIONAL, derived from MECANUM_M1_APB = 189.5
 SPEC_INT32_MAX = 2**31 - 1
 
@@ -128,6 +128,30 @@ def test_pure_rotation_has_no_translation_and_the_documented_yaw_rate() -> None:
     assert sample.yaw == pytest.approx(2.0 * distance / SPEC_TRACK, rel=1e-12)
     assert sample.x == pytest.approx(0.0, abs=1e-15)
     assert sample.y == pytest.approx(0.0, abs=1e-15)
+
+
+def test_heading_wraps_into_minus_pi_pi_after_more_than_half_a_turn() -> None:
+    """Independent oracle: atan2(sin, cos) of the unwrapped angle.
+
+    Without the wrap the integrated heading would grow without bound and a
+    downstream consumer building a quaternion from it would still work, so
+    this is exactly the kind of mutation only a test can catch.
+    """
+    odom = make_odom()
+    odom.update((0, 0, 0, 0), 0.0)
+    counts = 1826  # per side; 2 x 1826 counts of arc over a 0.194 m track = ~200 deg
+    unwrapped = 2.0 * counts * metres_per_count() / SPEC_TRACK
+    assert unwrapped > math.pi  # the test is only meaningful past half a turn
+    sample = odom.update((-counts, -counts, counts, counts), 1.0)
+    assert sample is not None
+    expected = math.atan2(math.sin(unwrapped), math.cos(unwrapped))
+    assert expected < 0.0  # ~200 deg reads as ~-160 deg
+    assert sample.yaw == pytest.approx(expected, rel=1e-12)
+    assert -math.pi < sample.yaw <= math.pi
+    # A second, opposite turn brings it back through zero the short way.
+    sample2 = odom.update((0, 0, 0, 0), 2.0)
+    assert sample2 is not None
+    assert sample2.yaw == pytest.approx(0.0, abs=1e-12)
 
 
 def test_yaw_rate_scales_inversely_with_the_track_width() -> None:
@@ -341,3 +365,14 @@ def test_unmeasured_axes_are_marked_untrusted_not_confident() -> None:
     for index in (7, 14, 21, 28):  # y/vy, z/vz, roll/wx, pitch/wy
         assert covariance[index] == UNOBSERVED_AXIS_COV
         assert covariance[index] > 1.0
+
+
+def test_pose_style_covariance_trusts_x_and_y_alike() -> None:
+    """The integrated y position is as good (or bad) as x — both come from
+    the heading — so a pose covariance must not label y 'unobserved'."""
+    covariance = diagonal_covariance(1e3, 1e3, lateral=1e3)
+    assert covariance[0] == 1e3  # x
+    assert covariance[7] == 1e3  # y
+    assert covariance[35] == 1e3  # yaw
+    for index in (14, 21, 28):  # z, roll, pitch stay untrusted
+        assert covariance[index] == UNOBSERVED_AXIS_COV

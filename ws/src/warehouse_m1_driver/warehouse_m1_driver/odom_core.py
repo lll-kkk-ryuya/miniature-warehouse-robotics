@@ -38,7 +38,7 @@ FW_ENCODER_COUNTS_PER_WHEEL_REV: float = 2464.0
 #: The wheel diameter the FIRMWARE believes it is driving: circumference
 #: 251.327 mm == 80 mm (docs/shared/02-hardware-design.md:749). It is the
 #: denominator of the host-side wheel scale ``k = D / 0.080``
-#: (mode-outdoor/07 §9 案 A / A', PR pending) and it is deliberately NOT the
+#: (mode-outdoor/07 §9 案 A / A', landed in #674) and it is deliberately NOT the
 #: diameter this module integrates with: a real 150 mm wheel covers 1.875x the
 #: ground per count, and using the firmware's number here would under-report
 #: every distance by that factor.
@@ -61,19 +61,25 @@ _INT32_HALF_SPAN: int = 1 << 31
 UNOBSERVED_AXIS_COV: float = 1e6
 
 
-def diagonal_covariance(in_plane: float, yaw_like: float) -> list[float]:
+def diagonal_covariance(
+    in_plane: float, yaw_like: float, *, lateral: float = UNOBSERVED_AXIS_COV
+) -> list[float]:
     """Row-major 6x6 covariance (36 floats) with only the diagonal filled.
 
     Axis order is (x, y, z, roll, pitch, yaw) for a pose covariance and
     (vx, vy, vz, wx, wy, wz) for a twist one, so the diagonal sits at indices
     0, 7, 14, 21, 28, 35. ``in_plane`` lands on x/vx and ``yaw_like`` on
-    yaw/wz; every other axis gets :data:`UNOBSERVED_AXIS_COV`.
+    yaw/wz; ``lateral`` lands on y/vy and defaults to
+    :data:`UNOBSERVED_AXIS_COV` because the TWIST never estimates ``vy``. A
+    POSE covariance passes ``lateral=in_plane``: the integrated ``y`` position
+    comes from the heading, exactly like ``x``, so the two must be trusted
+    alike. Every remaining axis gets :data:`UNOBSERVED_AXIS_COV`.
 
     Pure (a plain list of floats, no ROS types) so it is unit-testable on a
     host without rclpy — the index arithmetic is exactly the kind of silent
     mistake that would mis-inform the EKF forever.
     """
-    diagonal = [in_plane, UNOBSERVED_AXIS_COV, UNOBSERVED_AXIS_COV]
+    diagonal = [in_plane, lateral, UNOBSERVED_AXIS_COV]
     diagonal += [UNOBSERVED_AXIS_COV, UNOBSERVED_AXIS_COV, yaw_like]
     covariance = [0.0] * 36
     for index, value in enumerate(diagonal):
