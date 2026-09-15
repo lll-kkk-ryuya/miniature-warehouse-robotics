@@ -159,3 +159,7 @@ Nav2 Bridge の `navigate` には**名前ゲートを経由しない座標ゴー
 - **「結線済み」≠「実機確認済み」**: 実機動作確認（[mode-m1/03](../mode-m1/03-joystick-teleop-bringup.md) の M0-M2 ゲート・M2 negative test・W-1 brake 実測）と G-g（USB 抜線試験）は**未実施**（2026-08-30 時点で実施記録なし）。③の復帰はコード実体の話に留まる。
 - **② L1 collision_monitor は依然無機能**（停止円が車体内部＋`traffic_mode: open-rmf` の stg/prod では node ごと未起動）＝追加 Open ②（C-3 改訂）は未充足のまま。
 - **§Open の `# TODO(安全レビュー)`（:82）は本追補でも閉じない**（追補③ :150 と同じ。閉じるのはオペレーター裁定＝[10 §12-3](../mode-x-er/10-room-scale-safety-review.md)）。詳細の同期先は [10 §2 冒頭 / §10-2② / §12-1b](../mode-x-er/10-room-scale-safety-review.md) と [09 追補③ ⑤ :340](../mode-x-er/09-hand-raise-summon.md)（いずれも本追補と同一 PR で「結線済み・実機未確認」へ更新済）。
+
+## 【2026-09-12 追補③】Mode Outdoor（屋外歩道自律走行）への forward link — Decision 2 の格下げ予定
+
+オペレーター指示（2026-09-12）で**屋外歩道 A→B の自律走行**（正本ルート = [mode-outdoor/README](../mode-outdoor/README.md)・骨格のみ）が第一優先になり、本 ADR の **Decision 2（ジェスチャ召喚を主役）は第一優先から外れる予定**（削除ではなく凍結保存）。裁定は **ADR-0014（番号予約・未起票＝[adr/README](README.md)）**で行う。本 ADR の Decision 1（ジオラマ凍結）・Decision 5（`KNOWN_LOCATIONS` 9 キー凍結）は不変。本追補は forward link のみで、**Status と Decision 本文は変更しない**。
