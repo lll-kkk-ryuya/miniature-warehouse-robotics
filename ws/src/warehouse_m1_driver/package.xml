@@ -13,6 +13,11 @@
   <exec_depend>geometry_msgs</exec_depend>
   <!-- /bot{n}/stop_state (std_msgs/String JSON) — doc05 §4-1 stop-overlay feed. -->
   <exec_depend>std_msgs</exec_depend>
+  <!-- /bot{n}/odom (doc03:77). Wheel odometry publish only — no TF broadcast. -->
+  <exec_depend>nav_msgs</exec_depend>
+  <!-- Frozen frame names only (BASE_FRAME / ODOM_FRAME). One of the two shared
+       packages a track may depend on (.claude/rules/parallel-workflow.md §2.1). -->
+  <exec_depend>warehouse_description</exec_depend>
 
   <test_depend>python3-pytest</test_depend>
 

@@ -30,6 +30,18 @@ M0-M2 bring-up without a producer node (docs/mode-m1/03:50) keeps working.
 The overlay composes with W-1 as an AND (either stale -> brake), never
 bypasses clamp_body_velocity, and — like everything else in this file — is
 NOT a substitute for W-3: it cannot stop the MCU when the host is dead.
+
+Wheel scale (車輪スケール, mode-outdoor/07 §9 案 A / A' — landed in #674): the vendor
+STM32 firmware hardcodes the stock 80 mm mecanum geometry (circumference
+251.327 mm, ENCODER_CIRCLE_205 = 2464 counts per WHEEL revolution,
+CAR_M1_MAX_SPEED = 700 in firmware units;
+docs/shared/02-hardware-design.md:749) and the host cannot change it
+(docs/mode-m1/02-m1-driver-and-watchdog.md:29-33). Fitting plain wheels of
+diameter D therefore multiplies the ACTUAL body speed by ``D / 80 mm`` for the
+same wire value. This core keeps the clamp in ACTUAL units (the frozen
+contract ``warehouse_interfaces.safety.MAX_LINEAR_VELOCITY`` is unchanged by
+this slice) and divides by ``k = D / 0.080`` on the way OUT, so the choke point
+still sees, and bounds, the number that describes the real robot.
 """
 
 from __future__ import annotations
@@ -42,6 +54,44 @@ from warehouse_m1_driver.clamp import clamp_body_velocity
 # runtime value is a ROS param; this constant is only the fallback for
 # missing/invalid params (same fail-safe idiom as warehouse_teleop keymap).
 DEFAULT_CMD_TIMEOUT_S: float = 0.5
+
+# ── wheel / yaw scale bounds (fail-closed config validation) ──────────────────
+# k = D / 0.080: 1.0 == the stock 80 mm wheels the firmware assumes (no
+# scaling, today's behaviour), 1.8 == 144 mm, 1.875 == 150 mm
+# (mode-outdoor/07 §9 案 A / A', landed in #674). The upper bound comes from the
+# mechanical ceiling in the same doc §3 (d): the front/rear wheels collide
+# above roughly 170-200 mm, so k can never legitimately exceed 2.5.
+WHEEL_SCALE_MIN: float = 1.0
+WHEEL_SCALE_MAX: float = 2.5
+# The yaw correction factor for the firmware's X3 track/wheelbase constants
+# (ROBOT_WIDTH 169.0 / ROBOT_LENGTH 160.11 vs the M1's real body — doc02
+# docs/mode-m1/02-m1-driver-and-watchdog.md:31). Its value is an open measurement
+# (docs/mode-m1/02:34 帰結③), so only obvious nonsense is rejected here: a
+# correction outside 0.2-5.0 is a typo/unit error, not a calibration.
+YAW_SCALE_MIN: float = 0.2
+YAW_SCALE_MAX: float = 5.0
+
+
+def _validated_scale(value: object, lo: float, hi: float, name: str) -> tuple[float, str | None]:
+    """Return ``(scale, None)`` when usable, else ``(nan, reason)`` — never a fallback.
+
+    Deliberately NOT the ``_positive_or_default`` idiom used for the timeouts.
+    A timeout that falls back to its default stays CONSERVATIVE (it brakes
+    sooner). A wheel scale that falls back to 1.0 is the opposite: with real
+    150 mm wheels fitted, k = 1.0 puts the commanded value straight on the wire
+    and the robot drives 1.875x FASTER than commanded — the clamp would still
+    read 0.3 m/s while the machine does 0.56 m/s. An unknown wheel must
+    therefore mean NO MOTION, not "assume stock".
+    """
+    try:
+        scale = float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return math.nan, f"{name}={value!r} is not a number"
+    if not math.isfinite(scale):
+        return math.nan, f"{name}={scale!r} is not finite"
+    if not lo <= scale <= hi:
+        return math.nan, f"{name}={scale!r} is outside the documented range [{lo}, {hi}]"
+    return scale, None
 
 
 def _positive_or_default(value: float, default: float) -> float:
@@ -64,6 +114,9 @@ class M1DriverCore:
         backend,
         cmd_timeout_s: float = DEFAULT_CMD_TIMEOUT_S,
         stop_overlay_enabled: bool = False,
+        wheel_scale: float = 1.0,
+        yaw_scale: float = 1.0,
+        lateral_enabled: bool = True,
     ) -> None:
         self._backend = backend
         self._cmd_timeout_s = _positive_or_default(float(cmd_timeout_s), DEFAULT_CMD_TIMEOUT_S)
@@ -81,10 +134,80 @@ class M1DriverCore:
         # invalid (doc05 §4 R-26 ②) — a replayed/out-of-order stop-state must
         # not resurrect an older, longer permission.
         self._overlay_deadline_watermark: float | None = None
+        # Wheel scale (mode-outdoor/07 §9 案 A / A', landed in #674). Defaults keep
+        # today's behaviour bit-identically: k = 1.0 and yaw 1.0 mean the wire
+        # value IS the actual value (x / 1.0 is exact in IEEE-754), and lateral
+        # motion stays enabled (mecanum IK lives in the STM32).
+        wheel, wheel_error = _validated_scale(
+            wheel_scale, WHEEL_SCALE_MIN, WHEEL_SCALE_MAX, "wheel_scale"
+        )
+        yaw, yaw_error = _validated_scale(yaw_scale, YAW_SCALE_MIN, YAW_SCALE_MAX, "yaw_scale")
+        # nan, not 1.0: if a future edit ever reaches the wire conversion while
+        # the config is broken, the result must be visibly poisoned rather than
+        # silently 1.875x too fast (see _validated_scale).
+        self._wheel_scale = wheel
+        self._yaw_scale = yaw
+        # Plain (non-mecanum) wheels cannot translate sideways: a non-zero
+        # linear.y would be mixed into the wheel speeds by the firmware IK and
+        # come out as unrequested motion, so it is zeroed BEFORE the clamp —
+        # the clamp must bound the vector that is actually driven.
+        self._lateral_enabled = bool(lateral_enabled)
+        errors = [e for e in (wheel_error, yaw_error) if e]
+        #: Fail-closed latch: a bad drivetrain config means NO motion at all.
+        self._config_error: str | None = "; ".join(errors) if errors else None
 
     @property
     def cmd_timeout_s(self) -> float:
         return self._cmd_timeout_s
+
+    @property
+    def config_error(self) -> str | None:
+        """Reason the drivetrain config is unusable, or None when it is usable.
+
+        Set once at construction (the values are construct-time only, like the
+        other params here). While it is set, EVERY command and EVERY watchdog
+        tick emits a brake and nothing ever reaches ``set_body_velocity`` —
+        the node logs it once at start-up.
+        """
+        return self._config_error
+
+    @property
+    def wheel_scale(self) -> float:
+        return self._wheel_scale
+
+    @property
+    def yaw_scale(self) -> float:
+        return self._yaw_scale
+
+    @property
+    def lateral_enabled(self) -> bool:
+        return self._lateral_enabled
+
+    def _to_wire(self, vx: float, vy: float, wz: float) -> tuple[float, float, float]:
+        """ACTUAL body velocity -> the value the firmware must be SENT.
+
+        The firmware converts its command with the stock 80 mm geometry
+        (docs/shared/02-hardware-design.md:749), so the machine ends up doing
+        ``wire x k``. Sending ``actual / k`` cancels that. ``wz`` additionally
+        carries ``yaw_scale`` because the firmware's yaw mixing uses the X3
+        track/wheelbase constants as well (docs/mode-m1/02:31).
+
+        Applied AFTER the clamp on purpose: the clamp is the L0' choke point
+        and must see the numbers a human reads on the robot (m/s, contract
+        units, docs/mode-m1/02:53). Dividing by k >= 1 only ever shrinks the
+        linear wire values, so it cannot lift them past the clamp, and it keeps
+        the vendor lib's ``int16(v * 1000)`` packing well inside its range (an
+        overflow there raises struct.error into a bare except and the frame
+        vanishes without stopping — ADR-0010 :15). ``wz`` is different: it is
+        not clamped today (existing TODO) and ``yaw_scale < 1`` ENLARGES its
+        wire value (up to 5x at 0.2), which lowers the packing overflow point
+        to ``32.767 * k * yaw_scale`` rad/s — recorded in CLAUDE.md.
+        """
+        return (
+            vx / self._wheel_scale,
+            vy / self._wheel_scale,
+            wz / (self._wheel_scale * self._yaw_scale),
+        )
 
     @property
     def stale(self) -> bool:
@@ -156,14 +279,32 @@ class M1DriverCore:
         path is the UNCHANGED clamp-mandatory path: the overlay never grants
         anything the existing checks would refuse (doc05 §4 row 2) and never
         bypasses the clamp (G-l condition, doc05 §4 R-26 ⑤).
+
+        Order of the dispatch path (each step exists for its own failure):
+        ``config error -> brake`` / ``lateral disabled -> vy = 0`` /
+        ``overlay -> brake`` / ``clamp (ACTUAL units, L0')`` /
+        ``_to_wire (divide by the wheel scale)`` -> backend.
         """
         self._last_cmd_time = now
         self._stale = False
+        if self._config_error is not None:
+            # Unknown drivetrain == no motion (see _validated_scale). A frame
+            # is still SENT (brake), never silence: silence would leave the
+            # firmware's last PID target latched (doc02 V-1).
+            self._backend.stop_brake()
+            return
+        if not self._lateral_enabled and math.isfinite(vy):
+            # Before the clamp: the clamp must bound the vector that will
+            # actually be driven, not the one that was asked for. A non-finite
+            # vy is left alone on purpose: the clamp then stops the WHOLE
+            # vector (doc02 §2 ①), instead of this line quietly turning a
+            # poisoned command into a forward drive.
+            vy = 0.0
         if self._overlay_blocks(now):
             self._backend.stop_brake()
             return
         cvx, cvy, cwz = clamp_body_velocity(vx, vy, wz)
-        self._backend.set_body_velocity(cvx, cvy, cwz)
+        self._backend.set_body_velocity(*self._to_wire(cvx, cvy, cwz))
 
     def on_watchdog_tick(self, now: float) -> bool:
         """W-1 AND stop overlay: emit a brake while either demands zero.
@@ -175,14 +316,18 @@ class M1DriverCore:
         stream OR an overlay stop each suffice to brake; ``cmd_timeout_s``
         (W-1) and the overlay deadline stay separate parameters because they
         guard different failures (doc05 §4).
+
+        A bad drivetrain config (``config_error``) brakes on EVERY tick, with
+        the same reasoning as W-1: an unusable wheel scale must not leave a
+        previously accepted command latched in the firmware.
         """
         fresh = (
             self._last_cmd_time is not None and (now - self._last_cmd_time) <= self._cmd_timeout_s
         )
-        if fresh and not self._overlay_blocks(now):
-            return False
         if not fresh:
             self._stale = True  # `stale` keeps reporting W-1 only (logging)
+        if self._config_error is None and fresh and not self._overlay_blocks(now):
+            return False
         self._backend.stop_brake()
         return True
 

@@ -118,7 +118,7 @@ agent-team 調査（一次情報 = 工場 STM32 ファーム Rosmaster V3.5.1 C 
 
 ## 【2026-09-13 追補②】⑥ encoder odom ＋ 車輪スケール k の実装スライス（branch `feat/m1-wheel-scale-odom`・PR pending）
 
-§2 ⑥「0x0D 受信 → エンコーダ差分 odom（M1 実測幾何）」と [mode-outdoor/07 §9 案 A'](../mode-outdoor/07-drivetrain-and-wheel-sizing.md)（150 mm 通常輪・k = D/80 mm）を `warehouse_m1_driver` に実装した（L0'・package-local・既定挙動 bit 等価・R-26 unit 61 本・mutation 11/11 KILLED）。
+§2 ⑥「0x0D 受信 → エンコーダ差分 odom（M1 実測幾何）」と [mode-outdoor/07 §9 案 A'](../mode-outdoor/07-drivetrain-and-wheel-sizing.md)（150 mm 通常輪・k = D/80 mm）を `warehouse_m1_driver` に実装した（L0'・package-local・既定挙動 bit 等価・R-26 unit 152 本〔wheel_scale 64 / odom 51 / 配線 AST 37〕・mutation 14/14 KILLED）。
 
 | param | 既定 | 意味 |
 |---|---|---|

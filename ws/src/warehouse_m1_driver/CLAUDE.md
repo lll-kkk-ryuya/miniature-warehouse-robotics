@@ -174,3 +174,71 @@ Yahboom ROSMASTER M1 の公式 STM32 source V3.6.5 は入手済みだが、stock
 - `# TODO(doc05 §4-1)` **`stop_state_max_validity_s` にハード上限は無い**。退化値（非有限・非正）は既定へ落とすが、**大きな有限値は信頼して通す**＝上乗せが実質無効化されうる。W-1 `cmd_vel_timeout_s` と同じ信頼クラス（既存 idiom）だが、上限を設けるかはオペレーター裁定（doc05 §4-1「本節が裁定しないこと」）。suite では `test_a_large_finite_window_is_honoured_as_a_trusted_operator_setting` が可視化のみ行う。
 - `# TODO` **ROS param の動的更新に未対応**: `stop_overlay_enabled`（#601 由来）も `stop_state_max_validity_s`（本スライス）も construct 時にしか読まない。`ros2 param set` は成功するが購読も窓も変わらない（「有効にしたつもり」が成立する）。`read_only` descriptor か `add_on_set_parameters_callback` の追加は後続。
 - **同一ホスト・同一 boot の単調時計共有は §4-1 が置く前提**（doc03 から導かれたものではない）。クロスホスト化・`use_sim_time` 下では期限規律が成立せず恒久 fail-closed になる。sim での扱いは producer スライスで裁定。
+
+## 【2026-09-13 追記】車輪スケール（L0'）＋ エンコーダ odom スライス
+
+設計正本: **mode-outdoor/07 §9 案 A / A'（[`docs/mode-outdoor/07-drivetrain-and-wheel-sizing.md:175`](../../../docs/mode-outdoor/07-drivetrain-and-wheel-sizing.md)・裁定 = 150 mm・追補③ param 表 [`:252`](../../../docs/mode-outdoor/07-drivetrain-and-wheel-sizing.md)〜`:255`・PR #674 で main に land）** ＝ 平輪 144 mm 級（k=1.8）/ 150 mm（k=1.875）への換装。ホスト側 param 表の正本は [`docs/mode-m1/02-m1-driver-and-watchdog.md:125`](../../../docs/mode-m1/02-m1-driver-and-watchdog.md)〜`:128`（追補②）。ファーム側は stock 80 mm 幾何のまま（[`docs/shared/02-hardware-design.md:749`](../../../docs/shared/02-hardware-design.md) `CAR_M1_MAX_SPEED=700` / 周長 251.327mm＝直径80mm / `ENCODER_CIRCLE_205=2464` counts per **車輪1回転**）で**ホストから変更不可**（[`docs/mode-m1/02-m1-driver-and-watchdog.md:29`](../../../docs/mode-m1/02-m1-driver-and-watchdog.md)-33）。よって **実速度 = wire 値 × (D / 80mm)**、ホストは **`wire = actual / k`（k = D / 0.080）** を送る。odom は [`docs/mode-m1/02-m1-driver-and-watchdog.md:49`](../../../docs/mode-m1/02-m1-driver-and-watchdog.md)（⑥ `0x0D` 生カウント差分・M1 実測幾何）に従い自前で組む。
+
+> **凍結契約は不変**: `warehouse_interfaces.safety.MAX_LINEAR_VELOCITY`（実単位 0.3 m/s）は本スライスで変えない。clamp は**実単位のまま最初に**通り、スケール除算は**その後**（wire 化の直前）。
+
+### 提供 (produce) — 本スライスで追加
+
+- `M1DriverCore(..., wheel_scale=1.0, yaw_scale=1.0, lateral_enabled=True)` — 既定は**今日と bit 等価**（`x / 1.0` は IEEE-754 で厳密）。
+  - dispatch 順: `config_error → brake` / `lateral 無効 → vy=0`（**clamp の前**）/ `overlay → brake` / **`clamp_body_velocity`（実単位・L0' 絞り点）** / `_to_wire`（`vx/k, vy/k, wz/(k·yaw_scale)`）→ backend。
+  - **fail-closed な config 検証**: `wheel_scale ∈ [1.0, 2.5]`・`yaw_scale ∈ [0.2, 5.0]`・有限のみ。外れたら `config_error` に理由を保持し、**全 command・全 watchdog tick が `stop_brake()`**（`set_body_velocity` は一切呼ばれない）。**既定値へ fallback しない**のが肝: 150mm 装着で k=1.0 に落ちると指令の 1.875 倍で走りながら clamp は 0.3 m/s と表示する＝fail-open。上限 2.5 の根拠は mode-outdoor/07 §3 (d)（前後輪干渉で実用径 ≈160〜170mm）。wire を小さく保つことは vendor lib の `int16(v*1000)` 溢れ（`struct.error` → bare except で**フレームが黙って消える**＝[`docs/adr/0010-raise-speed-cap-to-platform-max.md:15`](../../../docs/adr/0010-raise-speed-cap-to-platform-max.md)）の予防でもある。
+  - read-only property: `config_error` / `wheel_scale` / `yaw_scale` / `lateral_enabled`。
+- `warehouse_m1_driver.odom_core`（**新規・純 stdlib・ROS 型なし**）
+  - `WheelOdometry(counts_per_rev, wheel_diameter_m, track_m, wheel_signs=(1,1,1,1))` / `update(counts, t) -> OdomSample | None`。
+  - 幾何は ctor で検証（非有限・非正は `ValueError`）。`wheel_signs` は **+1/-1 の 4 要素のみ**（`0` は片輪を黙って落とすので拒否）。
+  - **int32 wrap 対応**（差分を 2^32 で畳む）。初回・`dt<=0`・非有限 `t`・壊れた報告は **None で drop**（counts は消費しない＝距離を失わない）。観測経路ゆえ「捏造するより出さない」。
+  - `left = mean(m1,m2)` / `right = mean(m3,m4)` / `ds=(l+r)/2` / `dθ=(r-l)/track`、姿勢は**中点方位**で積分、`vx=ds/dt` / `wz=dθ/dt`。
+  - 定数 `FW_ENCODER_COUNTS_PER_WHEEL_REV=2464.0` / `FW_ASSUMED_WHEEL_DIAMETER_M=0.080`（ファームが信じている径＝k の分母。**積分には使わない**）。
+  - `diagonal_covariance(in_plane, yaw_like) -> list[float]`（36 要素・対角のみ）＋ `UNOBSERVED_AXIS_COV=1e6`。配線層でなく**純モジュールに置いた**のは、対角 index（0/7/14/21/28/35）の取り違えが EKF を恒久的に誤誘導する典型バグで、host unit で殺せるようにするため。
+- `backend.MotionBackend.read_encoders() -> tuple[int,int,int,int] | None` ＋ `RosmasterBackend.read_encoders()`（`get_motor_encoder()` を包み、**例外は None へ縮退**。timer 内の例外死は W-1 ごとドライバを落とし、ファームは最後の setpoint を保持したまま走る＝最悪）。
+  - **モータ順**（ファーム `Motion_Set_Speed(L1, L2, R1, R2)`）: `m1`=前左 / `m2`=後左 / `m3`=前右 / `m4`=後右。
+- ROS param（`driver_node.py`・すべて construct 時読み）: `wheel_scale`(1.0) / `yaw_scale`(1.0) / `lateral_enabled`(True) / `odom_enabled`(**False**) / `wheel_diameter_m`(`FW_ASSUMED_WHEEL_DIAMETER_M`=0.080) / `track_m`(0.194 **暫定**) / `counts_per_rev`(2464.0) / `wheel_signs`([1,1,1,1] **暫定**) / `odom_period_s`(0.04＝ファーム 25Hz) / `odom_twist_cov`(0.02 **暫定**) / `odom_pose_cov`(1e3 **暫定**)。
+- topic **`/bot{n}/odom`**（`nav_msgs/Odometry`・[`docs/architecture/03-software-architecture.md:77`](../../../docs/architecture/03-software-architecture.md) の既存契約行。**新規契約は産まない**）。`header.frame_id = bot{n}/odom` / `child_frame_id = bot{n}/base_link` は凍結名を `warehouse_description.robot_dimensions`（`robot_dimensions.py:19,27`）から import（ローカル文字列リテラル禁止）。
+  - **TF は一切出さない**（`odom→base_link` は ekf_node 単独所有＝[`docs/architecture/23-perception-and-localization.md:163`](../../../docs/architecture/23-perception-and-localization.md) / [`docs/mode-m1/02-m1-driver-and-watchdog.md:54`](../../../docs/mode-m1/02-m1-driver-and-watchdog.md)）。`TransformBroadcaster` は AST unit で禁止済。
+  - **`odom_enabled: false` が既定** ＝ standalone bring-up（[`docs/mode-m1/03-joystick-teleop-bringup.md:50`](../../../docs/mode-m1/03-joystick-teleop-bringup.md)）の ROS グラフは publisher も timer も増えない（`stop_overlay_enabled` と同じ idiom。ただし `ros2 param list` には増える＝param 面は「不変」ではない）。
+
+### 消費 (consume) — 追加分
+
+- `nav_msgs/Odometry`・`warehouse_description.robot_dimensions`（`BASE_FRAME` / `ODOM_FRAME` のみ。`package.xml` に exec_depend 追加済＝許可された 2 共有パッケージの一方）。
+- consumer は EKF `odom0=/bot1/odom(wheel)`（[`docs/architecture/23-perception-and-localization.md:154`](../../../docs/architecture/23-perception-and-localization.md)）で、**位置でなく速度 (vx, vy) を採る**（[`docs/architecture/23-perception-and-localization.md:183`](../../../docs/architecture/23-perception-and-localization.md)）。
+
+### テスト（R-26）
+
+| ファイル | 件数 | 役割 |
+|---|---|---|
+| `tests/unit/test_m1_wheel_scale.py` | 61 | 実速度 `hypot(wire)×k ≤ MAX_LINEAR_VELOCITY`・方向保存・既定 bit 等価（pre-existing API との call log 一致＝negative oracle）・不正 k/yaw の全 brake・lateral 無効・W-1/W-2 不変 |
+| `tests/unit/test_m1_odom_core.py` | 49 | 1 回転＝真の周長・80mm との非一致・純旋回・中点方位・int32 wrap（2147483000→−2147483000 は **+1296 counts**）・drop 系・符号・ctor 検証・covariance 対角 |
+| `tests/unit/test_m1_driver_node_odom_wiring.py` | 37 | 配線層 AST pin（CI に rclpy 無し・**1 行も実行されない**ので厳密一致）: TF 禁止（識別子走査＝散文は除外）・topic/型・param guard・凍結 frame 名・callback 文・backend は `read_encoders` のみ |
+
+**mutation 11/11 KILLED**（2026-09-13 実測・実ファイル差替え + try/finally 復元 + `__pycache__` 毎回除去。M1 は「必ず死ぬ」ハーネス自己チェック）:
+
+| # | 仕込んだ欠陥 | 結果 |
+|---|---|---|
+| M1 | k の除算を落とす（実単位をそのまま wire へ） | **KILLED** |
+| M2 | `wz` が `yaw_scale` を無視（k のみで割る） | **KILLED** |
+| M3 | 不正 k が停止でなく **1.0 へ fallback** | **KILLED** |
+| M4 | odom がファームの 80mm 周長で積分 | **KILLED** |
+| M5 | int32 wrap 未処理（素の減算） | **KILLED** |
+| M6 | lateral 無効の `vy=0` を **clamp の後**に移動 | **KILLED** |
+| M7 | odom publisher/timer を **無条件生成**（既定 off 崩壊） | **KILLED** |
+| M8 | `child_frame_id` を凍結名でなくリテラルに | **KILLED** |
+| M9 | clamp を**実単位でなく wire 値**に適用 | **KILLED** |
+| M10 | watchdog が `config_error` を無視 | **KILLED** |
+| M11 | covariance の yaw 対角を index 35→30 にずらす | **KILLED** |
+
+### 前提・未確定 (TODO)
+
+- `# TODO(実測)` **`track_m = 0.194` は実測ではなく導出値**: `MECANUM_M1_APB = 189.5 = (輪距+軸間)/2` と全幅 231.4mm からの引き算（mode-outdoor/07 §1・確度「推定」）。**全 yaw rate がこの値に反比例**する。mode-outdoor/07 §10 の G-W1（ノギス 5 分）で確定する。
+- `# TODO(実測)` **`wheel_signs` は未検証**: 右側（m3/m4）が前進で負にカウントする可能性がある。既定 `[1,1,1,1]` は「仮定」であり、実機 `m1_probe` の encoder delta で確定する（[`docs/mode-m1/03-joystick-teleop-bringup.md`](../../../docs/mode-m1/03-joystick-teleop-bringup.md) §2）。符号が逆なら odom は**前進を後進**と報告する（安全機構ではないが EKF を汚す）。
+- `# TODO(実測)` **`yaw_scale` の値**: ファームの X3 幾何（`ROBOT_WIDTH 169.0` / `ROBOT_LENGTH 160.11`）と M1 実寸の乖離ぶんの補正で、[`docs/mode-m1/02-m1-driver-and-watchdog.md:34`](../../../docs/mode-m1/02-m1-driver-and-watchdog.md)（帰結③）が「実測で確定」としている。既定 1.0 は**無補正**であって「正しい」ではない。
+- `# TODO(実測)` **covariance 対角は docs に無い暫定値**（twist 0.02 / pose 1e3）。**観測しない軸（z/roll/pitch、および `vy`）は 1e6 の「不信」値**を置いてある: この差動積分は `vy` を推定しない（`linear.y` は publish もしない）ので、小さい covariance で 0 を主張すると EKF がそれを融合してしまう。doc23:183 が `odom0` から (vx, vy) を採ると書いている件と**整合を取るのは EKF config 側（doc23 所有トラック）**＝要調整の open question。
+- `# TODO` **`use_sim_time` 非対応**: 積分の `dt` は `time.monotonic()`（command path / W-1 と同一時計）だが、message stamp は `get_clock()`。sim 時計下では両者が乖離する。stop_state の §4-1 と同じ信頼クラスの制約で、sim 対応は後続裁定。
+- `# TODO` **param の動的更新に未対応**（既存の `stop_overlay_enabled` / `stop_state_max_validity_s` と同じ）。`wheel_scale` も `odom_enabled` も construct 時にしか読まない。`ros2 param set` は成功するが**何も変わらない**。
+- `# TODO(契約)` **`MAX_LINEAR_VELOCITY` の意味の再 pin は本スライスの範囲外**。mode-outdoor/07 §9 案 A は「契約 `MAX_LINEAR_VELOCITY` を実単位で再 pin」と書いており、屋外 4 km/h 級の運用値は contract PR（[ADR-0010](../../../docs/adr/0010-raise-speed-cap-to-platform-max.md) 系譜）で別途裁定する。本スライスは**値を触らず**、clamp が実単位で効く構造だけを用意した。
+- ~~`# TODO(docs)` 正本 doc が未 land~~ → **解消（2026-09-15）**: mode-outdoor/07 は PR #674（main `abf2280`）で land。本節冒頭の設計正本を file:line に差し替えた（§9 = `07:175`・追補③ param 表 = `07:252-255`・mode-m1/02 追補② = `02:125-128`）。
+- `# TODO(設計)` **odom の 25 Hz ポーリング aliasing**: `_on_odom` は 40 ms 周期で vendor lib のキャッシュ（FW の 25 Hz 自動レポート `0x0D`）を読むが、レポートに順序番号・時刻が無いため、同一サンプルの再読（`vx=0` スパイク）や 2 レポート分の取り込み（2 倍スパイク）が周期のうなりで起き得る。`update()` は「更新なし」を区別できない。対策候補 = 高頻度（5 ms）ポーリングでカウント変化時刻をサンプル時刻にし、無変化が 2 レポート周期を超えたら零速度を publish（スライス 2）。現状は EKF の twist 共分散（0.02）で吸収させる前提＝実走で `/bot1/odom` の vx ヒストグラムを見て判断（`OQ-OD69` 後半と同じ実測ゲート）。
+- `# TODO(設計)` **`yaw_scale < 1` は wire の `wz` を拡大する**（`_to_wire` の除算は x/y を縮めるが、`wz / (k·yaw_scale)` は yaw_scale=0.2 で 5 倍）。`wz` は未 clamp（既存 TODO）のため、vendor lib の `int16(v*1000)` 溢れ点が `32.767·k·yaw_scale` rad/s（k=1.875・0.2 で ≈ 12.3 rad/s）まで下がる。角速度 clamp（契約なし）の導入時に合わせて閉じる。
