@@ -118,6 +118,82 @@ def test_min_valid_fraction_of_one_is_allowed() -> None:
     assert SourceThresholds(0.5, 1.0, 2).min_valid_fraction == 1.0
 
 
+# ── SourceObservation marshalling: evaluate() must never raise on data ───────
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "expected"),
+    [
+        ("valid_fraction", None, SourceVerdict.INVALID),
+        ("valid_fraction", "0.9", SourceVerdict.INVALID),
+        ("valid_fraction", [0.9], SourceVerdict.INVALID),
+        ("stamp_s", None, SourceVerdict.INVALID),
+        ("stamp_s", "1.0", SourceVerdict.INVALID),
+        ("received_monotonic_s", None, SourceVerdict.STALE),
+        ("received_monotonic_s", "1.0", SourceVerdict.STALE),
+    ],
+)
+def test_an_unreadable_field_verdicts_deterministically_instead_of_raising(
+    field: str, value: object, expected: SourceVerdict
+) -> None:
+    """A garbage message must not throw an exception out of a 50 ms safety loop.
+
+    An unreadable number is stored as NaN and then classified by the ordinary
+    rules: an unreadable reception time is STALE (its age cannot be computed),
+    an unreadable stamp or fraction is INVALID.
+    """
+    fields = {"stamp_s": 1.0, "received_monotonic_s": 1.0, "valid_fraction": 1.0}
+    fields[field] = value  # type: ignore[assignment]
+    monitor = _monitor("scan")
+    monitor.observe("scan", SourceObservation(digest="a", **fields))  # type: ignore[arg-type]
+    assert monitor.evaluate(1.1).verdicts["scan"] is expected
+
+
+def test_evaluate_does_not_raise_on_a_wholly_unreadable_observation() -> None:
+    monitor = _monitor("scan")
+    monitor.observe("scan", SourceObservation(None, None, None, None))  # type: ignore[arg-type]
+    report = monitor.evaluate(1.0)
+    assert report.verdicts["scan"] is SourceVerdict.STALE
+    assert report.healthy is False
+
+
+@pytest.mark.parametrize("field", ["stamp_s", "received_monotonic_s", "valid_fraction"])
+@pytest.mark.parametrize("value", [True, False])
+def test_a_bool_in_a_numeric_field_is_refused_at_construction(field: str, value: bool) -> None:
+    """``True`` is not a timestamp or a ratio — reading it as 1.0 would verdict OK.
+
+    Refused where the mistake is made (marshalling), the same stance as the
+    configuration path, so it can never reach ``evaluate``.
+    """
+    fields = {"stamp_s": 1.0, "received_monotonic_s": 1.0, "valid_fraction": 1.0}
+    fields[field] = value  # type: ignore[assignment]
+    with pytest.raises(ValueError):
+        SourceObservation(digest="a", **fields)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("bad_digest", [7, 1.5, b"a", ["a"]])
+def test_a_digest_that_is_not_a_string_is_refused(bad_digest: object) -> None:
+    with pytest.raises(ValueError):
+        SourceObservation(1.0, 1.0, 1.0, bad_digest)  # type: ignore[arg-type]
+
+
+def test_a_readable_but_out_of_range_value_is_kept_not_refused() -> None:
+    """1.5 is a real number the sender sent; INVALID is where it belongs."""
+    obs = SourceObservation(1.0, 1.0, 1.5, "a")
+    assert obs.valid_fraction == 1.5
+    monitor = _monitor("scan")
+    monitor.observe("scan", obs)
+    assert monitor.evaluate(1.1).verdicts["scan"] is SourceVerdict.INVALID
+
+
+def test_integer_inputs_are_accepted_as_numbers() -> None:
+    obs = SourceObservation(1, 1, 1, "a")
+    assert (obs.stamp_s, obs.received_monotonic_s, obs.valid_fraction) == (1.0, 1.0, 1.0)
+    monitor = _monitor("scan")
+    monitor.observe("scan", obs)
+    assert monitor.evaluate(1.2).verdicts["scan"] is SourceVerdict.OK
+
+
 # ── SensorHealthMonitor construction ─────────────────────────────────────────
 
 
@@ -180,7 +256,12 @@ def test_a_fresh_valid_observation_is_ok() -> None:
 
 
 def test_age_exactly_at_the_limit_is_still_fresh() -> None:
-    """The rule is ``age > stale_after_s`` (09:72), so equality is NOT stale.
+    """Equality is NOT stale: the upper bound is a strict ``>``.
+
+    09:72 requires a freshness judgement but states no operator, so the oracle
+    for the boundary is the repo's own idiom for "older than the window"
+    (``ws/src/warehouse_safety/warehouse_safety/guard_logic.py:407``:
+    ``now - t > stale_after``), which this module reuses.
 
     1.5 - 1.0 = 0.5 is exact in binary floating point, so this boundary is a
     real assertion and not a rounding accident.
@@ -188,6 +269,42 @@ def test_age_exactly_at_the_limit_is_still_fresh() -> None:
     monitor = _monitor("scan", stale_after_s=0.5)
     monitor.observe("scan", _good(received_monotonic_s=1.0))
     assert monitor.evaluate(1.5).verdicts["scan"] is SourceVerdict.OK
+
+
+def test_a_reception_time_from_the_future_is_stale_not_fresh() -> None:
+    """An age below zero is not freshness — it is a clock we cannot reason about.
+
+    A monotonic clock never runs backwards, so a negative age means the
+    reception time was taken somewhere else. Freshness therefore needs a LOWER
+    bound as well as an upper one; the upper bound alone would report OK.
+    """
+    monitor = _monitor("scan", stale_after_s=0.5)
+    monitor.observe("scan", _good(received_monotonic_s=10.0))
+    assert monitor.evaluate(9.9).verdicts["scan"] is SourceVerdict.STALE
+
+
+def test_a_wall_clock_reception_time_never_reads_fresh() -> None:
+    """The realistic shape of the bug: the caller stored wall / ROS time.
+
+    Wall time is ~1.7e9 while a monotonic clock is ~1e4, so the age is hugely
+    negative and can never exceed ``stale_after_s``. Without the lower bound the
+    source reads OK forever — a dead sensor would keep granting motion, the
+    exact Humble fail-open this module exists to close
+    (``docs/mode-outdoor/09-external-review-v3-response.md:72``).
+    """
+    monitor = _monitor("scan", stale_after_s=0.5)
+    monitor.observe("scan", _good(stamp_s=1.7e9, received_monotonic_s=1.7e9))
+    report = monitor.evaluate(12345.0)
+    assert report.verdicts["scan"] is SourceVerdict.STALE
+    assert report.healthy is False
+
+
+def test_zero_age_is_fresh() -> None:
+    """The lower bound is ``< 0``, not ``<= 0``: evaluating at the reception
+    instant (the same tick that took the message) is legitimate."""
+    monitor = _monitor("scan", stale_after_s=0.5)
+    monitor.observe("scan", _good(received_monotonic_s=1.0))
+    assert monitor.evaluate(1.0).verdicts["scan"] is SourceVerdict.OK
 
 
 def test_age_past_the_limit_is_stale() -> None:
@@ -320,11 +437,43 @@ def test_a_re_delivered_message_neither_counts_nor_erases_the_evidence() -> None
 
 
 def test_a_source_without_a_digest_is_never_reported_frozen() -> None:
-    """``digest=None`` = the caller cannot fingerprint this source's payload."""
+    """``digest=None`` = the caller cannot fingerprint this source's payload.
+
+    A source whose caller NEVER supplies a digest accumulates no run at all, so
+    it is never frozen — which is a different statement from "a None digest
+    erases the run", pinned below.
+    """
     monitor = _monitor("scan", frozen_repeats=2)
     for stamp in (1.0, 1.1, 1.2, 1.3):
         monitor.observe("scan", _good(stamp_s=stamp, received_monotonic_s=stamp, digest=None))
     assert monitor.evaluate(1.4).verdicts["scan"] is SourceVerdict.OK
+
+
+def test_a_missing_digest_does_not_erase_the_evidence_already_collected() -> None:
+    """Dropping the fingerprint is not proof of life.
+
+    If a ``None`` digest CLEARED the run, a frozen sender would have a trivial
+    escape: omit the digest every Nth frame and the counter never reaches the
+    threshold. A message with no fingerprint is no evidence either way, so the
+    run is left exactly as it was — the same reasoning as the re-delivery case.
+    """
+    monitor = _monitor("scan", frozen_repeats=3)
+    monitor.observe("scan", _good(stamp_s=1.0, received_monotonic_s=1.0, digest="a"))
+    monitor.observe("scan", _good(stamp_s=1.1, received_monotonic_s=1.1, digest="a"))
+    monitor.observe("scan", _good(stamp_s=1.2, received_monotonic_s=1.2, digest=None))
+    assert monitor.evaluate(1.25).verdicts["scan"] is SourceVerdict.OK  # still 2 of 3
+    monitor.observe("scan", _good(stamp_s=1.3, received_monotonic_s=1.3, digest="a"))
+    assert monitor.evaluate(1.35).verdicts["scan"] is SourceVerdict.FROZEN
+
+
+def test_alternating_missing_digests_cannot_hold_the_counter_down() -> None:
+    """The attack the rule closes: a frozen sender interleaving None digests."""
+    monitor = _monitor("scan", frozen_repeats=3)
+    stamp = 1.0
+    for digest in ("a", None, "a", None, "a"):
+        monitor.observe("scan", _good(stamp_s=stamp, received_monotonic_s=stamp, digest=digest))
+        stamp += 0.1
+    assert monitor.evaluate(stamp).verdicts["scan"] is SourceVerdict.FROZEN
 
 
 def test_frozen_state_persists_while_the_sender_keeps_repeating() -> None:

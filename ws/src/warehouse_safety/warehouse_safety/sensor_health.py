@@ -40,8 +40,16 @@ judges deadlines on the receiver's monotonic clock
 Fail-closed direction: this judgement GRANTS motion (via a permit), so every
 ambiguity resolves to "not healthy". Unknown, unparseable, out-of-range or
 unevaluable inputs produce a non-OK verdict rather than an exception at
-evaluation time; only CONFIGURATION errors raise (a mis-configured monitor must
-not start at all).
+evaluation time — :meth:`SensorHealthMonitor.evaluate` never raises on data.
+What DOES raise is a call-site mistake, caught where it is made: a
+mis-configured monitor (a threshold that is not a usable bound, an empty
+required-source set) at construction, and a ``bool`` or a non-``str`` digest at
+:class:`SourceObservation` construction. See that class for the marshalling
+rule that keeps unreadable numbers out of ``evaluate``.
+
+"Fresh" also has a lower bound, not only an upper one: an age below zero means
+the reception time was not taken on the clock being evaluated, and that is
+treated as STALE rather than as freshness — see :meth:`SensorHealthMonitor._verdict`.
 
 Scope — deliberately unwired: no ``rclpy``, no topic, no ROS parameter, no
 launch. Whether this lives in an Emergency Guardian extension or in a new node
@@ -92,10 +100,11 @@ class SourceVerdict(Enum):
     what an operator has to act on.
     """
 
+    # Declared in precedence order, so the source reads the way the rule does.
     ABSENT = "absent"  # never observed since construction
-    STALE = "stale"  # last reception is older than stale_after_s (monotonic)
-    INVALID = "invalid"  # valid_fraction is NaN / out of range / below threshold
+    STALE = "stale"  # reception is older than stale_after_s, or not on our clock
     FROZEN = "frozen"  # identical payload repeated while the stamp advanced
+    INVALID = "invalid"  # valid_fraction is NaN / out of range / below threshold
     OK = "ok"
 
 
@@ -175,15 +184,43 @@ class SourceObservation:
             frozen-frame detection for it — which is why ``None`` must be a
             deliberate choice, not a convenience.
 
-    This dataclass does NOT validate: an observation is runtime data, not
-    configuration, and a garbage reading must produce a non-OK verdict, never
-    an exception inside a safety loop.
+    Marshalling rule (so that :meth:`SensorHealthMonitor.evaluate` can NEVER
+    raise on data — a safety loop must not take an exception from a bad
+    message):
+
+    * a numeric field that is not a real number (``None``, ``str``, a list, …)
+      is stored as ``NaN``. It is kept, not dropped, and the verdict rules then
+      classify it deterministically: an unreadable ``received_monotonic_s`` is
+      STALE (its age cannot be computed), an unreadable ``stamp_s`` or
+      ``valid_fraction`` is INVALID. Every downstream comparison therefore runs
+      on a float.
+    * ``bool`` is REFUSED with :class:`ValueError`, exactly as on the
+      configuration path: ``True`` is not a timestamp or a ratio, it is a
+      marshalling bug at the call site, and silently reading it as ``1.0``
+      would verdict a garbage message OK. This is the one thing a caller can do
+      that raises here, and it raises while BUILDING the observation, never
+      inside ``evaluate``.
+    * ``digest`` must be a ``str`` or ``None`` (also :class:`ValueError`): a
+      digest is compared for equality, and anything else is a call-site bug.
+
+    Out-of-range but readable values are NOT refused — ``valid_fraction=1.5``
+    is a real number the sender sent, and the INVALID rule is where it belongs.
     """
 
     stamp_s: float
     received_monotonic_s: float
     valid_fraction: float
     digest: str | None
+
+    def __post_init__(self) -> None:
+        for field in ("stamp_s", "received_monotonic_s", "valid_fraction"):
+            value = getattr(self, field)
+            if isinstance(value, bool):
+                raise ValueError(f"{field} must be a real number, got {value!r}")
+            readable = float(value) if isinstance(value, (int, float)) else math.nan
+            object.__setattr__(self, field, readable)
+        if self.digest is not None and not isinstance(self.digest, str):
+            raise ValueError(f"digest must be a str or None, got {self.digest!r}")
 
 
 @dataclass(frozen=True)
@@ -275,8 +312,13 @@ class SensorHealthMonitor:
         (``docs/mode-outdoor/04-perception-sidewalk-and-signals.md:174``: 新しい
         stamp でも同一画像). Three cases:
 
-        * ``digest is None`` → detection is disabled for this source; the run
-          is cleared.
+        * ``digest is None`` → this message carries no fingerprint, so it is no
+          evidence either way: the run is left EXACTLY as it was — neither
+          advanced nor cleared. Clearing would hand a frozen sender a trivial
+          escape (drop the digest on every Nth frame and the counter never
+          reaches the threshold), which is the same fail-open shape as resetting
+          on a re-delivery. A source whose caller NEVER supplies a digest simply
+          never accumulates a run, so it is never reported frozen.
         * a DIFFERENT digest → the sensor produced new content; the run
           restarts at 1 (this observation is the first of its own kind).
         * the SAME digest → the run grows only if the stamp advanced. A repeat
@@ -286,9 +328,9 @@ class SensorHealthMonitor:
           would let an alternating re-delivery pattern reset the counter
           forever (fail-open).
         """
-        if obs.digest is None:
-            return (None, 0)
         previous_digest, run = self._runs.get(source, (None, 0))
+        if obs.digest is None:
+            return (previous_digest, run)
         if previous_digest != obs.digest:
             return (obs.digest, 1)
         previous = self._last.get(source)
@@ -353,7 +395,18 @@ class SensorHealthMonitor:
         # cannot subtract, means the age is unknown -> stale, not fresh.
         if not clock_usable or not math.isfinite(obs.received_monotonic_s):
             return SourceVerdict.STALE
-        if now - obs.received_monotonic_s > limits.stale_after_s:
+        age = now - obs.received_monotonic_s
+        # A NEGATIVE age means the reception time did not come from the clock we
+        # are evaluating on: a monotonic clock cannot run backwards, so this is a
+        # caller that stored wall / ROS time, a clock that was reset, or a
+        # reordered record. The upper-bound test alone would call it fresh
+        # FOREVER (wall time is ~1.7e9 while a monotonic clock is ~1e4, so the
+        # age is hugely negative and never exceeds stale_after_s) — a dead sensor
+        # would read OK, the exact fail-open this module exists to close. A clock
+        # we cannot reason about is not evidence of freshness.
+        # The repo idiom is the bare upper bound (guard_logic.py:407
+        # ``now - t > stale_after``); this guard is the additional half.
+        if age < 0.0 or age > limits.stale_after_s:
             return SourceVerdict.STALE
 
         # FROZEN — a recent message that repeats content the sender already
