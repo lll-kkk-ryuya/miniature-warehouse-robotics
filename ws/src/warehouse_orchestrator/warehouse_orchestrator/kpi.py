@@ -454,7 +454,13 @@ def compute_kpis(
         # unreported rather than substituting a literal cap here. The SAME cap feeds both
         # scopes — the budget a run was measured against does not change with the window.
         smoothness = {
-            robot: smoothness_stats(samples, speed_cap=motion.speed_cap)
+            robot: smoothness_stats(
+                samples,
+                speed_cap=motion.speed_cap,
+                # doc21 §17 ④ (#632 B3): the cap's provenance travels with the cap, into BOTH
+                # scopes — they divide by the same denominator, so they disclose the same origin.
+                speed_cap_source=motion.speed_cap_source,
+            )
             for robot, samples in motion.samples.items()
             if samples
         }
@@ -463,12 +469,17 @@ def compute_kpis(
         # (a caller that supplies only one of the two), and conflating them would report one
         # scope's number under the other's name.
         run_motion = {
-            robot: run_motion_stats(totals, speed_cap=motion.speed_cap)
+            robot: run_motion_stats(
+                totals, speed_cap=motion.speed_cap, speed_cap_source=motion.speed_cap_source
+            )
             for robot, totals in motion.run_totals.items()
             # Mirror of the window's ``if samples`` above: no evidence → no entry. A totals
             # snapshot with zero samples describes a robot nothing was ever measured for, and
             # publishing an all-``None`` row for it would put a ghost robot in the report.
-            if totals.samples
+            # **Unless it rejected something** (doc21 §17 ④ / #632 B4): a robot whose every
+            # sample was refused is the single most important row in the report — dropping it
+            # would hide the fully-broken case behind the same silence as an absent robot.
+            if totals.samples or totals.rejected
         }
 
     # ``rate`` is the eval_sdk zero-denominator guard (doc21:184); behaviour is unchanged from

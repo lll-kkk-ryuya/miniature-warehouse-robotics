@@ -57,6 +57,20 @@ integral (a reversal fixture), ``T = t_last − t_first`` rather than the end st
 fixture), the two-sample floor asserted from the positive side, and every degenerate cap
 degrading to ``None`` instead of ``0.0`` or a raise.
 
+**doc21 §17 ④ review additions (#632 B2-B4 post-review).** The gap gate's nominal period is the
+**lower quartile** of Δt, not the median, and the tests at the end of this file are what holds it
+there: a fixture whose p25 / median / min / mean are four distinct numbers and whose gate verdict
+differs between them, plus a **majority-outage** window (three 10 s holes against three 30 Hz
+frames) where the median lands on the outage value and would publish SPARC for a stream that was
+absent 99.7 % of the time. The other survivors these close: the worst hole sitting at the
+**leading edge** (``max(deltas[1:])`` at window scope, a run-scope running max that only opens on
+the third point), refusals leaking between labels at **either** guard layer (the healthy label is
+always opened *first*, which is what makes a leak visible), the gate dropped or relaxed to ``>=``,
+``spectral_gated`` hard-coded, an unusable ``gap_ratio_limit`` reaching the payload unsanitised,
+an ``inf`` Δt published instead of degraded, and ``SeriesTotals.rejected`` going back to
+``compare=False`` — the last pinned by a direct inequality assertion in
+``test_eval_sdk_stats.py``, because the spelled-out counts alone survive that mutation.
+
 No ROS, no live SDK: ``motion`` is rclpy-free (doc16 §11) and numpy is only needed by SPARC,
 whose tests skip when the optional ``eval_sdk[stats]`` extra is absent. One test imports
 ``warehouse_state`` (cross-lane) **on purpose** — since #642 both lanes import ε from the frozen
@@ -71,12 +85,13 @@ import random
 from pathlib import Path
 
 import pytest
-from eval_sdk.stats import SeriesTotals, ldlj, n_movement_units, sparc
+from eval_sdk.stats import SeriesTotals, ldlj, n_movement_units, percentile, sparc
 from warehouse_interfaces.safety import IDLE_SPEED_EPS, MAX_LINEAR_VELOCITY
 from warehouse_orchestrator import motion as motion_module
 from warehouse_orchestrator.audit_reader import parse_lines
 from warehouse_orchestrator.kpi import compute_kpis, format_report
 from warehouse_orchestrator.motion import (
+    DEFAULT_GAP_RATIO_LIMIT,
     DEFAULT_MOTION_BUFFER_SAMPLES,
     DEFAULT_SMOOTHING_WINDOW,
     MotionAccumulator,
@@ -923,9 +938,11 @@ def test_the_two_new_metrics_are_appended_after_every_existing_key() -> None:
     """Additive in the literal sense: the previously published keys keep their order and the
     doc21 §17 pair sits at the END (the KPI output contract is not frozen — CLAUDE.md voids 9 —
     but a positional reader must not be broken by a new metric). ``speed_cap`` — the denominator
-    disclosure — is appended after the metric it explains, so it is LAST."""
+    disclosure — is appended after the metric it explains, and doc21 §17 ④'s disclosures
+    (``speed_cap_source``, then the B2 continuity quartet — the two Δt numbers, the sanitised
+    limit and the gate's verdict) after *that*, in landing order."""
     keys = list(smoothness_stats(_series([0.1, 0.2, 0.3]), speed_cap=0.3).to_dict())
-    assert keys[:-3] == [
+    assert keys[:-8] == [
         "samples",
         "window_start",
         "window_end",
@@ -938,8 +955,16 @@ def test_the_two_new_metrics_are_appended_after_every_existing_key() -> None:
         "ldlj",
         "n_movement_units",
     ]
-    assert keys[-3:] == ["idle_ratio", "speed_budget_utilisation", "speed_cap"]
-    assert keys[-1] == "speed_cap"
+    assert keys[-8:] == [
+        "idle_ratio",
+        "speed_budget_utilisation",
+        "speed_cap",
+        "speed_cap_source",
+        "nominal_dt_s",
+        "max_gap_s",
+        "gap_ratio_limit",
+        "spectral_gated",
+    ]
 
 
 @pytest.mark.unit
@@ -1239,8 +1264,12 @@ def test_run_totals_accept_exactly_what_the_window_accepts() -> None:
     assert acc.add("bot1", 2.0, 0.0, math.inf, 0.5) is False  # non-finite y
     assert acc.add("bot1", math.nan, 0.0, 0.0, 0.5) is False  # non-finite stamp
     assert acc.add("bot1", 2.0, 0.0, 0.0, math.nan) is False  # non-finite velocity
+    # ``rejected`` is a compared field (#632 review), so the count is spelled out: six refusals
+    # were attributed to ``bot1`` (the unnamed one is not counted) and none of them moved a total.
     assert acc.run_totals() == {
-        "bot1": SeriesTotals(samples=1, at_or_below=0, integral=0.0, t_first=1.0, t_last=1.0)
+        "bot1": SeriesTotals(
+            samples=1, at_or_below=0, integral=0.0, t_first=1.0, t_last=1.0, rejected=6
+        )
     }
     assert [sample.t for sample in acc.series()["bot1"]] == [1.0]
     # …and the next legitimate sample still integrates from the surviving one: 1 s · 0.5 = 0.5.
@@ -1387,12 +1416,13 @@ def test_run_motion_stats_of_a_sampleless_snapshot_is_all_none() -> None:
 
 
 @pytest.mark.unit
-def test_run_motion_to_dict_discloses_its_own_bounds_with_the_cap_last() -> None:
+def test_run_motion_to_dict_discloses_its_own_bounds_with_the_cap_after_its_metric() -> None:
     """Each scope must publish the bounds it was measured over, or a reader cannot tell a
     windowed ``idle_ratio`` from a run one (doc21 §17 ③ declares the coexistence). The window
     publishes ``window_start``/``window_end``/``samples``; this publishes
-    ``t_first``/``t_last``/``duration``/``samples`` — and the cap comes LAST, after the metric it
-    explains, the ordering ``SmoothnessStats.to_dict`` already uses."""
+    ``t_first``/``t_last``/``duration``/``samples`` — and the cap comes after the metric it
+    explains, the ordering ``SmoothnessStats.to_dict`` already uses, followed by doc21 §17 ④'s
+    three disclosures in landing order."""
     payload = run_motion_stats(_run_totals([0.0, 0.2], dt=0.5, t0=10.0), speed_cap=0.2).to_dict()
     assert list(payload) == [
         "samples",
@@ -1404,6 +1434,9 @@ def test_run_motion_to_dict_discloses_its_own_bounds_with_the_cap_last() -> None
         "integral_abs_speed",
         "speed_budget_utilisation",
         "speed_cap",
+        "speed_cap_source",
+        "max_gap_s",
+        "rejected",
     ]
     # …and the counts must survive the mapping, not just the field order. Hand count against
     # ε = 0.01 m/s on this fixture's |v| = [0.0, 0.2]: 2 samples, exactly ONE of them (the 0.0)
@@ -1594,3 +1627,495 @@ def test_a_sampleless_run_snapshot_puts_no_ghost_robot_in_the_report() -> None:
     assert report.smoothness == {}  # the window filter the run one mirrors
     assert report.to_dict()["run_motion"] == {}
     assert "ghost" not in format_report(report)
+
+
+# ── doc21 §17 ④ B2: gap disclosure + the spectral gate (#632) ─────────────────
+#
+# The fixtures below are STAMP fixtures: what is under test is the time axis, so each carries the
+# same 9-sample jittery speed profile (``_JITTERY9``) that the low-pass/spectral tests above
+# already establish as a window the metrics DO compute for. Any ``None`` here is therefore the
+# gate's doing and not a degenerate window's.
+
+# 5 nominal periods of 0.1 s, then a 1.0 s hole, then two more: Δt = [0.1×5, 1.0, 0.1, 0.1].
+_GAPPED_TIMES = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 1.5, 1.6, 1.7]
+# The same shape with the hole shrunk to 0.2 s (2× the nominal period) — inside any sane limit.
+_JITTERED_TIMES = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.7, 0.8, 0.9]
+# Δt = [0.1, 0.1, 0.05, 0.4, 0.2, 0.1, 0.2, 0.2] ⇒ sorted [0.05, 0.1, 0.1, 0.1, 0.2, 0.2, 0.2, 0.4]:
+# p25 = 0.1, median = 0.15, min = 0.05, mean = 0.16875 — three distinct candidates, and a 0.4 s
+# hole that only the lower quartile gates.
+_QUARTILE_TIMES = [0.0, 0.1, 0.2, 0.25, 0.65, 0.85, 0.95, 1.15, 1.35]
+# …the same Δt multiset with the hole at 0.2 s: p25 releases (0.2 < 0.3) where the MINIMUM would
+# gate (0.2 > 0.15).
+_QUARTILE_TIMES_SMALL_HOLE = [0.0, 0.1, 0.2, 0.25, 0.45, 0.65, 0.75, 0.95, 1.15]
+# Majority outage: three 10 s holes interleaved with three 30 Hz frames (Δt sorted
+# [0.033, 0.033, 0.033, 10, 10, 10]) — p25 = 0.033 gates, median = 5.0165 would release.
+_MAJORITY_OUTAGE_TIMES = [0.0, 0.033, 10.033, 10.066, 20.066, 20.099, 30.099]
+
+
+@pytest.mark.unit
+def test_nominal_period_and_max_gap_are_hand_computed_from_the_stamps() -> None:
+    """doc21 §17 ④ (#632 B2) discloses two numbers about the time axis: the nominal period
+    (the lower quartile of Δt) and the worst interruption (max Δt).
+
+    Hand-built stamps 0, 0.1, 0.2, 1.1, 1.2 ⇒ Δt = [0.1, 0.1, 0.9, 0.1]: p25 0.1, max 0.9.
+    The widest hole sits in the MIDDLE, so reporting the *last* Δt (0.1) — or the first — dies
+    here, and so does reporting the mean (0.3) as the nominal period.
+    """
+    stats = smoothness_stats(_stamped([0.0, 0.1, 0.2, 1.1, 1.2], [0.1] * 5))
+    assert stats.nominal_dt_s == pytest.approx(0.1)
+    assert stats.max_gap_s == pytest.approx(0.9)
+    # Fewer than two samples define no spacing at all ⇒ "not computable", not 0.0 — and with no
+    # spacing there is nothing to gate on, so the verdict is a counted ``False``.
+    for window in ([], _series([0.2])):
+        degenerate = smoothness_stats(window)
+        assert degenerate.nominal_dt_s is None
+        assert degenerate.max_gap_s is None
+        assert degenerate.spectral_gated is False
+        assert degenerate.gap_ratio_limit == DEFAULT_GAP_RATIO_LIMIT  # disclosed regardless
+
+
+@pytest.mark.unit
+def test_a_hole_at_the_leading_edge_is_the_max_gap_too() -> None:
+    """The worst interruption may be the **first** spacing, and both scopes must see it.
+
+    Window: stamps 0.0, 1.0, 1.1 … 1.7 ⇒ Δt = [1.0] + [0.1]×7, so p25 = 0.1 and the hole is the
+    opening one. ``max(deltas[1:])`` — "skip the first interval" — reports 0.1 and releases the
+    window, which is exactly the mutation this kills. Run half: stamps 0.0, 0.9, 1.0, 1.1, where
+    a running max that only opens on the third accepted point (``samples > 2``) reports 0.1.
+    """
+    times = [0.0, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7]
+    stats = smoothness_stats(_stamped(times, _JITTERY9))
+    assert stats.nominal_dt_s == pytest.approx(0.1)
+    assert stats.max_gap_s == pytest.approx(1.0)
+    assert stats.spectral_gated is True
+    assert stats.sparc is None and stats.ldlj is None and stats.filtered_samples is None
+    acc = MotionAccumulator()
+    for t in (0.0, 0.9, 1.0, 1.1):
+        assert acc.add("bot1", t, 0.0, 0.0, 0.2) is True
+    assert run_motion_stats(acc.run_totals()["bot1"]).max_gap_s == pytest.approx(0.9)
+
+
+@pytest.mark.unit
+def test_a_gapped_window_withholds_the_spectral_pair_and_reports_everything_else() -> None:
+    """doc21 §17 ④ (#632 B2): (c) disclose + gate — never interpolate.
+
+    ``_GAPPED_TIMES`` has one 1.0 s hole against a 0.1 s nominal period (10×, well over the 3.0
+    limit), so SPARC/LDLJ — the two metrics that read a single ``fs`` as ground truth and would
+    describe the hole as a long smooth stretch — are withheld, and ``filtered_samples`` says the
+    pre-filtered series never reached them. Everything that does not assume uniform spacing keeps
+    reporting, which is what makes this a *gate* and not an outage.
+    """
+    gated = smoothness_stats(_stamped(_GAPPED_TIMES, _JITTERY9), speed_cap=0.3)
+    assert gated.sparc is None and gated.ldlj is None
+    assert gated.filtered_samples is None
+    assert gated.spectral_gated is True  # …and the verdict says WHICH of the five reasons it was
+    # …and the evidence for the decision rides in the same payload.
+    assert gated.nominal_dt_s == pytest.approx(0.1)
+    assert gated.max_gap_s == pytest.approx(1.0)
+    assert gated.gap_ratio_limit == 3.0
+    # The metrics that survive a gap: a sign count, a raw sample-count ratio, the speed pair and
+    # the window's own bounds/rate. Hand oracles: |v| = _JITTERY9 is all-positive (no reversal,
+    # no sample at or below ε), max = 0.30, fs = 8/1.7.
+    assert gated.n_movement_units == 0
+    assert gated.idle_ratio == pytest.approx(0.0)
+    assert gated.mean_speed == pytest.approx(sum(_JITTERY9) / 9)
+    assert gated.max_speed == pytest.approx(0.30)
+    assert gated.sample_rate_hz == pytest.approx(8 / 1.7)
+    assert gated.samples == 9
+    # ② is explicitly NOT gated (doc21 §17 ④ gates only the two fs-assuming metrics): the
+    # trapezoid rule integrates straight THROUGH the hole and still reports. Hand oracle on
+    # ``_GAPPED_TIMES``/``_JITTERY9``, trapezoid by trapezoid —
+    # 0.1·(0.10+0.30)/2 + 0.1·(0.30+0.12)/2 + 0.1·(0.12+0.28)/2 + 0.1·(0.28+0.14)/2
+    # + 0.1·(0.14+0.26)/2 + 1.0·(0.26+0.16)/2 + 0.1·(0.16+0.24)/2 + 0.1·(0.24+0.18)/2
+    # = 0.02+0.021+0.02+0.021+0.02+0.21+0.02+0.021 = 0.353, over a 0.3 m/s budget for T = 1.7 s.
+    # The 1.0 s hole contributes 0.21 of that 0.353, so a gate that also silenced ② would be
+    # unmissable here.
+    assert gated.speed_budget_utilisation == pytest.approx(0.353 / (0.3 * 1.7))
+    # The same window with the hole shrunk to 2× the nominal period is NOT gated: the spectral
+    # pair computes, so the ``None``s above are the gate's doing and not the fixture's.
+    ungated = smoothness_stats(_stamped(_JITTERED_TIMES, _JITTERY9))
+    assert ungated.max_gap_s == pytest.approx(0.2)
+    assert ungated.nominal_dt_s == pytest.approx(0.1)
+    assert ungated.spectral_gated is False
+    assert ungated.ldlj is not None  # pure stdlib — red in the numpy-less CI too
+    assert ungated.filtered_samples == 5  # 9 − 5 + 1
+    pytest.importorskip("numpy")  # the SPARC VALUE needs the optional extra; the rest does not
+    assert ungated.sparc is not None
+
+
+def _deltas(times: list[float]) -> list[float]:
+    """Consecutive Δt, rounded away from float dust so a fixture can be *stated* exactly."""
+    return [round(b - a, 10) for a, b in zip(times, times[1:], strict=False)]
+
+
+@pytest.mark.unit
+def test_the_nominal_period_is_the_lower_quartile_not_the_median_mean_or_minimum() -> None:
+    """The nominal period is the **lower quartile** of Δt (#632 review), and each of the three
+    plausible alternatives is killed by a fixture whose gate verdict differs.
+
+    ``_QUARTILE_TIMES`` has Δt sorted ``[0.05, 0.1, 0.1, 0.1, 0.2, 0.2, 0.2, 0.4]``, three
+    distinct candidate statistics — p25 = 0.1, median = 0.15, min = 0.05 (mean = 0.16875) — and a
+    0.4 s worst hole:
+
+    * p25    ⇒ 3 × 0.1     = 0.3     < 0.4 ⇒ **gated**;
+    * median ⇒ 3 × 0.15    = 0.45    > 0.4 ⇒ released;
+    * mean   ⇒ 3 × 0.16875 = 0.50625 > 0.4 ⇒ released.
+
+    ``_QUARTILE_TIMES_SMALL_HOLE`` is the same shape with the hole at 0.2 s and Δt sorted
+    ``[0.05, 0.1, 0.1, 0.1, 0.2, 0.2, 0.2, 0.2]`` (p25 still 0.1, min still 0.05):
+
+    * p25 ⇒ 0.3  > 0.2 ⇒ **released**;
+    * min ⇒ 0.15 < 0.2 ⇒ gated.
+
+    Together they pin the statistic from both sides: too high (median/mean) waves a real hole
+    through, too low (min) gates ordinary jitter.
+    """
+    gapped_deltas = _deltas(_QUARTILE_TIMES)
+    assert sorted(gapped_deltas) == [0.05, 0.1, 0.1, 0.1, 0.2, 0.2, 0.2, 0.4]
+    assert sum(gapped_deltas) / len(gapped_deltas) == pytest.approx(0.16875)
+    gated = smoothness_stats(_stamped(_QUARTILE_TIMES, _JITTERY9))
+    assert gated.nominal_dt_s == pytest.approx(0.1)  # p25 — NOT the 0.15 median, NOT the 0.05 min
+    assert gated.max_gap_s == pytest.approx(0.4)
+    assert gated.spectral_gated is True
+    assert gated.sparc is None and gated.ldlj is None and gated.filtered_samples is None
+
+    small_deltas = _deltas(_QUARTILE_TIMES_SMALL_HOLE)
+    assert sorted(small_deltas) == [0.05, 0.1, 0.1, 0.1, 0.2, 0.2, 0.2, 0.2]
+    released = smoothness_stats(_stamped(_QUARTILE_TIMES_SMALL_HOLE, _JITTERY9))
+    assert released.nominal_dt_s == pytest.approx(0.1)
+    assert released.max_gap_s == pytest.approx(0.2)
+    assert released.spectral_gated is False
+    assert released.ldlj is not None  # pure stdlib — red in the numpy-less CI too
+    assert released.filtered_samples == 5
+
+
+@pytest.mark.unit
+def test_a_majority_outage_window_is_still_gated_where_the_median_would_release() -> None:
+    """The failure the lower quartile exists to prevent: once outages are the MAJORITY of the
+    intervals, the median sits on the outage value and the gate opens on the worst stream there is.
+
+    Six intervals — three 10 s holes interleaved with three 0.033 s frames (a 30 Hz stream that is
+    absent 99.7 % of the time):
+
+    * p25    = 0.033  ⇒ 3 × 0.033 = 0.099 < 10 ⇒ **gated** (correct);
+    * median = 5.0165 ⇒ 3 × 5.0165 = 15.05 > 10 ⇒ released — SPARC/LDLJ published for a window
+      whose real sample rate is ``6/30.099`` ≈ 0.2 Hz.
+    """
+    stats = smoothness_stats(_stamped(_MAJORITY_OUTAGE_TIMES, _JITTERY9[:7]))
+    assert sorted(_deltas(_MAJORITY_OUTAGE_TIMES)) == [0.033, 0.033, 0.033, 10.0, 10.0, 10.0]
+    assert stats.nominal_dt_s == pytest.approx(0.033)
+    assert percentile(_deltas(_MAJORITY_OUTAGE_TIMES), 50.0) == pytest.approx(5.0165)
+    assert stats.max_gap_s == pytest.approx(10.0)
+    assert stats.spectral_gated is True
+    assert stats.sparc is None and stats.ldlj is None and stats.filtered_samples is None
+    # …and the window is otherwise perfectly computable, so the ``None``s are the gate's doing:
+    # relaxing the limit past the 303× ratio publishes the very numbers the gate withheld.
+    relaxed = smoothness_stats(_stamped(_MAJORITY_OUTAGE_TIMES, _JITTERY9[:7]), gap_ratio_limit=400)
+    assert relaxed.spectral_gated is False
+    assert relaxed.ldlj is not None
+    assert relaxed.filtered_samples == 3  # 7 − 5 + 1
+
+
+@pytest.mark.unit
+def test_a_hole_sitting_exactly_on_the_limit_is_allowed() -> None:
+    """The comparison is strict (``>``): ``gap_ratio_limit`` is what is *allowed*, so a hole of
+    exactly 3 nominal periods still reports. Both the period (0.25 s) and the hole (0.75 s) are
+    exact in binary here, so the boundary is a real boundary rather than a rounding accident —
+    which is what makes ``>`` and ``>=`` distinguishable at all."""
+    stats = smoothness_stats(_stamped([0.0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.25, 2.5], _JITTERY9))
+    assert stats.nominal_dt_s == 0.25  # Δt = [0.25]×7 + [0.75]: p25 lands on the 0.25 mode
+    assert stats.max_gap_s == 0.75
+    assert stats.max_gap_s == stats.gap_ratio_limit * stats.nominal_dt_s  # exactly on the line
+    assert stats.spectral_gated is False
+    assert stats.ldlj is not None
+    assert stats.filtered_samples == 5
+
+
+@pytest.mark.unit
+def test_the_gap_ratio_limit_is_injected_disclosed_and_honoured() -> None:
+    """The limit is an engineering tuning value (``DEFAULT_GAP_RATIO_LIMIT`` = 3.0), not a domain
+    threshold: a caller that expects a lumpy stream raises it, and the value used is republished
+    every time so a reader can tell which régime produced the numbers. Raising it to 20 lets the
+    10× window through — proof the gate reads the parameter rather than a hardcoded 3."""
+    window = _stamped(_GAPPED_TIMES, _JITTERY9)
+    relaxed = smoothness_stats(window, gap_ratio_limit=20.0)
+    assert relaxed.gap_ratio_limit == 20.0
+    assert relaxed.spectral_gated is False
+    assert relaxed.ldlj is not None
+    assert relaxed.filtered_samples == 5
+    # …and tightening it below the ordinary jitter gates a window that was fine at the default.
+    strict = smoothness_stats(_stamped(_JITTERED_TIMES, _JITTERY9), gap_ratio_limit=1.5)
+    assert strict.ldlj is None and strict.sparc is None and strict.filtered_samples is None
+    assert strict.spectral_gated is True
+    assert smoothness_stats(window).gap_ratio_limit == DEFAULT_GAP_RATIO_LIMIT == 3.0
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("bad", [math.nan, 0.0, -1.0, math.inf, -math.inf])
+def test_an_unusable_gap_ratio_limit_is_sanitised_before_it_reaches_the_report(
+    bad: float,
+) -> None:
+    """An unusable limit degrades to :data:`DEFAULT_GAP_RATIO_LIMIT` for BOTH the gate and the
+    disclosure — the module never raises on live data, but it must not publish a number nobody
+    can act on either.
+
+    ``nan`` is the sharp case: unsanitised it would ride into the payload and make
+    ``json.dumps(..., allow_nan=False)`` refuse the **whole** report (the failure mode
+    ``duration``/``max_gap_s`` already guard against at run scope), while the gate silently never
+    fires because every ``nan`` comparison is ``False``. ``0.0``/negative are the mirror image:
+    they would gate every window in the fleet while disclosing a limit that explains nothing.
+    Both fixtures below are checked against the DEFAULT's verdict, so a sanitiser that returned
+    some other constant is red too.
+    """
+    gated = smoothness_stats(_stamped(_GAPPED_TIMES, _JITTERY9), gap_ratio_limit=bad)
+    assert gated.gap_ratio_limit == DEFAULT_GAP_RATIO_LIMIT
+    assert gated.spectral_gated is True  # …as it is at the default limit: 1.0 s hole vs 3 × 0.1
+    assert gated.sparc is None and gated.ldlj is None and gated.filtered_samples is None
+    ungated = smoothness_stats(_stamped(_JITTERED_TIMES, _JITTERY9), gap_ratio_limit=bad)
+    assert ungated.gap_ratio_limit == DEFAULT_GAP_RATIO_LIMIT
+    assert ungated.spectral_gated is False  # …0.2 s hole vs 3 × 0.1 — the default lets it through
+    assert ungated.ldlj is not None
+    # The whole point: the payload survives the report-wide serialisation guard.
+    assert json.loads(json.dumps(gated.to_dict(), allow_nan=False))["gap_ratio_limit"] == 3.0
+
+
+@pytest.mark.unit
+def test_extreme_stamps_degrade_the_window_continuity_pair_rather_than_publishing_inf() -> None:
+    """Window half of the run scope's degrade rule: ``t = ±1e308`` are both finite and advancing,
+    so the accumulator accepts them — and their difference is ``inf``.
+
+    An ``inf`` in the payload takes the WHOLE report down at ``json.dumps(allow_nan=False)``, so
+    the two Δt disclosures degrade to ``None`` exactly as ``RunMotionStats.max_gap_s`` does. The
+    *evidence* is still there (``window_start``/``window_end`` stay raw), and the gate upstream
+    read the raw values, so nothing is weakened by the degrade.
+    """
+    acc = MotionAccumulator()
+    assert acc.add("bot1", -1e308, 0.0, 0.0, 0.1) is True
+    assert acc.add("bot1", 1e308, 0.0, 0.0, 0.2) is True
+    stats = smoothness_stats(acc.series()["bot1"])
+    assert stats.nominal_dt_s is None
+    assert stats.max_gap_s is None
+    assert stats.window_start == -1e308 and stats.window_end == 1e308  # the evidence stays
+    payload = stats.to_dict()
+    assert json.loads(json.dumps(payload, allow_nan=False))["max_gap_s"] is None
+
+
+@pytest.mark.unit
+def test_spectral_gated_is_true_exactly_when_the_gate_withheld_the_pair() -> None:
+    """``spectral_gated`` is the gate's verdict and nothing else — which is what makes a ``None``
+    spectral pair attributable at all (doc21 §17 ④ / #632 review).
+
+    The pair also comes back ``None`` for four reasons that are NOT the gate: too few samples, an
+    unusable ``fs``, a window that never moved, and numpy absent (which takes out SPARC only).
+    Every one of those must leave the flag ``False``, or the field would just be "sparc is None"
+    spelled differently. Hard-coding it to ``False`` dies on the first assertion; hard-coding it
+    to ``sparc is None`` dies on the numpy-less rows below.
+    """
+    assert smoothness_stats(_stamped(_GAPPED_TIMES, _JITTERY9)).spectral_gated is True
+    # 1. Too few samples to filter (2 < the 5-wide window): no gate ran.
+    too_few = smoothness_stats(_series([0.1, 0.2]))
+    assert too_few.spectral_gated is False
+    assert too_few.sparc is None and too_few.ldlj is None and too_few.filtered_samples is None
+    # 2. An empty window — nothing at all, including no spacing to judge.
+    assert smoothness_stats([]).spectral_gated is False
+    # 3. A robot that never moved: the peak is 0, so the spectral pair is skipped, ungated.
+    parked = smoothness_stats(_series([0.0] * 9))
+    assert parked.spectral_gated is False
+    assert parked.sparc is None and parked.ldlj is None
+    # 4. An unusable sample rate (every stamp identical is impossible through ``add``, so this is
+    #    a hand-built window): ``sample_rate_hz`` is None and the pair is skipped, still ungated.
+    frozen_clock = smoothness_stats(_stamped([0.0] * 9, _JITTERY9))
+    assert frozen_clock.sample_rate_hz is None
+    assert frozen_clock.spectral_gated is False
+    # …and a perfectly ordinary window reports the pair with the flag down.
+    healthy = smoothness_stats(_series(_JITTERY9, dt=_DT))
+    assert healthy.spectral_gated is False
+    assert healthy.ldlj is not None and healthy.filtered_samples == 5
+
+
+@pytest.mark.unit
+def test_the_run_scope_discloses_its_widest_hole_without_gating_the_integral() -> None:
+    """doc21 §17 ④ (#632 B2), run half: ``max_gap_s`` only — the run has no nominal period to
+    judge it against, and the integral is deliberately unchanged (it still credits the hole).
+
+    Stamps 0, 0.1, 0.2, 1.1, 1.2 at |v| ≡ 0.2 ⇒ widest hole 0.9 s (in the middle, so "the last
+    Δt" dies here too) and ∫|v|dt = 0.2 · 1.2 = 0.24 — hand-computed from the trapezoid rule on
+    a constant speed, i.e. with the hole integrated straight through.
+    """
+    acc = MotionAccumulator()
+    for t in (0.0, 0.1, 0.2, 1.1, 1.2):
+        assert acc.add("bot1", t, 0.0, 0.0, 0.2) is True
+    run = run_motion_stats(acc.run_totals()["bot1"], speed_cap=0.3)
+    assert run.max_gap_s == pytest.approx(0.9)
+    assert run.integral_abs_speed == pytest.approx(0.24)
+    assert run.duration == pytest.approx(1.2)
+    # A one-sample run has no spacing at all ⇒ "not computable", not 0.0.
+    assert run_motion_stats(_run_totals([0.3]), speed_cap=0.3).max_gap_s is None
+    # …and a span wide enough to overflow degrades rather than publishing ``inf`` (the same
+    # report-wide ``json.dumps(allow_nan=False)`` guard ``duration`` already obeys).
+    wide = MotionAccumulator()
+    assert wide.add("bot1", -1e308, 0.0, 0.0, 0.0) is True
+    assert wide.add("bot1", 1e308, 0.0, 0.0, 0.0) is True
+    assert run_motion_stats(wide.run_totals()["bot1"]).max_gap_s is None
+
+
+# ── doc21 §17 ④ B3: where the cap came from (#632) ────────────────────────────
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("source", ["config", "fallback"])
+def test_the_cap_source_reaches_both_scopes_through_compute_kpis(source: str) -> None:
+    """doc21 §17 ④ (#632 B3): ``speed_cap`` alone cannot separate a config that deliberately says
+    0.3 from one that failed to load and fell back to the imported hard cap — same number, two
+    runs that are not comparable. Both scopes divide by the same denominator, so both disclose the
+    same origin, and it must survive the trip through ``compute_kpis`` and ``to_dict``."""
+    report = compute_kpis(
+        _audit_rows(),
+        motion=MotionInputs(
+            samples={"bot1": _series([0.1, 0.2, 0.3])},
+            run_totals={"bot1": _run_totals([0.1, 0.2, 0.3])},
+            speed_cap=MAX_LINEAR_VELOCITY,
+            speed_cap_source=source,
+        ),
+    )
+    assert report.smoothness["bot1"].speed_cap_source == source
+    assert report.run_motion["bot1"].speed_cap_source == source
+    payload = report.to_dict()
+    assert payload["smoothness"]["bot1"]["speed_cap_source"] == source
+    assert payload["run_motion"]["bot1"]["speed_cap_source"] == source
+
+
+@pytest.mark.unit
+def test_no_cap_means_no_source_to_disclose() -> None:
+    """A source says where a denominator came from, so with no denominator there is nothing to
+    describe — "config" beside ``speed_cap=None`` would name the origin of a number that does not
+    exist. The offline CLI (no cap, no source) is the ordinary case."""
+    window = smoothness_stats(_series([0.1, 0.2]), speed_cap_source="config")
+    run = run_motion_stats(_run_totals([0.1, 0.2]), speed_cap_source="config")
+    assert window.speed_cap_source is None and window.speed_cap is None
+    assert run.speed_cap_source is None and run.speed_cap is None
+    # …and an injected cap with no stated source stays None rather than guessing "config".
+    assert smoothness_stats(_series([0.1, 0.2]), speed_cap=0.3).speed_cap_source is None
+    assert run_motion_stats(_run_totals([0.1, 0.2]), speed_cap=0.3).speed_cap_source is None
+
+
+# ── doc21 §17 ④ B4: the rejected counter (#632) ───────────────────────────────
+
+
+@pytest.mark.unit
+def test_every_kind_of_refusal_increments_rejected_exactly_once() -> None:
+    """One number per robot over both guard layers: the two fields ``MotionAccumulator`` owns
+    (non-finite ``x``/``y``) and the two the run accumulator owns (non-finite / non-advancing
+    ``t``, non-finite ``v``). An **unnamed** robot is the one refusal that is NOT counted — there
+    is nobody to attribute it to, and inventing a ``""`` bucket would report drops against a robot
+    that does not exist. No refusal may move ``samples`` or ``t_last``."""
+    acc = MotionAccumulator()
+    assert acc.add("bot1", 1.0, 0.0, 0.0, 0.5) is True
+    assert acc.run_totals()["bot1"].rejected == 0  # a clean stream reports a counted 0
+    refusals = [
+        ("bot1", 1.0, 0.0, 0.0, 0.5),  # stamp does not advance
+        ("bot1", 2.0, 0.0, 0.0, math.nan),  # non-finite velocity
+        ("bot1", 2.0, math.nan, 0.0, 0.5),  # non-finite x
+        ("bot1", 2.0, 0.0, math.inf, 0.5),  # non-finite y
+    ]
+    for expected, args in enumerate(refusals, start=1):
+        assert acc.add(*args) is False
+        assert acc.run_totals()["bot1"].rejected == expected  # exactly one per refusal
+    assert acc.add("", 2.0, 0.0, 0.0, 0.5) is False  # unnamed: refused, NOT counted
+    assert "" not in acc.run_totals()
+    totals = acc.run_totals()["bot1"]
+    assert (totals.samples, totals.t_last, totals.rejected) == (1, 1.0, 4)
+    # A good sample afterwards forgives none of the four.
+    assert acc.add("bot1", 2.0, 0.0, 0.0, 0.5) is True
+    assert acc.run_totals()["bot1"].rejected == 4
+    assert run_motion_stats(acc.run_totals()["bot1"]).rejected == 4
+    acc.clear()
+    assert acc.run_totals() == {}  # reset means reset, counts included
+
+
+@pytest.mark.unit
+def test_refusals_are_counted_against_the_refusing_robot_only() -> None:
+    """Per-robot isolation across BOTH guard layers, with the healthy robot seen first.
+
+    ``bot2`` is accepted before ``bot1`` ever misbehaves, so a counter kept per accumulator — or
+    attributed to the most recently seen robot — charges ``bot1``'s refusals to ``bot2``. The
+    ordering is the point: opening the noisy robot first would hide that leak. ``bot1`` takes one
+    refusal from each layer (``MotionAccumulator``'s non-finite ``x`` pre-guard and the run
+    accumulator's non-advancing stamp), which is what makes the merged count testable as one
+    number.
+    """
+    acc = MotionAccumulator()
+    assert acc.add("bot2", 0.0, 0.0, 0.0, 0.4) is True
+    assert acc.add("bot2", 0.5, 0.0, 0.0, 0.4) is True
+    assert acc.add("bot1", 0.0, 0.0, 0.0, 0.2) is True
+    assert acc.add("bot1", 1.0, math.nan, 0.0, 0.2) is False  # pre-guard layer (x)
+    assert acc.add("bot1", 0.0, 0.0, 0.0, 0.2) is False  # run-accumulator layer (stamp)
+    totals = acc.run_totals()
+    assert totals["bot1"].rejected == 2
+    assert totals["bot2"].rejected == 0
+    assert (totals["bot1"].samples, totals["bot2"].samples) == (1, 2)
+    assert run_motion_stats(totals["bot2"]).rejected == 0
+
+
+@pytest.mark.unit
+def test_a_clock_reset_freezes_the_totals_and_says_so_in_rejected() -> None:
+    """doc21 §17 ④ (#632 B4) — the whole point of the counter. Five samples are accepted, then the
+    stamp source resets to 0 and four more arrive: the run totals freeze (the acceptance rule is
+    unchanged — nothing re-seeds, because trusting a reset clock would splice two runs into one
+    integral) and ``rejected`` is the only thing that moves.
+
+    The reading rule needs two consecutive reports: ``samples`` flat + ``rejected`` climbing = the
+    stamps went backwards; both flat = the robot simply went quiet.
+    """
+    acc = MotionAccumulator()
+    for i in range(5):
+        assert acc.add("bot1", i * 0.1, 0.0, 0.0, 0.2) is True
+    before = run_motion_stats(acc.run_totals()["bot1"], speed_cap=0.3)
+    for i in range(4):  # the clock jumped back to 0 and marched forward again
+        assert acc.add("bot1", i * 0.1, 0.0, 0.0, 0.2) is False
+    after = run_motion_stats(acc.run_totals()["bot1"], speed_cap=0.3)
+    assert (before.samples, after.samples) == (5, 5)  # frozen …
+    assert before.t_last == after.t_last == pytest.approx(0.4)
+    assert after.integral_abs_speed == before.integral_abs_speed
+    assert (before.rejected, after.rejected) == (0, 4)  # … and the freeze is now visible
+    assert after.to_dict()["rejected"] == 4
+    # The window scope says nothing about this (doc21 §17 ④ puts the counter at run scope only):
+    # a bounded buffer cannot tell "nothing recent" from "nothing accepted".
+    assert "rejected" not in smoothness_stats(acc.series()["bot1"]).to_dict()
+
+
+@pytest.mark.unit
+def test_a_robot_whose_every_sample_was_refused_still_appears_in_the_report() -> None:
+    """The ghost filter keeps a row iff there is evidence — and an all-refused robot is the most
+    informative row in the report, not the least. Under the old ``if totals.samples`` it was
+    dropped, i.e. a fully broken robot looked exactly like an absent one.
+
+    ``bot9`` publishes three samples with a non-finite ``x``, so nothing ever reaches the run
+    accumulator and its entry has to be synthesised from the refusal count alone; ``ghost``
+    supplies a hand-built empty snapshot with nothing to report, and stays filtered out.
+    """
+    acc = MotionAccumulator()
+    for i in range(3):
+        assert acc.add("bot9", float(i), math.nan, 0.0, 0.1) is False
+    report = compute_kpis(
+        _audit_rows(),
+        motion=MotionInputs(
+            samples=acc.series(),
+            run_totals={
+                **acc.run_totals(),
+                "ghost": SeriesTotals(
+                    samples=0, at_or_below=0, integral=0.0, t_first=None, t_last=None
+                ),
+            },
+        ),
+    )
+    assert set(report.run_motion) == {"bot9"}
+    broken = report.run_motion["bot9"]
+    assert (broken.samples, broken.rejected) == (0, 3)
+    # Nothing else is computable for it — and nothing is invented (no epoch-0 span).
+    assert broken.idle_samples is None and broken.idle_ratio is None
+    assert broken.t_first is None and broken.t_last is None
+    assert broken.duration is None and broken.max_gap_s is None
+    assert report.smoothness == {}  # it never had a window either
+    assert "bot9" in format_report(report)
+    json.dumps(report.to_dict(), allow_nan=False)  # the row must not break the report

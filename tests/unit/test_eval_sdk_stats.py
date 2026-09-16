@@ -606,12 +606,21 @@ def test_time_series_accumulator_rejects_non_advancing_and_non_finite_points() -
     assert acc.add("a", math.inf, 1.0) is False
     assert acc.add("a", 2.0, math.nan) is False
     assert acc.add("a", 2.0, math.inf) is False
+    # ``rejected`` is an ORDINARY compared field (#632 review), so the expected count is spelled
+    # out here rather than excused by ``compare=False``: the assertion still says "the refusals
+    # moved no total", and it now also says how many there were.
     assert acc.totals()["a"] == SeriesTotals(
-        samples=1, at_or_below=0, integral=0.0, t_first=1.0, t_last=1.0
+        samples=1, at_or_below=0, integral=0.0, t_first=1.0, t_last=1.0, rejected=6
     )
-    # A rejected FIRST point creates no label at all (nothing to report about it).
+    assert acc.totals()["a"].rejected == 6
+    # A label whose FIRST point was rejected reports itself with ``samples = 0`` (doc21 §17 ④ /
+    # #632 B4). Before that counter it was simply absent — indistinguishable from a stream that
+    # never spoke, which is the failure mode worth seeing.
     assert acc.add("b", math.nan, 0.0) is False
-    assert "b" not in acc.totals()
+    assert acc.totals()["b"] == SeriesTotals(
+        samples=0, at_or_below=0, integral=0.0, t_first=None, t_last=None, rejected=1
+    )
+    assert acc.totals()["b"].rejected == 1
 
 
 @pytest.mark.unit
@@ -670,3 +679,112 @@ def test_time_series_accumulator_agrees_with_the_batch_helpers_it_streams() -> N
     # delegates to the other, this differential check becomes a tautology that agrees with
     # itself no matter what the arithmetic does.
     assert "TimeSeriesAccumulator" not in inspect.getsource(trapezoid_integral)
+
+
+# ── doc21 §17 ④ (#632 B2/B4): the two stream diagnostics ─────────────────────
+
+
+@pytest.mark.unit
+def test_max_gap_is_the_largest_spacing_not_the_latest_one() -> None:
+    """``max_gap`` is a running MAXIMUM over the accepted spacings, not the last one.
+
+    Hand-built stamps 0, 0.1, 0.2, 1.1, 1.2 ⇒ Δt = [0.1, 0.1, 0.9, 0.1]: the widest hole sits in
+    the MIDDLE, so "keep the latest Δt" (0.1) and "keep the first" (0.1) both die here, and the
+    value must survive the two ordinary steps that follow it.
+    """
+    acc = TimeSeriesAccumulator()
+    assert acc.totals() == {}
+    for t in (0.0, 0.1, 0.2, 1.1, 1.2):
+        assert acc.add("a", t, 1.0) is True
+    assert acc.totals()["a"].max_gap == pytest.approx(0.9)
+    # …and it is None until a second point defines a spacing at all.
+    single = TimeSeriesAccumulator()
+    single.add("b", 5.0, 1.0)
+    assert single.totals()["b"].max_gap is None
+    # The FIRST spacing counts too: stamps 0, 0.9, 1.0, 1.1 put the widest hole at the leading
+    # edge, so a running max that only opens on the third point (``samples > 2``) reports 0.1.
+    leading = TimeSeriesAccumulator()
+    for t in (0.0, 0.9, 1.0, 1.1):
+        assert leading.add("c", t, 1.0) is True
+    assert leading.totals()["c"].max_gap == pytest.approx(0.9)
+
+
+@pytest.mark.unit
+def test_rejected_counts_every_refusal_and_is_never_reset_by_a_later_success() -> None:
+    """``rejected`` is monotone per label: a refusal adds exactly one and an accepted point that
+    follows must not clear the history (that mutation would hide precisely the transient outage
+    the counter exists to record). Counted per label, so one noisy stream cannot inflate another.
+    """
+    acc = TimeSeriesAccumulator(1.0)
+    assert acc.add("a", 0.0, 0.0) is True
+    assert acc.totals()["a"].rejected == 0  # a clean stream reports a counted 0, not None
+    assert acc.add("a", 0.0, 0.0) is False  # duplicate stamp
+    assert acc.add("a", math.nan, 0.0) is False  # non-finite stamp
+    assert acc.add("a", 1.0, math.inf) is False  # non-finite value
+    assert acc.totals()["a"].rejected == 3
+    assert acc.add("a", 1.0, 0.0) is True  # a good point does NOT forgive the three refusals
+    assert acc.totals()["a"].rejected == 3
+    assert acc.totals()["a"].samples == 2
+    acc.add("b", 0.0, 0.0)
+    assert acc.totals()["b"].rejected == 0  # counted per label
+    acc.clear()
+    assert acc.totals() == {}  # a reset drops the counts with the totals it describes
+
+
+@pytest.mark.unit
+def test_two_snapshots_differing_only_in_rejected_are_not_equal() -> None:
+    """``rejected`` participates in ``__eq__`` **and** ``__hash__`` (#632 review).
+
+    The case the counter exists for is precisely a stream whose totals froze: it carries the same
+    ``samples``/``integral``/bounds as a healthy one and differs **only** here, so "equal" would
+    be the report saying those two are the same measurement. A ``compare=False`` on the field
+    makes both assertions below pass vacuously, which is the mutation this pins.
+    """
+    frozen = SeriesTotals(samples=5, at_or_below=1, integral=2.0, t_first=0.0, t_last=4.0)
+    climbing = SeriesTotals(
+        samples=5, at_or_below=1, integral=2.0, t_first=0.0, t_last=4.0, rejected=1
+    )
+    assert frozen != climbing
+    assert hash(frozen) != hash(climbing)
+    # …and two snapshots that agree on everything, refusals included, still compare equal.
+    assert frozen == SeriesTotals(samples=5, at_or_below=1, integral=2.0, t_first=0.0, t_last=4.0)
+
+
+@pytest.mark.unit
+def test_rejected_is_counted_against_the_refusing_label_only() -> None:
+    """Per-label isolation with a healthy label opened FIRST — the ordering that kills a leak.
+
+    ``b`` is accepted before ``a`` ever speaks, so a counter kept per accumulator (or attributed
+    to "the most recently seen label") would charge ``a``'s three refusals to ``b``. Opening the
+    noisy label first hides that mutation, which is why ``b`` goes first here.
+    """
+    acc = TimeSeriesAccumulator(1.0)
+    assert acc.add("b", 0.0, 0.0) is True
+    assert acc.add("b", 1.0, 0.0) is True
+    assert acc.add("a", math.nan, 0.0) is False
+    assert acc.add("a", 0.0, math.inf) is False
+    assert acc.add("a", 2.0, 0.0) is True
+    assert acc.add("a", 2.0, 0.0) is False  # duplicate stamp
+    totals = acc.totals()
+    assert totals["a"].rejected == 3
+    assert totals["b"].rejected == 0
+    assert (totals["b"].samples, totals["a"].samples) == (2, 1)
+
+
+@pytest.mark.unit
+def test_a_frozen_stamp_source_shows_up_as_flat_samples_against_a_climbing_rejected() -> None:
+    """The doc21 §17 ④ (#632 B4) reading rule, at the generic layer: after a clock reset every
+    later point is refused, so ``samples``/``t_last`` freeze while ``rejected`` climbs. Nothing
+    re-seeds — the accumulator does NOT adopt the new stamp base — because trusting a reset clock
+    would splice two runs into one integral.
+    """
+    acc = TimeSeriesAccumulator(1.0)
+    for i in range(5):
+        assert acc.add("a", float(i), 2.0) is True
+    before = acc.totals()["a"]
+    for i in range(4):  # the clock jumped back to 0 and marches forward again
+        assert acc.add("a", float(i), 2.0) is False
+    after = acc.totals()["a"]
+    assert (after.samples, after.t_last) == (before.samples, before.t_last) == (5, 4.0)
+    assert after.integral == before.integral
+    assert (before.rejected, after.rejected) == (0, 4)
