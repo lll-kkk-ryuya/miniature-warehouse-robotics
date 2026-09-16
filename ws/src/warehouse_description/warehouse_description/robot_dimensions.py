@@ -25,6 +25,12 @@ IMU_FRAME = "imu_link"
 # question (doc09 OQ-4: docs/mode-x-er/09-hand-raise-summon.md:184 / doc23 OQ-7: :248).
 CAMERA_FRAME = "camera_link"
 ODOM_FRAME = "odom"  # /bot{n}/odom child_frame_id = bot{n}/base_link
+# RTK GNSS antenna frame (outdoor). Static child of base_link via robot_state_publisher
+# (docs/mode-outdoor/03-localization-gnss-and-ekf.md:35), and the NavSatFix
+# header.frame_id: navsat_transform_node corrects the antenna lever arm through this
+# frame's TF and silently skips the correction when the two names differ (同 :54).
+# Appended after ODOM_FRAME (additive-first) so the existing constants do not move.
+GNSS_FRAME = "gnss_link"
 
 # 4-wheel skid-steer (Yahboom MicroROS car). Wheels are model-internal — not in the
 # doc09 TF tree, but their link names are part of the URDF↔world interface (doc16 §9).
@@ -36,14 +42,15 @@ WHEEL_LINKS: tuple[str, ...] = (
 )
 
 # Contract link names that warehouse_sim + real hardware must reference identically.
-# CAMERA_FRAME is appended last so existing positions stay stable (additive-first,
-# .claude/rules/parallel-workflow.md §7.2).
+# New names are appended last so existing positions stay stable (additive-first,
+# .claude/rules/parallel-workflow.md §7.2): CAMERA_FRAME, then GNSS_FRAME.
 FROZEN_LINK_NAMES: tuple[str, ...] = (
     BASE_FRAME,
     LIDAR_FRAME,
     IMU_FRAME,
     *WHEEL_LINKS,
     CAMERA_FRAME,
+    GNSS_FRAME,
 )
 
 # Frozen *names* whose URDF body/joint is not written yet because the mount pose is
@@ -51,13 +58,25 @@ FROZEN_LINK_NAMES: tuple[str, ...] = (
 # だが最終値は S2 実測（doc09 §3: docs/mode-x-er/09-hand-raise-summon.md:41,43 / doc23 OQ-3
 # 経由 :280）— so no numeric offset is invented here. The unit tests pin this list from
 # docs and require that a name leaves it in the same PR that adds the link to the xacro.
-PENDING_URDF_LINKS: tuple[str, ...] = (CAMERA_FRAME,)  # TODO(Phase 1 実測): mount pose
+PENDING_URDF_LINKS: tuple[str, ...] = (
+    CAMERA_FRAME,  # TODO(Phase 1 実測): mount pose
+    # TODO(実測): GNSS antenna mount pose (mast). The ACE 2020 mast is still a
+    # 450〜600 mm range whose top plate is shared with the e-stop button, and the
+    # placement itself is still `# TODO(設計)`
+    # (docs/mode-outdoor/06-hardware-delta-and-base-selection.md:182 / 同 :77),
+    # so the lever arm is unmeasured and no offset is invented here.
+    GNSS_FRAME,
+)
 
 # Sensor / odom frame_id contract (consumed by AMCL / Nav2 / warehouse_traffic).
+# "gnss" is the NavSatFix header.frame_id: docs/mode-outdoor/03-localization-gnss-and-ekf.md:54
+# requires it to equal gnss_link, so it belongs to the frozen contract rather than being a
+# free-form receiver-driver setting. (Contrast camera: its optical frame name is still open.)
 FROZEN_FRAME_IDS: dict[str, str] = {
     "lidar": LIDAR_FRAME,
     "imu": IMU_FRAME,
     "odom": ODOM_FRAME,
+    "gnss": GNSS_FRAME,
 }
 
 # ── Python-side deployment params (PROVISIONAL) ────────────────────────────────

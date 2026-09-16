@@ -13,9 +13,10 @@
 
 ## 提供 (produce)
 - `robot_description`（URDF/xacro, sim+実機 共有）: `urdf/minicar.urdf.xacro`、`launch/description.launch.py`（namespace 毎に robot_state_publisher, `frame_prefix=<ns>/`）
-- **凍結リンク名**（doc09 TFツリー / doc16 §9）: `base_link` / `lidar_link` / `imu_link` / `wheel_{front,rear}_{left,right}` / `camera_link`
+- **凍結リンク名**（doc09 TFツリー / doc16 §9）: `base_link` / `lidar_link` / `imu_link` / `wheel_{front,rear}_{left,right}` / `camera_link` / `gnss_link`
 - **`camera_link`**（HP60C・doc23 §4 `docs/architecture/23-perception-and-localization.md:124`・§5-2 `:157-160`）: **名前のみ凍結**。URDF の body/joint は取付実測待ちで `PENDING_URDF_LINKS` に列挙（unit test が「pending は xacro に無いこと」を pin）。**光学 frame 名は未凍結**（doc09 OQ-4 `docs/mode-x-er/09-hand-raise-summon.md:184`）ゆえ `FROZEN_FRAME_IDS` に camera エントリは無い
-- **凍結 frame_id**: `/<ns>/scan`→`<ns>/lidar_link`、imu→`<ns>/imu_link`、odom→`<ns>/odom`（child `<ns>/base_link`）
+- **`gnss_link`【2026-09-16 追加・additive contract】**（RTK GNSS アンテナ・屋外）: `FROZEN_LINK_NAMES` **末尾**へ追加（既存名の位置は不変＝additive-first `.claude/rules/parallel-workflow.md` §7.2）。TF `bot{n}/base_link → bot{n}/gnss_link` は `robot_state_publisher`（URDF static）が出す（`docs/mode-outdoor/03-localization-gnss-and-ekf.md:35`・§8 `:207`）。**名前のみ凍結**＝URDF の body/joint はマスト取付**実測待ち**で `PENDING_URDF_LINKS` に列挙（マストは 450〜600 mm の幅・上端プレートは非常停止ボタンと共用・配置自体が `# TODO(設計)`＝`docs/mode-outdoor/06-hardware-delta-and-base-selection.md:182` / 同 `:77`）。**`camera_link` と違い `FROZEN_FRAME_IDS` に `gnss` エントリを持つ**: `03:54` が NavSatFix `header.frame_id` = `gnss_link` の一致を要求する（`navsat_transform_node` はこの frame の TF でアンテナのレバーアームを補正し、名前が食い違うと補正が**無言で**外れる）
+- **凍結 frame_id**: `/<ns>/scan`→`<ns>/lidar_link`、imu→`<ns>/imu_link`、odom→`<ns>/odom`（child `<ns>/base_link`）、gnss（NavSatFix）→`<ns>/gnss_link`
 - `robot_dimensions.py`: 凍結名タプル + `ROBOT_RADIUS=0.075`(R-42) + `SPAWN_Z`（Python 単一ソース）
 
 ## 消費 (consume)
