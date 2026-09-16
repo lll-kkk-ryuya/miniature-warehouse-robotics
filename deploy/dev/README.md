@@ -168,3 +168,7 @@ deploy/dev/check-hermes-live.sh --chat        # optional provider call
 > This cockpit is a dev/sim convenience. It does **not** replace the on-Jetson validation gates
 > (`docs/jetson/01-fidelity-and-validation.md`): GPU/CUDA, real-time jitter, micro-ROS-over-WiFi,
 > real sensor accuracy and the 8 GB memory budget are **not** reproducible here.
+
+## Humble Guardian live test（Gazebo なし・2026-09-16）
+
+`humble-guardian-livetest/`（[README](humble-guardian-livetest/README.md)）: `ros:humble-ros-base` コンテナで Emergency Guardian を実ノードとして起動し、偽 `/bot1/odom`／`/bot1/scan` で `scan_stale`（doc12 末尾【2026-09-16 追補】(3)）の estop／解除を実測する harness。repo は read-only マウント・colcon 成果物はコンテナ内 `/opt/mwr`（host の `ws/build`・`ws/install` を汚さない）。Gazebo（Humble）は ADR-0008 §Open のため対象外。
