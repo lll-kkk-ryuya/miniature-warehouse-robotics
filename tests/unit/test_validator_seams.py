@@ -108,7 +108,8 @@ def test_in_memory_calibration_loader_roundtrip():
 
 
 def test_calibration_has_doc_literal_fields():
-    # doc02:149 — 5 fields. Shape only; values are loaded from a file, never hardcoded.
+    # doc02:149 — 5 doc-literal fields + the 2 additive optional pixel-space fields of #699
+    # slice 2 (doc02 2026-09-16 追補 ②). Shape only; values are loaded from a file, never hardcoded.
     fields = set(Calibration.model_fields)
     assert fields == {
         "camera_id",
@@ -116,7 +117,11 @@ def test_calibration_has_doc_literal_fields():
         "homography",
         "reprojection_error",
         "valid_polygon",
+        "pixel_space",
+        "image_size",
     }
+    assert Calibration.model_fields["pixel_space"].default == "raw"
+    assert Calibration.model_fields["image_size"].default is None
 
 
 def test_in_memory_task_graph_store_roundtrip():

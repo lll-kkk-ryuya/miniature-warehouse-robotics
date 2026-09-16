@@ -421,6 +421,24 @@ G5 デモ v2（bot1: red→帰還 / bot2: blue を **bot1 帰還完了後**に r
 ## 【2026-09-16 追補】`Detection.pixel` の座標空間（#699・末尾追記＝行参照非破壊）
 
 - §2 の処理 `pixel(u, v) → homography → map(x, y)`（[:138](02-l3-planning-core.md:138)）で homography に掛ける `pixel` は **calibration artifact の pixel 空間**の値である。dev artifact [config/dev/calibration/dev-sim-v1.yaml](../../config/dev/calibration/dev-sim-v1.yaml) は **raw px**（1.282 mm/px・fixture 420/310 px）で fit されており、[:117](02-l3-planning-core.md:117) の例 `[420, 310]` も raw px。正規化 0–1000 の値をそのまま掛けると別の地点に写る。
-- 一方 ER へ要求する `pixel` は **与えた画像に対する 0–1000 正規化 (u, v)**（[03 2026-09-16 追補](03-er-adapter-skeleton.md)・Gemini native の尺度）。**両者の橋渡し（正規化 → artifact 空間）は L4→L3 handoff の別 slice**（#699 DoD 最終項）: frame の W×H（L4 が blob を持つ）で `u_px = round(u/1000·W)`・`v_px = round(v/1000·H)`。TARGET の depth + TF 経路（[2026-08-09 追補](02-l3-planning-core.md:411)・K 逆投影）も raw px 前提のため同じ変換点を使う。
+- 一方 ER へ要求する `pixel` は **与えた画像に対する 0–1000 正規化 (u, v)**（[03 2026-09-16 追補](03-er-adapter-skeleton.md)・Gemini native の尺度）。**両者の橋渡し（正規化 → artifact 空間）は 2026-09-16 追補 ② で裁定**: L4 が frame を測るのではなく **artifact が `pixel_space` / `image_size` を宣言し Visual Resolver が homography の直前で `u·W/1000`・`v·H/1000` に変換**する。TARGET の depth + TF 経路（[2026-08-09 追補](02-l3-planning-core.md:411)・K 逆投影）も intrinsics が特定解像度に紐付くため同じ宣言を使う。
 - 変換が着地するまで、live ER の pixel は homography / valid polygon / snap のいずれかで unresolved → 0-dispatch（fail-closed）が設計どおり。2026-07-02 の live `command_items=0`（[07:37](07-implementation-status.md:37)）はこの構成の帰結であり、注入 calibration が model 選択 pixel を写すことを期待しない設計（`tests/live/test_xer_full_chain_live.py:60-63`）。
-- calibration artifact の逐語 5 field（[:149](02-l3-planning-core.md:149)）は不変。pixel 空間の宣言を artifact に足すか（additive・`(発明/要確定)`）は #699 slice 2 で裁定。
+- calibration artifact の逐語 5 field（[:149](02-l3-planning-core.md:149)）は不変。pixel 空間の宣言は **additive optional 2 field（`pixel_space` / `image_size`）として足した**（追補 ②）。
+
+## 【2026-09-16 追補 ②】pixel 空間の橋渡し = artifact が宣言し Visual Resolver が変換する（#699 slice 2・末尾追記＝行参照非破壊）
+
+追補 ①（同日）は「ER の正規化 0–1000 → artifact 空間（raw px）の変換は別 slice」とし、L4 が frame の W×H を測る案を書いていた。**裁定（本追補・[提案]・bridge-local・凍結契約不変）**: 変換点は **L3 Visual Resolver の homography 直前**、変換係数の出所は **calibration artifact 自身の宣言**とする。
+
+| 項目 | 内容 |
+|---|---|
+| artifact の追加 field（additive・optional） | `pixel_space: raw \| normalized_0_1000`（既定 `raw`＝従来どおり `Detection.pixel` をそのまま掛ける）／ `image_size: [W, H]`（`normalized_0_1000` のとき必須・正の int 2 つ） |
+| 変換 | `normalized_0_1000` のとき `u_px = u·W/1000`・`v_px = v·H/1000` を homography の直前で適用（`visual_resolver/resolver.py` `_pixel_scale`） |
+| fail-closed | `normalized_0_1000` なのに `image_size` が欠落 / 長さ ≠ 2 / 非 int / 非正 → `NO_CALIBRATION`（unresolved・0-dispatch）。未知の `pixel_space` 値 → `NO_CALIBRATION`。`normalized_0_1000` で `u` / `v` が 0..1000 の外 → `OFF_MAP`（ER 契約違反を尤もらしい地点に写さない） |
+| dev-sim-v1 | `pixel_space: normalized_0_1000` + `image_size: [1000, 1000]` を**定義**（合成の俯瞰カメラ＝実測ではない）。正規化 ≡ raw となり、fixture の 420/310・810/280・131 px と既存 unit はすべて不変 |
+| site artifact（governed 経路・`calibration.json`） | 同 2 field を additive に受ける（`_BridgeModel` は `extra="ignore"` なので model に field を足さない限り黙って捨てられる → seams.py に追加済）。ER 経路の site artifact は**必ず宣言**する（`raw` のままだと正規化値がそのまま掛かる） |
+
+**なぜ L4 で測らないか**: (1) homography / TARGET の intrinsics K は「特定解像度の frame」に対して fit されるので、その解像度は artifact の属性である（frame ごとに測るものではない）。(2) L4 に PNG/JPEG ヘッダ解析と `RawModelOutput` の additive field を足すより、変換を既存の幾何段 1 か所に閉じる方が 0-dispatch 不変条件（[:151](02-l3-planning-core.md:151)）の検証が単純。(3) L4 が受けた frame の実解像度と artifact 宣言の一致検証は**別の gate**として後から足せる（下記 OQ）。
+
+**不変**: 逐語 5 field（[:149](02-l3-planning-core.md:149)）・valid polygon / snap / confidence 合成・`homography: []` → `NO_CALIBRATION` の fail-closed（ADR-0007）。
+
+**OQ（本追補）**: (a) L4 が実際に送った frame の W×H と artifact の `image_size` の一致を検証する gate（PNG IHDR 解析 or カメラドライバの CameraInfo）を X2 / composition の calibration gate に足すか。(b) 0..1000 外の正規化値を `OFF_MAP` でなく専用 `UnresolvedReason` にするか（現状は既存 enum を流用・additive 候補）。(c) TARGET（depth + TF）で intrinsics を artifact に足す際に `image_size` と整合させる（ADR-0007 `# TODO(設計)`）。

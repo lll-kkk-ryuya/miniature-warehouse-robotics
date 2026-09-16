@@ -57,6 +57,34 @@ def _is_valid_homography(homography: list[list[float]]) -> bool:
     return abs(det) > 1e-12
 
 
+PIXEL_SPACE_RAW = "raw"
+PIXEL_SPACE_NORMALIZED = "normalized_0_1000"
+_NORMALIZED_MAX = 1000.0
+
+
+def _pixel_scale(calibration: Calibration) -> tuple[float, float] | None:
+    """Per-axis factor taking ``Detection.pixel`` into the artifact's pixel space (#699 slice 2).
+
+    ``raw`` -> (1, 1). ``normalized_0_1000`` -> (W/1000, H/1000) from ``image_size=[W, H]``;
+    ``None`` when that space is declared but ``image_size`` is missing / not two positive finite
+    ints (fail closed upstream as NO_CALIBRATION). Any other ``pixel_space`` value -> ``None``.
+    """
+    space = calibration.pixel_space
+    if space == PIXEL_SPACE_RAW:
+        return (1.0, 1.0)
+    if space != PIXEL_SPACE_NORMALIZED:
+        return None
+    size = calibration.image_size
+    if not isinstance(size, list) or len(size) != 2:
+        return None
+    w, h = size
+    # The model already coerces integral floats / numeric strings to int (lax pydantic, same as
+    # the other artifact numbers); anything else non-int or non-positive is a defective artifact.
+    if not (isinstance(w, int) and isinstance(h, int)) or w <= 0 or h <= 0:
+        return None
+    return (w / _NORMALIZED_MAX, h / _NORMALIZED_MAX)
+
+
 def _apply_homography(homography: list[list[float]], u: float, v: float) -> tuple[float, float]:
     """Map pixel (u, v) to map (x, y) via the 3x3 ``homography`` (doc02:139,148).
 
@@ -181,9 +209,20 @@ class VisualTaskResolver:
         # pixel(u, v) -> map(x, y) (doc02:138). A short/empty pixel is treated as off-map.
         if len(detection.pixel) < 2:
             return self._unresolved(detection.id, UnresolvedReason.OFF_MAP)
-        x, y = _apply_homography(
-            calibration.homography, float(detection.pixel[0]), float(detection.pixel[1])
-        )
+        u, v = float(detection.pixel[0]), float(detection.pixel[1])
+        # #699 slice 2 (doc02 2026-09-16 追補 ②): bring the pixel into the artifact's declared
+        # space before the homography. "raw" (default) = as-is; "normalized_0_1000" (the ER
+        # contract, doc03 PIXEL_RULE) = scale by image_size. A declared-but-unusable space is a
+        # calibration defect => fail closed as NO_CALIBRATION; a normalized value outside 0..1000
+        # violates the ER contract => OFF_MAP (never scaled into a plausible map point).
+        scale = _pixel_scale(calibration)
+        if scale is None:
+            return self._unresolved(detection.id, UnresolvedReason.NO_CALIBRATION)
+        if scale != (1.0, 1.0) or calibration.pixel_space == PIXEL_SPACE_NORMALIZED:
+            if not (0.0 <= u <= _NORMALIZED_MAX and 0.0 <= v <= _NORMALIZED_MAX):
+                return self._unresolved(detection.id, UnresolvedReason.OFF_MAP)
+            u, v = u * scale[0], v * scale[1]
+        x, y = _apply_homography(calibration.homography, u, v)
         if not (math.isfinite(x) and math.isfinite(y)):
             return self._unresolved(detection.id, UnresolvedReason.OFF_MAP)
 

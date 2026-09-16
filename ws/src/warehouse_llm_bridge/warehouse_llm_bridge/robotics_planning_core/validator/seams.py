@@ -33,6 +33,15 @@ class Calibration(_BridgeModel):
     homography: list[list[float]] = Field(default_factory=list)
     reprojection_error: float | None = None
     valid_polygon: list[list[float]] = Field(default_factory=list)
+    # #699 slice 2 (doc02 2026-09-16 追補 ②): the artifact declares the pixel space its homography
+    # (TARGET: intrinsics) was fitted for. ``"raw"`` (default; absent on legacy artifacts) =
+    # ``Detection.pixel`` is consumed as-is. ``"normalized_0_1000"`` = the ER contract (doc03
+    # PIXEL_RULE): the resolver scales u/1000*W, v/1000*H with ``image_size=[W, H]`` BEFORE the
+    # homography, and fails closed (NO_CALIBRATION) when image_size is missing/invalid. Semantic
+    # validation lives in the resolver on purpose so a bad artifact degrades to 0-dispatch instead
+    # of raising at load time.
+    pixel_space: str = "raw"
+    image_size: list[int] | None = None
 
 
 @runtime_checkable
