@@ -20,6 +20,7 @@ import os
 import urllib.error
 import urllib.request
 
+from warehouse_llm_bridge.robotics.adapters.gemini_er import PIXEL_RULE
 from warehouse_llm_bridge.robotics.er_models import ER_DIRECT_MODEL_ID, ER_MODEL_ENV
 
 # Default ER model + schema/instruction mirror test_er_handoff_live.py:45,51-65 (kept independent so
@@ -41,7 +42,7 @@ SCHEMA_INSTRUCTION = (
     '"operator_clarification_required":false}\n'
     "Rules: robots are only bot1/bot2; action is one of navigate|wait|stop|yield|charge; target is "
     "a detection id; do NOT include any URL, ROS topic, endpoint, velocity, motor or coordinate "
-    "goal field. pixel is [u,v] in 0-1000 if known, else [0,0]."
+    "goal field. " + PIXEL_RULE
 )
 DEFAULT_INSTRUCTION = "bot1 goes to the red box. After bot1 arrives, bot2 goes to the blue box."
 

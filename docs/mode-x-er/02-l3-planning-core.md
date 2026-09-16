@@ -417,3 +417,10 @@ G5 デモ v2（bot1: red→帰還 / bot2: blue を **bot1 帰還完了後**に r
 - calibration artifact の逐語 5 field（:149）は形として保持。`homography` の扱い（空維持 or intrinsics/camera_frame の additive 追加）は**未決＝この追補では発明しない**（所有トラック判断）。`calibration_id ≡ camera_id`・配置規約は不変。
 - 新たな失敗モード: 投影が **AMCL pose 品質・TF freshness に従属**する（俯瞰は pose 非依存だった）。pose_stale 時の投影可否は [09](09-hand-raise-summon.md) / [architecture/23](../architecture/23-perception-and-localization.md) 側で扱う。
 
+
+## 【2026-09-16 追補】`Detection.pixel` の座標空間（#699・末尾追記＝行参照非破壊）
+
+- §2 の処理 `pixel(u, v) → homography → map(x, y)`（[:138](02-l3-planning-core.md:138)）で homography に掛ける `pixel` は **calibration artifact の pixel 空間**の値である。dev artifact [config/dev/calibration/dev-sim-v1.yaml](../../config/dev/calibration/dev-sim-v1.yaml) は **raw px**（1.282 mm/px・fixture 420/310 px）で fit されており、[:117](02-l3-planning-core.md:117) の例 `[420, 310]` も raw px。正規化 0–1000 の値をそのまま掛けると別の地点に写る。
+- 一方 ER へ要求する `pixel` は **与えた画像に対する 0–1000 正規化 (u, v)**（[03 2026-09-16 追補](03-er-adapter-skeleton.md)・Gemini native の尺度）。**両者の橋渡し（正規化 → artifact 空間）は L4→L3 handoff の別 slice**（#699 DoD 最終項）: frame の W×H（L4 が blob を持つ）で `u_px = round(u/1000·W)`・`v_px = round(v/1000·H)`。TARGET の depth + TF 経路（[2026-08-09 追補](02-l3-planning-core.md:411)・K 逆投影）も raw px 前提のため同じ変換点を使う。
+- 変換が着地するまで、live ER の pixel は homography / valid polygon / snap のいずれかで unresolved → 0-dispatch（fail-closed）が設計どおり。2026-07-02 の live `command_items=0`（[07:37](07-implementation-status.md:37)）はこの構成の帰結であり、注入 calibration が model 選択 pixel を写すことを期待しない設計（`tests/live/test_xer_full_chain_live.py:60-63`）。
+- calibration artifact の逐語 5 field（[:149](02-l3-planning-core.md:149)）は不変。pixel 空間の宣言を artifact に足すか（additive・`(発明/要確定)`）は #699 slice 2 で裁定。
