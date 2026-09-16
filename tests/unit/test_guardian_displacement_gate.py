@@ -36,6 +36,7 @@ the accumulator anywhere but ``on_pose``) breaks at least one test here — see 
 body's mutation table.
 """
 
+import ast
 import itertools
 import math
 from pathlib import Path
@@ -484,8 +485,10 @@ def test_odom_staleness_boundary_is_strict() -> None:
 
 @pytest.mark.safety
 def test_non_finite_stale_window_fails_closed() -> None:
-    """A NaN window would make every ``now - t > nan`` comparison False and silently
-    serve stale odom forever (fail-OPEN). It must be rejected explicitly."""
+    """A ``+inf`` window makes ``age <= stale_after`` True for every age and would
+    serve odom of any age forever (fail-OPEN); it must be rejected explicitly. The
+    ``inf`` case is the load-bearing one: NaN is already rejected by the closed
+    interval, so only ``inf`` distinguishes the explicit guard (mutation-verified)."""
     gate = PoseGateTracker()
     gate.on_odom("bot1", 0.0, 0.0, 0.0, 10.0)
     assert gate.snapshot("bot1", 1e6, stale_after=float("nan")) == (None, None)
@@ -688,3 +691,193 @@ def test_yaw_from_quaternion_matches_the_planar_construction(theta: float) -> No
 )
 def test_wrap_angle_maps_into_the_principal_branch(raw: float, expected: float) -> None:
     assert wrap_angle(raw) == pytest.approx(expected, abs=1e-9)
+
+
+# --- 11. CLOCK DOMAIN: a negative age is an untrusted clock -> fail-closed -----
+#
+# ``snapshot`` judges odom freshness as ``age = now - t`` on whatever clock the
+# caller injects. A monotonic clock cannot run backwards, so a NEGATIVE age is not
+# a freshness reading at all: ``t`` (from ``on_odom``) and ``now`` were not taken on
+# the same clock — reception stamped with wall / ROS time while the tick runs on
+# ``time.monotonic()``, a clock reset, a reordered record. Such odom is 「不明」 in
+# the sense of doc23:349 / doc12:608 (odom unknown / stale / non-finite -> the gate
+# fails CLOSED = opens = CURRENT behaviour). ORACLE: for the tick-loop tests the
+# gated guard must decide exactly what the gate-less CURRENT guard decides — the
+# same ``pose_stale`` tick (the freshness contract's STALE_TICK), never silence; the
+# boundary / clock tests assert the fail-closed value ``(None, None)`` directly,
+# whose meaning (gate open = CURRENT) §§1-10 pin. Nothing is read from the
+# implementation, and §§1-10 pin the SERVE side: a tracker that always fails
+# closed is caught there, not here.
+#
+# The wired node cannot produce this today (``emergency_guardian.py`` stamps both
+# sides from ``time.monotonic()`` under a single-threaded ``rclpy.spin``), so the
+# bound is defence in depth for the injected-clock seam of the pure tracker.
+
+
+@pytest.mark.safety
+def test_wall_clock_reception_under_a_monotonic_tick_never_reads_fresh_forever() -> None:
+    """**The fail-open the lower bound closes.** Odom stamped ONCE on a wall clock
+    (~1.7e9 s) and then dead, evaluated on a monotonic-style clock (~1e4 s): the age
+    is hugely negative, so a bare upper bound ``age > stale_after`` is False on every
+    tick and the dead odom would be served as fresh, parked-looking ``(0.0, 0.0)`` —
+    closing the gate and suppressing ``pose_stale`` for a robot whose localizer AND
+    odom are both silent. Fail-closed means the gate must degrade to CURRENT: same
+    firing tick as the gate-less guard (STALE_TICK), with the odom reported unknown
+    on every tick."""
+    wall_t0 = 1.7e9  # what time.time() reads
+    mono_t0 = 1.0e4  # what time.monotonic() reads on the same host
+    gate = PoseGateTracker()
+    gate.on_pose("bot1")
+    gate.on_odom("bot1", 0.0, 0.0, 0.0, wall_t0)  # reception stamped on the wrong clock
+    gated_fires: int | None = None
+    current_fires: int | None = None
+    for i in range(400):
+        now = mono_t0 + i * TICK
+        disp, dyaw = gate.snapshot("bot1", now, stale_after=ODOM_STALE)
+        assert (disp, dyaw) == (None, None), f"tick {i}: dead odom served as fresh {(disp, dyaw)}"
+        pose_age = i * TICK  # the last pose arrived at tick 0 (on the tick's own clock)
+        bot = BotState("bot1", 0.0, 0.0, 100.0, 0.0, pose_age, disp, dyaw)
+        if gated_fires is None and _stale_fires(bot, gated=True):
+            gated_fires = i
+        if current_fires is None and _stale_fires(bot, gated=False):
+            current_fires = i
+    assert current_fires == STALE_TICK
+    assert gated_fires == STALE_TICK  # degraded to CURRENT, not silenced
+
+
+@pytest.mark.safety
+@pytest.mark.parametrize("lead", [1e-9, TICK, ODOM_STALE, 1.7e9])
+def test_odom_stamped_in_the_future_is_unknown_not_fresh(lead: float) -> None:
+    """Reception ``lead`` seconds AFTER ``now`` on the evaluation clock: the age is
+    negative, which no monotonic clock can produce, so the reading is unknown ->
+    ``(None, None)`` -> the gate fails closed. A parked bot then estops exactly as
+    CURRENT would (degrade, never silence) — the fail-closed cost, stated."""
+    gate = PoseGateTracker()
+    gate.on_pose("bot1")
+    gate.on_odom("bot1", 0.0, 0.0, 0.0, 100.0 + lead)
+    disp, dyaw = gate.snapshot("bot1", 100.0, stale_after=ODOM_STALE)
+    assert (disp, dyaw) == (None, None)
+    parked = BotState("bot1", 1.0, 1.0, 100.0, 0.0, 999.0, disp, dyaw)
+    assert _stale_fires(parked, gated=True)
+    assert _stale_fires(parked, gated=False)  # ... which is exactly what CURRENT does
+
+
+@pytest.mark.safety
+def test_the_lower_bound_is_strict_so_a_same_instant_sample_is_fresh() -> None:
+    """``age == 0`` is legitimate (the odom callback and the tick may share one
+    monotonic reading) and must be served; ``age == -1e-9`` is not. Pins ``< 0``
+    (not ``<= 0``) the same way the upper bound pins strict ``>``."""
+    gate = PoseGateTracker()
+    gate.on_odom("bot1", 0.0, 0.0, 0.0, 10.0)
+    assert gate.snapshot("bot1", 10.0, stale_after=ODOM_STALE) == (0.0, 0.0)
+    assert gate.snapshot("bot1", 10.0 - 1e-9, stale_after=ODOM_STALE) == (None, None)
+
+
+@pytest.mark.safety
+@pytest.mark.parametrize("now", [float("nan"), float("-inf"), float("inf")])
+def test_a_non_finite_evaluation_clock_fails_closed(now: float) -> None:
+    """A ``now`` we cannot subtract from is not evidence of freshness. NaN is the
+    dangerous one: ``nan > stale_after`` AND ``nan < 0`` are BOTH False, so a pair of
+    one-sided bounds would still serve the odom; ``-inf`` defeats the upper bound
+    alone. Only the closed interval ``0 <= age <= stale_after`` rejects all three."""
+    gate = PoseGateTracker()
+    gate.on_odom("bot1", 0.0, 0.0, 0.0, 10.0)
+    assert gate.snapshot("bot1", now, stale_after=ODOM_STALE) == (None, None)
+
+
+@pytest.mark.safety
+def test_a_skewed_clock_never_delays_a_moving_bots_estop() -> None:
+    """Non-relaxation under clock skew (the A-5③ condition, doc23:349): a MOVING bot
+    with a dead AMCL must fire at CURRENT's tick even when every odom sample is
+    stamped on the wrong clock. The bound fails the gate closed, so the freshness
+    term fires at STALE_TICK — the same tick the displacement term produces when
+    the clock is sane. This is a regression guard against a bound that could DELAY
+    an estop; it is NOT a mutant-killing pin for the bound (it passes with or
+    without it, by construction) — the kills live in the four tests above."""
+    gate = PoseGateTracker()
+    gate.on_pose("bot1")
+    fired: int | None = None
+    for i in range(400):
+        t = i * TICK
+        x = 0.3 * t
+        gate.on_odom("bot1", x, 0.0, 0.0, t + 1.7e9)  # every sample on the wrong clock
+        disp, dyaw = gate.snapshot("bot1", t, stale_after=ODOM_STALE)
+        if _stale_fires(BotState("bot1", x, 0.0, 100.0, 0.0, t, disp, dyaw), gated=True):
+            fired = i
+            break
+    assert fired == STALE_TICK
+    assert _simulate(0.3, gated=True, ticks=400, amcl_dies_at=1) == STALE_TICK  # sane clock
+
+
+# --- 12. WIRING PIN: the node feeds the tracker ONE monotonic clock -----------
+#
+# The docstring's load-bearing claim — "the wired node cannot produce a negative age
+# today" — rests on ``_on_odom`` stamping ``time.monotonic()`` and ``_check_safety``
+# passing its own ``time.monotonic()`` sample into ``snapshot``. Pin both by AST so
+# a later edit that stamps ``msg.header.stamp`` (sim / real clock offsets) or samples
+# a fresh clock inside ``_bot_state`` fails here, mirroring the ``_on_scan`` pin in
+# tests/unit/test_guardian_scan_stale.py.
+
+_GUARDIAN_PY = (
+    _REPO / "ws" / "src" / "warehouse_safety" / "warehouse_safety" / "emergency_guardian.py"
+)
+
+
+def _guardian_function(name: str) -> ast.FunctionDef:
+    tree = ast.parse(_GUARDIAN_PY.read_text(encoding="utf-8"))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name == name:
+            return node
+    raise AssertionError(f"{name} not found in emergency_guardian.py")
+
+
+def _is_time_monotonic_call(node: ast.AST) -> bool:
+    return (
+        isinstance(node, ast.Call)
+        and not node.args
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "monotonic"
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "time"
+    )
+
+
+def _attr_calls(fn: ast.FunctionDef, attr: str) -> list[ast.Call]:
+    return [
+        n
+        for n in ast.walk(fn)
+        if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr == attr
+    ]
+
+
+@pytest.mark.safety
+def test_on_odom_stamps_the_tracker_with_the_monotonic_clock_only() -> None:
+    fn = _guardian_function("_on_odom")
+    calls = _attr_calls(fn, "on_odom")
+    assert len(calls) == 1, "_on_odom must feed the tracker exactly once"
+    (call,) = calls
+    assert len(call.args) == 5 and not call.keywords
+    assert _is_time_monotonic_call(call.args[4]), "tracker `now` must be time.monotonic()"
+    forbidden = {"header", "stamp", "twist"}
+    touched = {n.attr for n in ast.walk(fn) if isinstance(n, ast.Attribute)}
+    assert not (touched & forbidden), f"_on_odom must not read the message clock: {touched}"
+
+
+@pytest.mark.safety
+def test_check_safety_samples_one_monotonic_now_and_snapshot_receives_it() -> None:
+    check = _guardian_function("_check_safety")
+    first = next(
+        s for s in check.body if not (isinstance(s, ast.Expr) and isinstance(s.value, ast.Constant))
+    )
+    assert isinstance(first, ast.Assign) and len(first.targets) == 1
+    assert isinstance(first.targets[0], ast.Name) and first.targets[0].id == "now"
+    assert _is_time_monotonic_call(first.value), "the tick samples `now = time.monotonic()` first"
+    bot_state = _guardian_function("_bot_state")
+    snaps = _attr_calls(bot_state, "snapshot")
+    assert len(snaps) == 1, "_bot_state must call snapshot exactly once"
+    (snap,) = snaps
+    assert len(snap.args) == 2
+    assert isinstance(snap.args[1], ast.Name) and snap.args[1].id == "now", (
+        "snapshot gets the tick's now"
+    )
+    assert not any(_is_time_monotonic_call(n) for n in ast.walk(bot_state)), "no fresh clock here"
