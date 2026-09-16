@@ -410,9 +410,10 @@ class PoseGateTracker:
       deliberately NOT read — the gate has no speed term (``pose_gate_open``).
     * ``on_pose`` — a ``/amcl_pose`` arrived: reset the accumulators (gate closes).
 
-    ``snapshot`` returns ``(None, None)`` when odom has never arrived or has itself
-    gone stale, so the gate fails CLOSED (``pose_gate_open`` opens) and the Guardian
-    degrades to its CURRENT gate-less behaviour rather than going silent.
+    ``snapshot`` returns ``(None, None)`` when odom has never arrived, has itself
+    gone stale, or is stamped on a clock the tick cannot trust (negative age), so
+    the gate fails CLOSED (``pose_gate_open`` opens) and the Guardian degrades to
+    its CURRENT gate-less behaviour rather than going silent.
     """
 
     _disp: dict[str, float] = field(default_factory=dict)
@@ -449,14 +450,34 @@ class PoseGateTracker:
         self, bot: str, now: float, *, stale_after: float
     ) -> tuple[float | None, float | None]:
         """Return ``(disp, |Δyaw|)`` for ``BotState``; ``(None, None)`` when odom is
-        absent or older than ``stale_after`` (fail-closed).
+        absent, older than ``stale_after``, or stamped on a clock the tick cannot
+        trust (fail-closed).
 
-        ``stale_after`` itself is validated: a non-finite window would make the
-        ``>`` comparison False for NaN and silently keep serving stale odom
-        (fail-OPEN), so it is rejected explicitly.
+        ``stale_after`` itself is validated explicitly: a ``+inf`` window makes
+        ``age <= stale_after`` True for every age and would serve odom of any age
+        forever (fail-OPEN). NaN is already rejected by the interval below, so the
+        ``math.isfinite`` guard exists for ``+inf`` — do not drop it as redundant.
+
+        Freshness is the CLOSED INTERVAL ``0 <= now - t <= stale_after``, not the
+        bare upper bound. A monotonic clock cannot run backwards, so a NEGATIVE
+        age is not a freshness reading at all: it means ``t`` (from ``on_odom``)
+        and ``now`` were not taken on the same clock — reception stamped with wall
+        / ROS time while the tick runs on ``time.monotonic()`` (wall ~1.7e9 s vs
+        monotonic ~1e4 s: the age is hugely negative, so the upper bound alone
+        would call DEAD odom fresh forever, close the gate, and suppress
+        ``pose_stale`` for a robot blind on both sources), a clock reset, or a
+        reordered record. Such odom is 「不明」 (doc23:349 / doc12:608): the gate
+        fails closed and degrades to the CURRENT gate-less guard. The interval form
+        also rejects a non-finite ``now`` (NaN compares False on both sides) for
+        the same reason: a clock we cannot reason about is not evidence of
+        freshness. ``age == 0`` stays fresh (the odom callback and the tick may
+        share one reading) and the ``stale_after`` boundary stays strict. The
+        wired node cannot produce a negative age today (both sides are
+        ``time.monotonic()`` under a single-threaded ``rclpy.spin``); this is
+        defence in depth for the injected-clock seam, pinned by R-26 units.
         """
         t = self._odom_t.get(bot)
-        if t is None or not math.isfinite(stale_after) or now - t > stale_after:
+        if t is None or not math.isfinite(stale_after) or not (0.0 <= now - t <= stale_after):
             return (None, None)
         return (self._disp.get(bot), self._dyaw.get(bot))
 
