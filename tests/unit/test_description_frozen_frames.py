@@ -40,6 +40,21 @@ def test_pending_links_are_still_absent_from_xacro() -> None:
 
 
 @pytest.mark.unit
+def test_gnss_link_is_frozen_but_urdf_pending() -> None:
+    """The GNSS antenna frame name is contract; its URDF body is deliberately absent.
+
+    docs/mode-outdoor/03-localization-gnss-and-ekf.md:35 makes `bot1/base_link →
+    bot1/gnss_link` a robot_state_publisher (URDF static) edge, and :207 records the
+    additive move of the name into FROZEN_LINK_NAMES. The mount pose on the mast is
+    unmeasured (docs/mode-outdoor/06-hardware-delta-and-base-selection.md:182 / 同 :77),
+    so the link body must NOT exist yet — writing it would mean inventing an offset.
+    """
+    assert "gnss_link" in rd.FROZEN_LINK_NAMES
+    assert "gnss_link" in rd.PENDING_URDF_LINKS
+    assert 'name="gnss_link"' not in _xacro_text()
+
+
+@pytest.mark.unit
 def test_lidar_frame_is_lidar_link_never_laser() -> None:
     text = _xacro_text()
     assert "lidar_link" in text
