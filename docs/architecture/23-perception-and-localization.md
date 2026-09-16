@@ -348,7 +348,7 @@ Guardian 自身の**購読先を config（YAML）で切替**える。設定単�
 
 **③静止ゲートの許容境界（restrict-only との両立条件）**: 静止ゲートは「緩めるノブ」としては認めない。許容するのは**変位ゲート形のみ**——独立ソース（wheel odom）による**前回 pose 到着時からの累積変位 > ε でゲート開**（変位は単調非減少＝ラッチ内蔵）・**odom 不明/stale/非有限は fail-closed でゲート開**・走行中（変位・速度あり）の発火時刻が CURRENT と一致する**非緩和性を R-26 unit で機械的に証明できる**こと。この3条件を満たさない静止ゲート（例: 速度のみのゲート＝estop→速度0→ゲート閉の fail-open limit cycle を作る）は採用しない。**実装順の制約**: restrict-only の起動拒否は、下記 A-10 の 999 回避策の削除（＝静止ゲート実装）が**先行**しなければ全 runbook が起動拒否になるため、必ず静止ゲートの後に入れる。
 
-> ⑤ **startup_timeout が塞ぐ穴**: CURRENT は初回 pose 受信前（`pose_age is None`）を stale としない（`ws/src/warehouse_safety/warehouse_safety/guard_logic.py:128-145`・[12:506-513](12-infrastructure-common.md)）。これは「まだ localize していない停止中ロボットを誤 estop しない」ための正しい判断だが、**localizer が最初から一度も起動しなかった場合、免除が永遠に続いて沈黙する**。起動後 N 秒の期限を切れば「初回が来ない」も異常として捕まえられる。なお **AMCL の初回 publish は motion-gated ではない**（`set_initial_pose: true` 起動では最初の scan 到着で無条件に1回 publish する＝upstream `!first_pose_sent_` 分岐。要実測 A-10 M 系）ため、「健全なまま駐機起動した AMCL」が startup_timeout に誤検出される構造は無い。また本項の fault action は **estop でなく loud diagnostic event（非 estop・`blocked_timeout`→`recovery` と同じ low-harm クラス）を既定**とする——未 localize の停止ロボットへの estop は物理的に無意味で、L2 側は snapshot 不完全（`unknown_robot`）により dispatch を既に拒否している。
+> ⑤ **startup_timeout が塞ぐ穴**: CURRENT は初回 pose 受信前（`pose_age is None`）を stale としない（`warehouse_safety.guard_logic.evaluate` 規則 (4) の `pose_age is None` 免除・symbol 参照・[12:506-513](12-infrastructure-common.md)）。これは「まだ localize していない停止中ロボットを誤 estop しない」ための正しい判断だが、**localizer が最初から一度も起動しなかった場合、免除が永遠に続いて沈黙する**。起動後 N 秒の期限を切れば「初回が来ない」も異常として捕まえられる。なお **AMCL の初回 publish は motion-gated ではない**（`set_initial_pose: true` 起動では最初の scan 到着で無条件に1回 publish する＝upstream `!first_pose_sent_` 分岐。要実測 A-10 M 系）ため、「健全なまま駐機起動した AMCL」が startup_timeout に誤検出される構造は無い。また本項の fault action は **estop でなく loud diagnostic event（非 estop・`blocked_timeout`→`recovery` と同じ low-harm クラス）を既定**とする——未 localize の停止ロボットへの estop は物理的に無意味で、L2 側は snapshot 不完全（`unknown_robot`）により dispatch を既に拒否している。
 
 > 上記のキー名（`localization_profile` / `indoor_2d` / `startup_timeout`）は**本追補の TARGET 提案＝例示**であり、凍結契約でも既存 config キーでもない。実装時は `safety.pose_freshness_timeout`（`config/warehouse.base.yaml:21`・既定 1.0s）との関係を含め additive に設計する。
 
@@ -386,7 +386,7 @@ Autoware 系の localization 健全性監視の議論と同様、**localizer の
 ### A-9. 実装上の制約（R-26・CURRENT 不変）
 
 - Guardian は**安全機構**であり、改修には **R-26**（独立オラクルから期待値を取る unit ＋ mutation で赤くなること）が必須（[.claude/rules/safety.md](../../.claude/rules/safety.md) / [architecture/20 §9](20-dev-quality-and-testing.md)）。監視プロファイルは純ロジック（`guard_logic.py` 側）と rclpy 配線（`emergency_guardian.py` 側）に分けて、判定部を rclpy 非依存のまま保つ（[12:506-513](12-infrastructure-common.md) の既存方針を踏襲）。
-- 本追補では **CURRENT 実装を変更しない**。`emergency_guardian.py:99` の `f"/{bot}/amcl_pose"` ハードコードと `guard_logic.py:128-145` の `pose_stale` 判定はそのまま維持する（TARGET 設計の記録のみ）。
+- 本追補では **CURRENT 実装を変更しない**。`emergency_guardian.py`（`EmergencyGuardian.__init__` の購読・symbol 参照）の `f"/{bot}/amcl_pose"` ハードコードと `guard_logic.evaluate` 規則 (4) の `pose_stale` 判定はそのまま維持する（TARGET 設計の記録のみ）。
 - Guardian の編集境界は safety-state トラック所有。実装スライスはそのトラックの Issue 経由で切る（[.claude/rules/parallel-workflow.md](../../.claude/rules/parallel-workflow.md) §7.1）。
 
 ### A-10. OQ 追加（§8 には見出し番号 11 のみ追加済み・詳細は本節が正本）

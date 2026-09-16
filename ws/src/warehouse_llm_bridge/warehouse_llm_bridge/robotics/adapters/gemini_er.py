@@ -57,13 +57,28 @@ _DEFAULT_AUDIO_MIME = "audio/wav"  # PROBE-1/2 froze wav (doc06 §5:11-12)
 # non-png frame as png beyond this measured default.
 _DEFAULT_IMAGE_MIME = "image/png"
 
-# Instruction schema constraints handed to ER (mirrors tests/live/_er_live_client.py so the live
-# request shape is identical). Robots/actions/target are constrained; no URL/topic/velocity/coord.
+# Pixel coordinate contract handed to ER (#699 / doc03 "ER request assembly" 2026-09-16 追補).
+# SINGLE SOURCE: the live helpers (tests/live/_er_live_client.py, test_er_handoff_live.py) import
+# this constant so the production and live request texts cannot drift again. Gemini's native
+# ``point`` output is ``[y, x]`` normalized 0-1000 (robotics-spatial docs), so the order is spelled
+# out. The L3 Visual Resolver consumes ``Detection.pixel`` in the calibration artifact's pixel
+# space (dev-sim-v1 = raw px); converting this normalized value to that space is the separate
+# L4->L3 handoff slice tracked in #699 — until it lands, live ER pixels resolve to unresolved
+# (0-dispatch) by construction (doc02 2026-09-16 追補).
+PIXEL_RULE = (
+    "detections[].pixel is [u, v]: u = horizontal position from the LEFT edge, v = vertical "
+    "position from the TOP edge, both normalized to 0-1000 of the provided image (this is NOT the "
+    "[y, x] order of point outputs); use [0, 0] if unknown."
+)
+
+# Instruction schema constraints handed to ER (doc03 "共通 instruction text" + PIXEL_RULE; the
+# live helpers build the same rule set from the same constant). Robots/actions/target are
+# constrained; no URL/topic/velocity/coord.
 _SCHEMA = (
     "You are Gemini Robotics-ER, the visual task commander. Return ONLY JSON matching "
     "robotics_plan_draft.v0 (plan_id, detections[], task_graph[]). Robots are only the known "
     "robots; action is one of the allowed actions; target is a detection id. Do NOT include any "
-    "URL, ROS topic, endpoint, velocity, motor or coordinate goal field."
+    "URL, ROS topic, endpoint, velocity, motor or coordinate goal field. " + PIXEL_RULE
 )
 
 

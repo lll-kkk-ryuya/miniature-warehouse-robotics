@@ -198,14 +198,19 @@ def dev_calibration_yaml(
 ) -> str:
     """The ``config/<env>/calibration/<id>.yaml`` artifact content (doc08 §3: stem ≡ camera_id).
 
-    Exactly the 5 doc-literal fields (doc02:149, verbatim in doc08 §3) with the verified
-    red/blue geometry — no extra keys, no code-constant thresholds beyond the artifact itself.
+    The 5 doc-literal fields (doc02:149, verbatim in doc08 §3) + the two additive pixel-space
+    fields of #699 slice 2 (doc02 2026-09-16 追補 ②), with the verified red/blue geometry — no
+    other keys, no code-constant thresholds beyond the artifact itself.
     """
     artifact: dict[str, Any] = {
         "camera_id": calibration_id,
         "map_frame": "map",
         "homography": HOMOGRAPHY,
         "reprojection_error": reprojection_error,
+        # #699 slice 2: declared pixel space (doc02 2026-09-16 追補 ②). The dev sim camera is
+        # DEFINED as 1000x1000 so normalized 0-1000 == the raw fixture pixels above.
+        "pixel_space": "normalized_0_1000",
+        "image_size": [1000, 1000],
         "valid_polygon": VALID_POLYGON,
     }
     return yaml.safe_dump(artifact, sort_keys=False, indent=2, default_flow_style=False)
@@ -234,6 +239,8 @@ def site_calibration_json(
             "map_frame": "map",
             "homography": HOMOGRAPHY,
             "reprojection_error": reprojection_error,
+            "pixel_space": "normalized_0_1000",
+            "image_size": [1000, 1000],
             "valid_polygon": VALID_POLYGON,
         },
         indent=2,
@@ -440,7 +447,8 @@ def test_geometry_red_blue_snap_via_dev_calibration():
 @pytest.mark.safety
 def test_checked_in_dev_calibration_artifact_matches_fixture_geometry():
     """The committed ``config/dev/calibration/dev-sim-v1.yaml`` (doc08 §3 dev artifact) parses
-    to exactly the 5 frozen fields with the verified geometry; the stem IS the camera_id."""
+    to exactly the 5 frozen fields + the 2 additive pixel-space fields (#699 slice 2) with the
+    verified geometry; the stem IS the camera_id."""
     artifact_path = _REPO_ROOT / "config" / "dev" / "calibration" / f"{CALIBRATION_ID}.yaml"
     parsed = yaml.safe_load(artifact_path.read_text(encoding="utf-8"))
     assert set(parsed) == {
@@ -448,8 +456,11 @@ def test_checked_in_dev_calibration_artifact_matches_fixture_geometry():
         "map_frame",
         "homography",
         "reprojection_error",
+        "pixel_space",  # #699 slice 2 additive (doc02 2026-09-16 追補 ②)
+        "image_size",
         "valid_polygon",
     }
+    assert parsed["pixel_space"] == "normalized_0_1000" and parsed["image_size"] == [1000, 1000]
     assert parsed["camera_id"] == artifact_path.stem == CALIBRATION_ID
     # R-26 self-cert hole guard: the dev artifact must carry a real, finite reprojection_error
     # (a ``null`` here would skip resolver.py:172 Gate 2 — the exact hole #416 closes).

@@ -119,3 +119,13 @@ class GeminiErAdapter:
 ## 【2026-08-09 追補】`overhead_image_ref` は改名せず意味を再定義（ADR-0007）
 
 俯瞰カメラ不使用により、`ErTaskRequest.overhead_image_ref`（:43・:104）の実体は**搭載 HP60C のカメラフレーム参照**となる。**フィールド名は改名しない**（`er_task.py`・adapter・test への波及回避）。「Adapter は俯瞰画像を受ける」（:11）は「搭載カメラフレームを受ける」と読み替える。
+
+## 【2026-09-16 追補】共通 instruction text に pixel 座標契約を追加（#699・末尾追記＝行参照非破壊）
+
+[:104](03-er-adapter-skeleton.md:104) の「共通: instruction text = schema 制約（robots / action / target / 禁止項目）＋ transcript」は `detections[].pixel` の座標系に沈黙していた。production adapter `_SCHEMA`（`robotics/adapters/gemini_er.py`）はこれを忠実に写して pixel 節を持たず、live helper（`tests/live/_er_live_client.py`）は「`[u,v]` 0–1000」を独自に足していた。以下を**共通 instruction text の一部として追補**する（[提案]・bridge-local・`RoboticsPlan draft` は未凍結 = [06 §1](06-unfrozen-contract-resolutions.md)）。
+
+- **pixel 節（逐語）**: `detections[].pixel is [u, v]: u = horizontal position from the LEFT edge, v = vertical position from the TOP edge, both normalized to 0-1000 of the provided image (this is NOT the [y, x] order of point outputs); use [0, 0] if unknown.`
+- **根拠**: Gemini Robotics-ER の native pointing は `[y, x]` 0–1000 正規化（<https://ai.google.dev/gemini-api/docs/robotics-spatial>・参照日 2026-09-16 [D]・ER 2 でも不変）。draft schema の `pixel` は (u, v) = (x, y) 順（[02:138](02-l3-planning-core.md:138)）なので、**順序を逐語で指定**して軸入れ替えを防ぐ。正規化 0–1000 は model が確実に出せる尺度（raw px を要求すると画像解像度を model が知らないため信頼できない）。
+- **単一ソース**: 上記文字列は `gemini_er.py` の `PIXEL_RULE` 定数 1 か所。`_SCHEMA` と live helper 2 本（`_er_live_client.py` / `test_er_handoff_live.py`）は同定数を import（`tests/unit/test_er_pixel_rule_single_source.py` で pin）。
+- **消費側との整合**: L3 Visual Resolver は `Detection.pixel` を **calibration artifact の pixel 空間**で消費する（[02 2026-09-16 追補](02-l3-planning-core.md)）。ER の正規化値 → artifact 空間の変換は **artifact の `pixel_space: normalized_0_1000` + `image_size` 宣言を Visual Resolver が homography 直前で適用**する（[02 2026-09-16 追補 ②](02-l3-planning-core.md)・#699 slice 2）。宣言の無い（`raw`）artifact では正規化値がそのまま掛かるため、ER 経路の artifact は必ず宣言する。
+- 禁止項目（URL / topic / endpoint / velocity / motor / coordinate goal）は不変。request の part 構成（[:107](03-er-adapter-skeleton.md:107) / [:109](03-er-adapter-skeleton.md:109)）も不変。

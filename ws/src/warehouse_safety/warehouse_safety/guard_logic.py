@@ -157,6 +157,37 @@ def pose_gate_open(
     return disp > motion_epsilon or abs(dyaw) > angular_epsilon
 
 
+def age_is_unknown(age: float | None) -> bool:
+    """Is this arrival age NOT a reading the reflex can trust?
+
+    ``None`` = never received. A NEGATIVE age cannot come from one monotonic clock
+    (it cannot run backwards) and NaN compares False against every window, so both
+    are "age unknown" — the same class as never received, never "fresh"
+    (doc12 末尾【2026-09-16 追補】(3) 追記②). The scan rule then falls back to the
+    odom witness (fail-closed); the pose rule treats it as STALE and lets the
+    displacement gate decide (fail-closed; only never-received ``None`` keeps the
+    startup exemption of doc12:509). ``+inf`` is NOT unknown:
+    it is older than any window and the strict ``>`` already fails closed on it.
+    The wired node cannot produce a negative / NaN age: both sides of the
+    subtraction are readings of the same ``time.monotonic()`` clock, and the
+    single-threaded ``rclpy.spin`` orders them (arrival before tick). This is
+    defence in depth for callers that inject another clock into the pure logic —
+    the sibling of ``PoseGateTracker.snapshot``'s closed interval (#684).
+    """
+    return age is None or math.isnan(age) or age < 0.0
+
+
+def _reportable_age(age: float | None) -> float | None:
+    """The age an ``/emergency/event`` detail may carry: a finite reading, else ``None``.
+
+    Unknown (None / NaN / negative) and ``+inf`` ages never reach the JSON event —
+    ``json.dumps`` would emit bare ``NaN`` / ``Infinity`` tokens, which doc12:293 keeps
+    out of every consumer's parser. ``None`` there means "age unknown", the same
+    word the rules use.
+    """
+    return None if age_is_unknown(age) or not math.isfinite(age) else age
+
+
 def validate_scan_freshness_timeout(value: object) -> float:
     """Validate ``safety.scan_freshness_timeout`` at startup (doc12 末尾【2026-09-16 追補】(3)).
 
@@ -201,11 +232,13 @@ def evaluate(
        likely lost, doc12 §freshness guard). ``pose_age`` is None until the first
        pose, so a not-yet-localized bot is never estopped at startup (#126).
        The gate (doc23:349 = A-5③) suppresses ONLY the parked-robot false positive
-       (OQ-11), never a moving one — see ``pose_gate_open``.
+       (OQ-11), never a moving one — see ``pose_gate_open``. A negative / NaN
+       ``pose_age`` is stale (``age_is_unknown``, 追記②) and goes through the gate too.
     5. per-bot latched operator emergency-stop request (doc05 §5) -> estop while the
        fleet-wide ``OperatorStopLatch`` is engaged (explicit clear only, never time).
     6. per-bot /{bot}/scan arrival older than ``scan_freshness_timeout`` (strict ``>``),
        OR never received while odom proves the bot is alive -> estop ``scan_stale``
+       (a negative / NaN age is "unknown" = never received, ``age_is_unknown``, 追記②)
        (doc12 末尾【2026-09-16 追補】(3)): Humble's nav2_collision_monitor drops a stale
        source's points and passes cmd_vel through (fail-open), so lidar loss must stop
        the bot HERE. Level (auto-clears when scans resume), never latched.
@@ -264,22 +297,32 @@ def evaluate(
     # doc23 A-5③: gated by odom displacement so a PARKED bot under a motion-gated
     # localizer (AMCL) is not falsely estopped (OQ-11) — the gate is fail-closed and
     # provably non-relaxing while moving, so it never delays a genuine estop.
+    # 追記②: a negative / NaN pose_age (received, but not a reading of this clock) is
+    # STALE and is handed to the gate like any stale pose (fail-closed); only never-
+    # received None keeps the startup exemption of doc12:509. The event detail carries
+    # a FINITE age or null (never NaN / Infinity into JSON, doc12:293).
     for b in (bot_a, bot_b):
-        if b.pose_age is not None and b.pose_age > pose_freshness_timeout:
-            if not pose_gate_open(
-                b,
-                motion_epsilon=pose_gate_motion_epsilon,
-                angular_epsilon=pose_gate_angular_epsilon,
-            ):
-                continue  # parked + odom healthy: silence is normal, not a fault
-            decisions.append(
-                Decision(
-                    b.bot,
-                    "estop",
-                    "pose_stale",
-                    {"pose_age": b.pose_age, "freshness_timeout": pose_freshness_timeout},
-                )
+        if b.pose_age is None:
+            continue  # not yet localized: the documented startup exemption
+        if not (age_is_unknown(b.pose_age) or b.pose_age > pose_freshness_timeout):
+            continue  # fresh
+        if not pose_gate_open(
+            b,
+            motion_epsilon=pose_gate_motion_epsilon,
+            angular_epsilon=pose_gate_angular_epsilon,
+        ):
+            continue  # parked + odom healthy: silence is normal, not a fault
+        decisions.append(
+            Decision(
+                b.bot,
+                "estop",
+                "pose_stale",
+                {
+                    "pose_age": _reportable_age(b.pose_age),
+                    "freshness_timeout": pose_freshness_timeout,
+                },
             )
+        )
 
     # (5) operator emergency-stop request (doc05 §5) -> estop. The latch lives in
     # OperatorStopLatch (node-fed); here the flag is just another LEVEL input, so
@@ -295,15 +338,19 @@ def evaluate(
     # bot alive (odom_seen): a real bot whose lidar never came up fails CLOSED, while an
     # absent bot (single-bot ADR-0006 with _BOTS fixed at 2) stays silent. Precautionary
     # and additive: it can only ADD an estop, and it auto-clears once scans resume.
+    # 追記②: a negative / NaN age is "unknown" = the None rule (age_is_unknown), and the
+    # event detail carries only a FINITE age — never NaN / Infinity into JSON (doc12:293).
     for b in (bot_a, bot_b):
-        stale = b.odom_seen if b.scan_age is None else b.scan_age > scan_freshness_timeout
+        unknown = age_is_unknown(b.scan_age)
+        stale = b.odom_seen if unknown else b.scan_age > scan_freshness_timeout
         if stale:
+            reported = _reportable_age(b.scan_age)
             decisions.append(
                 Decision(
                     b.bot,
                     "estop",
                     "scan_stale",
-                    {"scan_age": b.scan_age, "freshness_timeout": scan_freshness_timeout},
+                    {"scan_age": reported, "freshness_timeout": scan_freshness_timeout},
                 )
             )
 

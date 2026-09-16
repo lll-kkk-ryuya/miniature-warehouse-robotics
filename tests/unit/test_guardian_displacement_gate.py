@@ -880,4 +880,9 @@ def test_check_safety_samples_one_monotonic_now_and_snapshot_receives_it() -> No
     assert isinstance(snap.args[1], ast.Name) and snap.args[1].id == "now", (
         "snapshot gets the tick's now"
     )
-    assert not any(_is_time_monotonic_call(n) for n in ast.walk(bot_state)), "no fresh clock here"
+    clock_reads = [
+        n
+        for n in ast.walk(bot_state)
+        if isinstance(n, ast.Attribute) and isinstance(n.value, ast.Name) and n.value.id == "time"
+    ]
+    assert clock_reads == [], "no clock read of any kind inside _bot_state (one `now` per tick)"

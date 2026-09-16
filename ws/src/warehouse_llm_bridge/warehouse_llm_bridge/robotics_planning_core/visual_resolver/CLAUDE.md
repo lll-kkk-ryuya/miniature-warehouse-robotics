@@ -42,8 +42,11 @@ marked as such in each module. It stays bridge-local until XER1-XER2 stabilize t
   `Detection` — `Detection.pixel: list[int]` (u, v) IS the per-target pixel (draft already
   carries it, so NO bridge-local Detection input type was added; the draft was NOT modified).
 - `warehouse_llm_bridge.robotics_planning_core.validator.seams.Calibration` — the LANDED
-  5-field artifact (`camera_id, map_frame, homography, reprojection_error, valid_polygon`),
-  NOT redefined. (`CalibrationLoader` / `InMemoryCalibrationLoader` used in tests.)
+  5-field artifact (`camera_id, map_frame, homography, reprojection_error, valid_polygon`)
+  + the additive optional `pixel_space` (`raw` default / `normalized_0_1000`) and
+  `image_size=[W, H]` of #699 slice 2 (doc02 2026-09-16 追補 ②): `normalized_0_1000` scales
+  `Detection.pixel` by `W/1000, H/1000` before the homography; declared-but-invalid space =
+  `NO_CALIBRATION`, normalized value outside 0..1000 = `OFF_MAP` (fail-closed). NOT redefined. (`CalibrationLoader` / `InMemoryCalibrationLoader` used in tests.)
 - `warehouse_interfaces.locations.KNOWN_LOCATIONS` (the frozen location vocabulary; names only).
 
 ## adjudicated bridge-local decisions (recorded per docs-first)
