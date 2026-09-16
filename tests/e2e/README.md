@@ -239,7 +239,7 @@ ros2 topic echo /bot1/cmd_vel/nav2               # breach 中は linear/angular 
 #   (a) 実 /scan 途絶 → STOP 発火: /bot1/scan の publisher（sim lidar bridge）を止め、node-level
 #       source_timeout 1.0（yaml:58）経過後に cmd_vel/nav2 が止まることを確認（lidar 途絶 stop, R-39）。 ※Jazzy 意味論。Humble 1.1.20 では止まらない（fail-open）＝doc12 末尾【2026-09-16 追補】
 #   (b) virtual_scan の >1.0m 無送信 → STOP 非発火: 2台を 1.0m 超に離し、通常走行で誤 STOP しないことを
-#       確認（per-source source_timeout 0.0, yaml:90 ＝「無送信＝相手居ない」を fault 扱いしない）。 ※config PR で撤去済（Humble は per-source key 無し）。**この Jazzy コンテナで回すなら `virtual_scan: source_timeout: 0.0` をローカルで戻す**（無いと >1.0m で invalid source STOP）
+#       確認（per-source source_timeout 0.0, yaml:90 ＝「無送信＝相手居ない」を fault 扱いしない）。 ※config PR で撤去済（Humble は per-source key 無し）。**この Jazzy コンテナでは `nav2_bringup.launch.py` が `ROS_DISTRO`（humble／iron 以外）を見て `virtual_scan.source_timeout: 0.0` を launch 注入する＝ローカル戻し不要**（doc12 追補 (2) 追記・impl = bringup PR `feat/collision-monitor-jazzy-inject`。launch を経ない `ros2 run` 手起動だけは、無いと >1.0m で invalid source STOP）
 ```
 
 **注**: 本 PoC は **物理反射（C++・amcl 非律速）** の検証であり、Guardian の policy 層（battery / event /

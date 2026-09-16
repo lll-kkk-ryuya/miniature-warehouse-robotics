@@ -61,7 +61,7 @@
 | 箇所 | 状態 | 症状 |
 |---|---|---|
 | `deploy/dev/Dockerfile` | **jazzy のまま** | `run-sim-cockpit.sh` は `mwr-sim:humble` を探すが Dockerfile は jazzy を入れる → **中身が jazzy の `humble` タグ**が焼かれる。**最優先で解消**。〔**2026-09-16 ラベル側で解消**: #685 で `run-sim-cockpit.sh` の既定を `mwr-sim:jazzy` に改め、「中身が jazzy の `humble` タグ」は焼かれなくなった。Dockerfile の Humble 化（Fortress）は §Open「Gazebo をどうするか」のまま＝Humble で 2 台 Gazebo E2E はまだ回せない〕 |
-| `deploy/dev/run-mode-a-live.sh` / `install-nav2-e2e.sh` | jazzy のまま | cockpit と distro が食い違う |
+| `deploy/dev/run-mode-a-live.sh` / `install-nav2-e2e.sh` | jazzy のまま | cockpit と distro が食い違う〔2026-09-16: collision_monitor の distro 差（Jazzy の per-source `source_timeout`）は `nav2_bringup.launch.py` の `ROS_DISTRO` 条件注入で吸収＝[doc12 追補 (2) 追記](../architecture/12-infrastructure-common.md:695)。yaml は Humble 正のまま〕 |
 | `firmware/platformio.ini` / `firmware/spike/**` | jazzy のまま | micro-ROS 側の distro 不一致 |
 | `README.md` / `AGENTS.md` / `.claude/CLAUDE.md` | jazzy のまま | 新規セッションが Jazzy 前提で判断してしまう |
 
