@@ -175,7 +175,7 @@ launcher [`deploy/dev/run-er-hermes.sh`](../../dev/run-er-hermes.sh)、secrets �
 | 項目 | 値 | 出所 |
 |---|---|---|
 | provider | `google`（native Gemini） | `config.lean.yaml` |
-| model | `gemini-robotics-er-1.6-preview` | `config.lean.yaml`（API server は request の `model` を無視し server-side 固定） |
+| model | `gemini-robotics-er-2-preview`（= `ER_DIRECT_MODEL_ID`・`robotics/er_models.py`・unit pin。`1.6-preview` は 2026-08-31 shutdown） | `config.lean.yaml`（API server は request の `model` を無視し server-side 固定） |
 | `platform_toolsets.api_server` | `[]`（明示空＝**0 tools**。unset は 35 tools default） | `config.lean.yaml` |
 | memory | off（`memory_enabled: false` / `user_profile_enabled: false`） | `config.lean.yaml` |
 | API server port | `8644`（**personal 8642 とも unforked fallback 8643 とも分離**・専用 home `~/.hermes-mwr-er-fork`・`ensure_env_port()` が起動時 8644 に再固定。`PORT`/`API_SERVER_PORT` で可変） | `.env.example` / `run-er-gateway.sh` |

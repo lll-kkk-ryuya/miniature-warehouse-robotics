@@ -66,6 +66,6 @@ docker exec mwr-humble-guardian bash /scratch/live/harness.sh
 - **Gazebo（Humble）**: 未実施（ADR-0008 §Open）。`deploy/dev/Dockerfile` は Jazzy ベース（Gazebo Harmonic）。
 - **実機（ROSMASTER M1）**: 未実施。T-mini Plus driver は未配線で、配線時は Guardian が購読する契約 topic
   `/bot1/scan`（doc03:78）の namespace に publish／remap すること（素の `/scan` だと odom 到着後に
-  `scan_stale` で止まり続ける＝fail-closed）。
+  `scan_stale` で止まり続ける＝fail-closed）。配線順序（LiDAR→`/bot1/scan` を `odom_enabled: true` より先）の正本 = [docs/mode-m1/03 末尾【2026-09-16 追補②】](../../../docs/mode-m1/03-joystick-teleop-bringup.md)。
 - `stop_overlay_enabled`（m1_driver・既定 false）が OFF の構成では、`scan_stale` は Nav2 経路（twist_mux prio100）
   だけを止め、twist_mux を経ない joystick 直 publish は止まらない（mode-m1/05 §4 の設計どおり）。

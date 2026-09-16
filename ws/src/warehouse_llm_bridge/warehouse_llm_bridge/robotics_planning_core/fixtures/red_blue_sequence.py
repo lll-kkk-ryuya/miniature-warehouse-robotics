@@ -53,7 +53,7 @@ def direct_envelope() -> dict[str, Any]:
     """Gemini ``generateContent`` response shape (direct transport)."""
     return {
         "candidates": [{"content": {"role": "model", "parts": [{"text": _content_str()}]}}],
-        "modelVersion": "gemini-robotics-er-1.6-preview",
+        "modelVersion": "gemini-robotics-er-1.6-preview",  # recorded 2026-07 live envelope; NOT the current id (er_models.py, #690)
     }
 
 

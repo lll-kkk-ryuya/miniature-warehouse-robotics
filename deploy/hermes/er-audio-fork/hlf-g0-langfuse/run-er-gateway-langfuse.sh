@@ -398,7 +398,7 @@ launch_gateway_langfuse() {
   local port; port="$(resolve_port)"
   log "launching lean ER gateway + Langfuse plugin: home=$HERMES_HOME port=$port"
   log "PYTHONPATH = <langfuse libs>:<patched worktree> (input_audio patch AND langfuse both load)"
-  log "model=gemini-robotics-er-1.6-preview provider=google tools=[] memory=off; plugin=$PLUGIN_KEY ON"
+  log "model=gemini-robotics-er-2-preview provider=google tools=[] memory=off; plugin=$PLUGIN_KEY ON"
   log "(secrets incl. HERMES_LANGFUSE_* sourced from \$HERMES_HOME/.env — never printed)"
   exec env \
     HERMES_HOME="$HERMES_HOME" \

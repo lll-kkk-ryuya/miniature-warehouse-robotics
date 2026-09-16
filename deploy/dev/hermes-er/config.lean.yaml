@@ -23,7 +23,7 @@
 # tolerates the ```json fence the agent formats its answer with).
 
 model:
-  default: "gemini-robotics-er-1.6-preview"
+  default: "gemini-robotics-er-2-preview" # = ER_DIRECT_MODEL_ID (warehouse_llm_bridge/robotics/er_models.py, pinned by unit; 1.6 shut down 2026-08-31)
   provider: "google" # native Gemini provider; key from GOOGLE_API_KEY/GEMINI_API_KEY in .env
 
 # Strip the agent loop -> near-thin transport (no raw/proxy mode exists; this is the lean path).

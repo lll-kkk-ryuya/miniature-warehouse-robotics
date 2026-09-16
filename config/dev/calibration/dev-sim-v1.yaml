@@ -22,6 +22,14 @@ homography:
     - 0.0
     - 1.0
 reprojection_error: 1.0
+# #699 slice 2 (docs/mode-x-er/02 2026-09-16 追補 ②): the artifact declares the pixel space its
+# homography was fitted for. ER's contract (doc03 PIXEL_RULE) is [u, v] normalized 0-1000 of the
+# frame; this synthetic top-down camera is DEFINED as a 1000x1000 frame, so normalized == raw and
+# the fixture pixels above (420/310, 810/280, 131) are unchanged. Absent pixel_space == "raw".
+pixel_space: normalized_0_1000
+image_size:
+  - 1000
+  - 1000
 valid_polygon:
   - - -0.5
     - -0.5

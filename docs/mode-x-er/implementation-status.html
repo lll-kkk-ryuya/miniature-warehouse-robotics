@@ -216,7 +216,7 @@
       <div class="t"><span class="lyr" style="background:var(--plugin)">L4-ER-in-Hermes</span>② Text + image → lean Hermes ER gateway <span class="port">8643</span> <span style="font-weight:400;color:var(--muted);font-size:11.5px">OpenAI-compat <code>/v1/chat/completions</code>・<b>8644 へ統合 retire 中</b></span> <span class="role">offline-wired</span></div>
       <span class="badge b-done">done</span>
     </div>
-    <div class="s"><code>run-er-hermes.sh</code> + <code>config.lean.yaml</code>: isolated <code>HERMES_HOME</code>, provider google, model <code>gemini-robotics-er-1.6-preview</code>, zero tools. <b>ER INSIDE Hermes for text/image.</b> ADR-0002 により <b>8644 fork へ統合し retire していく CURRENT 実体</b>（cycle は #419 で adapter を構築・offline=fixture／live gateway 200 は gate）。</div>
+    <div class="s"><code>run-er-hermes.sh</code> + <code>config.lean.yaml</code>: isolated <code>HERMES_HOME</code>, provider google, model <code>gemini-robotics-er-2-preview</code> (= <code>ER_DIRECT_MODEL_ID</code>, #690; 1.6 shut down 2026-08-31), zero tools. <b>ER INSIDE Hermes for text/image.</b> ADR-0002 により <b>8644 fork へ統合し retire していく CURRENT 実体</b>（cycle は #419 で adapter を構築・offline=fixture／live gateway 200 は gate）。</div>
   </div>
   <div class="p-arrow">▼</div>
 
