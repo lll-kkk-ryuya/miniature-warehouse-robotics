@@ -68,7 +68,7 @@ class SimBatteryPublisher(Node):
 
         # battery feeds the critical-battery estop (warehouse_safety, 50ms reflex): publish
         # RELIABLE so no reading is dropped. RELIABLE offered is compatible with the
-        # BEST_EFFORT subscribers in state_cache.py:75 and emergency_guardian.py:104.
+        # BEST_EFFORT subscribers in state_cache.py:75 and emergency_guardian.py (sensor_qos).
         qos = QoSProfile(
             reliability=ReliabilityPolicy.RELIABLE, history=HistoryPolicy.KEEP_LAST, depth=10
         )

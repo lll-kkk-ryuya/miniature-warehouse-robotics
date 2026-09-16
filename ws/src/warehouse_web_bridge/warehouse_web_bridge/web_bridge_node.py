@@ -51,7 +51,7 @@ from warehouse_web_bridge.trace import make_trace_deriver
 SNAPSHOT_TOPIC = "/state_cache/snapshot"
 
 # Matching QoS (doc22 §6:181-184). Producers are all RELIABLE/VOLATILE/KEEP_LAST/10:
-# State Cache (state_cache.py:59-61), Emergency (emergency_guardian.py:117), /llm/* depth-10
+# State Cache (state_cache.py:59-61), Emergency (emergency_guardian.py _event_pub), /llm/* depth-10
 # default, character/negotiation default String pubs. late-join is seeded from events.jsonl
 # via since_seq, never DDS latch (doc22:185).
 _QOS = QoSProfile(
