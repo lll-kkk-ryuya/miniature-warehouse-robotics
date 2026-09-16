@@ -404,8 +404,8 @@ class SensorHealthMonitor:
         # age is hugely negative and never exceeds stale_after_s) — a dead sensor
         # would read OK, the exact fail-open this module exists to close. A clock
         # we cannot reason about is not evidence of freshness.
-        # The repo idiom is the bare upper bound (guard_logic.py:407
-        # ``now - t > stale_after``); this guard is the additional half.
+        # Same closed interval as guard_logic.PoseGateTracker.snapshot
+        # (``0 <= now - t <= stale_after`` since #684): the two are siblings.
         if age < 0.0 or age > limits.stale_after_s:
             return SourceVerdict.STALE
 

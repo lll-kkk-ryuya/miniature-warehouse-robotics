@@ -41,7 +41,7 @@
 
 ### 3-1. 確定した現状の事実（2026-08-31〜09-07 検証）
 
-1. `/emergency/event` は **rising edge のみ**発行される（`guard_logic.py:385-416` EdgeLatch・[doc12:185](../architecture/12-infrastructure-common.md)）。**解消（falling edge）は通知されない**。
+1. `/emergency/event` は **rising edge のみ**発行される（`guard_logic.EdgeLatch`＝`ws/src/warehouse_safety/warehouse_safety/guard_logic.py`・行 pin しない＝:188 の anchor 規律・[doc12:185](../architecture/12-infrastructure-common.md)）。**解消（falling edge）は通知されない**。
 2. state.json の `emergency.active` は**解除経路の無い受信ログ**（`aggregator.py:165-182`・clear プロトコルは [doc12:342](../architecture/12-infrastructure-common.md) が Phase-2 TODO と自認）。
 3. L2 の `PolicyGate.set_emergency` は長らく**呼び出し元ゼロ＝未配線**で、emergency 中でも L2 は新規 dispatch を拒否できなかった（`check_emergency` never-fire）。**この穴は #593（2026-09-07 land）の level mirror が閉じた** — L4 `llm_bridge` が `/bot{n}/cmd_vel/emergency` を購読し、`WarehouseTools.policy_gate`（read-only property）経由で `set_emergency` を反映、無信号が `policy_gate.emergency_clear_after_s`（既定 1.0s・厳密 `>`・tighten-only floor）を超えたら clear する（正本 = [doc12:616](../architecture/12-infrastructure-common.md) 追補②。実装側 anchor は行 pin せず契約の形で指す = §References）。
 4. **平常時の Guardian 生存を運ぶチャネルは存在しない**。state.json の timestamp は State Cache 由来（Guardian 死でも更新され続ける）。Guardian 単独死は「0.5 秒後に走行が再開する」既知の部分故障モード（[mode-x-er/10:459-461](../mode-x-er/10-room-scale-safety-review.md)）。#593 以降、**estop 継続中に限り** level 信号の継続受信が「Guardian がこの bot を停止させ続けている」の ground truth になる（[doc12:622](../architecture/12-infrastructure-common.md)）が、平常時の生存証明が無い点は不変。
