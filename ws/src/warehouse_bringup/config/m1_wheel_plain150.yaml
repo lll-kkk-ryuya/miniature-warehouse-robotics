@@ -32,20 +32,26 @@
 #   ros2 run warehouse_m1_driver m1_driver --ros-args \
 #     --params-file "$(ros2 pkg prefix warehouse_bringup)/share/warehouse_bringup/config/m1_wheel_plain150.yaml"
 #
-# DO NOT APPLY IT BEFORE BOTH OF THESE ARE TRUE
-# ---------------------------------------------
-#  1. The 150 mm wheels are PHYSICALLY FITTED. With the stock 80 mm wheels on,
-#     k = 1.875 makes the robot drive at 1/1.875 of the commanded speed — not
-#     unsafe, but every odom distance is then 1.875x too long and the EKF is
-#     fed a lie. The dangerous direction is the mirror image: 150 mm fitted
-#     WITHOUT this file means 1.875x too FAST while the clamp still reports
-#     0.3 m/s (docs/mode-outdoor/07-drivetrain-and-wheel-sizing.md:252 —
-#     the reason an out-of-range k is fail-closed instead of falling back to 1.0).
-#  2. The G-W gates of 07 §10 (docs/mode-outdoor/07-drivetrain-and-wheel-sizing.md:190-201,
-#     :267-270) have been run: G-W1 (caliper: 軸間・輪距・地上高) fixes track_m,
-#     G-W4 (UMBmark) calibrates k and yaw_scale, `m1_probe` fixes wheel_signs.
-#     Until then the odometry published with this file is PROVISIONAL —
-#     usable for bring-up observation, not for anything that navigates on it.
+# WHEN TO APPLY IT — one condition, and it is not the G-W gates
+# --------------------------------------------------------------
+# APPLY IT AS SOON AS THE 150 mm WHEELS ARE PHYSICALLY FITTED. That is the
+# whole condition. Running 150 mm WITHOUT this file is the dangerous state:
+# 1.875x too FAST while the clamp still reports 0.3 m/s
+# (docs/mode-outdoor/07-drivetrain-and-wheel-sizing.md:252 — the reason an
+# out-of-range k is fail-closed instead of falling back to 1.0). The mirror
+# mistake (this file applied while the stock 80 mm wheels are on) is wrong but
+# not dangerous: the robot drives at 1/1.875 of the command and every odom
+# distance comes out 1.875x too long.
+#
+# WHAT THE G-W GATES GATE — the USE of the odometry, not this file
+# ----------------------------------------------------------------
+# Until the G-W gates of 07 §10 (docs/mode-outdoor/07-drivetrain-and-wheel-sizing.md:190-201,
+# :267-270) have run — G-W1 (caliper) fixes track_m, G-W4 (UMBmark) calibrates
+# k and yaw_scale, `m1_probe` fixes wheel_signs — the odometry published with
+# this file is PROVISIONAL: use it to watch the numbers move during bring-up,
+# do not navigate on it. Note the direction of that dependency: G-W4 is the
+# test that CALIBRATES k, so it cannot be run unless this file is already
+# applied. Applying it is a PREREQUISITE of the gates, never their result.
 #
 # RETREAT PATH (144 mm, 案 A)
 # ---------------------------
@@ -55,9 +61,17 @@
 #
 # WHAT IS DELIBERATELY ABSENT
 # ---------------------------
+# yaw_scale is NOT set here. 07:253 gives its 150 mm value as 実測 (G-W4/G-W9)
+# — a measurement, not a number — and 1.0 is verbatim the driver's own default,
+# so writing it would add nothing today and do harm later: the moment G-W4
+# produces a real factor and it becomes the driver default, this file would
+# SILENTLY override it back to 1.0. A params file may only carry values that
+# differ from the default for a reason this file can state.
+#
 # track_m (0.194, DERIVED not measured), wheel_signs ([1,1,1,1], counting
 # direction unverifiable without the robot), odom_period_s, odom_twist_cov and
-# odom_pose_cov are PROVISIONAL and stay on the driver defaults
+# odom_pose_cov are PROVISIONAL for the same class of reason and stay on the
+# driver defaults
 # (driver_node.py, per doc02:130-131 / 07:257-258). Repeating a provisional
 # value here would create a second place to forget to update after G-W1, and
 # an operator reading this file would mistake "written down" for "measured".
@@ -98,8 +112,6 @@
     # constant, not a wheel property, 07:256) and is written out only so this
     # file records the complete odometry geometry it turns on.
     counts_per_rev: 2464.0
-    # 1.0 == uncorrected. # TODO(実測) G-W4 (UMBmark) / G-W9 (その場旋回)
-    # calibrate the real factor (07:253, 07:269-270); until then the yaw rate
-    # carries the firmware's X3 mixing constant unchanged. Stated explicitly
-    # rather than omitted so the gate that fills it in has a line to edit.
-    yaw_scale: 1.0
+    # yaw_scale is deliberately NOT here — see WHAT IS DELIBERATELY ABSENT.
+    # # TODO(実測) G-W4 (UMBmark) / G-W9 (その場旋回) fix it in the DRIVER
+    # default (07:253, 07:269-270), not in this file.

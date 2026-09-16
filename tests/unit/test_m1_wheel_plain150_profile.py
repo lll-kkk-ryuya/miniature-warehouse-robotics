@@ -70,10 +70,28 @@ SPEC_WHEEL_SCALE = 1.875
 SPEC_WHEEL_SCALE_RANGE = (1.0, 2.5)
 #: The retreat option, if 事前相談 rules the firmware clamp is not 構造 (07:243).
 SPEC_RETREAT = {"wheel_scale": 1.8, "wheel_diameter_m": 0.144}
-#: PROVISIONAL values that must stay on the driver defaults until a G-W gate
-#: produces a measurement (02:130-131, 07:257-258).
+#: EXACTLY the keys this profile may carry — the drivetrain facts of the swap
+#: (07:252-256 "150 mm での値") plus the geometry constant odometry needs. This
+#: is an EQUALITY set, not a minimum: the driver also declares safety
+#: parameters (cmd_vel_timeout_s, stop_overlay_enabled,
+#: stop_state_max_validity_s), and a wheel-swap profile is not the place from
+#: which W-1 timeouts or the stop overlay get redefined. Growing this set is a
+#: deliberate decision that must change this line.
+SPEC_EXPECTED_KEYS = frozenset(
+    {"wheel_scale", "wheel_diameter_m", "lateral_enabled", "odom_enabled", "counts_per_rev"}
+)
+#: Declared safety parameters that must never appear in this file (the profile
+#: is a drivetrain description; stop authority is owned elsewhere).
+SPEC_SAFETY_KEYS_NEVER_HERE = frozenset(
+    {"cmd_vel_timeout_s", "stop_overlay_enabled", "stop_state_max_validity_s"}
+)
+#: PROVISIONAL / not-yet-measured values that must stay on the driver defaults
+#: until a G-W gate produces a number (02:126, 02:130-131, 07:253, 07:257-258).
+#: ``yaw_scale`` is here and not in the profile on purpose: 07:253 gives its
+#: 150 mm value as 実測 (G-W4/G-W9), and 1.0 is verbatim the driver default, so
+#: writing it would silently override a measured default once G-W4 lands one.
 SPEC_MUST_BE_ABSENT = frozenset(
-    {"track_m", "wheel_signs", "odom_twist_cov", "odom_pose_cov", "odom_period_s"}
+    {"yaw_scale", "track_m", "wheel_signs", "odom_twist_cov", "odom_pose_cov", "odom_period_s"}
 )
 #: Rounding slack for one divide plus one multiply at this magnitude.
 EPS = 1e-12
@@ -146,6 +164,36 @@ def test_every_key_is_a_parameter_the_driver_actually_declares() -> None:
     assert _undeclared_keys(_params()) == set()
 
 
+def test_the_profile_carries_exactly_the_drivetrain_keys_and_nothing_else() -> None:
+    """EQUALITY, not "at least": scope creep here is silent and dangerous.
+
+    The declared-parameter check above is a subset test, so it happily accepts
+    a profile that also sets ``cmd_vel_timeout_s`` (the W-1 freshness timeout),
+    ``stop_overlay_enabled`` or ``stop_state_max_validity_s`` — all declared,
+    all safety-owned, none of them a fact about which wheels are bolted on.
+    A "wheel profile" that quietly lengthens the W-1 timeout is exactly the
+    kind of drift a params file makes invisible, so the allowed set is pinned
+    exactly and has to be edited on purpose.
+    """
+    assert set(_params()) == set(SPEC_EXPECTED_KEYS)
+    assert SPEC_SAFETY_KEYS_NEVER_HERE & set(_params()) == set()
+
+
+def test_a_safety_parameter_smuggled_in_is_rejected_by_the_equality_check() -> None:
+    """Self-check: the equality test catches what the declared-key test cannot.
+
+    ``cmd_vel_timeout_s`` IS declared, so ``_undeclared_keys`` stays empty —
+    this asserts that blind spot exists and that the equality check closes it.
+    """
+    for smuggled in sorted(SPEC_SAFETY_KEYS_NEVER_HERE):
+        mutated = dict(_params())
+        mutated[smuggled] = 5.0
+        assert _undeclared_keys(mutated) == set(), (
+            f"{smuggled} は declare 済のはず（この test の前提）"
+        )
+        assert set(mutated) != set(SPEC_EXPECTED_KEYS), f"{smuggled} を検出できていない"
+
+
 def test_a_misspelled_key_is_rejected_by_this_suites_own_check() -> None:
     """Mutation-style self-check: the check above must be able to go red.
 
@@ -154,17 +202,15 @@ def test_a_misspelled_key_is_rejected_by_this_suites_own_check() -> None:
     asserts each one is caught. Without this, a broken ``_undeclared_keys``
     (e.g. one that returned ``set()`` unconditionally) would pass forever.
     """
-    for typo in ("wheel_scale_", "odom_enable", "wheel_diameter", "lateral_enable", "yaw_scales"):
+    for typo, real in (
+        ("wheel_scale_", "wheel_scale"),
+        ("odom_enable", "odom_enabled"),
+        ("wheel_diameter", "wheel_diameter_m"),
+        ("lateral_enable", "lateral_enabled"),
+        ("counts_per_revolution", "counts_per_rev"),
+    ):
         mutated = dict(_params())
-        mutated[typo] = mutated.pop(
-            {
-                "wheel_scale_": "wheel_scale",
-                "odom_enable": "odom_enabled",
-                "wheel_diameter": "wheel_diameter_m",
-                "lateral_enable": "lateral_enabled",
-                "yaw_scales": "yaw_scale",
-            }[typo]
-        )
+        mutated[typo] = mutated.pop(real)
         assert _undeclared_keys(mutated) == {typo}, f"typo {typo!r} を検出できていない"
 
 
@@ -227,17 +273,26 @@ def test_counts_per_rev_is_a_float_literal_matching_the_declared_type() -> None:
     assert "counts_per_rev: 2464.0" in _profile_text()
 
 
-def test_yaw_scale_is_the_uncorrected_unit_and_is_marked_as_a_measurement() -> None:
-    assert _params()["yaw_scale"] == 1.0
-    assert "# TODO(実測)" in _profile_text(), "yaw_scale の実測待ちマーカーが無い"
-    assert "G-W4" in _profile_text()
+def test_yaw_scale_is_absent_so_a_measured_default_is_never_overridden() -> None:
+    """07:253 gives yaw_scale's 150 mm value as 実測, not as a number.
+
+    Writing the driver's own default (1.0) here would be inert today and
+    harmful the day G-W4 produces a real factor and it lands as the driver
+    default: this file would silently pull it back to 1.0. The file must say
+    so, so the next person does not "helpfully" add it back.
+    """
+    assert "yaw_scale" not in _params()
+    text = _profile_text()
+    assert "yaw_scale" in text, "不在の理由が書かれていない（黙って落としたのと区別がつかない）"
+    assert "# TODO(実測)" in text and "G-W4" in text
 
 
 def test_provisional_values_are_left_on_the_driver_defaults() -> None:
-    """track_m / wheel_signs / covariances are PROVISIONAL (02:130-131).
+    """yaw_scale / track_m / wheel_signs / covariances are PROVISIONAL.
 
-    Copying a provisional number here creates a second place to forget after
-    G-W1, and makes an unmeasured value look decided.
+    (02:126, 02:130-131, 07:253, 07:257-258.) Copying a provisional number
+    here creates a second place to forget after G-W1, and makes an unmeasured
+    value look decided.
     """
     assert SPEC_MUST_BE_ABSENT & set(_params()) == set()
 
@@ -283,7 +338,8 @@ def _core_from_profile() -> tuple[M1DriverCore, _FakeBackend, dict]:
     core = M1DriverCore(
         backend,
         wheel_scale=params["wheel_scale"],
-        yaw_scale=params["yaw_scale"],
+        # yaw_scale intentionally NOT passed: the profile does not set it, so
+        # the driver default is what actually runs (see SPEC_MUST_BE_ABSENT).
         lateral_enabled=params["lateral_enabled"],
     )
     return core, backend, params
@@ -323,9 +379,14 @@ def test_full_speed_command_stays_under_the_frozen_cap_on_the_real_robot() -> No
         assert real_speed <= MAX_LINEAR_VELOCITY + EPS, (
             f"{(vx, vy, wz)} -> wire {(wire_vx, wire_vy)} = 実速度 {real_speed}"
         )
-        # The wire value must be strictly SMALLER than the actual speed it
-        # produces: that is the entire correction (k > 1).
-        assert math.hypot(wire_vx, wire_vy) <= real_speed + EPS
+        # Every sample above asks for AT LEAST the cap (the lateral ones lose
+        # vy before the clamp, leaving >= cap forward), so the clamp must
+        # SATURATE at the cap, not stop short of it and not zero the command.
+        # Without this, a profile that made the robot crawl would still pass
+        # the <= assertion above.
+        assert real_speed == pytest.approx(MAX_LINEAR_VELOCITY, abs=EPS), (
+            f"{(vx, vy, wz)} -> 実速度 {real_speed} が上限で飽和していない"
+        )
 
 
 def test_lateral_commands_are_zeroed_before_the_clamp() -> None:

@@ -151,12 +151,13 @@ jstest /dev/input/js0
 §5-1 step ③（`:103`）は **stock 80 mm 車輪**のコマンド。150 mm 通常輪に換装したら、**同じ手打ち起動に params ファイルを 1 つ足す**:
 
 ```bash
-# ③' m1_driver（150mm 換装後。②までは上と同一）
+# ③' m1_driver（150mm を履いたら直ちにこの形。②までは上と同一）
+# odom を航法に使ってよいのは 07 §10 の G-W ゲート通過後（それまでは観測のみ）
 ros2 run warehouse_m1_driver m1_driver --ros-args \
   --params-file "$(ros2 pkg prefix warehouse_bringup)/share/warehouse_bringup/config/m1_wheel_plain150.yaml"
 ```
 
 - **渡さなければ何も変わらない**（`:103` の素のコマンドは今日と bit 等価）。逆に、**150 mm を履いたまま渡し忘れると指令の 1.875 倍で走る**（clamp は 0.3 m/s と表示したまま＝fail-open）。`joy_node` の 2 前提（`:89` / `:90`）と同じ「**渡し忘れが静かに前提を壊す**」クラスなので、渡したことを起動直後に確認する: `ros2 param get /m1_driver wheel_scale` → `1.875`、`ros2 param get /m1_driver odom_enabled` → `True`。
 - **この launch 化はしない**。`joy_node` は launch で強制点を作った（`warehouse_teleop/launch/m1_teleop.launch.py`）が、`m1_driver` の起動は**車輪に通電する行為**なので同じ launch には載せない（W-4＝[02:65](02-m1-driver-and-watchdog.md:65) / [02:76](02-m1-driver-and-watchdog.md:76)）。teleop を上げることが「走れる状態にする」ことにならない境界を保つ。
-- 値の中身・置き場所の理由・**適用してよい条件（物理換装済 ∧ G-W ゲート通過）**は [02 追補③](02-m1-driver-and-watchdog.md) が正本。本節は複製しない。
+- 値の中身・置き場所の理由・**適用条件（150 mm を物理装着したら直ちに。G-W ゲートは適用の条件ではなく odom の使用制限）**は [02 追補③](02-m1-driver-and-watchdog.md) が正本。本節は複製しない。
 - M0-M2 は standalone（`:50`）なので、注入点はこの手打ち 1 箇所だけ（Nav2 / twist_mux 経路は無い）。
