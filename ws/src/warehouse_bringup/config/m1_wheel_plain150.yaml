@@ -1,0 +1,105 @@
+# m1_driver operating values for the 150 mm PLAIN-WHEEL swap (案 A'). L0'.
+#
+# WHAT THIS IS
+# ------------
+# The driver-side code for the wheel swap landed in PR #676 with defaults that
+# are bit-identical to the stock 80 mm mecanum robot (k = 1.0, odom off,
+# lateral on). That was deliberate: docs/mode-m1/02-m1-driver-and-watchdog.md:135
+# says 運用値（k = 1.875・wheel_diameter_m 0.150・lateral_enabled False・
+# odom_enabled True）は bringup/launch の param 注入で入れる（bringup 所有・別 PR）.
+# This file IS that param injection — one file, one responsibility
+# (doc16:125-126 / doc16:202: ROS node params live in warehouse_bringup/config/,
+# split one-file-one-responsibility so separate tracks edit separate files).
+#
+# NOT config/<env>/warehouse.yaml: that overlay carries ENVIRONMENT differences
+# (sim vs 実機, Hermes endpoint, runtime dir, traffic_mode default —
+# docs/architecture/19-environments-and-config.md:54). Which wheels are bolted
+# to the robot is a HARDWARE fact, identical in dev/stg/prod for a given
+# machine, and it is a ROS node parameter, not 倉庫 config. Putting it in an
+# env overlay would say "dev drives 1.875x faster than prod", which is false
+# and dangerous in both directions.
+#
+# INERT UNLESS EXPLICITLY PASSED
+# ------------------------------
+# Nothing loads this file automatically. m1_driver is started BY HAND, in its
+# own terminal, after the §2 probes and the G-g watchdog test
+# (docs/mode-m1/03-joystick-teleop-bringup.md:96-104 step ③); the teleop launch
+# (warehouse_teleop/launch/m1_teleop.launch.py) deliberately refuses to start
+# the driver because starting it energises the wheels (W-4, doc02:65 / :76).
+# So the default `ros2 run warehouse_m1_driver m1_driver` stays exactly as it
+# is today, and this file only takes effect when someone types:
+#
+#   ros2 run warehouse_m1_driver m1_driver --ros-args \
+#     --params-file "$(ros2 pkg prefix warehouse_bringup)/share/warehouse_bringup/config/m1_wheel_plain150.yaml"
+#
+# DO NOT APPLY IT BEFORE BOTH OF THESE ARE TRUE
+# ---------------------------------------------
+#  1. The 150 mm wheels are PHYSICALLY FITTED. With the stock 80 mm wheels on,
+#     k = 1.875 makes the robot drive at 1/1.875 of the commanded speed — not
+#     unsafe, but every odom distance is then 1.875x too long and the EKF is
+#     fed a lie. The dangerous direction is the mirror image: 150 mm fitted
+#     WITHOUT this file means 1.875x too FAST while the clamp still reports
+#     0.3 m/s (docs/mode-outdoor/07-drivetrain-and-wheel-sizing.md:252 —
+#     the reason an out-of-range k is fail-closed instead of falling back to 1.0).
+#  2. The G-W gates of 07 §10 (docs/mode-outdoor/07-drivetrain-and-wheel-sizing.md:190-201,
+#     :267-270) have been run: G-W1 (caliper: 軸間・輪距・地上高) fixes track_m,
+#     G-W4 (UMBmark) calibrates k and yaw_scale, `m1_probe` fixes wheel_signs.
+#     Until then the odometry published with this file is PROVISIONAL —
+#     usable for bring-up observation, not for anything that navigates on it.
+#
+# RETREAT PATH (144 mm, 案 A)
+# ---------------------------
+# If the 事前相談 rules that the firmware clamp is not 構造
+# (07:243 / OQ-OD77), the swap retreats to 144 mm: change exactly two values
+# here — wheel_scale 1.8 and wheel_diameter_m 0.144 — and nothing else.
+#
+# WHAT IS DELIBERATELY ABSENT
+# ---------------------------
+# track_m (0.194, DERIVED not measured), wheel_signs ([1,1,1,1], counting
+# direction unverifiable without the robot), odom_period_s, odom_twist_cov and
+# odom_pose_cov are PROVISIONAL and stay on the driver defaults
+# (driver_node.py, per doc02:130-131 / 07:257-258). Repeating a provisional
+# value here would create a second place to forget to update after G-W1, and
+# an operator reading this file would mistake "written down" for "measured".
+# They belong here only once a gate has produced a real number.
+#
+# 正本: docs/mode-m1/02-m1-driver-and-watchdog.md:123-131 (param table) / :135
+#       (this file's mandate) · docs/mode-outdoor/07-drivetrain-and-wheel-sizing.md:250-259
+#       (150 mm column) · docs/mode-m1/03-joystick-teleop-bringup.md:103 (the command)
+# pin : tests/unit/test_m1_wheel_plain150_profile.py (R-26; every key here must be
+#       a parameter actually declared in driver_node.py — ROS 2 REJECTS an
+#       undeclared key from a params file and the node dies at startup)
+#
+# NODE-NAME KEY = "/**", the twist_mux.yaml:21-29 precedent: m1_driver runs as
+# /m1_driver in the root namespace in standalone bring-up (doc03:50), but a
+# bare "m1_driver:" key would silently fail to load if it is ever namespaced
+# per bot. "/**" matches the node in ANY namespace.
+"/**":
+  ros__parameters:
+    # k = D / 0.080 = 0.150 / 0.080. Applied AFTER the clamp: the frozen
+    # contract MAX_LINEAR_VELOCITY (0.3 m/s) keeps bounding the REAL robot,
+    # and the wire value sent to the firmware is actual / k (07:252).
+    wheel_scale: 1.875
+    # The TRUE wheel diameter [m], used only for odometry integration
+    # (circumference x raw 0x0D counts). NOT the 0.080 the firmware assumes —
+    # they are different quantities that coincided only while stock (07:256).
+    wheel_diameter_m: 0.150
+    # Plain wheels cannot translate sideways: vy is zeroed BEFORE the clamp so
+    # the clamp bounds the vector actually driven (07:254).
+    lateral_enabled: false
+    # Publish /bot{n}/odom (nav_msgs/Odometry, doc03:77). TF is NOT published —
+    # odom->base_link stays owned by ekf_node alone (doc23:163) (07:255).
+    odom_enabled: true
+    # MUST stay a float literal. driver_node.py declares this parameter with
+    # FW_ENCODER_COUNTS_PER_WHEEL_REV = 2464.0, so its ROS type is DOUBLE; a
+    # bare `2464` is an INTEGER override and rclpy raises
+    # InvalidParameterTypeException -> the driver never comes up. The value is
+    # unchanged by the swap (2464 counts per wheel revolution is a firmware
+    # constant, not a wheel property, 07:256) and is written out only so this
+    # file records the complete odometry geometry it turns on.
+    counts_per_rev: 2464.0
+    # 1.0 == uncorrected. # TODO(実測) G-W4 (UMBmark) / G-W9 (その場旋回)
+    # calibrate the real factor (07:253, 07:269-270); until then the yaw rate
+    # carries the firmware's X3 mixing constant unchanged. Stated explicitly
+    # rather than omitted so the gate that fills it in has a line to edit.
+    yaw_scale: 1.0

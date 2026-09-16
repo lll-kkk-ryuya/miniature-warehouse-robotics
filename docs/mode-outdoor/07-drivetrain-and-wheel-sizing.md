@@ -275,3 +275,7 @@ docs 内（file:line は執筆時に実 Read）:
 - `OQ-OD77` 事前相談で「FW clamp = 構造」が否認された場合の手順（k / 径 param の切替と届出値の再実測）。
 
 【2026-09-14 追記】`OQ-OD76` **裁定 = A'（シシク PU-150 ＋ Pololu #2674）**。実測（軸径 ≈ 6・側板外面→軸端 ≈ 19・D 面 15）で #2674 の取付は確定（[06 ④-9](06-hardware-delta-and-base-selection.md)）。車輪側の 4 点確認と確定購入リストは [06 ④-10](06-hardware-delta-and-base-selection.md)。退避 = Amazon 6 インチ 車いす前輪（608ZZ）→ #3281。
+
+### 【2026-09-16 追補④】③-2 の「運用値は bringup 所有＝別 PR」の着地先
+
+`:261` が別 PR に送った運用値（k = 1.875・径 0.150・`lateral_enabled` false・`odom_enabled` true＝上表「150 mm での値」列）の実体は **[`ws/src/warehouse_bringup/config/m1_wheel_plain150.yaml`](../../ws/src/warehouse_bringup/config/m1_wheel_plain150.yaml)**（bringup 所有の新規 1 ファイル）。**明示的に `--params-file` で渡したときだけ効く**（launch 自動注入なし＝driver 既定は stock 80 mm のまま bit 等価）。適用してよいのは **① 150 mm を物理装着済 ∧ ② 本 doc §10 の G-W ゲート（G-W1 → `track_m`／G-W4 UMBmark → k・`yaw_scale`／`m1_probe` → `wheel_signs`＝`:270`）を通した後**。`track_m` / `wheel_signs` / 共分散（`:257`-`:258` の **PROVISIONAL**）は転記せず driver 既定に残す（「書いてある＝測った」の誤読と二重更新箇所を作らないため）。144 mm 退避（`:243` / `OQ-OD77`）は同ファイルの 2 値のみ変更（k 1.8 / 径 0.144）で、片側だけの編集は R-26 unit（`tests/unit/test_m1_wheel_plain150_profile.py`）が赤にする。詳細・コマンド・理由は [mode-m1/02 追補③](../mode-m1/02-m1-driver-and-watchdog.md)（起動手順は [mode-m1/03 追補](../mode-m1/03-joystick-teleop-bringup.md)）が正本。
