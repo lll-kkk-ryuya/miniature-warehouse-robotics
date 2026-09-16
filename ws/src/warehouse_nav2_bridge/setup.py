@@ -17,6 +17,13 @@ setup(
     # Upper bounds guard a major bump that could break the REST app / ASGI lifecycle.
     # pydantic>=2 matches the rest of the repo (warehouse_interfaces/setup.py:13,
     # pyproject.toml:12) and the image that provisions it (deploy/dev/Dockerfile:42).
+    # NOTE: this list is a deliberate 1:1 mirror of `preflight.RUNTIME_PIP_MODULES` — the pip
+    # deps of the REST *node* that the startup preflight hints about (pinned by
+    # tests/unit/test_nav2_bridge_preflight.py). `route_schema.py` also needs pyyaml, but it is
+    # reached only from the offline `route_compile` CLI, never from the node, and a module-level
+    # `import yaml` would be unreachable by the preflight anyway (same structural limit as the
+    # existing pyyaml note in CLAUDE.md). It is therefore declared where rosdep actually consumes
+    # it for an ament_python package: `package.xml` <exec_depend>python3-yaml</exec_depend>.
     install_requires=["setuptools", "fastapi>=0.110,<1", "pydantic>=2", "uvicorn>=0.27,<1"],
     zip_safe=True,
     maintainer="kawaguchiryuya",
@@ -25,6 +32,10 @@ setup(
     license="Apache-2.0",
     tests_require=["pytest"],
     entry_points={
-        "console_scripts": ["nav2_bridge = warehouse_nav2_bridge.nav2_bridge:main"],
+        "console_scripts": [
+            "nav2_bridge = warehouse_nav2_bridge.nav2_bridge:main",
+            # Offline L3 teach-time tool (no rclpy, no REST): docs/mode-outdoor/03:78 案 B.
+            "route_compile = warehouse_nav2_bridge.route_compile:main",
+        ],
     },
 )
