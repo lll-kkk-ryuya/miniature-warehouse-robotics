@@ -20,7 +20,11 @@ def test_spawn_z_positive_and_flagged_provisional() -> None:
 def test_frozen_names_stable() -> None:
     # Expected list transcribed from the docs, not from the impl:
     # doc09 TF tree + doc23 §5-2 (docs/architecture/23-perception-and-localization.md:157-160)
-    # add exactly one name — camera_link (doc23 §4 :124, doc09 P2 :14).
+    # add camera_link (doc23 §4 :124, doc09 P2 :14). The outdoor TF-ownership table
+    # (docs/mode-outdoor/03-localization-gnss-and-ekf.md:35 — `bot1/base_link →
+    # bot1/gnss_link` published by robot_state_publisher; §8 :207 — "gnss_link を
+    # FROZEN_LINK_NAMES 末尾へ（contract PR）") adds gnss_link LAST, so every earlier
+    # position is unchanged.
     assert rd.FROZEN_LINK_NAMES == (
         "base_link",
         "lidar_link",
@@ -30,11 +34,16 @@ def test_frozen_names_stable() -> None:
         "wheel_rear_left",
         "wheel_rear_right",
         "camera_link",
+        "gnss_link",
     )
+    # 03:54 pins the NavSatFix header.frame_id to gnss_link: navsat_transform_node
+    # corrects the antenna lever arm through that frame's TF and silently skips the
+    # correction when the names differ — so it is contract, not a driver setting.
     assert rd.FROZEN_FRAME_IDS == {
         "lidar": "lidar_link",
         "imu": "imu_link",
         "odom": "odom",
+        "gnss": "gnss_link",
     }
 
 
@@ -50,7 +59,12 @@ def test_camera_optical_frame_is_not_frozen_yet() -> None:
 
 
 @pytest.mark.unit
-def test_pending_urdf_links_is_exactly_the_camera() -> None:
-    """The mount pose is unmeasured (doc09 §3 :41,43), so only the *name* is frozen."""
-    assert rd.PENDING_URDF_LINKS == ("camera_link",)
+def test_pending_urdf_links_are_exactly_camera_and_gnss() -> None:
+    """Both mount poses are unmeasured, so only the *names* are frozen.
+
+    camera: doc09 §3 :41,43. gnss: the mast is still a 450〜600 mm range whose top plate
+    is shared with the e-stop button, and the placement itself is still `# TODO(設計)`
+    (docs/mode-outdoor/06-hardware-delta-and-base-selection.md:182 / 同 :77).
+    """
+    assert rd.PENDING_URDF_LINKS == ("camera_link", "gnss_link")
     assert set(rd.PENDING_URDF_LINKS) <= set(rd.FROZEN_LINK_NAMES)

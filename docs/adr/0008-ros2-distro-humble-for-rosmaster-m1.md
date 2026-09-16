@@ -37,7 +37,7 @@
 
 - **Jazzy 維持 ＋ 深度カメラだけ Humble container に隔離（DDS 越し接続）**: 技術的には成立するが、カメラ 1 個のために二重 distro を恒久運用することになり、ydlidar・校正値・工場イメージといった Yahboom 資産全体が Jazzy 側に取り残される。M1 を採る限り境界が増え続ける。
 - **Jazzy 維持 ＋ 深度カメラを別製品に置換**（RealSense / Orbbec の公式 Jazzy driver）: Superior 版に同梱される HP60C が無駄になり、Standard との差額の意味が消える。カメラ単体の問題としては有効な retreat plan だが、Yahboom 資産全体の distro ズレは残る。
-- **Jazzy 維持 ＋ Isaac ROS 4.x（Jazzy）を使う**: 却下。Isaac ROS 4.x の対応プラットフォームは **Jetson Thor のみ**で、手持ちの Orin Nano では動かない。JetPack 7.1/7.2 へ上げても Orin がサポート表に載らない以上、解決しない。
+- **Jazzy 維持 ＋ Isaac ROS 4.x（Jazzy）を使う**: 却下。Isaac ROS 4.x の対応プラットフォームは **Jetson Thor のみ**で、手持ちの Orin Nano では動かない。JetPack 7.1/7.2 へ上げても Orin がサポート表に載らない以上、解決しない。（**2026-09-16 訂正**: この根拠は 2026-08-05 時点の事実。Isaac ROS **4.6.0**〔2026-08-18・JetPack 7.2 + ROS 2 Jazzy・Ubuntu 24.04〕で「Jetson Orin」がサポート表に加わった〔Orin Nano 8GB の明記は無し・128+ GB NVMe 要件〕[D]。却下の**結論は維持**: HP60C `ascamera` の GCC5.4 閉ソース `.so`・ydlidar humble ブランチ・Nav2 1.1.20 資産（`nav2_route` backport・collision_monitor Humble 意味論に合わせた安全設計）・depthai-ros Humble バイナリが Jazzy で壊れる。再裁定するかは [mode-outdoor/04 末尾追補 `OQ-OD4W`](../mode-outdoor/04-perception-sidewalk-and-signals.md)・pin 表は [mode-outdoor/00 末尾追補](../mode-outdoor/00-mission-and-scope.md)）
 - **Jazzy 維持 ＋ Isaac ROS を使わない**: 成立はする（本プロジェクトの認識系は Nav2 + SLAM Toolbox が主で Isaac ROS 非依存）。ただし深度カメラ・Yahboom 資産の distro ズレは残り、将来 Isaac ROS 系の知覚パッケージへ広げる道が閉じる。
 
 ## Open / 未決

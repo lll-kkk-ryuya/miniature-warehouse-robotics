@@ -144,7 +144,7 @@ Nav2 (per-bot, namespace /bot{n})
 
 ### 5-2. TF フレームツリーと配信責任（単騎でも namespace `bot1/` は維持）
 
-凍結フレーム名の単一ソースは `robot_dimensions.py:17-27`。1台構成でも `bot1/` namespace を維持する（`nav2_params.yaml` の namespace 置換・State Cache の per-bot 構造・凍結契約への波及を避けるため＝本 doc の設計判断。単騎構成の前提は [ADR-0006](../adr/0006-single-bot-first.md)）。
+凍結フレーム名の単一ソースは `robot_dimensions.py:17-29`。1台構成でも `bot1/` namespace を維持する（`nav2_params.yaml` の namespace 置換・State Cache の per-bot 構造・凍結契約への波及を避けるため＝本 doc の設計判断。単騎構成の前提は [ADR-0006](../adr/0006-single-bot-first.md)）。
 
 ```
 map ───────────── AMCL (nav2_amcl, tf_broadcast: true = nav2_params.yaml:59)
@@ -622,7 +622,7 @@ OQ-3（[:244](23-perception-and-localization.md) M1 外接円 184mm vs 通路 28
 ### F-6. 隣接 Slice（本追補では言及のみ・所有トラック判断）
 
 - **collision_monitor C-3（L1）** — `PolygonStop` は現在 `type: "circle"` / `radius: 0.09`（[collision_monitor.yaml:63-68](../../ws/src/warehouse_bringup/config/collision_monitor.yaml)）。M1 では内接 0.1157 を下回り**車体内部で発火しない**ため要改訂（[shared/02:359](../shared/02-hardware-design.md) C-3）。**L1 は反射経路＝別 PR・安全レビュー必須**（L2 の costmap 変更と混ぜない）。
-- **`warehouse_description` 定数（contract PR・additive）** — `ROBOT_RADIUS = 0.075`（[robot_dimensions.py:66](../../ws/src/warehouse_description/warehouse_description/robot_dimensions.py)）は**値も意味も変えない**（旧 ~150mm 車体の内接半径・PROVISIONAL のまま据え置き）。**名称を据え置いたまま「外接円」へ意味だけ読み替えることはしない**——0.075 は M1 の内接 0.1157 すら下回り外接円になり得ないし、live consumer が**内接前提**で読んでいる（`warehouse_traffic/virtual_scan_logic.py`（相手機の仮想障害物化）・`traffic_manager.py`（`0.15m = 2*ROBOT_RADIUS` no-collision margin）・`warehouse_sim/scenarios.py`・unit tests の `== 0.075` pin）ため、意味の差し替えは**1 行も編集せず 5 箇所を壊す** silent semantic break になる。代わりに **`FOOTPRINT_POLYGON`（矩形実寸）と `CIRCUMSCRIBED_RADIUS`（外接円 ≈0.184）を additive に追加**し、C-3（collision_monitor）等の保守的用途は `CIRCUMSCRIBED_RADIUS` を消費する。既存 consumer の M1 値への移行は**2台復帰フェーズで消費箇所ごとに明示的に**行う（一括りの意味変更をしない）。旧 C-1 の「外接円半径 ≈184mm へ改訂」（2026-08-05 版・履歴は [shared/02](../shared/02-hardware-design.md) 末尾追補 §2 の対比表）は、本追補の (c) 採用により **単純な値差し替えではなく additive 化**に読み替える。**contract ラベル + 依存トラック予告が必要**（[parallel-workflow.md §4](../../.claude/rules/parallel-workflow.md)）。
+- **`warehouse_description` 定数（contract PR・additive）** — `ROBOT_RADIUS = 0.075`（[robot_dimensions.py:70](../../ws/src/warehouse_description/warehouse_description/robot_dimensions.py)）は**値も意味も変えない**（旧 ~150mm 車体の内接半径・PROVISIONAL のまま据え置き）。**名称を据え置いたまま「外接円」へ意味だけ読み替えることはしない**——0.075 は M1 の内接 0.1157 すら下回り外接円になり得ないし、live consumer が**内接前提**で読んでいる（`warehouse_traffic/virtual_scan_logic.py`（相手機の仮想障害物化）・`traffic_manager.py`（`0.15m = 2*ROBOT_RADIUS` no-collision margin）・`warehouse_sim/scenarios.py`・unit tests の `== 0.075` pin）ため、意味の差し替えは**1 行も編集せず 5 箇所を壊す** silent semantic break になる。代わりに **`FOOTPRINT_POLYGON`（矩形実寸）と `CIRCUMSCRIBED_RADIUS`（外接円 ≈0.184）を additive に追加**し、C-3（collision_monitor）等の保守的用途は `CIRCUMSCRIBED_RADIUS` を消費する。既存 consumer の M1 値への移行は**2台復帰フェーズで消費箇所ごとに明示的に**行う（一括りの意味変更をしない）。旧 C-1 の「外接円半径 ≈184mm へ改訂」（2026-08-05 版・履歴は [shared/02](../shared/02-hardware-design.md) 末尾追補 §2 の対比表）は、本追補の (c) 採用により **単純な値差し替えではなく additive 化**に読み替える。**contract ラベル + 依存トラック予告が必要**（[parallel-workflow.md §4](../../.claude/rules/parallel-workflow.md)）。
 
 ### F-7. 検証観点
 
@@ -648,7 +648,7 @@ OQ-3（[:244](23-perception-and-localization.md) M1 外接円 184mm vs 通路 28
 - `ws/src/warehouse_bringup/config/nav2_params.yaml` — CURRENT の引用は行 pin（:171-179 #67 教訓 / :215・:257 `robot_radius` / :239-246 #125 inflation）だが、**Slice 1（F-5）がまさにこれらの行を書き換える**ため、実装後は **キー名（両 costmap の `robot_radius`→`footprint:`・`FollowPath.CostCritic.consider_footprint`・`inflation_layer.inflation_radius`）で指す**こと（[session-orchestration.md §8](../../.claude/rules/session-orchestration.md) impl-target は契約で指す）。
 - [mode-a/11a-traffic-mode-a.md](../mode-a/11a-traffic-mode-a.md) §9.4「安全不変」 — 「`inscribed_radius = ROBOT_RADIUS`（=0.075 R-42）は不変」「本機構は速度・footprint・inflation を変えない」という**旧・不変宣言を F 系列が上書きする**（M1 footprint 化で内接は 0.1157 へ。doc11a 側にも末尾に forward pointer を追記済み・同一 PR）。
 - `ws/src/warehouse_bringup/config/collision_monitor.yaml`:63-68 — L1 `PolygonStop`（F-6）。
-- `ws/src/warehouse_description/warehouse_description/robot_dimensions.py`:66 — 凍結側 `ROBOT_RADIUS`（PROVISIONAL）。
+- `ws/src/warehouse_description/warehouse_description/robot_dimensions.py`:70 — 凍結側 `ROBOT_RADIUS`（PROVISIONAL）。
 - [ADR-0008](../adr/0008-ros2-distro-humble-for-rosmaster-m1.md) — distro pin（F-1 の Humble 整合）。
 - [docs/GLOSSARY.md §11](../GLOSSARY.md) — **非円形 footprint（footprint polygon）** の正準定義（本追補と同時追加・双方向）。
 - [Issue #519](https://github.com/lll-kkk-ryuya/miniature-warehouse-robotics/issues/519) — 本決定の起票元（Slice 0 = 本追補 / Slice 1 = F-5 の params 実装）。

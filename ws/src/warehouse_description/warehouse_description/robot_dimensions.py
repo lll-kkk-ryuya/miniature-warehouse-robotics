@@ -25,6 +25,8 @@ IMU_FRAME = "imu_link"
 # question (doc09 OQ-4: docs/mode-x-er/09-hand-raise-summon.md:184 / doc23 OQ-7: :248).
 CAMERA_FRAME = "camera_link"
 ODOM_FRAME = "odom"  # /bot{n}/odom child_frame_id = bot{n}/base_link
+# docs/mode-outdoor/03-localization-gnss-and-ekf.md:35 (static TF) / :54 (= NavSatFix frame_id)
+GNSS_FRAME = "gnss_link"
 
 # 4-wheel skid-steer (Yahboom MicroROS car). Wheels are model-internal — not in the
 # doc09 TF tree, but their link names are part of the URDF↔world interface (doc16 §9).
@@ -36,28 +38,30 @@ WHEEL_LINKS: tuple[str, ...] = (
 )
 
 # Contract link names that warehouse_sim + real hardware must reference identically.
-# CAMERA_FRAME is appended last so existing positions stay stable (additive-first,
-# .claude/rules/parallel-workflow.md §7.2).
+# New names are appended last so existing positions stay stable (additive-first,
+# .claude/rules/parallel-workflow.md §7.2): CAMERA_FRAME, then GNSS_FRAME.
 FROZEN_LINK_NAMES: tuple[str, ...] = (
     BASE_FRAME,
     LIDAR_FRAME,
     IMU_FRAME,
     *WHEEL_LINKS,
     CAMERA_FRAME,
+    GNSS_FRAME,
 )
 
 # Frozen *names* whose URDF body/joint is not written yet because the mount pose is
 # unmeasured. The camera's x/y/z offset and tilt are open questions — Phase 1 は水平固定
 # だが最終値は S2 実測（doc09 §3: docs/mode-x-er/09-hand-raise-summon.md:41,43 / doc23 OQ-3
-# 経由 :280）— so no numeric offset is invented here. The unit tests pin this list from
-# docs and require that a name leaves it in the same PR that adds the link to the xacro.
-PENDING_URDF_LINKS: tuple[str, ...] = (CAMERA_FRAME,)  # TODO(Phase 1 実測): mount pose
+# 経由 :280）; GNSS mast: docs/mode-outdoor/06-hardware-delta-and-base-selection.md:182 / :77
+# — no numeric offset is invented; a name must leave this list in the PR that adds the link.
+PENDING_URDF_LINKS: tuple[str, ...] = (CAMERA_FRAME, GNSS_FRAME)  # TODO(Phase 1 実測): mount pose
 
 # Sensor / odom frame_id contract (consumed by AMCL / Nav2 / warehouse_traffic).
 FROZEN_FRAME_IDS: dict[str, str] = {
     "lidar": LIDAR_FRAME,
     "imu": IMU_FRAME,
     "odom": ODOM_FRAME,
+    "gnss": GNSS_FRAME,
 }
 
 # ── Python-side deployment params (PROVISIONAL) ────────────────────────────────

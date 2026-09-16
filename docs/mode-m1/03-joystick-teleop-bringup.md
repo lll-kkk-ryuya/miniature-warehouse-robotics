@@ -100,7 +100,7 @@ ros2 run joy joy_node --ros-args \
     # ② teleop_joy（既定 param。index の上書き例: --ros-args -p deadman_button:=6）
     ros2 run warehouse_teleop teleop_joy
     # ③ m1_driver = §2 プローブと G-g 抜線試験（[02 §4](02-m1-driver-and-watchdog.md)）を通した後・W-4（車輪を浮かせる）で
-    ros2 run warehouse_m1_driver m1_driver
+    ros2 run warehouse_m1_driver m1_driver   # 150mm 換装後は 02 追補③ の --params-file を付ける（本 doc 末尾 追補）
     ```
 
 - **param が渡ったことの確認**（渡し忘れは症状が出るまで静かなので、起動直後に必ず見る）: `ros2 param get /joy_node autorepeat_rate` → `20.0`、`ros2 param get /joy_node sticky_buttons` → `False`、ボタンを押しっぱなしにして `ros2 topic hz /joy` → **≈20 Hz**（0 Hz なら `autorepeat_rate` が渡っていない）。
@@ -143,3 +143,21 @@ jstest /dev/input/js0
 - 用語: [GLOSSARY §11 ゲームパッド](../GLOSSARY.md)。
 - 常駐の扱い: [01-mode-boundary-and-traffic.md](01-mode-boundary-and-traffic.md)「常駐（systemd）の位置づけ」。
 - Yahboom 一次ソース（「Handle control」・参照日 2026-09-09）の URL は `:52` に記載済み。本節は重複掲載しない。
+
+---
+
+## 【2026-09-16 追補】150 mm 換装後の `m1_driver` 起動コマンド
+
+§5-1 step ③（`:103`）は **stock 80 mm 車輪**のコマンド。150 mm 通常輪に換装したら、**同じ手打ち起動に params ファイルを 1 つ足す**:
+
+```bash
+# ③' m1_driver（150mm を履いたら直ちにこの形。②までは上と同一）
+# odom を航法に使ってよいのは 07 §10 の G-W ゲート通過後（それまでは観測のみ）
+ros2 run warehouse_m1_driver m1_driver --ros-args \
+  --params-file "$(ros2 pkg prefix warehouse_bringup)/share/warehouse_bringup/config/m1_wheel_plain150.yaml"
+```
+
+- **渡さなければ何も変わらない**（`:103` の素のコマンドは今日と bit 等価）。逆に、**150 mm を履いたまま渡し忘れると指令の 1.875 倍で走る**（clamp は 0.3 m/s と表示したまま＝fail-open）。`joy_node` の 2 前提（`:89` / `:90`）と同じ「**渡し忘れが静かに前提を壊す**」クラスなので、渡したことを起動直後に確認する: `ros2 param get /m1_driver wheel_scale` → `1.875`、`ros2 param get /m1_driver odom_enabled` → `True`。
+- **この launch 化はしない**。`joy_node` は launch で強制点を作った（`warehouse_teleop/launch/m1_teleop.launch.py`）が、`m1_driver` の起動は**車輪に通電する行為**なので同じ launch には載せない（W-4＝[02:65](02-m1-driver-and-watchdog.md:65) / [02:76](02-m1-driver-and-watchdog.md:76)）。teleop を上げることが「走れる状態にする」ことにならない境界を保つ。
+- 値の中身・置き場所の理由・**適用条件（150 mm を物理装着したら直ちに。G-W ゲートは適用の条件ではなく odom の使用制限）**は [02 追補③](02-m1-driver-and-watchdog.md) が正本。本節は複製しない。
+- M0-M2 は standalone（`:50`）なので、注入点はこの手打ち 1 箇所だけ（Nav2 / twist_mux 経路は無い）。

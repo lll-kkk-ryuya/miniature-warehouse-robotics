@@ -132,5 +132,48 @@ agent-team 調査（一次情報 = 工場 STM32 ファーム Rosmaster V3.5.1 C 
 
 - backend seam に `read_encoders()`（vendor `get_motor_encoder()`・失敗は None＝その周期は publish しない。偽のゼロ速度を EKF に食わせない）。
 - モータ順は FW `Motion_Set_Speed(L1, L2, R1, R2)` = m1 前左・m2 後左・m3 前右・m4 後右。差動積分は左 = mean(m1, m2)・右 = mean(m3, m4)。
-- 運用値（k = 1.875・`wheel_diameter_m` 0.150・`lateral_enabled` False・`odom_enabled` True）は bringup/launch の param 注入で入れる（bringup 所有・別 PR）。契約 `MAX_LINEAR_VELOCITY` の実単位再 pin は contract PR（`OQ-OD71`）。
+- 運用値（k = 1.875・`wheel_diameter_m` 0.150・`lateral_enabled` False・`odom_enabled` True）は bringup/launch の param 注入で入れる（bringup 所有・別 PR）。契約 `MAX_LINEAR_VELOCITY` の実単位再 pin は contract PR（`OQ-OD71`）。→ **実体 = [`ws/src/warehouse_bringup/config/m1_wheel_plain150.yaml`](../../ws/src/warehouse_bringup/config/m1_wheel_plain150.yaml)（本 doc 末尾 追補③）**。
 - backlink: [mode-outdoor/07 追補③](../mode-outdoor/07-drivetrain-and-wheel-sizing.md) / [warehouse_m1_driver/CLAUDE.md](../../ws/src/warehouse_m1_driver/CLAUDE.md)（2026-09-13 節）
+
+---
+
+## 【2026-09-16 追補③】運用値の注入先 = `warehouse_bringup/config/m1_wheel_plain150.yaml`（bringup 所有・既定は不変）
+
+追補② の `:135` が「bringup 所有・別 PR」とした**運用値の置き場所を確定**する。実装（PR #676）は driver 既定を stock 80 mm と bit 等価に保ったままなので、**150 mm 換装後にどこで値を入れるか**が唯一の残問だった。
+
+### ③-1. 置き場所と、そこにした理由
+
+| 決めたこと | 内容 |
+|---|---|
+| 実体 | **[`ws/src/warehouse_bringup/config/m1_wheel_plain150.yaml`](../../ws/src/warehouse_bringup/config/m1_wheel_plain150.yaml)**（新規 1 ファイル） |
+| 所有 | bringup。ROS ノードの param は `warehouse_bringup/config/` に集約（[doc16:125](../architecture/16-repository-and-conventions.md:125)-126）・**1 ファイル 1 責務**（[doc16:202](../architecture/16-repository-and-conventions.md:202)）＝新規ファイルなので他トラックと衝突しない（[.claude/rules/parallel-workflow.md:185](../../.claude/rules/parallel-workflow.md)） |
+| `config/<env>/` に**置かない** | env overlay は**環境差分**（sim/実機・Hermes 接続先・runtime dir・`traffic_mode` 既定）を書く場所（[doc19:54](../architecture/19-environments-and-config.md:54)）。**どの車輪が付いているかはハードウェアの事実**で、同じ機体なら dev/stg/prod で同一。env に置くと「dev だけ 1.875 倍で走る」という偽の差分を作る |
+| 既定の不変性 | このファイルは**明示的に渡さない限り読まれない**。素の `ros2 run warehouse_m1_driver m1_driver`（[03:103](03-joystick-teleop-bringup.md:103)）は**今日と bit 等価**のまま |
+
+### ③-2. 換装後のコマンド（これを打つまで何も変わらない）
+
+```bash
+ros2 run warehouse_m1_driver m1_driver --ros-args \
+  --params-file "$(ros2 pkg prefix warehouse_bringup)/share/warehouse_bringup/config/m1_wheel_plain150.yaml"
+```
+
+- **launch で自動注入しない**のは意図的。`m1_driver` の起動は**車輪に通電する行為**であり、`warehouse_teleop/launch/m1_teleop.launch.py` も同じ理由で driver を起動しない（W-4＝本 doc `:65` / `:76`）。「teleop を上げる」が「車輪を回せる状態にする」を意味しない境界を、この param 注入でも崩さない。
+- M0-M2 は standalone（Nav2 / twist_mux を立てない＝[03:50](03-joystick-teleop-bringup.md:50)）なので、注入点は**手打ちコマンドのこの 1 箇所だけ**。
+
+### ③-3. 適用条件（1 つだけ）と、odom の使用制限（別の話）
+
+**「いつ適用するか」と「出てきた odom を何に使ってよいか」は別の条件**である。混ぜると、G-W ゲート待ちの間だけ**より危険な状態**（150 mm 装着で未適用）を推奨してしまう。
+
+1. **適用条件 = 150 mm 車輪が物理的に付いていること、それだけ**。装着したら**直ちに渡す**。未適用のまま走らせるのが危険側で、指令の 1.875 倍で走りながら clamp は 0.3 m/s と表示する＝fail-open（[07:252](../mode-outdoor/07-drivetrain-and-wheel-sizing.md:252) が k の範囲外を fail-closed にした理由）。逆に stock 80 mm のまま渡すと 1/1.875 倍で走り odom も 1.875 倍に伸びる（遅い側＝危険ではないが誤り）。
+2. **使用制限（適用の条件ではない）**: [07 §10](../mode-outdoor/07-drivetrain-and-wheel-sizing.md:190) の G-W ゲート（G-W1＝`track_m` 確定 / G-W4 UMBmark＝k・`yaw_scale` 校正 / `m1_probe`＝`wheel_signs` 確定＝[07:270](../mode-outdoor/07-drivetrain-and-wheel-sizing.md:270)）を通すまで、本ファイルで publish される odom は **PROVISIONAL**＝**bring-up 観測（値が動くことの確認）にのみ使い、その上で航法しない**。**G-W4 自体が k を校正する試験であり、profile を適用しないと実施できない**（適用は G-W ゲートの前提であって、結果ではない）。ゲート通過後、測定値を反映してから航法に使ってよい。
+
+### ③-4. 入っている値・入っていない値
+
+- **入っている**（5 キー）: `wheel_scale` 1.875 / `wheel_diameter_m` 0.150 / `lateral_enabled` false / `odom_enabled` true ＝ **[07:252](../mode-outdoor/07-drivetrain-and-wheel-sizing.md:252)-256 の「150 mm での値」列**（本 doc 追補② の表は**既定値**の列しか持たない＝`:123`-`:131`。運用値の指示元は `:135`）＋ `counts_per_rev` 2464.0（換装で変わらない FW 定数。**float 必須**＝declared type が DOUBLE のため `2464` では起動時に型不一致で落ちる）。
+- **入っていない**: `yaw_scale` / `track_m` / `wheel_signs` / `odom_period_s` / `odom_twist_cov` / `odom_pose_cov`。追補② `:126`・`:130`-`:131` と [07:253](../mode-outdoor/07-drivetrain-and-wheel-sizing.md:253)・`:257`-`:258` が **PROVISIONAL / 実測待ち**としたものを転記すると「書いてある＝測った」と誤読され、G-W1 後の更新漏れ箇所が 2 つに増える。driver 既定のままにする。**`yaw_scale` を特に置かない理由**: 07:253 の 150 mm 値は「実測（G-W4/G-W9）」であって数値ではなく、`1.0` は driver 既定の逐語コピーにすぎない。ここに `1.0` を書くと、G-W4 後に driver 既定へ実測値を入れた瞬間、**この profile が黙って 1.0 へ引き戻す**（上書きが静かに効く）。
+- **144 mm への退避**（[07:243](../mode-outdoor/07-drivetrain-and-wheel-sizing.md:243) `OQ-OD77`）は本ファイルの 2 値のみ変更（k 1.8 / 径 0.144）。片方だけ変える事故は unit が赤にする。
+
+### ③-5. 検証
+
+- `tests/unit/test_m1_wheel_plain150_profile.py`（R-26・18 本）: k = 0.150/0.080 の独立再計算・k と径の整合（退避の片側編集を検出）・全キーが `driver_node.py` の `declare_parameter` 実体に存在（AST 走査。ROS 2 は未宣言キーを拒否して起動失敗する）・**キー集合の等値 pin**（部分集合でなく＝`cmd_vel_timeout_s` 等の safety param が後から紛れ込むのを拒否。宣言済なので AST チェックだけでは通ってしまう穴を塞ぐ）・`counts_per_rev` が float・`yaw_scale` と PROVISIONAL 値の不在・実 `M1DriverCore` で `config_error` なし ∧ 上限超指令が**上限で飽和**（`hypot(wire)×k = MAX_LINEAR_VELOCITY`）・実 `WheelOdometry` が幾何を受理（1 回転＝π×0.150 m）。mutation 12/12 KILLED。
+- backlink: [mode-outdoor/07 追補④](../mode-outdoor/07-drivetrain-and-wheel-sizing.md) / [03 追補（2026-09-16）](03-joystick-teleop-bringup.md) / [warehouse_bringup/CLAUDE.md](../../ws/src/warehouse_bringup/CLAUDE.md) / [warehouse_m1_driver/CLAUDE.md](../../ws/src/warehouse_m1_driver/CLAUDE.md)

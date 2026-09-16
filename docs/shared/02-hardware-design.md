@@ -131,7 +131,7 @@ sudo jetson_clocks        # クロック最大化
 
 ### OS環境構築（JetPack 6.x）
 
-Jetson は「司令塔（現場の脳）」であり、実機デモ時に Nav2/AMCL/SLAM/micro-ROS Agent/LLM Bridge/Warehouse MCP Server/Emergency Guardian 等を**現場でリアルタイムに走らせる中央コンピュータ**。Mac は開発・シミュレーション専用で本番では使わない。
+Jetson は「司令塔（現場の脳）」であり、実機デモ時に Nav2/AMCL/SLAM/micro-ROS Agent/LLM Bridge/Warehouse MCP Server/Emergency Guardian 等を**現場でリアルタイムに走らせる中央コンピュータ**。Mac は開発・シミュレーション専用で本番では使わない（2026-09-16 注記: 屋外**随伴フェーズ限定**で best-effort 助言・記録受けに Mac を随伴させる案あり＝[mode-outdoor/02 末尾追補](../mode-outdoor/02-architecture-split-orin-pc-cloud.md)・`OQ-OD28`。停止権威・実時間安全層には用いない＝本文の原則は不変）。
 
 #### 役割（Jetson上で常時動くもの）
 
@@ -354,7 +354,7 @@ RPLiDAR A2（+10,000円）: 精度・回転速度が向上。予備費からの�
 
 | # | 書き換え対象 | 現在値（実ファイル） | M1 採用時 | layer |
 |---|---|---|---|---|
-| C-1 | `ROBOT_RADIUS` | `ws/src/warehouse_description/warehouse_description/robot_dimensions.py:66` = `0.075`（75mm） | **【2026-08-17 改訂】非円形へ移行（additive）**: `FOOTPRINT_POLYGON`（矩形 **231.4 × 284.4mm**）と `CIRCUMSCRIBED_RADIUS`（外接円 **≈184mm**＝対角 367mm ÷ 2）を**新定数として追加**。`ROBOT_RADIUS`(=0.075) は**値も意味も変えず**旧車体値のまま据え置く（内接前提の live consumer があるため意味の読み替え禁止＝23 末尾 F-6）。保守的用途（C-3 等）は `CIRCUMSCRIBED_RADIUS` を消費。**円形 184mm への単純改訂は不可**（直径 368mm > 通路 280mm で通路が全面 lethal）＝OQ-3 決定（→ 本 doc 末尾【2026-08-17 追補】/ [23 末尾 F 系列](../architecture/23-perception-and-localization.md)） | L2 |
+| C-1 | `ROBOT_RADIUS` | `ws/src/warehouse_description/warehouse_description/robot_dimensions.py:70` = `0.075`（75mm） | **【2026-08-17 改訂】非円形へ移行（additive）**: `FOOTPRINT_POLYGON`（矩形 **231.4 × 284.4mm**）と `CIRCUMSCRIBED_RADIUS`（外接円 **≈184mm**＝対角 367mm ÷ 2）を**新定数として追加**。`ROBOT_RADIUS`(=0.075) は**値も意味も変えず**旧車体値のまま据え置く（内接前提の live consumer があるため意味の読み替え禁止＝23 末尾 F-6）。保守的用途（C-3 等）は `CIRCUMSCRIBED_RADIUS` を消費。**円形 184mm への単純改訂は不可**（直径 368mm > 通路 280mm で通路が全面 lethal）＝OQ-3 決定（→ 本 doc 末尾【2026-08-17 追補】/ [23 末尾 F 系列](../architecture/23-perception-and-localization.md)） | L2 |
 | C-2 | costmap `robot_radius` ×2 | `ws/src/warehouse_bringup/config/nav2_params.yaml:215` / `:257` = `0.075` | **【2026-08-17 改訂】**: `robot_radius` に C-1 同値を入れるのではなく **`footprint:` polygon へ移行**（C-1 の矩形・単一ソース維持 R-42）。MPPI `consider_footprint: true`（`nav2_params.yaml:179`）と**同一 PR で同時 flip**（片方だけだと controller_server が configure 失敗＝#67 E2E ゲート教訓 `:171-178`）（→ 本 doc 末尾【2026-08-17 追補】/ [23 末尾 F 系列](../architecture/23-perception-and-localization.md)） | L2 |
 | C-3 | collision_monitor PolygonStop | `ws/src/warehouse_bringup/config/collision_monitor.yaml:68` `radius: 0.09` | 車体外接 + 余裕へ改訂 | L1 |
 | C-4 | 速度クランプの**置き場所** | `firmware/include/safety_clamp.h:45`（ESP32 ファーム内） | **ホスト側シリアルドライバの送信直前（L0'）へ移設**（残課題 7） | L0' |
@@ -372,7 +372,7 @@ RPLiDAR A2（+10,000円）: 精度・回転速度が向上。予備費からの�
 
 > **C-8 は omni 化の前提条件であり、後回しにできない。** `vy ≠ 0` を許した状態で各軸を独立に 0.3 m/s クランプすると、対角合成が √(0.3² + 0.3²) = **0.424 m/s** となり `.claude/rules/safety.md` の 0.3 m/s ハードキャップを **41% 超過**する。C-5 と C-8 は同一 PR で入れること。R-26（独立オラクル・mutation で赤くなること）の対象（[20-dev-quality-and-testing.md](../architecture/20-dev-quality-and-testing.md) §9）。
 
-凍結リンク名 `wheel_{front,rear}_{left,right}`（`robot_dimensions.py:32-35`）はメカナム化でも**無傷**（4輪配置が同じため）。C-1 は `warehouse_description`、C-8 は `warehouse_interfaces` に触れるため **`contract` ラベル PR ＋ 依存トラック予告**が必要（`.claude/rules/parallel-workflow.md` §4）。C-2〜C-7 は config / 各パッケージ内で閉じる。（**注 2026-08-17**: C-8 は L0' driver 側実装＝interfaces 無編集の別解で landed 済み・contract PR 不要になった。C-1 は従来通り）
+凍結リンク名 `wheel_{front,rear}_{left,right}`（`robot_dimensions.py:34-37`）はメカナム化でも**無傷**（4輪配置が同じため）。C-1 は `warehouse_description`、C-8 は `warehouse_interfaces` に触れるため **`contract` ラベル PR ＋ 依存トラック予告**が必要（`.claude/rules/parallel-workflow.md` §4）。C-2〜C-7 は config / 各パッケージ内で閉じる。（**注 2026-08-17**: C-8 は L0' driver 側実装＝interfaces 無編集の別解で landed 済み・contract PR 不要になった。C-1 は従来通り）
 
 > `# TODO(採用時)`: C-1〜C-4 を epic Issue のチェックリストへ展開する。C-5〜C-8 は「横移動を使うか」を決めてから別 Issue に切る。
 
@@ -501,7 +501,7 @@ Status: **決定の docs 反映のみ**（実装なし。CURRENT の `robot_dime
 
 | 行 | 旧文言（2026-08-05） | 新（2026-08-17・本改訂） |
 |---|---|---|
-| C-1 | 「外接円半径 **≈184mm**（対角 367mm ÷ 2）へ改訂」 | `FOOTPRINT_POLYGON`（矩形 231.4 × 284.4mm）と `CIRCUMSCRIBED_RADIUS`（外接円 ≈184mm）を**新定数として additive 追加**。`ROBOT_RADIUS`（`robot_dimensions.py:66` = `0.075`）は**値も意味も変えず**旧車体値のまま据え置き（保守的用途 C-3 等は `CIRCUMSCRIBED_RADIUS` を消費） |
+| C-1 | 「外接円半径 **≈184mm**（対角 367mm ÷ 2）へ改訂」 | `FOOTPRINT_POLYGON`（矩形 231.4 × 284.4mm）と `CIRCUMSCRIBED_RADIUS`（外接円 ≈184mm）を**新定数として additive 追加**。`ROBOT_RADIUS`（`robot_dimensions.py:70` = `0.075`）は**値も意味も変えず**旧車体値のまま据え置き（保守的用途 C-3 等は `CIRCUMSCRIBED_RADIUS` を消費） |
 | C-2 | 「C-1 と同値へ同期（単一ソース維持・R-42）」 | `robot_radius` へ同値を入れるのではなく **`footprint:` polygon へ移行**し、MPPI `consider_footprint: true` と**同一 PR で同時 flip** |
 
 - **同時 flip が必須な理由**: [`nav2_params.yaml:171-178`](../../ws/src/warehouse_bringup/config/nav2_params.yaml) のコメントが #67 E2E ゲートの実測教訓を記録している — `consider_footprint: true` は costmap が footprint polygon を publish していることを要求し、`robot_radius` のままだと `controller_server` の configure が失敗して lifecycle bringup ごと落ちる。逆に polygon だけ入れて [`:179`](../../ws/src/warehouse_bringup/config/nav2_params.yaml) `consider_footprint: false` を残すと、MPPI CostCritic は外接円相当の判定を続けるため矩形にした意味が出ない。**片側だけの変更はどちらの向きでも壊れる。**
