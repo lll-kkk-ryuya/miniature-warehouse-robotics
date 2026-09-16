@@ -310,3 +310,27 @@ class Transport(StrEnum):     # box interface 裏の実装選択（01:52）— �
 
 - **calibration artifact**（§3 RESOLVED・逐語 5 field）: 配置 `config/<env>/calibration/<id>.yaml`・`calibration_id ≡ camera_id` は不変。俯瞰カメラ不使用（[ADR-0007](../adr/0007-no-overhead-camera-gesture-via-onboard-nn.md)）により本フェーズは `homography: []`（fail-closed）を既定とし、**搭載カメラ用の不足 field（intrinsics / camera_frame）の additive 追加は OPEN**（この追補では発明しない）。
 - **coordinate goal DEFER（:127）への条件付き注記**: 影響先リスト（MCP 引数 / CommandItem / Policy Gate）に加え、**「モデルに座標を主張させる」方向へ解凍する場合は `handoff.py` の `coordinate_goal_unfrozen` ルール（:90）の改訂も必要**になる。逆に座標が **L3 の導出結果**（ジェスチャ幾何解決など・[09 INV-1](09-hand-raise-summon.md)）である限り handoff は無関係＝不触で済む。解凍 gate（:131「具体デモ要件」）の現時点の候補は指差しジェスチャだが、[09 §9](09-hand-raise-summon.md) の定量（交点誤差 15-25cm < location 間隔 500mm）は「snap で足りる＝解凍不要」を示している。
+
+## 【2026-09-16 追補】ER 1.6 shutdown → ER 2 移行と model ID の単一ソース化（#690・末尾追記＝行参照非破壊）
+
+一次情報（参照日 2026-09-16・[D] = 実読）: Gemini API deprecations <https://ai.google.dev/gemini-api/docs/deprecations>（**`gemini-robotics-er-1.6-preview` は 2026-08-31 に shutdown**・`1.5-preview` は 2026-04-30）／changelog <https://ai.google.dev/gemini-api/docs/changelog>（**2026-07-30**: `gemini-robotics-er-2-preview` と `gemini-robotics-er-2-streaming-preview` を公開）／model card <https://ai.google.dev/gemini-api/docs/models/gemini-robotics-er-2-preview>（Inputs = text, images, video, **audio**・131,072 / 65,536 tokens・**Live API: Not supported**）／robotics-streaming <https://ai.google.dev/gemini-api/docs/robotics-streaming>（streaming は WSS `client.aio.live.connect` 専用・PCM 16 kHz・BLOCKING tool のみ）／robotics-spatial <https://ai.google.dev/gemini-api/docs/robotics-spatial>（point `[y, x]` 0–1000 は **不変**・bbox は `{"label","y","x","y2","x2"}` の named-key 形・trajectory `{"step","point","action"}`）／robotics-orchestration <https://ai.google.dev/gemini-api/docs/generate-content/robotics-orchestration>（ER 2 を legacy `generate_content` で公式例示・`thinking_level`）／pricing <https://ai.google.dev/gemini-api/docs/pricing>（ER 2: $1 / $5 per 1M → **2027-01-01 から $2 / $10**・free tier あり・streaming は金額未公表）／rate-limits（ER 系の行なし＝未公表）／Hermes api-server docs <https://hermes-agent.nousresearch.com/docs/user-guide/features/api-server>（model 名は free-form・`input_audio` は依然 400 → fork は引き続き必要・`direct_model_requests` フラグの存在）。
+
+**実施（本追補と同 PR・L4 のみ・0 actuation・L3 compiler / 凍結契約不変）**:
+
+1. 単一ソース `warehouse_llm_bridge/robotics/er_models.py`: `ER_DIRECT_MODEL_ID = "gemini-robotics-er-2-preview"`（wire に載る API model id）と `ER_SOURCE_MODEL = "gemini-robotics-er"`（監査タグ・不変）を分離。adapter 既定・factory・probe・live helper が参照。
+2. additive config key `robotics.er_gateway.direct_model`（`config/warehouse.base.yaml`）→ env `WAREHOUSE__ROBOTICS__ER_GATEWAY__DIRECT_MODEL`（doc19 overlay・実装追加なし）。空/欠落/非 str は code 既定へ fail-safe。factory は direct / hermes **両枝**に配線（hermes→direct fallback が同じ model を呼ぶ）。
+3. Hermes gateway `deploy/dev/hermes-er/config.lean.yaml` `model.default`・fork 起動 sh 2 本のログ・`.env.example`・fork README・docs 正本行（[04:20](04-er-input-modalities-and-stt.md:20)・dev/07・implementation-status.html）を同一行更新し、`tests/unit/test_er_model_id_single_source.py` が全複製を定数に pin。
+4. **記録として残すもの**（更新しない）: fixture `red_blue_sequence.py` / `deploy/dev/xer6/er_offline_payload.*.json` の `modelVersion`（2026-07 の live 応答）・[§5 PROBE-1/3 の記録](06-unfrozen-contract-resolutions.md:140)・`tests/live/manifests/xer_l3_l2_direct_live.yaml` の `results.model`・TRANSPORT-FLIP-PLAN / UPSTREAM-PR の当時記述・vla spike の probe 結果表。
+5. **REST 直呼び adapter は非 streaming の `gemini-robotics-er-2-preview` を使う**（streaming は Live API/WSS 専用で REST でも Hermes `/v1/chat/completions` でも呼べない = ADR-0002 と整合）。
+
+**未決（本追補・裁定待ち）**:
+
+- U-1 **live smoke（#690 DoD 3）**: ER 2 で `tests/live/test_er_handoff_live.py`（direct・text-only）と fork 8644 経路を各 1 回。**operator の cost 確認 gate**（`WAREHOUSE_LIVE_ER=1` は agent が立てない）。1.6 を今呼んだ場合の HTTP 応答も未実測。
+- U-2 **ER 2 非 streaming の audio 入力**が `generateContent` + `inline_data`（audio/wav）で 200 を返すか（model card の "Inputs: audio" は列挙であって疎通保証ではない）= PROBE-1 の ER 2 再実行。fork の存在意義の根拠。
+- U-3 **thinking**: ER 2 は `thinking_level`（minimal / low / medium / high）が語彙。adapter は thinking を送らない（不変）。`scripts/probe_gemini_robotics_er.py` の `thinkingBudget` が 400 になるか無視されるかは未確認（thinking docs の対応表に ER 系の行なし）。
+- U-4 **bbox の named-key 形**（`y/x/y2/x2`）を [03](03-er-adapter-skeleton.md) に凍結するか。pointing は不変・repo は bbox 形式を未固定。
+- U-5 Hermes provider 名 `google`（repo 実測 v0.15.1）vs 公式 docs の `gemini`。**移行では触らない**（実測値を維持）。
+- U-6 Hermes `direct_model_requests: true` で per-request model routing が可能なら 8643/8644 の 2 本立てを畳めるか（repo 実測「request model は無視」と docs が食い違う・低優先）。
+- U-7 Interactions API（`/v1beta/interactions`・2026-06 既定化・`generateContent` は legacy だが sunset なし）へ移るか。当面 legacy 据え置き（ER 2 が legacy で公式例示・adapter 改修ゼロ）。
+- U-8 ER 2 の rate limit 未公表 → eval batch の並列度は 429 観測ベース。2027-01-01 の値上げ（2 倍）を eval 予算に反映。
+- U-9 **ER 出力 `pixel` の座標契約が未定義**（doc03 共通 instruction text は pixel に沈黙・production `_SCHEMA` はそれを忠実に写して pixel 節なし・live helper は「`[u,v]` 0–1000」を独自に要求・L3 の dev-sim-v1 artifact は raw px で fit・Gemini native は `[y, x]` 0–1000）= **#699**。**2026-09-16 訂正**: 2026-07-02 live の `command_items=0` は live helper（pixel 節あり）＋注入 calibration で「解決しないことが設計どおり」（`test_xer_full_chain_live.py:60-63`）であり本件が原因ではない。slice 1（#699 PR）= doc03 に pixel 節を追補し `PIXEL_RULE` 定数で production / live を単一ソース化、slice 2 = handoff での正規化 → raw px 変換（別）。

@@ -36,13 +36,15 @@ if os.getenv("WAREHOUSE_LIVE_ER") != "1":
         allow_module_level=True,
     )
 
+from warehouse_llm_bridge.robotics.adapters.gemini_er import PIXEL_RULE
+from warehouse_llm_bridge.robotics.er_models import ER_DIRECT_MODEL_ID, ER_MODEL_ENV
 from warehouse_llm_bridge.robotics_planning_core import (  # noqa: E402
     RawModelOutput,
     RoboticsPlanDraft,
     to_robotics_plan_draft,
 )
 
-MODEL = os.getenv("MWR_ER_MODEL", "gemini-robotics-er-1.6-preview")
+MODEL = os.getenv(ER_MODEL_ENV, ER_DIRECT_MODEL_ID)  # single source (#690)
 _API_KEY = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
 
 # A system instruction that pins the L3 input contract (robotics_plan_draft.v0). The targets are
@@ -60,7 +62,7 @@ _SCHEMA_INSTRUCTION = (
     '"operator_clarification_required":false}\n'
     "Rules: robots are only bot1/bot2; action is one of navigate|wait|stop|yield|charge; target is "
     "a detection id; do NOT include any URL, ROS topic, endpoint, velocity, motor or coordinate "
-    "goal field. pixel is [u,v] in 0-1000 if known, else [0,0]."
+    "goal field. " + PIXEL_RULE
 )
 _INSTRUCTION = "bot1 goes to the red box. After bot1 arrives, bot2 goes to the blue box."
 
@@ -186,7 +188,7 @@ def test_live_er_via_hermes_gateway_flows_through_l3_handoff(capsys):
     """REAL Hermes-gateway path (PROBE-3): route ER through a dedicated Hermes gateway -> handoff.
 
     Needs a dedicated Hermes whose active model is ER (provider: google,
-    default: gemini-robotics-er-1.6-preview) — NOT the personal ~/.hermes. Set
+    default: ER_DIRECT_MODEL_ID = gemini-robotics-er-2-preview) — NOT the personal ~/.hermes. Set
     HERMES_BASE_URL (e.g. http://127.0.0.1:8643) and HERMES_API_KEY (the gateway API_SERVER_KEY).
     Verified 2026-06-26: the gateway returns the plan inside a ```json fence (agent wrapping), which
     the handoff now tolerates.
@@ -390,7 +392,7 @@ def test_live_er_audio_via_forked_hermes_gateway(capsys):
       1. Deploy the forked lean ER gateway (isolated worktree + patch + launch on :8644):
            deploy/hermes/er-audio-fork/run-er-gateway.sh          # creates worktree, applies patch
          (lean HERMES_HOME=~/.hermes-mwr-er-fork: provider google, model
-         gemini-robotics-er-1.6-preview, api_server :8644, memory off).
+         gemini-robotics-er-2-preview = ER_DIRECT_MODEL_ID, api_server :8644, memory off).
       2. Point the bridge config at it: robotics.er_gateway.base_url=http://127.0.0.1:8644 +
          audio_input_audio_supported: true (config/<env>/warehouse.yaml overlay), so
          ``resolve_audio_transport`` returns ``Transport.HERMES`` for the audio leg.

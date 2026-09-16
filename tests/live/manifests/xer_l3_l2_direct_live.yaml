@@ -26,7 +26,7 @@ score_specs:
 # --- live-run scope (PAID; operator-authorised, budget-bounded) ----------------------------------
 live_run:
   transport: direct                  # call_er_direct generateContent (NOT the Hermes-gateway harness)
-  model: gemini-robotics-er-1.6-preview   # text-only call (cheap); override via MWR_ER_MODEL
+  model: gemini-robotics-er-2-preview   # = ER_DIRECT_MODEL_ID (#690); text-only call (cheap); override via MWR_ER_MODEL
   gate: WAREHOUSE_LIVE_ER=1           # module-skip unless set; the agent does not set it by default
   key: GEMINI_API_KEY | GOOGLE_API_KEY    # provider key from env (never committed)
   budget:

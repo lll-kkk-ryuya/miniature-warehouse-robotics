@@ -332,11 +332,19 @@ gate_g0() {
   manual "Layer 0: verify physical/proximity e-stop stops the robot independent of ROS"
 
   local py
+  # Layer-1 Emergency Guardian R-26 units (docs/setup/jetson-deploy.md §0 item 2 / doc16 §11):
+  # every stop reason the Guardian can raise must be exercised here. Keep this list in sync
+  # when a reason or a Guardian-side contract is added (2026-09-16: scan_stale, stop_state feed,
+  # operator stop latch, displacement gate were missing).
   if py="$(python_cmd)"; then
     if "${py}" -m pytest \
       tests/unit/test_safety.py \
       tests/unit/test_safety_contracts.py \
       tests/unit/test_emergency_guardian.py \
+      tests/unit/test_guardian_scan_stale.py \
+      tests/unit/test_guardian_stop_state.py \
+      tests/unit/test_guardian_displacement_gate.py \
+      tests/unit/test_operator_stop_latch.py \
       tests/unit/test_nav2_params_safety.py \
       -q; then
       pass "G0 safety unit tests"
