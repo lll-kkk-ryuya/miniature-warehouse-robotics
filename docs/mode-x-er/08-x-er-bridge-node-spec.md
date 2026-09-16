@@ -138,7 +138,7 @@ async 境界: `propose_plan` は async・L3/composition は sync のため、Mod
 
 ### 11.1 L2 feed（doc12 追補の同型配線・x_er_bridge 版）
 
-- x_er_bridge は `llm_bridge.py` の #593 配線と**同型**に `/bot{n}/cmd_vel/emergency`（`geometry_msgs/Twist`・RELIABLE/KEEP_LAST/depth10 の明示 QoS＝Guardian publisher `emergency_guardian.py:109-111,139-141` と一致）を bot1/bot2 分購読し、受信ごとに `EmergencyLevelMirror.on_stop_signal(bot, monotonic)`、0.1s timer で `sweep` する。mirror は `self._tools.policy_gate.set_emergency`（`WarehouseTools.policy_gate` read-only property）へ写像する。
+- x_er_bridge は `llm_bridge.py` の #593 配線と**同型**に `/bot{n}/cmd_vel/emergency`（`geometry_msgs/Twist`・RELIABLE/KEEP_LAST/depth10 の明示 QoS＝Guardian publisher `EmergencyGuardian.__init__` の `reliable_qos` ＋ `self._cmd_pub[bot]`（symbol 参照）と一致）を bot1/bot2 分購読し、受信ごとに `EmergencyLevelMirror.on_stop_signal(bot, monotonic)`、0.1s timer で `sweep` する。mirror は `self._tools.policy_gate.set_emergency`（`WarehouseTools.policy_gate` read-only property）へ写像する。
 - clear 窓は `clear_after_from_config(cfg)`（config `policy_gate.emergency_clear_after_s`・既定 1.0s・fail-closed・tighten-only **floor**）。malformed は**起動拒否**（§6 起動時と同族＝0 cycle・0 dispatch）。
 - 設計判断は本節で再定義しない: 採用理由・却下 2 案・既定値根拠・意味論（recovery は塞がない等）は doc12 追補が正本。本節は「x_er_bridge にも同じものを置く」という配線宣言のみ。
 

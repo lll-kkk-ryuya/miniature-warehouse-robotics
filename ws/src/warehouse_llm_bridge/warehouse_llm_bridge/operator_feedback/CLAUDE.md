@@ -71,7 +71,7 @@
   **subscriber runtime node**・doc05 §8.10 item4 `docs/mode-x-er/05-operator-feedback-and-voice-response.md:395`）:
   **`/operator/notice`**（`TOPIC_OPERATOR_NOTICE`・QoS = `build_notice_qos()`）と
   **`/emergency/event`**（`TOPIC_EMERGENCY_EVENT`・`std_msgs/String` JSON・QoS = RELIABLE/KEEP_LAST/
-  `EMERGENCY_QOS_DEPTH=10`＝既存 publisher `warehouse_safety/emergency_guardian.py:117` と
+  `EMERGENCY_QOS_DEPTH=10`＝既存 publisher `warehouse_safety/emergency_guardian.py` `self._event_pub`（`EmergencyGuardian.__init__`・symbol 参照）と
   `warehouse_state/state_cache.py:59-61,93` に**一致させただけ**）を購読し、box（filter→template→sink）を駆動する。
   **SUBSCRIBE-ONLY = 0 actuation**（R-26 / L4OF-G1・doc05:269）: `wire_notice_subscriptions` は
   subscription を 2 本作るだけで **publisher / service client / action client を一切作らない**。

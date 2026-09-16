@@ -102,12 +102,12 @@ else:
 NODE_NAME = "operator_feedback"
 
 #: Emergency Guardian's structured estop event topic (doc03:98; produced by
-#: ``warehouse_safety/emergency_guardian.py:117``). The box subscribes it DIRECTLY so
+#: ``warehouse_safety/emergency_guardian.py`` ``self._event_pub``). The box subscribes it DIRECTLY so
 #: emergency never rides ``/operator/notice`` (doc05 §8.7 :366 / §8.10 item 4 :395).
 TOPIC_EMERGENCY_EVENT = "/emergency/event"
 
 # QoS for /emergency/event. NOT a new decision: it MIRRORS the existing publisher /
-# subscriber pair for this very topic (emergency_guardian.py:117 and state_cache.py:59-61,93
+# subscriber pair for this very topic (emergency_guardian.py ``_event_pub`` and state_cache.py:59-61,93
 # both use RELIABLE / KEEP_LAST / depth=10, durability left at the rclpy default VOLATILE) —
 # an incompatible QoS here would silently receive nothing.
 EMERGENCY_QOS_RELIABILITY = "reliable"

@@ -178,7 +178,7 @@ web_bridge は base+overlay 解決済みの **browser-facing 値のみ**を返�
 
 ## 6. QoS と late-join
 
-- **現状の producer はすべて VOLATILE**（latch しない）: State Cache=RELIABLE/KEEP_LAST/depth10/VOLATILE（`state_cache.py:59-61`）、`/llm/*`=depth 10 既定 volatile（`llm_bridge.py:132-139`）、Emergency=reliable but volatile（`emergency_guardian.py:117-122`）。
+- **現状の producer はすべて VOLATILE**（latch しない）: State Cache=RELIABLE/KEEP_LAST/depth10/VOLATILE（`state_cache.py:59-61`）、`/llm/*`=depth 10 既定 volatile（`llm_bridge.py:132-139`）、Emergency=reliable but volatile（`EmergencyGuardian.__init__` の `reliable_qos`＝RELIABLE/KEEP_LAST/depth10・durability 既定 VOLATILE・symbol 参照）。
 - 帰結: 後から繋ぐ `web_bridge` は**次の publish まで何も受け取らない**（snapshot のみ 10Hz で self-heal）。
 - 方針:
   - `web_bridge` は各 producer の QoS に **matching** subscribe（reliable トピックは RELIABLE）。
@@ -394,7 +394,7 @@ live persona は Slice 3（Hermes persona・human-gated・Phase 3、≈ #288）�
 - 司令官 publisher: `ws/src/warehouse_llm_bridge/warehouse_llm_bridge/llm_bridge.py:143-144,150(create_publisher),165(negotiation_starter 配線),267-273,287(publish helper)` / `scheduler.py:151(_noop),178-179(既定 publish 配線),232-246(proposal 注入 API),302,334(cycle への attach),357(situation へ発火)`
 - 凍結契約: `ws/src/warehouse_interfaces/warehouse_interfaces/schemas.py`（Situation :125-132 / Command :187-196 / Proposal :209-214 / StateSnapshot :95,:104 / RobotState :38-61）
 - trace seed / paths: `ws/src/eval_sdk/eval_sdk/seed.py:16,33-42,70-85` / `tracer.py:70-71,194` / `ws/src/warehouse_interfaces/warehouse_interfaces/paths.py:22-30`
-- QoS / rate: `state_cache.py:43,59-61,124` / `emergency_guardian.py:117-122`
+- QoS / rate: `state_cache.py:43,59-61,124` / `emergency_guardian.py` `EmergencyGuardian.__init__` の `reliable_qos`・`self._event_pub`・`create_timer(0.05, self._check_safety)`（symbol 参照）
 - launch gate: `ws/src/warehouse_bringup/launch/bringup.launch.py:233(nav2 gate),255-276(character_llm Node),262(gate 条件)`
 - MCP tool 7: `ws/src/warehouse_mcp_server/warehouse_mcp_server/tools.py:446-492`（mint :478 / audit :490 / publish :491）
 - KPI: `ws/src/warehouse_orchestrator/warehouse_orchestrator/kpi.py:185,199,307` / `warehouse_orchestrator/CLAUDE.md:15`

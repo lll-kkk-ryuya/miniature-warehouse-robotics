@@ -165,7 +165,7 @@ def test_subscribed_topics_are_the_two_documented_channels() -> None:
 def test_emergency_qos_mirrors_the_guardian_publisher() -> None:
     """QoS must MATCH the existing ``/emergency/event`` publisher (RELIABLE/KEEP_LAST/10).
 
-    Independent literals: ``emergency_guardian.py:117`` publishes with the ``reliable_qos``
+    Independent literals: ``emergency_guardian.py`` ``self._event_pub`` publishes with the ``reliable_qos``
     profile defined at ``state_cache.py:59-61``. An incompatible QoS silently receives nothing.
     """
     assert emergency_qos_kwargs() == {

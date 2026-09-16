@@ -14,7 +14,7 @@
   silent no-match で fail-open にしない）/ clear = 無信号 > `emergency_clear_after_s` を
   **0.1s 周期 sweep** で検出 / 窓は `clear_after_from_config` の fail-closed 検証を通る。
 - QoS の実体 = Guardian publisher
-  ws/src/warehouse_safety/warehouse_safety/emergency_guardian.py:109-111,139-141
+  emergency_guardian.py ``EmergencyGuardian.__init__`` の ``reliable_qos`` ＋ ``self._cmd_pub[bot]``
   （RELIABLE / KEEP_LAST / depth10。doc12 追補が正本として指す実装 anchor）。
 - docs/architecture/15-mcp-platform.md:389-401 — twist_mux emergency 入力
   timeout 0.5 / priority 100（sweep 周期 0.1s + 窓 1.0s が必ずこの後に開く根拠）。
@@ -148,7 +148,7 @@ def test_estop_subscription_iterates_bots_with_exact_topic() -> None:
     template, names = _fstring_parts(call.args[1])
     assert template == SPEC_TOPIC_TEMPLATE, f"topic 形が仕様と不一致: {template!r}"
     assert names == [loop.target.id], "topic に差し込まれるのが loop の bot 変数でない"
-    # 型は Guardian publisher と同じ Twist（emergency_guardian.py:139-141）。
+    # 型は Guardian publisher と同じ Twist（emergency_guardian.py ``self._cmd_pub[bot]``）。
     assert isinstance(call.args[0], ast.Name) and call.args[0].id == "Twist"
 
 
@@ -199,7 +199,7 @@ def test_estop_qos_is_explicit_reliable_keep_last_depth10() -> None:
     rclpy の subscription 既定 QoS に任せる（または depth int だけ渡す）と、将来の
     既定変更や BEST_EFFORT 化で publisher と非互換になり、DDS は **エラー無しで
     no-match**＝ミラーが一切聞こえない fail-open になる。KEEP_LAST/depth10 は
-    Guardian 側 reliable_qos（emergency_guardian.py:109-111）の鏡映で、モジュール
+    Guardian 側 reliable_qos（emergency_guardian.py ``EmergencyGuardian.__init__``）の鏡映で、モジュール
     冒頭コメントの「redelivery burst で clear が後ろへずれる（safe 方向）」の前提値。
     """
     tree = _tree()
