@@ -97,7 +97,8 @@ def test_no_jazzy_only_per_source_source_timeout_keys() -> None:
     # doc12 追補 (2) config PR: Humble 1.1.20 declares NO per-source source_timeout (source.cpp
     # getCommonParameters reads .topic/.enabled only), so the node-level value is the only bound
     # and applies to every source. The Jazzy-only `virtual_scan.source_timeout: 0.0` override
-    # (PR#229) is gone; a legacy Jazzy dev container must re-add it locally (yaml:85-90 note).
+    # (PR#229) is gone from the yaml; on Jazzy+ the LAUNCH injects it from ROS_DISTRO
+    # (warehouse_bringup/collision_monitor_distro.py, test_collision_monitor_distro_params.py).
     p = _collision_params()
     for src in p["observation_sources"]:
         assert "source_timeout" not in p[src], (

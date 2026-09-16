@@ -86,5 +86,5 @@ collision_monitor:
       # (SUPPRESSION_RANGE, virtual_scan_logic.py:22). Its absence = "no nearby robot", NOT a
       # sensor fault. On Humble 1.1.20 a silent source merely contributes no points, so >1.0m
       # driving cannot false-STOP and no per-source key exists. The Jazzy-only override
-      # `source_timeout: 0.0` (PR#229) was REMOVED (doc12 追補 (2)). A legacy Jazzy dev container
-      # (deploy/dev/install-nav2-e2e.sh) must re-add it locally, else >1.0m driving STOPs (invalid source).
+      # `source_timeout: 0.0` (PR#229) was REMOVED (doc12 追補 (2)). On Jazzy+ (key declared, invalid
+      # source = STOP) nav2_bringup.launch.py injects it from ROS_DISTRO (collision_monitor_distro.py) — not here.
