@@ -67,7 +67,10 @@ def test_has_a_stop_polygon() -> None:
 
 @pytest.mark.unit
 def test_source_timeout_positive() -> None:
-    # doc12:546 / Open ③: provisional scan-freshness bound (value validated live).
+    # Open ③ (doc12:552): provisional scan-freshness bound, pinned as the documented intent. On
+    # the TARGET Humble 1.1.20 (ADR-0008) a stale source only drops its points (fail-open, doc12
+    # 末尾【2026-09-14 追補】/【2026-09-16 追補】), so this value does NOT stop the robot on lidar
+    # loss — that liveness stop lives in the Guardian (`scan_stale`, doc12 追補 (3)), not here.
     p = _collision_params()
     assert isinstance(p["source_timeout"], (int, float)) and p["source_timeout"] > 0
 
@@ -82,16 +85,22 @@ def test_frames_use_robot_namespace_token() -> None:
 
 
 @pytest.mark.unit
-def test_virtual_scan_stale_does_not_stop_but_real_scan_does() -> None:
-    # PR#229 review (MAJOR): collision_monitor STOPs on a stale source when source_timeout != 0
-    # (Jazzy collision_monitor_node.cpp; matches doc12:546). virtual_scan is a CONDITIONAL
-    # publisher — SILENT when robots are >1.0m apart (SUPPRESSION_RANGE, virtual_scan_logic.py:22)
-    # — so it MUST override source_timeout to 0.0 (absence = no nearby robot, not a fault), else
-    # normal >1.0m driving would spuriously STOP both bots. The REAL scan keeps the node-level
-    # (>0) timeout so a true lidar dropout still stops (R-39).
+def test_source_timeout_value_pins_kept_until_docs_first_config_pr() -> None:
+    # Value pins from the PR#229 review (MAJOR), kept UNCHANGED until the docs-first config PR that
+    # doc12 末尾【2026-09-16 追補】(2) names. Their rationale is Jazzy/main-only: there a stale source
+    # with source_timeout != 0 raises an "invalid source" STOP, and virtual_scan is a CONDITIONAL
+    # publisher (SILENT when robots are >1.0m apart, SUPPRESSION_RANGE virtual_scan_logic.py:22),
+    # so it overrides to 0.0. On the TARGET Humble 1.1.20 (ADR-0008) the per-source key is not even
+    # declared (source.cpp getCommonParameters reads .topic/.enabled only) and a stale/absent source
+    # merely drops its points (fail-open): neither value stops the robot on lidar loss. That stop is
+    # the Guardian's `scan_stale` (doc12 追補 (3)); this test only guards against silent value drift.
     p = _collision_params()
     assert p["virtual_scan"].get("source_timeout") == 0.0, (
-        "virtual_scan must disable stale-stop (it is silent when robots are far apart)"
+        "virtual_scan keeps the per-source 0.0 pin (Jazzy/main-forward intent; inert on Humble)"
     )
-    assert "source_timeout" not in p["scan"], "real scan must inherit the node-level stale-stop"
-    assert p["source_timeout"] > 0, "node-level (real scan) must still STOP on a stale lidar"
+    assert "source_timeout" not in p["scan"], (
+        "real scan keeps inheriting the node-level value (no per-source override)"
+    )
+    assert p["source_timeout"] > 0, (
+        "node-level bound stays positive (pinned intent; on Humble it is fail-open, not a stop)"
+    )

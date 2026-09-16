@@ -237,7 +237,7 @@ ros2 topic echo /bot1/cmd_vel/nav2               # breach 中は linear/angular 
 # Step 4 (Open ③ + source_timeout sanity): /scan 鮮度の停止挙動を 2 方向で確認（「正しく silent」と
 #   「monitor 死亡」を区別する）。
 #   (a) 実 /scan 途絶 → STOP 発火: /bot1/scan の publisher（sim lidar bridge）を止め、node-level
-#       source_timeout 1.0（yaml:58）経過後に cmd_vel/nav2 が止まることを確認（lidar 途絶 stop, R-39）。
+#       source_timeout 1.0（yaml:58）経過後に cmd_vel/nav2 が止まることを確認（lidar 途絶 stop, R-39）。 ※Jazzy 意味論。Humble 1.1.20 では止まらない（fail-open）＝doc12 末尾【2026-09-16 追補】
 #   (b) virtual_scan の >1.0m 無送信 → STOP 非発火: 2台を 1.0m 超に離し、通常走行で誤 STOP しないことを
 #       確認（per-source source_timeout 0.0, yaml:90 ＝「無送信＝相手居ない」を fault 扱いしない）。
 ```
@@ -269,7 +269,7 @@ source_timeout 再調整（③）／forward-bias 化を tune し再走（値が�
 > AMCL・接近動力学）は含まない。表の ①〜④ は引き続き human gate。詳細: #233 コメント。
 
 - **① reflex（config 層）= GO**: breach（stop polygon 内 ≥`min_points` 4）→ `cmd_vel/nav2` 0.000 + `CollisionMonitorState{PolygonStop, action=1}`。
-- **④ source_timeout（config 層）= GO（両方向）**: 実 `/scan` 途絶 → `invalid source` STOP at dropout + ~1.0s（実測 0.99–1.04s ＝ node `source_timeout 1.0`）∧ `virtual_scan` 無送信（per-source `0.0`）→ 非 STOP（passthrough 0.200）。
+- **④ source_timeout（config 層）= GO（両方向）**: 実 `/scan` 途絶 → `invalid source` STOP at dropout + ~1.0s（実測 0.99–1.04s ＝ node `source_timeout 1.0`）∧ `virtual_scan` 無送信（per-source `0.0`）→ 非 STOP（passthrough 0.200）。**〔2026-09-16 注記〕この計測は Jazzy nav2（`deploy/dev/install-nav2-e2e.sh:21` = `ros-jazzy-navigation2`）。Humble 1.1.20 には `invalid source` STOP が無く転写不可＝doc12 末尾【2026-09-16 追補】。**
 - **②③ = PENDING（full-sim + RViz human gate）**: ③ は `radius 0.09` 円で幾何 No-Go（:234-236）。
   **Open ② 採用候補 = forward-biased polygon**（`type:"polygon"` / y 半幅 0.06 / x_far live-tune knob）を #233 で起案し、node-isolated で「前方=止／側方=通」を実証。`collision_monitor.yaml` は nav-traffic 所有（doc16:193）→ 予告＋合意の上で反映。
 
