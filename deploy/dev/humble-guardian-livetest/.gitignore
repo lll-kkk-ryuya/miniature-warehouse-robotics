@@ -1,0 +1,5 @@
+# runtime logs written by harness.sh when this folder is mounted at /scratch/live
+harness.log
+recorder.log
+guardian.log
+pub_*.log
