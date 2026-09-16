@@ -35,6 +35,7 @@ from warehouse_safety.guard_logic import (
     BotState,
     Decision,
     EdgeLatch,
+    age_is_unknown,
     build_event,
     evaluate,
     stop_requested_for,
@@ -450,3 +451,153 @@ def test_init_hard_indexes_and_validates_the_config_key() -> None:
     assert not any(isinstance(n, ast.Attribute) and n.attr == "get" for n in ast.walk(value)), (
         "no .get() default may mask a missing scan_freshness_timeout"
     )
+
+
+# ============================================================================
+# 【2026-09-16 追記②】 age-unknown ruling: a negative / NaN age == never received
+# ============================================================================
+#
+# Oracle (doc12 末尾【2026-09-16 追補】(3) 追記②, transcribed — nothing computed from the
+# module): a negative or NaN arrival age is not a reading of the node's monotonic clock
+# (which cannot run backwards) and is "age unknown", the same class as None:
+#
+#   scan_age < 0 or NaN,  odom_seen      -> estop "scan_stale", detail.scan_age = null
+#   scan_age < 0 or NaN,  not odom_seen  -> silent (absent bot)
+#   scan_age = +inf                      -> stale by the strict `>` (older than any window),
+#                                           detail.scan_age = null (never Infinity in JSON)
+#   finite, >= 0                         -> unchanged: strict `>` decides, witness irrelevant
+#   pose_age < 0 or NaN                  -> STALE, then the displacement gate decides
+#                                           (None = never received keeps doc12:509's
+#                                           startup exemption); detail.pose_age = null
+#   pose_age = +inf                      -> stale (strict `>`), detail.pose_age = null
+#
+# Unreachable in the wired node (one `now` per tick; the AST pins above), so this is
+# defence in depth for callers that inject another clock into the pure logic — the
+# sibling of PoseGateTracker.snapshot's closed interval (#684).
+
+UNKNOWN_AGES = [-1e-9, -0.5, -1.7e9, float("-inf"), float("nan")]
+
+
+@pytest.mark.safety
+@pytest.mark.parametrize("age", UNKNOWN_AGES)
+def test_unknown_scan_age_with_the_odom_witness_estops(age: float) -> None:
+    decs = _scan(_evaluate(_bot("bot1", scan_age=age, odom_seen=True), _far_bot()))
+    assert [(d.bot, d.action) for d in decs] == [("bot1", "estop")]
+    assert decs[0].detail == {"scan_age": None, "freshness_timeout": 1.0}  # unknown -> null
+
+
+@pytest.mark.safety
+@pytest.mark.parametrize("age", UNKNOWN_AGES)
+def test_unknown_scan_age_without_the_odom_witness_is_silent(age: float) -> None:
+    assert _scan(_evaluate(_bot("bot1", scan_age=age, odom_seen=False), _far_bot())) == []
+
+
+@pytest.mark.safety
+def test_unknown_scan_age_follows_the_none_rule_exactly() -> None:
+    """'Same class as None': for both witness states the decision SET with a negative /
+    NaN age must equal the set with None (not just the scan_stale count)."""
+    for odom_seen in (False, True):
+        ref = _evaluate(_bot("bot1", scan_age=None, odom_seen=odom_seen), _far_bot())
+        ref_set = {(d.bot, d.reason, d.action) for d in ref}
+        for age in UNKNOWN_AGES:
+            got = _evaluate(_bot("bot1", scan_age=age, odom_seen=odom_seen), _far_bot())
+            got_set = {(d.bot, d.reason, d.action) for d in got}
+            assert got_set == ref_set, f"age={age} odom_seen={odom_seen}: {got_set} != {ref_set}"
+
+
+@pytest.mark.safety
+def test_plus_inf_scan_age_is_stale_not_unknown() -> None:
+    """+inf is older than any window: stale by the strict `>` even WITHOUT the witness;
+    the detail reports null because Infinity must never reach the JSON event."""
+    decs = _scan(_evaluate(_bot("bot1", scan_age=float("inf"), odom_seen=False), _far_bot()))
+    assert [(d.bot, d.action) for d in decs] == [("bot1", "estop")]
+    assert decs[0].detail == {"scan_age": None, "freshness_timeout": 1.0}
+
+
+@pytest.mark.safety
+@pytest.mark.parametrize("age", [0.0, 0.5, 1.0, 1.0 + 1e-9, 1.5, 999.0])
+def test_finite_non_negative_scan_ages_are_unchanged_by_the_ruling(age: float) -> None:
+    """Bit-identity on the documented domain: the strict `>` decides (hand-computed
+    against the 1.0 s window), the witness is irrelevant, the detail carries the age."""
+    for odom_seen in (False, True):
+        decs = _scan(_evaluate(_bot("bot1", scan_age=age, odom_seen=odom_seen), _far_bot()))
+        expected_stale = age > 1.0
+        assert (len(decs) == 1) is expected_stale, f"age={age} odom_seen={odom_seen}"
+        if expected_stale:
+            assert decs[0].detail == {"scan_age": age, "freshness_timeout": 1.0}
+
+
+def _gated(b: BotState) -> list:
+    """evaluate with the displacement gate configured (literals = doc12 追補 :607)."""
+    return evaluate(
+        b,
+        _far_bot(),
+        distance_threshold=THRESH,
+        blocked_timeout=TIMEOUT,
+        pose_freshness_timeout=FRESHNESS,
+        scan_freshness_timeout=SCAN_FRESHNESS,
+        pose_gate_motion_epsilon=0.10,  # = safety.pose_freshness_motion_epsilon
+        pose_gate_angular_epsilon=0.4,  # = safety.pose_freshness_angular_epsilon
+    )
+
+
+@pytest.mark.safety
+@pytest.mark.parametrize("age", UNKNOWN_AGES)
+def test_corrupt_pose_age_is_stale_and_the_displacement_gate_decides(age: float) -> None:
+    """追記②: a pose_age that is negative / NaN was RECEIVED but is not a reading of the
+    tick's clock -> stale (fail-closed), and the doc23 A-5③ gate then decides exactly
+    as for any stale pose: gate-less / moving -> ``pose_stale`` estop with a null age;
+    parked with healthy odom -> silent. Only never-received ``None`` keeps the doc12:509
+    startup exemption. Expected values are transcribed from the docs."""
+    decs = [d for d in _evaluate(BotState("bot1", 5.0, 5.0, 100.0, 0.0, age), _far_bot())]
+    stale = [d for d in decs if d.reason == "pose_stale"]
+    assert [(d.bot, d.action) for d in stale] == [("bot1", "estop")]
+    assert stale[0].detail == {"pose_age": None, "freshness_timeout": 1.0}
+    parked = BotState("bot1", 5.0, 5.0, 100.0, 0.0, age, 0.0, 0.0)  # 0 m / 0 rad since pose
+    assert [d.reason for d in _gated(parked)] == []
+    moving = BotState("bot1", 5.0, 5.0, 100.0, 0.0, age, 0.10 + 1e-9, 0.0)  # > motion eps
+    assert [d.reason for d in _gated(moving)] == ["pose_stale"]
+
+
+@pytest.mark.safety
+def test_never_received_pose_keeps_the_startup_exemption() -> None:
+    """doc12:509 unchanged: ``None`` (not yet localized) is NOT stale — an un-localized
+    parked robot must not be estopped — while a genuinely old pose still estops with
+    its finite age in the detail."""
+    none = _evaluate(BotState("bot1", 5.0, 5.0, 100.0, 0.0, None), _far_bot())
+    assert [d.reason for d in none] == []
+    old = _evaluate(BotState("bot1", 5.0, 5.0, 100.0, 0.0, FRESHNESS + 0.5), _far_bot())
+    assert [(d.reason, d.detail) for d in old] == [
+        ("pose_stale", {"pose_age": 1.5, "freshness_timeout": 1.0})
+    ]
+
+
+@pytest.mark.safety
+def test_plus_inf_pose_age_is_stale_with_a_null_detail() -> None:
+    decs = _evaluate(BotState("bot1", 5.0, 5.0, 100.0, 0.0, float("inf")), _far_bot())
+    assert [(d.reason, d.detail) for d in decs] == [
+        ("pose_stale", {"pose_age": None, "freshness_timeout": 1.0})
+    ]
+
+
+@pytest.mark.safety
+@pytest.mark.parametrize("age", [0.0, 0.5, 1.0, 1.0 + 1e-9, 1.5, 999.0])
+def test_finite_non_negative_pose_ages_are_unchanged_by_the_ruling(age: float) -> None:
+    """Bit-identity on the documented domain: strict `>` against the 1.0 s window
+    decides, and the detail carries the raw finite age."""
+    decs = _evaluate(BotState("bot1", 5.0, 5.0, 100.0, 0.0, age), _far_bot())
+    stale = [d for d in decs if d.reason == "pose_stale"]
+    expected_stale = age > 1.0
+    assert (len(stale) == 1) is expected_stale
+    if expected_stale:
+        assert stale[0].detail == {"pose_age": age, "freshness_timeout": 1.0}
+
+
+@pytest.mark.safety
+def test_age_is_unknown_truth_table() -> None:
+    """The helper's domain, transcribed from 追記②: None / NaN / negative are unknown;
+    zero, positive, and +inf are readings."""
+    for unknown in (None, float("nan"), -1e-9, -0.5, float("-inf")):
+        assert age_is_unknown(unknown), unknown
+    for reading in (0.0, 1e-9, 0.5, 1.0, 999.0, float("inf")):
+        assert not age_is_unknown(reading), reading
