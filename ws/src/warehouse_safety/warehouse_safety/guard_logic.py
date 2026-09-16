@@ -453,9 +453,10 @@ class PoseGateTracker:
         absent, older than ``stale_after``, or stamped on a clock the tick cannot
         trust (fail-closed).
 
-        ``stale_after`` itself is validated: a non-finite window would make the
-        ``>`` comparison False for NaN and silently keep serving stale odom
-        (fail-OPEN), so it is rejected explicitly.
+        ``stale_after`` itself is validated explicitly: a ``+inf`` window makes
+        ``age <= stale_after`` True for every age and would serve odom of any age
+        forever (fail-OPEN). NaN is already rejected by the interval below, so the
+        ``math.isfinite`` guard exists for ``+inf`` — do not drop it as redundant.
 
         Freshness is the CLOSED INTERVAL ``0 <= now - t <= stale_after``, not the
         bare upper bound. A monotonic clock cannot run backwards, so a NEGATIVE
