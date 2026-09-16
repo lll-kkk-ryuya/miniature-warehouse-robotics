@@ -15,7 +15,7 @@
 実行環境:
 
 - worktree: `/private/tmp/mwr-gemini-er-spike`
-- model: `gemini-robotics-er-1.6-preview`
+- model: `gemini-robotics-er-1.6-preview`（spike 当時。**2026-08-31 に shutdown**・現行は `gemini-robotics-er-2-preview` = `ER_DIRECT_MODEL_ID`・#690）
 - credential source: `~/.hermes/.env` の `GEMINI_API_KEY` / `GOOGLE_API_KEY`（値は表示しない）
 
 結果:
@@ -41,14 +41,14 @@
 ```bash
 cd /private/tmp/mwr-gemini-er-spike
 export GEMINI_API_KEY=<YOUR_API_KEY_HERE>
-python3 scripts/probe_gemini_robotics_er.py --model gemini-robotics-er-1.6-preview
+python3 scripts/probe_gemini_robotics_er.py --model gemini-robotics-er-2-preview   # 1.6 は 2026-08-31 shutdown（#690）
 ```
 
 画像付き:
 
 ```bash
 python3 scripts/probe_gemini_robotics_er.py \
-  --model gemini-robotics-er-1.6-preview \
+  --model gemini-robotics-er-2-preview \
   --image /path/to/scene.png
 ```
 

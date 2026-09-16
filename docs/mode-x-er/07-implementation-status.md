@@ -93,3 +93,9 @@ STATUS（実装済みか）とは**直交する第 2 軸＝CONNECTIVITY**（稼�
 ## 【2026-08-09 追補】Visual Resolver homography 経路の運用ステータス（ADR-0007）
 
 L3 Visual Resolver（:26）の homography 実装は**俯瞰カメラ前提＝本フェーズ未使用**。`homography: []` により `NO_CALIBRATION` → 0 dispatch の fail-closed で運用する（実装無編集・[ADR-0007](../adr/0007-no-overhead-camera-gesture-via-onboard-nn.md)）。hop ⓪ の capture 未実装は「実 mic」に加え「**搭載カメラフレーム capture（gesture_detector・[09](09-hand-raise-summon.md)）**」も同種の未実装配線として追加。
+
+## 【2026-09-16 追補】ER 1.6 shutdown（2026-08-31）→ ER 2 移行（#690）
+
+- **事実** [D]: `gemini-robotics-er-1.6-preview` は 2026-08-31 に shutdown（deprecations ページ）。§ER inside Hermes 以降の live 記録（2026-07-02 の PASS・607 tokens）は 1.6 での実測であり、**2026-09-01 以降 live 経路は未検証**。現行 = `gemini-robotics-er-2-preview`（2026-07-30 公開）。
+- **実施**: model id を `warehouse_llm_bridge/robotics/er_models.py` `ER_DIRECT_MODEL_ID` に単一ソース化し config `robotics.er_gateway.direct_model` / env `WAREHOUSE__ROBOTICS__ER_GATEWAY__DIRECT_MODEL` で差し替え可能に。Hermes gateway yaml・fork 起動 sh・probe・live helper・docs 正本行を同一行更新、`tests/unit/test_er_model_id_single_source.py` で pin（詳細 = [06 末尾追補](06-unfrozen-contract-resolutions.md)）。出力契約（point `[y, x]` 0–1000）は ER 2 で不変＝L3 handoff / compiler 不変更。
+- **未実施（operator gate）**: ER 2 での live smoke（direct text-only + fork 8644）。手順は [dev/07 末尾追補](../dev/07-mode-x-er-live-e2e-runbook.md)。完了まで #690 は open。

@@ -301,7 +301,7 @@ launch_gateway() {
 
   local port; port="$(resolve_port)"
   log "launching lean ER gateway: home=$HERMES_HOME port=$port (PYTHONPATH override -> patched modules)"
-  log "model=gemini-robotics-er-1.6-preview provider=google tools=[] memory=off (lean transport)"
+  log "model=gemini-robotics-er-2-preview provider=google tools=[] memory=off (lean transport)"
   log "(secrets sourced from $HERMES_HOME/.env — not printed)"
   # --replace: cleanly take over a stale instance on THIS isolated home.
   exec env \
