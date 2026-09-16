@@ -253,7 +253,7 @@ flowchart TD
 - `OQ-OD93` global costmap を**固定範囲（map 基準）**にするか **rolling + 05 の中間目標契約**にするか（`OQ-OD3B` の二択化）。
 - `OQ-OD94` **停止保持**: モータ電源遮断後の惰走・勾配でのずり下がりの試験（G-OD-F11）と、機械ブレーキ無しでの運用条件（勾配上限・停止位置）。
 - `OQ-OD95` X2 `sensor_health` → 許可失効の実装位置: Guardian（`warehouse_safety`）の拡張か、新 node か（Humble CM の fail-open を補う責務の所在）。
-- `OQ-OD96` [`collision_monitor.yaml:58`](../../ws/src/warehouse_bringup/config/collision_monitor.yaml:58) / [`:90`](../../ws/src/warehouse_bringup/config/collision_monitor.yaml:90) の Jazzy 意味論（per-source timeout・「dropout → STOP」）を Humble で再裁定する code / config PR（`track:safety-state`・本 docs ブランチの範囲外）。
+- `OQ-OD96` [`collision_monitor.yaml:58`](../../ws/src/warehouse_bringup/config/collision_monitor.yaml:58) / [`:90`](../../ws/src/warehouse_bringup/config/collision_monitor.yaml:90) の Jazzy 意味論（per-source timeout・「dropout → STOP」）を Humble で再裁定する code / config PR（`track:safety-state`・本 docs ブランチの範囲外）。【2026-09-16 解消】#678（yaml 注記・doc12 追補）→ #679（Guardian `scan_stale`）→ config PR `feat/collision-monitor-humble-config`（inert キー撤去・`max_points: 3` 明示）。
 - `OQ-OD97` heartbeat 途絶判定（`OQ-OD25`）を §2-g の停止距離式（実測 a_min・T_total）から導出し直すか。
 
 ## 8. References（参照日 2026-09-14・[D] = レーン A1 / A2 が原文を取得し執筆者が引用箇所を照合）

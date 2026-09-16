@@ -39,11 +39,11 @@
 #     branch (参照日 2026-09-16; doc12 末尾【2026-09-14 追補】+【2026-09-16 追補】): a source that is
 #     absent or stale only DROPS ITS POINTS (scan.cpp Scan::getData returns early; process() starts
 #     from DO_NOTHING), so a dead /scan lets cmd_vel PASS THROUGH = FAIL-OPEN. The "invalid source
-#     -> STOP" measured by the #126 live PoC (tests/e2e/README.md:272) is Jazzy/main-only (that PoC ran
-#     ros-jazzy-navigation2, deploy/dev/install-nav2-e2e.sh:21). Per-source `<src>.source_timeout`
-#     is NOT declared on Humble (source.cpp getCommonParameters reads .topic/.enabled only): the
-#     node-level 1.0 applies to EVERY source and virtual_scan's 0.0 at :90 is inert (harmless: with
-#     no invalid-source STOP its silence cannot false-trip). Lidar-liveness stop (R-39) -> doc12.
+#     -> STOP" measured by the #126 live PoC (tests/e2e/README.md:272) is Jazzy/main-only (that PoC
+#     ran ros-jazzy-navigation2, deploy/dev/install-nav2-e2e.sh:21). Per-source `<src>.source_timeout`
+#     is NOT declared on Humble (source.cpp getCommonParameters reads .topic/.enabled only), so the
+#     node-level value applies to EVERY source. The Jazzy-only keys (per-source source_timeout,
+#     state_topic, min_points) were REMOVED (doc12 追補 (2)); lidar-liveness stop = Guardian scan_stale.
 collision_monitor:
   ros__parameters:
     use_sim_time: true   # launch RewrittenYaml overrides from use_sim_time arg (prod=false)
@@ -53,7 +53,7 @@ collision_monitor:
     # OUT = cmd_vel/nav2 = the existing twist_mux prio-10 input (prio-100 emergency untouched).
     cmd_vel_in_topic: "cmd_vel/nav2_raw"
     cmd_vel_out_topic: "cmd_vel/nav2"
-    state_topic: "collision_monitor_state"   # INERT on Humble 1.1.20: param + nav2_msgs/CollisionMonitorState are main-only -> NO state topic exists here (doc12:558 surfacing path unavailable)
+    # (state_topic REMOVED — not a Humble 1.1.20 param: no CollisionMonitorState publisher exists, so the doc12:558 surfacing path is unavailable here; Jazzy default "" = no state topic either.)
     transform_tolerance: 0.2
     source_timeout: 1.0          # node-level; on Humble it applies to ALL sources (per-source key not
                                  # read). Stale/absent source = its points dropped, NOT a STOP (fail-open).
@@ -67,7 +67,7 @@ collision_monitor:
       # the #156 >=0.15m head-on demo (see header) — retune live (Open ②).
       radius: 0.09
       action_type: "stop"
-      min_points: 4              # INERT on Humble 1.1.20 (param there is `max_points`, default 3 = stop when >3 i.e. >=4 points: same threshold; `min_points` is Iron+). Value kept as the pinned intent.
+      max_points: 3              # Humble 1.1.20 (polygon.cpp): STOP when points inside > 3, i.e. >=4. Jazzy honours it too via its compat shim (min_points = max_points + 1, with a deprecation WARN); the Jazzy-only `min_points: 4` (same threshold, and its default) was removed.
       visualize: true
       polygon_pub_topic: "collision_monitor/polygon_stop"
       enabled: true
@@ -84,7 +84,7 @@ collision_monitor:
       enabled: true
       # virtual_scan is a CONDITIONAL publisher: SILENT when the robots are >1.0m apart
       # (SUPPRESSION_RANGE, virtual_scan_logic.py:22). Its absence = "no nearby robot", NOT a
-      # sensor fault. On Humble 1.1.20 this per-source key is NOT READ (node-level 1.0 applies) and
-      # a silent source merely contributes no points, so >1.0m driving cannot false-STOP anyway.
-      # Kept unchanged as the Jazzy/main-forward intent (there, 0.0 disables the stale check).
-      source_timeout: 0.0
+      # sensor fault. On Humble 1.1.20 a silent source merely contributes no points, so >1.0m
+      # driving cannot false-STOP and no per-source key exists. The Jazzy-only override
+      # `source_timeout: 0.0` (PR#229) was REMOVED (doc12 追補 (2)). A legacy Jazzy dev container
+      # (deploy/dev/install-nav2-e2e.sh) must re-add it locally, else >1.0m driving STOPs (invalid source).
