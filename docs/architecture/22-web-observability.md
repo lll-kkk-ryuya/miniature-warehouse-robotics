@@ -113,7 +113,7 @@ Mode A（および Mode B）でキャラLLM Bot1/Bot2 が会話・交渉し、�
 | `/negotiation/start` | `std_msgs/String`（`NegotiationStart`、gen_id 同梱 `negotiation_messages.py:49-53`） | event（稟議開始・**gen_id あり**） |
 | `/negotiation/turn` | `std_msgs/String`（`{turn,next}`） | event（バトン） |
 | `/negotiation/proposal` | `std_msgs/String`（凍結 `Proposal`、gen_id 付 `schemas.py:209-214`） | event（合意・**gen_id あり**） |
-| `/negotiation/abort` | `std_msgs/String`（**canonical `{reason, bot, event_id}`**＝producer `warehouse_safety.guard_logic.build_abort` `guard_logic.py:181,191` / [doc03:108](03-software-architecture.md)。`event_id` で `/emergency/event` と join 可） | event（中断）。※`negotiation_messages.decode_abort`(`:131-141`) は `reason` のみ拾う **lenient consumer**＝producer 契約ではない |
+| `/negotiation/abort` | `std_msgs/String`（**canonical `{reason, bot, event_id}`**＝producer `warehouse_safety.guard_logic.build_abort`（symbol 参照・行 pin しない） / [doc03:108](03-software-architecture.md)。`event_id` で `/emergency/event` と join 可） | event（中断）。※`negotiation_messages.decode_abort`(`:131-141`) は `reason` のみ拾う **lenient consumer**＝producer 契約ではない |
 | `/emergency/event` | `std_msgs/String`（コア形 `event_id/robot/type/severity/action_taken/timestamp/requires_llm_review[+detail]` doc12:141-150・edge-trigger doc12:185） | event（緊急） |
 
 > **ObsEvent は ROS トピックではなく WS/REST 上の封筒**（§5）。よって doc03 トピックカタログには `web_bridge` を producer として追加しない（既存契約の consumer であり、生 plumbing 同様 doc03 スコープ外 doc03:116）。doc03 には可視化・モニタリング表（doc03:280-286）に本コンソールを 1 行追記するに留める。
@@ -390,7 +390,7 @@ live persona は Slice 3（Hermes persona・human-gated・Phase 3、≈ #288）�
 - 共存パターン / health: [docs/mode-a/12a-integration-mode-a.md:200-234](../mode-a/12a-integration-mode-a.md), :234
 - トピックカタログ: [docs/architecture/03-software-architecture.md:98-108](03-software-architecture.md), :116, :280-286
 - 会話 producer: `ws/src/warehouse_llm_bridge/warehouse_llm_bridge/negotiation_messages.py:88-101,49-53,10-17`（decode_abort `:131-141` は **lenient consumer**） / `character_session.py:89-90,103` / `character_node.py:15-17,91-94,154-156` / `persona.py:114-160`
-- abort producer（canonical）: `ws/src/warehouse_safety/warehouse_safety/guard_logic.py:181,191`（`build_abort`→`{reason, bot, event_id}`・[doc03:108](03-software-architecture.md)・doc14:241-247 R2）
+- abort producer（canonical）: `warehouse_safety.guard_logic.build_abort`（`ws/src/warehouse_safety/warehouse_safety/guard_logic.py`・symbol 参照・→`{reason, bot, event_id}`・[doc03:108](03-software-architecture.md)・doc14:241-247 R2）
 - 司令官 publisher: `ws/src/warehouse_llm_bridge/warehouse_llm_bridge/llm_bridge.py:143-144,150(create_publisher),165(negotiation_starter 配線),267-273,287(publish helper)` / `scheduler.py:151(_noop),178-179(既定 publish 配線),232-246(proposal 注入 API),302,334(cycle への attach),357(situation へ発火)`
 - 凍結契約: `ws/src/warehouse_interfaces/warehouse_interfaces/schemas.py`（Situation :125-132 / Command :187-196 / Proposal :209-214 / StateSnapshot :95,:104 / RobotState :38-61）
 - trace seed / paths: `ws/src/eval_sdk/eval_sdk/seed.py:16,33-42,70-85` / `tracer.py:70-71,194` / `ws/src/warehouse_interfaces/warehouse_interfaces/paths.py:22-30`
