@@ -33,6 +33,7 @@ from launch.utilities import (  # noqa: E402
     perform_substitutions,
 )
 from launch_ros.actions import Node  # noqa: E402
+from launch_ros.utilities import evaluate_parameters_dict  # noqa: E402
 
 _NAV2_LAUNCH = (
     Path(__file__).resolve().parents[2] / "ws/src/warehouse_bringup/launch/nav2_bringup.launch.py"
@@ -145,3 +146,28 @@ def test_collision_lifecycle_manager_gated_with_monitor(traffic_mode, expected) 
     mgrs = [n for n in _node_by_exe(ld, "lifecycle_manager") if n.condition is not None]
     assert len(mgrs) == 2, "expected one gated collision lifecycle_manager per bot"
     assert sum(1 for n in mgrs if _active(n, traffic_mode)) == expected
+
+
+def _param_dicts(n: Node) -> list[dict]:
+    """Evaluated plain-dict entries of the Node's parameters (file substitutions skipped)."""
+    ctx = LaunchContext()
+    return [
+        dict(evaluate_parameters_dict(ctx, p))
+        for p in (getattr(n, "_Node__parameters", None) or ())
+        if isinstance(p, dict)
+    ]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("distro", "expected"),
+    [("humble", []), ("iron", []), ("jazzy", [{"virtual_scan.source_timeout": 0.0}])],
+)
+def test_virtual_scan_timeout_override_follows_ros_distro(monkeypatch, distro, expected) -> None:
+    # doc12 追補 (2) 追記: the yaml is the Humble truth; on Jazzy+ the launch appends the per-source
+    # override AFTER the file so it wins where the key is declared (invalid source = STOP there).
+    monkeypatch.setenv("ROS_DISTRO", distro)
+    cms = _node_by_exe(_load_ld(), "collision_monitor")
+    assert cms
+    for n in cms:
+        assert _param_dicts(n) == expected
