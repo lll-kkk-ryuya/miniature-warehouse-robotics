@@ -228,7 +228,7 @@ Status: **分析レビュー（analysis review）**。**本書は部屋運用の
 | 量 | 値 | 出所 |
 |---|---|---|
 | CURRENT の `PolygonStop` | `type: "circle"` / `radius: 0.09` | [collision_monitor.yaml:63-68](../../ws/src/warehouse_bringup/config/collision_monitor.yaml) |
-| その根拠（旧車体） | 旧 ~150mm 車体の内接 `ROBOT_RADIUS 0.075` ＋ 余裕 | [collision_monitor.yaml:65-67](../../ws/src/warehouse_bringup/config/collision_monitor.yaml) / [robot_dimensions.py:66](../../ws/src/warehouse_description/warehouse_description/robot_dimensions.py) |
+| その根拠（旧車体） | 旧 ~150mm 車体の内接 `ROBOT_RADIUS 0.075` ＋ 余裕 | [collision_monitor.yaml:65-67](../../ws/src/warehouse_bringup/config/collision_monitor.yaml) / [robot_dimensions.py:70](../../ws/src/warehouse_description/warehouse_description/robot_dimensions.py) |
 | M1 内接半径 | **0.1157 m** | [23:585](../architecture/23-perception-and-localization.md) |
 | M1 外接半径 | **≈0.184 m** | [23:584](../architecture/23-perception-and-localization.md) / [02:357](../shared/02-hardware-design.md) C-1 |
 

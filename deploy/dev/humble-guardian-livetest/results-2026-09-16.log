@@ -1,0 +1,27 @@
+# harness.log
+1789533180.047 P0 start guardian (no odom, no scan)
+1789533183.054 P0 start /bot1/odom publisher only (expect scan_stale: never received + odom witness)
+1789533187.068 P1 start /bot1/scan publisher @10Hz (expect clear)
+1789533192.085 P2 hold 5s (expect no events)
+1789533197.097 P3 kill scan publisher (expect scan_stale after ~1.0s)
+1789533197.252 P3 scan publisher stopped
+1789533202.262 P4 restart scan publisher (expect clear)
+1789533207.282 END
+
+# recorder.log
+1789533178.170 RECORDER ready
+1789533180.490 STOP_STATE stop_requested=False
+1789533184.092 EVENT {"robot": "bot1", "type": "scan_stale", "severity": "critical", "action_taken": ["nav2_goal_cancel", "cmd_vel_stop"], "detail": {"scan_age": null, "freshness_timeout": 1.0}}
+1789533184.093 ESTOP_STREAM_START /bot1/cmd_vel/emergency zero=True
+1789533184.093 STOP_STATE stop_requested=True
+1789533188.144 STOP_STATE stop_requested=False
+1789533189.171 ESTOP_STREAM_END total_zero_twists=81
+1789533198.042 ESTOP_STREAM_START /bot1/cmd_vel/emergency zero=True
+1789533198.043 EVENT {"robot": "bot1", "type": "scan_stale", "severity": "critical", "action_taken": ["nav2_goal_cancel", "cmd_vel_stop"], "detail": {"scan_age": 1.0347380840000255, "freshness_timeout": 1.0}}
+1789533198.044 STOP_STATE stop_requested=True
+1789533202.991 STOP_STATE stop_requested=False
+1789533204.174 ESTOP_STREAM_END total_zero_twists=99
+1789533208.293 ESTOP_STREAM_START /bot1/cmd_vel/emergency zero=True
+
+# guardian.log
+[INFO] [1789533180.446732929] [emergency_guardian]: emergency_guardian running (50ms reflex)

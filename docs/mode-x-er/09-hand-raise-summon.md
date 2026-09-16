@@ -11,7 +11,7 @@ Status: **設計提案（未凍結）**。`warehouse_interfaces` は Phase 1 で
 | # | 前提 | 状態 |
 |---|---|---|
 | P1 | 搭載 HP60C（RGB+深度）から上半身骨格（肩/肘/手首）が 2D+深度で ~15-30fps 取れる | **未検証の作業前提**。NN 第1候補 = **MediaPipe Pose Landmarker**（Apache-2.0・CPU 推論・公式 aarch64 wheel あり・world landmarks 3D）。fallback F1=RTMPose（Apache-2.0/TensorRT）、F2=YOLO-pose（**AGPL-3.0＝オペレーター判断必須**）。SAM2 は骨格を出さないため不採用、Isaac ROS 3.x に人体骨格パッケージは無い（lane-gesture-tech 調査・2026-08-09） |
-| P2 | `bot1/camera_link`（＋光学 frame）TF | **camera_link は contract PR で landed**（`robot_dimensions.py:41` の `FROZEN_LINK_NAMES`。名前のみ・URDF は実測待ち）。**光学 frame 名は未凍結**＝OQ-4。[23 §4](../architecture/23-perception-and-localization.md) |
+| P2 | `bot1/camera_link`（＋光学 frame）TF | **camera_link は contract PR で landed**（`robot_dimensions.py:43` の `FROZEN_LINK_NAMES`。名前のみ・URDF は実測待ち）。**光学 frame 名は未凍結**＝OQ-4。[23 §4](../architecture/23-perception-and-localization.md) |
 | P3 | HP60C の FOV / 解像度 / fps / min range / depth-color alignment | **未裏取り**（公称 73.8°/0.2-4m のみ。[23 §7 S2](../architecture/23-perception-and-localization.md)） |
 | P4 | 単騎構成 bot1 のみ | 確定（ADR-0006） |
 | P5 | `config/warehouse.base.yaml:47-56` の 9 location 座標 | **暫定値**・ジオラマ再設計待ち（[04](../shared/04-diorama-layout.md)） |

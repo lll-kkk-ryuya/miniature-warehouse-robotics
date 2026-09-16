@@ -180,7 +180,7 @@
 <tr><td>05 evidence_grid / expiry</td><td>06 local costmap・02 local_terrain・03（TF）・X2</td><td>障害物 marking の履歴 = costmap 1 本。04 の grid = coverage / 鮮度 / clear 条件の材料。期限判定 = X2（04 内部 grid の失効は正本の沈黙）</td><td>08 §2 06 行・09 §2-b・doc12 §virtual_scan・<b>OQ-OD4E</b></td></tr>
 <tr><td>06 Prediction</td><td>06 Navigation（MPPI）・12</td><td>Phase 2。消費する 06 側の評価処理まで含めて初めて意味を持つ（OQ-OD4H と同型）</td><td>09 §2-h</td></tr>
 <tr><td>07 Output Adapters</td><td>01・06 costmap・07 CM・X2・10・12</td><td>adapter は 04。新 topic は型未凍結（contract PR）。<b>topic を出しただけでは Navfn / MPPI は理解しない</b> → 06 側 layer の所有（nav2_params / launch は nav-traffic 所有）。崖 marking は別 ObstacleLayer instance に分離（clearing:false は同一 layer 内の他 source の raytracing から守らない [D]）</td><td>04 §3・§6・doc12 §virtual_scan・<b>OQ-OD4H</b></td></tr>
-<tr><td>08 Quality Evidence</td><td>X2・X1・09（許可失効）・11（映像鮮度）</td><td>04 = 自己申告 producer。判定点は X2 の 1 か所（経路の記述 3 通りは OQ-OD95 で一本化）。<b>/bot1/scan の途絶は #679（2026-09-16）で Guardian scan_stale（L1）に着地済・cliff_scan / depth は未着地</b>。消費側（06・10・12）は使用時点で age = now − source_stamp を共通契約で検査（入力妥当性・第 2 の停止判定点ではない）。記録 = X1。depth_validity は数値のみ</td><td>09 §2-b・OQ-OD95・<b>OQ-OD4E</b></td></tr>
+<tr><td>08 Quality Evidence</td><td>X2・X1・09（許可失効）・11（映像鮮度）</td><td>04 = 自己申告 producer。判定点は X2 の 1 か所（経路の記述 3 通りは OQ-OD95 で一本化）。<b>/bot1/scan の途絶は #679（2026-09-16）で Guardian scan_stale（L1）に着地済・cliff_scan / depth は未着地</b>。消費側（06・10・12）は使用時点で age = now − source_stamp を共通契約で検査（入力妥当性・第 2 の停止判定点ではない）。#680 で sensor_health.py（HealthReport・health_epoch）+ stop_distance.py が純ロジックとして着地（L1・未配線）。記録 = X1。depth_validity は数値のみ</td><td>09 §2-b・OQ-OD95・<b>OQ-OD4E</b></td></tr>
 <tr><td>09 Runtime &amp; Models</td><td>00 dependencies・02 §4・X2（tick jitter）</td><td>manifest（重み hash・前処理・ラベル・opset・TRT 版・GPU arch）= 04 の artifact／版一覧 = 00（競合させない）。予算数値は屋外 S1 実測後</td><td>00 末尾追補・02 §4</td></tr>
 <tr><td>10 Evaluation</td><td>X1・doc20・随伴 Mac（02 末尾追補）</td><td>04 = scenario / metrics の定義。記録基盤 = run record（配線済・実走未）。offline 処理は随伴 Mac 可</td><td>04 §7・jetson/03 §3・02 末尾追補</td></tr>
 </table>
@@ -299,7 +299,7 @@
 <tr><td>映像記録・run record・Langfuse の受け皿</td><td>○</td><td>記録欠落のみ</td></tr>
 <tr><td>遠隔操作者卓 UI</td><td>○ ただし助言計算と同居させない（OQ-OD2A）</td><td>法的必須層 = heartbeat 途絶で停止</td></tr>
 </table>
-<div class="note">第 4 の段を作らない（クラウド段の物理配置違い・OQ-OD28）。随伴フェーズ限定（遠隔操作フェーズでは随伴者がいない = Mac を運ぶ人がいない。届出「遠隔操作場所」が拘束するのは卓）。帰り道は web_bridge ではなく助言専用の第 3 プロセス・第 3 port（OQ-OD29）。実行手段 = PyTorch MPS / MLX / CoreML（YOLOv8 / 11 / 26）[D]。ROS 2 Humble on macOS は REP-2000 で Tier 3・amd64 のみ → Mac は ROS ノードにせず WS クライアント + 推論プロセス。shared/02:134「Mac は本番では使わない」には同一行注記。</div>
+<div class="note">第 4 の段を作らない（クラウド段の物理配置違い・OQ-OD28）。随伴フェーズ限定（遠隔操作フェーズでは随伴者がいない = Mac を運ぶ人がいない。届出「遠隔操作場所」が拘束するのは卓）。帰り道は web_bridge ではなく助言専用の第 3 プロセス・第 3 port（OQ-OD29・#687 の ControlKind 閉集合〔inbound 5 種〕には足さず outbound 側の別経路）。実行手段 = PyTorch MPS / MLX / CoreML（YOLOv8 / 11 / 26）[D]。ROS 2 Humble on macOS は REP-2000 で Tier 3・amd64 のみ → Mac は ROS ノードにせず WS クライアント + 推論プロセス。shared/02:134「Mac は本番では使わない」には同一行注記。</div>
 </div>
 
 <h2>10. 外部知覚レビュー返信（2026-09-16・追補 ① 時点の設計への評価）6 点の反映（正本 = 04 末尾追補 ③）</h2>

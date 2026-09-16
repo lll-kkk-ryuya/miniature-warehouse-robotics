@@ -32,7 +32,7 @@ AMCL 直購読の Guardian pose 鮮度 guard（[23 §5-3 blocker ①](../archite
 | `map → bot1/odom` | AMCL（[23:150](../architecture/23-perception-and-localization.md:150)） | **global `ekf_node`（`world_frame: map`）** | AMCL 不在。`map→odom` を出すのは **global EKF 1 個だけ** |
 | `bot1/odom → bot1/base_link` | local `ekf_node`（唯一） | **local `ekf_node`（不変）** | [23:163](../architecture/23-perception-and-localization.md:163) |
 | `utm/cartesian → map` | — | **配信しない**（`broadcast_cartesian_transform: false`） | `navsat_transform_node` は `odometry/gps` を出すだけで TF を出さない構成にする＝TF 単一所有を守る [L] |
-| `bot1/base_link → bot1/gnss_link` | — | `robot_state_publisher`（URDF static） | `FROZEN_LINK_NAMES`（[robot_dimensions.py:41-47](../../ws/src/warehouse_description/warehouse_description/robot_dimensions.py:41)）末尾への **additive contract PR**＝`camera_link` と同じ手順 [D] |
+| `bot1/base_link → bot1/gnss_link` | — | `robot_state_publisher`（URDF static） | `FROZEN_LINK_NAMES`（[robot_dimensions.py:43-50](../../ws/src/warehouse_description/warehouse_description/robot_dimensions.py:43)）末尾への **additive contract PR**＝`camera_link` と同じ手順 [D] |
 
 ### 2-2. 入力割当（[23 B-3](../architecture/23-perception-and-localization.md:463) の屋外版）
 
@@ -204,7 +204,7 @@ waypoint 間隔 vs rolling global costmap: 一辺 `W` の costmap 外に goal �
 | 受信機ドライバ（`ublox_gps` / NMEA） | **新規** | `NavSatFix` + 品質フィールド |
 | `ntrip_client` | **新規**（CLAS なら不要） | RTCM を受信機へ |
 | `gnss_quality_gate`（L1 Safety） | **新規** | [05 §3](05-safety-envelope-and-intervention.md) |
-| `robot_state_publisher` | **変更（additive）** | `gnss_link` を `FROZEN_LINK_NAMES` 末尾へ（contract PR） |
+| `robot_state_publisher` | **変更（additive）** | `gnss_link` を `FROZEN_LINK_NAMES` 末尾へ（contract PR）。`FROZEN_FRAME_IDS` の `"gnss": "gnss_link"`（NavSatFix `header.frame_id`）も同 PR で凍結＝§2-3 :54 の一致要求 |
 | MOLA-LO（`odom1`） | **変更** | local 限定・global では differential |
 | `m1_driver`（`/odom` `/imu`） | **流用** | odom TF を出さない契約も不変 |
 | Emergency Guardian（pose 鮮度） | **変更** | 購読先を `/amcl_pose` → global EKF + `/gnss/quality`（R-26 unit 必須） |
@@ -234,7 +234,7 @@ waypoint 間隔 vs rolling global costmap: 一辺 `W` の costmap 外に goal �
 docs 内（file:line は執筆時に実 Read）:
 
 - [architecture/23-perception-and-localization.md](../architecture/23-perception-and-localization.md)（[:21](../architecture/23-perception-and-localization.md:21) 安全層外 / [:141](../architecture/23-perception-and-localization.md:141) GNSS 対象外 / [:150](../architecture/23-perception-and-localization.md:150) AMCL map→odom / [:163](../architecture/23-perception-and-localization.md:163) TF 単一所有 / [:177](../architecture/23-perception-and-localization.md:177) blocker ① / [:296](../architecture/23-perception-and-localization.md:296) A-2 床 / [:308](../architecture/23-perception-and-localization.md:308) A-3 / [:332](../architecture/23-perception-and-localization.md:332) A-5 / [:355](../architecture/23-perception-and-localization.md:355) A-6 / [:367](../architecture/23-perception-and-localization.md:367) A-7 / [:455](../architecture/23-perception-and-localization.md:455) 代替 / [:457](../architecture/23-perception-and-localization.md:457) GPLv3 / [:463](../architecture/23-perception-and-localization.md:463) B-3 / [:477](../architecture/23-perception-and-localization.md:477) B-4 / [:480](../architecture/23-perception-and-localization.md:480) anti-pattern）
-- [nav2_params.yaml](../../ws/src/warehouse_bringup/config/nav2_params.yaml)（§3-4 の各行）/ [nav2_bridge.py:18,84,87-95](../../ws/src/warehouse_nav2_bridge/warehouse_nav2_bridge/nav2_bridge.py:84) / [core.py:106-119](../../ws/src/warehouse_nav2_bridge/warehouse_nav2_bridge/core.py:106) / [robot_dimensions.py:41-47](../../ws/src/warehouse_description/warehouse_description/robot_dimensions.py:41)
+- [nav2_params.yaml](../../ws/src/warehouse_bringup/config/nav2_params.yaml)（§3-4 の各行）/ [nav2_bridge.py:18,84,87-95](../../ws/src/warehouse_nav2_bridge/warehouse_nav2_bridge/nav2_bridge.py:84) / [core.py:106-119](../../ws/src/warehouse_nav2_bridge/warehouse_nav2_bridge/core.py:106) / [robot_dimensions.py:43-50](../../ws/src/warehouse_description/warehouse_description/robot_dimensions.py:43)
 - [emergency_guardian.py:73,143-148](../../ws/src/warehouse_safety/warehouse_safety/emergency_guardian.py:143) / [guard_logic.py:29,169,233](../../ws/src/warehouse_safety/warehouse_safety/guard_logic.py:233) / [config/warehouse.base.yaml:21](../../config/warehouse.base.yaml:21)
 - [ADR-0008](../adr/0008-ros2-distro-humble-for-rosmaster-m1.md) / [ADR-0012](../adr/0012-speed-band-no-l2-best-effort.md) / [mode-m1/04](../mode-m1/04-runtime-speed-limiter.md) / [05 安全包絡](05-safety-envelope-and-intervention.md) / [04 知覚](04-perception-sidewalk-and-signals.md) / [06 ハード差分](06-hardware-delta-and-base-selection.md) / [07 駆動系](07-drivetrain-and-wheel-sizing.md)
 
@@ -256,3 +256,50 @@ docs 内（file:line は執筆時に実 Read）:
 4. **品質ゲートの条件式**（§4-2 の補足）: RTK FIX だけで許可帯からの安全距離を保証しない。走行条件 = 「車体端から許可帯端までの余裕 > 測位誤差の保守的上限 + 追従誤差 + 境界推定誤差」。共分散は安全保証値ではないため実環境の外れ値も評価。ジオフェンスは逸脱後でなく**予測位置 + 不確かさで先に止める**。Phase 1 で縮退走行を検証していなければ品質低下は停止（§4-2 `OQ-OD32` の段分けは維持）。
 5. **differential**（§2-2）: N−1 は主に複数の姿勢観測の説明で、MOLA-LO だから必ず true という規則ではない（[08 §4 #5](08-architecture-v2-reference-alignment.md) で緩和済）。LO の pose を差分化するか twist を使うかは共分散・相関・既存入力との重複で決める。wheel の位置と速度の二重投入にも注意。
 - 一次情報（参照日 2026-09-14）: `navsat_transform.cpp` <https://github.com/cra-ros-pkg/robot_localization/blob/humble-devel/src/navsat_transform.cpp> / `navsat_transform_node.rst` <https://github.com/cra-ros-pkg/robot_localization/blob/humble-devel/doc/navsat_transform_node.rst> / ZED-F9P-05B datasheet <https://content.u-blox.com/sites/default/files/documents/ZED-F9P-05B_DataSheet_UBXDOC-963802114-12824.pdf> / QZSS CLAS <https://qzss.go.jp/overview/services/sv06_clas.html>
+
+## 【2026-09-16 追補】案 B の確認実装（route schema + local-cartesian compile）と map frame 規約の裏取り
+
+§3-2 の **案 B**（`fromLL` を L3 compile 段に置く）と §3-3 の経路ファイルを、**pure Python の確認実装**として起こした。**レイヤは L3 のみ**（actuation 権限なし・rclpy 非 import・runtime 安全経路の外）。L2/L1/L0 は不変更。
+
+### 1. 実体（package home は暫定）
+
+| ファイル | 役割 |
+|---|---|
+| [local_cartesian.py](../../ws/src/warehouse_nav2_bridge/warehouse_nav2_bridge/local_cartesian.py) | ECEF 経由の**厳密** WGS84 ENU（`use_local_cartesian: true`＝§2-3 / `zero_altitude: true`＝§2-3 に対応）。`numpy` / `pyproj` / GeographicLib 不使用 |
+| [route_schema.py](../../ws/src/warehouse_nav2_bridge/warehouse_nav2_bridge/route_schema.py) | §3-3 の経路ファイルの pydantic v2 モデル。**全モデル `extra="forbid"`**＝§3-3 に無いフィールドを発明しない機械的担保 |
+| [route_compile.py](../../ws/src/warehouse_nav2_bridge/warehouse_nav2_bridge/route_compile.py) | `compile_route`（案 B）/ `check_route`（**案 C**＝§3-2）/ `bridge_goals` / `spacing_violations`（§3-3 の `≤ W/3`）＋ CLI `route_compile` |
+| [test_local_cartesian.py](../../tests/unit/test_local_cartesian.py) / [test_route_compile.py](../../tests/unit/test_route_compile.py) | 独立オラクル 101 本（19 + 82）・mutation 17/17 KILLED |
+
+produce/consume の詳細は [warehouse_nav2_bridge/CLAUDE.md](../../ws/src/warehouse_nav2_bridge/CLAUDE.md) の 2026-09-16 追補。**置き場は暫定**（layer ≠ package）: 消費側が同パッケージの座標 goal seam だけなので同居させたが、Mode Outdoor の L3 成果物の正式な置き場は 00 §4「契約と命名」の裁定待ち。
+
+### 2. map frame 規約（上流ソースから導出・**本 doc に未記載だった穴**）
+
+§3-3 は「`fromLL` 変換して焼いた結果」とだけ書き、**ENU から `map` への回転**を定義していなかった。`robot_localization` humble-devel `src/navsat_transform.cpp`（参照日 2026-09-16）を読んで確定した:
+
+> **`map = R_z(−datum_yaw) · ENU`（原点 = datum）。すなわち datum 設定時点の車体方位が `map` の +x 軸になる。**
+
+導出（本 doc が固定する構成 = `wait_for_datum: true` + `datum:`＝§2-3、`use_local_cartesian: true`＝§2-3、`zero_altitude: true`＝§2-3 での話）:
+
+1. `:167` `quat.setRPY(0.0, 0.0, datum_yaw)` — config の datum yaw が datum geopose の orientation になる。
+2. `:382` → `:850` `gps_local_cartesian_.Reset(msg->latitude, msg->longitude, hae_altitude)` — **ENU 原点が datum 自身に置かれる**（＝datum の cartesian pose は原点）。
+3. `:384-396` `odom.pose.pose.orientation.w = 1;` / `position.x = 0;` — datum 時点の world pose は**恒等**＝datum が `map` 原点。
+4. `:398-403` `imu.orientation = manual_datum_geopose_.orientation;` — datum yaw は `base_link` の IMU 姿勢として注入される（末尾追補 1（2026-09-14）§1 の「datum 設定時点の車体方位」と一致）。
+5. `:291-292` `imu_yaw += (magnetic_declination_ + yaw_offset_ + utm_meridian_convergence_);` ＋ `:860` `utm_meridian_convergence_ = 0.0;`（local cartesian 分岐）— declination / offset が 0 なら `imu_yaw == datum_yaw`。
+6. **`:324-326`（決定打）**: `cartesian_world_transform_.mult(transform_world_pose_yaw_only, cartesian_pose_with_orientation.inverse());` — (3) が恒等・(2) が原点ゼロなので `cartesian_world_transform_ = [R_z(datum_yaw), 0]⁻¹ = [R_z(−datum_yaw), 0]`。
+
+確認（unit で pin 済）: `datum_yaw = π/2`（datum 時に**北向き**）なら、datum の真北の点は `ENU = (0, d)` → `R_z(−π/2)·(0, d) = (d, 0)` ＝車体の正面＝`map` **+x**。真東の点は `map` **−y**（車体の右）。
+
+方位は同じ回転で `yaw_map = wrap(yaw − datum_yaw)`。
+
+### 3. 残件（未解決・裁定待ち）
+
+1. **`yaw` の読みが本 doc 内で衝突している（要裁定）**: §3-3 の表は `x / y / yaw` を「L3 compile で焼いた結果」とするが、`lat/lon → x/y` と違い **`yaw` フィールドは 1 つしか無い**。compile 出力として上書きすると**記録された方位が失われ、再 compile が冪等でなくなる**（二重回転）。確認実装は `yaw` を**記録値として保存**し、`map` frame の yaw は `bridge_goals` の戻り値でのみ返す（§3-3 にフィールドを足さない）。**凍結時にどちらの読みを採るか決める必要がある**（`OQ-OD33` / `OQ-OD81` に含めて裁定）。
+2. **`OQ-OD3A` が未解錠のため yaw は実際には効かない**: `bridge_goals` は `(x, y, yaw_map)` を `core.py:39` の `GoalCoord` 形で返すが、`_coord_from_goal`（`core.py:106-122`）が yaw を捨て `nav2_bridge.py:84` が `orientation.w = 1.0` を焼くのは §3-1 の記述どおり。bridge 側 additive 拡張が要る。
+3. **`W/3` の規範文と例が食い違う（要裁定）**: §3-3 は規範文で「間隔 ≤ W/3」と書きつつ、括弧の例は「W = 40 m なら 10 m」＝ **W/4**。10 m は両方の読みを満たすので、例はどちらが正かを決めていない。実装は**規範文の W/3 を既定**とし、比率を `spacing_violations(..., fraction=...)` の**引数**として露出した（コードを編集せず W/4 の厳しい読みを評価できる・既定経路は 1 つだけ）。例の 10 m が両読みで通ることも別テストで pin 済み。`W` 自体も未決（`OQ-OD3B` → `OQ-OD93`）なので W は**必須引数**。**凍結時に W/3 か W/4 かを決める必要がある**。
+4. **declination / `yaw_offset` を使う構成では compile がズレる**: §2-3 の「磁気 yaw を使う場合のみ実値」を採ると runtime の回転は `R_z(−(datum_yaw + declination + yaw_offset))` になるが、§3-3 の経路ファイルには該当フィールドが無い。発明せず残件とした（凍結時に datum を 3 要素のままにするか拡張するかを決める）。
+5. **`check_route` の tolerance に既定値が無い**: 案 C の許容差を定める記述が本 doc に無いため、引数必須にした（発明しない）。運用値は実測後に決める。判定は **軸ごと**（`|dx|` と `|dy|` を別々に比較）なので、純粋に斜めのドリフトは `√2 × tolerance` まで通る。
+   なお **案 C は「runtime datum を渡して初めて意味を持つ」**: compile は使用した datum を出力ファイルに焼くため、datum 無しの照合は自己無矛盾の確認にしかならず、本ツールが作ったファイルでは原理的に失敗しない。CLI は `--datum-lat/--datum-lon/--datum-yaw` または `--datum-file`（navsat_transform の params YAML から §2-3 の `datum: [lat, lon, yaw]` を読む）で runtime datum を受け取り、drift 時に exit 1 する。datum 無しの場合はその旨を明示表示する。
+6. **射程外**: keepout マスク（`allowed_area`）生成と横断点レジストリ（[08 §3-1](08-architecture-v2-reference-alignment.md) の `crossing_id`・進入方位・灯器 ROI）は**スキーマが docs に無い**ため作っていない。
+7. **ROS / 実機未検証**: host の pure unit のみ。実 `navsat_transform` を立てて `fromLL` / `toLL` と突き合わせる案 C の実起動照合と `colcon build` は未実施＝実機 / Docker gate。
+
+- 一次情報（参照日 2026-09-16）: `navsat_transform.cpp` <https://github.com/cra-ros-pkg/robot_localization/blob/humble-devel/src/navsat_transform.cpp> / GeographicLib `LocalCartesian` <https://geographiclib.sourceforge.io/C++/doc/classGeographicLib_1_1LocalCartesian.html> / `CartConvert(1)` の worked example（テストの独立オラクル）<https://geographiclib.sourceforge.io/C++/doc/CartConvert.1.html> / WGS84 の 1 度の長さ（φ=30° 行 Δ¹lat 110.852 km・Δ¹long 96.486 km。**35° 行は原典に無い**）<https://en.wikipedia.org/wiki/Latitude>
