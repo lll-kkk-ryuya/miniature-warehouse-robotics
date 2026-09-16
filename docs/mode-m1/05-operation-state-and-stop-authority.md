@@ -35,7 +35,7 @@
 
 - 「召喚を受け付けてよいか」（軸 b）と「車体が走行してよいか」（停止理由集合）は**別の情報**であり、単一の `STANDBY` 状態へ押し込まない（doc11 正準語 standby の再定義を避ける）。
 - 外部提案にあった `STANDBY/AUTO/MANUAL/STOPPING/PAUSED/ESTOP` の 6 状態機械は**不採用**。PAUSED（目的地保持・再開）は §7 の別項目へ、STOPPING（停止完了確認）は将来 §7 の一時停止実装時に検討する。
-- 停止理由の初期集合: **①既存 Guardian estop 条件**（near_collision / battery_critical / pose_stale — 自動解除のまま不変。blocked_timeout は recovery＝estop 側ではない）**②操作者非常停止要求**（§5・latch・明示解除のみ）**③手動走行中の /joy 途絶**（teleop 発生源ゲートが担当・§6。未使用のジョイスティックを抜いただけで自律走行を止めることはしない — /joy は自律経路に接続されていないことを検証済み）。
+- 停止理由の初期集合: **①既存 Guardian estop 条件**（near_collision / battery_critical / pose_stale ＋ **`scan_stale`**〔2026-09-16 追加・`/{bot}/scan` 途絶＝[doc12 末尾【2026-09-16 追補】(3)](../architecture/12-infrastructure-common.md)〕 — 自動解除のまま不変。blocked_timeout は recovery＝estop 側ではない）**②操作者非常停止要求**（§5・latch・明示解除のみ）**③手動走行中の /joy 途絶**（teleop 発生源ゲートが担当・§6。未使用のジョイスティックを抜いただけで自律走行を止めることはしない — /joy は自律経路に接続されていないことを検証済み）。
 
 ## 3. Emergency の「イベント」と「現在状態」の分離（確定・2026-09-07）
 
