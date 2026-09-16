@@ -28,6 +28,7 @@ from warehouse_safety.guard_logic import (
 THRESH = 0.3  # = cfg safety.emergency_min_distance (the node reads it from load_config)
 TIMEOUT = 10.0  # = cfg safety.blocked_timeout
 FRESHNESS = 1.0  # = cfg safety.pose_freshness_timeout (#126; amcl_pose staleness window)
+SCAN_FRESHNESS = 1.0  # = cfg safety.scan_freshness_timeout (doc12 末尾【2026-09-16 追補】(3))
 
 
 def _bot(name: str, x=0.0, y=0.0, batt=100.0, blocked=0.0, pose_age=None) -> BotState:
@@ -38,7 +39,12 @@ def _bot(name: str, x=0.0, y=0.0, batt=100.0, blocked=0.0, pose_age=None) -> Bot
 
 def _evaluate(a: BotState, b: BotState) -> list:
     return evaluate(
-        a, b, distance_threshold=THRESH, blocked_timeout=TIMEOUT, pose_freshness_timeout=FRESHNESS
+        a,
+        b,
+        distance_threshold=THRESH,
+        blocked_timeout=TIMEOUT,
+        pose_freshness_timeout=FRESHNESS,
+        scan_freshness_timeout=SCAN_FRESHNESS,
     )
 
 

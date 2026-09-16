@@ -37,6 +37,14 @@ class BotState:
     # Operator emergency-stop request (doc05 §5): fleet-wide LATCHED stop, mirrored
     # by the node from OperatorStopLatch. Default False = safe absence (no request).
     operator_stop_requested: bool = False
+    # --- scan liveness (doc12 末尾【2026-09-16 追補】(3)) ---------------------------
+    # ``scan_age`` = seconds since the last /{bot}/scan ARRIVAL on the node's monotonic
+    # clock (None until the first scan). ``odom_seen`` = at least one /{bot}/odom has ever
+    # arrived (sticky): the independent "this bot is alive" witness that turns a
+    # never-received scan into a fault instead of an absent bot. Defaults = safe absence
+    # (an un-wired caller never trips scan_stale), like pose_age / operator_stop_requested.
+    scan_age: float | None = None
+    odom_seen: bool = False
 
 
 @dataclass(frozen=True)
@@ -45,7 +53,7 @@ class Decision:
 
     bot: str
     action: str  # "estop" | "recovery"
-    reason: str  # near_collision|battery_critical|blocked_timeout|pose_stale|operator_stop_request
+    reason: str  # near_collision|battery_critical|blocked_timeout|pose_stale|operator_stop_request|scan_stale
     detail: dict | None = None  # optional doc12:322-339 block (proximity / pose_stale case)
 
 
@@ -149,6 +157,27 @@ def pose_gate_open(
     return disp > motion_epsilon or abs(dyaw) > angular_epsilon
 
 
+def validate_scan_freshness_timeout(value: object) -> float:
+    """Validate ``safety.scan_freshness_timeout`` at startup (doc12 末尾【2026-09-16 追補】(3)).
+
+    Must be a finite number > 0 (bool excluded). Anything else raises ``ValueError`` so
+    the node REFUSES to start instead of silently degrading: a NaN would make the
+    ``scan_age > timeout`` comparison always False (guard disabled = fail-OPEN), and a
+    zero / negative value would estop on every tick. Same fail-fast idiom as
+    ``warehouse_interfaces.safety.validate_battery_scale``.
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(
+            f"safety.scan_freshness_timeout={value!r} must be a number (int or float), "
+            f"got {type(value).__name__}"
+        )
+    if not math.isfinite(value) or value <= 0:
+        raise ValueError(
+            f"safety.scan_freshness_timeout={value} must be a finite value > 0 seconds"
+        )
+    return float(value)
+
+
 def evaluate(
     bot_a: BotState,
     bot_b: BotState,
@@ -156,6 +185,7 @@ def evaluate(
     distance_threshold: float,  # cfg safety.emergency_min_distance (NOT the speed cap)
     blocked_timeout: float,  # cfg safety.blocked_timeout
     pose_freshness_timeout: float,  # cfg safety.pose_freshness_timeout (#126; amcl_pose staleness)
+    scan_freshness_timeout: float,  # cfg safety.scan_freshness_timeout (/{bot}/scan arrival age)
     # doc23 A-5③ displacement gate. Unset (None) => gate always open => CURRENT
     # gate-less behaviour, so an un-wired caller can only be MORE conservative.
     pose_gate_motion_epsilon: float | None = None,  # cfg safety.pose_freshness_motion_epsilon
@@ -174,6 +204,11 @@ def evaluate(
        (OQ-11), never a moving one — see ``pose_gate_open``.
     5. per-bot latched operator emergency-stop request (doc05 §5) -> estop while the
        fleet-wide ``OperatorStopLatch`` is engaged (explicit clear only, never time).
+    6. per-bot /{bot}/scan arrival older than ``scan_freshness_timeout`` (strict ``>``),
+       OR never received while odom proves the bot is alive -> estop ``scan_stale``
+       (doc12 末尾【2026-09-16 追補】(3)): Humble's nav2_collision_monitor drops a stale
+       source's points and passes cmd_vel through (fail-open), so lidar loss must stop
+       the bot HERE. Level (auto-clears when scans resume), never latched.
     """
     decisions: list[Decision] = []
 
@@ -254,6 +289,23 @@ def evaluate(
     for b in (bot_a, bot_b):
         if b.operator_stop_requested:
             decisions.append(Decision(b.bot, "estop", "operator_stop_request", None))
+
+    # (6) scan liveness -> estop (doc12 末尾【2026-09-16 追補】(3)). Strict `>` mirrors
+    # pose_stale. A never-received scan (None) is a fault ONLY when odom has proven the
+    # bot alive (odom_seen): a real bot whose lidar never came up fails CLOSED, while an
+    # absent bot (single-bot ADR-0006 with _BOTS fixed at 2) stays silent. Precautionary
+    # and additive: it can only ADD an estop, and it auto-clears once scans resume.
+    for b in (bot_a, bot_b):
+        stale = b.odom_seen if b.scan_age is None else b.scan_age > scan_freshness_timeout
+        if stale:
+            decisions.append(
+                Decision(
+                    b.bot,
+                    "estop",
+                    "scan_stale",
+                    {"scan_age": b.scan_age, "freshness_timeout": scan_freshness_timeout},
+                )
+            )
 
     return decisions
 

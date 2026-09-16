@@ -60,6 +60,7 @@ EPS_D = 0.10  # = safety.pose_freshness_motion_epsilon  (= 2 x UPDATE_MIN_D)
 EPS_A = 0.4  # = safety.pose_freshness_angular_epsilon (= 2 x UPDATE_MIN_A)
 ODOM_STALE = 0.5  # = safety.odom_freshness_timeout
 FRESHNESS = 1.0  # = safety.pose_freshness_timeout
+SCAN_FRESHNESS = 1.0  # = safety.scan_freshness_timeout (doc12 末尾【2026-09-16 追補】(3))
 THRESH = 0.3  # = safety.emergency_min_distance
 BLOCKED = 10.0  # = safety.blocked_timeout
 
@@ -89,6 +90,7 @@ def _decide(b: BotState, *, gated: bool) -> list:
         distance_threshold=THRESH,
         blocked_timeout=BLOCKED,
         pose_freshness_timeout=FRESHNESS,
+        scan_freshness_timeout=SCAN_FRESHNESS,
         **_gate_kwargs(gated),
     )
 

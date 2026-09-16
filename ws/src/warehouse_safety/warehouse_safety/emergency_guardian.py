@@ -2,8 +2,9 @@
 
 On a 50ms timer it estops on inter-robot proximity / critical battery / stale
 localization (#126 + doc23 A-5③ displacement gate) / a LATCHED operator stop
-request (``/operator/stop_request`` engage/clear JSON, doc05 §5 / OQ-OP2), and
-triggers a (low-harm) recovery event on blocked-timeout. An estop cancels Nav2
+request (``/operator/stop_request`` engage/clear JSON, doc05 §5 / OQ-OP2) / stale
+lidar (``scan_stale``: ``/{bot}/scan`` arrival age, doc12 末尾【2026-09-16 追補】(3)),
+and triggers a (low-harm) recovery event on blocked-timeout. An estop cancels Nav2
 goals, publishes a zero ``Twist`` to ``/{bot}/cmd_vel/emergency`` (twist_mux
 priority 100 — never ``/{bot}/cmd_vel`` directly, which races Nav2, doc15) and
 publishes a structured ``/emergency/event``. The Twist stop is re-asserted every
@@ -15,8 +16,11 @@ without ROS, doc16 §11); this node only marshals ROS and performs side effects.
 
 Caveats:
 - R-39: ``/{bot}/amcl_pose`` is 5-10 Hz, so the "50ms reflex" is effectively
-  100-200 ms stale; the ESP32 Layer 0 (and ``/scan``, a Phase-2 seam not yet
-  subscribed here) is the true 2-bot proximity owner.
+  100-200 ms stale; nav2_collision_monitor (``/scan`` polygon) and the ESP32 /
+  L0' floor own the physical proximity reflex. ``/{bot}/scan`` is subscribed here
+  ONLY for liveness (``scan_stale``), never for proximity: on Humble 1.1.20 the
+  collision_monitor drops a stale source's points and passes cmd_vel through
+  (fail-open), so lidar loss has to stop the bot from this node.
 - R-40: ``gc.disable()`` / ``gc.freeze()`` in ``main()`` is best-effort jitter
   control; the ESP32 Layer 0 is the final physical-stop guarantee.
 """
@@ -35,7 +39,7 @@ from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.publisher import Publisher
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
-from sensor_msgs.msg import BatteryState
+from sensor_msgs.msg import BatteryState, LaserScan
 from std_msgs.msg import String
 from warehouse_interfaces.compat import UTC
 from warehouse_interfaces.config import load_config
@@ -89,6 +93,14 @@ class EmergencyGuardian(Node):
         self._odom_freshness_timeout = self.declare_parameter(
             "odom_freshness_timeout", cfg["safety"]["odom_freshness_timeout"]
         ).value
+        # doc12 末尾【2026-09-16 追補】(3): /{bot}/scan arrival-age window for the scan_stale
+        # estop. Hard-indexed (missing key fails LOUDLY at startup) and validated so a NaN /
+        # non-positive value refuses to start rather than silently disabling the guard.
+        self._scan_freshness_timeout = gl.validate_scan_freshness_timeout(
+            self.declare_parameter(
+                "scan_freshness_timeout", cfg["safety"]["scan_freshness_timeout"]
+            ).value
+        )
         # #44: explicit battery driver scale, shared with State Cache via
         # warehouse_interfaces.safety so this reflex and the snapshot never diverge.
         scale = cfg["safety"].get("battery_percentage_scale", BATTERY_PERCENTAGE_SCALE_DEFAULT)
@@ -113,6 +125,10 @@ class EmergencyGuardian(Node):
         # #126 freshness: monotonic arrival time of the latest /amcl_pose per bot
         # (None until the first pose) -> pose_age computed in _check_safety.
         self._last_pose_t: dict[str, float | None] = {b: None for b in _BOTS}
+        # scan_stale inputs: monotonic arrival time of the latest /{bot}/scan (None until
+        # the first scan) and the sticky "any /{bot}/odom ever arrived" witness.
+        self._last_scan_t: dict[str, float | None] = {b: None for b in _BOTS}
+        self._odom_seen: dict[str, bool] = {b: False for b in _BOTS}
 
         sensor_qos = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT, history=HistoryPolicy.KEEP_LAST, depth=1
@@ -161,6 +177,14 @@ class EmergencyGuardian(Node):
                 lambda msg, b=bot: self._on_odom(b, msg),
                 sensor_qos,
             )
+            # scan_stale input (doc12 末尾【2026-09-16 追補】(3)): /{bot}/scan is the doc03:78
+            # contract topic. Liveness ONLY — the payload is never inspected here.
+            self.create_subscription(
+                LaserScan,
+                f"/{bot}/scan",
+                lambda msg, b=bot: self._on_scan(b, msg),
+                sensor_qos,
+            )
             # Stop goes to /cmd_vel/emergency (twist_mux prio 100), never /cmd_vel (doc15).
             self._cmd_pub[bot] = self.create_publisher(
                 Twist, f"/{bot}/cmd_vel/emergency", reliable_qos
@@ -206,11 +230,18 @@ class EmergencyGuardian(Node):
         # non-finite handling lives in the rclpy-free gl.PoseGateTracker (R-26).
         # The twist is NOT read: the gate is displacement-only (doc23:349) — an
         # instantaneous-speed term deadlocked departures in the 2026-08-17 sim run.
+        self._odom_seen[bot] = True  # scan_stale witness: this bot is alive (sticky)
         p = msg.pose.pose.position
         q = msg.pose.pose.orientation
         self._gate.on_odom(
             bot, p.x, p.y, gl.yaw_from_quaternion(q.x, q.y, q.z, q.w), time.monotonic()
         )
+
+    def _on_scan(self, bot: str, msg: LaserScan) -> None:
+        # scan_stale input: stamp the ARRIVAL on the same monotonic clock as the poses
+        # (never msg.header.stamp — sim/real clock offsets must not leak into the age).
+        # Marshal only; the staleness rule lives in gl.evaluate (R-26).
+        self._last_scan_t[bot] = time.monotonic()
 
     def _on_battery(self, bot: str, msg: BatteryState) -> None:
         # #44: marshal via the rclpy-free, unit-tested gl.marshal_battery (single
@@ -232,6 +263,7 @@ class EmergencyGuardian(Node):
             distance_threshold=self._dist_threshold,
             blocked_timeout=self._blocked_timeout,
             pose_freshness_timeout=self._freshness_timeout,
+            scan_freshness_timeout=self._scan_freshness_timeout,
             pose_gate_motion_epsilon=self._gate_motion_eps,
             pose_gate_angular_epsilon=self._gate_angular_eps,
         )
@@ -262,7 +294,22 @@ class EmergencyGuardian(Node):
         # doc23 A-5③: None pair when odom is absent / stale -> gate fails closed.
         disp, dyaw = self._gate.snapshot(bot, now, stale_after=self._odom_freshness_timeout)
         batt, blocked = self._battery[bot], self._blocked[bot]
-        return gl.BotState(bot, x, y, batt, blocked, pose_age, disp, dyaw, self._op_latch.engaged)
+        # scan_stale inputs (doc12 末尾【2026-09-16 追補】(3)): same `now` as pose_age.
+        last_scan = self._last_scan_t[bot]
+        scan_age = None if last_scan is None else now - last_scan
+        return gl.BotState(
+            bot,
+            x,
+            y,
+            batt,
+            blocked,
+            pose_age,
+            disp,
+            dyaw,
+            self._op_latch.engaged,
+            scan_age=scan_age,
+            odom_seen=self._odom_seen[bot],
+        )
 
     def _xy(self, bot: str) -> tuple[float | None, float | None]:
         p = self._pose[bot]
