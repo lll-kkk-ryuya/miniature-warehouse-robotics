@@ -122,7 +122,7 @@ eProsima Fast DDS 公式は Simple Discovery の欠点として「ノード追�
 2. **法の写像**: [01 §5](01-legal-envelope-japan.md) が禁じるのは「遠隔の人が**操作**できない状態」であって助言計算の喪失ではない。→ **卓としての Mac 断 = リンク断 = 停止（必須）／助言としての Mac 断 = 助言喪失のみで走行継続（適法）**。どちらも成立するが、**同一機に両役を載せない**（[:47](02-architecture-split-orin-pc-cloud.md:47) の「縮退方針が逆向きの 2 機能を 1 プロセスに置かない」を機体レベルへ拡張 = `OQ-OD2A`）。
 3. **第 4 の段を作らない**。随伴 Mac は §1 原則 3（クラウド = 無くても走れる助言・記録）の**物理配置違い**として扱う。縮退意味論が一致するため 3 原則の改訂は不要（`OQ-OD28`）。
 4. **随伴 Mac は stop producer になれない**（[05 §0](05-safety-envelope-and-intervention.md:11) 許可判断点を新設しない・[05 §3-3](05-safety-envelope-and-intervention.md:61) `speed_limit` 単一 publisher = ADR-0012 決定 11）。返す型は observation / proposal に限り、`/operator/stop_request`・`/safety/stop_request`・`/bot{n}/stop_state`・`/bot{n}/cmd_vel*`・`/bot{n}/speed_limit` の producer にならない（R-26 相当の AST pin で固定できる）。
-5. **フェーズ依存**: 随伴通行（[01 §5](01-legal-envelope-japan.md)）では人が車体の横を歩くので Mac は物理的に随伴できる。遠隔操作通行では届出事項「遠隔操作場所の所在地」（[01 §4](01-legal-envelope-japan.md)）に縛られ **Mac は卓側に固定 = 随伴計算にならない** → 助言は GCP Hermes へ戻すか卓に同居させる（`OQ-OD28`）。
+5. **フェーズ依存**: 随伴通行（[01 §5](01-legal-envelope-japan.md)）では人が車体の横を歩くので Mac は物理的に随伴できる。遠隔操作通行では**随伴者がいない（車体の横を歩く人がいない）ため Mac を運ぶ人がおらず随伴計算にならない**。届出事項「遠隔操作場所の所在地」（[01 §4](01-legal-envelope-japan.md)）が拘束するのは卓であって助言計算機ではない → 助言は GCP Hermes へ戻すか卓に同居させる（同居なら項 2 の `OQ-OD2A` の規律）（`OQ-OD28`）。
 6. **帰り道は `web_bridge` ではない**（[:47](02-architecture-split-orin-pc-cloud.md:47)・[doc22:283](../architecture/22-web-observability.md:283) の observe-only R-26 pin）。Orin → Mac のテレメトリ受信だけなら衝突しないが、Mac → Orin に何かを返す瞬間に衝突する。助言専用の第 3 プロセス・第 3 port（`advisory_link_node`・0 actuation・AST pin）を立てる案 vs `operator_link_node` の閉集合拡張（`OQ-OD24` の最小性を損なう）= `OQ-OD29`。
 7. **Mac に置いてよい / いけない**:
 
