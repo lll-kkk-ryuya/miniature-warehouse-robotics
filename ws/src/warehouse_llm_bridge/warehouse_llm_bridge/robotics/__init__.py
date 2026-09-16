@@ -26,6 +26,11 @@ from warehouse_llm_bridge.robotics.adapters import (
     ProviderType,
     Transport,
 )
+from warehouse_llm_bridge.robotics.er_models import (
+    ER_DIRECT_MODEL_ID,
+    ER_SOURCE_MODEL,
+    resolve_er_direct_model,
+)
 from warehouse_llm_bridge.robotics.er_task import ErTaskRequest
 from warehouse_llm_bridge.robotics.observability import (
     InMemoryTranscriptSink,
@@ -46,6 +51,8 @@ from warehouse_llm_bridge.robotics.transcription import (
 from warehouse_llm_bridge.robotics.transport import resolve_audio_transport
 
 __all__ = [
+    "ER_DIRECT_MODEL_ID",
+    "ER_SOURCE_MODEL",
     "CallableTranscriber",
     "ErAdapter",
     "ErTaskRequest",
@@ -62,5 +69,6 @@ __all__ = [
     "Transport",
     "build_er_adapter",
     "resolve_audio_transport",
+    "resolve_er_direct_model",
     "run_perception_lanes",
 ]

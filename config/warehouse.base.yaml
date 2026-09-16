@@ -87,6 +87,10 @@ robotics:
     base_url: ""                        # forked lean ER gateway（例 http://127.0.0.1:8644）。空=direct
     audio_input_audio_supported: false  # fork capability flag: 0001-input_audio-passthrough.patch 適用
                                         # gateway でのみ true。unforked Hermes=false（400・doc06 §5:159）
+    direct_model: "gemini-robotics-er-2-preview"  # #690: direct transport の API model id（単一ソース =
+                                        # warehouse_llm_bridge/robotics/er_models.py ER_DIRECT_MODEL_ID・
+                                        # 空/欠落/非 str は code 既定へ fail-safe・env overlay
+                                        # WAREHOUSE__ROBOTICS__ER_GATEWAY__DIRECT_MODEL・1.6-preview は 2026-08-31 shutdown）
 
 # Nav2 Bridge（Mode A/B 実行先。ポートは doc13/12a と一致）
 nav2_bridge:

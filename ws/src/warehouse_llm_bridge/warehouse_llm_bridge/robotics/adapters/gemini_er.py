@@ -33,6 +33,7 @@ from collections.abc import Callable, Mapping
 from typing import Protocol, runtime_checkable
 
 from warehouse_llm_bridge.robotics.adapters.enums import ProviderType, Transport
+from warehouse_llm_bridge.robotics.er_models import ER_DIRECT_MODEL_ID, ER_SOURCE_MODEL
 from warehouse_llm_bridge.robotics.er_task import ErTaskRequest
 from warehouse_llm_bridge.robotics_planning_core.models import RawModelOutput
 
@@ -183,7 +184,7 @@ class GeminiErAdapter:
     shipped default audio is ``direct``, doc06:269).
     """
 
-    name = "gemini-robotics-er"
+    name = ER_SOURCE_MODEL  # audit tag only (er_models.py); never the API model id
 
     def __init__(
         self,
@@ -266,7 +267,7 @@ class HttpErTransportSender:
         self,
         *,
         gemini_key: str,
-        direct_model: str = "gemini-robotics-er-1.6-preview",
+        direct_model: str = ER_DIRECT_MODEL_ID,  # single source: robotics/er_models.py (#690)
         hermes_base_url: str | None = None,
         hermes_key: str | None = None,
         hermes_model: str = "hermes-agent",

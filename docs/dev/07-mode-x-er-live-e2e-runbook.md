@@ -25,7 +25,7 @@ Mode X-ER の「ER → L3 → 観測」は **3つの層**に分かれ、成熟�
 
 ### T-LIVE ER→Handoff — 実 ER は handoff で止まる（main・env-gated）
 
-- 正本: `tests/live/test_er_handoff_live.py`（**main 在**）。`WAREHOUSE_LIVE_ER=1` でないと module ごと skip（`test_er_handoff_live.py:33-37`）。実 `gemini-robotics-er-1.6-preview`（`test_er_handoff_live.py:45`）を呼び、その**生レスポンス**を `to_robotics_plan_draft` に流して `RoboticsPlanDraft` を組む（`test_er_handoff_live.py:107-116`）。
+- 正本: `tests/live/test_er_handoff_live.py`（**main 在**）。`WAREHOUSE_LIVE_ER=1` でないと module ごと skip（`test_er_handoff_live.py:33-37`）。実 `gemini-robotics-er-2-preview`（= `ER_DIRECT_MODEL_ID`・`test_er_handoff_live.py:45`・#690 で 1.6 → 2）を呼び、その**生レスポンス**を `to_robotics_plan_draft` に流して `RoboticsPlanDraft` を組む（`test_er_handoff_live.py:107-116`）。
 - **重要**: この live 経路は **`RoboticsPlanDraft` で終わる**。`validate_raw_output` / Validator は**呼ばない**（= live で Validator まで通すのは今日できない。§5）。
 
 ### T-LIVE ER→Langfuse — tracer は実装済だが既定 OFF（live 着地は #88 human-gate）
@@ -48,7 +48,7 @@ export GOOGLE_API_KEY=...        # または GEMINI_API_KEY。値は echo しな
 deploy/hermes/er-audio-fork/run-er-gateway.sh   # 隔離 worktree→patch→lean gateway 起動（fg・port 8644・text+image+input_audio）
 ```
 
-- **標準 = 8644 fork gateway（全 modality: text+image+input_audio）**: 既定 port **8644**（`run-er-gateway.sh:56`）、active model **`gemini-robotics-er-1.6-preview`** / provider `google`（`deploy/dev/hermes-er/config.lean.yaml:26-27`）、tools=[]・memory off の **lean transport**（`config.lean.yaml:30-35`）。text/image に加え `input_audio` を native 受理（`deploy/hermes/er-audio-fork/0001-input_audio-passthrough.patch`・`_AUDIO_PART_TYPES`。**wav-only first**。unforked Hermes は 400＝§5-4）。
+- **標準 = 8644 fork gateway（全 modality: text+image+input_audio）**: 既定 port **8644**（`run-er-gateway.sh:56`）、active model **`gemini-robotics-er-2-preview`**（= `ER_DIRECT_MODEL_ID`・#690・1.6 は 2026-08-31 shutdown）/ provider `google`（`deploy/dev/hermes-er/config.lean.yaml:26-27`）、tools=[]・memory off の **lean transport**（`config.lean.yaml:30-35`）。text/image に加え `input_audio` を native 受理（`deploy/hermes/er-audio-fork/0001-input_audio-passthrough.patch`・`_AUDIO_PART_TYPES`。**wav-only first**。unforked Hermes は 400＝§5-4）。
 - **隔離（専用 home）**: 隔離 worktree ＋ **`HERMES_HOME=~/.hermes-mwr-er-fork`**（`run-er-gateway.sh:57`・unforked の `~/.hermes-mwr-er-lean` と別 home＝fork は unforked の 8643 .env を継承しない・`ensure_env_port()` が起動時 8644 に再固定）。個人 `~/.hermes` も GCP prod（`gemini-2.5-flash` 司令塔）も ER でないため**転用しない**＝Hermes は server-side 単一 active model ゆえ ER 専用 gateway が要る（`run-er-gateway.sh:38-43`、`test_er_handoff_live.py:13-17`）。
 - **fork-free fallback**（audio 不要・text/image のみ）: `deploy/dev/run-er-hermes.sh`（port **8643**・非 fork・**別 home `~/.hermes-mwr-er-lean`**・deprecated＝同 launcher EOF banner）。以降 §Step B/C が挙げる `8643` は **fallback 経路の port**で、標準 fork 経路では **8644** に読み替える。
 - Bridge 側は標準で `http://127.0.0.1:8644/v1` に gateway の `API_SERVER_KEY` で繋ぐ（token 値は表示されない。fallback 経路なら 8643）。
@@ -213,3 +213,12 @@ WAREHOUSE_LIVE_ER=1 python3.12 -m pytest tests/live/test_er_handoff_live.py -s
 - **RUNNING node ではない**: 稼働 rclpy node ではなく、harness が node と同一の backbone 関数列を駆動した（OFFLINE-WIRED≠RUNNING）。稼働 node の G5 sim ゲートは **#342** で継続（本追補は §5-1 の限界を置き換えない）。
 - ハーネス: `spike/xer6-live-matrix/run-live-matrix.sh`＋`REPORT.md`（branch `feat/mode-x-er-live-matrix`）。有料 provider call ゆえ **§4.5 の batch 規律**（batch ごとに cost go をオペレーターに確認）に従う。
 - G5 の 2 前提（State Cache 10Hz 並行稼働・camera detections）は [`docs/dev/08-xer6-live-sim-x-lite-runbook.md`](08-xer6-live-sim-x-lite-runbook.md) の「G5 live 前提条件」追補。
+
+## 【2026-09-16 追補】ER 2 移行後の live smoke（#690 DoD 3・operator gate）
+
+- **前提**: `gemini-robotics-er-1.6-preview` は 2026-08-31 に shutdown [D]。本 runbook の以前の live 記録はすべて 1.6 時点。現行 model は `ER_DIRECT_MODEL_ID = gemini-robotics-er-2-preview`（`warehouse_llm_bridge/robotics/er_models.py`・config `robotics.er_gateway.direct_model`・env `WAREHOUSE__ROBOTICS__ER_GATEWAY__DIRECT_MODEL`・tests/CLI は `MWR_ER_MODEL`）。fork gateway の `config.lean.yaml` `model.default` も同値（unit pin）。
+- **smoke（各 1 回・課金・operator が §4.5 の cost 確認後に自分の shell で `WAREHOUSE_LIVE_ER=1` を立てる。agent は立てない）**:
+  1. direct・text-only（最安）: `WAREHOUSE_LIVE_ER=1 .venv/bin/python -m pytest tests/live/test_er_handoff_live.py -k direct -q`（provider key は `~/.zshenv` 恒久プロビジョン・値非表示）。期待 = HTTP 200・`modelVersion` が `gemini-robotics-er-2-*`・handoff が `RoboticsPlanDraft` で止まる（既存挙動）。
+  2. fork 8644 経路: `deploy/hermes/er-audio-fork/run-er-gateway.sh` 起動後（ログ行 `model=gemini-robotics-er-2-preview`）に `deploy/dev/check-hermes-live.sh --chat` 相当の 1 call。期待 = 200・`input_audio` 経路は別途 PROBE-1 相当（[06 末尾追補 U-2](../mode-x-er/06-unfrozen-contract-resolutions.md)）。
+  3. 結果を本節末尾に **日付・model・HTTP status・tokens・cost** で追記し、fixture を取り直す場合は `deploy/dev/xer6/er_offline_payload.*.json` の `modelVersion` を新記録として更新（既存値は 2026-07 の記録）。
+- **未実施のまま**（2026-09-16 時点）: 上記 1〜3。実施まで #690 は open。

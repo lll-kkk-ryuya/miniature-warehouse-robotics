@@ -20,9 +20,11 @@ import os
 import urllib.error
 import urllib.request
 
+from warehouse_llm_bridge.robotics.er_models import ER_DIRECT_MODEL_ID, ER_MODEL_ENV
+
 # Default ER model + schema/instruction mirror test_er_handoff_live.py:45,51-65 (kept independent so
 # this helper is self-contained; the live module is not imported/edited).
-DEFAULT_MODEL = os.getenv("MWR_ER_MODEL", "gemini-robotics-er-1.6-preview")
+DEFAULT_MODEL = os.getenv(ER_MODEL_ENV, ER_DIRECT_MODEL_ID)  # single source (#690)
 
 # A system instruction pinning the L3 input contract (robotics_plan_draft.v0). Targets are OBJECT
 # IDs (red_box/blue_box); the L3 Visual Resolver snaps them to known locations downstream (XER3), so
@@ -63,7 +65,7 @@ def call_er_direct(
 
     Args:
         instruction: the operator instruction to plan from.
-        model: the ER model id (default: ``gemini-robotics-er-1.6-preview``).
+        model: the ER model id (default: ``ER_DIRECT_MODEL_ID`` from ``robotics/er_models.py``).
         timeout: per-request timeout in seconds.
 
     Returns:

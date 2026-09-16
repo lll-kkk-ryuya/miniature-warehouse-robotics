@@ -42,6 +42,7 @@ from warehouse_llm_bridge.robotics.adapters.gemini_er import (
     GeminiErAdapter,
     HttpErTransportSender,
 )
+from warehouse_llm_bridge.robotics.er_models import resolve_er_direct_model
 from warehouse_llm_bridge.robotics.transport import resolve_audio_transport
 
 # Env var names (docs-sourced, not invented): the Gemini key mirrors the ER live harness order
@@ -207,13 +208,18 @@ def _build_http_sender(
     ``base_url`` + bearer key wired in.
     """
     gemini_key = _first_env(env, _GEMINI_KEY_ENV) or ""
+    # #690: the API model id is resolved from config (robotics.er_gateway.direct_model, hence the
+    # doc19 WAREHOUSE__ overlay) with the er_models.py constant as the fail-safe default. Both
+    # branches get it: the hermes->direct fallback must call the same model.
+    direct_model = resolve_er_direct_model(er_gateway_cfg)
     if transport is Transport.HERMES:
         # resolve_audio_transport guarantees er_gateway_cfg is a Mapping with a non-empty base_url
         # str here; read defensively so future resolver drift can't crash construction.
         base_url = er_gateway_cfg.get("base_url") if isinstance(er_gateway_cfg, Mapping) else None
         return HttpErTransportSender(
             gemini_key=gemini_key,
+            direct_model=direct_model,
             hermes_base_url=base_url if isinstance(base_url, str) else None,
             hermes_key=_first_env(env, _HERMES_KEY_ENV),
         )
-    return HttpErTransportSender(gemini_key=gemini_key)
+    return HttpErTransportSender(gemini_key=gemini_key, direct_model=direct_model)

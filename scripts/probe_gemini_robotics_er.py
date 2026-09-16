@@ -14,7 +14,11 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
-DEFAULT_MODEL = "gemini-robotics-er-1.6-preview"
+try:  # single source (Issue #690); the literal fallback is pinned to it by a unit test
+    from warehouse_llm_bridge.robotics.er_models import ER_DIRECT_MODEL_ID as _ER_DEFAULT
+except ImportError:  # stdlib-only invocation outside the workspace
+    _ER_DEFAULT = "gemini-robotics-er-2-preview"
+DEFAULT_MODEL = os.getenv("MWR_ER_MODEL", _ER_DEFAULT)
 DEFAULT_PROMPT = (
     "You are an access probe. Return JSON only with keys status, model, and note. "
     "Set status to ok if you can respond."

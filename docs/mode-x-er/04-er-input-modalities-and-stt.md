@@ -17,7 +17,7 @@ Google Gemini API の公式 model ページを 2026-06-23 に確認した。
 
 | 項目 | 内容 |
 |---|---|
-| model | `gemini-robotics-er-1.6-preview`（現行 preview。`...-1.5-preview` は shutdown 済み） |
+| model | `gemini-robotics-er-2-preview`（現行 preview・2026-07-30 公開。**`...-1.6-preview` は 2026-08-31 shutdown**・`1.5` は 2026-04-30 shutdown [D 2026-09-16]。**単一ソース = `warehouse_llm_bridge/robotics/er_models.py` `ER_DIRECT_MODEL_ID` + config `robotics.er_gateway.direct_model`（env `WAREHOUSE__ROBOTICS__ER_GATEWAY__DIRECT_MODEL`）**・#690。`-2-streaming-preview` は Live API 専用で REST / Hermes 経路では使わない） |
 | Inputs | **Text, images, video, audio** |
 | Output | text（空間推論では正規化 2D point / bounding box などの構造化テキスト） |
 | 一次情報 | `https://ai.google.dev/gemini-api/docs/robotics-overview`（取得日 2026-06-23） |
