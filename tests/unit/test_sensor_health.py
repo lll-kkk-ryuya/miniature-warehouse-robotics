@@ -260,8 +260,8 @@ def test_age_exactly_at_the_limit_is_still_fresh() -> None:
 
     09:72 requires a freshness judgement but states no operator, so the oracle
     for the boundary is the repo's own idiom for "older than the window"
-    (``ws/src/warehouse_safety/warehouse_safety/guard_logic.py:407``:
-    ``now - t > stale_after``), which this module reuses.
+    (``guard_logic.PoseGateTracker.snapshot``: strict ``>`` on the upper edge of
+    ``0 <= now - t <= stale_after``), which this module reuses.
 
     1.5 - 1.0 = 0.5 is exact in binary floating point, so this boundary is a
     real assertion and not a rounding accident.
