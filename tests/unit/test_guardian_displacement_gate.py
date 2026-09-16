@@ -722,7 +722,8 @@ def test_wall_clock_reception_under_a_monotonic_tick_never_reads_fresh_forever()
     tick and the dead odom would be served as fresh, parked-looking ``(0.0, 0.0)`` —
     closing the gate and suppressing ``pose_stale`` for a robot whose localizer AND
     odom are both silent. Fail-closed means the gate must degrade to CURRENT: same
-    firing tick as the gate-less guard (STALE_TICK), on every tick unknown odom."""
+    firing tick as the gate-less guard (STALE_TICK), with the odom reported unknown
+    on every tick."""
     wall_t0 = 1.7e9  # what time.time() reads
     mono_t0 = 1.0e4  # what time.monotonic() reads on the same host
     gate = PoseGateTracker()
@@ -852,7 +853,9 @@ def _attr_calls(fn: ast.FunctionDef, attr: str) -> list[ast.Call]:
 @pytest.mark.safety
 def test_on_odom_stamps_the_tracker_with_the_monotonic_clock_only() -> None:
     fn = _guardian_function("_on_odom")
-    (call,) = _attr_calls(fn, "on_odom")  # the tracker is fed exactly once
+    calls = _attr_calls(fn, "on_odom")
+    assert len(calls) == 1, "_on_odom must feed the tracker exactly once"
+    (call,) = calls
     assert len(call.args) == 5 and not call.keywords
     assert _is_time_monotonic_call(call.args[4]), "tracker `now` must be time.monotonic()"
     forbidden = {"header", "stamp", "twist"}
@@ -870,7 +873,9 @@ def test_check_safety_samples_one_monotonic_now_and_snapshot_receives_it() -> No
     assert isinstance(first.targets[0], ast.Name) and first.targets[0].id == "now"
     assert _is_time_monotonic_call(first.value), "the tick samples `now = time.monotonic()` first"
     bot_state = _guardian_function("_bot_state")
-    (snap,) = _attr_calls(bot_state, "snapshot")
+    snaps = _attr_calls(bot_state, "snapshot")
+    assert len(snaps) == 1, "_bot_state must call snapshot exactly once"
+    (snap,) = snaps
     assert len(snap.args) == 2
     assert isinstance(snap.args[1], ast.Name) and snap.args[1].id == "now", (
         "snapshot gets the tick's now"
