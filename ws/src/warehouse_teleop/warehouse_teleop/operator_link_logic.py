@@ -55,6 +55,14 @@ Two clocks, two roles (``09:67`` rule 4), never mixed:
   age against. A negative age on this clock means the clock is wrong, which is
   fail-closed here (engage / drop), matching ``joy_is_stale``'s NaN posture.
 
+A session is identified by ``session_epoch``, minted LOCALLY and never taken from
+the wire. It is the single handle for "this operator session is over", and ALL
+THREE of these must act on it: :meth:`SessionGuard.reconnect` discards the queued
+drive command, :func:`replay_teleop` refuses a sample stamped with a superseded
+epoch, and the caller calls :meth:`VideoFreshness.reset`. Dropping only the
+queued command is not enough — the sample taken one tick before the reconnect
+would still drive the robot on the previous operator's last input.
+
 Deliberately ABSENT from this slice (so nothing here has to be un-invented
 later): the node, the socket server, the port, any topic subscription or
 publication, the video codec, and the "video age -> remote speed cap" table
@@ -85,6 +93,15 @@ OPERATOR_STOP_TOPIC = DEFAULT_OPERATOR_STOP_TOPIC
 #: is still a proposal (05:57, ``OQ-OD53``). So the reason travels in-process on
 #: :class:`LinkVerdict` and the wire helper emits only the frozen shape.
 REASON_LINK_LOSS = "link_loss"
+
+#: Parser resource bound on a Joy-equivalent array, NOT a contract value and not
+#: a controller layout: it exists so one frame cannot make the parser allocate an
+#: arbitrarily large tuple. The largest layout this repo knows of is 8 axes / 15
+#: buttons (:mod:`warehouse_teleop.joymap` module docstring), so 64 is far above
+#: any real controller while still bounded. A site that pins its actual layout
+#: uses ``replay_teleop(expected_axes=..., expected_buttons=...)``; changing this
+#: number changes no documented behaviour.
+MAX_JOY_ARRAY_LEN = 64
 
 
 class ControlKind(Enum):
@@ -218,6 +235,8 @@ def _parse_teleop(body: dict[str, object]) -> TeleopPayload | None:
     axes = body["axes"]
     buttons = body["buttons"]
     if not isinstance(axes, list) or not isinstance(buttons, list):
+        return None
+    if len(axes) > MAX_JOY_ARRAY_LEN or len(buttons) > MAX_JOY_ARRAY_LEN:
         return None
     if not all(_is_finite_number(a) for a in axes):
         return None
@@ -434,6 +453,11 @@ class SessionGuard:
         if msg.sent_at_s < oldest or msg.sent_at_s > newest:
             return False
 
+        # ORDER IS LOAD-BEARING: the baseline advances only AFTER every check has
+        # passed. Advancing it on a rejected message would let one message the
+        # guard refused (a stale send time, say) burn the sequence numbers of the
+        # messages that follow it, so a well-behaved peer's next commands would
+        # be dropped as replays. Pinned by a unit.
         self._last_sequence = msg.sequence
         if msg.kind is ControlKind.TELEOP:
             # Newest-wins depth-one queue: an older sample still waiting is
@@ -448,6 +472,13 @@ class SessionGuard:
         Consuming is what makes "not yet replayed" meaningful: a sample replayed
         once must not be replayed again on the next tick, or a single command
         would be re-issued at the tick rate long after the operator let go.
+
+        A taken sample has LEFT the guard, so :meth:`reconnect` can no longer
+        discard it — which is why the returned message keeps the
+        ``session_epoch`` it was accepted under and :func:`replay_teleop`
+        requires the caller to pass the guard's CURRENT epoch. That is what
+        makes the ``09:104`` discard hold across the take/replay gap rather than
+        only for samples still sitting in the queue.
         """
         msg = self._pending_teleop
         received = self._pending_received_mono_s
@@ -576,7 +607,7 @@ class LinkWatchdog:
         return True
 
 
-def stop_request_payload(verdict: LinkVerdict) -> str | None:
+def stop_request_payload(verdict: LinkVerdict | None) -> str | None:
     """The frozen wire payload for an engaged verdict, or ``None`` to publish nothing.
 
     Returns joymap's ``OPERATOR_STOP_PAYLOAD`` entry verbatim (doc03:112), so the
@@ -589,18 +620,36 @@ def stop_request_payload(verdict: LinkVerdict) -> str | None:
     A cleared verdict returns ``None``, never a "clear" payload: this watchdog is
     one of several stop producers and the Guardian latch is fleet-wide, so
     emitting a clear here would release stops it never engaged.
+
+    ``None`` in (no verdict computed this tick) gives ``None`` out rather than an
+    exception, matching every other entry point here: a caller on the stop path
+    must never be able to crash, and "publish nothing" is the safe answer because
+    the Guardian latch holds whatever was already engaged.
     """
-    if not verdict.engaged:
+    if verdict is None or not verdict.engaged:
         return None
     return OPERATOR_STOP_PAYLOAD[ESTOP_ACTION_ENGAGE]
 
 
 class VideoState(Enum):
-    """Video-connection verdict — judged SEPARATELY from the heartbeat (``09:108``)."""
+    """Video-connection verdict — judged SEPARATELY from the heartbeat (``09:108``).
+
+    ``ABSENT`` (no frame has ever been accepted) is NOT a third, neutral outcome:
+    for every caller it means the same as ``STALE`` — the operator is not looking
+    at a current picture, which ``02:54`` treats as a legal precondition for
+    driving at all. Ask :attr:`is_fresh` rather than writing ``is VideoState.STALE``;
+    the latter reads False at boot and on every reconnect, which is precisely the
+    fail-open shape this property exists to make hard to write.
+    """
 
     FRESH = "fresh"
     STALE = "stale"
     ABSENT = "absent"
+
+    @property
+    def is_fresh(self) -> bool:
+        """True only for :attr:`FRESH`. ``ABSENT`` and ``STALE`` are both "not fresh"."""
+        return self is VideoState.FRESH
 
 
 class VideoFreshness:
@@ -609,21 +658,37 @@ class VideoFreshness:
     ``09:108`` is explicit that "heartbeat arriving" and "video being new" are
     different facts, so this object shares no state with :class:`LinkWatchdog`.
 
-    Two clocks again (``09:67`` rule 4): the frame's own ``frame_stamp_s`` comes
-    from the sender and is used ONLY to order frames — an older or equal stamp is
-    a late or duplicated frame and is dropped (``09:105`` "古いフレームを捨てる").
-    Age is measured on this host's monotonic ARRIVAL time, the only clock that
-    can detect a frozen stream.
+    Two clocks again (``09:67`` rule 4), with a third guard between them:
+
+    * ``frame_stamp_s`` comes from the SENDER and is used only to order frames —
+      an older or equal stamp is a late or duplicated frame and is dropped
+      (``09:105`` "古いフレームを捨てる");
+    * age is measured on this host's monotonic ARRIVAL time, the only clock that
+      can detect a frozen stream;
+    * a stamp is admitted only while it sits within ``max_stamp_skew_s`` of the
+      shared wall clock. Without that bound, monotonic ordering is a trap rather
+      than a protection: ONE frame stamped ``1e308`` becomes "the newest frame
+      forever", every real frame after it is dropped as older, and the channel
+      wedges STALE with no way back. The skew window is the same idea as
+      :class:`SessionGuard`'s send-time window and is injected for the same
+      reason — no value for it is frozen anywhere.
+
+    :meth:`reset` is the other half of that recovery: a sender that restarts
+    stamps from zero again, which monotonic ordering must reject. The link owns
+    that knowledge, so the caller calls ``reset()`` when it starts a new session
+    (the same moment it calls :meth:`SessionGuard.reconnect`) and the channel
+    goes back to ``ABSENT`` — not fresh, but able to recover.
 
     What this class deliberately does NOT do: map video age to a remote speed
     cap. ``09:108`` says lower the cap as the picture ages but freezes no table,
     and inventing one would be a safety threshold nobody reviewed.
     """
 
-    def __init__(self, stale_after_s: float) -> None:
+    def __init__(self, stale_after_s: float, max_stamp_skew_s: float) -> None:
         self._stale_after_s = _require_finite("stale_after_s", stale_after_s, minimum=0.0)
         if self._stale_after_s <= 0.0:
             raise ValueError(f"stale_after_s must be > 0, got {stale_after_s!r}")
+        self._max_stamp_skew_s = _require_finite("max_stamp_skew_s", max_stamp_skew_s, minimum=0.0)
         self._last_stamp_s: float | None = None
         self._last_arrival_mono_s: float | None = None
 
@@ -632,12 +697,31 @@ class VideoFreshness:
         return self._stale_after_s
 
     @property
+    def max_stamp_skew_s(self) -> float:
+        return self._max_stamp_skew_s
+
+    @property
     def last_stamp_s(self) -> float | None:
         return self._last_stamp_s
 
-    def observe_frame(self, frame_stamp_s: float, now_mono_s: float) -> bool:
-        """Offer a frame; ``False`` = dropped (non-finite, or not newer than the last)."""
-        if not _is_finite_number(frame_stamp_s) or not _is_finite_number(now_mono_s):
+    def reset(self) -> None:
+        """Forget the stream (new session / sender restart). Verdict returns to ABSENT."""
+        self._last_stamp_s = None
+        self._last_arrival_mono_s = None
+
+    def observe_frame(self, frame_stamp_s: float, now_wall_s: float, now_mono_s: float) -> bool:
+        """Offer a frame; ``False`` = dropped, and a dropped frame changes NOTHING.
+
+        Dropped when any clock read or the stamp is non-finite, when the stamp is
+        further than ``max_stamp_skew_s`` from the wall clock in EITHER direction
+        (a future-dated stamp must be refused, not crowned "newest"), or when the
+        stamp is not strictly newer than the last accepted one.
+        """
+        if not _is_finite_number(frame_stamp_s) or not _is_finite_number(now_wall_s):
+            return False
+        if not _is_finite_number(now_mono_s):
+            return False
+        if abs(float(frame_stamp_s) - float(now_wall_s)) > self._max_stamp_skew_s:
             return False
         if self._last_stamp_s is not None and frame_stamp_s <= self._last_stamp_s:
             return False
@@ -663,6 +747,7 @@ def replay_teleop(
     received_mono_s: float,
     joy_timeout_s: float,
     *,
+    current_session_epoch: int,
     expected_axes: int | None = None,
     expected_buttons: int | None = None,
 ) -> tuple[list[float], list[int]] | None:
@@ -672,8 +757,18 @@ def replay_teleop(
     returned when the sample is stale by the SAME freshness rule the local
     joystick uses (:func:`warehouse_teleop.joymap.joy_is_stale`, reused rather
     than re-implemented as ``02:53`` requires), when the session guard rejected
-    the message (the caller passes the ``None`` it got back), when the message is
-    not a teleop one, or when the sample is malformed.
+    the message (the caller passes the ``None`` it got back), when the message
+    belongs to a session that has since been replaced, when the message is not a
+    teleop one, or when the sample is malformed.
+
+    ``current_session_epoch`` is REQUIRED, not optional, and is the guard's epoch
+    as of right now (``guard.session_epoch``). A sample already handed out by
+    :meth:`SessionGuard.take_pending_teleop` is beyond the reach of
+    :meth:`SessionGuard.reconnect`, so without this check the ``09:104`` rule
+    "再接続時に駆動指令を破棄" would hold for a queued command and quietly fail
+    for one that was taken a tick before the reconnect — the robot would drive on
+    the previous operator session's last command. Making the argument mandatory
+    means a caller cannot forget it and get the fail-open behaviour by default.
 
     This function returns a Joy sample, never a velocity. Turning it into motion
     stays with :func:`~warehouse_teleop.joymap.joy_to_twist` and the operator
@@ -699,6 +794,8 @@ def replay_teleop(
         silently zeroed stick.
     """
     if msg is None or msg.kind is not ControlKind.TELEOP:
+        return None
+    if not _is_counter(current_session_epoch) or msg.session_epoch != current_session_epoch:
         return None
     payload = msg.payload
     if not isinstance(payload, TeleopPayload):
@@ -749,14 +846,29 @@ class CrossingApprovalRegistry:
     here: matching it needs the vehicle's own heading and an angular tolerance,
     and no doc freezes either the unit or the tolerance. Left to the crossing
     state machine (``05:71``, ``OQ-OD92``) rather than guessed at.
+
+    The burned-token set is BOUNDED: each :meth:`consume` first drops the records
+    whose deadline has already passed. That is safe because an expired token is
+    refused by the expiry check itself, so remembering that it was used adds
+    nothing — while remembering it forever would grow without limit for the life
+    of the process. The one caveat is a wall clock that jumps BACKWARDS past a
+    dropped token's deadline, which could let that token be consumed a second
+    time; the clock is shared with the operator console and this is recorded as a
+    residual rather than papered over with an invented margin.
     """
 
     def __init__(self) -> None:
-        self._used: set[str] = set()
+        # token_id -> the deadline it was burned with (kept only until it passes).
+        self._used: dict[str, float] = {}
 
     @property
     def used_token_ids(self) -> frozenset[str]:
         return frozenset(self._used)
+
+    def _evict_expired(self, now_wall_s: float) -> None:
+        expired = [tid for tid, deadline in self._used.items() if now_wall_s > deadline]
+        for tid in expired:
+            del self._used[tid]
 
     def consume(
         self,
@@ -773,6 +885,7 @@ class CrossingApprovalRegistry:
             return False
         if not _is_nonempty_str(token.token_id):
             return False
+        self._evict_expired(float(now_wall_s))
         if token.token_id in self._used:
             return False
         if token.crossing_id != expected_crossing_id:
@@ -783,5 +896,5 @@ class CrossingApprovalRegistry:
             return False
         if float(now_wall_s) > float(token.expires_at_s):
             return False
-        self._used.add(token.token_id)
+        self._used[token.token_id] = float(token.expires_at_s)
         return True

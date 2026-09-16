@@ -10,10 +10,13 @@ This file is the mirror image of ``tests/unit/test_web_bridge_noactuation.py``.
 Where that one proves the observe-only gateway creates no actuation path, this
 one proves the control-side LOGIC is a library and nothing else:
 
-  * it imports no transport and no ROS (``rclpy`` / ``websockets`` / ``fastapi`` /
-    ``uvicorn`` / ``asyncio``), so it can hold no socket, no event loop, no
-    publisher — the node, the port and the connection split are a later slice
-    (``OQ-OD23`` / ``OQ-OD90``) and must not sneak in through this one;
+  * its imports are an ALLOWLIST — ``json``, ``math``, ``dataclasses``, ``enum``
+    and :mod:`warehouse_teleop.joymap`, nothing else — so it can hold no socket,
+    no event loop, no publisher. A denylist of named web frameworks was the
+    first shape of this test and it was wrong: ``socket``, ``threading`` +
+    ``http.client`` and ``sensor_msgs.msg`` all walked straight through it. The
+    node, the port and the connection split are a later slice (``OQ-OD23`` /
+    ``OQ-OD90``) and must not sneak in through this one;
   * it names no actuation topic: the ONLY topic it knows is the frozen
     ``/operator/stop_request`` constant, IMPORTED from :mod:`warehouse_teleop.joymap`
     rather than spelled again (doc03:112 is the single source);
@@ -37,10 +40,44 @@ from warehouse_teleop.operator_link_logic import ControlKind
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _MODULE = _REPO_ROOT / "ws/src/warehouse_teleop/warehouse_teleop/operator_link_logic.py"
 
-# Transport / runtime packages the pure logic must never reach for. ``asyncio``
-# is in the list because an event loop here would mean this module owns the
-# connection, which is exactly the boundary 02:42 draws.
-_FORBIDDEN_IMPORTS = {"rclpy", "websockets", "fastapi", "uvicorn", "asyncio"}
+# ALLOWLIST, not a denylist. A denylist of named transports is the wrong shape
+# for this pin: it passes ``socket``, ``threading`` + ``http.client``,
+# ``sensor_msgs.msg``, ``requests`` and every other way to acquire a connection
+# or a ROS type that nobody thought to enumerate. The module's whole claim is
+# that it is a pure function library, so the enforceable statement is "these and
+# nothing else". Full dotted names: ``warehouse_teleop.joymap`` is the reuse
+# 02:53 mandates, and a different ``warehouse_teleop.*`` module would be a new
+# dependency that has to be argued for, not waved through.
+_ALLOWED_IMPORTS = {
+    "__future__",
+    "json",
+    "math",
+    "dataclasses",
+    "enum",
+    "warehouse_teleop.joymap",
+}
+
+# Kept only to make the failure message loud for the cases that matter most; the
+# allowlist above is what actually enforces the boundary. ``asyncio`` is here
+# because an event loop would mean this module owns the connection, which is
+# exactly the boundary 02:42 draws.
+_NAMED_TRANSPORTS = {
+    "rclpy",
+    "websockets",
+    "fastapi",
+    "uvicorn",
+    "asyncio",
+    "socket",
+    "threading",
+    "http",
+    "http.client",
+    "requests",
+    "sensor_msgs",
+    "sensor_msgs.msg",
+    "std_msgs",
+    "std_msgs.msg",
+    "subprocess",
+}
 
 # rclpy actuation seams (same set as the web_bridge pin).
 _FORBIDDEN_CALLS = {"create_publisher", "create_client", "create_subscription", "ActionClient"}
@@ -83,20 +120,41 @@ def _docstring_ids(tree: ast.Module) -> set[int]:
     return ids
 
 
-@pytest.mark.safety
-@pytest.mark.unit
-def test_imports_no_transport_or_ros_runtime():
+def _imported_modules() -> set[str]:
+    """Every module this file imports, by FULL dotted name.
+
+    A relative import (``level > 0``) is reported as ``".<name>"`` so it can
+    never silently match an allowlist entry.
+    """
     imported: set[str] = set()
     for node in ast.walk(_tree()):
         if isinstance(node, ast.Import):
-            imported.update(alias.name.split(".")[0] for alias in node.names)
-        elif isinstance(node, ast.ImportFrom) and node.module:
-            imported.add(node.module.split(".")[0])
-    leaked = imported & _FORBIDDEN_IMPORTS
-    assert not leaked, (
+            imported.update(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            prefix = "." * node.level
+            imported.add(f"{prefix}{node.module or ''}")
+    return imported
+
+
+@pytest.mark.safety
+@pytest.mark.unit
+def test_imports_are_confined_to_the_allowlist():
+    extra = _imported_modules() - _ALLOWED_IMPORTS
+    assert not extra, (
         "operator_link_logic is pure logic (02:42 — the node / port / connection "
-        f"split is a separate slice, OQ-OD23 / OQ-OD90): {sorted(leaked)}"
+        "split is a separate slice, OQ-OD23 / OQ-OD90). Every import must be on the "
+        f"allowlist; adding one is a deliberate decision, not a drive-by: {sorted(extra)}"
     )
+
+
+@pytest.mark.safety
+@pytest.mark.unit
+def test_the_allowlist_itself_excludes_every_way_to_hold_a_connection():
+    # Guards the guard: an allowlist is only as good as its contents, so assert
+    # that none of the obvious transport / ROS / subprocess routes is on it.
+    # (``socket`` and ``threading`` + ``http.client`` are the ones a denylist of
+    # named web frameworks misses.)
+    assert not (_ALLOWED_IMPORTS & _NAMED_TRANSPORTS)
 
 
 @pytest.mark.safety

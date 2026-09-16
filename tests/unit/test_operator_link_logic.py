@@ -62,6 +62,7 @@ SKEW = 0.25
 VALID_FOR = 2.0
 LINK_TIMEOUT = 1.0
 VIDEO_STALE_AFTER = 0.5
+VIDEO_SKEW = 5.0  # how far a sender stamp may sit from the wall clock
 JOY_TIMEOUT = 0.6
 
 
@@ -612,7 +613,7 @@ def test_cleared_verdict_publishes_nothing_rather_than_a_clear():
 
 @pytest.mark.unit
 def test_video_is_absent_before_any_frame():
-    assert VideoFreshness(VIDEO_STALE_AFTER).verdict(MONO) is VideoState.ABSENT
+    assert VideoFreshness(VIDEO_STALE_AFTER, VIDEO_SKEW).verdict(MONO) is VideoState.ABSENT
 
 
 @pytest.mark.unit
@@ -627,15 +628,15 @@ def test_video_is_absent_before_any_frame():
     ],
 )
 def test_video_verdict_ages_on_the_monotonic_arrival_clock(age: float, expected: VideoState):
-    video = VideoFreshness(VIDEO_STALE_AFTER)
-    assert video.observe_frame(WALL, MONO) is True
+    video = VideoFreshness(VIDEO_STALE_AFTER, VIDEO_SKEW)
+    assert video.observe_frame(WALL, WALL, MONO) is True
     assert video.verdict(MONO + age) is expected
 
 
 @pytest.mark.unit
 def test_video_verdict_is_stale_on_a_non_finite_clock_read():
-    video = VideoFreshness(VIDEO_STALE_AFTER)
-    video.observe_frame(WALL, MONO)
+    video = VideoFreshness(VIDEO_STALE_AFTER, VIDEO_SKEW)
+    video.observe_frame(WALL, WALL, MONO)
     assert video.verdict(float("nan")) is VideoState.STALE
 
 
@@ -643,9 +644,9 @@ def test_video_verdict_is_stale_on_a_non_finite_clock_read():
 @pytest.mark.parametrize("stamp", [WALL - 1.0, WALL])
 def test_video_drops_an_older_or_duplicated_frame(stamp: float):
     # 09:105 "古いフレームを捨てる": a late frame must not refresh the stream.
-    video = VideoFreshness(VIDEO_STALE_AFTER)
-    video.observe_frame(WALL, MONO)
-    assert video.observe_frame(stamp, MONO + 10.0) is False
+    video = VideoFreshness(VIDEO_STALE_AFTER, VIDEO_SKEW)
+    video.observe_frame(WALL, WALL, MONO)
+    assert video.observe_frame(stamp, WALL, MONO + 10.0) is False
     assert video.last_stamp_s == WALL
     assert video.verdict(MONO + 10.0) is VideoState.STALE
 
@@ -653,8 +654,8 @@ def test_video_drops_an_older_or_duplicated_frame(stamp: float):
 @pytest.mark.unit
 @pytest.mark.parametrize("bad", [float("nan"), float("inf")])
 def test_video_drops_a_non_finite_stamp(bad: float):
-    video = VideoFreshness(VIDEO_STALE_AFTER)
-    assert video.observe_frame(bad, MONO) is False
+    video = VideoFreshness(VIDEO_STALE_AFTER, VIDEO_SKEW)
+    assert video.observe_frame(bad, WALL, MONO) is False
     assert video.verdict(MONO) is VideoState.ABSENT
 
 
@@ -662,8 +663,8 @@ def test_video_drops_a_non_finite_stamp(bad: float):
 def test_video_freshness_is_independent_of_the_heartbeat():
     # 09:108 — "heartbeat が届くことと映像が新しいことは別".
     watchdog = LinkWatchdog(LINK_TIMEOUT)
-    video = VideoFreshness(VIDEO_STALE_AFTER)
-    video.observe_frame(WALL, MONO)
+    video = VideoFreshness(VIDEO_STALE_AFTER, VIDEO_SKEW)
+    video.observe_frame(WALL, WALL, MONO)
     watchdog.observe_heartbeat(MONO)
     watchdog.rearm(MONO)
     # heartbeats keep flowing; the picture freezes
@@ -671,16 +672,32 @@ def test_video_freshness_is_independent_of_the_heartbeat():
     assert watchdog.evaluate(MONO + 5.0).engaged is False
     assert video.verdict(MONO + 5.0) is VideoState.STALE
     # and the mirror image: fresh video, dead heartbeat
-    video.observe_frame(WALL + 5.0, MONO + 5.0)
+    video.observe_frame(WALL + 5.0, WALL + 5.0, MONO + 5.0)
     assert watchdog.evaluate(MONO + 5.0 + LINK_TIMEOUT + 0.1).engaged is True
     assert video.verdict(MONO + 5.0) is VideoState.FRESH
 
 
 @pytest.mark.unit
 @pytest.mark.parametrize("bad", [0.0, -1.0, float("nan"), float("inf")])
-def test_video_rejects_a_degenerate_threshold_loudly(bad: float):
+def test_video_rejects_a_degenerate_stale_threshold_loudly(bad: float):
     with pytest.raises(ValueError):
-        VideoFreshness(bad)
+        VideoFreshness(bad, VIDEO_SKEW)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("bad", [-1.0, float("nan"), float("inf")])
+def test_video_rejects_a_degenerate_stamp_skew_loudly(bad: float):
+    # An inf skew bound would re-open exactly the hole the bound exists to
+    # close: every stamp, including 1e308, would sit "within" it.
+    with pytest.raises(ValueError):
+        VideoFreshness(VIDEO_STALE_AFTER, bad)
+
+
+@pytest.mark.unit
+def test_video_accepts_a_zero_stamp_skew():
+    # Zero is a real configuration (stamp must equal the wall clock exactly);
+    # zero staleness is not, and is rejected above.
+    assert VideoFreshness(VIDEO_STALE_AFTER, 0.0).max_stamp_skew_s == 0.0
 
 
 # ============================== replay_teleop ================================
@@ -689,7 +706,9 @@ def test_video_rejects_a_degenerate_threshold_loudly(bad: float):
 @pytest.mark.safety
 @pytest.mark.unit
 def test_replay_returns_the_joy_sample_while_fresh():
-    axes, buttons = replay_teleop(teleop_msg(), MONO + 0.1, MONO, JOY_TIMEOUT)  # type: ignore[misc]
+    axes, buttons = replay_teleop(
+        teleop_msg(), MONO + 0.1, MONO, JOY_TIMEOUT, current_session_epoch=EPOCH
+    )  # type: ignore[misc]
     assert axes == [0.0, 0.5, 0.0]
     assert buttons == [0, 0, 0, 0, 0, 0, 1]
 
@@ -711,7 +730,7 @@ def test_replay_applies_the_joystick_freshness_rule(elapsed: float, replayed: bo
     # arbitrary monotonic offset ``(MONO + 0.6) - MONO`` is not 0.6 in binary
     # floating point, which would make the boundary case a test artefact rather
     # than a statement about the rule.
-    out = replay_teleop(teleop_msg(), elapsed, 0.0, JOY_TIMEOUT)
+    out = replay_teleop(teleop_msg(), elapsed, 0.0, JOY_TIMEOUT, current_session_epoch=EPOCH)
     assert (out is not None) is replayed
 
 
@@ -719,7 +738,7 @@ def test_replay_applies_the_joystick_freshness_rule(elapsed: float, replayed: bo
 @pytest.mark.unit
 def test_replay_of_a_guard_rejected_message_is_nothing():
     # The caller passes on exactly what take_pending_teleop() gave it.
-    assert replay_teleop(None, MONO, MONO, JOY_TIMEOUT) is None
+    assert replay_teleop(None, MONO, MONO, JOY_TIMEOUT, current_session_epoch=EPOCH) is None
 
 
 @pytest.mark.safety
@@ -732,7 +751,7 @@ def test_replay_refuses_a_non_teleop_message():
         sent_at_s=WALL,
         payload=HeartbeatPayload(),
     )
-    assert replay_teleop(heartbeat, MONO, MONO, JOY_TIMEOUT) is None
+    assert replay_teleop(heartbeat, MONO, MONO, JOY_TIMEOUT, current_session_epoch=EPOCH) is None
 
 
 @pytest.mark.safety
@@ -741,14 +760,16 @@ def test_replay_refuses_a_non_teleop_message():
 def test_replay_refuses_rather_than_falling_back_to_the_indoor_timeout(bad: float):
     # joy_is_stale would substitute its own 0.6 s default; adopting it silently
     # here would invent the unfrozen outdoor value (OQ-OD27 / OQ-OD25).
-    assert replay_teleop(teleop_msg(), MONO + 100.0, MONO, bad) is None
+    assert replay_teleop(teleop_msg(), MONO + 100.0, MONO, bad, current_session_epoch=EPOCH) is None
 
 
 @pytest.mark.safety
 @pytest.mark.unit
 @pytest.mark.parametrize(("now", "received"), [(float("nan"), MONO), (MONO, float("inf"))])
 def test_replay_refuses_a_non_finite_clock_read(now: float, received: float):
-    assert replay_teleop(teleop_msg(), now, received, JOY_TIMEOUT) is None
+    assert (
+        replay_teleop(teleop_msg(), now, received, JOY_TIMEOUT, current_session_epoch=EPOCH) is None
+    )
 
 
 @pytest.mark.safety
@@ -769,7 +790,7 @@ def test_replay_refuses_a_malformed_in_process_payload(payload: TeleopPayload):
         sent_at_s=WALL,
         payload=payload,
     )
-    assert replay_teleop(msg, MONO, MONO, JOY_TIMEOUT) is None
+    assert replay_teleop(msg, MONO, MONO, JOY_TIMEOUT, current_session_epoch=EPOCH) is None
 
 
 @pytest.mark.safety
@@ -777,10 +798,27 @@ def test_replay_refuses_a_malformed_in_process_payload(payload: TeleopPayload):
 def test_replay_enforces_an_opt_in_controller_layout():
     msg = teleop_msg(axes=(0.0, 0.5, 0.0), buttons=(0, 0, 0, 0, 0, 0, 1))
     assert (
-        replay_teleop(msg, MONO, MONO, JOY_TIMEOUT, expected_axes=3, expected_buttons=7) is not None
+        replay_teleop(
+            msg,
+            MONO,
+            MONO,
+            JOY_TIMEOUT,
+            expected_axes=3,
+            expected_buttons=7,
+            current_session_epoch=EPOCH,
+        )
+        is not None
     )
-    assert replay_teleop(msg, MONO, MONO, JOY_TIMEOUT, expected_axes=8) is None
-    assert replay_teleop(msg, MONO, MONO, JOY_TIMEOUT, expected_buttons=15) is None
+    assert (
+        replay_teleop(msg, MONO, MONO, JOY_TIMEOUT, expected_axes=8, current_session_epoch=EPOCH)
+        is None
+    )
+    assert (
+        replay_teleop(
+            msg, MONO, MONO, JOY_TIMEOUT, expected_buttons=15, current_session_epoch=EPOCH
+        )
+        is None
+    )
 
 
 @pytest.mark.safety
@@ -789,8 +827,20 @@ def test_replayed_sample_still_obeys_the_local_deadman_and_cap():
     # 02:53 — the remote path REUSES the joystick's pure logic; nothing here
     # re-implements the deadman. Oracle: joymap's own contract, plus the frozen
     # 0.3 m/s ceiling spelled out as a literal.
-    held = replay_teleop(teleop_msg(buttons=(0, 0, 0, 0, 0, 0, 1)), MONO, MONO, JOY_TIMEOUT)
-    released = replay_teleop(teleop_msg(buttons=(0, 0, 0, 0, 0, 0, 0)), MONO, MONO, JOY_TIMEOUT)
+    held = replay_teleop(
+        teleop_msg(buttons=(0, 0, 0, 0, 0, 0, 1)),
+        MONO,
+        MONO,
+        JOY_TIMEOUT,
+        current_session_epoch=EPOCH,
+    )
+    released = replay_teleop(
+        teleop_msg(buttons=(0, 0, 0, 0, 0, 0, 0)),
+        MONO,
+        MONO,
+        JOY_TIMEOUT,
+        current_session_epoch=EPOCH,
+    )
     assert held is not None
     assert released is not None
     vx, vy, wz = joy_to_twist(held[0], held[1])
@@ -907,3 +957,184 @@ def test_a_parsed_wire_token_flows_straight_into_the_registry():
     registry = CrossingApprovalRegistry()
     assert registry.consume(msg.payload, WALL, "x-42", "route-v3", "JGD2011-2026") is True
     assert registry.consume(msg.payload, WALL, "x-42", "route-v3", "JGD2011-2026") is False
+
+
+# ============ review follow-ups: the holes an adversarial read found ==========
+#
+# Each test below corresponds to a defect an independent review of the first
+# commit reproduced. They are grouped here rather than merged into the sections
+# above so the reason they exist stays legible.
+
+
+@pytest.mark.safety
+@pytest.mark.unit
+def test_a_taken_teleop_sample_does_not_survive_a_reconnect():
+    # THE leak: reconnect() can only discard what is still QUEUED. A sample
+    # taken one tick earlier is already out of the guard, so without the epoch
+    # check the robot would drive on the previous operator session's last
+    # command (09:104 "再接続時に駆動指令を破棄").
+    guard = SessionGuard(EPOCH, SKEW, VALID_FOR)
+    assert guard.accept(parse_control_message(teleop_wire()), WALL, MONO) is True
+    taken = guard.take_pending_teleop()
+    assert taken is not None
+    msg, received = taken
+    # still the same session -> replays
+    assert (
+        replay_teleop(msg, MONO, received, JOY_TIMEOUT, current_session_epoch=guard.session_epoch)
+        is not None
+    )
+    guard.reconnect(EPOCH + 1)
+    # the operator session is over: the taken sample must be refused
+    assert (
+        replay_teleop(msg, MONO, received, JOY_TIMEOUT, current_session_epoch=guard.session_epoch)
+        is None
+    )
+
+
+@pytest.mark.safety
+@pytest.mark.unit
+@pytest.mark.parametrize("epoch", [EPOCH - 1, EPOCH + 1, -1, 0])
+def test_replay_refuses_a_sample_from_any_other_session(epoch: int):
+    assert replay_teleop(teleop_msg(), MONO, MONO, JOY_TIMEOUT, current_session_epoch=epoch) is None
+
+
+@pytest.mark.safety
+@pytest.mark.unit
+def test_replay_requires_the_caller_to_state_the_current_session():
+    # The argument is mandatory on purpose: an optional one would make the
+    # fail-open behaviour the default for a caller who forgets it.
+    with pytest.raises(TypeError):
+        replay_teleop(teleop_msg(), MONO, MONO, JOY_TIMEOUT)  # type: ignore[call-arg]
+
+
+@pytest.mark.unit
+def test_a_rejected_message_does_not_advance_the_sequence_baseline():
+    # If a refused message burned its sequence number, the well-behaved
+    # messages that follow it would all be dropped as replays (09:62).
+    guard = SessionGuard(EPOCH, SKEW, VALID_FOR)
+    assert guard.accept(parse_control_message(heartbeat_wire(sequence=1)), WALL, MONO) is True
+    too_old = parse_control_message(heartbeat_wire(sequence=2, sent_at_s=WALL - 3600.0))
+    assert guard.accept(too_old, WALL, MONO) is False
+    assert guard.last_sequence == 1
+    # sequence 2 is still available to the next well-formed message
+    assert guard.accept(parse_control_message(heartbeat_wire(sequence=2)), WALL, MONO) is True
+    assert guard.last_sequence == 2
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "rejected",
+    [
+        heartbeat_wire(sequence=9, session_epoch=EPOCH + 1),  # wrong session
+        heartbeat_wire(sequence=9, sent_at_s=WALL + 3600.0),  # future send time
+    ],
+)
+def test_no_rejection_path_advances_the_sequence_baseline(rejected: str):
+    guard = SessionGuard(EPOCH, SKEW, VALID_FOR)
+    assert guard.accept(parse_control_message(rejected), WALL, MONO) is False
+    assert guard.last_sequence is None
+    assert guard.accept(parse_control_message(heartbeat_wire(sequence=0)), WALL, MONO) is True
+
+
+@pytest.mark.unit
+def test_a_bogus_future_stamp_is_refused_and_does_not_wedge_the_video_channel():
+    # Monotonic stamp ordering alone is a trap: one frame stamped 1e308 would
+    # become "the newest frame" forever and every real frame after it would be
+    # dropped as older, leaving the channel STALE with no way back (09:105).
+    video = VideoFreshness(VIDEO_STALE_AFTER, VIDEO_SKEW)
+    assert video.observe_frame(WALL, WALL, MONO) is True
+    assert video.observe_frame(1e308, WALL, MONO + 0.1) is False
+    assert video.last_stamp_s == WALL  # the bogus stamp was not recorded
+    # a real frame still lands afterwards
+    assert video.observe_frame(WALL + 0.2, WALL + 0.2, MONO + 0.2) is True
+    assert video.verdict(MONO + 0.2) is VideoState.FRESH
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("stamp", "accepted"),
+    [
+        (WALL, True),
+        (WALL + VIDEO_SKEW, True),
+        (WALL + VIDEO_SKEW + 0.001, False),
+        (WALL - VIDEO_SKEW, True),
+        (WALL - VIDEO_SKEW - 0.001, False),
+    ],
+)
+def test_video_stamp_skew_window_is_bounded_on_both_sides(stamp: float, accepted: bool):
+    video = VideoFreshness(VIDEO_STALE_AFTER, VIDEO_SKEW)
+    assert video.observe_frame(stamp, WALL, MONO) is accepted
+
+
+@pytest.mark.unit
+def test_video_reset_recovers_from_a_sender_restart():
+    # A restarted sender stamps from zero again, which monotonic ordering must
+    # reject; reset() is how the link tells the channel a new session began.
+    video = VideoFreshness(VIDEO_STALE_AFTER, VIDEO_SKEW)
+    video.observe_frame(WALL, WALL, MONO)
+    restarted_stamp = 0.0
+    assert video.observe_frame(restarted_stamp, restarted_stamp, MONO + 1.0) is False
+    video.reset()
+    assert video.last_stamp_s is None
+    assert video.verdict(MONO + 1.0) is VideoState.ABSENT
+    assert video.observe_frame(restarted_stamp, restarted_stamp, MONO + 1.0) is True
+    assert video.verdict(MONO + 1.0) is VideoState.FRESH
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("state", "fresh"),
+    [(VideoState.FRESH, True), (VideoState.STALE, False), (VideoState.ABSENT, False)],
+)
+def test_absent_video_counts_as_not_fresh(state: VideoState, fresh: bool):
+    # `if state is VideoState.STALE` reads False at boot — fail-open exactly
+    # when no picture has ever arrived. is_fresh removes that shape.
+    assert state.is_fresh is fresh
+
+
+@pytest.mark.safety
+@pytest.mark.unit
+def test_stop_request_payload_of_nothing_is_nothing():
+    # Every other entry point on the stop path returns None rather than raising;
+    # a caller that computed no verdict this tick must not crash.
+    assert stop_request_payload(None) is None
+
+
+@pytest.mark.safety
+@pytest.mark.unit
+def test_burned_tokens_are_evicted_once_their_deadline_passes():
+    # Bounded memory: an expired token is refused by the expiry check anyway,
+    # so remembering that it was used adds nothing and would grow forever.
+    registry = CrossingApprovalRegistry()
+    for index in range(50):
+        token_n = token(token_id=f"tok-{index}", expires_at_s=WALL + 10.0)
+        assert registry.consume(token_n, WALL, "x-42", "route-v3", "JGD2011-2026") is True
+    assert len(registry.used_token_ids) == 50
+    # one presentation after every deadline has passed sweeps the whole set
+    registry.consume(token(token_id="later"), WALL + 20.0, "x-42", "route-v3", "JGD2011-2026")
+    assert all(not tid.startswith("tok-") for tid in registry.used_token_ids)
+
+
+@pytest.mark.safety
+@pytest.mark.unit
+def test_eviction_does_not_resurrect_a_token_that_is_still_valid():
+    registry = CrossingApprovalRegistry()
+    long_lived = token(token_id="long", expires_at_s=WALL + 600.0)
+    assert registry.consume(long_lived, WALL, "x-42", "route-v3", "JGD2011-2026") is True
+    # a later presentation sweeps expired entries but must not drop this one
+    registry.consume(token(token_id="other"), WALL + 60.0, "x-42", "route-v3", "JGD2011-2026")
+    assert registry.consume(long_lived, WALL + 60.0, "x-42", "route-v3", "JGD2011-2026") is False
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("length", [65, 200])
+def test_parser_refuses_an_oversized_joy_array(length: int):
+    # Implementation bound, not a contract value: one frame must not be able to
+    # make the parser build an arbitrarily large tuple.
+    assert parse_control_message(teleop_wire(axes=[0.0] * length)) is None
+    assert parse_control_message(teleop_wire(buttons=[0] * length)) is None
+
+
+@pytest.mark.unit
+def test_parser_accepts_an_array_at_the_implementation_bound():
+    assert parse_control_message(teleop_wire(axes=[0.0] * 64, buttons=[0] * 64)) is not None
