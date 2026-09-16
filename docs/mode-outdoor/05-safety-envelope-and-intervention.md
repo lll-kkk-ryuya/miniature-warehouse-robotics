@@ -112,7 +112,7 @@ Status: **記載済（既存契約への写像・実装未）**。§2 の流用�
 - `OQ-OD57` Guardian の pose 源交代に伴う変位ゲート（motion_epsilon / odom_freshness）の意味（AMCL の motion-gated 沈黙は GNSS には無い）。
 - `OQ-OD58` recovery の collision_monitor BYPASS を公道で維持するか → **三択**（(a) 維持 / (b) monitor 経由 / (c) recovery 無効化）。屋外初期プロファイルは (c) を推奨候補（§6）。
 - `OQ-OD59` 横断中の承認失効・青点滅時の「引き返す」を L3 task graph の abort / reverse ノードとして持つか。
-- `OQ-OD5A` 語彙 gate の代替: `KNOWN_LOCATIONS` 9 キー（[locations.py:11-23](../../ws/src/warehouse_interfaces/warehouse_interfaces/locations.py:11)・`Command` の検証＝[schemas.py:160](../../ws/src/warehouse_interfaces/warehouse_interfaces/schemas.py:160)）を増やさず座標 goal seam を使う想定は「語彙 gate の穴」（[STATUS.md:150](../STATUS.md:150) H-4）。到達集合の制約をジオフェンスへ移す旨を明文化するか、`locations.py` に屋外語彙を additive で足すか（contract PR）。
+- `OQ-OD5A` 語彙 gate の代替: `KNOWN_LOCATIONS` 9 キー（[locations.py:11-23](../../ws/src/warehouse_interfaces/warehouse_interfaces/locations.py:11)・`Command` の検証＝[schemas.py:160](../../ws/src/warehouse_interfaces/warehouse_interfaces/schemas.py:160)）を増やさず座標 goal seam を使う想定は「語彙 gate の穴」（[STATUS.md:160](../STATUS.md:160) H-4）。到達集合の制約をジオフェンスへ移す旨を明文化するか、`locations.py` に屋外語彙を additive で足すか（contract PR）。
 
 ## References
 
@@ -121,7 +121,7 @@ Status: **記載済（既存契約への写像・実装未）**。§2 の流用�
 - [mode-m1/02-m1-driver-and-watchdog.md:25](../mode-m1/02-m1-driver-and-watchdog.md:25)（fail-active）/ [:64](../mode-m1/02-m1-driver-and-watchdog.md:64)（W-3）/ [:65](../mode-m1/02-m1-driver-and-watchdog.md:65)（W-4）/ [mode-m1/03:49,51,52](../mode-m1/03-joystick-teleop-bringup.md:49)
 - [warehouse_safety/CLAUDE.md:16,23,33](../../ws/src/warehouse_safety/CLAUDE.md:23) / [emergency_guardian.py:171,190,290](../../ws/src/warehouse_safety/warehouse_safety/emergency_guardian.py:190) / [guard_logic.py:255-256](../../ws/src/warehouse_safety/warehouse_safety/guard_logic.py:255) / [stop_state.py:4-5,30](../../ws/src/warehouse_m1_driver/warehouse_m1_driver/stop_state.py:30) / [speed_band_node.py:73](../../ws/src/warehouse_perception/warehouse_perception/speed_band_node.py:73)
 - [architecture/12-infrastructure-common.md:529-540](../architecture/12-infrastructure-common.md:529)（cmd_vel トポロジ）/ [:560](../architecture/12-infrastructure-common.md:560)（BYPASS 根拠）/ [ADR-0004](../adr/0004-l2-restrict-only-policy-profile.md) / [ADR-0012:13,14,28](../adr/0012-speed-band-no-l2-best-effort.md:28) / [ADR-0013](../adr/0013-stm32-command-stream-watchdog.md)
-- [shared/02-hardware-design.md:723](../shared/02-hardware-design.md:723) / [:897](../shared/02-hardware-design.md:897) / [:913](../shared/02-hardware-design.md:913) / [shared/01:187](../shared/01-budget-and-procurement.md:187) / [locations.py:11-23](../../ws/src/warehouse_interfaces/warehouse_interfaces/locations.py:11) / [schemas.py:160](../../ws/src/warehouse_interfaces/warehouse_interfaces/schemas.py:160) / [STATUS.md:150](../STATUS.md:150)
+- [shared/02-hardware-design.md:723](../shared/02-hardware-design.md:723) / [:897](../shared/02-hardware-design.md:897) / [:913](../shared/02-hardware-design.md:913) / [shared/01:187](../shared/01-budget-and-procurement.md:187) / [locations.py:11-23](../../ws/src/warehouse_interfaces/warehouse_interfaces/locations.py:11) / [schemas.py:160](../../ws/src/warehouse_interfaces/warehouse_interfaces/schemas.py:160) / [STATUS.md:160](../STATUS.md:160)
 - [architecture/20-dev-quality-and-testing.md](../architecture/20-dev-quality-and-testing.md)（R-26）
 
 ## 【2026-09-14 追補】外部レビュー v3 の反映（Humble CM の fail-open・停止の 3 分離・期限付き走行許可・停止距離式）
