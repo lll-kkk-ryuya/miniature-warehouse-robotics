@@ -131,7 +131,7 @@ sudo jetson_clocks        # クロック最大化
 
 ### OS環境構築（JetPack 6.x）
 
-Jetson は「司令塔（現場の脳）」であり、実機デモ時に Nav2/AMCL/SLAM/micro-ROS Agent/LLM Bridge/Warehouse MCP Server/Emergency Guardian 等を**現場でリアルタイムに走らせる中央コンピュータ**。Mac は開発・シミュレーション専用で本番では使わない。
+Jetson は「司令塔（現場の脳）」であり、実機デモ時に Nav2/AMCL/SLAM/micro-ROS Agent/LLM Bridge/Warehouse MCP Server/Emergency Guardian 等を**現場でリアルタイムに走らせる中央コンピュータ**。Mac は開発・シミュレーション専用で本番では使わない（2026-09-16 注記: 屋外**随伴フェーズ限定**で best-effort 助言・記録受けに Mac を随伴させる案あり＝[mode-outdoor/02 末尾追補](../mode-outdoor/02-architecture-split-orin-pc-cloud.md)・`OQ-OD28`。停止権威・実時間安全層には用いない＝本文の原則は不変）。
 
 #### 役割（Jetson上で常時動くもの）
 

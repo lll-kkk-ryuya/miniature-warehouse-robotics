@@ -66,7 +66,7 @@
   <a href="08-architecture-v2-reference-alignment.md">③ 08 v2 設計・参照整合・レビュー照合（正本）</a>
   <a href="../architecture/robot-architecture-tree.html">④ 室内 M1 Tree（比較元）</a>
   <a href="README.md">⑤ docs/mode-outdoor/README</a>
-  <a href="09-external-review-v3-response.md">⑥ 09 レビュー v3 応答・v2.1 契約修正（正本）</a>
+  <a href="09-external-review-v3-response.md">⑥ 09 レビュー v3 応答・v2.1 契約修正（正本）</a> <a href="outdoor-perception-tree.html">⑦ 04 Perception 内部ツリー（2026-09-16 提案）</a>
 </div>
 <div class="legend">
   <span class="t0">■ 00 Platform Contract（前提・v2.1）</span><span class="t1">■ 01 Sensing</span><span class="t2">■ 02 Map &amp; Route</span><span class="t3">■ 03 Localization</span>
@@ -106,13 +106,13 @@
 │   ├── mola_lo ── local 限定・pose_quality ゲート必須（屋外は縮退）／ <span class="tx">✗ amcl（地図なし・TF 二重配信）／ ✗ slam_toolbox ／ ✗ cuvslam（Phase 1 見送り: HP60C にステレオ IR 無し + カメラ同期要件。Isaac ROS 3.2 は Humble 公式＝Humble pin は blocker でない・v2.1 再訂正）</span>
 │   └── <span class="td">TF 配信責任契約（成果物・段ではない）: map ─global EKF─ bot1/odom ─local EKF─ bot1/base_link ─rsp─ lidar/imu/camera/</span><span class="tn">gnss_link</span><span class="td">（= NavSatFix frame_id・contract PR）</span>
 │
-├── <span class="t4">04_Perception/</span>                   <span class="td">publish-only・行動を決めない（L4）    正本: 04</span>
+├── <span class="t4">04_Perception/</span>                   <span class="td">publish-only・行動を決めない（L4）    正本: 04    内部分解（11 sub-dir・2026-09-16 提案）= </span><a href="outdoor-perception-tree.html">outdoor-perception-tree.html</a>
 │   ├── <span class="tn">★ terrain / cliff_detector</span> ── 下向き深度 → 2.5D（CMU terrain_analysis 型: considerDrop・noDataObstacle＝<span class="tn">未観測 = 通行不可</span>）
 │   │     ├─▶ <span class="tn">/bot1/cliff_scan</span> <span class="td">[提案]</span>（LaserScan・virtual_scan の dual-consumer 契約を流用。Humble CM は途絶 fail-open → 途絶・無効深度は X2 sensor_health が拾う = OQ-OD44/95）
 │   │     └─▶ <span class="tn">/bot1/terrain/coverage</span> <span class="td">[提案・★v2.1]</span>（FLOOR_CONFIRMED / DROP_DETECTED / UNKNOWN・観測済み領域・元計測時刻維持・marking 分離 = 04 追補・09 §2-i）
 │   ├── pointcloud_to_laserscan（前方深度 → obstacle 層・GPU 0）
 │   ├── <span class="tn">★ traffic_light_classifier</span>（08 から移設）── GREEN / GREEN_FLASHING / RED / UNKNOWN（fail-closed）・登録 ROI で「自分の灯器」を検証
-│   ├── <span class="tn">★ pedestrian_detector</span>（08 から移設）── 距離 → MRM-0 減速 → 近ければ停止（07 が最終担保）
+│   ├── <span class="tn">★ pedestrian_detector</span>（08 から移設）── 距離 → MRM-0 減速 → 近ければ停止（07 が最終担保）   <span class="tw">⚠ 2026-09-16 書換候補（OQ-OD4D）: 04 は位置・速度・不確かさ・最終観測時刻のみ／減速 = 帯セレクタ入力／MRM 段 = 12／回避 = 06</span>
 │   └── <span class="tx">✗ nvblox（Phase 2・ESDF スライスは負障害物を表現しない）／ ✗ elevation_mapping_cupy（ROS 2 未マージ）／ Phase 2: sidewalk_segmentation（検証器）</span>
 │
 ├── <span class="t5">05_Mission_and_Route/</span>            <span class="td">次の waypoint + 速度上限 + 走行境界だけを出す（L3）    正本: 08 §2・03 §3</span>
@@ -163,7 +163,7 @@
 │   ├── 合流 topic <span class="td">[提案]</span> /safety/stop_request（reason_code / category / resumable = OQ-OD53/82）── consumer は Guardian 1 本
 │   └── <span class="td">「一方向」= 異常が残る間の深刻度低下禁止に限定（A→PAUSED→READY・B→READY は原因解除＋明示 reset・v2.1）・MRC = 停止＋保持の成立（通知は別フラグ・保留可）・PULL_OVER は不採用（寄せる先が無い）</span>
 │
-│   <span class="tX">X1_Observability（横断）── Langfuse / audit.jsonl / rosbag2（⚠未配線・公道では説明責任に直結）/ 走行記録 ／ web_bridge（observe-only・無改変）</span>
+│   <span class="tX">X1_Observability（横断）── Langfuse / audit.jsonl / rosbag2（run record に配線済 = jetson/03 §3・実走記録は未実施〔2026-09-16 訂正・旧「未配線」〕・公道では説明責任に直結）/ 走行記録 ／ web_bridge（observe-only・無改変）</span>
 └── <span class="tX">X2_Diagnostics（横断・</span><span class="tn">★新設</span><span class="tX">）── 検知だけを担い 12 へ渡す（Apollo Monitor / Autoware diagnostics graph 型・OQ-OD85）</span>
       <span class="tX">link_health（heartbeat と映像鮮度は別）／ localization_health（gnss_quality_gate /bot1/gnss/quality・geofence は予測位置で先に）／ </span><span class="tn">sensor_health ★v2.1</span><span class="tX">（scan・cliff_scan・depth・odom の stale / NaN / 空 / 凍結フレーム・有効観測率 → health_epoch → 12 → 09 許可失効 = Humble CM fail-open の補償・OQ-OD95）／ compute_health（tick jitter OQ-OD87）／ actuator_health</span>
 </pre>
