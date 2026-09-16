@@ -54,13 +54,13 @@
 
 > ⚠️ **この移行は途中まで適用された状態で land させる**（オペレーター判断 2026-08-05）。どこまで進んでいるかを明示しておく。ADR 本体が `proposed` である点も変わらない。
 
-**適用済み（13 ファイル）**: `deploy/dev/run-sim-cockpit.sh`（イメージ名 `mwr-sim:humble`）／`deploy/jetson/bin/ros-exec.sh`（`ROS_DISTRO` 既定 humble）／**`pyproject.toml`（`target-version = "py310"`＝2026-08-17 に flip 済・下記「追記（2026-08-17 その3）」）**／docs 各所（architecture 03 / 06 / 12 / 16、jetson 01、setup/jetson-deploy、shared 02 / 04 / 09、adr/README）。
+**適用済み（13 ファイル）**: `deploy/dev/run-sim-cockpit.sh`（イメージ名 `mwr-sim:humble`〔**2026-09-16 取り消し**: #685（`72514b8`）で既定タグ（`MWR_SIM_IMAGE` の既定）を **`mwr-sim:jazzy`** に戻した＝中身（Dockerfile は Jazzy）と一致させる「ラベル整合」。Humble+Gazebo（Fortress）自体は §Open のままなので、この項目は「適用済み」ではない〕）／`deploy/jetson/bin/ros-exec.sh`（`ROS_DISTRO` 既定 humble）／**`pyproject.toml`（`target-version = "py310"`＝2026-08-17 に flip 済・下記「追記（2026-08-17 その3）」）**／docs 各所（architecture 03 / 06 / 12 / 16、jetson 01、setup/jetson-deploy、shared 02 / 04 / 09、adr/README）。
 
 **未適用（52 ファイル）**（旧 53 から `pyproject.toml` が適用済みへ移動）。特に **現時点で整合が壊れている組み合わせ**:
 
 | 箇所 | 状態 | 症状 |
 |---|---|---|
-| `deploy/dev/Dockerfile` | **jazzy のまま** | `run-sim-cockpit.sh` は `mwr-sim:humble` を探すが Dockerfile は jazzy を入れる → **中身が jazzy の `humble` タグ**が焼かれる。**最優先で解消**。 |
+| `deploy/dev/Dockerfile` | **jazzy のまま** | `run-sim-cockpit.sh` は `mwr-sim:humble` を探すが Dockerfile は jazzy を入れる → **中身が jazzy の `humble` タグ**が焼かれる。**最優先で解消**。〔**2026-09-16 ラベル側で解消**: #685 で `run-sim-cockpit.sh` の既定を `mwr-sim:jazzy` に改め、「中身が jazzy の `humble` タグ」は焼かれなくなった。Dockerfile の Humble 化（Fortress）は §Open「Gazebo をどうするか」のまま＝Humble で 2 台 Gazebo E2E はまだ回せない〕 |
 | `deploy/dev/run-mode-a-live.sh` / `install-nav2-e2e.sh` | jazzy のまま | cockpit と distro が食い違う |
 | `firmware/platformio.ini` / `firmware/spike/**` | jazzy のまま | micro-ROS 側の distro 不一致 |
 | `README.md` / `AGENTS.md` / `.claude/CLAUDE.md` | jazzy のまま | 新規セッションが Jazzy 前提で判断してしまう |

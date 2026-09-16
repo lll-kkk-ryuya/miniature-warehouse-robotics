@@ -161,3 +161,18 @@ ros2 run warehouse_m1_driver m1_driver --ros-args \
 - **この launch 化はしない**。`joy_node` は launch で強制点を作った（`warehouse_teleop/launch/m1_teleop.launch.py`）が、`m1_driver` の起動は**車輪に通電する行為**なので同じ launch には載せない（W-4＝[02:65](02-m1-driver-and-watchdog.md:65) / [02:76](02-m1-driver-and-watchdog.md:76)）。teleop を上げることが「走れる状態にする」ことにならない境界を保つ。
 - 値の中身・置き場所の理由・**適用条件（150 mm を物理装着したら直ちに。G-W ゲートは適用の条件ではなく odom の使用制限）**は [02 追補③](02-m1-driver-and-watchdog.md) が正本。本節は複製しない。
 - M0-M2 は standalone（`:50`）なので、注入点はこの手打ち 1 箇所だけ（Nav2 / twist_mux 経路は無い）。
+
+---
+
+## 【2026-09-16 追補②】odom 有効化と LiDAR 配線の順序制約（Guardian `scan_stale`・L1）
+
+Emergency Guardian（**L1**・`warehouse_safety`）は 2026-09-16（#679）から停止理由 **`scan_stale`** を持つ（正本 = [doc12 末尾【2026-09-16 追補】(3)](../architecture/12-infrastructure-common.md:698)・用語 = [GLOSSARY「scan 鮮度ガード」](../GLOSSARY.md:171)）: 契約 topic `/bot{n}/scan`（[doc03:78](../architecture/03-software-architecture.md:78)）の**到着**が `safety.scan_freshness_timeout`（既定 1.0 s）より古い、**または一度も到着していないのに `/bot{n}/odom` が届いている**（bot 生存の証人）とき、level の estop（prio100 ゼロ Twist ＋ `/bot{n}/stop_state` の `stop_requested=true`）を出し、scan 再開で自動解除する。Humble コンテナの live 検証では、odom だけを流した P0 で odom 開始の 1.04 s 後に `scan_stale` が立った（[deploy/dev/humble-guardian-livetest/README.md](../../deploy/dev/humble-guardian-livetest/README.md) §結果）。
+
+これが M1 bring-up に課す**順序制約**（本 doc の M0-M2 は standalone 構成（`:50`・Nav2 / twist_mux 無し）で Guardian も立てなければ無関係。Guardian が動く構成＝`bringup.launch.py` または systemd `warehouse-safety.service` で初めて効く）:
+
+1. **T-mini Plus の driver を先に、契約 topic `/bot1/scan` へ**（namespace／remap。素の `/scan` は Guardian に見えない＝odom が届いた瞬間から `scan_stale` で止まり続ける）。
+2. **その後に** `m1_driver` の ROS param `odom_enabled: true`（既定 false・odom スライス = [02 追補③](02-m1-driver-and-watchdog.md)）を立てる。逆順（odom 先・LiDAR 後）だと Guardian は `scan_stale` を**恒久保持**する: Nav2 経路（twist_mux prio100）は止まり、`stop_overlay_enabled: true`（既定 false・[05 §4](05-operation-state-and-stop-authority.md:57)）なら `/bot1/cmd_vel` 直 publish の joystick も **L0'** 停止上乗せで止まる。既定（overlay false）では joystick は止まらないが、`/bot1/stop_state` は `true` のまま流れ続ける。
+3. 「無効化して回避」は**できない**: `safety.scan_freshness_timeout` は `guard_logic.validate_scan_freshness_timeout` が非有限・≤0 を**起動拒否**する（NaN で比較が常に False になる fail-open を封じるための意図的な閉塞）。per-reason の enable flag は**未裁定**＝必要になれば doc12 追補 (3) の裁定を先に更新する（コードで先回りしない）。
+
+- これは設計どおりの fail-closed（[doc12:709](../architecture/12-infrastructure-common.md:709) 残留⑥）であり不具合ではない。本追補は「配線の順序を間違えると止まって見える」を bring-up 手順に書き留めるもの。
+- 参照（双方向）: [doc12:709](../architecture/12-infrastructure-common.md:709) 残留⑥ → 本節／[05:38](05-operation-state-and-stop-authority.md:38)（停止理由の初期集合）→ 本節／[livetest README「未実施・注意」](../../deploy/dev/humble-guardian-livetest/README.md) → 本節。
