@@ -27,6 +27,7 @@ pytestmark = [pytest.mark.safety, pytest.mark.unit]
 THRESH = 0.3  # = cfg safety.emergency_min_distance
 TIMEOUT = 10.0  # = cfg safety.blocked_timeout
 FRESHNESS = 1.0  # = cfg safety.pose_freshness_timeout
+SCAN_FRESHNESS = 1.0  # = cfg safety.scan_freshness_timeout (doc12 末尾【2026-09-16 追補】(3))
 
 ENGAGE = '{"action": "engage"}'
 CLEAR = '{"action": "clear"}'
@@ -56,7 +57,12 @@ def _bot(name: str, x=0.0, y=0.0, batt=100.0, blocked=0.0, pose_age=None, op=Fal
 
 def _evaluate(a: BotState, b: BotState) -> list:
     return evaluate(
-        a, b, distance_threshold=THRESH, blocked_timeout=TIMEOUT, pose_freshness_timeout=FRESHNESS
+        a,
+        b,
+        distance_threshold=THRESH,
+        blocked_timeout=TIMEOUT,
+        pose_freshness_timeout=FRESHNESS,
+        scan_freshness_timeout=SCAN_FRESHNESS,
     )
 
 
