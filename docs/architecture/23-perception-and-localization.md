@@ -377,7 +377,7 @@ Autoware 系の localization 健全性監視の議論と同様、**localizer の
 | 機構 | 実際に見ているもの | localization ロストを検出するか |
 |---|---|---|
 | `bond`（lifecycle） | プロセスの生存 | しない（delocalized なノードは生きている） |
-| `collision_monitor` の `source_timeout` | **センサ**（`/scan`）の鮮度 | しない（[12:513,535,546](12-infrastructure-common.md) の通り Guardian の pose 鮮度とは別系統） |
+| `collision_monitor` の `source_timeout` | **センサ**（`/scan`）の鮮度 | しない（[12:513,535,546](12-infrastructure-common.md) の通り Guardian の pose 鮮度とは別系統）〔**2026-09-16 訂正: Humble 1.1.20 では collision_monitor 側の鮮度停止は不成立（fail-open）＝scan 途絶停止は Guardian `scan_stale`（[12 末尾【2026-09-16 追補】](12-infrastructure-common.md)）**〕 |
 | BT 条件ノード | goal / path / battery 等 | localization 健全性の条件ノードは無い |
 | 標準パッケージ | — | この穴を埋める既製パッケージは見当たらない |
 

@@ -90,7 +90,8 @@ def test_stop_request_is_isolated_per_bot() -> None:
 
 
 @pytest.mark.parametrize(
-    "reason", ["near_collision", "battery_critical", "pose_stale", "operator_stop_request"]
+    "reason",
+    ["near_collision", "battery_critical", "pose_stale", "operator_stop_request", "scan_stale"],
 )
 def test_any_estop_reason_sets_the_flag(reason: str) -> None:
     # The flag keys on action=="estop", NOT on a specific reason — every estop

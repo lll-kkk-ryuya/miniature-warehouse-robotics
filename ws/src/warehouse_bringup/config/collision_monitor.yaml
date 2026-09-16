@@ -1,6 +1,6 @@
 # collision_monitor.yaml — per-bot physical proximity reflex stop (R-39 / #126).
 #
-# WHY (doc/shared/07-research-notes.md:249 R-39): the Emergency Guardian's amcl_pose-based
+# WHY (docs/shared/07-research-notes.md:249 R-39): the Emergency Guardian's amcl_pose-based
 # proximity check is AMCL-rate-limited (~100-200ms effective stale) and Python (GC/GIL =
 # no bounded worst-case, R-40). The physical proximity reflex is DELEGATED to this C++,
 # high-rate, amcl-independent nav2_collision_monitor — "補完 not 置換" (doc12:545③): the
@@ -35,15 +35,15 @@
 #     wider than the ~0.1m wall clearance trips on the walls; (b) the #156 head-on demo — at
 #     0.15m centres the other robot's surface is ~0.075m away (INSIDE this 0.09 stop), so it
 #     would mask the avoidance footage. Tune live; a forward-biased polygon may be needed.
-#   * source_timeout — a stale source (with timeout != 0) makes collision_monitor publish an
-#     "invalid source" STOP (Jazzy collision_monitor_node.cpp::process; this MATCHES doc12:546
-#     "/scan 途絶 -> stop"). virtual_scan is SILENT whenever the robots are >1.0m apart
-#     (SUPPRESSION_RANGE, virtual_scan_logic.py:22), so it gets a per-source source_timeout 0.0
-#     (absence = "no nearby robot", not a fault) — else normal >1.0m driving would spuriously
-#     STOP both bots. The REAL scan keeps node-level 1.0 (lidar dropout -> stop, R-39). The
-#     node-level 1.0 value is itself provisional (Open ③ = doc12:552③).
-#   * exact Jazzy param schema (e.g. polygon points format) needs colcon/launch container
-#     validation (#67 stack); this file is the wiring intent.
+#   * source_timeout / sensor loss — HUMBLE 1.1.20 semantics (ADR-0008), verified on the humble
+#     branch (参照日 2026-09-16; doc12 末尾【2026-09-14 追補】+【2026-09-16 追補】): a source that is
+#     absent or stale only DROPS ITS POINTS (scan.cpp Scan::getData returns early; process() starts
+#     from DO_NOTHING), so a dead /scan lets cmd_vel PASS THROUGH = FAIL-OPEN. The "invalid source
+#     -> STOP" measured by the #126 live PoC (tests/e2e/README.md:272) is Jazzy/main-only (that PoC
+#     ran ros-jazzy-navigation2, deploy/dev/install-nav2-e2e.sh:21). Per-source `<src>.source_timeout`
+#     is NOT declared on Humble (source.cpp getCommonParameters reads .topic/.enabled only), so the
+#     node-level value applies to EVERY source. The Jazzy-only keys (per-source source_timeout,
+#     state_topic, min_points) were REMOVED (doc12 追補 (2)); lidar-liveness stop = Guardian scan_stale.
 collision_monitor:
   ros__parameters:
     use_sim_time: true   # launch RewrittenYaml overrides from use_sim_time arg (prod=false)
@@ -53,12 +53,12 @@ collision_monitor:
     # OUT = cmd_vel/nav2 = the existing twist_mux prio-10 input (prio-100 emergency untouched).
     cmd_vel_in_topic: "cmd_vel/nav2_raw"
     cmd_vel_out_topic: "cmd_vel/nav2"
-    state_topic: "collision_monitor_state"
+    # (state_topic REMOVED — not a Humble 1.1.20 param: no CollisionMonitorState publisher exists, so the doc12:558 surfacing path is unavailable here; Jazzy default "" = no state topic either.)
     transform_tolerance: 0.2
-    source_timeout: 1.0          # node-level: REAL /scan dropout (timeout != 0) -> STOP (R-39,
-                                 # doc12:546). virtual_scan overrides to 0.0 (it is silent >1.0m).
+    source_timeout: 1.0          # node-level; on Humble it applies to ALL sources (per-source key not
+                                 # read). Stale/absent source = its points dropped, NOT a STOP (fail-open).
     base_shift_correction: true
-    stop_pub_timeout: 2.0
+    stop_pub_timeout: 2.0        # Humble: timed from the FIRST zero output; afterwards CM publishes NOTHING even if the obstacle stays -> twist_mux nav2 input expires (0.5s) -> m1_driver W-1 (0.5s) brakes. Silence, not a held zero.
     polygons: ["PolygonStop"]
     PolygonStop:
       type: "circle"
@@ -67,7 +67,7 @@ collision_monitor:
       # the #156 >=0.15m head-on demo (see header) — retune live (Open ②).
       radius: 0.09
       action_type: "stop"
-      min_points: 4              # Jazzy: # scan points inside the polygon to trigger the stop
+      max_points: 3              # Humble 1.1.20 (polygon.cpp): STOP when points inside > 3, i.e. >=4. Jazzy honours it too via its compat shim (min_points = max_points + 1, with a deprecation WARN); the Jazzy-only `min_points: 4` (same threshold, and its default) was removed.
       visualize: true
       polygon_pub_topic: "collision_monitor/polygon_stop"
       enabled: true
@@ -84,7 +84,7 @@ collision_monitor:
       enabled: true
       # virtual_scan is a CONDITIONAL publisher: SILENT when the robots are >1.0m apart
       # (SUPPRESSION_RANGE, virtual_scan_logic.py:22). Its absence = "no nearby robot", NOT a
-      # sensor fault. timeout 0.0 skips the stale-source check for THIS source only
-      # (collision_monitor_node.cpp), so normal >1.0m driving does NOT trip an "invalid source"
-      # STOP. The real /scan keeps node-level source_timeout (1.0) for lidar-dropout safety.
-      source_timeout: 0.0
+      # sensor fault. On Humble 1.1.20 a silent source merely contributes no points, so >1.0m
+      # driving cannot false-STOP and no per-source key exists. The Jazzy-only override
+      # `source_timeout: 0.0` (PR#229) was REMOVED (doc12 追補 (2)). A legacy Jazzy dev container
+      # (deploy/dev/install-nav2-e2e.sh) must re-add it locally, else >1.0m driving STOPs (invalid source).
