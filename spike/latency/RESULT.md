@@ -69,7 +69,7 @@ Gateway 経由で実測し、docs06 が宙吊りにしている2つの設計判�
 
 ## §3 `BLOCKED_TIMEOUT` 関数化推奨（R-46 / doc07:256）
 
-**現状**: `config/warehouse.base.yaml:17` `blocked_timeout: 10.0`（フラット値・`# TODO: Phase 2 実測で確定`）。Emergency Guardian の pose 変位ベース recovery トリガ（[`docs/architecture/12-infrastructure-common.md:193,210`](../../docs/architecture/12-infrastructure-common.md)・`warehouse_safety/guard_logic.py:125`）。「`BLOCKED_TIMEOUT=10秒` は Claude の3サイクル(9秒)分の余裕」前提（[`docs/mode-a/08a-llm-bridge-mode-a.md:372`](../../docs/mode-a/08a-llm-bridge-mode-a.md)）。
+**現状**: `config/warehouse.base.yaml:17` `blocked_timeout: 10.0`（フラット値・`# TODO: Phase 2 実測で確定`）。Emergency Guardian の pose 変位ベース recovery トリガ（[`docs/architecture/12-infrastructure-common.md:193,210`](../../docs/architecture/12-infrastructure-common.md)・`warehouse_safety.guard_logic.BlockTracker`（`blocked_duration`）→ `evaluate` 規則 (3)・symbol 参照）。「`BLOCKED_TIMEOUT=10秒` は Claude の3サイクル(9秒)分の余裕」前提（[`docs/mode-a/08a-llm-bridge-mode-a.md:372`](../../docs/mode-a/08a-llm-bridge-mode-a.md)）。
 
 **問題（R-46）**: サイクルが 3s→4-5s に延びると「3サイクル=9s 余裕」が破綻（4-5s × 3 = 12-15s > 10s）。司令官が 3 サイクル見逃す前に Guardian が誤発火しうる。
 
