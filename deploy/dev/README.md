@@ -34,7 +34,7 @@ drive (RViz on the noVNC desktop) and record clips — without rebuilding anythi
 
 - **`Dockerfile`** bakes the Nav2 stack + window tools (`wmctrl`/`xdotool`) + `ffmpeg`,
   plus Python runtime deps (`pydantic`, `pyyaml`, FastAPI/Uvicorn, `httpx`, Langfuse/OpenAI
-  SDKs) on top of `tiryoh/ros2-desktop-vnc:jazzy` (which already carries ROS 2 Jazzy,
+  SDKs) on top of `tiryoh/ros2-desktop-vnc:jazzy` (which already carries ROS 2 Jazzy,  <!-- ADR-0008 §適用状況 drift: config は Humble 正（collision_monitor.yaml）。この Jazzy コンテナで 2 台 Gazebo E2E を回すなら virtual_scan.source_timeout: 0.0 をローカルで戻す＝tests/e2e/README.md:242 -->
   Gazebo Harmonic `gz`, ros_gz, and the noVNC desktop). The ROS workspace is **not**
   baked — mount the repo at `/ws`; the colcon symlink-install build is reused from
   `/ws/ws/install` (host build is pinned to `/ws`).

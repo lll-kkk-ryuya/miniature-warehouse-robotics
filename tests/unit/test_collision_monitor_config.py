@@ -1,5 +1,13 @@
 """collision_monitor.yaml config + safety-regression assertions (R-39 / #126).
 
+TARGET = ROS 2 Humble, nav2_collision_monitor 1.1.20 (ADR-0008). The declared-parameter
+sets pinned below were transcribed from the humble branch sources (参照日 2026-09-16, doc12
+末尾【2026-09-16 追補】(1)): node collision_monitor_node.cpp:193-222 / :245-251 / :294-301,
+polygon polygon.cpp:242-289 + circle.cpp:90-91, source source.cpp:60-75 (+ scan.cpp:56 "no own
+parameters"). Keys outside those sets are silently ignored by the node, which is how the
+Jazzy-only `state_topic` / `min_points` / per-source `source_timeout` went inert (config PR,
+doc12 追補 (2)); these pins keep such keys from creeping back.
+
 Pure-YAML: no ROS / launch deps, so this runs in pure CI (unlike the launch-introspection
 half in test_collision_monitor_launch.py). Pins the wiring CONTRACT that keeps the Emergency
 Guardian's prio-100 override intact (R-26): collision_monitor feeds the twist_mux priority-10
@@ -85,22 +93,85 @@ def test_frames_use_robot_namespace_token() -> None:
 
 
 @pytest.mark.unit
-def test_source_timeout_value_pins_kept_until_docs_first_config_pr() -> None:
-    # Value pins from the PR#229 review (MAJOR), kept UNCHANGED until the docs-first config PR that
-    # doc12 末尾【2026-09-16 追補】(2) names. Their rationale is Jazzy/main-only: there a stale source
-    # with source_timeout != 0 raises an "invalid source" STOP, and virtual_scan is a CONDITIONAL
-    # publisher (SILENT when robots are >1.0m apart, SUPPRESSION_RANGE virtual_scan_logic.py:22),
-    # so it overrides to 0.0. On the TARGET Humble 1.1.20 (ADR-0008) the per-source key is not even
-    # declared (source.cpp getCommonParameters reads .topic/.enabled only) and a stale/absent source
-    # merely drops its points (fail-open): neither value stops the robot on lidar loss. That stop is
-    # the Guardian's `scan_stale` (doc12 追補 (3)); this test only guards against silent value drift.
+def test_no_jazzy_only_per_source_source_timeout_keys() -> None:
+    # doc12 追補 (2) config PR: Humble 1.1.20 declares NO per-source source_timeout (source.cpp
+    # getCommonParameters reads .topic/.enabled only), so the node-level value is the only bound
+    # and applies to every source. The Jazzy-only `virtual_scan.source_timeout: 0.0` override
+    # (PR#229) is gone; a legacy Jazzy dev container must re-add it locally (yaml:85-90 note).
     p = _collision_params()
-    assert p["virtual_scan"].get("source_timeout") == 0.0, (
-        "virtual_scan keeps the per-source 0.0 pin (Jazzy/main-forward intent; inert on Humble)"
-    )
-    assert "source_timeout" not in p["scan"], (
-        "real scan keeps inheriting the node-level value (no per-source override)"
-    )
-    assert p["source_timeout"] > 0, (
-        "node-level bound stays positive (pinned intent; on Humble it is fail-open, not a stop)"
-    )
+    for src in p["observation_sources"]:
+        assert "source_timeout" not in p[src], (
+            f"{src}: per-source source_timeout is not a Humble key"
+        )
+    assert p["source_timeout"] > 0  # node-level bound stays positive (Open ③ live tune)
+
+
+@pytest.mark.unit
+def test_polygon_threshold_is_max_points_3_on_humble() -> None:
+    # Humble polygon.cpp:261-263 declares `max_points` (STOP when points inside > max_points,
+    # collision_monitor_node.cpp:411), i.e. 3 -> >=4 points. `min_points` is Iron+ (Jazzy default 4
+    # = the same threshold, and Jazzy also honours max_points via its compat shim), so it was removed.
+    poly = _collision_params()["PolygonStop"]
+    assert poly["max_points"] == 3
+    assert "min_points" not in poly
+
+
+@pytest.mark.unit
+def test_no_state_topic_key() -> None:
+    # Humble 1.1.20 has no `state_topic` param / CollisionMonitorState publisher (main-only), so the
+    # key was inert; removed so nobody relies on a state topic that never existed here.
+    assert "state_topic" not in _collision_params()
+
+
+_NODE_KEYS = {  # collision_monitor_node.cpp getParameters (:193-222) + polygons (:245-251) + sources (:294-301)
+    "use_sim_time",  # rclcpp built-in (launch RewrittenYaml overrides it)
+    "cmd_vel_in_topic",
+    "cmd_vel_out_topic",
+    "base_frame_id",
+    "odom_frame_id",
+    "transform_tolerance",
+    "source_timeout",
+    "base_shift_correction",
+    "stop_pub_timeout",
+    "polygons",
+    "observation_sources",
+}
+_POLYGON_KEYS = {  # polygon.cpp getCommonParameters (:242-289) + circle.cpp radius (:90-91) + polygon points
+    "type",
+    "action_type",
+    "enabled",
+    "max_points",
+    "slowdown_ratio",
+    "time_before_collision",
+    "simulation_time_step",
+    "visualize",
+    "polygon_pub_topic",
+    "footprint_topic",
+    "points",
+    "radius",
+}
+_SCAN_SOURCE_KEYS = {
+    "type",
+    "topic",
+    "enabled",
+}  # source.cpp getCommonParameters (:60-75); scan.cpp:56
+
+
+@pytest.mark.unit
+def test_only_humble_1_1_20_declared_keys_are_present() -> None:
+    # Regression guard for the inert-key cleanup: every key must be one the TARGET node actually
+    # declares (sets transcribed from the humble sources, see module docstring). An undeclared key is
+    # silently ignored by rclcpp, which is exactly how a "setting" can look configured yet do nothing.
+    p = _collision_params()
+    polygons, sources = set(p["polygons"]), set(p["observation_sources"])
+    top = set(p) - polygons - sources
+    assert top <= _NODE_KEYS, f"undeclared node-level keys: {sorted(top - _NODE_KEYS)}"
+    for name in polygons:
+        extra = set(p[name]) - _POLYGON_KEYS
+        assert not extra, f"{name}: undeclared polygon keys: {sorted(extra)}"
+    for name in sources:
+        assert (
+            p[name]["type"] == "scan"
+        )  # the scan source declares no keys of its own (scan.cpp:56)
+        extra = set(p[name]) - _SCAN_SOURCE_KEYS
+        assert not extra, f"{name}: undeclared source keys: {sorted(extra)}"
