@@ -36,6 +36,7 @@ if os.getenv("WAREHOUSE_LIVE_ER") != "1":
         allow_module_level=True,
     )
 
+from warehouse_llm_bridge.robotics.adapters.gemini_er import PIXEL_RULE
 from warehouse_llm_bridge.robotics.er_models import ER_DIRECT_MODEL_ID, ER_MODEL_ENV
 from warehouse_llm_bridge.robotics_planning_core import (  # noqa: E402
     RawModelOutput,
@@ -61,7 +62,7 @@ _SCHEMA_INSTRUCTION = (
     '"operator_clarification_required":false}\n'
     "Rules: robots are only bot1/bot2; action is one of navigate|wait|stop|yield|charge; target is "
     "a detection id; do NOT include any URL, ROS topic, endpoint, velocity, motor or coordinate "
-    "goal field. pixel is [u,v] in 0-1000 if known, else [0,0]."
+    "goal field. " + PIXEL_RULE
 )
 _INSTRUCTION = "bot1 goes to the red box. After bot1 arrives, bot2 goes to the blue box."
 
