@@ -32,7 +32,7 @@ AMCL 直購読の Guardian pose 鮮度 guard（[23 §5-3 blocker ①](../archite
 | `map → bot1/odom` | AMCL（[23:150](../architecture/23-perception-and-localization.md:150)） | **global `ekf_node`（`world_frame: map`）** | AMCL 不在。`map→odom` を出すのは **global EKF 1 個だけ** |
 | `bot1/odom → bot1/base_link` | local `ekf_node`（唯一） | **local `ekf_node`（不変）** | [23:163](../architecture/23-perception-and-localization.md:163) |
 | `utm/cartesian → map` | — | **配信しない**（`broadcast_cartesian_transform: false`） | `navsat_transform_node` は `odometry/gps` を出すだけで TF を出さない構成にする＝TF 単一所有を守る [L] |
-| `bot1/base_link → bot1/gnss_link` | — | `robot_state_publisher`（URDF static） | `FROZEN_LINK_NAMES`（[robot_dimensions.py:41-47](../../ws/src/warehouse_description/warehouse_description/robot_dimensions.py:41)）末尾への **additive contract PR**＝`camera_link` と同じ手順 [D] |
+| `bot1/base_link → bot1/gnss_link` | — | `robot_state_publisher`（URDF static） | `FROZEN_LINK_NAMES`（[robot_dimensions.py:43-50](../../ws/src/warehouse_description/warehouse_description/robot_dimensions.py:43)）末尾への **additive contract PR**＝`camera_link` と同じ手順 [D] |
 
 ### 2-2. 入力割当（[23 B-3](../architecture/23-perception-and-localization.md:463) の屋外版）
 
@@ -204,7 +204,7 @@ waypoint 間隔 vs rolling global costmap: 一辺 `W` の costmap 外に goal �
 | 受信機ドライバ（`ublox_gps` / NMEA） | **新規** | `NavSatFix` + 品質フィールド |
 | `ntrip_client` | **新規**（CLAS なら不要） | RTCM を受信機へ |
 | `gnss_quality_gate`（L1 Safety） | **新規** | [05 §3](05-safety-envelope-and-intervention.md) |
-| `robot_state_publisher` | **変更（additive）** | `gnss_link` を `FROZEN_LINK_NAMES` 末尾へ（contract PR） |
+| `robot_state_publisher` | **変更（additive）** | `gnss_link` を `FROZEN_LINK_NAMES` 末尾へ（contract PR）。`FROZEN_FRAME_IDS` の `"gnss": "gnss_link"`（NavSatFix `header.frame_id`）も同 PR で凍結＝§2-3 :54 の一致要求 |
 | MOLA-LO（`odom1`） | **変更** | local 限定・global では differential |
 | `m1_driver`（`/odom` `/imu`） | **流用** | odom TF を出さない契約も不変 |
 | Emergency Guardian（pose 鮮度） | **変更** | 購読先を `/amcl_pose` → global EKF + `/gnss/quality`（R-26 unit 必須） |
@@ -234,7 +234,7 @@ waypoint 間隔 vs rolling global costmap: 一辺 `W` の costmap 外に goal �
 docs 内（file:line は執筆時に実 Read）:
 
 - [architecture/23-perception-and-localization.md](../architecture/23-perception-and-localization.md)（[:21](../architecture/23-perception-and-localization.md:21) 安全層外 / [:141](../architecture/23-perception-and-localization.md:141) GNSS 対象外 / [:150](../architecture/23-perception-and-localization.md:150) AMCL map→odom / [:163](../architecture/23-perception-and-localization.md:163) TF 単一所有 / [:177](../architecture/23-perception-and-localization.md:177) blocker ① / [:296](../architecture/23-perception-and-localization.md:296) A-2 床 / [:308](../architecture/23-perception-and-localization.md:308) A-3 / [:332](../architecture/23-perception-and-localization.md:332) A-5 / [:355](../architecture/23-perception-and-localization.md:355) A-6 / [:367](../architecture/23-perception-and-localization.md:367) A-7 / [:455](../architecture/23-perception-and-localization.md:455) 代替 / [:457](../architecture/23-perception-and-localization.md:457) GPLv3 / [:463](../architecture/23-perception-and-localization.md:463) B-3 / [:477](../architecture/23-perception-and-localization.md:477) B-4 / [:480](../architecture/23-perception-and-localization.md:480) anti-pattern）
-- [nav2_params.yaml](../../ws/src/warehouse_bringup/config/nav2_params.yaml)（§3-4 の各行）/ [nav2_bridge.py:18,84,87-95](../../ws/src/warehouse_nav2_bridge/warehouse_nav2_bridge/nav2_bridge.py:84) / [core.py:106-119](../../ws/src/warehouse_nav2_bridge/warehouse_nav2_bridge/core.py:106) / [robot_dimensions.py:41-47](../../ws/src/warehouse_description/warehouse_description/robot_dimensions.py:41)
+- [nav2_params.yaml](../../ws/src/warehouse_bringup/config/nav2_params.yaml)（§3-4 の各行）/ [nav2_bridge.py:18,84,87-95](../../ws/src/warehouse_nav2_bridge/warehouse_nav2_bridge/nav2_bridge.py:84) / [core.py:106-119](../../ws/src/warehouse_nav2_bridge/warehouse_nav2_bridge/core.py:106) / [robot_dimensions.py:43-50](../../ws/src/warehouse_description/warehouse_description/robot_dimensions.py:43)
 - [emergency_guardian.py:73,143-148](../../ws/src/warehouse_safety/warehouse_safety/emergency_guardian.py:143) / [guard_logic.py:29,169,233](../../ws/src/warehouse_safety/warehouse_safety/guard_logic.py:233) / [config/warehouse.base.yaml:21](../../config/warehouse.base.yaml:21)
 - [ADR-0008](../adr/0008-ros2-distro-humble-for-rosmaster-m1.md) / [ADR-0012](../adr/0012-speed-band-no-l2-best-effort.md) / [mode-m1/04](../mode-m1/04-runtime-speed-limiter.md) / [05 安全包絡](05-safety-envelope-and-intervention.md) / [04 知覚](04-perception-sidewalk-and-signals.md) / [06 ハード差分](06-hardware-delta-and-base-selection.md) / [07 駆動系](07-drivetrain-and-wheel-sizing.md)
 
