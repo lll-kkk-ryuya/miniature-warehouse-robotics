@@ -77,3 +77,25 @@ Status: **箱（skeleton）**。節見出しと「何を書くか」だけを置
 - [shared/00-project-overview.md](../shared/00-project-overview.md)（旧ミッション・置換しない）/ [shared/05-video-storyboard.md](../shared/05-video-storyboard.md)（撮影構成の再設計）
 - [ADR-0009](../adr/0009-m1-room-scale-operation.md) / [ADR-0006](../adr/0006-single-bot-first.md) / [ADR-0008](../adr/0008-ros2-distro-humble-for-rosmaster-m1.md)
 - [GLOSSARY §12](../GLOSSARY.md)
+
+## 【2026-09-16 追補】00_Platform_Contract の依存 pin 表（案・調査レーン D・裁定待ち = `OQ-OD4W` / `OQ-OD4X`）
+
+正本ルート = 本 doc（運用条件）+ [09 §2-l / §3](09-external-review-v3-response.md)（00_Platform_Contract の家 = `warehouse_description` + `config` overlay + 本 doc + ADR / pins）。知覚側の理由と NN 候補は [04 末尾追補 §6](04-perception-sidewalk-and-signals.md)。参照日 2026-09-16・[D] = 一次情報実読・空欄は**実測まで発明しない**。
+
+| 層 | 項目 | pin 値（案） | 確度 | 出所 |
+|---|---|---|---|---|
+| ボード | Jetson module | Orin Nano **8GB** Super（**DLA 無し**・GPU 1024 CUDA / 32 Tensor・67 INT8 TOPS・7–25 W） | [D] | [jetson/01](../jetson/01-fidelity-and-validation.md)・NVIDIA spec（DLA 行なし） |
+| OS | JetPack | **6.2.1**（= L4T 36.4.4。「6.2」表記は点リリース単位で 6.2.1 と読む） | [D] | JetPack archive / [jetson/02:171](../jetson/02-remote-access-and-dev-link.md:171) |
+| OS | Ubuntu / kernel | 22.04.5 jammy / 5.15.148-tegra | [D] 実測 | [jetson/02:348](../jetson/02-remote-access-and-dev-link.md:348) / [:432](../jetson/02-remote-access-and-dev-link.md:432) |
+| GPU | CUDA / cuDNN / TensorRT / VPI | 12.6.10 / 9.3.0 / **10.3.0** / 3.2（JP 6.2.1 release notes。**ボード実測は未取得**） | [D] notes・実測 未 | <https://docs.nvidia.com/jetson/jetpack/6.2.1/release-notes/index.html> |
+| ROS | distro | **Humble**（EOL **2027-05**） | [D] | [ADR-0008](../adr/0008-ros2-distro-humble-for-rosmaster-m1.md) / REP-2000 |
+| ROS | Nav2 | **1.1.20**（`nav2_route` backport 含むバイナリ配布） | [D] | [08 §4 #4](08-architecture-v2-reference-alignment.md) |
+| ROS | robot_localization / ublox / ntrip_client / rtcm_msgs / nmea_navsat_driver | humble release 済（**版番号 未取得**） | [D] 存在 | [03 §2 / References](03-localization-gnss-and-ekf.md) |
+| ROS | depthai-ros | 本線 apt **v2 2.12.2**（`ros-humble-depthai-ros`）／v3 3.3.0 は `ros2-testing` 経由 | [D] | rosdistro humble・[04 末尾追補 §4](04-perception-sidewalk-and-signals.md) |
+| 加速 | Isaac ROS | **3.2 Update 1**（2025-01-16・Humble・JP 6.2・Orin Nano Super）。表は「JetPack 6.1 and 6.2」で **6.2.1 は名指しなし** | [D]／6.2.1 適合 [I] | <https://nvidia-isaac-ros.github.io/v/release-3.2/getting_started/index.html> |
+| 推論 | Ultralytics（測定器） | 8.4.33（Orin Nano Super ベンチ基準版・AGPL） | [D] | <https://docs.ultralytics.com/guides/nvidia-jetson/> |
+| 言語 | Python | 3.10（`target-version = "py310"`） | [D] | `pyproject.toml` |
+
+- **世代の壁**: JetPack 7.2（L4T 39.2・Ubuntu 24.04・CUDA 13.2.1・TensorRT 10.16.2）で「Jetson Orin family」が追加され、Isaac ROS **4.6.0（2026-08-18・Jazzy）**が「Jetson Orin」を対象に加えた（Orin Nano 8GB の明記なし・128+ GB NVMe・Orin Nano DevKit は SD イメージ廃止 → ISO）[D]。**Humble を維持する結論は変わらない**（HP60C `ascamera` 閉ソース `.so`・ydlidar humble・Nav2 1.1.20 資産・depthai-ros Humble バイナリ）が、[ADR-0008:40](../adr/0008-ros2-distro-humble-for-rosmaster-m1.md:40) の根拠文は時点付きで訂正済（`OQ-OD4W`）。JP6 系の最新は 6.2.3（L4T 36.5.2）・EOL 明文は未発見。
+- 取れないもの: Isaac ROS 4.x 系の新機能（3.2 に cuVSLAM / nvblox / DNN inference / RT-DETR / YOLOv8 はある）・TensorRT 10.16 / CUDA 13。壊れるもの（Jazzy + JP7.2 へ上げた場合）: 上記 4 資産・collision_monitor Humble 意味論に合わせた安全設計（[09 §2-b](09-external-review-v3-response.md)）・py3.10 pin・22.04 前提の実機知見。
+- **OPEN**: `OQ-OD4X`（[04 末尾追補 §10](04-perception-sidewalk-and-signals.md)）= ボード実測（`dpkg -l nvidia-jetpack`・`/ssd` 空き）で空欄を埋める／Isaac ROS 3.2 × JP 6.2.1 の適合／4.6 の「Jetson Orin」に Orin Nano 8GB が含まれるか／JP6 EOL／6.2.3 へ上げるか。**版番号を推測で埋めない**。

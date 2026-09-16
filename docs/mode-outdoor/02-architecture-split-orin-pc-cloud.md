@@ -126,3 +126,42 @@ eProsima Fast DDS 公式は Simple Discovery の欠点として「ノード追�
 - **閾値をひとつも既定値にしていない**: `timeout_s` / 時計誤差 / 指令有効期間 / 映像 stale / teleop 鮮度 はすべて呼び出し側が注入し、退化値（非有限・負・0）は**黙って既定へ落ちず `ValueError`**。§3-3 の表（[:85](02-architecture-split-orin-pc-cloud.md:85)・[:89](02-architecture-split-orin-pc-cloud.md:89)・[:90](02-architecture-split-orin-pc-cloud.md:90)）が値を候補としており、[:91](02-architecture-split-orin-pc-cloud.md:91) が実装単一ソースを `warehouse_interfaces.safety` の定数と定めているため、**module に既定を書くこと自体が :91 の禁じる第 2 のソース**になる。確定後に定数を import するだけにする（`OQ-OD25`）。
 - **独立レビューで塞いだ 4 点（2026-09-16・初版から同ブランチで修正）**: ①**セッション終了が 1 か所では足りない**——`reconnect()` はキュー内の駆動指令しか捨てられず、1 tick 前に取り出し済みのサンプルが前セッションのまま走れた。`replay_teleop` に **必須の `current_session_epoch`** を足し、`reconnect()`・`replay_teleop`・`VideoFreshness.reset()` の**3 か所**で効かせる形にした（[09 §2-d](09-external-review-v3-response.md:104) の破棄はこの 3 点セットで初めて閉じる）。②**映像 stamp の単調順序だけでは防御にならない**——`1e308` を 1 枚受けると「永遠に最新」になり以降の実フレームが全部捨てられ channel が STALE で固着した。壁時計からの **skew 上限**（注入値）で未来日付を*受理せず拒否*し、送信側再起動には `reset()` で復帰する。③**AST pin を deny リストから allowlist へ**——`socket`・`threading`+`http.client`・`sensor_msgs.msg` が素通りしていた。純関数ライブラリだという主張は「これだけ・他は無い」としか強制できない。④**拒否された message が `sequence` を進めない**ことを unit で固定（進めてしまうと、拒否された 1 通が後続の正当な指令の番号を焼いて replay 扱いにする）。
 - **残件**: (a) wire JSON（kind 名・キー名・payload 形）は **[提案・未凍結]**——doc03 契約カタログにも `warehouse_interfaces` にも未登録。凍結は additive-first の contract-PR で行う。(b) `reason_code = link_loss`（[05 §3-2](05-safety-envelope-and-intervention.md:51)）は **[doc03:112](../architecture/03-software-architecture.md:112) の凍結 payload に載る場所が無い**（`{"action": ...}` のみ）ため in-process の verdict に留め、wire へは engage だけを出す。reason を運ぶ合流 topic は [05 §3-2](05-safety-envelope-and-intervention.md:57) の `/safety/stop_request` 案＝`OQ-OD53` 裁定待ち。(c) 承認トークンの照合失敗時に token を burn するか（anti-probing）は未決＝現状は**成功時のみ burn**。burn 済み集合は期限切れエントリを掃いて**有界**にしたが、**壁時計が burn 済み token の期限より手前へ巻き戻る**と再消費を許しうる（margin を発明せず残件とする）。(d) **`sequence` の意味論が未凍結 [提案・未凍結]**——[09 §2-a](09-external-review-v3-response.md:62) は「単調増加」としか言わず、**kind ごとの別カウンタか単一共有カウンタか**も**跳躍幅の上限**も定めていない。現実装は**セッション単位の単一共有カウンタ**を前提とするため、peer が kind 別カウンタを使うと heartbeat が番号を進めるたび teleop が replay 扱いで飢え、巨大値を 1 通 accept するとそのセッションは reconnect まで実質ロックされる。contract 凍結時に決める。
+
+## 【2026-09-16 追補】随伴 Mac を分担表へ位置づける（第 4 の段を作らない・随伴フェーズ限定・調査レーン E・裁定待ち = `OQ-OD28`〜`OQ-OD2A`）
+
+正本 = 本 doc §1 の 3 原則。ユーザー指示（2026-09-16）「実際にこの車体を動かす際は Mac（MacBook Pro M4 16GB）と連携しておくので Mac 側のメモリも考慮してよい」を受け、走行時の Mac を分担表に載せる。**§2 の表は行ズレ回避のため触らず、追記案を本追補に置く**（[status-maintenance.md](../../.claude/rules/status-maintenance.md) 末尾追記原則）。知覚側の帰結は [04 末尾追補 §7](04-perception-sidewalk-and-signals.md)。参照日 2026-09-16・[D] = 一次情報実読。
+
+1. **本文は「PC」を役割（遠隔操作者卓）としてしか定義しておらず機種を書いていない**（[:15](02-architecture-split-orin-pc-cloud.md:15) / [:30](02-architecture-split-orin-pc-cloud.md:30)）。一方 [shared/02:134](../shared/02-hardware-design.md:134) は「Mac は開発・シミュレーション専用で本番では使わない」と明記する。走行時に Mac を使うならこの 1 行が唯一の衝突点であり、**本追補は shared/02 を置換せず「随伴フェーズ限定の例外」として additive に扱う**（shared/02 側には同一行注記を置いた）。
+2. **法の写像**: [01 §5](01-legal-envelope-japan.md) が禁じるのは「遠隔の人が**操作**できない状態」であって助言計算の喪失ではない。→ **卓としての Mac 断 = リンク断 = 停止（必須）／助言としての Mac 断 = 助言喪失のみで走行継続（適法）**。どちらも成立するが、**同一機に両役を載せない**（[:47](02-architecture-split-orin-pc-cloud.md:47) の「縮退方針が逆向きの 2 機能を 1 プロセスに置かない」を機体レベルへ拡張 = `OQ-OD2A`）。
+3. **第 4 の段を作らない**。随伴 Mac は §1 原則 3（クラウド = 無くても走れる助言・記録）の**物理配置違い**として扱う。縮退意味論が一致するため 3 原則の改訂は不要（`OQ-OD28`）。
+4. **随伴 Mac は stop producer になれない**（[05 §0](05-safety-envelope-and-intervention.md:11) 許可判断点を新設しない・[05 §3-3](05-safety-envelope-and-intervention.md:61) `speed_limit` 単一 publisher = ADR-0012 決定 11）。返す型は observation / proposal に限り、`/operator/stop_request`・`/safety/stop_request`・`/bot{n}/stop_state`・`/bot{n}/cmd_vel*`・`/bot{n}/speed_limit` の producer にならない（R-26 相当の AST pin で固定できる）。
+5. **フェーズ依存**: 随伴通行（[01 §5](01-legal-envelope-japan.md)）では人が車体の横を歩くので Mac は物理的に随伴できる。遠隔操作通行では**随伴者がいない（車体の横を歩く人がいない）ため Mac を運ぶ人がおらず随伴計算にならない**。届出事項「遠隔操作場所の所在地」（[01 §4](01-legal-envelope-japan.md)）が拘束するのは卓であって助言計算機ではない → 助言は GCP Hermes へ戻すか卓に同居させる（同居なら項 2 の `OQ-OD2A` の規律）（`OQ-OD28`）。
+6. **帰り道は `web_bridge` ではない**（[:47](02-architecture-split-orin-pc-cloud.md:47)・[doc22:283](../architecture/22-web-observability.md:283) の observe-only R-26 pin）。Orin → Mac のテレメトリ受信だけなら衝突しないが、Mac → Orin に何かを返す瞬間に衝突する。助言専用の第 3 プロセス・第 3 port（`advisory_link_node`・0 actuation・AST pin）を立てる案 vs `operator_link_node` の閉集合拡張（`OQ-OD24` の最小性を損なう）= `OQ-OD29`。閉集合は #687 で `ControlKind` 5 種（HEARTBEAT / TELEOP / STOP_REQUEST / CROSSING_APPROVAL / AUTHORITY・inbound のみ・重要状態は outbound）として純ロジックに固定済（上の同日追補）→ 助言を通すなら **inbound に足すのではなく outbound（observation / proposal）側の別経路**とし、`OQ-OD29` はこの閉集合を前提に裁定する。
+7. **Mac に置いてよい / いけない**:
+
+| 処理 | Mac | 失ったときの挙動 | 根拠 |
+|---|---|---|---|
+| 停止 producer 全般・Emergency Guardian・地形 / cliff・coverage・信号の fail-closed 観測・X2 判定・横断ゲート・Nav2 / EKF | **✗ Orin 常駐** | — | [:14](02-architecture-split-orin-pc-cloud.md:14) 原則 1・[05 §3-2](05-safety-envelope-and-intervention.md:47)・[04 末尾追補 §2](04-perception-sidewalk-and-signals.md)・[19:139](../architecture/19-environments-and-config.md:139)（Docker-on-Mac は実時間性を近似不可） |
+| 10_Evaluation（bag replay・SAM 3 / DINOv3 ラベリング・回帰）| ○（offline・走行中に動かさない）| 影響なし | [04 末尾追補 §3-3](04-perception-sidewalk-and-signals.md) |
+| 04_Surface_Semantics 検証器・06 Prediction 比較実装 | ○（best-effort）| 助言喪失のみ | 出力は observation（通行可否を出さない） |
+| VLM 助言（Slow-brain 型・Mode X-ER の屋外版）| ○ | 「助言なし」に縮退して走行継続 | [:16](02-architecture-split-orin-pc-cloud.md:16) 原則 3・`UNKNOWN` を `GREEN` に昇格しない |
+| 映像記録・run record・Langfuse の受け皿 | ○ | 記録欠落のみ | [:32](02-architecture-split-orin-pc-cloud.md:32) / [jetson/03](../jetson/03-build-deploy-run-and-run-records.md) |
+| 遠隔操作者卓 UI | ○ ただし**助言計算と同居させない** | 法的必須層 = heartbeat 途絶で停止 | [:30](02-architecture-split-orin-pc-cloud.md:30) |
+
+8. **実行手段**（[D]）: PyTorch MPS は macOS 14.0+ <https://docs.pytorch.org/docs/2.14/notes/mps.html>／MLX は Apple silicon・macOS ≥ 14.0・native arm64・unified memory <https://ml-explore.github.io/mlx/build/html/install.html>／CoreML export は YOLOv8 / 11 / 26 対応・推論と検証は macOS のみ <https://docs.ultralytics.com/integrations/coreml/>／SAM 3 は 3.45 GB・473.6M（Meta 記事は 848M と不一致 [L]）・重みは HF で要申請・CoreML / MPS の記載なし <https://docs.ultralytics.com/models/sam-3/>／DINOv3 は `dinov3-license`・gated。**16 GB unified 上での同時常駐可否は未実測**。
+9. **ROS 2 側だけ塞がっている**: REP-2000 の Humble macOS は Tier 3 かつ amd64 のみ（arm64 の行なし）[D]。repo の dev Docker も [ADR-0008:63](../adr/0008-ros2-distro-humble-for-rosmaster-m1.md:63) の jazzy ドリフトが未解消。→ **随伴 Mac を ROS ノードにせず、WS クライアント + 推論プロセスにする**（§3-2 の「運べる意味を列挙できる」採用理由と一致）。
+10. **リンク**: Tailscale が既定（[jetson/02:357](../jetson/02-remote-access-and-dev-link.md:357)・CGNAT / テザリング可・DERP フォールバック [D]）。**RTT・ジッタの実測は repo に無い**（`OQ-OD50` 未決）。推論用ストリームは操作映像と別の 2 本目になり、遠隔時は LTE 上りを二重に食う（随伴時は同一 WiFi なので食わない = 随伴限定の技術的裏付け）。
+
+**§2 分担表への追記案**（裁定後に表末尾へ append する行）:
+
+| 実行場所 | 担当 | 層 | 通信断時 |
+|---|---|---|---|
+| **随伴 Mac（M4 16GB・随伴フェーズ限定・`OQ-OD28`）** | best-effort 助言計算（VLM / ER の状況説明・06 Prediction 比較・04_Surface 検証器）。出力は observation / proposal 型に限り stop_request・cmd_vel・speed_limit の producer にならない | L4 Non-RT（クラウド段の物理配置違い） | 「助言なし」に縮退して走行継続（Mac 断で停止させない） |
+| 〃 | 走行ログ・映像・run record の受け皿（X1 の出先） | 観測面 | 記録欠落のみ |
+| 〃 | 10_Evaluation（bag replay・SAM 3 / DINOv3 ラベリング・回帰）は走行中に動かさない | 観測面（offline） | 影響なし |
+
+**OPEN（`OQ-OD2*` の続き）**:
+
+- `OQ-OD28` 随伴 Mac を「クラウド段の物理配置違い」として §2 に載せるか、第 4 の段を新設するか。遠隔操作フェーズでは随伴できないため随伴フェーズ限定資産として扱うか。
+- `OQ-OD29` Mac → Orin の帰り道: `operator_link_node` の閉集合拡張か、助言専用の第 3 プロセス・第 3 port（`advisory_link_node`・0 actuation・AST pin）か。`web_bridge` に送信可能な WS を足す選択肢は無い。
+- `OQ-OD2A` 随伴 Mac と PC 卓を同一機に同居させない規律の明文化（同居させるなら Mac 断 = リンク断 = 停止になる）。

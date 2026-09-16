@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Outdoor Perception Tree — 04_Perception 内部分解 v0.2（外部知覚レビュー 2026-09-16 + 調査 6 レーン統合・提案・裁定待ち・他箱との重複裁定つき）</title>
+<style>
+  :root{
+    color-scheme: dark;
+    --bg:#1a1a1a; --bg2:#141414; --card:#222222; --card2:#262626; --surface:#2d2d2d;
+    --ink:#ededed; --muted:#c4c4c4; --faint:#8f8f8f; --line:#3a3a3a; --code:#141414;
+    --badge-ink:#1a1a1a; --head:#dcdcdc;
+    --box:#7aa2f7;     --box-bg:rgba(122,162,247,.13);
+    --sub:#9ece6a;     --sub-bg:rgba(158,206,106,.12);
+    --seam:#e0af68;    --seam-bg:rgba(224,175,104,.12);
+    --plugin:#bb9af7;  --plugin-bg:rgba(187,154,247,.12);
+    --demoted:#9a9a9a; --demoted-bg:rgba(154,154,154,.10);
+    --red:#f7768e; --yellow:#e0c07a; --teal:#7dcfff;
+    --mono:"SF Mono",ui-monospace,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);font-family:"Hiragino Sans","Noto Sans JP",sans-serif;line-height:1.55;padding:32px 20px 60px}
+  .wrap{max-width:1180px;margin:0 auto}
+  h1{font-size:21px;margin-bottom:4px;color:var(--head)}
+  h2{font-size:16px;margin:34px 0 10px;padding-left:10px;border-left:4px solid var(--teal);color:var(--head)}
+  .sub{color:var(--muted);font-size:12.5px;margin-bottom:14px}
+  .sub code,.foot code,table.diff code{font-family:var(--mono);font-size:11px}
+  a{color:var(--teal)}
+  .navbar{display:flex;flex-wrap:wrap;gap:10px;margin:10px 0 18px}
+  .navbar a{color:var(--teal);text-decoration:none;font-size:12.5px;border:1px solid var(--line);border-radius:6px;padding:4px 10px;background:var(--card)}
+  .navbar a.here{color:var(--ink);border-color:var(--teal)}
+  .legend{display:flex;flex-wrap:wrap;gap:8px 16px;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:9px 13px;font-size:12px;margin-bottom:16px}
+  .legend b{font-weight:600}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:12px}
+  .card.tree-card{overflow-x:auto}
+  .card h3{font-size:13.5px;margin-bottom:8px;color:var(--head)}
+  pre.tree{font-family:var(--mono);font-size:12.3px;line-height:1.62;white-space:pre;color:var(--ink)}
+  .p00{color:var(--head);font-weight:600} .p01{color:var(--box)} .p02{color:var(--sub)} .p03{color:var(--seam)}
+  .p04{color:var(--plugin)} .p05{color:var(--teal)} .p06{color:var(--plugin)} .p07{color:var(--yellow)}
+  .p08{color:var(--demoted)} .p09{color:var(--box)} .p10{color:var(--demoted)}
+  .tx{color:var(--faint);opacity:.85} .td{color:var(--muted)}
+  .tn{color:var(--sub);font-weight:700} .tw{color:var(--yellow);font-weight:700}
+  .to{color:var(--seam);font-weight:700} .tk{color:var(--red);font-weight:700}
+  table.diff{width:100%;border-collapse:collapse;font-size:12.5px}
+  table.diff th,table.diff td{border:1px solid var(--line);padding:6px 9px;text-align:left;vertical-align:top}
+  table.diff th{background:var(--card2);color:var(--head)}
+  table.diff td:first-child{white-space:nowrap}
+  .note{background:var(--card2);border:1px dashed var(--line);border-radius:8px;padding:8px 12px;font-size:12px;color:var(--muted);margin:10px 0}
+  .safe{background:var(--card2);border:1px dashed var(--red);border-radius:8px;padding:8px 12px;font-size:12px;color:var(--ink);margin:10px 0}
+  .foot{color:var(--muted);font-size:11.5px;margin-top:26px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>Outdoor Perception Tree — 04_Perception 内部分解 v0.2（外部知覚レビュー 2026-09-16 + 調査 6 レーン統合・提案・裁定待ち・他箱との重複裁定つき）</h1>
+<div class="sub">
+  <a href="outdoor-architecture-tree.html">Outdoor Tree v2.1</a> の箱 <b>04_Perception</b> の<b>内部</b>を、2026-09-16 受領の外部知覚レビュー（11 sub-directory 案）に当てて図示する。<b>箱 12+2 の切り方（v2.1）は不変</b>。
+  同日、調査 6 レーン（<b>A</b> 検出器の最善探し／<b>B</b> OAK on-device／<b>C</b> 歩行者信号の候補／<b>D</b> NVIDIA スタック／<b>E</b> 随伴 Mac／<b>F</b> 重複の洗い出し）の結果を統合した = <b>v0.2</b>。
+  各行に「正本（04 / 09 §2-i に既にある）」「[提案]（未凍結）」「⇄ 他箱と重なる責務」を併記し、重なりは §2 の所有裁定表で切り分ける。
+  正本 = <a href="04-perception-sidewalk-and-signals.md"><code>mode-outdoor/04</code> 末尾追補 ②</a>（§1〜§11）・<a href="09-external-review-v3-response.md"><code>09 §2-i</code></a>・<a href="00-mission-and-scope.md"><code>00 末尾追補</code></a>（依存 pin）・<a href="02-architecture-split-orin-pc-cloud.md"><code>02 末尾追補</code></a>（随伴 Mac）。
+  <b>ユーザー裁定（2026-09-16）</b>: 11 sub-dir の粒度は速度優先で問題なし。裁定待ち = <code>OQ-OD4B〜4X</code>・<code>OQ-OD28〜2A</code>。参照日 2026-09-16・[D]=実読 / [L]=検索要約 / [I]=推論。
+</div>
+<div class="navbar">
+  <a href="outdoor-architecture-tree.html">① Outdoor Tree v2.1（箱 12+2）</a>
+  <a href="outdoor-localization-perception-flow.html">② Outdoor Runtime Data Flow</a>
+  <a class="here" href="outdoor-perception-tree.html">③ 04 Perception Tree（本頁）</a>
+  <a href="04-perception-sidewalk-and-signals.md">④ 04 知覚設計（正本・末尾追補 ②）</a>
+  <a href="09-external-review-v3-response.md">⑤ 09 §2-i terrain 契約（正本）</a>
+  <a href="00-mission-and-scope.md">⑥ 00 依存 pin（正本）</a>
+  <a href="02-architecture-split-orin-pc-cloud.md">⑦ 02 随伴 Mac（正本）</a>
+  <a href="README.md">⑧ docs/mode-outdoor/README</a>
+</div>
+<div class="legend">
+  <span class="p00">■ 00 Contracts（consume 宣言）</span><span class="p01">■ 01 Geometry</span><span class="p02">■ 02 Objects</span><span class="p03">■ 03 Traffic Signals</span>
+  <span class="p04">■ 04 Surface Semantics（Phase 2）</span><span class="p05">■ 05 Temporal State</span><span class="p06">■ 06 Prediction（Phase 2）</span>
+  <span class="p07">■ 07 Output Adapters</span><span class="p08">■ 08 Quality Evidence</span><span class="p09">■ 09 Runtime &amp; Models</span><span class="p10">■ 10 Evaluation（開発時）</span>
+  <span><b class="tn">★ 正本と一致 / TARGET</b>・<b class="to">⇄ 他箱と重なる（所有裁定 = §2）</b>・<b class="tw">⚠ 未確定・書換候補</b>・<span class="tx">✗ しない（理由つき）</span>・<span class="td">[提案] = 正本なし・未凍結</span>・<b class="tk">NN</b> = 学習モデル候補（§3）</span>
+</div>
+
+<div class="card tree-card"><h3>bot1/04_Perception/ — 認識結果・不確かさ・観測品質を publish（0 actuation・P1/P2 不変）。走行許可・速度指令・MRM 選択・横断許可は<b>出さない</b>（外側の箱 = v2.1 不変）    layer: 01・05・07・04 = 自律走行（安全層外・costmap / X2 入力）／02・03・06 = L4 知覚／08・10 = 観測面／09 = 基盤／00 = 00_Platform_Contract 参照    正本: 04 末尾追補 ②・09 §2-i・doc23 P1 / P2</h3>
+<pre class="tree">
+├── <span class="p00">00_Contracts/</span>                     <span class="td">[提案]</span> <span class="to">⇄ 00_Platform_Contract・01_Sensing・warehouse_interfaces</span>   <span class="td">04 は consume 宣言だけを持ち、正本を持たない</span>
+│   ├── inputs ── RGB / depth / CameraInfo（OAK-D ×2・on-device 深度 = 01 Sensing）／ /bot1/scan ／ /bot1/odom ／ TF（03 §2-1 の配信責任）   <span class="td">正本: 04 §1-2・03 §2-1</span>
+│   ├── observation_time ── <span class="tn">★ 元計測時刻を変換後も維持</span>。OAK 経由なら depthai-ros <span class="tn">i_get_base_device_timestamp: true</span>（既定 false）が実装点   <span class="td">正本: 04 追補「時刻」・09 §2-i・OQ-OD4P</span>
+│   └── output_schema ── msg / JSON 定義は warehouse_interfaces（contract PR）／ 車体限界・校正値（h・θ・footprint・T_total・a_min）は 00 を参照   <span class="tx">✗ 04 内に車体定数を複製しない</span>
+│
+├── <span class="p01">01_Geometry/</span>                      <span class="td">距離・高さ・床面（Phase 1 主・NN なし）</span>   <span class="to">⇄ 06 costmap（通れる形状か）・02 keepout / 10（通ってよいか）・05 Mission（観測範囲外へ進ませない）</span>   <span class="td">正本: 04 §2 案 B・§3・追補</span>
+│   ├── depth_validity ── NaN / inf / 0 / 空点群 / 有効画素過少 / 凍結フレーム → 数値（有効画素率）を出す。同一画像は疑いの材料（機器フレーム番号・計測時刻・受信状態と併用）・UNKNOWN は視野外・遮蔽・鮮度切れ・変換不成立・証拠不足も含む。<span class="tw">判定点は X2 の 1 か所</span>（04 内で失効を決めない）   <span class="td">正本: 04 追補・09 §2-b</span>
+│   ├── ground_estimator ── 局所床面（RANSAC 平面 + 法線不連続）・傾斜・推定誤差   <span class="td">正本: 04 §2 案 B（縁石 2 cm を 2 m で分離 = OQ-OD45）</span>
+│   ├── obstacle_geometry ── 占有位置・高さ・張り出し（前方深度 → 高さしきい値 + 地面傾き補正）   <span class="td">正本: 04 追補「前方 depth」</span>
+│   ├── terrain_features ── 段差高・落差・勾配・凹凸・推定誤差 <span class="td">[提案: FLOOR_CONFIRMED と別フィールド・型は contract PR]</span>   <span class="to">⇄ 車体限界は 00・照合は 06 or 02 keepout マスク側（正本の沈黙・二重縮小禁止）</span>
+│   └── terrain_coverage ── <span class="tn">★ FLOOR_CONFIRMED / DROP_DETECTED / UNKNOWN</span>（観測済み領域・元計測時刻）   <span class="td">正本: 04 追補・09 §2-i</span>
+│         <span class="tw">⚠ 意味の限定（OQ-OD4C）</span>: FLOOR_CONFIRMED = <span class="tn">床を観測できた</span>（通行可の意味を持たない）／ UNKNOWN = 深度欠測（<span class="tx">✗ それだけで落下を確定させない</span>・costmap では未観測 = 通行不可）
+│         <span class="tn">★ 三分離</span>: ①床が見えた = 04 ／ ②車体が通れる形状 = 06 が 00 と照合 or 02 マスク ／ ③運用上通ってよい = 02 keepout・10   <span class="tw">⚠ 「未観測 = 通行不可」の判定 3 経路（cliff marking / costmap noDataObstacle / coverage → X2）を一本化</span>
+│         <span class="tw">⚠ MinZ（OQ-OD4Q）</span>: OAK-D Pro W は 800P で ≈ 70 cm・400P / extended で ≈ 20〜40 cm（広角逆算 ≈ 25 cm は [I]）→ h = 0.30 m では 800P の MinZ 0.70 m だと水平 ≈ 0.63 m 先までが原理的に死角 [I] → 400P / extended で再計算し OQ-OD45 の前に実測
+│         取付幾何: 観測確認済み距離 d &gt; v·T_total + v²/(2·a_min) + 余裕（T_total・a_min = 00）。<span class="tn">評価点は X2 / 09 の 1 か所</span>・04 は観測済み距離を出すだけ   <span class="td">正本: 09 §2-g</span>
+│
+├── <span class="p02">02_Objects/</span>                       <span class="td">何が・どこに（歩行者・自転車・灯器候補）</span>   <span class="to">⇄ 12（MRM 段）・06（回避・帯セレクタ入力）・07 CM（最終担保）</span>   <span class="td">正本: 04 §5・追補 §3-1</span>
+│   ├── detector ── <span class="tk">NN 本命 = RF-DETR-Nano</span>（Apache-2.0・COCO 48.4・NMS 不要・Orin Nano ≈25 FPS 報告〔vendor blog〕）／ <span class="tk">測定器 = YOLO26n/s</span>（AGPL・Orin Nano Super 公式 FP16 4.57 ms）／ 保険 = D-FINE-S・RT-DETRv2-S（Apache）   <span class="tx">✗ YOLOX-S（+8 pt 劣る・退役候補）／ ✗ DEIMv2（非商用）</span>   <span class="td">OQ-OD4N</span>
+│   │     <span class="tw">⚠ 置き場（OQ-OD4O）</span>: Orin GPU（RF-DETR）か <span class="tn">OAK on-device</span>（RVC2 = YOLOX-Nano / YOLOv6n 級 @416 67 inf/s・RF-DETR は RVC4 のみ）か。COCO の traffic light クラスで灯器候補も同じ 1 本
+│   ├── depth_association ── 検出枠 × 深度 → 3D。OAK spatial の既定 = <span class="tn">MEDIAN・bbox 0.5 倍・しきい値 100 / 10000 mm</span>（ROS は統計方式を露出しない）→ 不確かさが要るなら Orin で深度分布   <span class="td">OQ-OD4P</span>
+│   ├── tracker ── ByteTrack（Orin・学習不要）。on-device ObjectTracker はハード可だが depthai-ros に配線なし   <span class="td">OQ-OD4R</span>
+│   └── uncertainty ── 位置誤差・最終観測時刻・追跡状態（depthai_ros_msgs TrackDetection2D の tracking_status / age が型の出発点）   <span class="td">[提案]</span>
+│         <span class="tw">⚠ 書換候補（OQ-OD4D）</span>: 04 = 位置・速度・不確かさ・最終観測時刻／減速 = 帯セレクタの入力（<span class="tw">距離 → 帯の入力契約は未定（05 の OQ-OD55 と同じ穴）</span>・単一 publisher = ADR-0012）／MRM 判断・停止要求 = 12／回避 = 06／幾何反射停止 = 07（観測範囲内のみ）／駆動停止・禁止・保持 = 09
+│
+├── <span class="p03">03_Traffic_Signals/</span>               <span class="td">歩行者用信号（対象特定 + 色 + 時間方向）</span>   <span class="to">⇄ 02 crossing registry（正本・置き場 OQ-OD47）・10 crossing_gate（進入可否）・11（承認トークン）・05（route event）</span>   <span class="td">正本: 04 §4・05 §4</span>
+│   ├── target_association ── registry の crossing_id・進入方位・想定距離と観測を対応付け（RTK + 方位で ROI 投影 → ROI 内のみ → 距離・見かけサイズ妥当性）   <span class="td">正本: 04 §4</span>
+│   ├── roi_refinement ── <span class="tn">基本形 = 地図灯器 3D 位置 + カメラ内外パラメータ + 撮影時点の姿勢で候補領域 → <span class="tk">NN</span> TIER IV tlr_car_ped_yolox_s（Apache）で補正（併用）</span>。RTK + 方位だけでは不足・許容値（Autoware ±1° / ±0.5 m 相当）は M1 実測から。NN 無しで足りるかは Phase 1 で実測   <span class="tw">⚠ OQ-OD4F</span>
+│   ├── lamp_classifier ── <span class="tk">NN</span> TIER IV ped MobileNetV2（224×224・red / green / unknown・ped 21,199 枚・test 99.10 %・Apache）<span class="tw">⚠ 学習視点は非公開（OQ-OD4I）</span>／ 基準線 = HSV 古典法（学習ゼロ）／ 候補 = LYTNet / ImVisible（MIT・5 クラス・上海）   <span class="td">8 系統 = §3-2</span>
+│   ├── temporal_state ── <span class="tn">★ 青点滅 = 明滅周期 0.5 s = 2 Hz</span>（警察庁仕様書・科警研 2019 [D]・04 §4 の「~1 Hz」を訂正）→ 二段レート: 輝度サンプラ（fps・hue 面積比・立ち上がり間隔 = 周期 0.5 s）+ NN 10 Hz 多数決。GREEN は「窓内 OFF 相 0 件」を直交条件に・離脱は 1 フレーム   <span class="td">OQ-OD4J / 4K</span>
+│   └── observation_validity ── 別灯器・遮蔽・露出不良・古い観測（age = now − source_stamp・0 ≤ age &lt; max_age・max_age は時間予算から）を排除 → UNKNOWN（fail-closed）。<span class="tn">露出固定</span>（LED PWM とのエイリアシング = OQ-OD4L）。出力 = 色 + crossing_id + 対応確度 + 最終観測時刻   <span class="td">正本: 04 §4 表 UNKNOWN 行</span>
+│         音響式（日本 21,644 基・擬音式 99 %）は <span class="tn">AND 側にのみ</span>（視覚 GREEN を否定できるが肯定できない）・豪州学習モデルは日本の擬音で再学習   <span class="td">OQ-OD4M（OQ-OD48 の具体化）</span>
+│
+├── <span class="p04">04_Surface_Semantics/</span>             <span class="td">Phase 2</span>   <span class="to">⇄ 02 allowed_area / keepout（検証器）・12（不一致 → 停止段は 12 / 帯セレクタ・04 は観測のみ）</span>   <span class="td">正本: 04 §2 案 A</span>
+│   ├── sidewalk_segmentation ── <span class="tk">NN</span> PIDNet-S（MIT・Cityscapes）主候補／ YOLOE-26 open-vocab（"sidewalk / road / curb"）は学習なしの測定器（AGPL）。「歩道」≠「通れる」（段差・傾斜は 01 と併用）   <span class="td">正本: 04 §2（OQ-OD49）</span>
+│   └── surface_attributes ── 路面材質などの補助（点字ブロック・排水溝は Phase 1 では polygon 属性 = 02）   <span class="td">正本: 04 §2</span>
+│
+├── <span class="p05">05_Temporal_State/</span>                <span class="td">短期記憶の共通処理（物体履歴は 02・信号履歴は 03 が所有）</span>   <span class="to">⇄ 06 local costmap（marking 履歴 = 1 本）・02 local_terrain・03（ego motion の TF）・X2（期限）・05 Mission（後退 / 旋回の禁止 = 05 所有）</span>   <span class="td">[提案・OQ-OD4E]</span>
+│   ├── local_evidence_grid ── odom 基準の局所観測履歴。<span class="tw">⚠ costmap obstacle 層と二重化しない</span>: 04 の grid は coverage / 鮮度 / clear 条件の材料に限定
+│   ├── ego_motion_compensation ── odom / TF で過去観測を現在姿勢へ（追跡速度も自車移動を差し引く）   <span class="td">[提案]</span>
+│   └── expiry_and_reset ── 時間経過・姿勢不確かさ・odom reset で失効。<span class="tx">✗ 過去の記憶で新しい障害物・落下観測を上書きしない</span>。崖 marking は <span class="tn">★ 新しい床面観測でのみ clear</span>   <span class="td">正本: 04 追補「costmap」</span>
+│
+├── <span class="p06">06_Prediction/</span>                    <span class="td">Phase 2</span>   <span class="to">⇄ 06 Navigation（MPPI 側の評価処理まで含めて初めて意味を持つ）・12</span>   <span class="td">[提案]</span>
+│   ├── motion_baseline ── 等速モデル + 時間で広がる不確かさ・最後に実際に見た時刻を保持   <span class="td">[提案・NN 不要]</span>
+│   └── learned_prediction ── Trajectron++ 等は「単純予測で困る場面」をログで確認してから   <span class="tx">✗ 予測 NN を先に入れない</span>
+│
+├── <span class="p07">07_Output_Adapters/</span>               <span class="to">⇄ 01（変換の所有）・06 costmap・07 CM（cliff_scan dual-consumer）・X2（coverage）・10（灯器観測）・12</span>   <span class="td">正本: 04 §3・§6・doc12 §virtual_scan</span>
+│   ├── obstacle_scan_adapter ── 前方幾何障害物 → LaserScan（pointcloud_to_laserscan は 3D → 2D 変換だけ・床面推定は 01）   <span class="td">正本: 04 §6</span>
+│   ├── cliff_scan_adapter ── 落下危険境界 → <span class="tn">/bot1/cliff_scan</span> <span class="td">[提案]</span>（marking:true / clearing:false・<span class="tw">⚠ 崖 marking は別 ObstacleLayer instance（cliff_layer）へ分離: clearing:false だけでは同一 layer 内の scan の raytracing から守れない [D]</span>・clear 条件 = 支持面〔高さ・連続性〕の確認・接地点 / footprint で距離評価）   <span class="td">正本: 04 §3・追補</span>
+│   ├── terrain_grid_publisher ── <span class="tn">/bot1/terrain/coverage</span> <span class="td">[提案・v2.1]</span> + 地形特徴グリッド <span class="td">[提案・型未凍結]</span>   <span class="tw">⚠ topic を出しても Navfn / MPPI は理解しない → 06 側 layer の所有（nav2_params / launch は nav-traffic 所有・OQ-OD4H）</span>
+│   └── objects_signals_publisher ── 追跡物体（depthai-ros の vision_msgs/Detection3DArray を出発点）／ 対象灯器の観測（色・crossing_id・対応確度・最終観測時刻）<span class="td">[提案・型未凍結・contract PR]</span>
+│
+├── <span class="p08">08_Quality_Evidence/</span>              <span class="to">⇄ X2（判定 = 1 か所・経路 X2→12→09 / X2→09 / 二重経路は OQ-OD95 で一本化）・X1（記録）・09（許可失効）・11（映像鮮度は別監視）</span>   <span class="td">[提案・OQ-OD4E]</span>
+│   ├── observation_metrics ── 有効観測率・同期誤差・露出状態（04 は自己申告 producer。scan の途絶は #679 で Guardian scan_stale〔L1〕に着地済・cliff_scan / depth は未着地。depthai diagnostics も X2 入力候補 = OQ-OD4S）   <span class="td">正本: 09 §2-b</span>
+│   └── processing_metrics ── 処理時間・入力待ち時間・欠落数・<span class="tn">★ 撮影 → 消費までの遅延</span>（過負荷時に古い画像を溜めない）→ X2 compute_health（新規指標。OQ-OD87 = Guardian tick jitter は別物）   <span class="td">[提案]</span>
+│
+├── <span class="p09">09_Runtime_and_Models/</span>            <span class="to">⇄ 00 dependencies（版一覧 = 00 末尾追補）・02 §4 計算予算（屋外 S1）</span>   <span class="td">[提案]</span>
+│   ├── inference_backends ── ONNX → 実機環境の TensorRT engine（まず FP16）。<span class="tn">engine は必ずボード上で焼く</span>（GPU arch・TRT 版に固定・可搬でない）   <span class="td">OQ-OD4U</span>
+│   ├── model_manifest ── モデル名・重み hash・<span class="tn">入力サイズ・RGB/BGR・正規化・リサイズ方法・出力の解釈・ラベル順</span>・ONNX opset・TensorRT 版・GPU arch・評価結果 = 1 採用単位（04 が artifact として所有・版一覧は 00）   <span class="td">[提案]</span>
+│   └── resource_budget ── OAK = 深度（+ 検出）／GPU = 検出・信号分類／CPU = 追跡・地形・点滅判定。<span class="tn">Orin Nano Super は DLA 無し</span>（NVIDIA spec [D]）・数値は屋外 S1 実測後   <span class="td">正本: 02 §4</span>
+│
+└── <span class="p10">10_Evaluation/</span>                    <span class="td">開発時（随伴 Mac で offline 可 = 02 末尾追補）</span>   <span class="to">⇄ X1（run record = jetson/03 §3・rosbag2 配線済・実走記録は未実施）・doc20</span>   <span class="td">[提案]</span>
+    ├── bag_replay ── RGB / depth / TF / odom / 音声 / RTK を同じ場面で再生し重ね合わせ確認（実装順序 1）
+    ├── scenario_sets ── 逆光・段差・遮蔽・深度欠測・接近（SidewalkBench 2026-06 = 歩行者相互作用シナリオの参照）
+    ├── metrics ── 見逃し・誤認識・遅延・追跡誤差 + <span class="tn">★ 差別化指標</span>: 走行距離当たりの誤停止・介入回数・危険検出時点の停止余裕・灯器取り違え・認識遅延 + <span class="tn">P-6（案）低視点 gap</span>（OQ-OD4T）
+    └── regression ── モデル / 設定変更の前後を同じ経路・条件で比較。ラベリング = SAM 3 / DINOv3（gated・課金 / 外部送信ゲート = OQ-OD4V）
+
+    <span class="tx">✗ 既存の不採用は不変（v2.1 tree 04 行）: nvblox（Phase 2・ESDF は負障害物を表現しない）／ elevation_mapping_cupy（ROS 2 未マージ）／ STVL（欠落した地面を書けない）／ HP60C（構造化光・屋外主センサ不可）</span>
+</pre>
+</div>
+
+<h2>1. v2.1 tree の 04 行 → 本分解での扱い（一致 / 内部分解 / 書換候補）</h2>
+<div class="card">
+<table class="diff">
+<tr><th>v2.1 tree 04_Perception の行</th><th>本分解での行き先</th><th>判定</th></tr>
+<tr><td>★ terrain / cliff_detector（未観測 = 通行不可）</td><td>01_Geometry + 07 cliff_scan_adapter</td><td><b>一致</b>。追加は <b>UNKNOWN ≠ DROP_DETECTED</b>・FLOOR_CONFIRMED の意味限定・MinZ 実測（OQ-OD4C / 4Q）</td></tr>
+<tr><td>─▶ /bot1/cliff_scan [提案]</td><td>07 cliff_scan_adapter</td><td>一致（dual-consumer・marking 分離・clear 条件は 04 追補のまま）</td></tr>
+<tr><td>─▶ /bot1/terrain/coverage [提案・v2.1]</td><td>07 terrain_grid_publisher</td><td>一致。段差高・勾配・誤差は別フィールド（OQ-OD4C）。consumer 側 layer が要る（OQ-OD4H）</td></tr>
+<tr><td>pointcloud_to_laserscan</td><td>07 obstacle_scan_adapter（変換の所有は 01・意味付けは 04）</td><td>一致・補強</td></tr>
+<tr><td>★ traffic_light_classifier（4 状態・fail-closed・登録 ROI）</td><td>03 の 5 段</td><td><b>内部分解 + 訂正</b>: 4 状態契約は不変。<b>青点滅は 2 Hz</b>（04 §4 同一行訂正済）。NN は分類 1 本から開始し roi_refinement NN は不足が出てから</td></tr>
+<tr><td>★ pedestrian_detector ── 距離 → MRM-0 減速 → 近ければ停止</td><td>02_Objects</td><td><b>書換候補（OQ-OD4D）</b>: 04 は位置・速度・不確かさ・最終観測時刻のみ。減速は帯セレクタ入力（契約未定・05 の OQ-OD55 と同じ穴）・MRM 段は 12・回避は 06・停止は 07</td></tr>
+<tr><td>✗ nvblox ／ ✗ elevation_mapping_cupy ／ Phase 2: sidewalk_segmentation</td><td>04_Surface_Semantics（PIDNet-S を主候補・YOLOE-26 は測定器）</td><td>不変</td></tr>
+<tr><td>X1 の「rosbag2（⚠未配線）」</td><td>10_Evaluation ⇄ X1</td><td><b>訂正</b>: run record（jetson/03 §3・mwr_run_record.py）に配線済。実走記録は未実施（v2.1 tree 同一行に注記）</td></tr>
+<tr><td>（無かったもの）</td><td>00 / 05 / 06 / 08 / 09 / 10</td><td><b>新規（[提案]）</b>。00・05・08 は他箱と重なる → §2</td></tr>
+</table>
+</div>
+
+<h2>2. ⇄ 他箱と重なる責務の所有裁定（本頁の主題・[提案] → OQ-OD4B〜4H・レーン F の 47 セル監査を反映）</h2>
+<div class="note">原則: <b>04 は「観測 + 不確かさ + 品質の自己申告」だけを出す</b>。判定（停止・許可・失効）・履歴の正本・車体定数・記録は既存の箱に残し、<b>同じ情報を 2 か所で判定しない</b>。列「重なる箱」は v2.1 の箱番号、列「正本」は doc 番号（<code>mode-outdoor/NN</code>）。レーン F の指摘で足した行 = 05_Mission・04_Surface・06_Prediction。</div>
+<div class="card">
+<table class="diff">
+<tr><th>04 の sub-dir</th><th>重なる箱（v2.1）</th><th>裁定案: 04 に残るもの ／ 他箱が正本のもの</th><th>正本（doc）/ OQ</th></tr>
+<tr><td>00 Contracts</td><td>00_Platform_Contract・01_Sensing・warehouse_interfaces</td><td>04 = consume 宣言のみ。車体・校正・T_total・a_min = 00／時刻付与・OAK 内深度生成・pcl2laser の「変換」= 01／型 = contract PR</td><td>08 §2・09 §2-l・§3</td></tr>
+<tr><td>01 terrain</td><td>06 costmap・02 keepout・10</td><td><b>三分離</b>: ①床が見えた = 04／②通れる形状 = 06 が 00 と照合 <b>or</b> 02 keepout マスク側（09 §2-h・正本の沈黙・二重縮小禁止）／③通ってよい = 02 keepout（10 側は沈黙）。未観測 = 通行不可の 3 経路を一本化</td><td>08 §3-1・§5・09 §2-h・<b>OQ-OD4C</b></td></tr>
+<tr><td>01 coverage・05 Temporal</td><td><b>05_Mission_and_Route</b>（従来欠落）</td><td>観測範囲外へ進ませない・帰還の長距離後退禁止・観測範囲の向きの検証 = <b>05 が所有</b>。04 は coverage を出すだけ</td><td>09 §2-h・08 §2 05 行</td></tr>
+<tr><td>02 Objects</td><td>12・06・07・帯セレクタ（warehouse_perception speed_band）</td><td>04 = 位置・速度・不確かさ・最終観測時刻。減速 = 帯セレクタ入力（単一 publisher・<b>距離→帯の入力契約は未定（05 の OQ-OD55 と同じ穴）</b>・実装点は 08 §3-4「06」と productization/01「L4」で不一致）／MRM 判断・停止要求 = 12／回避 = 06／幾何反射停止 = 07（観測範囲内のみ）／駆動停止・禁止・保持 = 09</td><td>08 §3-4・ADR-0012 決定 11・<b>OQ-OD4D</b></td></tr>
+<tr><td>03 Signals</td><td>02 registry・10 crossing_gate・11（トークン発行）・05（route event）</td><td>registry = 02 が正本（置き場は OQ-OD47・08 は OQ-OD80）。04 は検証と観測のみ。進入可否 = 10。ROI 再投影に灯器 3D 位置が要るなら registry へ additive</td><td>08 §3-1・09 §2-f・<b>OQ-OD4F</b></td></tr>
+<tr><td>04 Surface</td><td>02 allowed_area / keepout・06・10・12</td><td>04 = 画素分類と「許可帯との不一致」の<b>観測</b>。不一致で減速 / 停止するのは 04 ではない（帯セレクタ・12）。単独権威にしない</td><td>04 §2・08 §3-4</td></tr>
+<tr><td>05 evidence_grid / expiry</td><td>06 local costmap・02 local_terrain・03（TF）・X2</td><td>障害物 marking の履歴 = costmap 1 本。04 の grid = coverage / 鮮度 / clear 条件の材料。期限判定 = X2（04 内部 grid の失効は正本の沈黙）</td><td>08 §2 06 行・09 §2-b・doc12 §virtual_scan・<b>OQ-OD4E</b></td></tr>
+<tr><td>06 Prediction</td><td>06 Navigation（MPPI）・12</td><td>Phase 2。消費する 06 側の評価処理まで含めて初めて意味を持つ（OQ-OD4H と同型）</td><td>09 §2-h</td></tr>
+<tr><td>07 Output Adapters</td><td>01・06 costmap・07 CM・X2・10・12</td><td>adapter は 04。新 topic は型未凍結（contract PR）。<b>topic を出しただけでは Navfn / MPPI は理解しない</b> → 06 側 layer の所有（nav2_params / launch は nav-traffic 所有）。崖 marking は別 ObstacleLayer instance に分離（clearing:false は同一 layer 内の他 source の raytracing から守らない [D]）</td><td>04 §3・§6・doc12 §virtual_scan・<b>OQ-OD4H</b></td></tr>
+<tr><td>08 Quality Evidence</td><td>X2・X1・09（許可失効）・11（映像鮮度）</td><td>04 = 自己申告 producer。判定点は X2 の 1 か所（経路の記述 3 通りは OQ-OD95 で一本化）。<b>/bot1/scan の途絶は #679（2026-09-16）で Guardian scan_stale（L1）に着地済・cliff_scan / depth は未着地</b>。消費側（06・10・12）は使用時点で age = now − source_stamp を共通契約で検査（入力妥当性・第 2 の停止判定点ではない）。#680 で sensor_health.py（HealthReport・health_epoch）+ stop_distance.py が純ロジックとして着地（L1・未配線）。記録 = X1。depth_validity は数値のみ</td><td>09 §2-b・OQ-OD95・<b>OQ-OD4E</b></td></tr>
+<tr><td>09 Runtime &amp; Models</td><td>00 dependencies・02 §4・X2（tick jitter）</td><td>manifest（重み hash・前処理・ラベル・opset・TRT 版・GPU arch）= 04 の artifact／版一覧 = 00（競合させない）。予算数値は屋外 S1 実測後</td><td>00 末尾追補・02 §4</td></tr>
+<tr><td>10 Evaluation</td><td>X1・doc20・随伴 Mac（02 末尾追補）</td><td>04 = scenario / metrics の定義。記録基盤 = run record（配線済・実走未）。offline 処理は随伴 Mac 可</td><td>04 §7・jetson/03 §3・02 末尾追補</td></tr>
+</table>
+</div>
+<div class="safe">守るもの（不変）: <b>P1</b> L1 反射経路に GPU 依存を持ち込まない／ <b>P2</b> cmd_vel 経路は 1 バイトも変えない（04 は 0 actuation）／ 減速は安全機構に数えない（ADR-0012）／ NN の「通れそう」で落下検出・深度欠測を解除しない／ UNKNOWN を GREEN に昇格しない（LLM / ER / 随伴 Mac の VLM 含む）／ 随伴 Mac は stop producer にならない。</div>
+
+<h2>3. NN 候補（レーン A・C 統合・すべて [提案]・Humble + JetPack 6.2.1 + TensorRT 10.3.0 での互換は OQ-OD4G）</h2>
+<div class="card"><h3>3-1. 検出器（02 detector = 歩行者・自転車・灯器候補）— ライセンスが選定軸（productization）</h3>
+<table class="diff">
+<tr><th>候補</th><th>公開</th><th>COCO mAP（n / s）</th><th>NMS-free</th><th>Orin 実測</th><th>ライセンス</th><th>判定・一次情報（2026-09-16）</th></tr>
+<tr><td><b>RF-DETR Nano / Small</b></td><td>ICLR 2026</td><td><b>48.4 / 53.0</b>（T4 TRT10.4 FP16 2.3 / 3.5 ms）</td><td>DETR 系</td><td>Orin Nano ≈25 FPS（vendor blog・条件未記載）</td><td><b>Apache-2.0</b></td><td><b>本命</b>。engine はボード上で焼く。<a href="https://rfdetr.roboflow.com/develop/learn/benchmarks/">benchmarks</a> [D]</td></tr>
+<tr><td><b>YOLO26 n / s</b></td><td>2025-09 発表・2026-01</td><td>40.9 / 48.6</td><td>Yes</td><td><b>Orin Nano Super JP6.1 n: FP16 4.57 / INT8 3.80 ms</b>（640・前後処理除く）</td><td><b>AGPL-3.0</b></td><td><b>測定器</b>（速度上限の基準・配布物に載せない）。<a href="https://docs.ultralytics.com/guides/nvidia-jetson/">Jetson guide</a> [D]</td></tr>
+<tr><td>D-FINE N / S</td><td>ICLR 2025</td><td>42.8 / 48.5</td><td>DETR 系</td><td>未報告</td><td>Apache-2.0</td><td>保険（RF-DETR の TRT 変換が詰まった場合）[D]</td></tr>
+<tr><td>DEIM（v1）N / S</td><td>CVPR 2025</td><td>43.0 / 49.0</td><td>DETR 系</td><td>未報告</td><td>Apache-2.0</td><td>代替 [D]</td></tr>
+<tr><td>RT-DETRv2-S</td><td>2024-07</td><td>48.1</td><td>Yes（明記）</td><td>未報告</td><td>Apache-2.0</td><td>第 3 の保険 [D]</td></tr>
+<tr><td>YOLOX-S（旧 §3）</td><td>2021</td><td>40.5</td><td>No</td><td>未報告</td><td>Apache-2.0</td><td><b>退役候補</b>（+8 pt 劣る）。OAK RVC2 on-device に逃がすなら YOLOX-Nano / Tiny が候補に戻る [D]</td></tr>
+<tr><td>✗ DEIMv2</td><td>2025-09</td><td>S 50.9</td><td>DETR 系</td><td>未報告</td><td><b>非商用のみ</b></td><td><b>除外</b>（DEIM v1 とは別ライセンス）[D]</td></tr>
+</table>
+<div class="note">試す順序: ① RF-DETR-Nano（自画角・自前 bag）→ ② YOLO26n/s（同一 bag で ms と検出率）→ ③ D-FINE-S。YOLO 系（26 / 11 / v12 / v13 / YOLOE / YOLOE-26 実装）は<b>すべて AGPL-3.0</b>。表の ms はほぼ T4 値であり Orin Nano Super への外挿は [I]。<b>低視点（0.3〜0.6 m）で COCO 学習 RGB 検出器の person / bicycle 精度が落ちる定量根拠は未確認</b>（LiDAR では VRU クラスで 27.5〜40.6 pt の gap [D]）→ P-6 として自分で測る（OQ-OD4T）。評価データ: SANPO（CC-BY-4.0・panoptic）は可、JRDB（CC BY-NC-SA）は評価にも使わない境界を裁定。</div>
+</div>
+
+<div class="card"><h3>3-2. 歩行者用信号（03）— 8 系統を同一 bag で比較（P-1 = 「青点滅→青」「赤→青」0 件が必達）</h3>
+<table class="diff">
+<tr><th>#</th><th>系統</th><th>入力 → 出力</th><th>学習</th><th>低視点適合</th><th>ライセンス / 一次情報</th></tr>
+<tr><td>1</td><td>汎用検出器 traffic light クラス + TIER IV ped 分類器</td><td>枠 → 切抜 224 → red / green / unknown</td><td>不要</td><td>COCO は車両用灯器中心 → 登録 ROI で救う</td><td>分類器 Apache-2.0・<a href="https://huggingface.co/AutowareFoundation/traffic_light_classifier">HF</a> [D]</td></tr>
+<tr><td>2</td><td>TIER IV fine detector + ped 分類器</td><td>登録 ROI → tlr_car_ped_yolox_s → 分類</td><td>不要</td><td>日本の灯器で学習済（ped 21,199 枚）。<b>学習視点は非公開</b>（OQ-OD4I）</td><td>Apache-2.0・<a href="https://huggingface.co/AutowareFoundation/traffic_light_fine_detector">HF</a> [D]</td></tr>
+<tr><td>3</td><td>open-vocab prompt（YOLOE / YOLO-World / Grounding DINO Edge）</td><td>"pedestrian traffic light" → 枠（色は出ない → 6 か分類器と 2 段）</td><td>不要</td><td>「歩行者用」を名指しできる</td><td>重みライセンス要確認・<a href="https://docs.ultralytics.com/models/yoloe/">YOLOE</a> [D]</td></tr>
+<tr><td>4</td><td>LYTNet / ImVisible</td><td>RGB → 5 クラス（Red / Green / Countdown Green / Countdown Blank / None）</td><td>要（日本で再学習）</td><td>歩行者視点の唯一の公開系（上海 5,059 枚）</td><td><b>MIT</b>・<a href="https://github.com/samuelyu2002/ImVisible">GitHub</a> [D]</td></tr>
+<tr><td>5</td><td>VLM（Gemini 2.x / Robotics-ER 2）オフライン評価・ラベリング</td><td>画像 → ラベル・枠</td><td>不要</td><td>視点非依存・<b>実時間には使わない</b></td><td>課金・映像外部送信ゲート（OQ-OD4V）・<a href="https://ai.google.dev/gemini-api/docs/batch-api">Batch API</a> [D]</td></tr>
+<tr><td>6</td><td>色 HSV + 形状（Autoware classifier_type 0 相当）</td><td>枠内 hue → red / green / unavailable</td><td><b>不要（基準線）</b></td><td>NN より低視点シフトに強い・逆光に弱い</td><td>Apache-2.0・IROS2024 [D]</td></tr>
+<tr><td>7</td><td>音響式信号の音声検出</td><td>MFCC 24 / 250 ms → RF → red / green</td><td>要（日本の擬音）</td><td><b>視点非依存 = 遮蔽・逆光に強い</b>。AND 側のみ</td><td><a href="https://arxiv.org/abs/2404.19281">IROS2024</a>（豪州・走行中 90.4 %）[D]・警察庁 21,644 基 [D]</td></tr>
+<tr><td>8</td><td>自前 fine-tune（最終形）</td><td>自前収集 → 単一クラス検出 + 5 クラス分類</td><td>要</td><td>自車の画角 = 定義上ベスト</td><td>自社</td></tr>
+</table>
+<div class="note"><b>日本の公開歩行者用信号データセット（青点滅ラベル付き）は無い</b>（2026-09-16）。自前収集: 走行時と同一カメラ・高さ・<b>露出固定</b>・登録横断点のみ・完全サイクルを 30 fps 連続録画・音声と RTK を同一 bag・クラスは RED / GREEN / GREEN_FLASHING / <b>OFF_OR_UNLIT</b> / NOT_VISIBLE（OQ-OD4K）・遷移フレームは人が全件目視。<b>点滅を直接クラス化した公開モデルは無い</b> → 時系列ルール（§5 of 04 追補）。</div>
+</div>
+
+<div class="card"><h3>3-3. 歩道セグ・深度・オフライン ラベリング</h3>
+<table class="diff">
+<tr><th>用途</th><th>Phase 1</th><th>Phase 2 / 評価してから</th><th>一次情報</th></tr>
+<tr><td>04 sidewalk_segmentation</td><td>使わない</td><td>PIDNet-S（MIT）主候補。YOLOE-26 open-vocab は測定器（AGPL）。SegFormer は非商用注意</td><td><a href="https://arxiv.org/abs/2602.00168">YOLOE-26</a> [D]</td></tr>
+<tr><td>01 深度の補完</td><td>OAK ステレオのみ</td><td>tiny 単眼深度 DepthART-S（Orin NX 8GB 102 FPS・2026-07）を検証器に。DA3 は AGX Orin + JP6.2 + Humble 配備例（FPS 未公表）。<b>単眼 metric を安全主判定にしない</b></td><td><a href="https://arxiv.org/abs/2607.17099">DepthART</a> [D]</td></tr>
+<tr><td>10 ラベリング（offline・Mac 可）</td><td>—</td><td>SAM 3（2025-11・473.6M〔Meta 記事 848M と不一致〕・重み要申請・2.9 s/枚）/ SAM 3.1 / DINOv3（gated）。実機には載せない</td><td><a href="https://docs.ultralytics.com/models/sam-3/">SAM 3</a> [D]</td></tr>
+</table>
+</div>
+
+<h2>4. 04 の出力 → 受け取り先（消費側が無い topic は publish しない）</h2>
+<div class="card">
+<table class="diff">
+<tr><th>04 からの出力</th><th>主な受け取り先</th><th>受け取り側の処理</th><th>所有・注意</th></tr>
+<tr><td><code>/bot1/cliff_scan</code> [提案]</td><td>06 obstacle 層・07 collision_monitor</td><td>落下危険境界を障害物として扱う</td><td>dual-consumer（doc12）。marking 分離・clear は新しい床面観測のみ。Humble CM は途絶 fail-open → X2 → 許可失効（OQ-OD44 / 95）</td></tr>
+<tr><td><code>/bot1/terrain/coverage</code> [提案・v2.1]</td><td>X2・06・05</td><td>経路周辺（今から踏む領域 + 停止までに必要な領域）の観測成立と鮮度</td><td>停止判断は 04 ではなく X2（経路は OQ-OD95 で裁定）。観測範囲外へ進ませない判断は 05</td></tr>
+<tr><td>地形特徴グリッド [提案・型未凍結]</td><td>06</td><td>車体条件（00）と照合し通行可能性を評価</td><td>06 側 costmap layer が要る（OQ-OD4H）。02 local_terrain と混ぜない</td></tr>
+<tr><td>追跡物体（位置・速度・不確かさ・最終観測時刻）[提案・Detection3DArray 出発]</td><td>06（回避）・12（MRM 段）・帯セレクタ（減速入力）</td><td>回避・接近状況の評価・MRM 段の選択</td><td>04 は減速・停止を決めない（OQ-OD4D）。距離→帯の入力契約は未定（05 の OQ-OD55 と同じ穴）</td></tr>
+<tr><td>対象灯器の観測（色・crossing_id・対応確度・最終観測時刻）[提案]</td><td>10 crossing_gate</td><td>一回限りの承認トークンと AND</td><td>04 §4 の 4 状態 fail-closed・05 §4・09 §2-f。音響は AND 側にのみ</td></tr>
+<tr><td>品質・処理時間（自己申告）[提案]</td><td>X2・X1</td><td>劣化・期限超過を検出して 12 へ</td><td>判定点は X2 の 1 か所（OQ-OD4E）。記録は X1</td></tr>
+</table>
+</div>
+
+<h2>5. 記憶の種類と所有（RAM 容量の話と分ける）</h2>
+<div class="card">
+<table class="diff">
+<tr><th>記憶の種類</th><th>具体例</th><th>所有する場所</th><th>期限</th></tr>
+<tr><td>数フレーム〜数秒の物体履歴</td><td>隠れる直前の歩行者位置・速度</td><td>04 02_Objects</td><td>追跡中の予測位置にも「最後に実際に見た時刻」を残す</td></tr>
+<tr><td>局所的な空間の記憶</td><td>少し前に観測した床・段差・観測時刻</td><td>04 05_Temporal_State（costmap 履歴と二重化しない = OQ-OD4E）</td><td>時間経過・姿勢不確かさ・odom reset で失効。過去の記憶で新しい観測を上書きしない</td></tr>
+<tr><td>場所にひも付く長期情報</td><td>灯器・縁石・許可帯・ルート属性</td><td>02 Map &amp; Route</td><td>route / datum の版で管理</td></tr>
+<tr><td>改善に使う経験</td><td>誤停止・介入・深度欠測の走行ログ</td><td>X1（run record）で記録・04 10_Evaluation で利用（随伴 Mac 可）</td><td>—</td></tr>
+</table>
+</div>
+
+<h2>6. 実装順序（レビュー 1〜5）と 08 §6 / 09 §4 の対応（レーン F 指摘 F6 / F12 を訂正）</h2>
+<div class="card">
+<table class="diff">
+<tr><th>#</th><th>作る・確認するもの</th><th>対応</th><th>ゲート</th></tr>
+<tr><td>1</td><td><b>記録・同期・可視化</b>: RGB・深度・TF・odom・音声・RTK を再生し重ね合わせ確認</td><td>08 §6 順序 2（現地でセンサと車体状態を記録）・run record（jetson/03 §3・配線済・実走未）</td><td>i_get_base_device_timestamp: true・露出固定を記録プロファイルに</td></tr>
+<tr><td>2</td><td><b>幾何認識</b>: 床・段差・欠測 → cliff_scan / coverage を 06・07・X2 へ</td><td>09 §4 順序 5・3</td><td>P-2・MinZ 実測（OQ-OD4Q）・G-OD-F1 / F5・R-26（coverage・無効深度）</td></tr>
+<tr><td>3</td><td><b>歩行者</b>: RF-DETR-Nano vs YOLO26 vs OAK on-device を同一 bag で</td><td>08 §6「確認実装」2</td><td>P-4・P-6（案・OQ-OD4T）</td></tr>
+<tr><td>4</td><td><b>信号</b>: 8 系統を走行判断に使わない観測モードで</td><td>09 §4 順序 7 の前・OQ-OD92 と両立</td><td>P-1（0 件必達）</td></tr>
+<tr><td>5</td><td><b>不足が確認できた機能</b>: セグメンテーション・追加学習・学習型予測</td><td>08 §6 順序 6（Phase 2）</td><td>10 regression</td></tr>
+</table>
+</div>
+
+<h2>7. OAK on-device 案（レーン B・案 A 推奨）— 「検出 → 3D」はカメラで完結・追跡と時系列は Orin</h2>
+<div class="card">
+<table class="diff">
+<tr><th>機能</th><th>RVC2（OAK-D Pro W・現行）</th><th>RVC4（OAK 4）</th><th>Orin に残すか</th></tr>
+<tr><td>ステレオ深度</td><td>✅ on-device</td><td>✅ 800P@60・Neural Depth</td><td>カメラ</td></tr>
+<tr><td>物体検出（YOLO）</td><td>✅ blob・FP16。YOLOv6-Nano @416 <b>67.41 inf/s</b>（Luxonis zoo）</td><td>✅ INT8。同モデル 798.38 inf/s</td><td>カメラ可（<b>RF-DETR は RVC4 のみ</b>）</td></tr>
+<tr><td>検出枠 → 3D 位置</td><td>✅ YoloSpatialDetectionNetwork（MEDIAN・bbox 0.5・mm しきい値）</td><td>✅</td><td>カメラ可。不確かさが要るなら Orin で深度分布</td></tr>
+<tr><td>物体追跡</td><td>⚠ ハード可・depthai-ros に配線なし</td><td>同左</td><td><b>当面 Orin（ByteTrack）</b></td></tr>
+<tr><td>セグ / 診断 / Neural Depth</td><td>セグ ✅・診断 ✅・Neural ✗</td><td>セグ ✗・診断 ✗（未対応）・Neural ✅</td><td>—</td></tr>
+<tr><td>自車移動補償・信号時系列・地形幾何・品質判定</td><td>✗</td><td>✗</td><td><b>Orin</b></td></tr>
+</table>
+<div class="note"><b>depthai-ros（Humble）</b>: 本線 apt = v2 2.12.2／v3 3.3.0 は ros2-testing 経由。<code>i_nn_type: spatial</code> → <code>vision_msgs/Detection3DArray</code>。<b><code>i_get_base_device_timestamp</code> の既定 false は時刻契約違反 → 屋外プロファイルで true 必須</b>（OQ-OD4P）。<b>案 A</b>: OAK-D Pro W ×2（$529・IP66・2.5〜3 W・<b>IR 点灯時最大 15 W vs USB3 バス 4.5 W</b> → 日中は IR off）+ on-device YOLO（Apache なら YOLOX-Nano / Tiny）+ spatial。<b>案 B（Phase 2 候補）</b>: OAK 4（QCS8550・NPU 48 INT8 + 12 FP16 TOPS・IP67・shop $949〜1,149・<b>平均 10〜15 W / ピーク 25 W</b>）。移せない処理は案 A と同じ・Humble は ros2-testing の v3 前提で RVC4 未対応コメントが残る → 引き金は「屋外 S1 で GPU が足りない」と確定したときだけ。リスク: 下向き MinZ（OQ-OD4Q）・クローズド FW（無効深度は Orin で自前検出）・<code>DEPTHAI_TELEMETRY=0</code>・RVC2 保守寿命・2 台同期（OQ-OD4S）。</div>
+</div>
+
+<h2>8. NVIDIA スタックの世代の壁（レーン D・pin 表の正本 = <a href="00-mission-and-scope.md">00 末尾追補</a>）</h2>
+<div class="card">
+<table class="diff">
+<tr><th>項目</th><th>値</th><th>意味</th></tr>
+<tr><td>ボード実体</td><td><b>JetPack 6.2.1</b>（L4T 36.4.4）・Ubuntu 22.04.5・kernel 5.15.148-tegra</td><td>「6.2」表記は 6.2.1 と読む。JP6 最新は 6.2.3・EOL 明文なし</td></tr>
+<tr><td>同梱（notes）</td><td>CUDA 12.6.10 / cuDNN 9.3.0 / <b>TensorRT 10.3.0</b> / VPI 3.2</td><td>ボード実測は未取得（OQ-OD4X）</td></tr>
+<tr><td>Orin Nano Super</td><td>GPU 1024 CUDA / 32 Tensor・67 INT8 TOPS・7〜25 W・<b>DLA 無し</b>（NVIDIA spec に DLA 行なし [D]）</td><td>推論は GPU 単独</td></tr>
+<tr><td>Isaac ROS</td><td><b>3.2 U1</b>（2025-01-16・Humble・JP 6.2・Orin Nano Super）。表は「6.1 and 6.2」で 6.2.1 は名指しなし</td><td>3.2 に cuVSLAM / nvblox / DNN / RT-DETR / YOLOv8 は揃う</td></tr>
+<tr><td>Isaac ROS 4.6.0</td><td>2026-08-18・JetPack 7.2（Ubuntu 24.04・CUDA 13.2.1・TRT 10.16.2）・<b>Jazzy</b>・「Jetson Orin」追加（Orin Nano 8GB 明記なし・128+ GB NVMe）</td><td><b>ADR-0008:40「Orin がサポート表に載らない」は失効</b> → 時点付き訂正済。結論（Humble 維持）は他根拠で維持（OQ-OD4W）</td></tr>
+<tr><td>Humble EOL</td><td>2027-05（REP-2000）</td><td>Jazzy + JP7.2 へ上げると壊れる: HP60C 閉ソース .so・ydlidar humble・Nav2 1.1.20 資産と CM Humble 意味論の安全設計・depthai-ros Humble バイナリ・py3.10・SD イメージ廃止</td></tr>
+</table>
+</div>
+
+<h2>9. 随伴 Mac（レーン E・正本 = <a href="02-architecture-split-orin-pc-cloud.md">02 末尾追補</a>・OQ-OD28〜2A）</h2>
+<div class="card">
+<table class="diff">
+<tr><th>処理</th><th>Mac</th><th>失ったときの挙動</th></tr>
+<tr><td>停止 producer・Guardian・地形 / cliff・coverage・信号の fail-closed 観測・X2 判定・横断ゲート・Nav2 / EKF</td><td><b>✗ Orin 常駐</b></td><td>—（Docker-on-Mac は実時間性を近似不可）</td></tr>
+<tr><td>10_Evaluation（bag replay・SAM 3 / DINOv3 ラベリング・回帰）</td><td>○ offline</td><td>影響なし</td></tr>
+<tr><td>04_Surface 検証器・06 Prediction 比較・VLM 助言（Slow-brain 型）</td><td>○ best-effort</td><td>「助言なし」に縮退して走行継続（Mac 断で停止させない）</td></tr>
+<tr><td>映像記録・run record・Langfuse の受け皿</td><td>○</td><td>記録欠落のみ</td></tr>
+<tr><td>遠隔操作者卓 UI</td><td>○ ただし助言計算と同居させない（OQ-OD2A）</td><td>法的必須層 = heartbeat 途絶で停止</td></tr>
+</table>
+<div class="note">第 4 の段を作らない（クラウド段の物理配置違い・OQ-OD28）。随伴フェーズ限定（遠隔操作フェーズでは随伴者がいない = Mac を運ぶ人がいない。届出「遠隔操作場所」が拘束するのは卓）。帰り道は web_bridge ではなく助言専用の第 3 プロセス・第 3 port（OQ-OD29・#687 の ControlKind 閉集合〔inbound 5 種〕には足さず outbound 側の別経路）。実行手段 = PyTorch MPS / MLX / CoreML（YOLOv8 / 11 / 26）[D]。ROS 2 Humble on macOS は REP-2000 で Tier 3・amd64 のみ → Mac は ROS ノードにせず WS クライアント + 推論プロセス。shared/02:134「Mac は本番では使わない」には同一行注記。</div>
+</div>
+
+<h2>10. 外部知覚レビュー返信（2026-09-16・追補 ① 時点の設計への評価）6 点の反映（正本 = 04 末尾追補 ③）</h2>
+<div class="card">
+<table class="diff">
+<tr><th>#</th><th>指摘</th><th>判定</th><th>反映</th></tr>
+<tr><td>1</td><td>8/10 多数決と点滅検出を分ける・UNKNOWN を消灯と同一視しない・窓は撮影時刻の秒数 + 欠落条件</td><td>採用</td><td>追補 §5: 窓は source_stamp の秒数と有効サンプル数の下限で定義・OFF_OR_UNLIT と NOT_VISIBLE / UNKNOWN は別クラス</td></tr>
+<tr><td>2</td><td>clearing:false は同一 ObstacleLayer 内の別 source の raytracing から崖セルを守らない → 06 側に崖専用レイヤ・clear は支持面の確認</td><td><b>採用（一次情報で確認 [D]）</b></td><td>07 cliff_scan_adapter: 別 ObstacleLayer instance（cliff_layer）に分離し max 合成・既存 virtual_scan の同居も同じ弱点（doc12 へ申し送り）</td></tr>
+<tr><td>3</td><td>ROI 再投影は NN の代替ではなく併用。灯器 3D 位置・カメラ内外パラメータ・撮影時点の姿勢が要る。許容値は M1 実測から</td><td>採用</td><td>03 roi_refinement・OQ-OD4F を「併用が基本形・NN 無しで足りるかは実測」へ</td></tr>
+<tr><td>4</td><td>鮮度判定を X2 だけに集中させない。消費側も使用時点で age = now − source_stamp を検査。stale &lt; 0.5 s は曖昧</td><td>採用</td><td>08 行・親 §4:85: 失効判定は X2（scan は #679 Guardian）の 1 系統のまま、使用時点 age 検査は各消費者の義務（入力妥当性）</td></tr>
+<tr><td>5</td><td>凍結フレームを同一画像だけで確定しない。UNKNOWN の定義を広げる</td><td>採用</td><td>01 depth_validity: 機器フレーム番号・計測時刻・受信状態と併用。UNKNOWN = 視野外・遮蔽・鮮度切れ・変換不成立・証拠不足も含む</td></tr>
+<tr><td>6</td><td>07 の「最終担保」は観測できる範囲に限定。07 = 幾何反射停止 / 12 = MRM 判断・停止要求 / 09 = 駆動停止・禁止・保持。CM は安全認証を提供しない</td><td>採用</td><td>02 Objects 行・親 §5:95・本頁の表記を統一</td></tr>
+<tr><td>—</td><td>model_manifest に入力サイズ・RGB/BGR・正規化・リサイズ・出力の解釈・ラベル順・TensorRT 版・評価結果を含め 1 採用単位に。「YOLO 系 nano の具体化 = YOLOX-S 確定」とは扱わない。batch_1/4/6 は同一モデルのバッチ数違い</td><td>採用</td><td>09 行。追補 ② では本命を RF-DETR-Nano に置換済（現在の数え方 = 初期 2 本 + 信号用 YOLOX-S は不足時 + PIDNet-S）</td></tr>
+</table>
+</div>
+
+<div class="note">未凍結の提案（正本 = 04 末尾追補 ② §10）: <code>OQ-OD4B</code> 11 sub-dir（ユーザー裁定: 粒度は問題なし）／<code>4C</code> terrain 三分離・3 経路の一本化／<code>4D</code> 歩行者行の書換（帯入力契約は 05 の OQ-OD55 と同じ穴）／<code>4E</code> 二重化回避（履歴・品質判定）／<code>4F</code> 信号 ROI 更新方式／<code>4G</code> NN の Humble + JP6.2.1 互換／<code>4H</code> consumer 側実装の所有／<code>4I</code> TIER IV 学習視点／<code>4J</code> 青点滅 2 Hz・二段レート／<code>4K</code> OFF_OR_UNLIT クラス／<code>4L</code> 露出固定／<code>4M</code> 音響 AND 側／<code>4N</code> YOLOX-S → RF-DETR-Nano・AGPL 境界／<code>4O</code> 推論の置き場／<code>4P</code> on-device spatial 契約・timestamp・depthai-ros 版／<code>4Q</code> MinZ 実測／<code>4R</code> tracker の置き場／<code>4S</code> OAK 運用契約／<code>4T</code> 低視点 gap P-6・評価データのライセンス／<code>4U</code> engine はボード上で焼く／<code>4V</code> VLM / SAM ラベリングのゲート／<code>4W</code> ADR-0008:40 の扱い／<code>4X</code> 依存 pin の空欄実測。02 側: <code>OQ-OD28 / 29 / 2A</code>（随伴 Mac）。凍結は contract PR と ADR-0014 で行う。</div>
+
+<div class="foot">
+  生成: 2026-09-16（v0 = 外部知覚レビューの 11 sub-dir 案を v2.1 の箱 04 に当て、他箱との重複を所有裁定表に写した）。更新: 2026-09-16 ②（v0.2 = 調査 6 レーン A〜F の統合・青点滅 2 Hz / ADR-0008:40 / rosbag2 配線の訂正・OQ-OD4I〜4X・02 OQ-OD28〜2A）。正本は <code>docs/mode-outdoor/04</code>（§2〜§7・末尾追補 2026-09-14 / 2026-09-16 ②）・<code>docs/mode-outdoor/09</code>（§2-b / §2-i / §3 / §4）・<code>docs/mode-outdoor/00</code>（依存 pin 追補）・<code>docs/mode-outdoor/02</code>（随伴 Mac 追補）・<code>docs/mode-outdoor/08</code>・<code>docs/architecture/23</code>（P1 / P2・S1）・<code>docs/architecture/12</code>・ADR-0008 / 0012。
+  引用規約: <code>architecture/</code>・<code>mode-*</code> docs は file/§、code は symbol。外部一次情報の URL・参照日は 04 末尾追補 §11。[提案] の topic・型・値はすべて未凍結。本 HTML は補足図解であり設計の正本ではない。
+</div>
+
+</div>
+</body>
+</html>
