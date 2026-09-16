@@ -157,6 +157,24 @@ def pose_gate_open(
     return disp > motion_epsilon or abs(dyaw) > angular_epsilon
 
 
+def age_is_unknown(age: float | None) -> bool:
+    """Is this arrival age NOT a reading the reflex can trust?
+
+    ``None`` = never received. A NEGATIVE age cannot come from one monotonic clock
+    (it cannot run backwards) and NaN compares False against every window, so both
+    are "age unknown" — the same class as never received, never "fresh"
+    (doc12 末尾【2026-09-16 追補】(3) 追記②). The scan rule then falls back to the
+    odom witness (fail-closed); the pose rule to "not stale" (doc12:509, the
+    documented safe side for an un-localized parked bot). ``+inf`` is NOT unknown:
+    it is older than any window and the strict ``>`` already fails closed on it.
+    The wired node cannot produce a negative / NaN age (both sides of the
+    subtraction are the same ``time.monotonic()`` sample of one tick); this is
+    defence in depth for callers that inject another clock into the pure logic —
+    the sibling of ``PoseGateTracker.snapshot``'s closed interval (#684).
+    """
+    return age is None or math.isnan(age) or age < 0.0
+
+
 def validate_scan_freshness_timeout(value: object) -> float:
     """Validate ``safety.scan_freshness_timeout`` at startup (doc12 末尾【2026-09-16 追補】(3)).
 
@@ -206,6 +224,7 @@ def evaluate(
        fleet-wide ``OperatorStopLatch`` is engaged (explicit clear only, never time).
     6. per-bot /{bot}/scan arrival older than ``scan_freshness_timeout`` (strict ``>``),
        OR never received while odom proves the bot is alive -> estop ``scan_stale``
+       (a negative / NaN age is "unknown" = never received, ``age_is_unknown``, 追記②)
        (doc12 末尾【2026-09-16 追補】(3)): Humble's nav2_collision_monitor drops a stale
        source's points and passes cmd_vel through (fail-open), so lidar loss must stop
        the bot HERE. Level (auto-clears when scans resume), never latched.
@@ -264,6 +283,8 @@ def evaluate(
     # doc23 A-5③: gated by odom displacement so a PARKED bot under a motion-gated
     # localizer (AMCL) is not falsely estopped (OQ-11) — the gate is fail-closed and
     # provably non-relaxing while moving, so it never delays a genuine estop.
+    # A negative / NaN pose_age is "unknown" like None -> NOT stale (doc12:509 /
+    # 追記②): the strict `>` already yields that, stated here so it reads as intent.
     for b in (bot_a, bot_b):
         if b.pose_age is not None and b.pose_age > pose_freshness_timeout:
             if not pose_gate_open(
@@ -295,15 +316,19 @@ def evaluate(
     # bot alive (odom_seen): a real bot whose lidar never came up fails CLOSED, while an
     # absent bot (single-bot ADR-0006 with _BOTS fixed at 2) stays silent. Precautionary
     # and additive: it can only ADD an estop, and it auto-clears once scans resume.
+    # 追記②: a negative / NaN age is "unknown" = the None rule (age_is_unknown), and the
+    # event detail carries only a FINITE age — never NaN / Infinity into JSON (doc12:293).
     for b in (bot_a, bot_b):
-        stale = b.odom_seen if b.scan_age is None else b.scan_age > scan_freshness_timeout
+        unknown = age_is_unknown(b.scan_age)
+        stale = b.odom_seen if unknown else b.scan_age > scan_freshness_timeout
         if stale:
+            reported = b.scan_age if not unknown and math.isfinite(b.scan_age) else None
             decisions.append(
                 Decision(
                     b.bot,
                     "estop",
                     "scan_stale",
-                    {"scan_age": b.scan_age, "freshness_timeout": scan_freshness_timeout},
+                    {"scan_age": reported, "freshness_timeout": scan_freshness_timeout},
                 )
             )
 
