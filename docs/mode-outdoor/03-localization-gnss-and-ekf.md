@@ -268,7 +268,7 @@ docs 内（file:line は執筆時に実 Read）:
 | [local_cartesian.py](../../ws/src/warehouse_nav2_bridge/warehouse_nav2_bridge/local_cartesian.py) | ECEF 経由の**厳密** WGS84 ENU（`use_local_cartesian: true`＝§2-3 / `zero_altitude: true`＝§2-3 に対応）。`numpy` / `pyproj` / GeographicLib 不使用 |
 | [route_schema.py](../../ws/src/warehouse_nav2_bridge/warehouse_nav2_bridge/route_schema.py) | §3-3 の経路ファイルの pydantic v2 モデル。**全モデル `extra="forbid"`**＝§3-3 に無いフィールドを発明しない機械的担保 |
 | [route_compile.py](../../ws/src/warehouse_nav2_bridge/warehouse_nav2_bridge/route_compile.py) | `compile_route`（案 B）/ `check_route`（**案 C**＝§3-2）/ `bridge_goals` / `spacing_violations`（§3-3 の `≤ W/3`）＋ CLI `route_compile` |
-| [test_local_cartesian.py](../../tests/unit/test_local_cartesian.py) / [test_route_compile.py](../../tests/unit/test_route_compile.py) | 独立オラクル 82 本・mutation 12/12 KILLED |
+| [test_local_cartesian.py](../../tests/unit/test_local_cartesian.py) / [test_route_compile.py](../../tests/unit/test_route_compile.py) | 独立オラクル 101 本（19 + 82）・mutation 17/17 KILLED |
 
 produce/consume の詳細は [warehouse_nav2_bridge/CLAUDE.md](../../ws/src/warehouse_nav2_bridge/CLAUDE.md) の 2026-09-16 追補。**置き場は暫定**（layer ≠ package）: 消費側が同パッケージの座標 goal seam だけなので同居させたが、Mode Outdoor の L3 成果物の正式な置き場は 00 §4「契約と命名」の裁定待ち。
 
@@ -295,9 +295,10 @@ produce/consume の詳細は [warehouse_nav2_bridge/CLAUDE.md](../../ws/src/ware
 
 1. **`yaw` の読みが本 doc 内で衝突している（要裁定）**: §3-3 の表は `x / y / yaw` を「L3 compile で焼いた結果」とするが、`lat/lon → x/y` と違い **`yaw` フィールドは 1 つしか無い**。compile 出力として上書きすると**記録された方位が失われ、再 compile が冪等でなくなる**（二重回転）。確認実装は `yaw` を**記録値として保存**し、`map` frame の yaw は `bridge_goals` の戻り値でのみ返す（§3-3 にフィールドを足さない）。**凍結時にどちらの読みを採るか決める必要がある**（`OQ-OD33` / `OQ-OD81` に含めて裁定）。
 2. **`OQ-OD3A` が未解錠のため yaw は実際には効かない**: `bridge_goals` は `(x, y, yaw_map)` を `core.py:39` の `GoalCoord` 形で返すが、`_coord_from_goal`（`core.py:106-122`）が yaw を捨て `nav2_bridge.py:84` が `orientation.w = 1.0` を焼くのは §3-1 の記述どおり。bridge 側 additive 拡張が要る。
-3. **`W/3` の規範文と例が緩く食い違う**: §3-3 は「間隔 ≤ W/3」と書きつつ例は「W = 40 m なら 10 m」（= W/4）。実装は明示式 **W/3** に従い、例の 10 m も通ることを別テストで pin した。`W` 自体が未決（`OQ-OD3B` → `OQ-OD93`）なので `spacing_violations` は W を**必須引数**とし既定値を発明しない。docs 側でどちらかに寄せるかは未裁定。
+3. **`W/3` の規範文と例が食い違う（要裁定）**: §3-3 は規範文で「間隔 ≤ W/3」と書きつつ、括弧の例は「W = 40 m なら 10 m」＝ **W/4**。10 m は両方の読みを満たすので、例はどちらが正かを決めていない。実装は**規範文の W/3 を既定**とし、比率を `spacing_violations(..., fraction=...)` の**引数**として露出した（コードを編集せず W/4 の厳しい読みを評価できる・既定経路は 1 つだけ）。例の 10 m が両読みで通ることも別テストで pin 済み。`W` 自体も未決（`OQ-OD3B` → `OQ-OD93`）なので W は**必須引数**。**凍結時に W/3 か W/4 かを決める必要がある**。
 4. **declination / `yaw_offset` を使う構成では compile がズレる**: §2-3 の「磁気 yaw を使う場合のみ実値」を採ると runtime の回転は `R_z(−(datum_yaw + declination + yaw_offset))` になるが、§3-3 の経路ファイルには該当フィールドが無い。発明せず残件とした（凍結時に datum を 3 要素のままにするか拡張するかを決める）。
-5. **`check_route` の tolerance に既定値が無い**: 案 C の許容差を定める記述が本 doc に無いため、引数必須にした（発明しない）。運用値は実測後に決める。
+5. **`check_route` の tolerance に既定値が無い**: 案 C の許容差を定める記述が本 doc に無いため、引数必須にした（発明しない）。運用値は実測後に決める。判定は **軸ごと**（`|dx|` と `|dy|` を別々に比較）なので、純粋に斜めのドリフトは `√2 × tolerance` まで通る。
+   なお **案 C は「runtime datum を渡して初めて意味を持つ」**: compile は使用した datum を出力ファイルに焼くため、datum 無しの照合は自己無矛盾の確認にしかならず、本ツールが作ったファイルでは原理的に失敗しない。CLI は `--datum-lat/--datum-lon/--datum-yaw` または `--datum-file`（navsat_transform の params YAML から §2-3 の `datum: [lat, lon, yaw]` を読む）で runtime datum を受け取り、drift 時に exit 1 する。datum 無しの場合はその旨を明示表示する。
 6. **射程外**: keepout マスク（`allowed_area`）生成と横断点レジストリ（[08 §3-1](08-architecture-v2-reference-alignment.md) の `crossing_id`・進入方位・灯器 ROI）は**スキーマが docs に無い**ため作っていない。
 7. **ROS / 実機未検証**: host の pure unit のみ。実 `navsat_transform` を立てて `fromLL` / `toLL` と突き合わせる案 C の実起動照合と `colcon build` は未実施＝実機 / Docker gate。
 

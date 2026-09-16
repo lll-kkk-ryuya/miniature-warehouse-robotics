@@ -79,18 +79,23 @@ the [提案・未凍結] format, deliberately left unresolved here.
 """
 
 import argparse
+import contextlib
 import math
 import sys
 from collections.abc import Sequence
 from pathlib import Path
+
+import yaml
 
 from warehouse_nav2_bridge.local_cartesian import LocalCartesian
 from warehouse_nav2_bridge.route_schema import Datum, Route, dump_route, load_route
 
 # Fraction of the rolling global costmap edge W that a waypoint gap must not exceed
 # (03:107「間隔 ≤ W/3」). W itself is undecided — OQ-OD3B / OQ-OD93 — so it is always an
-# explicit argument here and never defaulted.
-SPACING_WINDOW_FRACTION: float = 3.0
+# explicit argument and never defaulted. This fraction IS defaulted, to the normative 1/3 the
+# doc's prose states; see `spacing_violations` for why the doc's own W=40->10 m example (W/4)
+# leaves the constant unsettled and the value is therefore overridable.
+SPACING_WINDOW_FRACTION: float = 1.0 / 3.0
 
 
 def wrap_angle(angle_rad: float) -> float:
@@ -161,7 +166,15 @@ def check_route(route: Route, datum: Datum | None = None, *, tolerance_m: float)
 
     ``tolerance_m`` has **no default**: no documented value exists for it (the only distance
     threshold in ``03`` is the ``W/3`` spacing rule, and ``W`` is itself undecided), so inventing
-    one here would be exactly the docs-first violation this module is meant to avoid.
+    one here would be exactly the docs-first violation this module is meant to avoid. It is
+    compared **per axis** (``|dx|`` and ``|dy|`` separately), so a purely diagonal drift of up
+    to ``sqrt(2) * tolerance_m`` passes.
+
+    **Pass the runtime datum.** With ``datum=None`` this only re-derives the file against the
+    datum the file itself carries, which ``compile_route`` wrote — i.e. self-consistency, which
+    cannot fail for a file this tool produced. Detecting the drift 案 C exists for
+    (a route baked against a different datum than the one now configured in
+    ``navsat_transform``) requires passing that runtime datum explicitly.
 
     Returns a list of human-readable problems — empty means the route checks out.
     """
@@ -213,25 +226,109 @@ def bridge_goals(route: Route) -> list[dict]:
     return goals
 
 
-def spacing_violations(route: Route, window_w_m: float) -> list[tuple[int, int, float, float]]:
-    """Consecutive gaps exceeding ``W/3`` (03:107) — ``(seq_a, seq_b, distance_m, limit_m)``.
+def spacing_violations(
+    route: Route, window_w_m: float, *, fraction: float = SPACING_WINDOW_FRACTION
+) -> list[tuple[int, int, float, float]]:
+    """Consecutive gaps exceeding ``fraction * W`` (03:107) — ``(seq_a, seq_b, distance, limit)``.
 
     ``03:107``: a goal outside the rolling global costmap of edge ``W`` makes the planner fail,
-    so the rule of thumb is a waypoint spacing of ``≤ W/3`` (example: W = 40 m → 10 m). ``W``
-    is **undecided** (``OQ-OD3B``, narrowed to a two-way choice as ``OQ-OD93`` in
+    so the rule of thumb is a waypoint spacing of ``≤ W/3``. ``W`` is **undecided**
+    (``OQ-OD3B``, narrowed to a two-way choice as ``OQ-OD93`` in
     ``docs/mode-outdoor/09-external-review-v3-response.md:154``), hence the required argument.
+
+    ``fraction`` defaults to the **normative** ``1/3`` stated in the doc's prose. It is an
+    argument because ``03:107``'s own parenthetical example —「W = 40 m なら 10 m」— implies
+    ``W/4``, not ``W/3``: 10 m satisfies both readings, so the example does not settle which
+    constant the freeze should adopt. Exposing it lets the stricter reading be evaluated
+    without editing code, and keeps this module from silently picking a side. The default is
+    the formula the doc actually writes; there is no other default path.
+
+    The gap is the **planar distance in the map frame**, so it is invariant under the datum
+    rotation (a rigid transform) and correct for diagonal legs — not a per-axis difference.
     """
     if not math.isfinite(window_w_m) or window_w_m <= 0.0:
         raise ValueError(f"window_w_m must be finite and positive (got {window_w_m!r})")
+    if not math.isfinite(fraction) or fraction <= 0.0:
+        raise ValueError(f"fraction must be finite and positive (got {fraction!r})")
     if not route.is_compiled:
         raise ValueError("route is not compiled: run compile_route() before spacing_violations()")
-    limit = window_w_m / SPACING_WINDOW_FRACTION
+    limit = window_w_m * fraction
     violations: list[tuple[int, int, float, float]] = []
     for previous, current in zip(route.waypoints, route.waypoints[1:], strict=False):
         distance = math.hypot(current.x - previous.x, current.y - previous.y)  # type: ignore[operator]
         if distance > limit:
             violations.append((previous.seq, current.seq, distance, limit))
     return violations
+
+
+def datum_from_params_file(path: str | Path) -> Datum:
+    """Read the runtime ``datum: [lat, lon, yaw]`` out of a ``navsat_transform`` params YAML.
+
+    ``03:54`` fixes the parameter as ``datum: [lat, lon, yaw]`` (declared only alongside
+    ``wait_for_datum: true``). A ROS 2 params file nests that under a node name and
+    ``ros__parameters``, and **no such file exists in this repo yet** — so rather than invent a
+    node name, this searches the document for any ``datum`` key whose value is a 3-element
+    numeric sequence. Zero matches, or two that disagree, is an error rather than a guess.
+    """
+    text = Path(path).read_text(encoding="utf-8")
+    document = yaml.safe_load(text)
+    found: list[tuple[float, float, float]] = []
+
+    def walk(node: object) -> None:
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if key == "datum" and isinstance(value, (list, tuple)) and len(value) == 3:
+                    # A non-numeric "datum" key is simply not the one we are looking for.
+                    with contextlib.suppress(TypeError, ValueError):
+                        found.append(tuple(float(v) for v in value))  # type: ignore[arg-type]
+                else:
+                    walk(value)
+        elif isinstance(node, list):
+            for item in node:
+                walk(item)
+
+    walk(document)
+    if not found:
+        raise ValueError(
+            f"no 'datum: [lat, lon, yaw]' found in {path} "
+            "(docs/mode-outdoor/03-localization-gnss-and-ekf.md:54)"
+        )
+    if len(set(found)) > 1:
+        raise ValueError(f"conflicting 'datum' values in {path}: {sorted(set(found))}")
+    lat, lon, yaw = found[0]
+    return Datum(lat=lat, lon=lon, yaw=yaw)
+
+
+def _datum_from_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> Datum | None:
+    """Build the override/runtime datum from the CLI flags, or ``None`` if none were given."""
+    triple = (args.datum_lat, args.datum_lon, args.datum_yaw)
+    given = [v for v in triple if v is not None]
+    if args.datum_file is not None:
+        if given:
+            parser.error("--datum-file and --datum-lat/--datum-lon/--datum-yaw are exclusive")
+        return datum_from_params_file(args.datum_file)
+    if not given:
+        return None
+    if len(given) != 3:
+        parser.error("--datum-lat, --datum-lon and --datum-yaw must be given together")
+    return Datum(lat=triple[0], lon=triple[1], yaw=triple[2])
+
+
+def _add_datum_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--datum-lat", type=float, default=None, help="runtime datum latitude")
+    parser.add_argument("--datum-lon", type=float, default=None, help="runtime datum longitude")
+    parser.add_argument(
+        "--datum-yaw", type=float, default=None, help="runtime datum yaw in radians"
+    )
+    parser.add_argument(
+        "--datum-file",
+        type=Path,
+        default=None,
+        help=(
+            "navsat_transform params YAML to read 'datum: [lat, lon, yaw]' from (03:54); "
+            "exclusive with --datum-lat/--datum-lon/--datum-yaw"
+        ),
+    )
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -251,7 +348,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "--tolerance-m",
         type=float,
         default=None,
-        help="required with --check: max |dx|,|dy| drift in metres (no default; no doc value)",
+        help=(
+            "required with --check: max drift in metres, compared PER AXIS (|dx| and |dy| "
+            "separately), so a purely diagonal drift up to sqrt(2)x this passes. "
+            "No default (no documented value)."
+        ),
     )
     parser.add_argument(
         "--window-w-m",
@@ -259,6 +360,7 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help="optional: also report waypoint gaps above W/3 (03:107). W is OQ-OD3B/OQ-OD93.",
     )
+    _add_datum_arguments(parser)
     parser.add_argument("input", type=Path, help="route YAML to read")
     parser.add_argument(
         "output", type=Path, nargs="?", help="route YAML to write (compile mode only)"
@@ -270,7 +372,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     """CLI: ``route_compile IN.yaml OUT.yaml`` / ``route_compile --check IN.yaml``.
 
     Returns 0 on success and 1 on any validation, compile or check failure, so a teach-time
-    pipeline can gate on it.
+    pipeline can gate on it. ``yaml.YAMLError`` counts as such a failure: a truncated or
+    malformed file must exit 1 with a message, not a traceback.
+
+    ``--check`` **with** a datum (``--datum-lat/--datum-lon/--datum-yaw`` or ``--datum-file``)
+    is the real 案 C cross-check: it recomputes x/y from lat/lon against the **runtime** datum
+    and fails on drift. ``--check`` **without** one can only confirm the file is self-consistent
+    with the datum it carries — which ``compile_route`` wrote, so it cannot fail for a file this
+    tool produced — and says so on stdout.
     """
     parser = _build_parser()
     args = parser.parse_args(argv)
@@ -284,14 +393,37 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.error("compile mode requires an output file: route_compile IN.yaml OUT.yaml")
 
     try:
+        datum = _datum_from_args(args, parser)
+    except (OSError, ValueError, yaml.YAMLError) as exc:
+        print(f"route_compile: cannot read datum: {exc}", file=sys.stderr)
+        return 1
+
+    if not args.check and args.tolerance_m is not None:
+        print(
+            "route_compile: warning: --tolerance-m is ignored in compile mode "
+            "(it only applies to --check)",
+            file=sys.stderr,
+        )
+
+    try:
         route = load_route(args.input)
-    except (OSError, ValueError) as exc:
+    except (OSError, ValueError, yaml.YAMLError) as exc:
         print(f"route_compile: cannot load {args.input}: {exc}", file=sys.stderr)
         return 1
 
     failed = False
     if args.check:
-        problems = check_route(route, tolerance_m=args.tolerance_m)
+        if datum is None:
+            print(
+                "route_compile: note: no datum given, so this only checks the file against the "
+                "datum it carries (self-consistency). Pass --datum-lat/--datum-lon/--datum-yaw "
+                "or --datum-file to check against the runtime datum (案 C, 03:79)."
+            )
+        try:
+            problems = check_route(route, datum, tolerance_m=args.tolerance_m)
+        except ValueError as exc:
+            print(f"route_compile: check failed: {exc}", file=sys.stderr)
+            return 1
         for problem in problems:
             print(f"route_compile: {problem}", file=sys.stderr)
         if problems:
@@ -301,9 +433,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         checked = route
     else:
         try:
-            compiled = compile_route(route)
+            compiled = compile_route(route, datum)
             dump_route(compiled, args.output)
-        except (OSError, ValueError) as exc:
+        except (OSError, ValueError, yaml.YAMLError) as exc:
             print(f"route_compile: compile failed: {exc}", file=sys.stderr)
             return 1
         print(f"route_compile: wrote {args.output} ({len(compiled.waypoints)} waypoints)")
@@ -317,8 +449,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 1
         for seq_a, seq_b, distance, limit in violations:
             print(
-                f"route_compile: spacing seq {seq_a}->{seq_b}: {distance:.2f} m > W/3 = "
-                f"{limit:.2f} m (03:107)",
+                f"route_compile: spacing seq {seq_a}->{seq_b}: {distance:.2f} m > limit "
+                f"{limit:.2f} m (03:107 「間隔 ≤ W/3」)",
                 file=sys.stderr,
             )
         if violations:

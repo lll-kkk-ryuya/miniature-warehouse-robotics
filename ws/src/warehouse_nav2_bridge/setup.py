@@ -25,6 +25,10 @@ setup(
     # existing pyyaml note in CLAUDE.md). It is therefore declared where rosdep actually consumes
     # it for an ament_python package: `package.xml` <exec_depend>python3-yaml</exec_depend>.
     install_requires=["setuptools", "fastapi>=0.110,<1", "pydantic>=2", "uvicorn>=0.27,<1"],
+    # `route_compile` (the offline L3 CLI) parses YAML. Declared as an extra so a pip-only
+    # install has a path to pyyaml without widening install_requires; a colcon/rosdep install
+    # gets it from package.xml instead.
+    extras_require={"route": ["pyyaml"]},
     zip_safe=True,
     maintainer="kawaguchiryuya",
     maintainer_email="ryu3124ruyu@gmail.com",

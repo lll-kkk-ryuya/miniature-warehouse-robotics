@@ -30,6 +30,7 @@ from warehouse_nav2_bridge.route_compile import (
     bridge_goals,
     check_route,
     compile_route,
+    datum_from_params_file,
     enu_to_map,
     main,
     map_to_enu,
@@ -665,3 +666,339 @@ def test_console_script_entry_point_is_declared_and_resolvable() -> None:
 
     module = importlib.import_module("warehouse_nav2_bridge.route_compile")
     assert callable(module.main)
+
+
+# ───────── review follow-ups: datum drift, YAML errors, axis/wrap coverage ─────────
+
+
+def _offset_route(offsets_m: list[tuple[float, float]], datum_yaw: float = 0.0) -> Route:
+    """A route whose waypoints sit at the given cumulative (east, north) offsets from the datum.
+
+    Unlike ``_straight_route`` this can lay waypoints out along ANY direction, which is what
+    makes a per-axis spacing mistake visible (a due-east-only fixture cannot see it).
+    """
+    proj = LocalCartesian(_DATUM_LAT, _DATUM_LON)
+    waypoints = []
+    east = north = 0.0
+    for index, (d_east, d_north) in enumerate([(0.0, 0.0), *offsets_m]):
+        east += d_east
+        north += d_north
+        lat, lon, _ = proj.reverse(east, north, 0.0)
+        waypoints.append(
+            {"seq": index, "lat": lat, "lon": lon, "yaw": 0.0, "speed_band": "normal", "tags": []}
+        )
+    return compile_route(
+        _route(datum={"lat": _DATUM_LAT, "lon": _DATUM_LON, "yaw": datum_yaw}, waypoints=waypoints)
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.safety
+def test_check_route_detects_drift_on_the_y_axis_alone() -> None:
+    """A waypoint displaced only in y must be caught: the check is per axis, not x-only."""
+    route = compile_route(_route())
+    nudged = route.model_copy(
+        update={
+            "waypoints": [
+                route.waypoints[0],
+                route.waypoints[1].model_copy(update={"y": route.waypoints[1].y + 0.5}),
+                *route.waypoints[2:],
+            ]
+        }
+    )
+    problems = check_route(nudged, tolerance_m=0.1)
+    assert len(problems) == 1
+    assert "seq 12" in problems[0]
+
+
+@pytest.mark.unit
+@pytest.mark.safety
+def test_check_route_detects_drift_on_the_x_axis_alone() -> None:
+    route = compile_route(_route())
+    nudged = route.model_copy(
+        update={
+            "waypoints": [
+                route.waypoints[0],
+                route.waypoints[1].model_copy(update={"x": route.waypoints[1].x + 0.5}),
+                *route.waypoints[2:],
+            ]
+        }
+    )
+    assert len(check_route(nudged, tolerance_m=0.1)) == 1
+
+
+@pytest.mark.unit
+@pytest.mark.safety
+def test_spacing_sees_a_due_north_gap() -> None:
+    """A gap purely along +y must count: spacing is a planar distance, not |dx|."""
+    route = _offset_route([(0.0, 20.0)])
+    violations = spacing_violations(route, 40.0)
+    assert len(violations) == 1
+    assert violations[0][2] == pytest.approx(20.0, abs=1e-3)
+
+
+@pytest.mark.unit
+@pytest.mark.safety
+def test_spacing_sees_a_diagonal_gap() -> None:
+    """3-4-5: a 3 m east + 4 m north leg is 5 m long, not 3 m and not 4 m."""
+    route = _offset_route([(3.0, 4.0)])
+    violations = spacing_violations(route, 12.0)  # limit 4.0 m, and the leg is 5 m
+    assert len(violations) == 1
+    assert violations[0][2] == pytest.approx(5.0, abs=1e-3)
+    assert spacing_violations(route, 18.0) == []  # limit 6.0 m
+
+
+@pytest.mark.unit
+def test_documented_example_passes_under_both_readings_of_the_rule() -> None:
+    """03:107 prose says W/3; its example (W=40 -> 10 m) implies W/4. 10 m satisfies both.
+
+    Pins the example without picking a side, and proves the fraction argument is live: the
+    stricter W/4 reading is reachable without editing code (the freeze decides — OQ-OD3B).
+    """
+    route = _straight_route([10.0, 10.0])
+    assert spacing_violations(route, 40.0, fraction=1.0 / 3.0) == []  # limit 13.33 m
+    # Under W/4 the example sits EXACTLY on the limit (40/4 = 10 m). The fixture derives its
+    # waypoints through a lat/lon round trip, which carries ~1e-8 m of noise, so assert just
+    # above the tie instead of depending on which side of it the noise happens to land.
+    assert spacing_violations(route, 40.0 + 1e-6, fraction=1.0 / 4.0) == []  # limit ~10.00 m
+    # ... and a gap between the two readings is caught only by the stricter one.
+    between = _straight_route([12.0])
+    assert spacing_violations(between, 40.0, fraction=1.0 / 3.0) == []
+    assert len(spacing_violations(between, 40.0, fraction=1.0 / 4.0)) == 1
+    with pytest.raises(ValueError):
+        spacing_violations(route, 40.0, fraction=0.0)
+
+
+@pytest.mark.unit
+@pytest.mark.safety
+def test_bridge_goals_wraps_a_yaw_that_leaves_the_principal_range() -> None:
+    """(yaw - datum.yaw) can exceed pi; the goal must carry the WRAPPED angle.
+
+    Without the wrap the seam would eventually receive 6.0 rad where -0.283 rad was meant —
+    the same heading numerically, but outside the (-pi, pi] range every consumer assumes.
+    """
+    route = compile_route(
+        _route(
+            datum={"lat": _DATUM_LAT, "lon": _DATUM_LON, "yaw": -3.0},
+            waypoints=[
+                {
+                    "seq": 0,
+                    "lat": _DATUM_LAT,
+                    "lon": _DATUM_LON,
+                    "yaw": 3.0,
+                    "speed_band": "normal",
+                    "tags": [],
+                }
+            ],
+        )
+    )
+    raw = 3.0 - (-3.0)  # 6.0 rad, outside (-pi, pi]
+    assert raw > math.pi
+    yaw_map = bridge_goals(route)[0]["goal"][2]
+    assert -math.pi < yaw_map <= math.pi
+    assert yaw_map == pytest.approx(raw - math.tau, abs=1e-12)
+
+
+# ───────── datum override / runtime datum (案 C proper) ─────────
+
+
+@pytest.mark.unit
+@pytest.mark.safety
+def test_cli_check_detects_runtime_datum_drift(tmp_path: Path) -> None:
+    """THE 案 C case: a route baked at yaw=0, checked against a runtime datum of pi/2.
+
+    Without a datum the file is self-consistent by construction (compile writes its own datum
+    into the output), so this is the only form of --check that can actually fail.
+    """
+    src = _write(tmp_path / "in.yaml", _route_dict())
+    out = tmp_path / "out.yaml"
+    assert main([str(src), str(out)]) == 0  # baked with the file's datum (yaw = 0)
+
+    drifted = [
+        "--check",
+        "--tolerance-m",
+        "0.05",
+        "--datum-lat",
+        str(_DATUM_LAT),
+        "--datum-lon",
+        str(_DATUM_LON),
+        "--datum-yaw",
+        str(math.pi / 2),
+        str(out),
+    ]
+    assert main(drifted) == 1
+
+    matching = list(drifted)
+    matching[matching.index(str(math.pi / 2))] = "0.0"
+    assert main(matching) == 0
+
+
+@pytest.mark.unit
+def test_cli_check_without_a_datum_says_it_is_only_self_consistency(
+    tmp_path: Path, capsys: pytest.CaptureFixture
+) -> None:
+    src = _write(tmp_path / "in.yaml", _route_dict())
+    out = tmp_path / "out.yaml"
+    assert main([str(src), str(out)]) == 0
+    capsys.readouterr()
+    assert main(["--check", "--tolerance-m", "0.001", str(out)]) == 0
+    assert "self-consistency" in capsys.readouterr().out
+
+
+@pytest.mark.unit
+@pytest.mark.safety
+def test_cli_check_reads_the_runtime_datum_from_a_params_file(tmp_path: Path) -> None:
+    """--datum-file reads `datum: [lat, lon, yaw]` (03:54) from a navsat_transform params YAML."""
+    src = _write(tmp_path / "in.yaml", _route_dict())
+    out = tmp_path / "out.yaml"
+    assert main([str(src), str(out)]) == 0
+
+    params = tmp_path / "navsat.yaml"
+    params.write_text(
+        yaml.safe_dump(
+            {
+                "navsat_transform_node": {
+                    "ros__parameters": {
+                        "wait_for_datum": True,
+                        "use_local_cartesian": True,
+                        "datum": [_DATUM_LAT, _DATUM_LON, math.pi / 2],
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert main(["--check", "--tolerance-m", "0.05", "--datum-file", str(params), str(out)]) == 1
+
+
+@pytest.mark.unit
+def test_datum_from_params_file_finds_the_nested_key(tmp_path: Path) -> None:
+    params = tmp_path / "navsat.yaml"
+    params.write_text(
+        yaml.safe_dump({"a_node": {"ros__parameters": {"datum": [35.0, 139.0, 1.5]}}}),
+        encoding="utf-8",
+    )
+    datum = datum_from_params_file(params)
+    assert (datum.lat, datum.lon, datum.yaw) == (35.0, 139.0, 1.5)
+
+
+@pytest.mark.unit
+def test_datum_from_params_file_rejects_missing_and_conflicting(tmp_path: Path) -> None:
+    empty = tmp_path / "empty.yaml"
+    empty.write_text(yaml.safe_dump({"node": {"ros__parameters": {"use_local_cartesian": True}}}))
+    with pytest.raises(ValueError, match=r"no 'datum: \[lat, lon, yaw\]' found"):
+        datum_from_params_file(empty)
+
+    conflicting = tmp_path / "two.yaml"
+    conflicting.write_text(
+        yaml.safe_dump(
+            {
+                "a": {"ros__parameters": {"datum": [35.0, 139.0, 0.0]}},
+                "b": {"ros__parameters": {"datum": [36.0, 139.0, 0.0]}},
+            }
+        )
+    )
+    with pytest.raises(ValueError, match="conflicting"):
+        datum_from_params_file(conflicting)
+
+
+@pytest.mark.unit
+def test_cli_rejects_a_partial_or_doubled_datum(tmp_path: Path) -> None:
+    src = _write(tmp_path / "in.yaml", _route_dict())
+    with pytest.raises(SystemExit):
+        main(["--check", "--tolerance-m", "0.1", "--datum-lat", "35.0", str(src)])
+    with pytest.raises(SystemExit):
+        main(
+            [
+                "--check",
+                "--tolerance-m",
+                "0.1",
+                "--datum-lat",
+                "35.0",
+                "--datum-lon",
+                "139.0",
+                "--datum-yaw",
+                "0.0",
+                "--datum-file",
+                str(src),
+                str(src),
+            ]
+        )
+
+
+@pytest.mark.unit
+def test_cli_compile_honours_a_datum_override(tmp_path: Path) -> None:
+    src = _write(tmp_path / "in.yaml", _route_dict())
+    out = tmp_path / "out.yaml"
+    assert (
+        main(
+            [
+                "--datum-lat",
+                str(_DATUM_LAT),
+                "--datum-lon",
+                str(_DATUM_LON),
+                "--datum-yaw",
+                str(math.pi / 2),
+                str(src),
+                str(out),
+            ]
+        )
+        == 0
+    )
+    compiled = load_route(out)
+    assert compiled.datum.yaw == pytest.approx(math.pi / 2)
+    assert compiled == compile_route(
+        load_route(src), Datum(lat=_DATUM_LAT, lon=_DATUM_LON, yaw=math.pi / 2)
+    )
+
+
+# ───────── malformed input must exit 1, not traceback ─────────
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "text",
+    [
+        'route:\n  id: "r"\n  datum: {lat: 1.0, lon: 2.0,\n',
+        "route:\n  id: [unclosed\n",
+        "route:\n  id: 'unterminated\n",
+    ],
+)
+def test_cli_exits_one_on_malformed_yaml(tmp_path: Path, text: str) -> None:
+    """yaml.YAMLError is neither OSError nor ValueError — it must still be caught."""
+    path = tmp_path / "bad.yaml"
+    path.write_text(text, encoding="utf-8")
+    assert main([str(path), str(tmp_path / "out.yaml")]) == 1
+    assert main(["--check", "--tolerance-m", "0.1", str(path)]) == 1
+
+
+@pytest.mark.unit
+def test_cli_exits_one_on_a_malformed_datum_file(tmp_path: Path) -> None:
+    src = _write(tmp_path / "in.yaml", _route_dict())
+    bad = tmp_path / "bad_datum.yaml"
+    bad.write_text("node: {ros__parameters: {datum: [1.0,\n", encoding="utf-8")
+    assert main(["--check", "--tolerance-m", "0.1", "--datum-file", str(bad), str(src)]) == 1
+
+
+@pytest.mark.unit
+def test_cli_warns_that_tolerance_is_ignored_in_compile_mode(
+    tmp_path: Path, capsys: pytest.CaptureFixture
+) -> None:
+    src = _write(tmp_path / "in.yaml", _route_dict())
+    assert main(["--tolerance-m", "0.5", str(src), str(tmp_path / "out.yaml")]) == 0
+    assert "--tolerance-m is ignored" in capsys.readouterr().err
+
+
+@pytest.mark.unit
+def test_setup_py_declares_pyyaml_as_a_route_extra() -> None:
+    """A pip-only install of the CLI needs a declared path to pyyaml.
+
+    It lives in ``extras_require`` rather than ``install_requires`` so the latter stays 1:1 with
+    ``preflight.RUNTIME_PIP_MODULES`` (pinned by tests/unit/test_nav2_bridge_preflight.py).
+    """
+    setup_py = (
+        Path(__file__).resolve().parents[2] / "ws/src/warehouse_nav2_bridge/setup.py"
+    ).read_text()
+    assert 'extras_require={"route": ["pyyaml"]}' in setup_py
+    declared = setup_py.split("install_requires=[")[1].split("]")[0]
+    assert "pyyaml" not in declared
