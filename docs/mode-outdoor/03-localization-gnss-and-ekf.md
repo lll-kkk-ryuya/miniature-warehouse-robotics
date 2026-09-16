@@ -160,8 +160,8 @@ waypoint 間隔 vs rolling global costmap: 一辺 `W` の costmap 外に goal �
 
 | 箇所 | 事実 | pin |
 |---|---|---|
-| 購読 | `/{bot}/amcl_pose` を**ハードコード**購読 | [emergency_guardian.py:143-148](../../ws/src/warehouse_safety/warehouse_safety/emergency_guardian.py:143) [D] |
-| 閾値 | `pose_freshness_timeout: 1.0` | [emergency_guardian.py:73](../../ws/src/warehouse_safety/warehouse_safety/emergency_guardian.py:73) / [warehouse.base.yaml:21](../../config/warehouse.base.yaml:21) [D] |
+| 購読 | `/{bot}/amcl_pose` を**ハードコード**購読 | [emergency_guardian.py `EmergencyGuardian.__init__` の `/{bot}/amcl_pose` `create_subscription`（symbol 参照）](../../ws/src/warehouse_safety/warehouse_safety/emergency_guardian.py) [D] |
+| 閾値 | `pose_freshness_timeout: 1.0` | [emergency_guardian.py `EmergencyGuardian.__init__` の `pose_freshness_timeout` declare（symbol 参照）](../../ws/src/warehouse_safety/warehouse_safety/emergency_guardian.py) / [warehouse.base.yaml:21](../../config/warehouse.base.yaml:21) [D] |
 | 判定 | `pose_age` が閾値超 **かつ** 変位ゲート開 → `pose_stale` estop | [guard_logic.py:169](../../ws/src/warehouse_safety/warehouse_safety/guard_logic.py:169) / [:233](../../ws/src/warehouse_safety/warehouse_safety/guard_logic.py:233) [D] |
 | 破綻の形 | `pose_age` は最初の pose まで `None`（[guard_logic.py:29](../../ws/src/warehouse_safety/warehouse_safety/guard_logic.py:29)）で `is not None` ガードがある → AMCL が居ないと **estop は一度も発火せず、ガードは恒久沈黙**（誤発火ではなく無音化） | [D]→[I] |
 

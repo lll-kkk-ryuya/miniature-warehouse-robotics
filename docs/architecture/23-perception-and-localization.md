@@ -291,7 +291,7 @@ Status: **TARGET 設計の記録のみ**（実装なし）。CURRENT の `wareho
 
 現フェーズは単騎 ROSMASTER M1 構成（[ADR-0006](../adr/0006-single-bot-first.md)）での**商品化前の実装可能性検証**である。したがって localization・監視・知覚のコンポーネント選定は「一度決めて凍結する」のではなく、**精度が良い方を採る（accuracy-first）**方針で、実験を高速に回して都度入れ替える。§5-1 の分類表が AMCL / cuVSLAM / EKF を並べて採否を段階化しているのは、この入れ替え前提の表現である。
 
-**Guardian の pose 監視は、この入れ替えを妨げない設計にする**——これが本追補の中心命題である。CURRENT の Guardian は購読先が `f"/{bot}/amcl_pose"` にハードコードされており（`ws/src/warehouse_safety/warehouse_safety/emergency_guardian.py:99`）、localization を差し替えると安全ガードが恒久沈黙する（§5-3 TARGET-alt を既定にしない blocker ① と同根）。攻めの姿勢を安全に成立させるには、この結合を config へ逃がす必要がある。なお、本追補が blocker ① を解いても **§5-3 TARGET-alt（AMCL 省略）の不採用は変わらない**——blocker ②（VSLAM odom 原点が毎ブートで `map.pgm` 原点とズレ、絶対座標の `KNOWN_LOCATIONS` 9 キーが即失敗する）は監視プロファイルでは解けない。
+**Guardian の pose 監視は、この入れ替えを妨げない設計にする**——これが本追補の中心命題である。CURRENT の Guardian は購読先が `f"/{bot}/amcl_pose"` にハードコードされており（`ws/src/warehouse_safety/warehouse_safety/emergency_guardian.py` `EmergencyGuardian.__init__` の `create_subscription`・symbol 参照）、localization を差し替えると安全ガードが恒久沈黙する（§5-3 TARGET-alt を既定にしない blocker ① と同根）。攻めの姿勢を安全に成立させるには、この結合を config へ逃がす必要がある。なお、本追補が blocker ① を解いても **§5-3 TARGET-alt（AMCL 省略）の不採用は変わらない**——blocker ②（VSLAM odom 原点が毎ブートで `map.pgm` 原点とズレ、絶対座標の `KNOWN_LOCATIONS` 9 キーが即失敗する）は監視プロファイルでは解けない。
 
 ### A-2. 不変の床（安全ストッパー）— 攻めてよい範囲の境界
 
