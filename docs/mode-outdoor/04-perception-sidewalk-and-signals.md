@@ -193,15 +193,15 @@ docs 内（file:line は執筆時に実 Read）:
 | sub-dir | 責務（1 行） | 既に正本にあるもの | 新規 [提案] |
 |---|---|---|---|
 | 00_Contracts | inputs / observation_time / output_schema の consume 宣言 | 元計測時刻の維持（2026-09-14 追補「時刻」）・TF 配信責任（[03 §2-1](03-localization-gnss-and-ekf.md)） | 04 内に車体定数（h・θ・footprint・T_total・a_min）を複製しない = 00_Platform_Contract 参照。OAK 経由なら `i_get_base_device_timestamp: true` が時刻契約の実装点（追補 §4） |
-| 01_Geometry | depth_validity / ground_estimator / obstacle_geometry / terrain_features / terrain_coverage | 無効深度（追補）・RANSAC 床面（親 §2 案 B）・FLOOR / DROP / UNKNOWN（追補・09 §2-i）・`h / tan θ` | **`FLOOR_CONFIRMED` = 床を観測できた**に限定し、段差高・勾配・凹凸・推定誤差を別フィールド。`UNKNOWN` ≠ `DROP_DETECTED`（`OQ-OD4C`）。下向きカメラの **MinZ**（OAK 800P ≈ 70 cm）の実測が前提（`OQ-OD4Q`） |
+| 01_Geometry | depth_validity / ground_estimator / obstacle_geometry / terrain_features / terrain_coverage | 無効深度（追補）・RANSAC 床面（親 §2 案 B）・FLOOR / DROP / UNKNOWN（追補・09 §2-i）・`h / tan θ` | **`FLOOR_CONFIRMED` = 床を観測できた**に限定し、段差高・勾配・凹凸・推定誤差を別フィールド。`UNKNOWN` ≠ `DROP_DETECTED`（`OQ-OD4C`）。下向きカメラの **MinZ**（OAK 800P ≈ 70 cm）の実測が前提（`OQ-OD4Q`）／**型 v0 = `TerrainState` / `TerrainCoverage`（→ 追補 ④）** |
 | 02_Objects | detector / depth_association / tracker / uncertainty | 親 §5（前方 RGB 検出 + 深度で距離） | 検出器の既定を YOLOX-S から **RF-DETR-Nano** へ（追補 §3-1・`OQ-OD4N`）／推論の置き場 = Orin GPU か OAK on-device か（追補 §4・`OQ-OD4O`）／枠内深度の単純平均を避ける（OAK 既定 = MEDIAN・bbox 0.5 倍）／ByteTrack + odom で自車移動補償／「人は検出・距離 UNKNOWN」の出力（`OQ-OD4D`） |
 | 03_Traffic_Signals | target_association / roi_refinement / lamp_classifier / temporal_state / observation_validity | 親 §4（登録 ROI・4 状態 fail-closed・時間窓多数決 8/10・非対称閾値・stale 0.5 s） | **青点滅は 0.5 s 周期 = 2 Hz**（親 §4 同一行訂正済・追補 §5）／候補 8 系統を同一 bag で比較（追補 §3-2）／ROI ずれの更新方式（`OQ-OD4F`）／出力に `crossing_id`・対応付けの確度・最終観測時刻 |
 | 04_Surface_Semantics | sidewalk_segmentation / surface_attributes | 親 §2 案 A（Phase 2・検証器・単独権威にしない） | PIDNet-S（MIT）を Phase 2 主候補・YOLOE-26 は測定器（追補 §3-3）。**不一致の観測を出すのは 04、減速 / 停止は帯セレクタ・12**（レーン F 指摘 F3） |
 | 05_Temporal_State | local_evidence_grid / ego_motion_compensation / expiry_and_reset | 追補「costmap」（新しい床面観測でのみ clear） | 局所観測履歴は costmap obstacle 層と二重化しない（`OQ-OD4E`）。物体履歴は 02・信号履歴は 03 が所有 |
 | 06_Prediction | motion_baseline / learned_prediction | — | Phase 2（等速モデル + 広がる不確かさ → Trajectron++ は困る場面をログで確認してから） |
-| 07_Output_Adapters | obstacle_scan / cliff_scan / terrain_grid / objects_signals | 親 §3 `cliff_scan`・親 §6 `pointcloud_to_laserscan`・coverage（2026-09-14 追補） | 追跡物体は depthai-ros の `vision_msgs/Detection3DArray`（spatial）を出発点に型を決める（追補 §4）／地形特徴グリッド・灯器観測の topic（型未凍結・contract PR）／consumer 側 costmap layer の所有（`OQ-OD4H`） |
-| 08_Quality_Evidence | observation_metrics / processing_metrics | [09 §2-b](09-external-review-v3-response.md)（X2 sensor_health） | 04 は自己申告 producer・判定点は X2 の 1 か所（`OQ-OD4E`）。撮影 → 消費までの遅延・滞留を指標に（新規 compute 指標。既存 `OQ-OD87` は Guardian tick jitter であり別物） |
-| 09_Runtime_and_Models | inference_backends / model_manifest / resource_budget | [02 §4](02-architecture-split-orin-pc-cloud.md)（屋外 S1 差分測定）・依存版の一覧は 00（[00 末尾追補](00-mission-and-scope.md)） | model_manifest（モデル名・重み hash・**入力サイズ・RGB/BGR・正規化・リサイズ方法・出力の解釈・ラベル順**・ONNX opset・TensorRT 版・GPU arch・**評価結果**〔bag id + 混同行列〕= 1 採用単位・追補 ③）= 04 が artifact として所有し、版一覧は 00 へ forward link（競合させない）。**engine はボード上で焼く**（`OQ-OD4U`）。配置案 OAK = 深度（+ 検出）／GPU = 検出・信号分類／CPU = 追跡・地形・点滅判定 |
+| 07_Output_Adapters | obstacle_scan / cliff_scan / terrain_grid / objects_signals | 親 §3 `cliff_scan`・親 §6 `pointcloud_to_laserscan`・coverage（2026-09-14 追補） | 追跡物体は depthai-ros の `vision_msgs/Detection3DArray`（spatial）を出発点に型を決める（追補 §4）／地形特徴グリッド・灯器観測の topic（型未凍結・contract PR）／consumer 側 costmap layer の所有（`OQ-OD4H`）／**coverage の型 v0 = `TerrainCoverage`（→ 追補 ④）** |
+| 08_Quality_Evidence | observation_metrics / processing_metrics | [09 §2-b](09-external-review-v3-response.md)（X2 sensor_health） | 04 は自己申告 producer・判定点は X2 の 1 か所（`OQ-OD4E`）。撮影 → 消費までの遅延・滞留を指標に（新規 compute 指標。既存 `OQ-OD87` は Guardian tick jitter であり別物）／**自己申告の型 v0 = `ObservationQuality`（→ 追補 ④）** |
+| 09_Runtime_and_Models | inference_backends / model_manifest / resource_budget | [02 §4](02-architecture-split-orin-pc-cloud.md)（屋外 S1 差分測定）・依存版の一覧は 00（[00 末尾追補](00-mission-and-scope.md)） | model_manifest（モデル名・重み hash・**入力サイズ・RGB/BGR・正規化・リサイズ方法・出力の解釈・ラベル順**・ONNX opset・TensorRT 版・GPU arch・**評価結果**〔bag id + 混同行列〕= 1 採用単位・追補 ③）= 04 が artifact として所有し、版一覧は 00 へ forward link（競合させない）。**engine はボード上で焼く**（`OQ-OD4U`）。配置案 OAK = 深度（+ 検出）／GPU = 検出・信号分類／CPU = 追跡・地形・点滅判定／**manifest の型 v0 = `ModelManifest`（→ 追補 ④）** |
 | 10_Evaluation | bag_replay / scenario_sets / metrics / regression | 親 §7 P-1〜P-5・記録基盤 = run record（[jetson/03 §3](../jetson/03-build-deploy-run-and-run-records.md)・`mwr_run_record.py` が `ros2 bag record` を配線済。実走記録は未実施） | 差別化指標（走行距離当たりの誤停止・介入回数・危険検出時点の停止余裕・対象灯器の取り違え・認識結果の遅延）を additive。P-6（案）= 低視点 gap の実測（`OQ-OD4T`） |
 
 ### 2. 他箱との所有裁定（原則: 04 は観測 + 不確かさ + 品質の自己申告だけ。判定・履歴の正本・車体定数・記録は既存の箱に残し、同じ情報を 2 か所で判定しない）
@@ -337,7 +337,7 @@ Orin Nano Super 8GB の配置で足りるかは、カメラ 2 台 + Nav2 + 映�
 ### 10. OPEN QUESTIONS（本追補・接頭辞 `OQ-OD4*` の続き）
 
 - `OQ-OD4B` 04 内部分解（00〜10 の 11 sub-dir）を責務ラベルとして採るか（ユーザー裁定 2026-09-16: 粒度は問題なし・採用方向。1 dir ≠ 1 node / process・家は `warehouse_perception`）。
-- `OQ-OD4C` terrain 出力の三分離（観測 = 04／通行可能形状 = **06 が 00 と照合 or 02 keepout マスク側**〔正本の沈黙・二重縮小禁止〕／運用許可 = 02・10）と `FLOOR_CONFIRMED` の意味限定・段差高・勾配・凹凸・推定誤差の別フィールド化（型は contract PR）。`UNKNOWN` ≠ `DROP_DETECTED`。**未観測 = 通行不可の判定 3 経路（cliff marking / costmap noDataObstacle / coverage → X2）の一本化**。
+- `OQ-OD4C` terrain 出力の三分離（観測 = 04／通行可能形状 = **06 が 00 と照合 or 02 keepout マスク側**〔正本の沈黙・二重縮小禁止〕／運用許可 = 02・10）と `FLOOR_CONFIRMED` の意味限定・段差高・勾配・凹凸・推定誤差の別フィールド化（型は contract PR）。`UNKNOWN` ≠ `DROP_DETECTED`。**未観測 = 通行不可の判定 3 経路（cliff marking / costmap noDataObstacle / coverage → X2）の一本化**。型 v0 は**追補 ④**（`TerrainCoverage` = 段差高 / 勾配 / 凹凸 / 推定誤差を別 field 化・通行可否 field なし。裁定そのものは未決）。
 - `OQ-OD4D` 歩行者行の書換: 04 = 位置・速度・不確かさ・最終観測時刻のみ／減速 = 帯セレクタ入力（**距離 → 帯の入力契約は未定〔05 の `OQ-OD55` と同じ穴・05 担当へ申し送り〕・実装点の不一致 08 §3-4 vs productization/01**）／MRM 段 = 12／回避 = 06／停止 = 07（親 §5 と tree v2.1 04 行の同一行修正）。
 - `OQ-OD4E` 二重化回避の所有 2 件: 局所観測履歴（04 evidence grid）vs costmap obstacle 層の履歴／品質の自己申告（04）vs 判定（X2 の 1 か所・経路は `OQ-OD95` で一本化。判定 module は #680 `sensor_health.py` として着地済・置き場のみ未決）。
 - `OQ-OD4F` 信号 ROI の更新方式: **基本形 = 地図灯器 3D 位置 + カメラ内外パラメータ + 撮影時点の姿勢で候補領域を作り NN（TIER IV tlr YOLOX-S）で補正する併用**（RTK + 方位だけでは不足・再投影は NN の代替ではない = 追補 ③ #3）。NN 無しで足りるかは Phase 1 で実測、許容値（Autoware 既定 ±1° / ±0.5 m 相当）は M1 の実測誤差から決める。registry へ灯器 3D 位置を additive（置き場は `OQ-OD47`。#686 の L3 route schema は横断点レジストリを射程外と明記 = [03 末尾追補](03-localization-gnss-and-ekf.md)）。
@@ -386,3 +386,111 @@ Orin Nano Super 8GB の配置で足りるかは、カメラ 2 台 + Nav2 + 映�
 
 - レビュー元の URL（本追補で再確認済 [D]）: Autoware classifier <https://huggingface.co/AutowareFoundation/traffic_light_classifier>／map_based_detector <https://autowarefoundation.github.io/autoware_universe/main/perception/autoware_traffic_light_map_based_detector/>／Humble Collision Monitor <https://docs.ros.org/en/humble/p/nav2_collision_monitor/>（「does not provide hard real-time safety certifications」は [09 §8](09-external-review-v3-response.md) で既出）／ByteTrack <https://github.com/FoundationVision/ByteTrack>。
 - 申し送り（別担当・未修正）: doc12 §virtual_scan（同一 obstacle 層での clearing 弱点・nav-traffic 所有）。
+
+## 【2026-09-16 追補 ④】04 出力契約 v0（型・fail 方向・消費側の義務）— contract PR
+
+正本 = 本 doc（親 §4・2026-09-14 追補・追補 ② §1/§2/§5・追補 ③）+ [09 §2-i](09-external-review-v3-response.md:159)。本追補は **LaserScan 以外の 04 出力**（地形観測範囲・灯器観測・観測品質の自己申告）と **model_manifest** を**型として凍結**する。家は既存 `warehouse_interfaces`（additive・contract PR = [09 §3](09-external-review-v3-response.md:198)）で、実体は `ws/src/warehouse_interfaces/warehouse_interfaces/perception.py`（新規モジュール・既存 `schemas.py` は 1 文字も変えない）。
+
+**この追補が決めないこと**（発明しない）: ①**数値しきい値**（`max_age`・距離上限・duty 比・有効画素率の下限）— `max_age` は用途ごとの時間予算から消費側が決める（[追補 ③ #4](04-perception-sidewalk-and-signals.md:382)）。②**topic 名・QoS・publish 周期** — `/bot1/terrain/coverage` は案のまま（[:173](04-perception-sidewalk-and-signals.md:173)）、灯器・地形グリッドの topic は「型未凍結」のまま（[:202](04-perception-sidewalk-and-signals.md:202)）。③**判定**（走行許可・停止・通行可否）— 04 は観測と不確かさと品質を出すだけで、判定点は X2 の 1 か所（[:203](04-perception-sidewalk-and-signals.md:203) / [09 §2-b](09-external-review-v3-response.md:72)）、通行可能形状と運用許可は 06 / 02 / 10（三分離 = [:214](04-perception-sidewalk-and-signals.md:214)）。
+
+### 1. 型一覧（全 field・型・範囲・意味・fail 方向・出典）
+
+列「fail 方向」は**その値が不正だったときに契約がどちらへ倒れるか**。`ValidationError` は fail-closed（不正な観測は消費側へ届かない）を意味する。すべての float は**非有限（NaN / inf）を拒否**する（`allow_inf_nan=False`）——NaN / inf は 04 が**検出すべき「品質不成立」の印**であって値ではないため（[:174](04-perception-sidewalk-and-signals.md:174)）。`extra="ignore"` はハブ既存方針（`schemas._Model`）を継承する。
+
+#### 1-1. enum
+
+| 型 | 値（全集合） | 意味 | fail 方向 | 出典 file:line |
+|---|---|---|---|---|
+| `TerrainState` | `FLOOR_CONFIRMED` / `DROP_DETECTED` / `UNKNOWN` | 地形観測の結果。`FLOOR_CONFIRMED` は**「床を観測できた」に限定**（通行可の意味を持たない）・`UNKNOWN` ≠ `DROP_DETECTED` | 未知値は `ValidationError`（許容的な既定へ落ちない） | [:173](04-perception-sidewalk-and-signals.md:173) / [:196](04-perception-sidewalk-and-signals.md:196) / [09 §2-i](09-external-review-v3-response.md:159) |
+| `SignalState` | `GREEN` / `GREEN_FLASHING` / `RED` / `UNKNOWN` | 歩行者用信号の窓判定結果 | `UNKNOWN` は**禁止（fail-closed）**で、LLM / ER は `GREEN` へ昇格できない | [:85](04-perception-sidewalk-and-signals.md:85)〜[:88](04-perception-sidewalk-and-signals.md:88) / [:225](04-perception-sidewalk-and-signals.md:225) |
+| `LampEvidence` | `RED` / `GREEN` / `GREEN_FLASHING` / `OFF_OR_UNLIT` / `NOT_VISIBLE` | **1 フレームの証拠**クラス（状態ではない）。`OFF_OR_UNLIT`（消灯相）と `NOT_VISIBLE`（遮蔽・欠落）は別クラス | 両者を潰すと点滅が「青」に見える＝この分離が防波堤 | [:261](04-perception-sidewalk-and-signals.md:261) / [:307](04-perception-sidewalk-and-signals.md:307) / [追補 ③ #1](04-perception-sidewalk-and-signals.md:379) |
+| `ChannelOrder` | `RGB` / `BGR` | manifest の入力チャネル順 | 未知値は `ValidationError` | [追補 ③ 最終行](04-perception-sidewalk-and-signals.md:385) / [:204](04-perception-sidewalk-and-signals.md:204) |
+
+#### 1-2. `ObservationQuality`（08_Quality_Evidence・自己申告）
+
+X2 の入力型 `warehouse_safety.sensor_health.SourceObservation`（`stamp_s` / `received_monotonic_s` / `valid_fraction` / `digest`）へ**翻訳なしで渡せる**意味に揃える。`received_monotonic_s` は受信側の値なので 04 は持たない。
+
+| field | 型・範囲 | 意味 | fail 方向 | 出典 file:line |
+|---|---|---|---|---|
+| `valid_fraction` | `float`・`[0,1]`・有限・**必須** | 有効観測の比率 | 範囲外・非有限は `ValidationError`。X2 側では範囲外＝`INVALID` | [:174](04-perception-sidewalk-and-signals.md:174) / [:203](04-perception-sidewalk-and-signals.md:203) / [09 §2-b](09-external-review-v3-response.md:72) |
+| `frame_digest` | `str \| None`・既定 `None` | payload **内容**の指紋（凍結フレーム検出用。X2 の `digest` に対応） | `None` = この message では凍結検出を無効化する**明示の選択** | [:174](04-perception-sidewalk-and-signals.md:174) / [追補 ③ #5](04-perception-sidewalk-and-signals.md:383) |
+| `device_frame_seq` | `int \| None`・`>= 0`・既定 `None` | **機器側**フレーム番号 | 負は `ValidationError`。`None` = 機器が出さない。同一画像だけで凍結を確定させないための第 2 の材料 | [追補 ③ #5](04-perception-sidewalk-and-signals.md:383) |
+| `processing_latency_s` | `float \| None`・`>= 0`・有限・既定 `None` | 撮影 → 出力の経過秒 | 負は `ValidationError`（出力が撮影に先行しない＝時計取違え。受け入れると死んだ経路が「速い」に見える） | [:203](04-perception-sidewalk-and-signals.md:203) |
+
+#### 1-3. `TerrainCoverage`（07_Output_Adapters・coverage 出力）
+
+| field | 型・範囲 | 意味 | fail 方向 | 出典 file:line |
+|---|---|---|---|---|
+| `source_stamp_s` | `float`・有限・**必須** | **元の**計測時刻 | 付け直し禁止。**鮮度判定にこの値を使わない**（受信側の単調時計で判定 = [09 規則 (4)](09-external-review-v3-response.md:67)） | [:177](04-perception-sidewalk-and-signals.md:177) / [09 規則 (4)](09-external-review-v3-response.md:67) |
+| `reference` | `str`・非空・**必須** | 距離の基準（**車輪接地点・footprint**。車体中心ではない） | 空・空白のみは `ValidationError`（基準の無い距離は使えない） | [:176](04-perception-sidewalk-and-signals.md:176) |
+| `state` | `TerrainState`・**必須** | 観測結果 | 未知値は `ValidationError` | [:173](04-perception-sidewalk-and-signals.md:173) |
+| `confirmed_distance_m` | `float \| None`・`>= 0` | `FLOOR_CONFIRMED` が連続する距離 | `None` = **確認なし**（「0 m 確認」ではない）。停止距離の不等式の評価点は X2 / 09 で、04 は観測済み距離を出すだけ | [:175](04-perception-sidewalk-and-signals.md:175) / [:331](04-perception-sidewalk-and-signals.md:331) |
+| `nearest_drop_distance_m` | `float \| None`・`>= 0` | 最も近い落下境界までの距離 | `None` = **未検出**（不存在ではない） | [:173](04-perception-sidewalk-and-signals.md:173) / [:176](04-perception-sidewalk-and-signals.md:176) |
+| `step_height_m` | `float \| None`・符号あり | 段差高 | 下り段差があるため**符号を拘束しない** | [:196](04-perception-sidewalk-and-signals.md:196) |
+| `slope` | `float \| None`・**単位未定** | 勾配 | 単位は docs が沈黙＝`OQ-OD4Y-c`（v0 は無次元のまま運ぶ） | [:196](04-perception-sidewalk-and-signals.md:196) |
+| `roughness_m` | `float \| None`・`>= 0` | 凹凸 | 負は `ValidationError` | [:196](04-perception-sidewalk-and-signals.md:196) |
+| `estimate_error_m` | `float \| None`・`>= 0` | 推定誤差 | 負は `ValidationError`。**どの量の誤差か・統計的意味**は docs が沈黙＝`OQ-OD4Y-c` | [:196](04-perception-sidewalk-and-signals.md:196) |
+| `quality` | `ObservationQuality`・**必須** | 品質の自己申告 | 省略不可（品質を名乗らない観測を許さない） | [:203](04-perception-sidewalk-and-signals.md:203) |
+| **（不在）通行可否・許可・costmap 値** | — | **持たない** | 三分離: ②通れる形状 = 06 が 00 の限界値と照合 or 02 keepout／③運用許可 = 02・10 | [:214](04-perception-sidewalk-and-signals.md:214) / [`OQ-OD4C`](04-perception-sidewalk-and-signals.md:340) |
+
+#### 1-4. `TrafficSignalObservation`（03_Traffic_Signals・窓の観測）
+
+| field | 型・範囲 | 意味 | fail 方向 | 出典 file:line |
+|---|---|---|---|---|
+| `crossing_id` | `str`・非空・**必須** | 事前登録した横断点の id | 空は `ValidationError`。registry の**正本は 02**（04 は consume して「自分の灯器」を検証するだけ） | [:79](04-perception-sidewalk-and-signals.md:79) / [:217](04-perception-sidewalk-and-signals.md:217) |
+| `source_stamp_s` | `float`・有限・**必須** | 窓内**最新証拠**の元計測時刻 | 付け直し禁止。消費側が `age = now − source_stamp` を作るための唯一の材料 | [:177](04-perception-sidewalk-and-signals.md:177) / [:85](04-perception-sidewalk-and-signals.md:85) |
+| `window_span_s` | `float`・`> 0`・有限・**必須** | 窓 W の**秒数** | 0・負は `ValidationError`。**フレーム数で窓を定義しない** | [:307](04-perception-sidewalk-and-signals.md:307) / [追補 ③ #1](04-perception-sidewalk-and-signals.md:379) |
+| `sample_count` | `int`・`>= 0`・**必須** | 窓内の有効サンプル数（窓定義のもう半分＝下限を消費側が検査） | 負は `ValidationError` | [:307](04-perception-sidewalk-and-signals.md:307) / [追補 ③ #1](04-perception-sidewalk-and-signals.md:379) |
+| `state` | `SignalState`・**必須** | 窓判定の結果 | `UNKNOWN` は禁止（fail-closed）・昇格不可 | [:85](04-perception-sidewalk-and-signals.md:85)〜[:88](04-perception-sidewalk-and-signals.md:88) |
+| `is_flashing` | `bool \| None` | レート A（輝度サンプラの立ち上がりエッジ間隔）の点滅判定 | `None` = **判定不能**であり「点滅なし」ではない。消費側は不在を否定と読まない | [:307](04-perception-sidewalk-and-signals.md:307) |
+| `measured_period_s` | `float \| None`・`> 0`・有限 | 実測した明滅周期 | 0・負は `ValidationError`。**0.5 s = 2 Hz は期待値であって検証境界ではない**（しきい値を型に埋めない） | [:305](04-perception-sidewalk-and-signals.md:305) / [:86](04-perception-sidewalk-and-signals.md:86) |
+| `off_phase_count` | `int`・`>= 0`・**必須** | 窓内の **OFF 相**の件数 | 消費側が「**窓内 OFF 相 0 件**」を GREEN の直交条件に使う。**二段レート**（レート A = カメラ fps / レート B = 分類器）ゆえ `sample_count` との大小を**拘束しない** | [:307](04-perception-sidewalk-and-signals.md:307) |
+| `roi_consistent` | `bool`・**必須** | 登録 ROI との整合 | GREEN の AND 項の 1 つ | [:85](04-perception-sidewalk-and-signals.md:85) |
+| `quality` | `ObservationQuality`・**必須** | 品質の自己申告 | 省略不可 | [:203](04-perception-sidewalk-and-signals.md:203) |
+| **（不在）`max_age`** | — | **持たない** | 鮮度は**消費側の義務**（使用時点で `0 ≤ age < max_age` を自分の時間予算で検査）。producer が窓を配ると停止判定点が 2 つになる | [追補 ③ #4](04-perception-sidewalk-and-signals.md:382) / [:222](04-perception-sidewalk-and-signals.md:222) |
+
+#### 1-5. `ModelManifest` / `EvaluationRecord`（09_Runtime_and_Models・1 採用単位）
+
+追補 ③ 最終行と追補 ② §1 09 行が挙げる項目を**全部** field にする。版**一覧**は 00 が正本で、ここには複製しない。
+
+| field | 型・範囲 | 意味 | fail 方向 | 出典 file:line |
+|---|---|---|---|---|
+| `model_name` | `str`・非空 | モデル名 | 空は `ValidationError` | [追補 ③ 最終行](04-perception-sidewalk-and-signals.md:385) |
+| `weights_sha256` | `str`・64 桁 hex | 重み hash | 非 hex・桁違いは `ValidationError`（field 名が特定の digest を名乗っている） | [追補 ③ 最終行](04-perception-sidewalk-and-signals.md:385) |
+| `input_size` | `tuple[int, int]`・各 `> 0` | 入力サイズ `(width, height)` | 0・負は `ValidationError` | [追補 ③ 最終行](04-perception-sidewalk-and-signals.md:385) |
+| `channel_order` | `ChannelOrder` | RGB / BGR | 未知値は `ValidationError` | [追補 ③ 最終行](04-perception-sidewalk-and-signals.md:385) |
+| `normalization` | `str`・非空 | 正規化 | 語彙は docs が挙げていないため自由文字列（`OQ-OD4Y-f`） | [追補 ③ 最終行](04-perception-sidewalk-and-signals.md:385) |
+| `resize_method` | `str`・非空 | リサイズ方法 | 同上 | [追補 ③ 最終行](04-perception-sidewalk-and-signals.md:385) |
+| `output_interpretation` | `str` | 出力の解釈 | 同上 | [追補 ③ 最終行](04-perception-sidewalk-and-signals.md:385) |
+| `label_order` | `list[str]`・非空 | ラベル**順** | 空は `ValidationError`（index 2 が何かを言えない manifest は manifest ではない） | [追補 ③ 最終行](04-perception-sidewalk-and-signals.md:385) |
+| `onnx_opset` | `int`・`> 0` | ONNX opset | 0・負は `ValidationError` | [:204](04-perception-sidewalk-and-signals.md:204) |
+| `tensorrt_version` | `str` | TensorRT 版 | — | [追補 ③ 最終行](04-perception-sidewalk-and-signals.md:385) |
+| `gpu_arch` | `str` | GPU arch | `tensorrt_version` と併せて「engine が可搬でない」理由そのもの | [:204](04-perception-sidewalk-and-signals.md:204) / [`OQ-OD4U`](04-perception-sidewalk-and-signals.md:358) |
+| `license` | `str` | ライセンス | 配布可否（AGPL 境界）は manifest と一緒に動く | [`OQ-OD4N`](04-perception-sidewalk-and-signals.md:351) |
+| `engine_built_on_board` | `bool` | engine をボード上で焼いたか | `OQ-OD4U`「engine は必ずボード上で焼く」を記録可能にする | [`OQ-OD4U`](04-perception-sidewalk-and-signals.md:358) |
+| `evaluation` | `EvaluationRecord`・**必須** | 評価結果 | **省略不可**＝評価の無いモデルは 1 採用単位にならない | [追補 ③ 最終行](04-perception-sidewalk-and-signals.md:385) / [:204](04-perception-sidewalk-and-signals.md:204) |
+| `EvaluationRecord.dataset_id` | `str`・非空 | bag / dataset id | 空は `ValidationError`（出所の無い数値は証拠にならない） | [:204](04-perception-sidewalk-and-signals.md:204) |
+| `EvaluationRecord.metrics` | `dict[str, float]`・全要素有限 | 指標（混同行列を含む） | 非有限は `ValidationError`。**キー集合は docs 未定**＝`OQ-OD4Y-e`（形を発明せず開いた map のまま） | [:204](04-perception-sidewalk-and-signals.md:204) / [親 §7 P-1](04-perception-sidewalk-and-signals.md:117) |
+
+### 2. 消費側の義務（型に埋めなかったもの）
+
+1. **鮮度**: 使用時点で `age = now − source_stamp_s`・`0 ≤ age < max_age` を**消費側が**検査する（[追補 ③ #4](04-perception-sidewalk-and-signals.md:382)）。`max_age` はその消費者の時間予算から決め、04 は配らない。これは**入力妥当性**であって第 2 の停止判定点ではない。
+2. **鮮度の時計**: `source_stamp_s` は**元計測時刻**であり、staleness は**受信側の単調時計**で測る（[09 規則 (4)](09-external-review-v3-response.md:67)）。両者を取り違えると死んだ source が永久に fresh に見える。
+3. **`None` の読み方**: `confirmed_distance_m=None` は「0 m 確認」ではなく、`nearest_drop_distance_m=None` は「崖が無い」ではなく、`is_flashing=None` は「点滅していない」ではない。**証拠の不在を否定と読まない**。
+4. **GREEN の直交条件**: `off_phase_count == 0` ∧ `roi_consistent` ∧ 鮮度、を消費側（L2 横断ゲート = 10）が AND する（[:307](04-perception-sidewalk-and-signals.md:307) / [:85](04-perception-sidewalk-and-signals.md:85)）。
+5. **判定点の一意性**: 品質の**判定**は X2 の 1 か所（[:203](04-perception-sidewalk-and-signals.md:203)）。04 の自己申告値を別の場所で二度判定しない（[`OQ-OD4E`](04-perception-sidewalk-and-signals.md:342)）。
+
+### 3. OPEN QUESTIONS（本追補で**発明せずに残した**もの）
+
+- `OQ-OD4Y-a` `ObservationQuality.frame_digest` と X2 `SourceObservation.digest` の**名前差**（意味は同一）。配線時にどちらへ寄せるか（本 v0 は `frame_digest` のまま）。`source_stamp_s` ↔ `stamp_s` も同型。
+- `OQ-OD4Y-b` `valid_fraction` を**必須・非 NaN** にしたため、「比率を計算できない producer」の表現が無い（X2 側は NaN を「計算できなかった」として `INVALID` 扱いにできる）。送らない／`0.0` を送る／optional 化のどれを契約にするか。
+- `OQ-OD4Y-c` `slope` の**単位**（rad / deg / 比）と `estimate_error_m` が**どの量の誤差**か（距離か高さか）・統計的意味（1σ か最大値か）。docs は field の存在だけを言い単位を pin していない（[:196](04-perception-sidewalk-and-signals.md:196)）。
+- `OQ-OD4Y-d` `sample_count` が**どのレートのサンプル**を数えるか（レート A = カメラ fps / レート B = 分類器 / 両方）。二段レート（[:307](04-perception-sidewalk-and-signals.md:307)）ゆえ `off_phase_count` との大小関係を契約にできない。
+- `OQ-OD4Y-e` `EvaluationRecord.metrics` の**キー集合**（混同行列をどう平坦化するか。親 §7 P-1 の「青点滅→青 / 赤→青 = 0 件」を機械可読にする形）。
+- `OQ-OD4Y-f` `normalization` / `resize_method` / `output_interpretation` を自由文字列のままにするか enum 化するか（実装が 1 本に決まってから）。
+- `OQ-OD4Y-g` `ModelManifest.evaluation` を**必須**にしたため、評価前の draft manifest を表現できない（1 採用単位 = [追補 ③ 最終行](04-perception-sidewalk-and-signals.md:385) を優先した）。draft 状態を別型にするか optional へ緩めるか。
+- `OQ-OD4Y-h` `reference` の**語彙**（`frame_id` か固定ラベルか）。docs は「車輪接地点・footprint」と言うが値を pin していない（[:176](04-perception-sidewalk-and-signals.md:176)）。
+- `OQ-OD4Y-i` **topic 名・QoS・publish 周期**は本追補の射程外（`/bot1/terrain/coverage` は案 = [:173](04-perception-sidewalk-and-signals.md:173)、灯器・地形グリッドは型未凍結 = [:202](04-perception-sidewalk-and-signals.md:202)）。`cliff_scan` の `source_timeout` は別件（[`OQ-OD44`](04-perception-sidewalk-and-signals.md:142)）。
+- `OQ-OD4Y-j` `LampEvidence` は型として置いたが、**per-frame 証拠を topic として外へ出すか**（04 内部に留めるか）は未決。出すなら `TrafficSignalObservation` に窓内の証拠列を additive で足すことになる。
+
+> 本追補は**型と fail 方向のみ**を凍結する。`OQ-OD4B`（11 sub-dir）・`OQ-OD4C`（三分離の一本化）・`OQ-OD4E`（二重化回避）・`OQ-OD4H`（consumer 側実装の所有）は**本追補では裁定しない**。用語は [GLOSSARY §12](../GLOSSARY.md)（地形観測範囲 / 灯器観測 / 観測品質の自己申告 / model manifest）を正準とする。

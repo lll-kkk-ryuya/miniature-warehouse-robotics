@@ -66,3 +66,25 @@ systemd unit 一覧）。
 `KNOWN_UNSAFE_STOP_ON_HUMBLE` baseline から削除済＝以後この形を崩すと `regressed` で CI 赤。
 
 **残件**: 3 規則の共通化先（`warehouse_interfaces` への lazy-import か新 shared package か）は #634 で裁定。裁定まで各 package が 3 規則を写す＝暫定 (b)。参照実装 = `ws/src/warehouse_teleop/warehouse_teleop/node_runtime.py`（import はしない）。
+
+## 【2026-09-16 追記】04_Perception 出力契約 v0 を consume 予定（producer は未実装）
+
+Mode Outdoor の 04_Perception（歩道知覚）の**家は本 package**（[docs/mode-outdoor/09 §3](../../../docs/mode-outdoor/09-external-review-v3-response.md:200)
+「新規の運用管理・認識・遠隔 → 04（既存 `warehouse_perception` を拡張）」）。その **LaserScan 以外の出力**の型が
+`warehouse_interfaces.perception` に v0 として着地した（contract PR・`Refs #673`）:
+
+- **consume 予定の契約**: `TerrainCoverage` / `TerrainState`（07 coverage adapter）・`TrafficSignalObservation` /
+  `SignalState` / `LampEvidence`（03 灯器観測）・`ObservationQuality`（08 自己申告）・`ModelManifest` /
+  `EvaluationRecord` / `ChannelOrder`（09 runtime）。依存してよい共有 package は従来どおり `warehouse_interfaces` /
+  `warehouse_description` のみ（[.claude/rules/parallel-workflow.md:71-74](../../../.claude/rules/parallel-workflow.md)）。
+- **producer は未実装**: 本 package が現在 produce するのは `speed_limit` だけで、coverage / 灯器観測 / manifest を
+  publish するノードは**存在しない**。topic 名・QoS・publish 周期も未凍結（`/bot1/terrain/coverage` は案 =
+  [04:173](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md:173)、灯器・地形グリッドは型未凍結 =
+  [04:202](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md:202)）。ハード（OAK-D）も未購入。
+- **04 は判定しない**: 品質の**判定点は X2 の 1 か所**（`warehouse_safety.sensor_health`）で、本 package は観測・不確かさ・
+  品質の自己申告を出すだけ（[04:203](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md:203) /
+  [09 §2-b](../../../docs/mode-outdoor/09-external-review-v3-response.md:72)）。鮮度（`max_age`）は消費側の義務
+  （[04:382](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md:382)）。通行可否・許可・costmap 値は
+  06 / 02 / 10 が持つ（三分離 = [04:214](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md:214)）。
+- **設計正本**: [docs/mode-outdoor/04 追補 ④](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md)（型・fail 方向・
+  消費側の義務・残 OQ `OQ-OD4Y-a`〜`-j`）。
