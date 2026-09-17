@@ -171,12 +171,51 @@ class ObservationQuality(_PerceptionModel):
             ``received − source_stamp`` on its own clock. Negative values are refused:
             an output cannot precede its capture, so a negative value is a clock
             mix-up, and accepting it would let a dead pipeline look prompt.
+
+    Ground-plane support (v0.1, ADDITIVE — 追補 ⑧ §3,
+    ``docs/mode-outdoor/04-perception-sidewalk-and-signals.md:871``). A producer that
+    estimates a ground plane SELF-REPORTS how that plane relates to the mounting-geometry
+    prior ``Z = 0``; every field is optional and defaults to ``None`` so a producer with no
+    plane (the traffic-signal observer) is unchanged. Before v0.1 the plane's quality did
+    not travel at all, so the RANSAC fail-open of
+    ``docs/mode-outdoor/04-perception-sidewalk-and-signals.md:592`` was invisible downstream.
+    As everywhere else here, these are NUMBERS, not verdicts: no threshold is defined on
+    them and X2 remains the single judgement point
+    (``docs/mode-outdoor/04-perception-sidewalk-and-signals.md:203``, ``OQ-OD4Z-d3``).
+
+        ground_plane_tilt_rad: how far the retained plane tilts away from the prior,
+            ``atan(hypot(a, b))``. A MAGNITUDE, so negative is refused; ``None`` = this
+            producer estimates no plane
+            (``docs/mode-outdoor/04-perception-sidewalk-and-signals.md:182``).
+        ground_plane_offset_m: the retained plane's height ``c`` at the body origin. SIGNED
+            and deliberately unconstrained in sign — the ground can sit below (settling) or
+            above (a raised surface) the prior, the same reason ``step_height_m`` is signed
+            (``docs/mode-outdoor/04-perception-sidewalk-and-signals.md:196``).
+        ground_inlier_fraction: share of points supporting the retained plane — the SUPPORT
+            half of the self-report. Range ``[0, 1]``, the same convention as
+            ``valid_fraction``, so X2 can treat the two alike.
+        ground_from_prior: ``True`` when no admissible candidate beat the prior, i.e. the
+            cells were classified against the MOUNTING GEOMETRY rather than against an
+            observed plane. A consumer may read it as reduced health; 04 does not.
+        ground_rejected_candidates: how many candidate planes were refused for leaving the
+            admissible cone — INCLUDING those refused for a non-finite coefficient — and
+            therefore never entered the best-model comparison. A sample that yields no
+            plane at all (a degenerate triple, collinear in XY) is NOT counted: nothing
+            was refused, there was simply nothing to judge. ``0`` means the constraint
+            never bit on this frame. A large value is DIAGNOSTIC, not an error: it says
+            the observation disagrees with the prior. The count is not normalised by the
+            iteration budget (``OQ-OD4Z-d5``).
     """
 
     valid_fraction: float
     frame_digest: str | None = None
     device_frame_seq: int | None = None
     processing_latency_s: float | None = None
+    ground_plane_tilt_rad: float | None = None
+    ground_plane_offset_m: float | None = None
+    ground_inlier_fraction: float | None = None
+    ground_from_prior: bool | None = None
+    ground_rejected_candidates: int | None = None
 
     @field_validator("valid_fraction")
     @classmethod
@@ -197,6 +236,27 @@ class ObservationQuality(_PerceptionModel):
     def _latency_non_negative(cls, value: float | None) -> float | None:
         if value is not None and value < 0:
             raise ValueError(f"processing_latency_s {value} must be >= 0")
+        return value
+
+    @field_validator("ground_plane_tilt_rad")
+    @classmethod
+    def _tilt_non_negative(cls, value: float | None) -> float | None:
+        if value is not None and value < 0:
+            raise ValueError(f"ground_plane_tilt_rad {value} must be >= 0")
+        return value
+
+    @field_validator("ground_inlier_fraction")
+    @classmethod
+    def _ground_fraction_in_range(cls, value: float | None) -> float | None:
+        if value is not None and not 0.0 <= value <= 1.0:
+            raise ValueError(f"ground_inlier_fraction {value} out of range [0, 1]")
+        return value
+
+    @field_validator("ground_rejected_candidates")
+    @classmethod
+    def _rejected_non_negative(cls, value: int | None) -> int | None:
+        if value is not None and value < 0:
+            raise ValueError(f"ground_rejected_candidates {value} must be >= 0")
         return value
 
 
