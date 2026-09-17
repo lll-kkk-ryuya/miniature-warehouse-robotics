@@ -14,12 +14,14 @@
 - `config.py` — `load_config()`：`warehouse.base.yaml` + `config/<env>/warehouse.yaml` を deep-merge し、`WAREHOUSE__SECTION__KEY` 環境変数で上書き（doc19 §3 後勝ち）。`safety.max_linear_velocity` を **(int|float) 型かつ有限かつ `0 < cap ≤ MAX_LINEAR_VELOCITY`** に検証（#169: 非正/非有限を fail-loud 拒否＝負 cap 素通し穴の根治／#175: 非数値・bool を `ValueError` で型拒否＝raw TypeError 回避・各キー独立検証）＋`safety.battery_percentage_scale` を `BATTERY_PERCENTAGE_SCALES` に検証（#44）。
 - `schemas.py` の `StateSnapshot`/`RobotSnapshot` — State Cache(L2) が書く生状態（`obstacle_distance` は Situation の `RobotState` と同名・`battery` は 0–100 検証）。LLM Bridge(L1) が読む。
 - `compat.py` — **py3.10 互換 shim（#563・ADR-0008 追記 2026-08-30）**: 単一共有 `StrEnum`（py3.11+ = stdlib re-export＝挙動不変 / py3.10 = `str,Enum` + `__str__ = str.__str__`）と `UTC`（py3.11+ = `datetime.UTC` re-export / py3.10 = `timezone.utc`＝同一 singleton・identity 不変）。全 pkg はここから import する（`from enum import StrEnum`・`from datetime import UTC` の直 import と `auto()` は `tests/unit/test_py310_compat.py` の source-scan で恒久禁止＝Jetson/Humble ボードで ImportError / isinstance 破壊を防ぐ）。
+- `perception.py` — **04_Perception 出力契約 v0（2026-09-16・additive・contract PR / `Refs #673`）**: `TerrainState`（`FLOOR_CONFIRMED` / `DROP_DETECTED` / `UNKNOWN`）・`SignalState`（`GREEN` / `GREEN_FLASHING` / `RED` / `UNKNOWN`）・`LampEvidence`（5 クラス・`OFF_OR_UNLIT` と `NOT_VISIBLE` は別）・`ChannelOrder`（RGB/BGR）／`ObservationQuality`（`valid_fraction`∈[0,1]・`frame_digest`・`device_frame_seq`・`processing_latency_s`）・`TerrainCoverage`（元計測時刻・車輪接地点基準の距離・段差高/勾配/凹凸/推定誤差を別 field・**通行可否 field なし**）・`TrafficSignalObservation`（窓は秒数定義・`off_phase_count`・**`max_age` を持たない**＝鮮度は消費側の義務）・`ModelManifest` / `EvaluationRecord`（1 採用単位）。共通: `schemas._Model` を継承し `extra="ignore"` 据置 ＋ **`allow_inf_nan=False`**（NaN / inf は 04 が検出すべき「品質不成立」の印であり値ではない）。**既存 `schemas.py` は不変更**。品質数値は `warehouse_safety.sensor_health.SourceObservation`（X2 = 唯一の判定点）へ翻訳なしで渡す形。正本 = [docs/mode-outdoor/04 追補 ④](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md)・[09 §3](../../../docs/mode-outdoor/09-external-review-v3-response.md:198)。消費者は現時点で 0（P1/P2/P3 が予定）。
 
 ## 依存
 - stdlib + **pydantic>=2** + **pyyaml** のみ（rclpy 非依存 → MCP Server からも import 可）。
 
 ## テスト
 - `tests/unit/test_schemas.py` / `test_stores.py` / `test_safety.py` / `test_state_snapshot.py` / `test_config.py`（pure-python、CIで実行）。
+- `tests/unit/test_perception_contract.py` — 04 出力契約 v0 の R-26 unit（独立オラクル＝期待値は追補 ④ のリテラル・実装から import しない）。enum member-set / field-set pin・非有限 float 拒否・範囲外 / 負値 / 未知 enum / 必須欠落・`TerrainCoverage` に通行可否 field が無いこと・`TrafficSignalObservation` に `max_age` が無いこと・JSON 往復。
 - `tests/unit/test_safety_contracts.py` は `KNOWN_LOCATIONS` / `is_known_location` を本パッケージから import（単一ソース化）。
 - Ruff(py310/line100/double-quote) + pytest 緑を維持（CI が検証。target py310 = ADR-0008 追記 2026-08-17 その3）。
 
