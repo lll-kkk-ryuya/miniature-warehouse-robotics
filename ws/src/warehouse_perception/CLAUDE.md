@@ -91,7 +91,57 @@ Mode Outdoor の 04_Perception（歩道知覚）の**家は本 package**（[docs
 
 ## 【2026-09-17 追記・P1】01_Geometry / 07 coverage 純ロジック
 
-（P1 実装 PR で記入）
+`warehouse_perception/terrain_core.py` が着地（**純ロジック・rclpy 非依存・numpy 非依存・0 node・0 `cmd_vel`**）。
+設計正本 = [docs/mode-outdoor/04 追補 ⑤](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md)（入出力・パラメータ表・
+状態決定規則・fail 方向・残 OQ `OQ-OD4Z-a`〜`-j`）。**layer = 自律走行（安全層外）の producer**
+（consumer は L1 costmap / L1 collision_monitor と X2・09・06。停止距離の不等式の評価点は X2 / 09 の 1 か所 =
+[04:331](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md:331)。`.claude/rules/layer-annotation.md`）。
+
+### 提供 (produce)
+
+- module: `warehouse_perception.terrain_core` — `depth_validity` / `back_project` / `ground_estimator` /
+  `classify_cells` / `terrain_coverage` / `cliff_ranges` / `corridor_lateral_indices` / `analyze_depth_frame`（全段を 1 本にした seam）
+- 型（本 module 固有・契約ハブではない）: `CameraIntrinsics` / `MountingGeometry` / `TerrainGridParams` /
+  `GroundFitParams` / `TerrainParams` / `CliffScanParams`（**全 field 既定なし**）・`DepthValidity` / `GroundPlane` /
+  `CellObservation` / `TerrainGrid` / `CliffScan` / `TerrainObservation`
+- **topic は無い**（publish しない）。`TerrainCoverage` の topic 名・QoS・周期は未凍結
+  （`/bot1/terrain/coverage` は案 = [04:173](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md:173)・`OQ-OD4Y-i`）。
+  `CliffScan` は `sensor_msgs/LaserScan` へ写すための dataclass であって ROS message ではない。
+
+### 消費 (consume)
+
+- 契約: `warehouse_interfaces.perception.TerrainCoverage` / `ObservationQuality` / `TerrainState`（追補 ④・**変更なし＝consume のみ**）。
+  依存してよい共有 package は従来どおり `warehouse_interfaces` / `warehouse_description` の 2 つだけ
+  （[.claude/rules/parallel-workflow.md:71-74](../../../.claude/rules/parallel-workflow.md)）。`package.xml` は変更不要。
+- 入力データ: 深度画像（row-major の m 値）と `source_stamp_s` / `device_frame_seq` / `processing_latency_s` / `reference`
+  を**呼び出し側が**渡す。時刻は付け直さない（[04:177](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md:177)）。
+- 幾何・グリッド・RANSAC・scan の**全パラメータは注入・既定なし**（`sensor_health.py` と同じ流儀）。docs が数値を
+  pin していないため（縁石 2 cm = `OQ-OD45`、MinZ = `OQ-OD4Q` は未実測）。
+
+### 前提・未確定 (TODO)
+
+- `# TODO(node)` ROS node・topic・QoS・launch・config は**未実装**（本スライスの射程外）。配線時に
+  `frame_id` / TF 対応（`OQ-OD4Z-g`）と topic 契約（`OQ-OD4Y-i`）を決める。
+- `# TODO(OQ-OD4Z-d)` 素の RANSAC は「多数派 = 真の地面」を仮定する。回廊中ほどが欠測した下り段差シーンでは
+  傾いた平面が水平面より inlier を集め、崖が `FLOOR_CONFIRMED` に見える **fail-open** を実測で確認済。
+  法線の事前拘束・支持の下限は正本にしきい値が無いため未実装＝**node 化前に裁定**。現状 `TerrainCoverage` は
+  平面品質を運ばないため下流 X2 からは観測できない（裁定時に傾き上限の注入か平面支持の additive 自己申告が要る）。
+  現挙動は `test_known_fail_open_plain_ransac_prefers_the_tilted_plane` が characterization test として pin。
+- `# TODO(numpy 経路)` 純 python で全画素を走査する（CI の python に numpy が無い）。実解像度・実周期での
+  実行時間は未計測。numpy 経路 or 間引き param は `OQ-OD4Z-f`。
+- `# TODO(OQ-OD4Z-c)` `min_valid_fraction` が 04 側と X2 `warehouse_safety.sensor_health.SourceThresholds` の
+  2 か所にある。v0 は「04 = 自分の主張の抑制のみ・判定はしない」で分けたが、正本の置き場は `OQ-OD4E` 待ち。
+- `# TODO(01_Geometry 残り)` `obstacle_geometry` / `terrain_features` は未実装（`OQ-OD4Z-j`）。
+- ハード（OAK-D）は未購入・車体は未走行 → `h` / `θ` / MinZ はすべて未実測。
+
+### テスト
+
+- R-26 unit: `tests/unit/test_terrain_core.py`（`pytestmark = [unit, safety]`・63 件）。**合成シーンの生成器は
+  テスト側**にあり（投影を書き下ろす＝module の逆投影とは独立）、期待値は生成パラメータからの手計算リテラル
+  （[doc20 §9](../../../docs/architecture/20-dev-quality-and-testing.md:131) の独立オラクル）。AST pin =
+  `rclpy` / `numpy` を import しない・`cmd_vel` / `stop_request` / `speed_limit` の語を含まない・
+  **パラメータ dataclass に既定値が無い**。mutation 10/10 で赤くなることを確認済（左右反転・「落下点 1 つで足りる」・
+  cliff range の手前端・回廊 1 bin 検証を含む。PR 本文に記録）。
 
 
 
