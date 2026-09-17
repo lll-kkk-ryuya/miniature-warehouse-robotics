@@ -88,3 +88,31 @@ Mode Outdoor の 04_Perception（歩道知覚）の**家は本 package**（[docs
   06 / 02 / 10 が持つ（三分離 = [04:214](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md:214)）。
 - **設計正本**: [docs/mode-outdoor/04 追補 ④](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md)（型・fail 方向・
   消費側の義務・残 OQ `OQ-OD4Y-a`〜`-j`）。
+
+## 【2026-09-17 追記・P1】01_Geometry / 07 coverage 純ロジック
+
+（P1 実装 PR で記入）
+
+
+
+<!-- ▲ 上のプレースホルダを埋めるのは担当レーンのみ。以下の空行は隣接プレースホルダとの
+     git hunk 分離用（既定 context 3 行 × 2 を超える間隔を確保し、P1/P2/P3 が同時に埋めても
+     同一 hunk にならないようにしている）。詰めない・他レーンの節を書き換えない。 -->
+
+
+
+## 【2026-09-17 追記・P2】03_Traffic_Signals 時系列判定 純ロジック
+
+（P2 実装 PR で記入）
+
+
+
+<!-- ▲ 上のプレースホルダを埋めるのは担当レーンのみ。以下の空行は隣接プレースホルダとの
+     git hunk 分離用（既定 context 3 行 × 2 を超える間隔を確保し、P1/P2/P3 が同時に埋めても
+     同一 hunk にならないようにしている）。詰めない・他レーンの節を書き換えない。 -->
+
+
+
+## 【2026-09-17 追記・P3】09 model_manifest / 10 評価基盤
+
+（P3 実装 PR で記入）

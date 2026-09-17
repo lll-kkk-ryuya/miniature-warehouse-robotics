@@ -165,9 +165,12 @@ class ObservationQuality(_PerceptionModel):
             does not expose one.
         processing_latency_s: elapsed seconds from capture to this output. 追補 ② §1
             asks for the capture→consumption delay as an explicit metric
-            (``docs/mode-outdoor/04-perception-sidewalk-and-signals.md:203``). Negative values are
-            refused: an output cannot precede its capture, so a negative value is a
-            clock mix-up, and accepting it would let a dead pipeline look prompt.
+            (``docs/mode-outdoor/04-perception-sidewalk-and-signals.md:203``). That doc asks for the
+            capture→CONSUMPTION delay, which 04 cannot know alone: this field is the
+            capture→output half, and the consumer completes it with
+            ``received − source_stamp`` on its own clock. Negative values are refused:
+            an output cannot precede its capture, so a negative value is a clock
+            mix-up, and accepting it would let a dead pipeline look prompt.
     """
 
     valid_fraction: float
@@ -405,25 +408,34 @@ class ModelManifest(_PerceptionModel):
 
     Fields:
         model_name: the model's name.
-        weights_sha256: hash of the weights file. Validated as a 64-hex digest — the
-            field is named for a specific digest, so a short / non-hex value is a
-            call-site bug, not data.
+        weights_sha256: hash of the weights file. PROVISIONAL: the docs require a
+            "重み hash" and do NOT name an algorithm
+            (``docs/mode-outdoor/04-perception-sidewalk-and-signals.md:385``), so v0 pins sha256
+            via the FIELD NAME and validates a 64-hex digest — a short / non-hex
+            value is then a call-site bug, not data. Changing the algorithm means
+            renaming the field in a contract PR; see ``OQ-OD4Y-k``.
         input_size: ``(width, height)`` in pixels, both > 0.
         channel_order: see :class:`ChannelOrder`.
         normalization: how inputs are normalised (free text in v0 — the docs list the
             item, not a vocabulary).
         resize_method: how inputs are resized (same).
-        output_interpretation: how the raw output tensor is read (same).
+        output_interpretation: how the raw output tensor is read (same vocabulary
+            question). Non-empty: a manifest that cannot say how to read the output
+            tensor is not an adoption unit.
         label_order: the class labels IN ORDER. Non-empty: a label order of length 0
             cannot interpret any output, and a silently empty list is exactly the
             "which class is index 2?" failure the manifest exists to prevent.
         onnx_opset: ONNX opset the model was exported at.
-        tensorrt_version: the TensorRT version the engine was built with.
+        tensorrt_version: the TensorRT version the engine was built with. Emptiness
+            is NOT refused: an adoption unit may legitimately stop at ONNX with no
+            engine burned yet, and ``engine_built_on_board`` is what records that.
         gpu_arch: the GPU architecture the engine was built for. Together with
-            ``tensorrt_version`` this is why an engine is not portable.
+            ``tensorrt_version`` this is why an engine is not portable — and, for the
+            same reason as above, emptiness is not refused.
         license: the model's licence — the AGPL / non-commercial boundary is a
             distribution decision, so it travels with the manifest
             (``docs/mode-outdoor/04-perception-sidewalk-and-signals.md:351`` ``OQ-OD4N``).
+            Non-empty: an unstated licence must not pass silently as "unknown".
         engine_built_on_board: whether the TensorRT engine was built ON the board.
             ``OQ-OD4U`` states engines are pinned to GPU arch + TRT version and must
             be burned on the board (``docs/mode-outdoor/04-perception-sidewalk-and-signals.md:358``).
@@ -447,7 +459,13 @@ class ModelManifest(_PerceptionModel):
     engine_built_on_board: bool
     evaluation: EvaluationRecord
 
-    @field_validator("model_name", "normalization", "resize_method")
+    @field_validator(
+        "model_name",
+        "normalization",
+        "resize_method",
+        "output_interpretation",
+        "license",
+    )
     @classmethod
     def _identity_non_empty(cls, value: str) -> str:
         if not value.strip():

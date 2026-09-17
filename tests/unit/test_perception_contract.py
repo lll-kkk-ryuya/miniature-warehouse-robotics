@@ -37,8 +37,12 @@ Contract as pinned by the docs:
   model_manifest      model name / weights hash / input size / RGB-BGR /
                       normalization / resize method / output interpretation /
                       label order / ONNX opset / TensorRT version / GPU arch /
-                      evaluation result / licence / engine-built-on-board
-                      (04:385 追補 ③ final row, 04:204 追補 ② §1, OQ-OD4U 04:358).
+                      evaluation result / engine-built-on-board
+                      (04:385 追補 ③ final row, 04:204 追補 ② §1, OQ-OD4U 04:358);
+                      licence comes from OQ-OD4N (04:351), which is why the AGPL
+                      boundary travels with the manifest. NOTE: the docs say only
+                      "重み hash" — they name NO algorithm, so sha256 is v0's own
+                      choice expressed through the field NAME (OQ-OD4Y-k).
 
 Requirements exercised here: the enum member sets and field sets are exactly what
 the docs list (no invented field, no missing one), the invalid markers the contract
@@ -436,7 +440,7 @@ def test_empty_label_order_is_refused() -> None:
 
 @pytest.mark.parametrize("bad", ["", "abc", "z" * 64, "A" * 63])
 def test_non_sha256_weights_hash_is_refused(bad: str) -> None:
-    """重み hash is a sha256 digest (04:385)."""
+    """重み hash (04:385); v0 pins the algorithm via the field NAME — see OQ-OD4Y-k."""
     with pytest.raises(ValidationError):
         ModelManifest.model_validate(_manifest(weights_sha256=bad))
 
@@ -446,6 +450,41 @@ def test_non_positive_input_size_is_refused(bad: list[int]) -> None:
     """入力サイズ is (width, height) in pixels (04:385)."""
     with pytest.raises(ValidationError):
         ModelManifest.model_validate(_manifest(input_size=bad))
+
+
+@pytest.mark.parametrize("field", ["model_name", "normalization", "resize_method"])
+@pytest.mark.parametrize("blank", ["", "   "])
+def test_empty_manifest_identity_field_is_refused(field: str, blank: str) -> None:
+    """A manifest that cannot name itself is not an adoption unit (04:385)."""
+    with pytest.raises(ValidationError):
+        ModelManifest.model_validate(_manifest(**{field: blank}))
+
+
+@pytest.mark.parametrize("blank", ["", "   "])
+def test_empty_output_interpretation_is_refused(blank: str) -> None:
+    """出力の解釈 is a required manifest item (04:385): silence is not "unknown"."""
+    with pytest.raises(ValidationError):
+        ModelManifest.model_validate(_manifest(output_interpretation=blank))
+
+
+@pytest.mark.parametrize("blank", ["", "   "])
+def test_empty_license_is_refused(blank: str) -> None:
+    """The AGPL / non-commercial boundary travels with the manifest (OQ-OD4N 04:351)."""
+    with pytest.raises(ValidationError):
+        ModelManifest.model_validate(_manifest(license=blank))
+
+
+@pytest.mark.parametrize("field", ["tensorrt_version", "gpu_arch"])
+def test_engine_fields_may_be_empty_before_the_engine_is_burned(field: str) -> None:
+    """Deliberate leniency, not an oversight.
+
+    An adoption unit may legitimately stop at ONNX with no TensorRT engine burned
+    yet; ``engine_built_on_board`` is the field that records whether it was
+    (OQ-OD4U 04:358). Refusing an empty version here would force a fake value.
+    """
+    parsed = ModelManifest.model_validate(_manifest(**{field: "", "engine_built_on_board": False}))
+    assert getattr(parsed, field) == ""
+    assert parsed.engine_built_on_board is False
 
 
 def test_manifest_requires_an_evaluation_record() -> None:
