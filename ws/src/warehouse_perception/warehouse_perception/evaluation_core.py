@@ -237,8 +237,20 @@ def p1_violations(confusion: Mapping[tuple[SignalState, SignalState], int]) -> i
     ``docs/mode-outdoor/04-perception-sidewalk-and-signals.md:117`` requires BOTH to be
     zero. They are counted together because either one alone lets the vehicle enter a
     crossing on a lamp that does not permit it.
+
+    Raises:
+        ValueError: either P-1 cell is ABSENT from ``confusion``. A missing cell means
+            "this matrix never counted that confusion", which is not the same claim as
+            "it happened zero times" — defaulting it to 0 would let an incomplete matrix
+            pass the gate (rule 1 of this module: ``None`` is not zero). Every matrix
+            :func:`signal_confusion` builds is zero-filled, so this can only fire on a
+            hand-assembled or externally supplied mapping.
     """
-    return sum(confusion.get(pair, 0) for pair in P1_FORBIDDEN_PAIRS)
+    missing = [pair for pair in P1_FORBIDDEN_PAIRS if pair not in confusion]
+    if missing:
+        named = ", ".join(f"{truth.value}->{pred.value}" for truth, pred in missing)
+        raise ValueError(f"confusion matrix is missing the P-1 cell(s): {named}")
+    return sum(confusion[pair] for pair in P1_FORBIDDEN_PAIRS)
 
 
 def p1_gate(confusion: Mapping[tuple[SignalState, SignalState], int]) -> bool:
@@ -247,6 +259,10 @@ def p1_gate(confusion: Mapping[tuple[SignalState, SignalState], int]) -> bool:
     A single violation fails the gate. The bar in
     ``docs/mode-outdoor/04-perception-sidewalk-and-signals.md:117`` is "0 件（必須）",
     not a rate, so there is no tolerance to configure.
+
+    Raises:
+        ValueError: propagated from :func:`p1_violations` when a P-1 cell is absent —
+            an unanswerable gate must not answer "pass".
     """
     return p1_violations(confusion) == 0
 
@@ -397,8 +413,10 @@ def capture_to_consume_latency(samples: Iterable[EvalSample]) -> LatencyStats:
     without a count would hide exactly that.
 
     Raises:
-        ValueError: a sample carries a non-finite ``stamp_s`` or ``consumed_s`` — a NaN
-            latency is not a measurement, it is the absence of one.
+        ValueError: a non-finite ``stamp_s`` or ``consumed_s`` is met WHILE FORMING a
+            latency — a NaN latency is not a measurement, it is the absence of one. A
+            sample without ``consumed_s`` forms no latency at all and is counted in
+            ``missing_consumed`` without its ``stamp_s`` being inspected.
     """
     latencies: list[float] = []
     negative = 0

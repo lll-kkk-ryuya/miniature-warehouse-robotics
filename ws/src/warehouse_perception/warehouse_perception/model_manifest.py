@@ -100,9 +100,12 @@ def sha256_of_file(path: str | Path) -> str:
 def verify_weights(manifest: ModelManifest, weights_path: str | Path) -> bool:
     """Whether the file at ``weights_path`` hashes to ``manifest.weights_sha256``.
 
-    Case-insensitive on the hex digits: the contract accepts either case
-    (``docs/mode-outdoor/04-perception-sidewalk-and-signals.md:459``) while
-    :func:`sha256_of_file` emits lowercase.
+    Case-insensitive on the hex digits: the frozen contract validates
+    ``^[0-9a-fA-F]{64}$``
+    (``ws/src/warehouse_interfaces/warehouse_interfaces/perception.py:48``, the field
+    table being ``docs/mode-outdoor/04-perception-sidewalk-and-signals.md:459``) so a
+    manifest may legitimately carry an uppercase digest, while :func:`sha256_of_file`
+    emits lowercase.
 
     Raises:
         OSError: the weights file cannot be read — a MISSING file is not "mismatch".

@@ -164,6 +164,33 @@ def test_p1_gate_passes_on_an_empty_bag() -> None:
     assert p1_gate(signal_confusion([])) is True
 
 
+@pytest.mark.safety
+@pytest.mark.parametrize("dropped", [(_FLASH, _GREEN), (_RED, _GREEN)])
+def test_p1_refuses_a_matrix_missing_a_forbidden_cell(
+    dropped: tuple[SignalState, SignalState],
+) -> None:
+    """セルの不在は「数えられなかった」であって「0 件」ではない（規律 1 と同じ）。
+    既定 0 で埋めると、P-1 セルを持たない不完全な行列がゲートを**通ってしまう**
+    ＝形として fail-open。`signal_confusion` は必ず 16 セルを 0 埋めするので、
+    これが起きるのは手組み・外部由来の mapping だけ。"""
+    confusion = dict(signal_confusion([_sample("RED", "GREEN")]))
+    del confusion[dropped]
+
+    with pytest.raises(ValueError, match="missing the P-1 cell"):
+        p1_violations(confusion)
+    with pytest.raises(ValueError, match="missing the P-1 cell"):
+        p1_gate(confusion)
+
+
+@pytest.mark.safety
+def test_p1_accepts_a_hand_built_matrix_that_carries_both_cells() -> None:
+    """必要なのは P-1 の 2 セルだけ＝16 セル完備を要求しているのではない。"""
+    confusion = {(_FLASH, _GREEN): 0, (_RED, _GREEN): 2}
+
+    assert p1_violations(confusion) == 2
+    assert p1_gate(confusion) is False
+
+
 # ------------------------------------------------------------------ UNKNOWN 率
 def test_unknown_rate_is_the_share_of_unknown_predictions() -> None:
     """8 サンプル中、予測が UNKNOWN なのは 2 件 → 手計算 0.25。

@@ -53,6 +53,8 @@ license: "Apache-2.0"
 #    ダミーの dataset_id（"UNEVALUATED" 等）は書かない——「評価した」と読める嘘になる。
 evaluation:
   dataset_id: "example-bag-0000"
+  # （混同行列は抜粋。実出力は `signal_metrics` が全 16 セルを出す＝
+  #  docs/mode-outdoor/04-perception-sidewalk-and-signals.md:572「0 のセルも必ず出す」）
   metrics:
     signal.sample_count: 4.0
     signal.confusion.GREEN_to_GREEN: 1.0
