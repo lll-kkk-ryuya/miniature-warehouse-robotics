@@ -480,17 +480,27 @@ def test_a_pre_v01_quality_payload_still_validates() -> None:
     assert coverage.quality.ground_from_prior is None
 
 
-def test_ground_from_prior_is_a_flag_not_a_number() -> None:
+def test_ground_from_prior_is_parsed_as_a_bool() -> None:
     """``True`` = the cells were classified against the mounting prior, not an
-    observed plane. It must stay a bool: a consumer reading it as "reduced health"
-    cannot be handed a truthy float (04:871)."""
-    parsed = ObservationQuality.model_validate(_quality(ground_from_prior=True))
-    assert parsed.ground_from_prior is True
-    assert ObservationQuality.model_validate(
-        _quality(ground_from_prior=False)
-    ).ground_from_prior is (False)
-    with pytest.raises(ValidationError):
-        ObservationQuality.model_validate(_quality(ground_from_prior="yes-please"))
+    observed plane (04:871). What the field guarantees a consumer is that it reads
+    back as a ``bool`` — NOT that only a ``bool`` may be written.
+
+    Pydantic's default (lax) mode COERCES the usual bool vocabulary, and this hub
+    does not opt out of it: ``1`` / ``0`` / ``1.0`` / ``0.0`` / ``"yes"`` / ``"true"``
+    / ``"off"`` all parse. Only values outside that vocabulary (``2``, ``0.5``, an
+    arbitrary string) are refused. So a producer that marshals the flag as a number
+    is accepted silently — which is fine for a flag whose two states are exactly
+    "prior" and "observed", but it is NOT the stricter "a number is refused" that an
+    earlier draft of this test claimed. Whether the hub should adopt ``Strict[bool]``
+    here is left open (追補 ⑧ §5 ``OQ-OD4Z-d7``) rather than decided in this PR: it
+    would be a hub-wide policy change, not a field-local one.
+    """
+    for written, expected in [(True, True), (False, False), (1, True), (0, False), ("yes", True)]:
+        parsed = ObservationQuality.model_validate(_quality(ground_from_prior=written))
+        assert parsed.ground_from_prior is expected
+    for outside_the_vocabulary in [2, 0.5, "yes-please"]:
+        with pytest.raises(ValidationError):
+            ObservationQuality.model_validate(_quality(ground_from_prior=outside_the_vocabulary))
 
 
 @pytest.mark.parametrize("bad", [0.0, -1.0])

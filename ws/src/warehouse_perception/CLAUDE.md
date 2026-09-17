@@ -122,11 +122,11 @@ Mode Outdoor の 04_Perception（歩道知覚）の**家は本 package**（[docs
 
 - `# TODO(node)` ROS node・topic・QoS・launch・config は**未実装**（本スライスの射程外）。配線時に
   `frame_id` / TF 対応（`OQ-OD4Z-g`）と topic 契約（`OQ-OD4Y-i`）を決める。
-- `# DONE(OQ-OD4Z-d)` **裁定済（2026-09-17・[04 追補 ⑧](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md)）＝以下の本文は裁定前の記述**（2 上限は注入・値は実測待ち。下の【2026-09-17 追記】を正とする）。 素の RANSAC は「多数派 = 真の地面」を仮定する。回廊中ほどが欠測した下り段差シーンでは
-  傾いた平面が水平面より inlier を集め、崖が `FLOOR_CONFIRMED` に見える **fail-open** を実測で確認済。
-  法線の事前拘束・支持の下限は正本にしきい値が無いため未実装＝**node 化前に裁定**。現状 `TerrainCoverage` は
-  平面品質を運ばないため下流 X2 からは観測できない（裁定時に傾き上限の注入か平面支持の additive 自己申告が要る）。
-  現挙動は `test_known_fail_open_plain_ransac_prefers_the_tilted_plane` が characterization test として pin。
+- `# DONE(OQ-OD4Z-d)` **裁定済（2026-09-17・[04 追補 ⑧](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md)）**。素の RANSAC は「多数派 = 真の地面」を
+  仮定するため、回廊中ほどが欠測した下り段差シーンで傾いた平面が水平面より inlier を集め、崖が `FLOOR_CONFIRMED` に
+  見える **fail-open** を実測で確認していた（裁定前の状態）。裁定で ①取付事前値 `Z = 0` からの傾き `atan(hypot(a,b))` /
+  原点高さ `|c|` の上限を注入する constrained RANSAC ②`ObservationQuality` v0.1 の平面支持 5 field（＝下流 X2 から観測可能）
+  により**解消済**。後継 test = `test_tilt_bound_keeps_the_horizontal_plane_so_the_cliff_reads_as_a_drop`。2 上限の値は実測待ち（`OQ-OD4Z-d1`）。
 - `# TODO(numpy 経路)` 純 python で全画素を走査する（CI の python に numpy が無い）。実解像度・実周期での
   実行時間は未計測。numpy 経路 or 間引き param は `OQ-OD4Z-f`。
 - `# TODO(OQ-OD4Z-c)` `min_valid_fraction` が 04 側と X2 `warehouse_safety.sensor_health.SourceThresholds` の

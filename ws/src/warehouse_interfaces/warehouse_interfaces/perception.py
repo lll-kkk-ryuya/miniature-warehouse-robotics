@@ -198,10 +198,13 @@ class ObservationQuality(_PerceptionModel):
             cells were classified against the MOUNTING GEOMETRY rather than against an
             observed plane. A consumer may read it as reduced health; 04 does not.
         ground_rejected_candidates: how many candidate planes were refused for leaving the
-            admissible cone and therefore never entered the best-model comparison. ``0``
-            means the constraint never bit on this frame. A large value is DIAGNOSTIC, not
-            an error: it says the observation disagrees with the prior. The count is not
-            normalised by the iteration budget (``OQ-OD4Z-d5``).
+            admissible cone — INCLUDING those refused for a non-finite coefficient — and
+            therefore never entered the best-model comparison. A sample that yields no
+            plane at all (a degenerate triple, collinear in XY) is NOT counted: nothing
+            was refused, there was simply nothing to judge. ``0`` means the constraint
+            never bit on this frame. A large value is DIAGNOSTIC, not an error: it says
+            the observation disagrees with the prior. The count is not normalised by the
+            iteration budget (``OQ-OD4Z-d5``).
     """
 
     valid_fraction: float
