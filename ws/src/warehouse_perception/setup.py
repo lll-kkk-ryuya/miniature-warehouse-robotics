@@ -30,6 +30,10 @@ setup(
             # The manifests under manifests/ are records, NOT data_files — installing
             # them into share/ would make them look like runtime config.
             "perception_manifest = warehouse_perception.model_manifest:main",
+            # 07_Output_Adapters terrain publisher (docs/mode-outdoor/04 追補 ⑨):
+            # cliff_scan (LaserScan) + terrain/coverage (String JSON), one pair
+            # per depth frame. Safe-OFF by default; launch wiring is a follow-up.
+            "terrain_publisher = warehouse_perception.terrain_node:main",
         ],
     },
 )
