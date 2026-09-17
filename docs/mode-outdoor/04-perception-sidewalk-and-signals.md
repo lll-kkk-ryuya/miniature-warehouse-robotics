@@ -406,7 +406,7 @@ Orin Nano Super 8GB の配置で足りるかは、カメラ 2 台 + Nav2 + 映�
 | `LampEvidence` | `RED` / `GREEN` / `GREEN_FLASHING` / `OFF_OR_UNLIT` / `NOT_VISIBLE` | **1 フレームの証拠**クラス（状態ではない）。`OFF_OR_UNLIT`（消灯相）と `NOT_VISIBLE`（遮蔽・欠落）は別クラス | 両者を潰すと点滅が「青」に見える＝この分離が防波堤。**`UNKNOWN` は窓判定の語彙（`SignalState`）側に置き、per-frame 証拠には持たせない**＝[:261](04-perception-sidewalk-and-signals.md:261) の 5 クラスを正とする（[:307](04-perception-sidewalk-and-signals.md:307) が `NOT_VISIBLE` / `UNKNOWN` を並記するのはこの意味） | [:261](04-perception-sidewalk-and-signals.md:261) / [:307](04-perception-sidewalk-and-signals.md:307) / [追補 ③ #1](04-perception-sidewalk-and-signals.md:379) |
 | `ChannelOrder` | `RGB` / `BGR` | manifest の入力チャネル順 | 未知値は `ValidationError` | [追補 ③ 最終行](04-perception-sidewalk-and-signals.md:385) / [:204](04-perception-sidewalk-and-signals.md:204) |
 
-#### 1-2. `ObservationQuality`（08_Quality_Evidence・自己申告）
+#### 1-2. `ObservationQuality`（08_Quality_Evidence・自己申告）（**v0.1 additive = [追補 ⑧ §3](04-perception-sidewalk-and-signals.md:871)** で平面支持 5 field を追加・既存 field は不変）
 
 X2 の入力型 `warehouse_safety.sensor_health.SourceObservation`（`stamp_s` / `received_monotonic_s` / `valid_fraction` / `digest`）へ**翻訳なしで渡せる**意味に揃える。`received_monotonic_s` は受信側の値なので 04 は持たない。
 
@@ -589,7 +589,7 @@ X2 の入力型 `warehouse_safety.sensor_health.SourceObservation`（`stamp_s` /
 - `OQ-OD4Z-a` **落下 cell の必要証拠点数**。v0 は「`min_points_per_cell` を満たす cell に `drop_threshold_m` 以深の点が **1 つでも**あれば `DROP_DETECTED`」。正本は「地面推定より下の点」（[:56](04-perception-sidewalk-and-signals.md:56)）としか言わず点数を pin していない。1 点のノイズで仮想壁を撃つ感度を許すか、`min_drop_points` を別に置くかは未決。
 - `OQ-OD4Z-b` **`plane_tolerance_m` が RANSAC inlier 帯と「床を観測できた」帯を兼ねる**。正本は両者を区別していない。分けるなら 2 本目のしきい値の出所が要る。
 - `OQ-OD4Z-c` **`min_valid_fraction` の正本の置き場**。同名・同義の値が 04 側（自分の主張の抑制）と X2 側（[`SourceThresholds.min_valid_fraction`](../../ws/src/warehouse_safety/warehouse_safety/sensor_health.py)）の 2 か所にある。v0 は「04 は主張の抑制のみ・許可の判定はしない」で役割を分けたが、値の正本と二重化回避は [`OQ-OD4E` :342](04-perception-sidewalk-and-signals.md:342) の射程。
-- `OQ-OD4Z-d` **素の RANSAC の多数派が真の地面とは限らない（fail-open の実例を確認）**。回廊の中ほどが欠測した下り段差シーンでは、近傍の床と遠方の下段面を通る**傾いた**平面（実測 `a ≈ −0.044`／m）が水平面より inlier が多くなり、崖が `FLOOR_CONFIRMED` に見える。v0 は [案 B :44](04-perception-sidewalk-and-signals.md:44)「RANSAC 地面」のままで、法線の事前拘束（取付 `θ` からの逸脱上限）・支持の下限・[:182](04-perception-sidewalk-and-signals.md:182) の「地面傾き補正」の具体化は未実装＝しきい値が正本に無いため発明しない。**node 化前に裁定が要る**（親 §7 P-2・[§8 順序 2](04-perception-sidewalk-and-signals.md:326) の実測ゲートと同時に）。**現状 `TerrainCoverage` は平面の品質（傾き・支持）を運ばないため、この誤りは下流 X2 からは観測できない**——裁定時は「取付 `θ` からの傾き上限を注入する」か「平面支持を `ObservationQuality` 側へ additive で自己申告する」かのどちらかが要る（後者は追補 ④ の contract PR になる）。
+- `OQ-OD4Z-d` **素の RANSAC の多数派が真の地面とは限らない（fail-open の実例を確認）**。回廊の中ほどが欠測した下り段差シーンでは、近傍の床と遠方の下段面を通る**傾いた**平面（実測 `a ≈ −0.044`／m）が水平面より inlier が多くなり、崖が `FLOOR_CONFIRMED` に見える。v0 は [案 B :44](04-perception-sidewalk-and-signals.md:44)「RANSAC 地面」のままで、法線の事前拘束（取付 `θ` からの逸脱上限）・支持の下限・[:182](04-perception-sidewalk-and-signals.md:182) の「地面傾き補正」の具体化は未実装＝しきい値が正本に無いため発明しない。**node 化前に裁定が要る**（親 §7 P-2・[§8 順序 2](04-perception-sidewalk-and-signals.md:326) の実測ゲートと同時に）。**現状 `TerrainCoverage` は平面の品質（傾き・支持）を運ばないため、この誤りは下流 X2 からは観測できない**——裁定時は「取付 `θ` からの傾き上限を注入する」か「平面支持を `ObservationQuality` 側へ additive で自己申告する」かのどちらかが要る（後者は追補 ④ の contract PR になる）。 **→ 裁定済（2026-09-17）= [追補 ⑧](04-perception-sidewalk-and-signals.md:838)**（両方を採る: 傾き / 原点高さの上限を注入する constrained RANSAC ＋ `ObservationQuality` v0.1 additive。値は既定なし・実測待ち）。
 - `OQ-OD4Z-e` **回廊長の端数**は切り捨て（`floor`）。切り上げ＝過大申告側は取らないが、正本は端数に沈黙している。
 - `OQ-OD4Z-f` **性能**。純 python（CI に numpy が無い）で 1 フレーム全画素を走査する。実解像度・実周期での実行時間は**未計測**。node 化時に numpy 経路を optional で足すか、間引き（`stride`）を注入 param にするかは未決（[02 §4](02-architecture-split-orin-pc-cloud.md) の屋外 S1 実測と同時）。
 - `OQ-OD4Z-g` **座標系の契約**。本モジュールは body 系（X 前・Y 左・Z 上・原点はカメラ直下の地面）を内部で定義する。ROS `frame_id` / TF との対応（TF 配信責任 = [03 §2-1](03-localization-gnss-and-ekf.md)）と `reference` の語彙（`OQ-OD4Y-h`）は node 化時に決める。
@@ -832,3 +832,71 @@ X2 の入力型 `warehouse_safety.sensor_health.SourceObservation`（`stamp_s` /
 - `warehouse_perception/evaluation_core.py` — `EvalSample` / `read_jsonl` / `signal_confusion` / `p1_violations` / `p1_gate` / `unknown_rate` / `miss_rate_by_distance_band` / `false_stops_per_km` / `capture_to_consume_latency` / `compare` / `*_metrics` / `to_evaluation_record`。
 - `warehouse_perception/manifests/` — `README.md`（置き場の規約・engine 境界・AGPL 境界）+ `example.rf-detr-nano.yaml`（placeholder）。
 - unit: `tests/unit/test_model_manifest.py` / `tests/unit/test_evaluation_core.py`（独立オラクル＋mutation 感度 = [doc20:139](../architecture/20-dev-quality-and-testing.md:139) / [doc20:140](../architecture/20-dev-quality-and-testing.md:140)。P-1 ゲートは `safety` marker 併記。**AST pin**: `rclpy` / `torch` / `tensorrt` / `numpy` / `requests` 非 import・走行系トピック名を含まない・ROS node クラス 0）。
+
+---
+
+## 【2026-09-17 追補 ⑧】`OQ-OD4Z-d` 裁定: 取付事前値からの逸脱上限の注入 + 平面支持の自己申告（契約 v0.1 additive）
+
+正本 = 本 doc（[案 B :44](04-perception-sidewalk-and-signals.md:44)・[:174](04-perception-sidewalk-and-signals.md:174)・[:181](04-perception-sidewalk-and-signals.md:181)・[:182](04-perception-sidewalk-and-signals.md:182)・[:196](04-perception-sidewalk-and-signals.md:196)・[:203](04-perception-sidewalk-and-signals.md:203)・[追補 ④ 1-2](04-perception-sidewalk-and-signals.md:409)・[追補 ⑤ §1 段 3](04-perception-sidewalk-and-signals.md:520)・[追補 ⑤ `OQ-OD4Z-d`](04-perception-sidewalk-and-signals.md:592)）＋ [09 §2-i](09-external-review-v3-response.md:157) / [09 §2-b](09-external-review-v3-response.md:72)。**本追補は [追補 ⑤ :592](04-perception-sidewalk-and-signals.md:592) の `OQ-OD4Z-d`（素の RANSAC の fail-open）だけを閉じる**。ユーザー委任による裁定（2026-09-17）。
+
+> **レイヤ注記**（[:7](04-perception-sidewalk-and-signals.md:7) と同軸）: `terrain_core.py` = **自律走行（安全層外）**の producer（costmap / X2 への入力・actuation 権限なし）。`warehouse_interfaces.perception` = **L2 Contract hub**（additive のみ）。本追補で **node・topic・launch・config は作らない**（0 node）。判定点は X2 の 1 か所のまま（[:203](04-perception-sidewalk-and-signals.md:203) / [09 §2-b](09-external-review-v3-response.md:72)）。
+
+> **注意（接頭辞の衝突）**: `OQ-OD4Z-*` は追補 ⑤ / ⑥ / ⑦ が**それぞれ独立に**使っており、`OQ-OD4Z-d` は 3 か所に別の意味で存在する（⑤ = 本件 RANSAC fail-open [:592](04-perception-sidewalk-and-signals.md:592)／⑥ = 読めない `stamp_s`／⑦ = 距離帯の境界）。本追補が指すのは**⑤ の `OQ-OD4Z-d`** のみ。番号の詰め替えは下流の `04:NNN` pin を割るため行わず、採番規則の整理は §5 の残 OQ に置く。
+
+### 1. 裁定（何を・なぜ）
+
+[追補 ⑤ :592](04-perception-sidewalk-and-signals.md:592) が記録した fail-open は、「回廊の中ほどが欠測した下り段差シーンで、近傍の床と遠方の下段面を通る**傾いた**平面（実測 `a ≈ −0.044`／m）が水平面より inlier を集め、崖が `FLOOR_CONFIRMED` に見える」というもの。同行は裁定の選択肢として「取付 `θ` からの傾き上限を注入する」「平面支持を `ObservationQuality` へ additive で自己申告する」の 2 つを挙げていた。**裁定は両方を採る**——前者が誤りを止め、後者が「止まったこと／止め損ねたこと」を下流から観測可能にする。片方だけでは、①上限のみ＝誤りは減るが X2 は平面品質を見られないまま（[:592](04-perception-sidewalk-and-signals.md:592) の「下流 X2 からは観測できない」が残る）、②自己申告のみ＝X2 が見えても 04 自身は誤った平面で cell を分類し続ける（`cliff_scan` は既に誤っている）。
+
+**裁定 1（04 側 = 観測妥当性の gate ＝ fit の事前拘束）**。[:181](04-perception-sidewalk-and-signals.md:181) の取付幾何（`h`・`θ`）は `back_project` の段で既に適用済であり、body frame における地面の事前値は `Z = 0` である（[追補 ⑤ §1 段 3](04-perception-sidewalk-and-signals.md:520)）。よって RANSAC の候補平面 `Z = a·X + b·Y + c` のうち、
+
+- **傾き** `atan(hypot(a, b))` が `max_plane_tilt_rad` を超えるもの、または
+- **原点高さ** `|c|` が `max_plane_offset_m` を超えるもの
+
+は**候補として不採用**とする（constrained RANSAC ＝ 許容円錐の外の候補は**最良比較に参加させない**。inlier を数えてから落とすのではなく、比較の前に外す）。許容内で事前値に勝つ候補が無ければ事前値を保持する（`used_prior = True`）。事前値 `Z = 0` は傾き 0・`|c| = 0` ゆえ**常に許容内**であり、両上限が正である限り「候補ゼロで行き場を失う」ことはない。棄却した候補の件数は捨てずに `GroundPlane.rejected_candidates` として保持する（additive）。これは [:182](04-perception-sidewalk-and-signals.md:182)「前方 depth を 2D へ落とす際は高さしきい値と**地面傾き補正**が要る」の具体化にあたる。
+
+**裁定 2（契約側 = 平面支持の自己申告・v0.1 additive）**。[追補 ④ 1-2](04-perception-sidewalk-and-signals.md:409) の `ObservationQuality` に optional field を足す（§3）。04 は**数値を申告するだけで判定しない**（[:203](04-perception-sidewalk-and-signals.md:203)）。閾値化（「傾きいくつで健康とみなすか」）は X2 の仕事であり、本追補では**決めない**（§5）。
+
+**裁定 3（数値は発明しない）**。`max_plane_tilt_rad` / `max_plane_offset_m` は **`GroundFitParams` に既定なしで注入**する（追補 ⑤ §2 の流儀＝全パラメータ注入・既定なし）。正本は逸脱の上限そのものを持たないためである。値の**根拠候補**は [06 §3](06-hardware-delta-and-base-selection.md:58) の国土交通省基準（歩車道境界の段差 標準 2 cm）と [07:234](07-drivetrain-and-wheel-sizing.md:234) の横断勾配 2 %（= 0.02 ≈ 0.0200 rad）だが、これらは**歩道の構造値**であって「推定平面が取付事前値からどれだけ外れてよいか」ではない [I]。確定は配線時に 00_Platform_Contract 側 config から注入し、実測（[`OQ-OD45` :143](04-perception-sidewalk-and-signals.md:143) / [`OQ-OD4Q` :354](04-perception-sidewalk-and-signals.md:354)）と**同時に**行う。
+
+### 2. パラメータ（`GroundFitParams` へ additive・**既定なし**・違反は構築時 `ValueError`）
+
+| パラメータ | 単位 | 検証 | 意味 | 値の根拠候補（**既定にしない**） |
+|---|---|---|---|---|
+| `max_plane_tilt_rad` | rad | 有限・`> 0`（`0` / 負 / NaN は `ValueError`） | 事前値 `Z = 0` の法線から候補平面が傾いてよい上限。候補の傾きは `atan(hypot(a, b))` | [07:234](07-drivetrain-and-wheel-sizing.md:234) の横断勾配 2 %（≈ 0.0200 rad）は**横断方向のみ**の構造値。縦断勾配（切下げ・坂）は正本に無い [I] → 実測で決める |
+| `max_plane_offset_m` | m | 有限・`> 0`（`0` / 負 / NaN は `ValueError`） | 候補平面の原点高さ `|c|` の上限＝取付高さ `h` の誤差・沈み込みの許容量 | [06 §3](06-hardware-delta-and-base-selection.md:58) の段差 標準 2 cm は**段差**であって取付誤差ではない [I]。`h` は車体未組立・未実測（追補 ⑤ §2） |
+
+- `0` を拒むのは、`0` が「事前値以外の一切の観測を受け付けない」設定＝観測を無効化する構成になるため（`min_valid_fraction = 0` を拒むのと同じ理由・追補 ⑤ §2）。
+- 上限は**片側の上界のみ**で、下界（「支持の下限」＝ inlier 率の最小値）は本裁定では**置かない**（2 本目のしきい値の出所が正本に無い＝[`OQ-OD4Z-b`](04-perception-sidewalk-and-signals.md:590) と同型）。支持は §3 の `ground_inlier_fraction` として**申告**し、判定は X2 に委ねる。
+
+### 3. 契約 v0.1（`ObservationQuality` への additive・すべて optional・既定 `None`）
+
+**既存 field（`valid_fraction` / `frame_digest` / `device_frame_seq` / `processing_latency_s`）は 1 文字も変えない**。平面を持たない producer（灯器観測 = `TrafficSignalObservation.quality`）は 5 field すべて `None` のままでよい＝**既存 payload はそのまま通る**（後方互換）。非有限（NaN / inf）は `allow_inf_nan=False` を継承して拒否（[:174](04-perception-sidewalk-and-signals.md:174)）。
+
+| field | 型・範囲 | 意味 | fail 方向 | 出典 file:line |
+|---|---|---|---|---|
+| `ground_plane_tilt_rad` | `float \| None`・`>= 0`・有限・既定 `None` | 採用した地面平面が事前値 `Z = 0` から傾いている量 `atan(hypot(a, b))` | 負・非有限は `ValidationError`（傾きは大きさ＝符号を持たない）。`None` = 平面を推定しない producer | [:181](04-perception-sidewalk-and-signals.md:181) / [:182](04-perception-sidewalk-and-signals.md:182) / [:592](04-perception-sidewalk-and-signals.md:592) |
+| `ground_plane_offset_m` | `float \| None`・**符号あり**・有限・既定 `None` | 採用した平面の原点高さ `c`（body 原点＝カメラ直下の地面） | 符号を拘束しない（沈み込み = 負・浮き = 正の両方が起きる。[:196](04-perception-sidewalk-and-signals.md:196) の `step_height_m` と同じ理由）。非有限は `ValidationError` | [:181](04-perception-sidewalk-and-signals.md:181) / [追補 ⑤ §1 段 3](04-perception-sidewalk-and-signals.md:520) |
+| `ground_inlier_fraction` | `float \| None`・`[0,1]`・有限・既定 `None` | 採用平面を支持した点の割合＝**支持の自己申告** | 範囲外・非有限は `ValidationError`。`valid_fraction` と**同じ範囲規約**にして X2 が同型に扱えるようにする | [:203](04-perception-sidewalk-and-signals.md:203) / [:592](04-perception-sidewalk-and-signals.md:592) |
+| `ground_from_prior` | `bool \| None`・既定 `None` | `True` = 許容内の候補が事前値に勝てず、**取付幾何の事前値で分類した**（観測が平面を上書きしていない） | `True` は「平面を観測で確認できていない」印であり、X2 はこれを**健康の低下**として扱える。`None` = 平面を推定しない producer | [追補 ⑤ §1 段 3](04-perception-sidewalk-and-signals.md:520) / [:592](04-perception-sidewalk-and-signals.md:592) |
+| `ground_rejected_candidates` | `int \| None`・`>= 0`・既定 `None` | 許容円錐の外で**最良比較に参加させなかった**候補の件数 | 負は `ValidationError`。`0` = 拘束が一度も効かなかった（＝この frame では素の RANSAC と同じ結果）。**大きい値は「観測が事前値と食い違っている」診断材料**で、それ自体は異常ではない | §1 裁定 1 / [:592](04-perception-sidewalk-and-signals.md:592) |
+
+### 4. fail 方向（何が誤停止側で、何を交換したか）
+
+| 場面 | 裁定前（素の RANSAC） | 裁定後（constrained RANSAC） | 向き |
+|---|---|---|---|
+| 回廊中ほど欠測 + 下り段差（[:592](04-perception-sidewalk-and-signals.md:592) の実例） | 傾いた平面が勝ち、崖が `FLOOR_CONFIRMED` | 傾き上限で候補が外れ、水平面（事前値）が残り `DROP_DETECTED` | **fail-open → fail-closed**（本裁定の目的） |
+| 真に**下り勾配**の路面（事前値で分類） | 平面が勾配に追従し `FLOOR_CONFIRMED` | 残差 `r = Z − 0` が `−drop_threshold_m` 以下へ → `DROP_DETECTED` | **誤停止側**（崖でないものを崖と呼ぶ）= fail-closed |
+| 真に**上り勾配**の路面（事前値で分類） | 同上 | 残差が `+plane_tolerance_m` を超え床点にならない → `UNKNOWN`（`DROP_DETECTED` にはならない） | **fail-closed**（未観測 = 通行不可。[:173](04-perception-sidewalk-and-signals.md:173) / `UNKNOWN` ≠ `DROP_DETECTED` = [:196](04-perception-sidewalk-and-signals.md:196)） |
+| 取付 `h` が誤っている（例 3 cm 高い） | 観測が事前値を上書きして回復 | `|c|` が `max_plane_offset_m` 内なら**同じく回復**・外なら事前値のまま `UNKNOWN` 側 | 上限の設定次第で fail-closed へ倒れる（値を絞りすぎる危険＝§5） |
+| 採用平面の数値そのもの | — | 採用平面は必ず許容内＝`|c|` と傾きが有界・有限 → §3 の自己申告が**契約違反値（NaN / inf）になり得ない** | 副次的な fail-closed（不正値が wire に出ない） |
+
+**交換したもの**: 「崖を床と言う」誤り（人身・車体損傷に直結）を、「勾配を崖／未観測と言う」誤り（誤停止・可用性の低下）へ交換した。後者は**止まる側**なので安全としては正しい向きだが、**上限を絞りすぎると legal な歩道で走れなくなる** [I]。`max_plane_tilt_rad` は「真の路面勾配 < 上限 < fail-open を起こす傾き（本 doc の実例では `atan(0.044) ≈ 0.044` rad）」の窓に入れる必要があり、この窓が実際にどれだけ広いかは**実測でしか分からない**（§5）。データ異常（NaN / 空 / 点数不足）で例外を上げない規律は不変（[:174](04-perception-sidewalk-and-signals.md:174) / 追補 ⑤）。
+
+### 5. OPEN QUESTIONS（本追補で**発明せずに残した**もの）
+
+- `OQ-OD4Z-d1` **2 上限の値**。`max_plane_tilt_rad` / `max_plane_offset_m` は注入のままで pin しない。§4 の「窓」（真の路面勾配 < 上限 < fail-open 傾き）が成立するかは、[`OQ-OD45` :143](04-perception-sidewalk-and-signals.md:143)（縁石 2 cm の分離距離）・[`OQ-OD4Q` :354](04-perception-sidewalk-and-signals.md:354)（MinZ）と**同じ実測**で確かめる。窓が閉じている（真の勾配 ≥ fail-open 傾き）なら、単一のスカラー円錐では足りず縦断／横断を分けるか、事前拘束でなく多重仮説（複数平面の保持）へ設計を変える必要がある [I]。
+- `OQ-OD4Z-d2` **傾きの分解**。上限は `atan(hypot(a, b))` の**単一スカラー**で、縦断（`a`）と横断（`b`）を区別しない。正本が持つ構造値は横断勾配 2 %（[07:234](07-drivetrain-and-wheel-sizing.md:234)）**だけ**で縦断勾配の上限は無い。2 本に分けるなら 2 本目の出所が要る（[`OQ-OD4Z-b`](04-perception-sidewalk-and-signals.md:590) と同型の問題）。
+- `OQ-OD4Z-d3` **X2 側の閾値化**。§3 の 5 field を X2（`warehouse_safety.sensor_health`）がどう判定に使うか（`ground_from_prior = True` を INVALID とみなすか・`ground_inlier_fraction` の下限・`ground_rejected_candidates` の扱い）は**別レーン**。本追補は申告のみを決め、判定点は X2 の 1 か所のまま（[:203](04-perception-sidewalk-and-signals.md:203) / [09 §2-b](09-external-review-v3-response.md:72)）。`SourceObservation` への写し方は [追補 ④ 1-2](04-perception-sidewalk-and-signals.md:409) の対応表の拡張になる。
+- `OQ-OD4Z-d4` **`estimate_error_m` との関係**。`TerrainCoverage.estimate_error_m` は「どの量の誤差か・統計的意味」が未定のまま（[`OQ-OD4Y-c`](04-perception-sidewalk-and-signals.md:488)）で、本追補の `ground_inlier_fraction` / `ground_plane_tilt_rad` は**その空欄を埋めていない**（支持と傾きは誤差の推定量ではない）。両者の関係（平面 fit の残差分布から `estimate_error_m` を出すか）は `OQ-OD4Y-c` の裁定時に決める。
+- `OQ-OD4Z-d5` **`rejected_candidates` の意味の安定性**。件数は `ransac_iterations` に比例してスケールし、正規化されていない（率ではない）。X2 が閾値を置くなら率へ直す必要がある [I]。`ransac_iterations` は注入値ゆえ、件数だけを見て機器間・構成間で比較できない。
+- `OQ-OD4Z-d6` **`OQ-OD4Z-*` の採番衝突**（本追補 冒頭注記）。追補 ⑤ / ⑥ / ⑦ が同一接頭辞を独立に使っており `-a`〜`-j` が 3 重に存在する。本追補は衝突を避けて `-d1`〜`-d6` を使ったが、恒久的な採番規則（追補ごとの接頭辞分離）は未決。詰め替えは下流 pin を割るため**行わない**。

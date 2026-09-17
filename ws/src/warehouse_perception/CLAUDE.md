@@ -122,7 +122,7 @@ Mode Outdoor の 04_Perception（歩道知覚）の**家は本 package**（[docs
 
 - `# TODO(node)` ROS node・topic・QoS・launch・config は**未実装**（本スライスの射程外）。配線時に
   `frame_id` / TF 対応（`OQ-OD4Z-g`）と topic 契約（`OQ-OD4Y-i`）を決める。
-- `# TODO(OQ-OD4Z-d)` 素の RANSAC は「多数派 = 真の地面」を仮定する。回廊中ほどが欠測した下り段差シーンでは
+- `# DONE(OQ-OD4Z-d)` **裁定済（2026-09-17・[04 追補 ⑧](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md)）＝以下の本文は裁定前の記述**（2 上限は注入・値は実測待ち。下の【2026-09-17 追記】を正とする）。 素の RANSAC は「多数派 = 真の地面」を仮定する。回廊中ほどが欠測した下り段差シーンでは
   傾いた平面が水平面より inlier を集め、崖が `FLOOR_CONFIRMED` に見える **fail-open** を実測で確認済。
   法線の事前拘束・支持の下限は正本にしきい値が無いため未実装＝**node 化前に裁定**。現状 `TerrainCoverage` は
   平面品質を運ばないため下流 X2 からは観測できない（裁定時に傾き上限の注入か平面支持の additive 自己申告が要る）。
@@ -136,12 +136,39 @@ Mode Outdoor の 04_Perception（歩道知覚）の**家は本 package**（[docs
 
 ### テスト
 
-- R-26 unit: `tests/unit/test_terrain_core.py`（`pytestmark = [unit, safety]`・63 件）。**合成シーンの生成器は
+- R-26 unit: `tests/unit/test_terrain_core.py`（`pytestmark = [unit, safety]`・80 件〔追補 ⑧ 裁定で +17〕）。**合成シーンの生成器は
   テスト側**にあり（投影を書き下ろす＝module の逆投影とは独立）、期待値は生成パラメータからの手計算リテラル
   （[doc20 §9](../../../docs/architecture/20-dev-quality-and-testing.md:131) の独立オラクル）。AST pin =
   `rclpy` / `numpy` を import しない・`cmd_vel` / `stop_request` / `speed_limit` の語を含まない・
   **パラメータ dataclass に既定値が無い**。mutation 10/10 で赤くなることを確認済（左右反転・「落下点 1 つで足りる」・
   cliff range の手前端・回廊 1 bin 検証を含む。PR 本文に記録）。
+
+### 【2026-09-17 追記】`OQ-OD4Z-d` 裁定 = [04 追補 ⑧](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md)（constrained RANSAC + 契約 v0.1 additive）
+
+既知 fail-open（傾き平面が水平面に勝ち崖が `FLOOR_CONFIRMED` に見える）を**裁定どおり閉じた**。
+**layer 不変**: `terrain_core.py` = 自律走行（安全層外）の producer のまま。**node・topic・launch・config は 0**。
+
+- **produce（追加）**: `GroundPlane.rejected_candidates: int`（許容円錐の外で最良比較に参加させなかった候補数・**既定なし**）と
+  `GroundPlane.tilt_rad` property（`atan(hypot(a, b))`）。`ground_estimator` は **constrained RANSAC** になり、
+  傾き `atan(hypot(a,b)) > max_plane_tilt_rad` または `|c| > max_plane_offset_m` の候補（および非有限係数の候補）を
+  **スコア計算の前に**除外する。事前値 `Z = 0` は常に許容内なので候補ゼロでも答えを失わない。
+- **produce（パラメータ・注入 / 既定なし）**: `GroundFitParams.max_plane_tilt_rad` [rad]・`max_plane_offset_m` [m]（有限・`> 0`・
+  `0` / 負 / NaN / inf / bool / 文字列は構築時 `ValueError`）。**docs に数値が無いので既定を作らない**
+  （値の根拠候補 = [06 §3](../../../docs/mode-outdoor/06-hardware-delta-and-base-selection.md:58) 段差 2 cm /
+  [07:234](../../../docs/mode-outdoor/07-drivetrain-and-wheel-sizing.md:234) 横断勾配 2 %。逸脱上限そのものは正本に無い＝`OQ-OD4Z-d1`）。
+- **produce（署名変更）**: `terrain_coverage(...)` に **`ground: GroundPlane` が必須 kwarg** として加わる
+  （どの平面で分類したか言えない coverage を作らせない）。`analyze_depth_frame` は内部で渡すため呼び出し側の変更不要。
+- **consume（契約 v0.1・additive）**: `warehouse_interfaces.perception.ObservationQuality` の 5 optional field を**埋める**
+  ——`ground_plane_tilt_rad` / `ground_plane_offset_m` / `ground_inlier_fraction` / `ground_from_prior` /
+  `ground_rejected_candidates`。**申告のみで判定しない**（閾値化は X2 = `OQ-OD4Z-d3`）。採用平面は必ず許容内なので
+  申告値は有限・範囲内＝契約の拒否値にならない（データ異常で例外を上げない規律を維持）。
+- **fail 方向**: 事前値で分類すると **下り勾配 → `DROP_DETECTED`（誤停止）／上り勾配 → `UNKNOWN`（床を名乗らない）**。
+  「崖を床と言う」を「勾配を崖／未観測と言う」へ交換した＝止まる側。上限を絞りすぎると legal な歩道で走れない（追補 ⑧ §4）。
+- **テスト**: `tests/unit/test_terrain_core.py` 80 件（旧 characterization test は裁定後の期待へ**全面書換**）。
+  mutation **5/5** で赤（傾き拘束を外す・原点高さ拘束を外す・棄却候補を最良比較に参加させる・棄却を数えない・傾き上限を 1000 倍）。
+  **原点高さ拘束を外す変異は当初生き残り**、上限だけを動かして同一シーンを比較する unit を足して閉じた。
+- **未確定**: 2 上限の実運用値（`OQ-OD4Z-d1`）・縦断／横断の分解（`-d2`）・X2 側の閾値化（`-d3`）・
+  `estimate_error_m` との関係（`-d4`）・`rejected_candidates` の正規化（`-d5`）・`OQ-OD4Z-*` の採番衝突（`-d6`）。
 
 
 

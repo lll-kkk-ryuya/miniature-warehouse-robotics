@@ -14,7 +14,12 @@ keep the original measurement time / ``:181`` the ``h / tan θ`` mounting geomet
 observed", step height / slope / roughness / estimate error as SEPARATE fields,
 ``UNKNOWN`` ≠ ``DROP_DETECTED``) and 追補 ④ (the frozen output contract
 ``warehouse_interfaces.perception``). Ground fitting is the 案 B RANSAC plane of
-``docs/mode-outdoor/04-perception-sidewalk-and-signals.md:44``.
+``docs/mode-outdoor/04-perception-sidewalk-and-signals.md:44``, CONSTRAINED by the
+mounting prior per 追補 ⑧ (``:838``), which rules on ``OQ-OD4Z-d`` (``:592``): a
+candidate plane that leans or sits further from ``Z = 0`` than the injected bounds
+allow is not an admissible ground plane and never enters the best-model comparison,
+and the plane's tilt / offset / support / prior flag / refusal count are self-reported
+through ``ObservationQuality`` (``:871``) so the choice is visible to X2.
 
 Layer: **自律走行（安全層外）** — a producer of observations for the L1 costmap /
 L1 collision_monitor (``cliff_scan``) and for X2 / 09 (``coverage``); it holds NO
@@ -367,6 +372,25 @@ class GroundFitParams:
         ransac_seed: seed of the sampling RNG. Required (no default) so the fit is
             reproducible in a unit test and identical on two machines
             (``docs/architecture/20-dev-quality-and-testing.md:131``).
+        max_plane_tilt_rad: how far a CANDIDATE plane may tilt away from the prior
+            ``Z = 0`` before it stops being an admissible ground plane, measured as
+            ``atan(hypot(a, b))``. Finite ``> 0``.
+        max_plane_offset_m: how far a candidate's height at the body origin, ``|c|``,
+            may sit from the prior. Finite ``> 0``.
+
+    The last two are the 追補 ⑧ ruling on ``OQ-OD4Z-d``
+    (``docs/mode-outdoor/04-perception-sidewalk-and-signals.md:838``): a plain RANSAC
+    assumes "the majority is the true ground", and on a down-step scene with a blind
+    band the tilted plane through near floor and far lower surface out-votes the
+    horizontal one, so a cliff reads as ``FLOOR_CONFIRMED``
+    (``docs/mode-outdoor/04-perception-sidewalk-and-signals.md:592``). Both bounds have
+    NO default for the reason every other parameter here has none: the docs pin the
+    sidewalk's own structure (a 2 cm kerb,
+    ``docs/mode-outdoor/06-hardware-delta-and-base-selection.md:58``; a 2 % cross slope,
+    ``docs/mode-outdoor/07-drivetrain-and-wheel-sizing.md:234``) but never how far an
+    ESTIMATE may deviate from the mounting prior, and the two are not the same quantity.
+    ``0`` is refused because it would accept no observation at all, leaving the prior as
+    the only possible answer (追補 ⑧ §2).
 
     Raises:
         ValueError: any value is non-numeric, non-finite or out of range.
@@ -375,6 +399,8 @@ class GroundFitParams:
     plane_tolerance_m: float
     ransac_iterations: int
     ransac_seed: int
+    max_plane_tilt_rad: float
+    max_plane_offset_m: float
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -387,6 +413,12 @@ class GroundFitParams:
         )
         if isinstance(self.ransac_seed, bool) or not isinstance(self.ransac_seed, int):
             raise ValueError(f"ransac_seed must be an int, got {self.ransac_seed!r}")
+        object.__setattr__(
+            self, "max_plane_tilt_rad", _positive("max_plane_tilt_rad", self.max_plane_tilt_rad)
+        )
+        object.__setattr__(
+            self, "max_plane_offset_m", _positive("max_plane_offset_m", self.max_plane_offset_m)
+        )
 
 
 @dataclass(frozen=True)
@@ -519,6 +551,14 @@ class GroundPlane:
             mounting geometry has already been applied by :func:`back_project`, so
             "the ground is where ``h`` and ``θ`` say it is" IS the prior, and the fit
             only overwrites it when the observation supports something better.
+        rejected_candidates: how many sampled candidates were refused for leaving the
+            admissible cone of ``GroundFitParams`` and so never entered the best-model
+            comparison (追補 ⑧ §1,
+            ``docs/mode-outdoor/04-perception-sidewalk-and-signals.md:846``). ``0`` means
+            the constraint never bit. The count is kept rather than dropped so the
+            refusals are visible downstream instead of silently shaping the answer; it
+            is DIAGNOSTIC, not an error, and it is not normalised by
+            ``ransac_iterations`` (``OQ-OD4Z-d5``).
     """
 
     a: float
@@ -527,6 +567,7 @@ class GroundPlane:
     inlier_count: int
     point_count: int
     used_prior: bool
+    rejected_candidates: int
 
     def height_at(self, x: float, y: float) -> float:
         """Plane height [m] at body coordinates ``(x, y)``."""
@@ -538,6 +579,18 @@ class GroundPlane:
         if self.point_count == 0:
             return 0.0
         return self.inlier_count / self.point_count
+
+    @property
+    def tilt_rad(self) -> float:
+        """Tilt away from the prior ``Z = 0`` [rad] — ``atan(hypot(a, b))``.
+
+        A magnitude, never negative: it says HOW FAR the plane leans, not which way
+        (the direction lives in ``a`` / ``b``). This is the quantity
+        ``max_plane_tilt_rad`` bounds and the one self-reported as
+        ``ObservationQuality.ground_plane_tilt_rad`` (追補 ⑧ §3,
+        ``docs/mode-outdoor/04-perception-sidewalk-and-signals.md:871``).
+        """
+        return math.atan(math.hypot(self.a, self.b))
 
 
 @dataclass(frozen=True)
@@ -754,8 +807,34 @@ def _score(
     return count, (math.inf if count == 0 else total / count)
 
 
+def _within_prior_cone(
+    candidate: tuple[float, float, float], *, ground_fit: GroundFitParams
+) -> bool:
+    """Is this candidate an admissible ground plane at all? (追補 ⑧ §1)
+
+    Admissible means it stays inside the cone the mounting geometry allows around the
+    prior ``Z = 0``: it leans by at most ``max_plane_tilt_rad`` and sits at most
+    ``max_plane_offset_m`` from the origin. A candidate that fails is not a worse model
+    to be out-voted later — it is not a ground plane, so it must never reach the
+    comparison (``docs/mode-outdoor/04-perception-sidewalk-and-signals.md:846``).
+
+    A non-finite coefficient is refused here too. It cannot be out-voted (comparisons
+    against ``NaN`` are all false) and it would travel out as a ``NaN`` in
+    ``ObservationQuality``, which the frozen contract refuses — turning a DATA anomaly
+    into an exception, exactly what this module must not do
+    (``docs/mode-outdoor/04-perception-sidewalk-and-signals.md:174``). Refusing it keeps
+    the retained plane finite and bounded, so the self-report is always a legal value.
+    """
+    a, b, c = candidate
+    if not (math.isfinite(a) and math.isfinite(b) and math.isfinite(c)):
+        return False
+    if math.atan(math.hypot(a, b)) > ground_fit.max_plane_tilt_rad:
+        return False
+    return abs(c) <= ground_fit.max_plane_offset_m
+
+
 def ground_estimator(points: Sequence[Point3], *, ground_fit: GroundFitParams) -> GroundPlane:
-    """RANSAC ground plane, seeded by the mounting geometry (案 B, ``:44``).
+    """Constrained RANSAC ground plane, seeded by the mounting geometry (案 B, ``:44``).
 
     The prior is the body-frame plane ``Z = 0``, i.e. exactly what ``h`` and ``θ``
     predict, because :func:`back_project` has already applied them. Random triples
@@ -764,26 +843,40 @@ def ground_estimator(points: Sequence[Point3], *, ground_fit: GroundFitParams) -
     to the incumbent — so the prior survives a tie and the whole search is
     deterministic for a given ``ransac_seed``.
 
+    Competing, however, is a privilege of the admissible: a candidate outside the cone
+    of :func:`_within_prior_cone` is counted in ``rejected_candidates`` and skipped
+    BEFORE it is scored. That ordering is the 追補 ⑧ ruling on ``OQ-OD4Z-d``
+    (``docs/mode-outdoor/04-perception-sidewalk-and-signals.md:838``) and the whole point
+    of it: the fail-open was not that the tilted plane scored badly — it scored BETTER
+    (``:592``). Counting its inliers first and rejecting afterwards would leave the same
+    hole open for a tie-break, so out-of-cone candidates never enter the comparison at
+    all. The prior itself is always admissible (tilt ``0``, ``|c| = 0``, both bounds
+    ``> 0``), so a frame where everything is rejected still has an answer.
+
     Never raises on data: with fewer than three points no triple exists and the prior
     is returned, scored on whatever points there are.
 
     Args:
         points: body-frame points from :func:`back_project`.
-        ground_fit: tolerance, iteration count and seed.
+        ground_fit: tolerance, iteration count, seed and the two admissibility bounds.
 
     Returns:
-        GroundPlane: the retained model with its support.
+        GroundPlane: the retained model with its support and the refusal count.
     """
     tolerance = ground_fit.plane_tolerance_m
     best = (0.0, 0.0, 0.0)
     best_score = _score(best, points, tolerance)
     used_prior = True
+    rejected_candidates = 0
     if len(points) >= 3:
         rng = random.Random(ground_fit.ransac_seed)
         for _ in range(ground_fit.ransac_iterations):
             i0, i1, i2 = rng.sample(range(len(points)), 3)
             candidate = _plane_from_triple(points[i0], points[i1], points[i2])
             if candidate is None:
+                continue
+            if not _within_prior_cone(candidate, ground_fit=ground_fit):
+                rejected_candidates += 1
                 continue
             score = _score(candidate, points, tolerance)
             if score[0] > best_score[0] or (score[0] == best_score[0] and score[1] < best_score[1]):
@@ -795,6 +888,7 @@ def ground_estimator(points: Sequence[Point3], *, ground_fit: GroundFitParams) -
         inlier_count=best_score[0],
         point_count=len(points),
         used_prior=used_prior,
+        rejected_candidates=rejected_candidates,
     )
 
 
@@ -891,6 +985,7 @@ def terrain_coverage(
     grid: TerrainGrid,
     *,
     params: TerrainParams,
+    ground: GroundPlane,
     valid_fraction: float,
     source_stamp_s: float,
     reference: str,
@@ -928,6 +1023,17 @@ def terrain_coverage(
     ``UNKNOWN`` does not reach the cliff LaserScan (``:173``). This module applies the
     ratio only to its own claim; the permission decision remains X2's (``OQ-OD4E``,
     ``:342``, and 追補 ⑤ の OQ).
+
+    Ground-plane self-report. ``ground`` is the plane the cells were classified
+    against, and its tilt / offset / support / prior flag / refusal count travel out in
+    ``ObservationQuality`` (追補 ⑧ §3,
+    ``docs/mode-outdoor/04-perception-sidewalk-and-signals.md:871``). It is a REQUIRED
+    argument — a coverage payload that cannot say which plane produced it would hide
+    exactly the failure 追補 ⑧ exists to expose
+    (``docs/mode-outdoor/04-perception-sidewalk-and-signals.md:592``). Reported, never
+    judged: no threshold is applied to any of the five, and ``ground_from_prior=True``
+    does not by itself change ``state`` — X2 stays the single judgement point
+    (``:203``, ``OQ-OD4Z-d3``).
 
     Never raises on data; a malformed ``reference`` raises through the frozen
     contract, which is a call-site mistake.
@@ -975,6 +1081,11 @@ def terrain_coverage(
             frame_digest=frame_digest,
             device_frame_seq=device_frame_seq,
             processing_latency_s=processing_latency_s,
+            ground_plane_tilt_rad=ground.tilt_rad,
+            ground_plane_offset_m=ground.c,
+            ground_inlier_fraction=ground.inlier_fraction,
+            ground_from_prior=ground.used_prior,
+            ground_rejected_candidates=ground.rejected_candidates,
         ),
     )
 
@@ -1069,6 +1180,7 @@ def analyze_depth_frame(
     coverage = terrain_coverage(
         grid,
         params=params,
+        ground=plane,
         valid_fraction=validity.valid_fraction,
         source_stamp_s=source_stamp_s,
         reference=reference,

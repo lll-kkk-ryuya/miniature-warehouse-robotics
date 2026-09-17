@@ -34,6 +34,14 @@ Contract as pinned by the docs:
                       checks on GREEN (04:307).
   max_age             belongs to the consumer's own time budget, checked at the
                       point of use — NOT a producer field (04:382 追補 ③ #4).
+  ground self-report  v0.1 ADDITIVE (追補 ⑧ §3, 04:871): tilt / offset / support /
+                      prior flag / refusal count of the fitted ground plane, all
+                      optional and defaulting to None so a producer with no plane is
+                      unchanged. Tilt is a magnitude (>= 0), offset is SIGNED, support
+                      is a ratio in [0, 1], the refusal count is a count. They are
+                      NUMBERS, not verdicts — no threshold lives here, X2 judges
+                      (04:203). Before v0.1 the plane's quality did not travel, so the
+                      RANSAC fail-open of 04:592 was invisible downstream.
   model_manifest      model name / weights hash / input size / RGB-BGR /
                       normalization / resize method / output interpretation /
                       label order / ONNX opset / TensorRT version / GPU arch /
@@ -81,6 +89,12 @@ SPEC_QUALITY_FIELDS = {
     "frame_digest",
     "device_frame_seq",
     "processing_latency_s",
+    # v0.1 additive (追補 ⑧ §3, 04:871) — the ground-plane self-report.
+    "ground_plane_tilt_rad",
+    "ground_plane_offset_m",
+    "ground_inlier_fraction",
+    "ground_from_prior",
+    "ground_rejected_candidates",
 }
 SPEC_COVERAGE_FIELDS = {
     "source_stamp_s",
@@ -314,6 +328,9 @@ def test_signal_observation_has_no_max_age_field() -> None:
     [
         (_quality, ObservationQuality, "valid_fraction"),
         (_quality, ObservationQuality, "processing_latency_s"),
+        (_quality, ObservationQuality, "ground_plane_tilt_rad"),
+        (_quality, ObservationQuality, "ground_plane_offset_m"),
+        (_quality, ObservationQuality, "ground_inlier_fraction"),
         (_coverage, TerrainCoverage, "source_stamp_s"),
         (_coverage, TerrainCoverage, "confirmed_distance_m"),
         (_coverage, TerrainCoverage, "nearest_drop_distance_m"),
@@ -385,6 +402,95 @@ def test_negative_device_frame_seq_is_refused() -> None:
     """A device frame counter is a count (04:383 追補 ③ #5)."""
     with pytest.raises(ValidationError):
         ObservationQuality.model_validate(_quality(device_frame_seq=-1))
+
+
+# --- v0.1: the ground-plane self-report (追補 ⑧ §3, 04:871) -------------------
+
+
+@pytest.mark.parametrize("bad", [-0.001, -1.0])
+def test_negative_ground_plane_tilt_is_refused(bad: float) -> None:
+    """Tilt is a MAGNITUDE — ``atan(hypot(a, b))`` — so it cannot be negative.
+
+    The direction of the lean lives in the plane's own ``a`` / ``b``; a negative
+    "how far it leans" is a producer bug, and accepting it would let a consumer
+    compare it against a bound and silently pass (04:871).
+    """
+    with pytest.raises(ValidationError):
+        ObservationQuality.model_validate(_quality(ground_plane_tilt_rad=bad))
+
+
+@pytest.mark.parametrize("bad", [-0.001, 1.001, -1.0, 2.0])
+def test_ground_inlier_fraction_outside_zero_one_is_refused(bad: float) -> None:
+    """Support is a ratio in [0, 1] — the same convention as ``valid_fraction``."""
+    with pytest.raises(ValidationError):
+        ObservationQuality.model_validate(_quality(ground_inlier_fraction=bad))
+
+
+@pytest.mark.parametrize("edge", [0.0, 1.0])
+def test_ground_inlier_fraction_accepts_the_closed_interval(edge: float) -> None:
+    """0.0 (nothing supported the plane) and 1.0 (every point did) are both real."""
+    parsed = ObservationQuality.model_validate(_quality(ground_inlier_fraction=edge))
+    assert parsed.ground_inlier_fraction == edge
+
+
+def test_negative_rejected_candidate_count_is_refused() -> None:
+    """A refusal count is a count; ``0`` means the constraint never bit (04:871)."""
+    with pytest.raises(ValidationError):
+        ObservationQuality.model_validate(_quality(ground_rejected_candidates=-1))
+    assert (
+        ObservationQuality.model_validate(
+            _quality(ground_rejected_candidates=0)
+        ).ground_rejected_candidates
+        == 0
+    )
+
+
+def test_ground_plane_offset_may_be_negative() -> None:
+    """The offset is SIGNED: the ground can sit below or above the prior.
+
+    Same reason ``step_height_m`` is signed (04:196) — constraining the sign would
+    make a settled surface unrepresentable.
+    """
+    parsed = ObservationQuality.model_validate(_quality(ground_plane_offset_m=-0.03))
+    assert parsed.ground_plane_offset_m == -0.03
+
+
+def test_a_pre_v01_quality_payload_still_validates() -> None:
+    """**後方互換**: a payload written before the five fields existed is still legal.
+
+    This is the whole claim of "additive" (parallel-workflow §7.2): an existing
+    producer that never heard of a ground plane keeps validating, and its five new
+    fields read ``None`` — not ``0.0``, which would be a measurement it never made.
+    """
+    legacy = {
+        "valid_fraction": 0.97,
+        "frame_digest": "deadbeef",
+        "device_frame_seq": 12345,
+        "processing_latency_s": 0.08,
+    }
+    parsed = ObservationQuality.model_validate(legacy)
+    assert parsed.valid_fraction == 0.97
+    assert parsed.frame_digest == "deadbeef"
+    assert parsed.device_frame_seq == 12345
+    assert parsed.processing_latency_s == 0.08
+    for field in SPEC_QUALITY_FIELDS - set(legacy):
+        assert getattr(parsed, field) is None
+    # ...and the coverage payload that embeds it is unchanged too.
+    coverage = TerrainCoverage.model_validate(_coverage(quality=legacy))
+    assert coverage.quality.ground_from_prior is None
+
+
+def test_ground_from_prior_is_a_flag_not_a_number() -> None:
+    """``True`` = the cells were classified against the mounting prior, not an
+    observed plane. It must stay a bool: a consumer reading it as "reduced health"
+    cannot be handed a truthy float (04:871)."""
+    parsed = ObservationQuality.model_validate(_quality(ground_from_prior=True))
+    assert parsed.ground_from_prior is True
+    assert ObservationQuality.model_validate(
+        _quality(ground_from_prior=False)
+    ).ground_from_prior is (False)
+    with pytest.raises(ValidationError):
+        ObservationQuality.model_validate(_quality(ground_from_prior="yes-please"))
 
 
 @pytest.mark.parametrize("bad", [0.0, -1.0])
@@ -575,6 +681,13 @@ def test_optional_fields_default_to_none_not_to_a_reassuring_value() -> None:
     assert quality.frame_digest is None
     assert quality.device_frame_seq is None
     assert quality.processing_latency_s is None
+    # v0.1 additive: a producer with no ground plane (the signal observer) omits all
+    # five and is unchanged — that is what makes the change additive (追補 ⑧ §3).
+    assert quality.ground_plane_tilt_rad is None
+    assert quality.ground_plane_offset_m is None
+    assert quality.ground_inlier_fraction is None
+    assert quality.ground_from_prior is None
+    assert quality.ground_rejected_candidates is None
 
 
 # --- hub policy + wire round-trip --------------------------------------------
