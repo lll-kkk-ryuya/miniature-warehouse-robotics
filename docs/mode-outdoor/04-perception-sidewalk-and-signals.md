@@ -511,7 +511,107 @@ X2 の入力型 `warehouse_safety.sensor_health.SourceObservation`（`stamp_s` /
 
 ## 【2026-09-17 追補 ⑥】03_Traffic_Signals 二段レート時系列判定 純ロジック v0（実装記録・P2 レーンが記入）
 
-（P2 実装 PR で記入。契約 = 追補 ④ `TrafficSignalObservation`）
+実装 = **`ws/src/warehouse_perception/warehouse_perception/signal_temporal_core.py`**（**L4** 知覚・publish-only・**0 actuation**。横断の許可は L2 横断ゲート（10）が `state == GREEN` ∧ 鮮度 ∧ 承認トークンを AND する＝[:85](04-perception-sidewalk-and-signals.md:85) / [追補 ④ §2 項目 4](04-perception-sidewalk-and-signals.md:480)）。契約は本 doc 追補 ④ の `TrafficSignalObservation` / `ObservationQuality` をそのまま出力し、**型は 1 文字も変えていない**（契約変更なし）。R-26 unit = `tests/unit/test_signal_temporal_core.py`。
+
+**本スライスが作らないもの**: カメラ・分類器・ROI 投影・露出固定・node / topic / launch / config。レート A（ROI 輝度サンプラ）とレート B（分類器）の**出力を入力として受けるだけ**の純ロジックで、`rclpy` / `numpy` に依存しない（AST pin）。日本の公開歩行者用信号データセットが無く（[:261](04-perception-sidewalk-and-signals.md:261)）点滅を直接クラス化した公開モデルも無い（[:262](04-perception-sidewalk-and-signals.md:262)）ためオラクルは**テスト側の合成時系列**で、実 bag 比較は P3 評価基盤 + ハード到着後。
+
+#### 1. 入力型（どちらも他段が作る）
+
+| 型 | レート | field | 意味 |
+|---|---|---|---|
+| `LuminanceSample` | **A**（カメラ fps） | `stamp_s` / `green_ratio` / `red_ratio` / `exposure` | ROI の緑・赤 hue 面積比 g_t / r_t と露出値 e_t（[:307](04-perception-sidewalk-and-signals.md:307)）。`stamp_s` は元計測時刻・付け直し禁止（[:177](04-perception-sidewalk-and-signals.md:177)） |
+| `EvidenceSample` | **B**（分類器 f_B） | `stamp_s` / `evidence: LampEvidence` / `roi_consistent` | 1 フレームの証拠クラス（[:261](04-perception-sidewalk-and-signals.md:261) の 5 クラス。**状態ではない**）と登録 ROI との整合（[:85](04-perception-sidewalk-and-signals.md:85)） |
+
+#### 2. パラメータ表（**全て注入・既定なし**・単位付き）
+
+コードに置いてよい数値定数は **`NOMINAL_FLASH_PERIOD_S = 0.5 s`**（[D] 一次情報 = 警察庁 仕様書 / 科警研 2019・[:305](04-perception-sidewalk-and-signals.md:305)）**ただ 1 つ**。これは**期待値であって検証境界ではない**（追補 ④ `measured_period_s` 行）ので、許容幅は `period_tolerance_s` として外から入れる。以下はすべて構築時に検証し、使えない値は `SignalTemporalConfigError`（`ValueError`）で**その場**で落とす（判定の中では落とさない）。
+
+| パラメータ | 単位 | 制約（構築時） | 出典・既定を置かない理由 |
+|---|---|---|---|
+| `window_span_s` | s | 有限・> 0 | 窓 W は `source_stamp` 基準の**秒数**で定義しフレーム数で定義しない（[:307](04-perception-sidewalk-and-signals.md:307) / [追補 ③ #1](04-perception-sidewalk-and-signals.md:379)）。値は docs 未定 |
+| `min_samples` | 件 | >= 1 | 窓定義のもう半分＝有効サンプル数の下限（[:307](04-perception-sidewalk-and-signals.md:307)）。0 を許すと「0 件から GREEN」が成立し fail-open |
+| `majority_fraction` | 比 | 0.5 < f <= 1.0 | 親 §4 の「直近 N フレーム（例 10）」が**例示**とされた（[追補 ③ #1](04-perception-sidewalk-and-signals.md:379)）以上、そこに乗る 8/10 も固定値として扱わない（N が例示なら share だけを凍結する根拠が無い）。0.5 以下は多数決ではなく、RED と GREEN が同時に「勝つ」ため排他性が壊れる |
+| `classifier_rate_hz` | Hz | 有限・> 0・**2 Hz の整数倍でない** | f_B は点滅周期と非整数比にする（例 9 Hz = 4.5 倍。**10 / 12 / 30 Hz は罠**＝[:307](04-perception-sidewalk-and-signals.md:307) / [:306](04-perception-sidewalk-and-signals.md:306)）。判定に使わず**構築時に拒否**する。判定式は `f_B × NOMINAL_FLASH_PERIOD_S` が整数か（＝定数を 1 つに保つ導出） |
+| `period_tolerance_s` | s | 有限・0 < t < 0.5 | 0.5 s 周りの許容半幅。docs は許容幅を pin していない（`OQ-OD4Z-c`）。0.5 以上だと帯が非正の周期に届く |
+| `on_threshold` / `off_threshold` | 比 | 0 <= off < on <= 1 | ヒステリシス二値化（[:307](04-perception-sidewalk-and-signals.md:307)）。差＝ヒステリシス幅で、0 以下ではノイズでチャタる。値は露出・ROI 実測後 |
+| `exposure_tolerance` | 露出値の幅 | 有限・>= 0 | 窓内で露出が動いたら**判定不能**に倒す。自動露出と LED PWM のエイリアシングが偽 OFF を作るため（露出固定 = [:308](04-perception-sidewalk-and-signals.md:308) / [`OQ-OD4L`](04-perception-sidewalk-and-signals.md:349)）。固定値は実測後 |
+| `red_sync_delta` | 比 | 有限・>= 0 | 「赤が同期して増えていない」の許容（[:307](04-perception-sidewalk-and-signals.md:307)）。超えたら全体照度の変動疑いとして点滅判定を withhold |
+| `min_rising_edges` | 件 | >= 2 | 中央値を取るのに最低 1 区間＝2 エッジ要る。1 本の GREEN→消灯遷移を点滅と読ませない |
+| `min_luminance_samples` | 件 | >= 2 | レート A の証拠不足で点滅判定を走らせない |
+
+#### 3. レート A（`FlashDetector`）の真理表
+
+`is_flashing` は 3 値。**`None` = 判定不能であって「点滅なし」ではない**（[追補 ④ §2 項目 3](04-perception-sidewalk-and-signals.md:479)）。`False` を名乗れるのは**連続点灯**の窓だけ＝「点滅していない」の積極証拠がある場合に限る。
+
+| 窓内のレート A 観測 | `is_flashing` | `measured_period_s` | 理由 |
+|---|---|---|---|
+| サンプル数 < `min_luminance_samples` | `None` | `None` | 証拠不足 |
+| ヒステリシス帯の内側だけで 1 相も確定しない | `None` | `None` | 位相が付かない＝二値化が成立していない |
+| いずれかの値が非有限（NaN / inf） | `None` | `None` | 部分的に読めた輝度列は本物の消灯相と区別できない（`OQ-OD4Z-d`） |
+| 露出の幅 > `exposure_tolerance` | `None` | `None` | 露出固定の前提が崩れ偽 OFF が作られる（[`OQ-OD4L`](04-perception-sidewalk-and-signals.md:349)） |
+| **ON 相のみ**（連続点灯） | **`False`** | `None` | 「明滅していない」の積極証拠 |
+| **OFF 相のみ**（連続消灯） | `None` | `None` | 点滅の消灯相を切り取っただけかもしれない＝否定を主張できない |
+| 両相あり・立ち上がりエッジ < `min_rising_edges` | `None` | `None` | 交番はあるが周期を測れない（GREEN→消灯→GREEN の 1 回は点滅ではない） |
+| 両相あり・エッジ間隔の中央値が非有限または <= 0 | `None` | `None` | 同時刻エッジ等で周期にならない |
+| 両相あり・エッジ間隔の中央値が 0.5 s ± `period_tolerance_s` の**外** | `None` | 実測値 | 交番しているが法定周期でない。数値は隠さず出し、判定だけ withhold |
+| 両相あり・帯内・**赤が同期して増えた**（> `red_sync_delta`） | `None` | 実測値 | 全体照度の変動疑い |
+| 両相あり・帯内・赤が同期していない | **`True`** | 実測値 | 二段レートの点滅判定成立（[:307](04-perception-sidewalk-and-signals.md:307)） |
+
+#### 4. 状態決定の真理表（`SignalWindow`・[:307](04-perception-sidewalk-and-signals.md:307) の順序どおり）
+
+窓 = `(window_end_s − window_span_s, window_end_s]`。多数決・件数はすべて**レート B** のサンプルを数える（暫定 = [`OQ-OD4Y-d`](04-perception-sidewalk-and-signals.md:489)）。
+
+| # | 条件（上から評価） | `state` |
+|---|---|---|
+| 1 | `is_flashing is True` | `GREEN_FLASHING` |
+| 2 | RED 多数決（share >= `majority_fraction`） | `RED` |
+| 3 | GREEN 多数決 ∧ **`is_flashing is False`** ∧ `off_phase_count == 0` ∧ `roi_consistent`（最新証拠）∧ `sample_count >= min_samples` ∧ **最新証拠が `GREEN`** | `GREEN` |
+| 4 | 上記以外すべて | `UNKNOWN` |
+
+- **③ の `is_flashing is False`（`is not True` ではない）が本実装の裁定点**: docs はこの場合を明示していない（[:307](04-perception-sidewalk-and-signals.md:307) は「NOT flashing」とだけ書く）。**判定不能で GREEN を許すのは証拠の不在を否定と読むこと**（[追補 ④ §2 項目 3](04-perception-sidewalk-and-signals.md:479)）なので fail-closed に `UNKNOWN` へ倒した＝`OQ-OD4Z-a`。
+- **GREEN 離脱は最新 1 サンプル**（[:90](04-perception-sidewalk-and-signals.md:90) の非対称）: ③ の最後の AND 項がそれで、**状態を持たない**（履歴で GREEN を開いたままにできない）。
+- **鮮度（`max_age`）は判定しない**（[追補 ③ #4](04-perception-sidewalk-and-signals.md:382) / [追補 ④ §2 項目 1](04-perception-sidewalk-and-signals.md:477)）。producer が窓を配ると停止判定点が 2 つになる。
+- **`GREEN_FLASHING` 証拠の多数決は GREEN に数えない**（per-frame クラスは別語彙＝[:261](04-perception-sidewalk-and-signals.md:261)）。①が成立しなければ④に落ちる＝`OQ-OD4Z-b`。
+- 空窓（レート A / B とも有効 stamp のサンプルが 0 件）は**観測なし＝出力しない**（`None` を返す）。`source_stamp_s` は必須（追補 ④）で捏造できず、偽の鮮度を作らないため。消費側は自分の鮮度検査で禁止側に倒れる。
+
+#### 5. `quality` の定義（暫定）
+
+| field | 本実装の定義 | 備考 |
+|---|---|---|
+| `valid_fraction` | 窓内レート B のうち **`NOT_VISIBLE` でない**比率（空窓は `0.0`） | **暫定**＝`OQ-OD4Z-f`。`OFF_OR_UNLIT`（消灯相）は「見えた」観測なので**有効側**に数え、遮蔽・欠落だけを無効とする（[:261](04-perception-sidewalk-and-signals.md:261) の分離が前提）。docs は窓観測の分子を定義していない（[:203](04-perception-sidewalk-and-signals.md:203)） |
+| `frame_digest` / `device_frame_seq` / `processing_latency_s` | 入力の**受け渡しのみ**（04 の画像段が持つ値） | 使えない値（非 str digest・負の seq・**負の latency**）は例外にせず `None`＝「不在」として運ぶ。契約は負の latency を `ValidationError` で拒むが、その例外を safety loop へ持ち込まないのは呼び出し側の責務（[追補 ④ §2 項目 6](04-perception-sidewalk-and-signals.md:482)）＝`OQ-OD4Z-e` |
+
+#### 6. fail 方向（不変条件）
+
+- パラメータ・`crossing_id` の不正 → **構築時**に `SignalTemporalConfigError`。
+- **data では例外を上げない**。倒れ方は 3 種類で、**同一視しない**: ①**窓に置けない**（非有限 stamp のサンプル）→ その 1 本を落とすだけで判定は劣化しない（到着順も同じ＝窓は時刻で定義され、逆順で渡しても結果は変わらない）。②**判定不能**（レート A の NaN 比率 / 露出変動 / 証拠不足）→ `is_flashing=None` → GREEN は出ない。③**観測なし**（窓に有効 stamp のサンプルが 0 件・窓端が非有限）→ 出力しない（`None`）。使えない品質値（非 str digest・負の seq・負の latency）は品質 field を**不在**にして運ぶ。
+- `state == GREEN` を代入する経路は**モジュール内で 1 か所**（AST pin で固定）。
+- `cmd_vel` / `stop_request` / `speed_limit` / `stop_state` のいずれにも触れない（L4 publish-only の AST pin）。
+
+#### 7. テスト（R-26・独立オラクル・[doc20 §9](../architecture/20-dev-quality-and-testing.md:131)）
+
+`tests/unit/test_signal_temporal_core.py`（`unit` + `safety` マーカー・**61 本**）。合成生成器はテスト側にあり実装を参照しない。期待値は生成パラメータからの手計算リテラル（窓 (8.0, 10.0]・fps 30 → レート A 60 本・f_B 9 Hz → レート B 18 本・立ち上がりは t = 8.5 / 9.0 / 9.5 / 10.0 ゆえ実測周期は厳密に 0.5 s）。
+
+- 真理表の各行（定常 GREEN / OFF 1 件 → UNKNOWN / 定常 RED / 点滅 duty 50 % → `GREEN_FLASHING` + 周期 0.5 s）。
+- **罠**: duty 75 % + 分類器が消灯相を GREEN と出す → レート B は**満票 GREEN**（GREEN の他の AND 項もすべて成立）でも、レート A が勝って `GREEN_FLASHING`。同じレート B をレート A 不在で流すと `UNKNOWN`＝「多数決だけを防波堤にしない」（[:306](04-perception-sidewalk-and-signals.md:306)）を両側から示す。
+- 相対多数（12/18 = 0.667）は判定にならない・露出ドリフト → 判定不能・赤の同期 → 判定不能・全消灯窓は「点滅なし」を主張できない。
+- GREEN 離脱: 最新 1 件が `RED` / `NOT_VISIBLE`（`off_phase_count` は 0 のまま）/ `OFF_OR_UNLIT` で即 `UNKNOWN`。
+- `classifier_rate_hz` = 10 / 12 / 30 / 2 / 4 → `ValueError`、9 / 7.5 / 11 / 13 → OK。
+- **P-1 property**（親 §7）: seed 固定・**N = 240** のランダム窓で、真値が点滅または赤を含む窓（**134 件**）の出力が `GREEN` = **0 件**。非空虚性も assert（GREEN が出る窓 21 件・`GREEN_FLASHING` 62 件が実際に出る＝常に `UNKNOWN` を返す実装では落ちる）。
+- **AST pin**: `rclpy` / `numpy` 非 import・actuation 語彙なし・`SignalState.GREEN` の出現 1 か所・パラメータ dataclass に既定値なし・**モジュール定数の数値は `NOMINAL_FLASH_PERIOD_S = 0.5` のみ**。
+- **mutation 7/7 で赤**（OFF 相条件の削除／判定不能を GREEN 許可へ／整数比チェックの削除／GREEN 離脱を多数決のみへ／多数決を過半数へ緩和／全消灯窓を「点滅なし」へ／連続点灯を判定不能へ）。
+
+#### 8. OPEN QUESTIONS（本実装が**発明せずに残した**もの・接頭辞 `OQ-OD4Z`）
+
+- `OQ-OD4Z-a` **`is_flashing is None`（判定不能）で GREEN を許すか**。docs は [:307](04-perception-sidewalk-and-signals.md:307) の「NOT flashing」としか言わない。本実装は fail-closed（`is False` を要求）に倒した。実機で「定常青なのに露出変動や遮蔽で判定不能が頻発し横断できない」場合、緩めるのではなく**レート A の可用性**（露出固定・ROI）側を直す方針でよいかを裁定する。
+- `OQ-OD4Z-b` **レート B の `GREEN_FLASHING` 多数決**を `GREEN_FLASHING` へ昇格させるか（現状は④の `UNKNOWN`）。**正本が割れている**: 親 §4 [:86](04-perception-sidewalk-and-signals.md:86) は `GREEN_FLASHING` の条件に「交番、**または明示クラス**」と明示クラス経路を認めるが、後発の訂正である追補 ② §5 [:307](04-perception-sidewalk-and-signals.md:307) の状態決定順序は `is_flashing`（レート A）だけを `GREEN_FLASHING` の源にしている。本実装は**後者に厳密に従い**明示クラスを読まない（[:262](04-perception-sidewalk-and-signals.md:262) が「点滅を直接クラス化した公開モデルは無い」と言う以上、当面その入力は存在しないため）。どちらも禁止側なので安全側の差は無いが、法的意味は違う（青点滅 = 横断中は速やかに終える／`UNKNOWN` = 禁止＝[01 §6](01-legal-envelope-japan.md)）ので、横断中の継続可否で差が出る。明示クラスを出す分類器を採るなら :86 側へ寄せる doc PR が要る。
+- `OQ-OD4Z-c` `period_tolerance_s` の値（0.5 s 周りの許容半幅）。duty 比が未確定（[:306](04-perception-sidewalk-and-signals.md:306)）でカメラ fps も未定のため実測待ち。
+- `OQ-OD4Z-d` レート A の**比率・露出**が 1 本でも非有限なら窓全体を判定不能にする（現状）か、その 1 本だけ捨てるか。捨てる側は「欠落」と「本物の消灯相」を取り違える危険がある。**非有限 `stamp_s` は既に後者**（窓に置けないので落とすだけ）＝同じ「読めない」でも扱いが分かれている点を裁定に含める。
+- `OQ-OD4Z-e` **負の `processing_latency_s`（時計取違え）を「不在」として運ぶ**（現状）か、品質不成立として `valid_fraction` に反映するか。契約は入口で拒否するが、例外を safety loop に入れられない（[追補 ④ §2 項目 6](04-perception-sidewalk-and-signals.md:482)）ため現状は握り潰している＝異常が見えなくなる方向。
+- `OQ-OD4Z-f` `valid_fraction` の分子（本実装は「`NOT_VISIBLE` でない」）。[`OQ-OD4Y-b`](04-perception-sidewalk-and-signals.md:487)（比率を計算できない producer の表現）と同じ裁定に含めるべき。
+- `OQ-OD4Z-g` **窓端 `window_end_s` を呼び出し側が渡す**（現状・node が自分のタイマで窓を送れる）か、最新サンプルから導出するか。導出にすると「データが止まった窓」を再送し続ける形になり、鮮度検査の意味が消費側に寄りすぎる。
+- 既存 OQ への接続: `sample_count` / `off_phase_count` を**レート B で数えた**のは暫定で、裁定は [`OQ-OD4Y-d`](04-perception-sidewalk-and-signals.md:489)。per-frame 証拠列を topic へ出すかは [`OQ-OD4Y-j`](04-perception-sidewalk-and-signals.md:495)。露出固定は [`OQ-OD4L`](04-perception-sidewalk-and-signals.md:349)、二段レートの採否そのものは [`OQ-OD4J`](04-perception-sidewalk-and-signals.md:347)（本実装は「採る」前提で書いた**検証可能な実体**であって裁定ではない）。
+- **未着手（本スライスの外）**: レート A サンプラ・分類器・ROI 投影・露出固定の実装／node・topic・QoS・publish 周期（型未凍結 = [:202](04-perception-sidewalk-and-signals.md:202)）／実 bag での P-1 実測（[追補 ② §8 順序 4](04-perception-sidewalk-and-signals.md:328) の「走行判断に使わない観測モード」）。
 
 
 

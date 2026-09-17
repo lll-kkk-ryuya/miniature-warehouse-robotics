@@ -103,7 +103,30 @@ Mode Outdoor の 04_Perception（歩道知覚）の**家は本 package**（[docs
 
 ## 【2026-09-17 追記・P2】03_Traffic_Signals 時系列判定 純ロジック
 
-（P2 実装 PR で記入）
+`signal_temporal_core.py`（**L4** 知覚・publish-only・**0 actuation**）= 歩行者用信号の**二段レート時系列判定**の純ロジック。設計正本 = [docs/mode-outdoor/04 追補 ⑥](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md)（真理表・パラメータ表・残 OQ `OQ-OD4Z-a`〜`-g`）。契約 = 追補 ④（`Refs #673`・**契約変更なし**）。
+
+## 提供 (produce)
+
+- 型: `SignalTemporalParams`（全パラメータ注入・**既定値なし**）・`LuminanceSample`（レート A = ROI 輝度）・`EvidenceSample`（レート B = 分類器証拠）・`FlashVerdict`・`FlashDetector`・`SignalWindow`・`SignalTemporalConfigError`・定数 `NOMINAL_FLASH_PERIOD_S = 0.5`（[D] 一次情報 = [04:305](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md:305)）
+- 出力: `SignalWindow.evaluate(...) -> TrafficSignalObservation | None`（`None` = 窓に有効 stamp のサンプルが 0 件＝**観測なし**。`source_stamp_s` を捏造しないため）
+- **topic は無い**（node / launch / config も無い。型未凍結 = [04:202](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md:202)）
+
+## 消費 (consume)
+
+- 契約: `warehouse_interfaces.perception` の `TrafficSignalObservation` / `SignalState` / `LampEvidence` / `ObservationQuality`（凍結契約のみ・他トラック内部は import しない）
+- **入力は他段が作る**: レート A（ROI 輝度サンプラ）・レート B（per-frame 分類器）・ROI 投影・露出固定はいずれも**未実装**。本モジュールはその出力を受けるだけで、カメラ・NN・画像処理に触れない（`rclpy` / `numpy` 非依存＝host で R-26 が回る）
+
+## 前提・未確定 (TODO)
+
+- `# TODO(rate A/B producer)` 輝度サンプラ・分類器・ROI 投影・露出固定（[`OQ-OD4L`](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md:349)）は未着手。OAK-D も未購入 → 現状のオラクルは**テスト側の合成時系列**のみで、実 bag での P-1 実測は P3 評価基盤 + ハード到着後
+- `# TODO(node 化)` publish する node・topic 名・QoS・周期は未決。`max_age` は**持たない**（鮮度は消費側の義務 = [04:382](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md:382)）ので、node 化する側も producer 側で鮮度判定を足さないこと（停止判定点が 2 つになる）
+- `# TODO(OQ-OD4Y-d)` `sample_count` / `off_phase_count` を**レート B で数える**のは暫定（[04:489](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md:489)）。`quality.valid_fraction` の分子「`NOT_VISIBLE` でない」も暫定（追補 ⑥ `OQ-OD4Z-f`）
+- `# TODO(OQ-OD4Z-a)` `is_flashing is None`（判定不能）で GREEN を許さないのは**docs の沈黙を fail-closed で埋めた裁定**。緩めるなら doc PR 経由
+- パラメータに既定値は無い（docs が数値を決めていない）。構築時に `SignalTemporalConfigError` で落ちるので、config から注入する側が値を持つ
+
+## テスト
+
+- R-26 unit: `tests/unit/test_signal_temporal_core.py`（`unit` + `safety`・**61 本**・**仕様のみから**・合成生成器はテスト側・期待値は手計算リテラル）。**P-1 property**（seed 固定 N = 240・真値に点滅/赤を含む窓 134 件で `GREEN` = 0 件・非空虚性も assert）・**mutation 7/7 で赤**・**AST pin**（`rclpy`/`numpy` 非 import・actuation 語彙なし・`SignalState.GREEN` の代入 1 か所・パラメータ dataclass 既定なし・数値定数は `NOMINAL_FLASH_PERIOD_S` のみ）
 
 
 
