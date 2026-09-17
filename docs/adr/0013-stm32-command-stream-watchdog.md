@@ -71,3 +71,4 @@ M1 の watchdog 多層停止設計のうち **W-3（MCU 側 communication watchd
 - [GLOSSARY.md](../GLOSSARY.md) — §5 command-stream watchdog（comms-loss deadman）/ §11 最小安全方針
 - 一次情報（参照日 2026-08-31）: Yahboom 公式 wiki「2. STM32 development environment」<https://www.yahboom.net/public/upload/upload-html/1653552087/2.STM32%20Development%20environment.html>（UART ISP / mcuisp / CH340 / BOOT0+RESET / STM32CubeIDE）・公式 GitHub <https://github.com/YahboomTechnology/ROS-robot-expansion-board>（ファームソース不在の確認）
 - backlink: [adr/README.md](README.md) 一覧・[mode-m1/README.md §関連 ADR](../mode-m1/README.md)
+- 実装仕様（§Open 6 点の具体化・2026-09-17・書込前）: [mode-m1/02 【2026-09-17 追補④】](../mode-m1/02-m1-driver-and-watchdog.md) — hook 2 点（`protocol.c` FUNC_MOTION / `app.c` vTask_Control）・T と W-1 の層間整合（案 α 1.0 s / 案 β keepalive + 0.3 s・実測で確定）・toolchain（GCC 移植 = `OQ-OD75` 裁定案）・stm32flash ロールバック手順・G-g 拡張行 5〜8・ライセンス確認の要点と追記ソースの置き場
