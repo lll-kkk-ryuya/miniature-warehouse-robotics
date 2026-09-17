@@ -499,7 +499,103 @@ X2 の入力型 `warehouse_safety.sensor_health.SourceObservation`（`stamp_s` /
 
 ## 【2026-09-17 追補 ⑤】01_Geometry / 07 coverage・cliff 純ロジック v0（実装記録・P1 レーンが記入）
 
-（P1 実装 PR で記入。契約 = 追補 ④ `TerrainCoverage`）
+正本 = 本 doc（[§3](04-perception-sidewalk-and-signals.md:49) / [:53](04-perception-sidewalk-and-signals.md:56)・[2026-09-14 追補 :173](04-perception-sidewalk-and-signals.md:173)〜[:181](04-perception-sidewalk-and-signals.md:181)・[追補 ② §1 01_Geometry 行](04-perception-sidewalk-and-signals.md:196) / [§2 01 terrain 行](04-perception-sidewalk-and-signals.md:214) / [§8 順序 2](04-perception-sidewalk-and-signals.md:326) / [:331](04-perception-sidewalk-and-signals.md:331)・[追補 ③ #5](04-perception-sidewalk-and-signals.md:383)）＋ **追補 ④**（型 = `TerrainCoverage` / `ObservationQuality` / `TerrainState`）＋ [09 §2-i](09-external-review-v3-response.md:157) / [09 §4 順序 5](09-external-review-v3-response.md:213) / [09 §5 F1](09-external-review-v3-response.md:221)・[F5](09-external-review-v3-response.md:225)。
+
+本追補が記録するのは **純ロジックの入出力・パラメータ・状態決定規則・fail 方向・残 OQ** だけで、node / topic / QoS / 周期 / しきい値の既定値は**含まない**（含めれば正本に無い数値を発明することになる＝[docs-first](../../.claude/rules/docs-first.md)）。
+
+実体（本スライスで着地）:
+
+- [`ws/src/warehouse_perception/warehouse_perception/terrain_core.py`](../../ws/src/warehouse_perception/warehouse_perception/terrain_core.py) — **rclpy 非依存・numpy 非依存**の純ロジック（CI の python に numpy が無いため `math` と list のみ）。
+- [`tests/unit/test_terrain_core.py`](../../tests/unit/test_terrain_core.py) — R-26 unit（`unit` + `safety`・独立オラクル・合成シーンの生成器はテスト側・mutation で赤くなることを確認済 = [doc20 §9](../architecture/20-dev-quality-and-testing.md:131)）。
+- produce / consume の記録は [`warehouse_perception/CLAUDE.md`](../../ws/src/warehouse_perception/CLAUDE.md) の P1 節（家は既存 `warehouse_perception` = [09 §3](09-external-review-v3-response.md:200)）。
+
+> **レイヤ注記**: 01_Geometry・07 coverage / cliff_scan = **自律走行（安全層外）の producer**。consumer は L1 costmap / L1 collision_monitor（`cliff_scan`）と X2・09・06（coverage）。本スライスに node・topic・launch・config は無い（**0 node・0 `cmd_vel`**・AST で pin）。停止距離の不等式の評価点は **X2 / 09 の 1 か所**のままで 04 は観測済み距離を出すだけ（[:331](04-perception-sidewalk-and-signals.md:331)）、品質も**自己申告のみ**で判定は X2（[:203](04-perception-sidewalk-and-signals.md:203)）。センサ固有定数を焼かないため、同じ純ロジックが室内 HP60C でも屋外 OAK-D でも使える。
+
+### 1. 段と入出力
+
+| # | 関数 | 入力 | 出力 | 役割 |
+|---|---|---|---|---|
+| 1 | `depth_validity` | 深度画像（row-major・m） | `DepthValidity`（`valid_pixels` / `valid_fraction` / `frame_digest`） | 画素単位で `None` / `NaN` / `±inf` / `<= 0` / 非数値を無効化（[:174](04-perception-sidewalk-and-signals.md:174)）。`frame_digest` は payload **内容**の sha256 ＝ 凍結フレームの**材料**であって確定ではない（確定は X2 = [追補 ③ #5](04-perception-sidewalk-and-signals.md:383)） |
+| 2 | `back_project` | 有効画素 + 内部パラメータ + 取付幾何 | body 系点列（X 前・Y 左・Z 上・原点はカメラ直下の地面） | ピンホール逆投影。光軸は `Z = 0` と `h / tan θ` で交わる（[:181](04-perception-sidewalk-and-signals.md:181) の worked example と一致することを unit で確認） |
+| 3 | `ground_estimator` | 点列 | `GroundPlane`（`Z = aX + bY + c` + 支持 + `used_prior`） | RANSAC 平面（[案 B :44](04-perception-sidewalk-and-signals.md:44)）。**事前値 = 取付幾何が言う `Z = 0`**（h・θ は段 2 で既に適用済）で、フィットは観測で上書きする。`ransac_seed` 注入ゆえ決定的 |
+| 4 | `classify_cells` | 点列 + 平面 | `TerrainGrid`（cell → `TerrainState` + 証拠数 + 最小残差） | 前方メトリックグリッド（`cell_size_m` 正方）。**横方向は無制限**＝回廊外の崖も `cliff_scan` 経由で costmap へ届く |
+| 5 | `terrain_coverage` | grid | `TerrainCoverage`（凍結契約・追補 ④） | **回廊内だけ**を見る。距離は datum 起点・`cell_size_m` 量子化 |
+| 6 | `cliff_ranges` | grid | `CliffScan`（LaserScan 形 dataclass・未 publish） | `DROP_DETECTED` cell **だけ**を方位別 range へ。**`UNKNOWN` は落とさない**（[:173](04-perception-sidewalk-and-signals.md:173)） |
+| 7 | `analyze_depth_frame` | 深度画像 | `TerrainObservation` | 1〜6 の順序と `source_stamp_s` / digest の受け渡しを 1 か所に固定（将来の node が包む seam） |
+
+### 2. パラメータ（**全て注入・既定なし**・違反は構築時 `ValueError`）
+
+既定を置かないのは、正本が数値を pin していないため（縁石 2 cm は実測ゲート [`OQ-OD45` :143](04-perception-sidewalk-and-signals.md:143)、下向き MinZ は [`OQ-OD4Q` :354](04-perception-sidewalk-and-signals.md:354) / [:301](04-perception-sidewalk-and-signals.md:301) で未実測）。流儀は [`sensor_health.py`](../../ws/src/warehouse_safety/warehouse_safety/sensor_health.py) と同じ（しきい値は constructor 引数・既定なし）。
+
+| dataclass | パラメータ | 単位 | 検証 | 備考・出典 |
+|---|---|---|---|---|
+| `CameraIntrinsics` | `fx` / `fy` | px | 有限・`> 0` | 除数。カメラ個体の校正値 |
+| | `cx` / `cy` | px | 有限・`>= 0` | 主点 |
+| `MountingGeometry` | `camera_height_m`（`h`） | m | 有限・`> 0` | [:181](04-perception-sidewalk-and-signals.md:181)。車体未組立・未実測 |
+| | `pitch_down_rad`（`θ`） | rad | 有限・`(0, π/2)` 開区間 | `0` では光軸が地面に届かず（`h / tan θ` が発散）、`π/2` では前方距離が潰れる＝両端とも設定の誤り。§2 の「下向き 10〜20°」は案であり実測で決める |
+| | `reference_offset_m` | m | 有限（**符号自由**） | カメラ原点 → **車輪接地点 / footprint** までの前方距離。カメラが footprint 前端より前なら負になるため正に拘束しない（[:176](04-perception-sidewalk-and-signals.md:176)） |
+| `TerrainGridParams` | `cell_size_m` | m | 有限・`> 0` | 本モジュールが返す全距離の量子 |
+| | `corridor_half_width_m` | m | 有限・`> 0` | 「今から踏む領域」の半幅（[:175](04-perception-sidewalk-and-signals.md:175)）。footprint の正本は 00 で、04 に複製しない（[:195](04-perception-sidewalk-and-signals.md:195)） |
+| | `forward_range_m` | m | 有限・`> 0`・1 cell 以上 | 回廊長 = `floor(forward_range_m / cell_size_m) × cell_size_m`（端数 cell を作らない） |
+| | `min_points_per_cell` | 点 | `int >= 1` | `noDataObstacle` の下限（[:53](04-perception-sidewalk-and-signals.md:56)）。`0` は「誰も見ていない床を確認済にする」ため拒否 |
+| | `drop_threshold_m` | m | 有限・`> 0`・**`plane_tolerance_m` より大** | `considerDrop` の深さ。`OQ-OD45` は**目標**であって既定にしない。2 帯が重なると同じ点が「床」と「崖」を同時に名乗るため `TerrainParams` で相互検証 |
+| | `min_valid_fraction` | 比 | 有限・`(0, 1]` | 有効画素過少（[:174](04-perception-sidewalk-and-signals.md:174)）。`0` は「有効画素ゼロを受け入れる」ため拒否 |
+| `GroundFitParams` | `plane_tolerance_m` | m | 有限・`> 0` | RANSAC の inlier 帯 **かつ**「床を観測できた」帯。同じ言明ゆえ **1 本**（2 本目は発明になる＝`OQ-OD4Z-b`） |
+| | `ransac_iterations` | 回 | `int >= 1` | |
+| | `ransac_seed` | — | `int` | 決定性（[doc20 §9](../architecture/20-dev-quality-and-testing.md:131)） |
+| `CliffScanParams` | `angle_min_rad` / `angle_max_rad` | rad | 有限・`max > min` | 室内 VirtualScan の定数（±15°・2.0 m・360 本 = [virtual_scan_logic.py:19](../../ws/src/warehouse_traffic/warehouse_traffic/virtual_scan_logic.py:19)）は **1.8 m ジオラマの値なのでコピーしない** |
+| | `ray_count` | 本 | `int >= 1` | `angle_increment = (angle_max − angle_min) / ray_count`・ray `i` は `[angle_min + i·inc, angle_min + (i+1)·inc)` |
+| | `range_min_m` / `range_max_m` | m | 有限・`0 < min < max` | |
+
+### 3. 状態決定規則（**暫定**・`OQ-OD4C` の裁定前）
+
+**cell**（残差 `r = Z − plane(X, Y)`・上が正）——この順で評価する:
+
+1. `点数 < min_points_per_cell` → `UNKNOWN`（= `noDataObstacle`・未観測 = 通行不可）。**最初に**見るので、わずかな点で床も崖も確定しない。
+2. `r <= -drop_threshold_m` の点を 1 つでも含む → `DROP_DETECTED`（= `considerDrop`）。危険の**正の観測**は平均で薄めない。
+3. `|r| <= plane_tolerance_m` の点が `min_points_per_cell` 以上 → `FLOOR_CONFIRMED`。数えるのは**床点**なので、床より高い点しか無い cell（正障害物が床を隠している）は 3 を満たさず 4 へ落ちる（正障害物そのものは `obstacle_scan` 経路で本スライス対象外）。
+4. それ以外 → `UNKNOWN`。
+
+**行（forward index）**: 回廊の横 bin（中心が `|y| <= corridor_half_width_m`）を集約し、①どれか 1 つでも `DROP_DETECTED` なら行は `DROP_DETECTED`／②**全部**が `FLOOR_CONFIRMED` のときだけ `FLOOR_CONFIRMED`／③それ以外は `UNKNOWN`。**1 レーンでも未観測なら床は名乗らない**（[:175](04-perception-sidewalk-and-signals.md:175)）。
+
+**coverage**:
+
+- `confirmed_distance_m` = datum から**連続**する `FLOOR_CONFIRMED` 行数 × `cell_size_m`。先頭行が未確認なら `None`（= 確認なし。「0 m 確認」ではない = [追補 ④ :427](04-perception-sidewalk-and-signals.md:427)）。**gap の向こうの床は数えない**（届かない床は確認済ではない）。
+- `nearest_drop_distance_m` = 最も近い `DROP_DETECTED` 行の**手前端**（量子化は必ずロボット側へ倒す）。`None` = 未検出であって「崖が無い」ではない。
+- `step_height_m` = その行の最小残差（**符号あり**＝下りは負・[:196](04-perception-sidewalk-and-signals.md:196)）。
+- `state` = 回廊に落下があれば `DROP_DETECTED`／無ければ `confirmed_distance_m > 0` で `FLOOR_CONFIRMED`／それ以外 `UNKNOWN`。`UNKNOWN` ≠ `DROP_DETECTED` は保つ（一本化は [`OQ-OD4C` :340](04-perception-sidewalk-and-signals.md:340)）。
+- `slope` / `roughness_m` / `estimate_error_m` は **v0 では常に `None`**（単位・統計的意味が未定 = `OQ-OD4Y-c`。発明しない）。
+- `source_stamp_s` は入力のまま（付け直さない・[:177](04-perception-sidewalk-and-signals.md:177)）。鮮度は受信側の単調時計で測る（[09 規則 (4)](09-external-review-v3-response.md:67)）。`reference` は呼び出し側が与える文字列（語彙は `OQ-OD4Y-h`）。
+
+**有効画素率ゲート**: `valid_fraction < min_valid_fraction` のとき品質不成立（[:174](04-perception-sidewalk-and-signals.md:174)）→ **床の主張だけ**を取り下げる（`confirmed_distance_m = None`・`FLOOR_CONFIRMED` にしない）。**落下の証拠は消さない**——消すと `UNKNOWN` は LaserScan に落ちない（[:173](04-perception-sidewalk-and-signals.md:173)）ため崖が costmap から消える＝fail-open になる。これは 04 自身の**主張**の抑制であって走行許可の判定ではない（判定点は X2 の 1 か所 = [:203](04-perception-sidewalk-and-signals.md:203) / [`OQ-OD4E` :342](04-perception-sidewalk-and-signals.md:342)）。
+
+> **MinZ の帰結**: 下向きカメラの最小測距距離（[`OQ-OD4Q` :354](04-perception-sidewalk-and-signals.md:354) / [:301](04-perception-sidewalk-and-signals.md:301)）で回廊の**先頭**が構造的に見えない取付だと、先頭行が `UNKNOWN` になり `confirmed_distance_m` は `None` のままになる。本モジュールはそれを埋めずにそのまま出す（埋めれば未観測を確認済に化けさせる）。取付を変えるか観測範囲外へ進ませない（[09 §2-h](09-external-review-v3-response.md:155)）のは 05 / 06 側の判断。
+
+### 4. fail 方向
+
+| 事象 | 出方 | 理由 |
+|---|---|---|
+| 深度が `NaN` / `inf` / `0` / 空 / 非数値 / `bool` | **例外を上げず** `UNKNOWN` ＋ `valid_fraction` 低下（空 payload は `0.0`） | safety loop に data 例外を持ち込まない（[追補 ④ §2-6](04-perception-sidewalk-and-signals.md:482)・[`sensor_health.evaluate`](../../ws/src/warehouse_safety/warehouse_safety/sensor_health.py) と同方針）。F5 = [09 :225](09-external-review-v3-response.md:225) |
+| パラメータが非有限・非正・型違い（`bool` 含む） | 構築時に `ValueError` | 呼び出し側の誤りは呼び出し側で落とす。既定で埋めない |
+| 証拠不足 cell | `UNKNOWN`（`DROP` ではない） | 未観測 = 通行不可の扱いは下流（[:214](04-perception-sidewalk-and-signals.md:214)）。欠測を落下に格上げしない |
+| 正障害物で床が見えない cell | `UNKNOWN` | `FLOOR_CONFIRMED` は「床を観測できた」に限定（[:196](04-perception-sidewalk-and-signals.md:196)） |
+| 量子化 | 崖は**手前**へ・床は**短く** | 過小申告側へ倒す |
+| `UNKNOWN` cell | `cliff_scan` に**入れない** | [:173](04-perception-sidewalk-and-signals.md:173)。未観測を壁に化けさせない（代わりに coverage で出す） |
+| 崖が scan の角度 / 距離窓の外 | `omitted_cell_count` に計上 | 黙って捨てない＝設定不整合を消費側が見られる |
+| 品質不成立 | 床の主張のみ取り下げ・落下は保持 | 上記「有効画素率ゲート」 |
+
+### 5. OPEN QUESTIONS（本追補で**発明せずに残した**もの・接頭辞 `OQ-OD4Z-*`）
+
+- `OQ-OD4Z-a` **落下 cell の必要証拠点数**。v0 は「`min_points_per_cell` を満たす cell に `drop_threshold_m` 以深の点が **1 つでも**あれば `DROP_DETECTED`」。正本は「地面推定より下の点」（[:53](04-perception-sidewalk-and-signals.md:56)）としか言わず点数を pin していない。1 点のノイズで仮想壁を撃つ感度を許すか、`min_drop_points` を別に置くかは未決。
+- `OQ-OD4Z-b` **`plane_tolerance_m` が RANSAC inlier 帯と「床を観測できた」帯を兼ねる**。正本は両者を区別していない。分けるなら 2 本目のしきい値の出所が要る。
+- `OQ-OD4Z-c` **`min_valid_fraction` の正本の置き場**。同名・同義の値が 04 側（自分の主張の抑制）と X2 側（[`SourceThresholds.min_valid_fraction`](../../ws/src/warehouse_safety/warehouse_safety/sensor_health.py)）の 2 か所にある。v0 は「04 は主張の抑制のみ・許可の判定はしない」で役割を分けたが、値の正本と二重化回避は [`OQ-OD4E` :342](04-perception-sidewalk-and-signals.md:342) の射程。
+- `OQ-OD4Z-d` **素の RANSAC の多数派が真の地面とは限らない（fail-open の実例を確認）**。回廊の中ほどが欠測した下り段差シーンでは、近傍の床と遠方の下段面を通る**傾いた**平面（実測 `a ≈ −0.044`／m）が水平面より inlier が多くなり、崖が `FLOOR_CONFIRMED` に見える。v0 は [案 B :44](04-perception-sidewalk-and-signals.md:44)「RANSAC 地面」のままで、法線の事前拘束（取付 `θ` からの逸脱上限）・支持の下限・[:182](04-perception-sidewalk-and-signals.md:182) の「地面傾き補正」の具体化は未実装＝しきい値が正本に無いため発明しない。**node 化前に裁定が要る**（親 §7 P-2・[§8 順序 2](04-perception-sidewalk-and-signals.md:326) の実測ゲートと同時に）。
+- `OQ-OD4Z-e` **回廊長の端数**は切り捨て（`floor`）。切り上げ＝過大申告側は取らないが、正本は端数に沈黙している。
+- `OQ-OD4Z-f` **性能**。純 python（CI に numpy が無い）で 1 フレーム全画素を走査する。実解像度・実周期での実行時間は**未計測**。node 化時に numpy 経路を optional で足すか、間引き（`stride`）を注入 param にするかは未決（[02 §4](02-architecture-split-orin-pc-cloud.md) の屋外 S1 実測と同時）。
+- `OQ-OD4Z-g` **座標系の契約**。本モジュールは body 系（X 前・Y 左・Z 上・原点はカメラ直下の地面）を内部で定義する。ROS `frame_id` / TF との対応（TF 配信責任 = [03 §2-1](03-localization-gnss-and-ekf.md)）と `reference` の語彙（`OQ-OD4Y-h`）は node 化時に決める。
+- `OQ-OD4Z-h` **`cliff_scan` の角度窓・距離窓・publish 周期**は注入のままで pin していない（topic 名 = `OQ-OD4Y-i`、`source_timeout` の扱い = [`OQ-OD44` :142](04-perception-sidewalk-and-signals.md:142)）。
+- `OQ-OD4Z-i` **凍結フレームの確定は 04 では行わない**（`frame_digest` と `device_frame_seq` を渡すだけ＝[追補 ③ #5](04-perception-sidewalk-and-signals.md:383)）。04 側で `frame_digest=None`（凍結検出を無効化する明示の選択）を選ぶ条件は未定。
+- `OQ-OD4Z-j` **obstacle_geometry / terrain_features は未実装**。追補 ② §1 の 01_Geometry は 5 要素（`depth_validity` / `ground_estimator` / `obstacle_geometry` / `terrain_features` / `terrain_coverage`）だが、本スライスは崖・coverage に必要な 3 つだけを実装した（正障害物は `obstacle_scan` 経路・`terrain_features` は `slope` / `roughness` の単位が未定 = `OQ-OD4Y-c` 待ち）。
 
 
 
