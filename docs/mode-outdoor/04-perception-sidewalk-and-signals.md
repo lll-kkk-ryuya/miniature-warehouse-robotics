@@ -906,7 +906,7 @@ X2 の入力型 `warehouse_safety.sensor_health.SourceObservation`（`stamp_s` /
 
 ## 【2026-09-18 追補 ⑤-1】追補 ⑤ §2 の v0.1 差分（表末尾 append の代替・行ズレ回避）
 
-正本 = [追補 ⑤ §2](04-perception-sidewalk-and-signals.md:526)。本節は追補 ⑤ §2 のパラメータ表に**行を足さずに**同じ内容を持つ。理由は**行ズレ回避**である ── `:546` 以降には追補 ⑥ / ⑦ / ⑧ を指す `04:NNN` 形の pin が **115 か所（実測）** あり（`grep -rnE "04-perception-sidewalk-and-signals\.md[:#]"` で本 doc 自身 110・`terrain_core.py` 8・`warehouse_interfaces/perception.py` 2・`productization/01` 2・`manifests/example.rf-detr-nano.yaml` 1・`GLOSSARY.md` 1）、§2 の表に 1 行でも挿入すると**そのすべてが同時に割れる**（[#165 教訓](../dev/03-retrospectives.md) / [status-maintenance.md :26 末尾追記原則](../../.claude/rules/status-maintenance.md:26)）。
+正本 = [追補 ⑤ §2](04-perception-sidewalk-and-signals.md:526)。本節は追補 ⑤ §2 のパラメータ表に**行を足さずに**同じ内容を持つ。理由は**行ズレ回避**である ── baseline `9d080cf` で `git grep -oE "04-perception-sidewalk-and-signals\.md[:#][0-9]+" -- '*.md' '*.py' '*.yaml'` を測ると、`:546` 以降（＝追補 ⑥ / ⑦ / ⑧）を指す pin は **28 occurrence・distinct 8 値**（`572` / `590` / `592` / `728` / `813` / `838` / `846` / `871`）あり、**6 ファイル**に分布する（本 doc 自身 14・`terrain_core.py` 8・`warehouse_interfaces/perception.py` 2・`productization/01` 2・`GLOSSARY.md` 1・`manifests/example.rf-detr-nano.yaml` 1）。§2 の表に 1 行でも挿入すると**そのすべてが同時に割れ**、docs だけでなく **3 パッケージの `.py` / `.yaml` まで同一 PR で 1:1 re-pin** することになる（[#165 教訓](../dev/03-retrospectives.md) / [status-maintenance.md :26 末尾追記原則](../../.claude/rules/status-maintenance.md:26)）。
 
 ### 1. `GroundFitParams` の v0.1 追加パラメータ（出典 = [追補 ⑧ §2](04-perception-sidewalk-and-signals.md:861)）
 
