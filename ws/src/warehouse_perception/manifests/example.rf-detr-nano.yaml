@@ -1,0 +1,69 @@
+# 09_Runtime_and_Models — model manifest の「形」の例（**すべて placeholder**）
+#
+# ⚠️ この値は実測値ではない。重みも engine も bag も存在しない（2026-09-17 時点）。
+#    採用単位として使う前に、全 field を実物で置き換えること。
+# 契約 = docs/mode-outdoor/04-perception-sidewalk-and-signals.md 追補 ④ §1-5
+#        （実体 = ws/src/warehouse_interfaces/warehouse_interfaces/perception.py の ModelManifest）
+# 読み方・置き場の規約 = ./README.md
+# 検証: python3 -m warehouse_perception.model_manifest validate <this file>
+
+# 候補の既定 = RF-DETR-Nano（docs/mode-outdoor/04-perception-sidewalk-and-signals.md:231 /
+# :245 試す順序 ①）。モデル名は「同じ構造でも重みと用途が違えば別 manifest」
+# （docs/mode-outdoor/04-perception-sidewalk-and-signals.md:375）ゆえ用途まで含めて名乗る。
+model_name: "rf-detr-nano/person-bicycle (PLACEHOLDER)"
+
+# placeholder。実重みに対する `sha256sum <weights>` の出力（64 hex）で置き換える。
+# アルゴリズム sha256 は暫定（正本は「重み hash」としか言っていない）=
+# docs/mode-outdoor/04-perception-sidewalk-and-signals.md:496 OQ-OD4Y-k。
+weights_sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+
+# 入力の形。640 は公開ベンチの条件（前後処理除外）であって自画角の採用値ではない
+# = docs/mode-outdoor/04-perception-sidewalk-and-signals.md:244 OQ-OD4U。
+input_size: [640, 640]
+channel_order: "RGB"
+normalization: "PLACEHOLDER: 正規化の実値（mean/std か 0-1 か）を実装確定後に書く"
+resize_method: "PLACEHOLDER: リサイズ方法（letterbox か stretch か）を実装確定後に書く"
+output_interpretation: "PLACEHOLDER: 出力テンソルの読み方（DETR 系 = NMS 不要）を書く"
+
+# ラベル「順」。index が何を指すかを言えない manifest は manifest ではない
+# （docs/mode-outdoor/04-perception-sidewalk-and-signals.md:465）。
+label_order:
+  - "person"
+  - "bicycle"
+
+onnx_opset: 17
+
+# engine 未作成の採用単位＝ここは空でよい（契約が空を拒否しないのはこのため）=
+# docs/mode-outdoor/04-perception-sidewalk-and-signals.md:467 / :468。
+# 実機推論に使うなら、ボード上で焼いてから実値を入れ engine_built_on_board: true にする
+# （docs/mode-outdoor/04-perception-sidewalk-and-signals.md:358 OQ-OD4U）。
+tensorrt_version: ""
+gpu_arch: ""
+engine_built_on_board: false
+
+# 出典 = docs/mode-outdoor/04-perception-sidewalk-and-signals.md:235 の表 [D]
+# （RF-DETR Nano〜Large = Apache-2.0。XL/2XL は PML 1.0 なので別 manifest）。
+# AGPL の測定器（YOLO26 等）を書くなら配布物に載せない判断が伴う（./README.md §3）。
+license: "Apache-2.0"
+
+# 評価結果は省略不可＝評価の無いモデルは 1 採用単位にならない
+# （docs/mode-outdoor/04-perception-sidewalk-and-signals.md:471）。
+# ⚠️ 下の数値も placeholder（存在しない bag の、形を見せるためだけの自己整合な合成値）。
+#    キー語彙は案 = docs/mode-outdoor/04-perception-sidewalk-and-signals.md:490 OQ-OD4Y-e。
+#    ダミーの dataset_id（"UNEVALUATED" 等）は書かない——「評価した」と読める嘘になる。
+evaluation:
+  dataset_id: "example-bag-0000"
+  # （混同行列は抜粋。実出力は `signal_metrics` が全 16 セルを出す＝
+  #  docs/mode-outdoor/04-perception-sidewalk-and-signals.md:572「0 のセルも必ず出す」）
+  metrics:
+    signal.sample_count: 4.0
+    signal.confusion.GREEN_to_GREEN: 1.0
+    signal.confusion.GREEN_FLASHING_to_GREEN_FLASHING: 1.0
+    signal.confusion.RED_to_RED: 1.0
+    signal.confusion.RED_to_UNKNOWN: 1.0
+    # P-1 の 2 セル: 0 件が必達（docs/mode-outdoor/04-perception-sidewalk-and-signals.md:117）
+    signal.confusion.GREEN_FLASHING_to_GREEN: 0.0
+    signal.confusion.RED_to_GREEN: 0.0
+    signal.p1_violations: 0.0
+    signal.p1_gate_pass: 1.0
+    signal.unknown_rate: 0.25

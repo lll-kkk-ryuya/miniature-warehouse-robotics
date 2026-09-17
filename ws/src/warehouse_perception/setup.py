@@ -25,6 +25,11 @@ setup(
             # Runtime speed limiter (2): band -> nav2_msgs/SpeedLimit at 20 Hz
             # (docs/mode-m1/04, ADR-0012 Decisions 3-5). Safe-OFF by default.
             "speed_band_publisher = warehouse_perception.speed_band_node:main",
+            # 09_Runtime model manifest validator (docs/mode-outdoor/04 追補 ④/⑦).
+            # OFFLINE tool, not a node: no ROS context, no engine build, no download.
+            # The manifests under manifests/ are records, NOT data_files — installing
+            # them into share/ would make them look like runtime config.
+            "perception_manifest = warehouse_perception.model_manifest:main",
         ],
     },
 )
