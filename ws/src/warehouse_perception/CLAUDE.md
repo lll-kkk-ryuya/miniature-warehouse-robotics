@@ -124,7 +124,9 @@ Mode Outdoor の 04_Perception（歩道知覚）の**家は本 package**（[docs
   `frame_id` / TF 対応（`OQ-OD4Z-g`）と topic 契約（`OQ-OD4Y-i`）を決める。
 - `# TODO(OQ-OD4Z-d)` 素の RANSAC は「多数派 = 真の地面」を仮定する。回廊中ほどが欠測した下り段差シーンでは
   傾いた平面が水平面より inlier を集め、崖が `FLOOR_CONFIRMED` に見える **fail-open** を実測で確認済。
-  法線の事前拘束・支持の下限は正本にしきい値が無いため未実装＝**node 化前に裁定**。
+  法線の事前拘束・支持の下限は正本にしきい値が無いため未実装＝**node 化前に裁定**。現状 `TerrainCoverage` は
+  平面品質を運ばないため下流 X2 からは観測できない（裁定時に傾き上限の注入か平面支持の additive 自己申告が要る）。
+  現挙動は `test_known_fail_open_plain_ransac_prefers_the_tilted_plane` が characterization test として pin。
 - `# TODO(numpy 経路)` 純 python で全画素を走査する（CI の python に numpy が無い）。実解像度・実周期での
   実行時間は未計測。numpy 経路 or 間引き param は `OQ-OD4Z-f`。
 - `# TODO(OQ-OD4Z-c)` `min_valid_fraction` が 04 側と X2 `warehouse_safety.sensor_health.SourceThresholds` の
@@ -134,11 +136,12 @@ Mode Outdoor の 04_Perception（歩道知覚）の**家は本 package**（[docs
 
 ### テスト
 
-- R-26 unit: `tests/unit/test_terrain_core.py`（`pytestmark = [unit, safety]`・57 件）。**合成シーンの生成器は
+- R-26 unit: `tests/unit/test_terrain_core.py`（`pytestmark = [unit, safety]`・63 件）。**合成シーンの生成器は
   テスト側**にあり（投影を書き下ろす＝module の逆投影とは独立）、期待値は生成パラメータからの手計算リテラル
   （[doc20 §9](../../../docs/architecture/20-dev-quality-and-testing.md:131) の独立オラクル）。AST pin =
   `rclpy` / `numpy` を import しない・`cmd_vel` / `stop_request` / `speed_limit` の語を含まない・
-  **パラメータ dataclass に既定値が無い**。mutation 6/6 で赤くなることを確認済（PR 本文に記録）。
+  **パラメータ dataclass に既定値が無い**。mutation 10/10 で赤くなることを確認済（左右反転・「落下点 1 つで足りる」・
+  cliff range の手前端・回廊 1 bin 検証を含む。PR 本文に記録）。
 
 
 

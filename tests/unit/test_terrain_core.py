@@ -52,6 +52,7 @@ from warehouse_perception.terrain_core import (
     analyze_depth_frame,
     back_project,
     classify_cells,
+    cliff_ranges,
     corridor_lateral_indices,
     depth_validity,
     terrain_coverage,
@@ -134,6 +135,7 @@ def synthetic_depth_frame(
     drop_depth_m: float = 0.0,
     blind_band_m: tuple[float, float] | None = None,
     true_camera_height_m: float = CAMERA_HEIGHT_M,
+    drop_only_image_left: bool = False,
 ) -> list[list[float | None]]:
     """シーン（水平面 + 任意の下り段差 + 任意の無反射帯）→ 深度画像を作る。
 
@@ -144,6 +146,10 @@ def synthetic_depth_frame(
 
     ``blind_band_m`` は「その X 帯だけ深度が返らない」（濡れ面・黒い舗装）を模し、
     None を書き込む（04:174 の無効深度）。
+
+    ``drop_only_image_left`` は「段差が**画像左半分（u < cx）にだけ**ある」シーン
+    （片側だけの縁石）。ピンホールでは `u < cx` → 光学 x < 0 → **body 左（Y > 0）**
+    なので、逆投影の左右（REP-103 の Y 左正）を落とせば崖の方位が反転する。
     """
     intrinsics = _intrinsics()
     cos_pitch = math.cos(PITCH_DOWN_RAD)
@@ -153,13 +159,19 @@ def synthetic_depth_frame(
         dy = (v - intrinsics.cy) / intrinsics.fy
         forward_per_depth = cos_pitch - dy * sin_pitch
         up_per_depth = -sin_pitch - dy * cos_pitch
-        depth = (0.0 - true_camera_height_m) / up_per_depth
-        x_body = depth * forward_per_depth
-        if drop_at_m is not None and x_body >= drop_at_m:
-            depth = (-drop_depth_m - true_camera_height_m) / up_per_depth
+        depth_floor = (0.0 - true_camera_height_m) / up_per_depth
+        x_floor = depth_floor * forward_per_depth
+        depth_low = (-drop_depth_m - true_camera_height_m) / up_per_depth
+        row: list[float | None] = []
+        for u in range(COLS):
+            depth = depth_floor
+            beyond_edge = drop_at_m is not None and x_floor >= drop_at_m
+            if beyond_edge and (not drop_only_image_left or u < intrinsics.cx):
+                depth = depth_low
             x_body = depth * forward_per_depth
-        blind = blind_band_m is not None and blind_band_m[0] <= x_body < blind_band_m[1]
-        frame.append([None if blind else depth] * COLS)
+            blind = blind_band_m is not None and blind_band_m[0] <= x_body < blind_band_m[1]
+            row.append(None if blind else depth)
+        frame.append(row)
     return frame
 
 
@@ -281,12 +293,153 @@ def test_cliff_scan_carries_only_drop_cells_and_keeps_the_source_stamp() -> None
     finite = [value for value in cliff.ranges if math.isfinite(value)]
     assert finite, "崖があるのに 1 本も撃たれていない"
     assert len(finite) < len(cliff.ranges), "崖の無い方位まで埋めている"
-    # 最近接光線 = cell (10, -1)/(10, 0) の中心（datum から X = 1.05・|Y| = 0.05）。
-    assert min(finite) == pytest.approx(math.hypot(1.05, 0.05))
+    # 最近接光線 = cell (10, -1)/(10, 0)。方位は cell 中心だが range は **手前端**
+    # （datum から X = 10 × 0.10 = 1.00・|Y| = 0.05）＝誤差は必ずロボット側へ倒れる。
+    assert min(finite) == pytest.approx(math.hypot(1.00, 0.05))
+    # 中心を使っていたら 0.05 m 遠くなる（崖が実際より奥に見える）。
+    assert min(finite) < math.hypot(1.05, 0.05)
     # DROP cell の数だけが投影対象で、UNKNOWN は 1 つも入らない。
     assert cliff.drop_cell_count == sum(
         1 for cell in observation.grid.cells.values() if cell.state == TerrainState.DROP_DETECTED
     )
+
+
+def test_back_projection_keeps_ros_handedness_left_is_positive_y() -> None:
+    """主点の**右**の画素は body 右（`Y < 0`）へ落ちる（REP-103: X 前・Y 左）。
+
+    `u − cx = fx` の画素は光学 x が深度と等しくなるので、期待値は深度そのもの＝
+    生成器にも module の式にも依存しない独立リテラルになる。
+    """
+    intrinsics = _intrinsics()
+    depth = 0.5
+    right_pixel = (int(intrinsics.cx + intrinsics.fx), int(intrinsics.cy), depth)
+    left_pixel = (int(intrinsics.cx - intrinsics.fx), int(intrinsics.cy), depth)
+    (_, y_right, _), (_, y_left, _) = back_project(
+        [right_pixel, left_pixel], intrinsics=intrinsics, mounting=_mounting()
+    )
+    assert y_right == pytest.approx(-depth)  # 画像右 = 車体右 = Y 負
+    assert y_left == pytest.approx(+depth)  # 画像左 = 車体左 = Y 正
+
+    ((_, y_centre, _),) = back_project(
+        [(int(intrinsics.cx), int(intrinsics.cy), depth)],
+        intrinsics=intrinsics,
+        mounting=_mounting(),
+    )
+    assert y_centre == pytest.approx(0.0, abs=1e-12)
+
+
+def test_cliff_bearing_follows_the_side_the_drop_is_on() -> None:
+    """片側だけの段差: 画像左（`u < cx`）の崖は **正の方位**の光線に載る。
+
+    逆投影の左右を取り違えると、崖が反対側の方位へ撃たれる——costmap 上では
+    「通れる側を塞ぎ、落ちる側を空けたまま」になる。
+    """
+    observation = _analyze(
+        synthetic_depth_frame(
+            drop_at_m=DROP_AT_M, drop_depth_m=DROP_DEPTH_M, drop_only_image_left=True
+        )
+    )
+    scan = _scan_params()
+    hit_indices = [i for i, value in enumerate(observation.cliff.ranges) if math.isfinite(value)]
+    assert hit_indices, "片側の崖が 1 本も撃たれていない"
+    # 角度窓は 0 対称（±π/2・90 本）なので、正の方位 = index >= 45。
+    assert min(hit_indices) >= scan.ray_count // 2
+    assert all(
+        scan.angle_min_rad + index * scan.angle_increment_rad >= 0.0 for index in hit_indices
+    )
+    # 落下 cell はすべて body 左（iy >= 0 ⇔ Y >= 0）。
+    assert all(
+        cell.iy >= 0
+        for cell in observation.grid.cells.values()
+        if cell.state == TerrainState.DROP_DETECTED
+    )
+
+
+def test_mirrored_drop_cells_land_on_mirrored_rays() -> None:
+    """同じ前方距離で左右対称の落下 cell は、対称な光線 index に落ちる。"""
+    params = _params()
+    scan = _scan_params()
+    left = classify_cells(_points_in_cell(3, 1, -DROP_DEPTH_M, 5), _IDEAL_GROUND, params=params)
+    right = classify_cells(_points_in_cell(3, -2, -DROP_DEPTH_M, 5), _IDEAL_GROUND, params=params)
+    left_hits = [
+        i
+        for i, value in enumerate(
+            cliff_ranges(left, params=params, scan=scan, source_stamp_s=1.0).ranges
+        )
+        if math.isfinite(value)
+    ]
+    right_hits = [
+        i
+        for i, value in enumerate(
+            cliff_ranges(right, params=params, scan=scan, source_stamp_s=1.0).ranges
+        )
+        if math.isfinite(value)
+    ]
+    assert len(left_hits) == 1 and len(right_hits) == 1
+    assert left_hits[0] > right_hits[0]
+    assert left_hits[0] + right_hits[0] == scan.ray_count - 1
+
+
+def test_a_single_drop_point_outranks_confirmed_floor_points() -> None:
+    """証拠下限を満たす cell に落下点が **1 つ**でもあれば `DROP_DETECTED`。
+
+    追補 ⑤ §3 の規則 2（`OQ-OD4Z-a` v0）: 危険の正の観測は、同じ cell の床点の数で
+    薄めない。床 3 点 + 落下 1 点 = 4 点でも `FLOOR_CONFIRMED` にはしない。
+    """
+    points = _points_in_cell(2, 0, 0.0, 3) + _points_in_cell(2, 0, -DROP_DEPTH_M, 1)
+    grid = classify_cells(points, _IDEAL_GROUND, params=_params())
+    cell = grid.cells[(2, 0)]
+    assert cell.point_count == 4
+    assert cell.floor_point_count == 3  # 証拠下限 (=3) を満たしている
+    assert cell.drop_point_count == 1
+    assert cell.state == TerrainState.DROP_DETECTED
+
+
+def test_corridor_must_hold_at_least_one_lateral_bin() -> None:
+    """中心が回廊に入る bin が 0 本になる設定を構築時に拒む（追補 ⑤ §2「最小 1 bin」）。"""
+    with pytest.raises(ValueError, match="at least one lateral bin"):
+        TerrainGridParams(
+            cell_size_m=0.10,
+            corridor_half_width_m=0.04,  # < cell_size_m / 2 = 0.05
+            forward_range_m=1.2,
+            min_points_per_cell=3,
+            drop_threshold_m=0.04,
+            min_valid_fraction=0.2,
+        )
+    # ちょうど cell_size_m / 2 は成立（bin は 2 本: 中心 ±0.05）。
+    boundary = TerrainGridParams(
+        cell_size_m=0.10,
+        corridor_half_width_m=0.05,
+        forward_range_m=1.2,
+        min_points_per_cell=3,
+        drop_threshold_m=0.04,
+        min_valid_fraction=0.2,
+    )
+    assert corridor_lateral_indices(boundary) == (-1, 0)
+
+
+def test_known_fail_open_plain_ransac_prefers_the_tilted_plane() -> None:
+    """⚠ **既知の fail-open を pin する characterization test**（`OQ-OD4Z-d`・未裁定）。
+
+    これは「望ましい挙動」ではない。回廊の中ほどが欠測した下り段差シーンでは、
+    近傍の床と遠方の下段面を通る**傾いた**平面が水平面より inlier を集め、
+    素の RANSAC（[案 B 04:44]）がそれを採る——結果、**崖が `FLOOR_CONFIRMED` に
+    見える**。法線の事前拘束・支持の下限は正本にしきい値が無いため v0 では
+    実装しておらず、この test は「裁定されないまま黙って消えない」ための記録。
+
+    裁定（04 追補 ⑤ `OQ-OD4Z-d`）が入ったらこの test は**失敗するはず**で、
+    そのときは期待値ではなく test ごと書き換える。
+    """
+    observation = _analyze(
+        synthetic_depth_frame(
+            drop_at_m=DROP_AT_M, drop_depth_m=DROP_DEPTH_M, blind_band_m=(0.60, 0.70)
+        )
+    )
+    assert observation.plane.used_prior is False
+    assert observation.plane.a < -0.02, "傾いた平面が採られていない（挙動が変わった＝再裁定）"
+    assert observation.coverage.state == TerrainState.FLOOR_CONFIRMED
+    assert observation.coverage.nearest_drop_distance_m is None
+    assert observation.cliff.drop_cell_count == 0
 
 
 def test_unknown_never_enters_the_cliff_scan() -> None:

@@ -281,8 +281,14 @@ class TerrainGridParams:
             every distance this module reports.
         corridor_half_width_m: half width [m] of the forward corridor "about to be
             driven" (``docs/mode-outdoor/04-perception-sidewalk-and-signals.md:175``).
-            Finite ``> 0``. The vehicle footprint is owned by 00, not duplicated in
-            04 (``:194``), so the caller passes the resolved value.
+            Finite ``> 0`` and at least ``cell_size_m / 2``, so the corridor always
+            holds at least ONE lateral bin: a bin belongs to the corridor when its
+            CENTRE is inside the half width, and the innermost centre sits at
+            ``cell_size_m / 2``. A narrower corridor would silently select no bin at
+            all, and an empty corridor reports ``UNKNOWN`` forever, which looks
+            fail-closed but is really a configuration that can never confirm
+            anything. The vehicle footprint is owned by 00, not duplicated in 04
+            (``:195``), so the caller passes the resolved value.
         forward_range_m: how far ahead of the DATUM the grid reaches [m], finite
             ``> 0`` and at least one cell. The usable corridor is truncated to a
             whole number of cells, ``floor(forward_range_m / cell_size_m)``.
@@ -313,11 +319,14 @@ class TerrainGridParams:
     def __post_init__(self) -> None:
         cell_size_m = _positive("cell_size_m", self.cell_size_m)
         object.__setattr__(self, "cell_size_m", cell_size_m)
-        object.__setattr__(
-            self,
-            "corridor_half_width_m",
-            _positive("corridor_half_width_m", self.corridor_half_width_m),
-        )
+        corridor_half_width_m = _positive("corridor_half_width_m", self.corridor_half_width_m)
+        if corridor_half_width_m + _INDEX_EPS < cell_size_m / 2.0:
+            raise ValueError(
+                f"corridor_half_width_m {corridor_half_width_m!r} must be >= "
+                f"cell_size_m / 2 ({cell_size_m / 2.0!r}) so the corridor holds "
+                "at least one lateral bin"
+            )
+        object.__setattr__(self, "corridor_half_width_m", corridor_half_width_m)
         forward_range_m = _positive("forward_range_m", self.forward_range_m)
         if forward_range_m + _INDEX_EPS < cell_size_m:
             raise ValueError(
@@ -815,9 +824,10 @@ def classify_cells(
        downstream (``docs/mode-outdoor/04-perception-sidewalk-and-signals.md:56`` /
        ``:214``). It is checked FIRST so a lone speck can never confirm anything.
     2. any point with ``r <= -drop_threshold_m`` ⇒ ``DROP_DETECTED``
-       (``considerDrop``). One such point is enough: drop evidence is the positive
-       danger observation and must not be averaged away. How many points SHOULD be
-       required is not pinned by the docs and is left as an OQ in 追補 ⑤ rather than
+       (``considerDrop``). ONE such point is enough, and it outranks any number of
+       floor points in the same cell: drop evidence is the positive danger
+       observation and must not be averaged away. How many points SHOULD be required
+       is not pinned by the docs and is left as ``OQ-OD4Z-a`` in 追補 ⑤ rather than
        invented here.
     3. ``floor_point_count >= min_points_per_cell`` ⇒ ``FLOOR_CONFIRMED``, where a
        floor point is ``|r| <= plane_tolerance_m``. The count is over FLOOR points,
@@ -974,19 +984,22 @@ def cliff_ranges(
 ) -> CliffScan:
     """Project ``DROP_DETECTED`` cells — and only those — into a virtual LaserScan.
 
-    ``UNKNOWN`` never enters ``ranges``
-    (``docs/mode-outdoor/04-perception-sidewalk-and-signals.md:173``: a LaserScan
-    cannot express "not observed", and writing an unobserved cell as a wall would
-    turn missing evidence into a fabricated obstacle). Unobserved area leaves this
-    module through :func:`terrain_coverage` instead.
+        ``UNKNOWN`` never enters ``ranges``
+        (``docs/mode-outdoor/04-perception-sidewalk-and-signals.md:173``: a LaserScan
+        cannot express "not observed", and writing an unobserved cell as a wall would
+        turn missing evidence into a fabricated obstacle). Unobserved area leaves this
+        module through :func:`terrain_coverage` instead.
 
-    Each drop cell contributes its CENTRE, measured from the datum, as
-    ``bearing = atan2(Y, X)`` and ``range = hypot(X, Y)``; the nearest value wins a
-    shared ray, which is the conservative choice. Cells outside the bearing or range
-    window are counted in ``omitted_cell_count`` rather than clamped into a bin they
-    do not belong to.
+    Each drop cell is aimed by its CENTRE — ``bearing = atan2(Y_centre, X_centre)``
+        — but its RANGE is taken at the cell's NEAR edge, ``hypot(ix·cell_size,
+        Y_centre)``. Quantisation therefore errs toward the robot by at most one cell,
+        which is the direction the fail table of 追補 ⑤ requires (崖は手前へ); reporting
+        the centre would place the virtual wall up to half a cell BEYOND the observed
+        edge. The nearest value wins a shared ray, for the same reason. Cells outside the
+        bearing or range window are counted in ``omitted_cell_count`` rather than clamped
+        into a bin they do not belong to.
 
-    Never raises on data.
+        Never raises on data.
     """
     cell_size = grid.cell_size_m
     increment = scan.angle_increment_rad
@@ -997,10 +1010,12 @@ def cliff_ranges(
         if cell.state != TerrainState.DROP_DETECTED:
             continue
         drop_cells += 1
-        x = (cell.ix + 0.5) * cell_size
-        y = (cell.iy + 0.5) * cell_size
-        bearing = math.atan2(y, x)
-        distance = math.hypot(x, y)
+        x_centre = (cell.ix + 0.5) * cell_size
+        y_centre = (cell.iy + 0.5) * cell_size
+        bearing = math.atan2(y_centre, x_centre)
+        # Range at the NEAR edge: the error falls toward the robot, never past the
+        # observed cliff edge (追補 ⑤ の fail 方向「崖は手前へ」).
+        distance = math.hypot(cell.ix * cell_size, y_centre)
         index = int(math.floor((bearing - scan.angle_min_rad) / increment + _INDEX_EPS))
         if index < 0 or index >= scan.ray_count:
             omitted += 1
