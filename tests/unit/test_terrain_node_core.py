@@ -189,6 +189,33 @@ def test_row_padding_beyond_the_pixels_is_skipped() -> None:
     ]
 
 
+def test_row_padding_and_pixel_stride_compose() -> None:
+    """行末パディング（`step > width * 2`）と `pixel_stride=2` を同時に掛けても、
+    行 0,2 / 列 0,2 の画素だけを読み、パディングを画素として拾わない。"""
+    rows_mm = [
+        [1000, 1100, 1200, 1300],
+        [2000, 2100, 2200, 2300],
+        [3000, 3100, 3200, 3300],
+        [4000, 4100, 4200, 4300],
+    ]
+    # 各行 = 4 画素 (8 byte) + 2 byte パディング → step = 10。
+    padded = b"".join(struct.pack("<4H", *row) + b"\xab\xcd" for row in rows_mm)
+    rows = decode_depth_image(
+        encoding="16UC1",
+        width=4,
+        height=4,
+        step=10,
+        is_bigendian=0,
+        data=padded,
+        pixel_stride=2,
+    )
+    # 期待値は手で書き下す（実装を呼ばない）: 行 0,2 × 列 0,2。
+    assert rows == [
+        [pytest.approx(1.0), pytest.approx(1.2)],
+        [pytest.approx(3.0), pytest.approx(3.2)],
+    ]
+
+
 # ── 裁定 7: pixel_stride と intrinsics の同率縮小 ─────────────────────────
 def test_pixel_stride_keeps_every_nth_row_and_column_from_index_zero() -> None:
     rows_mm = [
