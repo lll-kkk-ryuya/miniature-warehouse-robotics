@@ -115,4 +115,64 @@ Mode Outdoor の 04_Perception（歩道知覚）の**家は本 package**（[docs
 
 ## 【2026-09-17 追記・P3】09 model_manifest / 10 評価基盤
 
-（P3 実装 PR で記入）
+**layer**: 09_Runtime_and_Models = **基盤**（単一 layer に帰属させない・版 pin は 00）／10_Evaluation = **観測面（横断・offline）**
+（[04:335](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md:335)・`.claude/rules/layer-annotation.md`）。
+**node 0・topic 0・走行時に動かさない**（随伴 Mac の offline 評価 =
+[02:145](../../../docs/mode-outdoor/02-architecture-split-orin-pc-cloud.md:145) /
+[02:161](../../../docs/mode-outdoor/02-architecture-split-orin-pc-cloud.md:161)。Mac は stop producer になれない =
+[02:137](../../../docs/mode-outdoor/02-architecture-split-orin-pc-cloud.md:137)）。純 python + PyYAML + `eval_sdk` のみ
+（torch / TensorRT / numpy / rclpy を import しない＝unit の AST pin で固定）。
+
+### 提供 (produce)
+
+- module `warehouse_perception.model_manifest`: `load_manifest(path) -> ModelManifest`（PyYAML `safe_load` →
+  `model_validate`・失敗は `ValidationError` をそのまま上げる）／`sha256_of_file(path) -> str`（`sha256sum` と同値）／
+  `verify_weights(manifest, weights_path) -> bool`（読めない重みは `OSError`＝「照合できなかった」を「違った」と同じ顔にしない）／
+  `main(argv) -> int`。
+- console_script `perception_manifest`: `perception_manifest validate <yaml> [--weights <file>]`・**exit 0 = 妥当 / 1 = 不備**。
+- module `warehouse_perception.evaluation_core`: `EvalSample` / `read_jsonl(path)`（例示 JSONL・行番号付きエラー）／
+  `signal_confusion`（`SignalState` 4×4・**全 16 セルを 0 埋めで返す**）／`p1_violations` / `p1_gate`（`GREEN_FLASHING→GREEN`
+  ＋ `RED→GREEN` = 0 件 = [04:117](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md:117)）／`unknown_rate`／
+  `miss_rate_by_distance_band(samples, bands, *, missing_labels)`（**帯は引数・既定なし**）／`false_stops_per_km(stops, travelled_m)`
+  （**走行距離は引数**）／`capture_to_consume_latency`（`eval_sdk.stats.percentile`・**負の遅延は捨てず別集計**）／`compare`
+  （N 系統表・P-1 不合格を `rejected=True`）／`signal_metrics` / `miss_rate_metrics` / `latency_metrics` / `drive_metrics`
+  （`METRIC_*` 定数＝キー**案**）／`to_evaluation_record(dataset_id, metrics) -> EvaluationRecord`。
+- artifact `manifests/`: `README.md`（置き場の規約・engine 境界・AGPL 境界）+ `example.rf-detr-nano.yaml`（**全 placeholder**）。
+  **`setup.py` の `data_files` には載せない**（配布物ではなく repo に残す記録）。
+
+### 消費 (consume)
+
+- 契約: `warehouse_interfaces.perception.{ModelManifest, EvaluationRecord, SignalState}`（凍結契約・追補 ④）。
+- 算術: `eval_sdk.stats.percentile`（domain 非依存の評価核へ**一方向依存**＝`ws/src/eval_sdk/CLAUDE.md`「依存」節。
+  `package.xml` に `<exec_depend>eval_sdk</exec_depend>`）。
+- `python3-yaml`（manifest の parse。`package.xml` に追加）。
+- **入力データ**: 「他の何かが出した予測列 + 真値列」の JSONL。**例示・未凍結**（形は
+  [04 追補 ⑦ §2](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md:524)）。`warehouse_interfaces` に登録していない。
+
+### 前提・未確定 (TODO)
+
+- `# TODO(backend)` 推論 backend（RF-DETR-Nano / YOLO26 / D-FINE）・重み・engine は**未実装**。engine は必ずボード上で焼く
+  （[`OQ-OD4U`](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md:358)）ため、本 package の tool は engine を
+  **焼かない・読まない**（記録するだけ）。
+- `# TODO(bag)` 実走 bag は**ゼロ**（記録基盤 = run record は配線済・未実走）。ゆえに `example.rf-detr-nano.yaml` の値は
+  すべて placeholder で、`dataset_id: "example-bag-0000"` は存在しない bag。
+- `# TODO(OQ-OD4Y-e)` `EvaluationRecord.metrics` のキー語彙は**案**（`METRIC_*` 定数 1 か所に集約）。裁定は
+  [04 追補 ⑦ §3 / §7](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md:524)（`OQ-OD4Z-a`〜`-i`）。
+- `# TODO(課金ゲート)` VLM / SAM ラベリングと映像の外部送信は
+  [`OQ-OD4V`](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md:359) の gate 対象（`WAREHOUSE_LIVE_ER` と同型）。
+  本 package のコードは外部 API を叩かない。
+
+### テスト（P3）
+
+- `tests/unit/test_model_manifest.py` / `tests/unit/test_evaluation_core.py`（marker `unit`・P-1 ゲートは `safety` 併記）。
+  期待値は手作りサンプルからのリテラルと、テスト側が `hashlib` で独立計算した digest（doc20 §9 独立オラクル）。
+  mutation 感度を実測で確認（P-1 の対象ペアを 1 つ落とす／負の遅延を黙って捨てる／帯の上端を閉区間にする → いずれも赤）。
+  AST pin: `rclpy` / `torch` / `tensorrt` / `numpy` / `requests` 非 import・走行系トピック名を含まない・ROS node クラス 0・
+  共有依存は `warehouse_interfaces` のみ。例 manifest が `load_manifest` を通ることも pin。
+
+### 設計ドキュメント（P3）
+
+- [docs/mode-outdoor/04 追補 ⑦](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md:524) — 実装記録の正本
+  （manifest 置き場・例示 JSONL・指標定義とキー案・比較手順・ライセンス/課金境界・残 OQ）
+- [docs/mode-outdoor/04 追補 ④](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md:452) — 型と fail 方向（凍結契約）
+- [ws/src/warehouse_perception/manifests/README.md](manifests/README.md) — manifest の置き場の規約

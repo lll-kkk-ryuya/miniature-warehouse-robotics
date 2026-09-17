@@ -13,6 +13,13 @@
   <exec_depend>std_msgs</exec_depend>
   <exec_depend>nav2_msgs</exec_depend>
 
+  <!-- Offline evaluation harness (10_Evaluation, docs/mode-outdoor/04 追補 ⑦):
+       eval_sdk is the domain-free evaluation core the warehouse packages depend on
+       one-way (same pattern as warehouse_orchestrator / warehouse_llm_bridge);
+       python3-yaml parses the model manifests. Neither is used by any node. -->
+  <exec_depend>eval_sdk</exec_depend>
+  <exec_depend>python3-yaml</exec_depend>
+
   <test_depend>python3-pytest</test_depend>
 
   <export>

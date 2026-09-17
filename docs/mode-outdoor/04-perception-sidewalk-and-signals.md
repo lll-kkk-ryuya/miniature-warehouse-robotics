@@ -523,4 +523,108 @@ X2 の入力型 `warehouse_safety.sensor_health.SourceObservation`（`stamp_s` /
 
 ## 【2026-09-17 追補 ⑦】09_Runtime model_manifest loader・10_Evaluation 評価基盤 v0（実装記録・P3 レーンが記入）
 
-（P3 実装 PR で記入。契約 = 追補 ④ `ModelManifest` / `EvaluationRecord`）
+正本 = 本 doc（親 §7 [:117](04-perception-sidewalk-and-signals.md:117)・追補 ② §1 09/10 行 [:204](04-perception-sidewalk-and-signals.md:204) / [:205](04-perception-sidewalk-and-signals.md:205)・§3-1 [:231](04-perception-sidewalk-and-signals.md:231)・§3-2 [:263](04-perception-sidewalk-and-signals.md:263)・追補 ③ 最終行 [:385](04-perception-sidewalk-and-signals.md:385)・追補 ④ §1-5 [:452](04-perception-sidewalk-and-signals.md:452)）。本追補は **09_Runtime の model_manifest loader / 検証 CLI** と **10_Evaluation の評価指標の純ロジック核**を、`ws/src/warehouse_perception` に **torch / TensorRT / ROS / numpy 非依存の純 python（+ PyYAML + `eval_sdk`）**として実装した記録である。
+
+> **レイヤ注記**（[.claude/rules/layer-annotation.md](../../.claude/rules/layer-annotation.md)）: 09_Runtime_and_Models = **基盤**（単一 layer に帰属させない・版 pin は 00）／10_Evaluation = **観測面（横断・offline）**（[:335](04-perception-sidewalk-and-signals.md:335)）。本スライスは **node 0・topic 0**。停止・許可・駆動のいずれにも関与せず、**走行中に動かさない**（随伴 Mac の位置づけ = [02:145](02-architecture-split-orin-pc-cloud.md:145) / [02:161](02-architecture-split-orin-pc-cloud.md:161)、**Mac は stop producer になれない** = [02:137](02-architecture-split-orin-pc-cloud.md:137)）。
+
+**本スライスに含まれないもの**（未購入・未記録ゆえ発明しない）: 推論 backend（RF-DETR / YOLO26 / D-FINE）の実装・重み・engine・実走 bag。入力は「**他の何かが出した予測列 + 真値列**」であり、その形式は §2 の**例示（未凍結）**として定義する。
+
+### 1. manifest の置き場と読み方（09_Runtime）
+
+| 項目 | 実体 | 根拠 |
+|---|---|---|
+| 置き場 | `ws/src/warehouse_perception/manifests/<model-slug>.yaml`（package-local・規約は同ディレクトリの `README.md`） | manifest は 04 が **artifact として所有**（[:204](04-perception-sidewalk-and-signals.md:204)） |
+| 型の正本 | 凍結契約 `warehouse_interfaces.perception.ModelManifest` / `EvaluationRecord`（追補 ④ §1-5 = [:452](04-perception-sidewalk-and-signals.md:452)） | docs の例示より**凍結契約が優先**（[.claude/rules/docs-first.md](../../.claude/rules/docs-first.md)） |
+| 読み方 | `warehouse_perception.model_manifest.load_manifest(path)` = PyYAML `safe_load` → `ModelManifest.model_validate`。**失敗は `ValidationError` をそのまま上げる**（offline ツール＝fail-loud でよい。安全ループへ例外を持ち込まない規律 [:482](04-perception-sidewalk-and-signals.md:482) は、そもそも安全ループの無い本経路には掛からない） | 追補 ④ §1-5 |
+| 重み照合 | `sha256_of_file(path)`（`sha256sum` と同値）・`verify_weights(manifest, weights_path)`。**読めないファイルは例外**＝「照合できなかった」を「照合して違った」と同じ顔にしない | `weights_sha256` は 64 hex・アルゴリズム固定は**暫定** = [`OQ-OD4Y-k`](04-perception-sidewalk-and-signals.md:496) |
+| CLI | `python3 -m warehouse_perception.model_manifest validate <yaml> [--weights <file>]`（console_script `perception_manifest`）。exit **0 = 妥当 / 1 = 不備** | — |
+| 例ファイル | `manifests/example.rf-detr-nano.yaml`。**値はすべて placeholder**（実測値・実 digest を書かない）。`evaluation` は省略不可（[:471](04-perception-sidewalk-and-signals.md:471)）なので「**評価済みの形の例**」として `dataset_id: "example-bag-0000"`（存在しない bag）＋自己整合な合成指標を置く。`"UNEVALUATED"` のようなダミー id は**禁止**——「評価した」と読める嘘になる。`license: "Apache-2.0"` の出典は §3-1 の RF-DETR 行 [D]（[:235](04-perception-sidewalk-and-signals.md:235)） | [:465](04-perception-sidewalk-and-signals.md:465) / [:469](04-perception-sidewalk-and-signals.md:469) / [:471](04-perception-sidewalk-and-signals.md:471) |
+| `setup.py` の `data_files` | **載せない**。manifest は repo に残す**記録**であって配布物ではない。`share/` へ install すると「実行時に読む config」に見える | [:204](04-perception-sidewalk-and-signals.md:204) |
+
+- **engine を焼く・読む処理は書かない**。TensorRT engine は GPU arch と TRT 版に固定され可搬でないため**必ずボード上で焼く**（[`OQ-OD4U`](04-perception-sidewalk-and-signals.md:358)）。host tool ができるのは `engine_built_on_board` / `tensorrt_version` / `gpu_arch` に**その事実を記録すること**だけ。engine 未作成（ONNX 止まり）の採用単位は正当で、後 2 者は**空でよい**（[:467](04-perception-sidewalk-and-signals.md:467) / [:468](04-perception-sidewalk-and-signals.md:468)）。例ファイルはその状態を採る。
+- **重みのダウンロード・外部 API 呼び出しを行わない**（`requests` / `urllib` 非 import を unit の AST pin で固定）。依存版の一覧は 00 が正本（[00 末尾追補](00-mission-and-scope.md:81)）で、ここに複製しない。
+
+### 2. 評価入力の**例示（未凍結）**スキーマ — JSONL
+
+**この形は契約ではない**。`warehouse_interfaces` に登録しておらず、本 harness 自身の入力形式として contract PR 無しで変えてよい（凍結契約は追補 ④ の 04 **出力**型だけ）。`warehouse_perception.evaluation_core.read_jsonl(path)` が読む。
+
+1 行 = 1 サンプル（JSON object）:
+
+| key | 型 | 必須 | 意味 |
+|---|---|:---:|---|
+| `stamp_s` | number（有限） | ✅ | そのフレームの**元計測時刻**（秒）。付け直さない（runtime 契約と同じ規律 = [:424](04-perception-sidewalk-and-signals.md:424)） |
+| `truth` | 非空 string | ✅ | offline ラベルパスの真値（1 記録 → 1 ラベル） |
+| `pred` | 非空 string | ✅ | その系統がそのフレームに対して出した値 |
+| `distance_m` | number `>= 0` | — | 対象までの距離。**不在 = 記録なし**（帯を仮定しない） |
+| `consumed_s` | number（有限） | — | 結果が**消費された**時刻。撮影 → 消費の遅延を作る第 2 の時刻（04 単独では撮影 → 出力までしか測れない = [:418](04-perception-sidewalk-and-signals.md:418)） |
+| `crossing_id` | 非空 string | — | 登録横断点。**registry の正本は 02**（[:217](04-perception-sidewalk-and-signals.md:217)） |
+
+- **未知キーは無視**（ハブの `extra="ignore"` と同方針＝ラベル出力が richer でも読める）・空行はスキップ。
+- **必須欠落・型違反・不正 JSON は `<path>:<行番号>: <理由>` の `ValueError`**。これらの file はラベルパスと再生スクリプトが生成するので「どこかの行が壊れている」では動けない。
+- 信号の 4 状態（`SignalState`）以外のラベルも運べる（検出器評価では `person` / `none` 等）。`signal_confusion` に渡した時点で `SignalState` に解釈できないラベルは `ValueError`。
+
+### 3. 指標の定義と `EvaluationRecord.metrics` の**キー案**（= [`OQ-OD4Y-e`](04-perception-sidewalk-and-signals.md:490)）
+
+`metrics` は `dict[str, float]` の**開いた map**のまま（キー集合は docs 未定 = [:473](04-perception-sidewalk-and-signals.md:473)）。以下は**本レーンの案**であり、コード側では `evaluation_core` の `METRIC_*` 定数 1 か所に集約してある（裁定時に機械的に改名できる）。**検証はしていない＝契約ではない。**
+
+| キー | 由来 | 定義 |
+|---|---|---|
+| `signal.confusion.<TRUTH>_to_<PRED>` | 親 §7 P-1（[:117](04-perception-sidewalk-and-signals.md:117)）・[:204](04-perception-sidewalk-and-signals.md:204)「bag id + 混同行列」 | `SignalState` 4×4 の全 16 セル。**0 のセルも必ず出す**（キーの不在を「0 件」と読ませない）。P-1 の 2 セルは常に存在する |
+| `signal.p1_violations` | [:117](04-perception-sidewalk-and-signals.md:117) | `GREEN_FLASHING→GREEN` + `RED→GREEN` の件数 |
+| `signal.p1_gate_pass` | 同上 | `1.0` / `0.0`。**0 件が必達**（率ではない＝許容値を設けない） |
+| `signal.unknown_rate` | 同上（`UNKNOWN` 率は**運用指標**） | 予測が `UNKNOWN` の割合。真値が `UNKNOWN` の行（ラベル不能フレーム）も**分母に残す** |
+| `signal.sample_count` | — | 総サンプル数。P-1 合格は「評価した」を意味しない（0 サンプルでも合格する）ので必ず併記する |
+| `detect.miss_rate@<band>` / `detect.samples@<band>` | [:205](04-perception-sidewalk-and-signals.md:205) 差別化指標 | 距離帯別の見逃し率と母数。**帯の境界は引数（既定なし）**——docs は指標を名指すが境界を pin していない |
+| `latency.capture_to_consume_{p50,p95,max}_s` | [:203](04-perception-sidewalk-and-signals.md:203) / [:331](04-perception-sidewalk-and-signals.md:331)（平均 FPS でなく撮影 → 消費の遅延） | `consumed_s − stamp_s` の分位数。算術は `eval_sdk.stats.percentile`（線形補間） |
+| `latency.capture_to_consume_negative_count` / `_sample_count` | [:418](04-perception-sidewalk-and-signals.md:418) | **負の遅延は捨てずに別集計**。分位数からは除く |
+| `drive.false_stops_per_km` / `drive.travelled_m` | [:205](04-perception-sidewalk-and-signals.md:205) | 走行距離当たりの誤停止。**走行距離は引数**（サンプル列は走行を持たない。出所は run record = [jetson/03:223](../jetson/03-build-deploy-run-and-run-records.md:223)） |
+
+**設計上の 2 規律**（追補 ④ §2-3「証拠の不在を否定と読まない」の実装側対応）:
+
+1. **`None` は 0 ではない**。母数 0 の率は `None` を返し、**metrics のキーごと落とす**。キーの不在は「計算できなかった」であって「0 だった」ではない。
+2. **サンプルを黙って捨てない**。帯に入らない・距離を持たないサンプルは件数として報告し、**負の遅延（時計取違え）は件数を別 key で返す**。分位数へ混ぜれば死んだ経路が「速い」に見え（[:418](04-perception-sidewalk-and-signals.md:418) が値として拒否するのと同じ故障）、黙って捨てれば同じ故障が隠れる。
+3. **見逃し（miss）の定義**: 真値が確立しているのに予測が確立しなかった（`pred` が「確立しないラベル」集合に入る）こと。**取り違えは miss ではない**——危険な取り違えは混同行列と P-1 が既に数えている。「確立しないラベル」は既定 `{"UNKNOWN"}`（[:117](04-perception-sidewalk-and-signals.md:117) / [:405](04-perception-sidewalk-and-signals.md:405)）で、検出器評価は自分の語彙を注入する。誤分類も miss に数えるかは §6 の OQ。
+
+### 4. 同一 bag での N 系統比較の手順（10_Evaluation）
+
+[:263](04-perception-sidewalk-and-signals.md:263) の手順をそのまま実行手順にする:
+
+1. **1 回の記録**（走行時と同一カメラ・同一取付高さ・**露出固定** = [`OQ-OD4L`](04-perception-sidewalk-and-signals.md:349)）。記録基盤は run record（[jetson/03:223](../jetson/03-build-deploy-run-and-run-records.md:223)・`ros2 bag record` へ topic は**位置引数** = [jetson/03:291](../jetson/03-build-deploy-run-and-run-records.md:291)）。**実走記録はまだゼロ**。
+2. **1 セットのラベル**（Mac で offline = [:271](04-perception-sidewalk-and-signals.md:271)）。
+3. **N 系統を同じ bag に再生**し、系統ごとに §2 の JSONL を出す。候補は信号 8 系統（[:248](04-perception-sidewalk-and-signals.md:248)〜）・検出器は試す順序 Top-3（[:245](04-perception-sidewalk-and-signals.md:245)）。
+4. **同一の指標関数**で並べる（`evaluation_core.compare`）。**P-1 を満たさない系統は `rejected` として不採用**（[:263](04-perception-sidewalk-and-signals.md:263)）。比較表の行順は入力順＝再現可能。
+5. **走行判断に使わない観測モード**で回す（実装順序 4 = [:328](04-perception-sidewalk-and-signals.md:328)）。
+
+**同一 bag であることの担保は呼び出し側の責務**。サンプル列は dataset id を持たず、ここで発明すると「別の bag 同士を 1 つの表で比べる」ことが可能になってしまう。採用時に `to_evaluation_record(dataset_id, metrics)` で **bag id と指標を 1 つの `EvaluationRecord`** に束ね、manifest に載せる（= 1 採用単位・[:471](04-perception-sidewalk-and-signals.md:471)）。
+
+**予算に使わない数値**: 表の ms はほぼ T4 値で、Orin へ外挿するのは推論であり、**640 入力・前後処理除外**の条件付き（[:244](04-perception-sidewalk-and-signals.md:244) / [`OQ-OD4U`](04-perception-sidewalk-and-signals.md:358)）。自画角・自解像度・前後処理込みの実測で置き換えるまで manifest の数値は placeholder に留める。
+
+### 5. ライセンス境界と課金ゲート
+
+- **配布物に載せるモデル**: 本命 RF-DETR-Nano（Apache-2.0）・保険 D-FINE-S / RT-DETRv2-S（Apache-2.0）（[:231](04-perception-sidewalk-and-signals.md:231) / [:235](04-perception-sidewalk-and-signals.md:235)）。**YOLO 系は AGPL-3.0 ＝「速度上限の測定器」に限定し配布物に載せない**（[:245](04-perception-sidewalk-and-signals.md:245) / [`OQ-OD4N`](04-perception-sidewalk-and-signals.md:351)）。**DEIMv2 は非商用ゆえ除外**（[:242](04-perception-sidewalk-and-signals.md:242)）。契約は `license` の空を拒否する（[:469](04-perception-sidewalk-and-signals.md:469)）＝「不明」を黙って通さない。
+- **評価データ**: JRDB は CC BY-NC-SA 3.0 で、productization を視野に入れるなら**評価にも使わない**（[:278](04-perception-sidewalk-and-signals.md:278) / [`OQ-OD4T`](04-perception-sidewalk-and-signals.md:357)）。SANPO は CC-BY-4.0（[:277](04-perception-sidewalk-and-signals.md:277)）。
+- **課金ゲート**: VLM / SAM によるラベリング（[:256](04-perception-sidewalk-and-signals.md:256) / [:271](04-perception-sidewalk-and-signals.md:271)）と走行映像の外部送信は [`OQ-OD4V`](04-perception-sidewalk-and-signals.md:359) の gate 対象で、`WAREHOUSE_LIVE_ER` と**同型**。**エージェントはこの種の gate を自分で立てない**（有料実行は operator が明示的に行う。[.claude/rules/environments.md](../../.claude/rules/environments.md) §Secrets / [dev/07 §4.5](../dev/07-mode-x-er-live-e2e-runbook.md)）。本スライスのコードは外部 API を一切叩かない（AST pin）。
+- **秘密**: 本スライスは `config/<env>/.env` を読まない。manifest に鍵・トークンを書かない（記録は持ち出される = [jetson/03:274](../jetson/03-build-deploy-run-and-run-records.md:274) の redaction と同じ理由）。
+
+### 6. レイヤ annotation 対応表に**行を足さない**理由
+
+[productization/01:174](../productization/01-commercial-box-map.md:174) の対応表は **L0–L4 の 5 行**しか持たない。09_Runtime_and_Models は「単一 layer に帰属させない基盤」、10_Evaluation は「横断（観測面）」であり（[:335](04-perception-sidewalk-and-signals.md:335)）、**どの L 行にも属さない**。無理に L4 行へ足すと [:189](04-perception-sidewalk-and-signals.md:189) が訂正した「全 sub-dir = L4」の自己矛盾を再導入する。よって本 PR では**行を足さず**、帰属の整理は [`OQ-OD4B`](04-perception-sidewalk-and-signals.md:339)（11 sub-dir の採否）へ申し送る。本追補の冒頭レイヤ注記と `ws/src/warehouse_perception/CLAUDE.md` の P3 節が、それまでの annotation の所在となる。
+
+### 7. OPEN QUESTIONS（本追補で**発明せずに残した**もの・接頭辞 `OQ-OD4Z`）
+
+- `OQ-OD4Z-a` **`metrics` キー語彙の裁定**（[`OQ-OD4Y-e`](04-perception-sidewalk-and-signals.md:490) の具体化）: §3 の案（`signal.*` / `detect.*` / `latency.*` / `drive.*`・`@<band>` 区切り）を採るか。区切り文字（`.` / `@`）と帯名の命名規則も未定。
+- `OQ-OD4Z-b` **JSONL 例示スキーマを凍結するか**。凍結するなら家は `warehouse_interfaces` か harness-local か（追補 ④ は 04 の**出力**型しか凍結していない）。系統ごとの出力を 1 bag 1 ファイルにするか、系統列を 1 ファイルに畳むかも未定。
+- `OQ-OD4Z-c` **miss の定義**（§3 規律 3）: 誤分類を miss に数えるか、`UNKNOWN` への落ちだけを数えるか。検出器評価（`person` / `bicycle`）と信号評価で定義を分けるか。
+- `OQ-OD4Z-d` **距離帯の境界**。P-2（[:118](04-perception-sidewalk-and-signals.md:118)）と P-6 案（[`OQ-OD4T`](04-perception-sidewalk-and-signals.md:357)）から決まるはずだが、制動距離も低視点 gap も未実測ゆえ本スライスでは**引数のまま**。
+- `OQ-OD4Z-e` **「誤停止」の判定**。`drive.false_stops_per_km` は件数を**受け取って割るだけ**で、何を誤停止と数えるか（Guardian の発火か・collision_monitor の STOP か・介入か）は未定。[:205](04-perception-sidewalk-and-signals.md:205) は指標名しか与えていない。
+- `OQ-OD4Z-f` **`consumed_s` の出所**。bag 再生から「消費時刻」をどう取るか（下流ノードの受信ログか・再生 harness の計測か）は未決。取れない系統では遅延指標が空になる。
+- `OQ-OD4Z-g` **draft manifest**: 評価前のモデルを表現できない（[`OQ-OD4Y-g`](04-perception-sidewalk-and-signals.md:492)）ため、例ファイルは「評価済みの形」を装った placeholder になっている。draft 型を別に置くか optional へ緩めるかの裁定待ち。
+- `OQ-OD4Z-h` **regression（回帰）の置き場**。10_Evaluation は `bag_replay / scenario_sets / metrics / regression`（[:205](04-perception-sidewalk-and-signals.md:205)）だが、本スライスは metrics の純関数核のみ。scenario_sets の定義と、bag を要する regression job を CI に載せるか（bag は大きく、CI に GPU も bag も無い）は未決。
+- `OQ-OD4Z-i` **`eval_sdk` へ何を降ろすか**。現状は `percentile` だけを借り、指標定義は domain 側（本 package）に置いた（doc21 の層規律と同型）。混同行列のような domain 非依存の算術を `eval_sdk` へ移すかは、消費者が 2 つ目に現れてから。
+
+### 8. 実装（produce / consume は [`ws/src/warehouse_perception/CLAUDE.md`](../../ws/src/warehouse_perception/CLAUDE.md) の P3 節が正本）
+
+- `warehouse_perception/model_manifest.py` — loader / `sha256_of_file` / `verify_weights` / CLI（console_script `perception_manifest`）。
+- `warehouse_perception/evaluation_core.py` — `EvalSample` / `read_jsonl` / `signal_confusion` / `p1_violations` / `p1_gate` / `unknown_rate` / `miss_rate_by_distance_band` / `false_stops_per_km` / `capture_to_consume_latency` / `compare` / `*_metrics` / `to_evaluation_record`。
+- `warehouse_perception/manifests/` — `README.md`（置き場の規約・engine 境界・AGPL 境界）+ `example.rf-detr-nano.yaml`（placeholder）。
+- unit: `tests/unit/test_model_manifest.py` / `tests/unit/test_evaluation_core.py`（独立オラクル＋mutation 感度 = [doc20:139](../architecture/20-dev-quality-and-testing.md:139) / [doc20:140](../architecture/20-dev-quality-and-testing.md:140)。P-1 ゲートは `safety` marker 併記。**AST pin**: `rclpy` / `torch` / `tensorrt` / `numpy` / `requests` 非 import・走行系トピック名を含まない・ROS node クラス 0）。
