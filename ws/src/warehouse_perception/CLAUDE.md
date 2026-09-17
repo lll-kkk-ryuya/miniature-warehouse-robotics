@@ -107,7 +107,7 @@ Mode Outdoor の 04_Perception（歩道知覚）の**家は本 package**（[docs
 
 ## 提供 (produce)
 
-- 型: `SignalTemporalParams`（全パラメータ注入・**既定値なし**）・`LuminanceSample`（レート A = ROI 輝度）・`EvidenceSample`（レート B = 分類器証拠）・`FlashVerdict`・`FlashDetector`・`SignalWindow`・`SignalTemporalConfigError`・定数 `NOMINAL_FLASH_PERIOD_S = 0.5`（[D] 一次情報 = [04:305](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md:305)）
+- 型: `SignalTemporalParams`（**11 → 12 パラメータ**を全注入・**既定値なし**。`max_sample_gap_s` = レート A の被覆上限）・`LuminanceSample`（レート A = ROI 輝度）・`EvidenceSample`（レート B = 分類器証拠）・`FlashVerdict`・`FlashDetector`・`SignalWindow`・`SignalTemporalConfigError`・定数 `NOMINAL_FLASH_PERIOD_S = 0.5`（[D] 一次情報 = [04:305](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md:305)）
 - 出力: `SignalWindow.evaluate(...) -> TrafficSignalObservation | None`（`None` = 窓に有効 stamp のサンプルが 0 件＝**観測なし**。`source_stamp_s` を捏造しないため）
 - **topic は無い**（node / launch / config も無い。型未凍結 = [04:202](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md:202)）
 
@@ -121,12 +121,13 @@ Mode Outdoor の 04_Perception（歩道知覚）の**家は本 package**（[docs
 - `# TODO(rate A/B producer)` 輝度サンプラ・分類器・ROI 投影・露出固定（[`OQ-OD4L`](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md:349)）は未着手。OAK-D も未購入 → 現状のオラクルは**テスト側の合成時系列**のみで、実 bag での P-1 実測は P3 評価基盤 + ハード到着後
 - `# TODO(node 化)` publish する node・topic 名・QoS・周期は未決。`max_age` は**持たない**（鮮度は消費側の義務 = [04:382](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md:382)）ので、node 化する側も producer 側で鮮度判定を足さないこと（停止判定点が 2 つになる）
 - `# TODO(OQ-OD4Y-d)` `sample_count` / `off_phase_count` を**レート B で数える**のは暫定（[04:489](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md:489)）。`quality.valid_fraction` の分子「`NOT_VISIBLE` でない」も暫定（追補 ⑥ `OQ-OD4Z-f`）
+- `# TODO(OQ-OD4Z-d)` 読めない `stamp_s` は**黙って落とさない**（落とす実装は fail-open = stage-2 レビュー B-1）。レート A は窓ごと判定不能・レート B は窓ごと `UNKNOWN`。1 本の不読で窓全体を捨てる粒度は残 OQ ── 緩めるなら「穴として数えて被覆を再評価」する形で、黙って落とす形には戻さない
 - `# TODO(OQ-OD4Z-a)` `is_flashing is None`（判定不能）で GREEN を許さないのは**docs の沈黙を fail-closed で埋めた裁定**。緩めるなら doc PR 経由
 - パラメータに既定値は無い（docs が数値を決めていない）。構築時に `SignalTemporalConfigError` で落ちるので、config から注入する側が値を持つ
 
 ## テスト
 
-- R-26 unit: `tests/unit/test_signal_temporal_core.py`（`unit` + `safety`・**61 本**・**仕様のみから**・合成生成器はテスト側・期待値は手計算リテラル）。**P-1 property**（seed 固定 N = 240・真値に点滅/赤を含む窓 134 件で `GREEN` = 0 件・非空虚性も assert）・**mutation 7/7 で赤**・**AST pin**（`rclpy`/`numpy` 非 import・actuation 語彙なし・`SignalState.GREEN` の代入 1 か所・パラメータ dataclass 既定なし・数値定数は `NOMINAL_FLASH_PERIOD_S` のみ）
+- R-26 unit: `tests/unit/test_signal_temporal_core.py`（`unit` + `safety`・**68 本**・**仕様のみから**・合成生成器はテスト側・期待値は手計算リテラル）。**P-1 property**（seed 固定 N = 240・真値に点滅/赤を含む窓 138 件で `GREEN` = 0 件・**レート A の欠落も振る**・非空虚性も assert）・**mutation 10/10 で赤**・**AST pin**（`rclpy`/`numpy` 非 import・actuation 語彙なし・`SignalState.GREEN` の代入 1 か所・パラメータ dataclass 既定なし・数値定数は `NOMINAL_FLASH_PERIOD_S` のみ）
 
 
 

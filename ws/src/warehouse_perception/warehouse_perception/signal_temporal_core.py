@@ -204,6 +204,16 @@ class SignalTemporalParams:
             transition is not a blink, and this is what keeps it from being read as one.
         min_luminance_samples: rate-A samples required in the window before the flash
             test runs at all. Must be >= 2.
+        max_sample_gap_s: the largest hole tolerated in the rate-A trace before the
+            window stops being COVERED — between adjacent resolved samples, and between
+            each window end and its nearest resolved sample. A count of samples is not
+            coverage: 60 samples crowded into the lit half of a blink are still 60
+            samples, and calling that window "continuously lit" is how a blink reads as
+            steady green. This is the seconds half of the window definition
+            (``docs/mode-outdoor/04-perception-sidewalk-and-signals.md:307``: 秒数 ∧
+            有効サンプル数の下限) applied to rate A. Finite and > 0; no default, because
+            it follows from the camera fps and the dropped-frame budget, neither of
+            which the docs pin.
     """
 
     window_span_s: float
@@ -217,6 +227,7 @@ class SignalTemporalParams:
     red_sync_delta: float
     min_rising_edges: int
     min_luminance_samples: int
+    max_sample_gap_s: float
 
     def __post_init__(self) -> None:
         span = _require_bound("window_span_s", self.window_span_s)
@@ -286,6 +297,11 @@ class SignalTemporalParams:
         if red_delta < 0.0:
             raise SignalTemporalConfigError(f"red_sync_delta={red_delta} must be >= 0")
         object.__setattr__(self, "red_sync_delta", red_delta)
+
+        max_gap = _require_bound("max_sample_gap_s", self.max_sample_gap_s)
+        if max_gap <= 0.0:
+            raise SignalTemporalConfigError(f"max_sample_gap_s={max_gap} must be > 0")
+        object.__setattr__(self, "max_sample_gap_s", max_gap)
 
 
 @dataclass(frozen=True)
@@ -392,15 +408,29 @@ class FlashDetector:
             raise SignalTemporalConfigError(f"params must be SignalTemporalParams, got {params!r}")
         self._params = params
 
-    def verdict(self, samples: Sequence[LuminanceSample]) -> FlashVerdict:
-        """Judge one window's worth of rate-A samples. NEVER raises on data."""
+    def verdict(
+        self,
+        samples: Sequence[LuminanceSample],
+        *,
+        window_start_s: float,
+        window_end_s: float,
+    ) -> FlashVerdict:
+        """Judge one window's worth of rate-A samples. NEVER raises on data.
+
+        The window bounds are required because ``False`` is a claim about the WHOLE
+        window ("continuously lit"), which cannot be made from samples alone — see
+        :meth:`_covers_window`.
+        """
         params = self._params
         ordered = sorted(samples, key=lambda s: s.stamp_s)
         if len(ordered) < params.min_luminance_samples:
             return FlashVerdict(None, None)
         # One unreadable number voids the whole window rather than being dropped: a
         # partially readable luminance trace cannot be told apart from a real dark
-        # phase, and guessing here is the fail-OPEN direction (OQ-OD4Z-d in 追補 ⑥).
+        # phase, and guessing here is the fail-OPEN direction. The stamp is included
+        # deliberately — dropping unreadably-stamped samples and judging the remainder
+        # is exactly how a blink whose dark phase lost its timestamps read as steady
+        # GREEN (stage-2 review of PR #711; OQ-OD4Z-d in 追補 ⑥).
         for sample in ordered:
             if not (
                 math.isfinite(sample.stamp_s)
@@ -421,7 +451,12 @@ class FlashDetector:
             return FlashVerdict(None, None)
         labels = {label for _, label, _ in phases}
         if labels == {_PHASE_ON}:
-            # Continuously lit for the whole window — the one positive "not blinking".
+            # Continuously lit — the one positive "not blinking", but ONLY if the trace
+            # actually covers the window. Without the coverage term, a blink sampled
+            # only on its lit phase (dropped, unstamped or simply absent dark-phase
+            # frames) looks exactly like a steady lamp and admits GREEN.
+            if not self._covers_window(phases, window_start_s, window_end_s):
+                return FlashVerdict(None, None)
             return FlashVerdict(False, None)
         if _PHASE_ON not in labels:
             # Continuously dark. This may be the dark half of a blink caught by too
@@ -468,6 +503,33 @@ class FlashDetector:
                 resolved.append((sample.stamp_s, phase, sample.red_ratio))
         return resolved
 
+    def _covers_window(
+        self,
+        phases: Sequence[tuple[float, str, float]],
+        window_start_s: float,
+        window_end_s: float,
+    ) -> bool:
+        """True when the resolved rate-A trace spans the window with no hole > the gap.
+
+        Three holes are checked with the same bound: before the first resolved sample,
+        between adjacent ones, and after the last. Samples the hysteresis could not
+        resolve count as a hole, because an unresolved stretch says nothing about the
+        lamp either.
+
+        This is the seconds half of the window definition
+        (``docs/mode-outdoor/04-perception-sidewalk-and-signals.md:307``) — without it
+        ``min_luminance_samples`` alone is satisfiable by a dense burst inside the lit
+        phase of a blink, and the verdict would be a statement about that burst while
+        claiming to be one about the window.
+        """
+        if not math.isfinite(window_start_s) or not math.isfinite(window_end_s):
+            return False
+        gap = self._params.max_sample_gap_s
+        stamps = [stamp for stamp, _, _ in phases]
+        if stamps[0] - window_start_s > gap or window_end_s - stamps[-1] > gap:
+            return False
+        return all(later - earlier <= gap for earlier, later in pairwise(stamps))
+
     def _red_rises_with_green(self, phases: Sequence[tuple[float, str, float]]) -> bool:
         """True when the red ratio climbs together with the green one (04:307).
 
@@ -494,6 +556,7 @@ class SignalWindow:
     State decision, in the order of ``:307``, with the GREEN exit of ``:90``::
 
         is_flashing is True                     -> GREEN_FLASHING
+        any evidence stamp unreadable           -> UNKNOWN
         RED majority                            -> RED
         GREEN majority AND is_flashing is False
           AND off_phase_count == 0
@@ -502,11 +565,15 @@ class SignalWindow:
           AND latest evidence is GREEN          -> GREEN
         otherwise                               -> UNKNOWN
 
-    Two terms deserve their reason. ``is_flashing is False`` (not ``is not True``) is the
-    fail-closed reading of a silence in the docs: an undeterminable flash test must not
-    admit GREEN (``:479``, ``OQ-OD4Z-a``). "latest evidence is GREEN" is the asymmetric
-    exit of ``:90`` — GREEN needs a majority to enter and a SINGLE non-GREEN sample to
-    leave — expressed statelessly, so no history can hold GREEN open.
+    Three terms deserve their reason. ``is_flashing is False`` (not ``is not True``) is
+    the fail-closed reading of a silence in the docs: an undeterminable flash test must
+    not admit GREEN (``:479``, ``OQ-OD4Z-a``). "latest evidence is GREEN" is the
+    asymmetric exit of ``:90`` — GREEN needs a majority to enter and a SINGLE non-GREEN
+    sample to leave — expressed statelessly, so no history can hold GREEN open. And an
+    unreadable stamp on EITHER rate voids that rate instead of being dropped: the
+    dropping version was fail-open on both (stage-2 review of PR #711), since a blink
+    whose dark-phase frames lost their stamps read as continuously lit, and an
+    ``OFF_OR_UNLIT`` sample that lost its stamp stopped blocking GREEN.
 
     No freshness is tested here (``:382``, ``:477``); no permission is granted here
     (``:480``). GREEN is assigned at exactly one place in this module, pinned by AST in
@@ -573,6 +640,15 @@ class SignalWindow:
             return None
         start = end - params.window_span_s
 
+        # An unreadable stamp is NOT a sample that can be quietly dropped. Dropping it
+        # and judging the remainder is fail-OPEN on both rates: a blink whose dark-phase
+        # frames lost their timestamps becomes "continuously lit", and an OFF_OR_UNLIT
+        # evidence sample that lost its timestamp stops blocking GREEN. Same rule as the
+        # unreadable-ratio rule inside FlashDetector.verdict — whichever rate is affected
+        # is voided, not repaired (stage-2 review of PR #711).
+        luminance_readable = all(math.isfinite(s.stamp_s) for s in luminance)
+        evidence_readable = all(math.isfinite(s.stamp_s) for s in evidence)
+
         lit_window = [s for s in luminance if math.isfinite(s.stamp_s) and start < s.stamp_s <= end]
         ev_window = sorted(
             (s for s in evidence if math.isfinite(s.stamp_s) and start < s.stamp_s <= end),
@@ -581,7 +657,11 @@ class SignalWindow:
         if not ev_window and not lit_window:
             return None
 
-        flash = self._flash.verdict(lit_window)
+        flash = (
+            self._flash.verdict(lit_window, window_start_s=start, window_end_s=end)
+            if luminance_readable
+            else FlashVerdict(None, None)
+        )
 
         # sample_count / off_phase_count count RATE-B samples. The contract deliberately
         # leaves "which rate" open (OQ-OD4Y-d,
@@ -597,6 +677,12 @@ class SignalWindow:
         state = SignalState.UNKNOWN
         if flash.is_flashing is True:
             state = SignalState.GREEN_FLASHING
+        elif not evidence_readable:
+            # The rate-B window cannot be trusted: with an unreadable stamp we do not
+            # know which samples belong inside it, so neither the majority nor the OFF
+            # count means anything. GREEN_FLASHING above is unaffected because it rests
+            # on rate A alone.
+            state = SignalState.UNKNOWN
         elif self._holds_majority(ev_window, LampEvidence.RED):
             state = SignalState.RED
         elif (

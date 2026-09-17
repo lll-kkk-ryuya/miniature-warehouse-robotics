@@ -538,10 +538,13 @@ X2 の入力型 `warehouse_safety.sensor_health.SourceObservation`（`stamp_s` /
 | `red_sync_delta` | 比 | 有限・>= 0 | 「赤が同期して増えていない」の許容（[:307](04-perception-sidewalk-and-signals.md:307)）。超えたら全体照度の変動疑いとして点滅判定を withhold |
 | `min_rising_edges` | 件 | >= 2 | 中央値を取るのに最低 1 区間＝2 エッジ要る。1 本の GREEN→消灯遷移を点滅と読ませない |
 | `min_luminance_samples` | 件 | >= 2 | レート A の証拠不足で点滅判定を走らせない |
+| `max_sample_gap_s` | s | 有限・> 0 | **被覆**: レート A の隣接サンプル間・窓端と最寄りサンプルの穴の上限。件数（`min_luminance_samples`）は被覆ではない ── 点灯相に詰まった 45 本は 45 本のまま下限を満たすので、窓の**「秒数」側**（[:307](04-perception-sidewalk-and-signals.md:307) の「秒数 ∧ 有効サンプル数の下限」）を別に見ないと点滅が定常青に化ける（stage-2 レビュー B-1）。値はカメラ fps とドロップ許容から決まり docs 未定 |
 
 #### 3. レート A（`FlashDetector`）の真理表
 
 `is_flashing` は 3 値。**`None` = 判定不能であって「点滅なし」ではない**（[追補 ④ §2 項目 3](04-perception-sidewalk-and-signals.md:479)）。`False` を名乗れるのは**連続点灯**の窓だけ＝「点滅していない」の積極証拠がある場合に限る。
+
+本表は `FlashDetector` 単体と**合成経路（`SignalWindow.evaluate`）の双方**に適用される。合成側は加えて、**レート A 入力に非有限 `stamp_s` が 1 本でもあれば `FlashDetector` を呼ばず `None`** に倒す（stage-2 レビュー B-1。下記 §6 ②）。
 
 | 窓内のレート A 観測 | `is_flashing` | `measured_period_s` | 理由 |
 |---|---|---|---|
@@ -549,7 +552,8 @@ X2 の入力型 `warehouse_safety.sensor_health.SourceObservation`（`stamp_s` /
 | ヒステリシス帯の内側だけで 1 相も確定しない | `None` | `None` | 位相が付かない＝二値化が成立していない |
 | いずれかの値が非有限（NaN / inf） | `None` | `None` | 部分的に読めた輝度列は本物の消灯相と区別できない（`OQ-OD4Z-d`） |
 | 露出の幅 > `exposure_tolerance` | `None` | `None` | 露出固定の前提が崩れ偽 OFF が作られる（[`OQ-OD4L`](04-perception-sidewalk-and-signals.md:349)） |
-| **ON 相のみ**（連続点灯） | **`False`** | `None` | 「明滅していない」の積極証拠 |
+| **ON 相のみ**（連続点灯）**かつ窓を被覆**（穴 <= `max_sample_gap_s`） | **`False`** | `None` | 「明滅していない」の積極証拠。被覆は必須 ── 点灯相だけを拾った疎な列は「窓ぜんぶ点いていた」を言えない |
+| ON 相のみだが**被覆していない**（消灯相が欠落・stamp 不読・連続ドロップ） | `None` | `None` | **stage-2 レビュー B-1 で閉じた fail-open**。ここが `False` だと点滅が `GREEN` になる |
 | **OFF 相のみ**（連続消灯） | `None` | `None` | 点滅の消灯相を切り取っただけかもしれない＝否定を主張できない |
 | 両相あり・立ち上がりエッジ < `min_rising_edges` | `None` | `None` | 交番はあるが周期を測れない（GREEN→消灯→GREEN の 1 回は点滅ではない） |
 | 両相あり・エッジ間隔の中央値が非有限または <= 0 | `None` | `None` | 同時刻エッジ等で周期にならない |
@@ -581,32 +585,36 @@ X2 の入力型 `warehouse_safety.sensor_health.SourceObservation`（`stamp_s` /
 | `valid_fraction` | 窓内レート B のうち **`NOT_VISIBLE` でない**比率（空窓は `0.0`） | **暫定**＝`OQ-OD4Z-f`。`OFF_OR_UNLIT`（消灯相）は「見えた」観測なので**有効側**に数え、遮蔽・欠落だけを無効とする（[:261](04-perception-sidewalk-and-signals.md:261) の分離が前提）。docs は窓観測の分子を定義していない（[:203](04-perception-sidewalk-and-signals.md:203)） |
 | `frame_digest` / `device_frame_seq` / `processing_latency_s` | 入力の**受け渡しのみ**（04 の画像段が持つ値） | 使えない値（非 str digest・負の seq・**負の latency**）は例外にせず `None`＝「不在」として運ぶ。契約は負の latency を `ValidationError` で拒むが、その例外を safety loop へ持ち込まないのは呼び出し側の責務（[追補 ④ §2 項目 6](04-perception-sidewalk-and-signals.md:482)）＝`OQ-OD4Z-e` |
 
+> **組合せの注意**: レート B の窓が空でレート A だけが埋まっている窓では、`state = GREEN_FLASHING` でありながら `sample_count = 0` / `valid_fraction = 0.0` / `off_phase_count = 0` になりうる（点滅判定はレート A 単独で立つため）。`valid_fraction` が低いことは状態が弱いことを意味しない ── 消費側は **`sample_count` と `valid_fraction` を `GREEN` の前提条件としてのみ読み、`GREEN_FLASHING` / `RED` の否定材料に使わない**こと。
+
 #### 6. fail 方向（不変条件）
 
 - パラメータ・`crossing_id` の不正 → **構築時**に `SignalTemporalConfigError`。
-- **data では例外を上げない**。倒れ方は 3 種類で、**同一視しない**: ①**窓に置けない**（非有限 stamp のサンプル）→ その 1 本を落とすだけで判定は劣化しない（到着順も同じ＝窓は時刻で定義され、逆順で渡しても結果は変わらない）。②**判定不能**（レート A の NaN 比率 / 露出変動 / 証拠不足）→ `is_flashing=None` → GREEN は出ない。③**観測なし**（窓に有効 stamp のサンプルが 0 件・窓端が非有限）→ 出力しない（`None`）。使えない品質値（非 str digest・負の seq・負の latency）は品質 field を**不在**にして運ぶ。
+- **data では例外を上げない**。倒れ方は 3 種類で、**同一視しない**: ①**到着順は無関係**（窓は時刻で定義されるので逆順で渡しても結果は同じ。ただし**同一 stamp が 2 本ある場合だけ**は安定ソートゆえ「最新」が入力順に依存する ── producer 側で同 stamp を出さないこと）。②**判定不能**（レート A の非有限値〔比率・露出・**`stamp_s`**〕/ 露出変動 / 証拠不足 / **被覆不足**）→ `is_flashing=None` → GREEN は出ない。レート B 入力に非有限 `stamp_s` があれば**窓ごと `UNKNOWN`**（どのサンプルが窓内か言えない以上、多数決も OFF 件数も信用できない）。③**観測なし**（窓に有効 stamp のサンプルが 0 件・窓端が非有限）→ 出力しない（`None`）。使えない品質値（非 str digest・負の seq・負の latency）は品質 field を**不在**にして運ぶ。
+- **非有限 `stamp_s` を「落とすだけ」にしない**（[stage-2 レビュー B-1]）: 落とす実装は**両レートで fail-open** だった ── 点滅の消灯相が stamp を失うと「連続点灯」に見えて `GREEN`、`OFF_OR_UNLIT` 証拠が stamp を失うと GREEN を止めなくなる。比率の非有限は fail-closed なのに stamp の非有限が fail-open、という不整合を閉じた。
 - `state == GREEN` を代入する経路は**モジュール内で 1 か所**（AST pin で固定）。
 - `cmd_vel` / `stop_request` / `speed_limit` / `stop_state` のいずれにも触れない（L4 publish-only の AST pin）。
 
 #### 7. テスト（R-26・独立オラクル・[doc20 §9](../architecture/20-dev-quality-and-testing.md:131)）
 
-`tests/unit/test_signal_temporal_core.py`（`unit` + `safety` マーカー・**61 本**）。合成生成器はテスト側にあり実装を参照しない。期待値は生成パラメータからの手計算リテラル（窓 (8.0, 10.0]・fps 30 → レート A 60 本・f_B 9 Hz → レート B 18 本・立ち上がりは t = 8.5 / 9.0 / 9.5 / 10.0 ゆえ実測周期は厳密に 0.5 s）。
+`tests/unit/test_signal_temporal_core.py`（`unit` + `safety` マーカー・**68 本**）。合成生成器はテスト側にあり実装を参照しない。期待値は生成パラメータからの手計算リテラル（窓 (8.0, 10.0]・fps 30 → レート A 60 本・f_B 9 Hz → レート B 18 本・立ち上がりは t = 8.5 / 9.0 / 9.5 / 10.0 ゆえ実測周期は厳密に 0.5 s）。
 
 - 真理表の各行（定常 GREEN / OFF 1 件 → UNKNOWN / 定常 RED / 点滅 duty 50 % → `GREEN_FLASHING` + 周期 0.5 s）。
 - **罠**: duty 75 % + 分類器が消灯相を GREEN と出す → レート B は**満票 GREEN**（GREEN の他の AND 項もすべて成立）でも、レート A が勝って `GREEN_FLASHING`。同じレート B をレート A 不在で流すと `UNKNOWN`＝「多数決だけを防波堤にしない」（[:306](04-perception-sidewalk-and-signals.md:306)）を両側から示す。
-- 相対多数（12/18 = 0.667）は判定にならない・露出ドリフト → 判定不能・赤の同期 → 判定不能・全消灯窓は「点滅なし」を主張できない。
+- 相対多数（12/18 = 0.667）は判定にならない・露出ドリフト → 判定不能・赤の同期 → 判定不能・全消灯窓は「点滅なし」を主張できない・**疎な点灯列は「連続点灯」を主張できない**（被覆項）。
+- **stage-2 B-1 の回帰 3 本**（修正前はいずれも `GREEN` だった）: 点滅で消灯相の stamp が NaN／消灯相のサンプルが単に無い（NaN ですらない・件数下限は満たす）／`OFF_OR_UNLIT` 証拠 1 件の stamp が NaN。いずれも `UNKNOWN`。
 - GREEN 離脱: 最新 1 件が `RED` / `NOT_VISIBLE`（`off_phase_count` は 0 のまま）/ `OFF_OR_UNLIT` で即 `UNKNOWN`。
 - `classifier_rate_hz` = 10 / 12 / 30 / 2 / 4 → `ValueError`、9 / 7.5 / 11 / 13 → OK。
-- **P-1 property**（親 §7）: seed 固定・**N = 240** のランダム窓で、真値が点滅または赤を含む窓（**134 件**）の出力が `GREEN` = **0 件**。非空虚性も assert（GREEN が出る窓 21 件・`GREEN_FLASHING` 62 件が実際に出る＝常に `UNKNOWN` を返す実装では落ちる）。
-- **AST pin**: `rclpy` / `numpy` 非 import・actuation 語彙なし・`SignalState.GREEN` の出現 1 か所・パラメータ dataclass に既定値なし・**モジュール定数の数値は `NOMINAL_FLASH_PERIOD_S = 0.5` のみ**。
-- **mutation 7/7 で赤**（OFF 相条件の削除／判定不能を GREEN 許可へ／整数比チェックの削除／GREEN 離脱を多数決のみへ／多数決を過半数へ緩和／全消灯窓を「点滅なし」へ／連続点灯を判定不能へ）。
+- **P-1 property**（親 §7）: seed 固定・**N = 240** のランダム窓で、真値が点滅または赤を含む窓（**138 件**）の出力が `GREEN` = **0 件**。duty・jitter・分類器の嘘に加え **レート A の欠落**（消灯相の脱落 47 / stamp 不読 47 / 連続ドロップ 60・stage-2 B-1 の系統）も振る。非空虚性も assert（GREEN が出る窓 25 件・`GREEN_FLASHING` 41 件が実際に出る＝常に `UNKNOWN` を返す実装では落ちる）。
+- **AST pin**: `rclpy` / `numpy` 非 import・actuation 語彙なし・`SignalState.GREEN` の出現 1 か所・パラメータ dataclass に既定値なし・**モジュール定数の数値は `NOMINAL_FLASH_PERIOD_S = 0.5` のみ**（検査は module-level の `ast.Assign` のみ ── 関数内の `0.5 < f <= 1.0` 等は調整可能なしきい値ではなく §2 に文書化した定義域の境界）。
+- **mutation 10/10 で赤**（OFF 相条件の削除／判定不能を GREEN 許可へ／整数比チェックの削除／GREEN 離脱を多数決のみへ／多数決を過半数へ緩和／全消灯窓を「点滅なし」へ／連続点灯を判定不能へ／**被覆項を外す**／**レート A の不読 stamp を黙って落とす**／**レート B の不読 stamp を黙って落とす**。末尾 3 本が stage-2 B-1 の再発検知）。
 
 #### 8. OPEN QUESTIONS（本実装が**発明せずに残した**もの・接頭辞 `OQ-OD4Z`）
 
 - `OQ-OD4Z-a` **`is_flashing is None`（判定不能）で GREEN を許すか**。docs は [:307](04-perception-sidewalk-and-signals.md:307) の「NOT flashing」としか言わない。本実装は fail-closed（`is False` を要求）に倒した。実機で「定常青なのに露出変動や遮蔽で判定不能が頻発し横断できない」場合、緩めるのではなく**レート A の可用性**（露出固定・ROI）側を直す方針でよいかを裁定する。
 - `OQ-OD4Z-b` **レート B の `GREEN_FLASHING` 多数決**を `GREEN_FLASHING` へ昇格させるか（現状は④の `UNKNOWN`）。**正本が割れている**: 親 §4 [:86](04-perception-sidewalk-and-signals.md:86) は `GREEN_FLASHING` の条件に「交番、**または明示クラス**」と明示クラス経路を認めるが、後発の訂正である追補 ② §5 [:307](04-perception-sidewalk-and-signals.md:307) の状態決定順序は `is_flashing`（レート A）だけを `GREEN_FLASHING` の源にしている。本実装は**後者に厳密に従い**明示クラスを読まない（[:262](04-perception-sidewalk-and-signals.md:262) が「点滅を直接クラス化した公開モデルは無い」と言う以上、当面その入力は存在しないため）。どちらも禁止側なので安全側の差は無いが、法的意味は違う（青点滅 = 横断中は速やかに終える／`UNKNOWN` = 禁止＝[01 §6](01-legal-envelope-japan.md)）ので、横断中の継続可否で差が出る。明示クラスを出す分類器を採るなら :86 側へ寄せる doc PR が要る。
 - `OQ-OD4Z-c` `period_tolerance_s` の値（0.5 s 周りの許容半幅）。duty 比が未確定（[:306](04-perception-sidewalk-and-signals.md:306)）でカメラ fps も未定のため実測待ち。
-- `OQ-OD4Z-d` レート A の**比率・露出**が 1 本でも非有限なら窓全体を判定不能にする（現状）か、その 1 本だけ捨てるか。捨てる側は「欠落」と「本物の消灯相」を取り違える危険がある。**非有限 `stamp_s` は既に後者**（窓に置けないので落とすだけ）＝同じ「読めない」でも扱いが分かれている点を裁定に含める。
+- `OQ-OD4Z-d` **読めない値の扱いは「窓ごと判定不能」に統一済**（比率・露出・`stamp_s` のいずれも）。**修正前は `stamp_s` だけが例外で、黙って落としていた＝fail-open だった**（stage-2 レビュー B-1。点滅の消灯相が stamp を失う／単に欠落する／`OFF_OR_UNLIT` 証拠が stamp を失う、の 3 形で `GREEN` が出た）。被覆項 `max_sample_gap_s` と合わせて閉じた。**残す OQ = 残る非対称**: 1 本の不読で窓全体を捨てるのは「1 フレーム落ちただけで横断できない」側に厳しすぎるかもしれない ── 緩めるなら「落とした上で被覆を再評価する」形（穴として数える）が候補で、**黙って落とす形には戻さない**。レート B 側を窓ごと `UNKNOWN` にする粒度（1 本の不読 vs 一定割合）も同じ裁定に含める。
 - `OQ-OD4Z-e` **負の `processing_latency_s`（時計取違え）を「不在」として運ぶ**（現状）か、品質不成立として `valid_fraction` に反映するか。契約は入口で拒否するが、例外を safety loop に入れられない（[追補 ④ §2 項目 6](04-perception-sidewalk-and-signals.md:482)）ため現状は握り潰している＝異常が見えなくなる方向。
 - `OQ-OD4Z-f` `valid_fraction` の分子（本実装は「`NOT_VISIBLE` でない」）。[`OQ-OD4Y-b`](04-perception-sidewalk-and-signals.md:487)（比率を計算できない producer の表現）と同じ裁定に含めるべき。
 - `OQ-OD4Z-g` **窓端 `window_end_s` を呼び出し側が渡す**（現状・node が自分のタイマで窓を送れる）か、最新サンプルから導出するか。導出にすると「データが止まった窓」を再送し続ける形になり、鮮度検査の意味が消費側に寄りすぎる。

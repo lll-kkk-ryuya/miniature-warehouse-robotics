@@ -204,9 +204,15 @@ def _params(**overrides: object) -> SignalTemporalParams:
         "red_sync_delta": 0.10,
         "min_rising_edges": 2,
         "min_luminance_samples": 10,
+        "max_sample_gap_s": 0.10,
     }
     base.update(overrides)
     return SignalTemporalParams(**base)  # type: ignore[arg-type]
+
+
+def _verdict(detector: FlashDetector, samples: list[LuminanceSample]):
+    """レート A 単体呼び出し。窓端は `False`（連続点灯）の被覆判定に要る。"""
+    return detector.verdict(samples, window_start_s=_END_S - _SPAN_S, window_end_s=_END_S)
 
 
 def _whole_window(kind: str) -> list[_Segment]:
@@ -443,7 +449,7 @@ def test_all_dark_window_cannot_claim_not_flashing() -> None:
         )
         for k in range(1, _LUM_COUNT + 1)
     ]
-    verdict = FlashDetector(_params()).verdict(dark)
+    verdict = _verdict(FlashDetector(_params()), dark)
     assert verdict.is_flashing is None
     assert verdict.measured_period_s is None
 
@@ -456,7 +462,88 @@ def test_all_dark_window_cannot_claim_not_flashing() -> None:
         )
         for sample in dark
     ]
-    assert FlashDetector(_params()).verdict(lit).is_flashing is False
+    assert _verdict(FlashDetector(_params()), lit).is_flashing is False
+
+
+def test_flashing_with_unstamped_dark_phase_is_not_green() -> None:
+    """**回帰 (stage-2 ✗1)**: 点滅の消灯相だけ stamp が NaN → かつて `GREEN` になった。
+
+    非有限 stamp のサンプルを黙って落とすと、残るのは点灯相だけ＝「連続点灯」に見え、
+    `is_flashing=False` が立って分類器の満票 GREEN と組んで `GREEN` を出していた。
+    比率の非有限は fail-closed なのに stamp の非有限が fail-open、という不整合。
+    """
+    segments = _whole_window(_FLASH)
+    lit_only_stamps = [
+        LuminanceSample(
+            stamp_s=(math.nan if sample.green_ratio < 0.5 else sample.stamp_s),
+            green_ratio=sample.green_ratio,
+            red_ratio=sample.red_ratio,
+            exposure=sample.exposure,
+        )
+        for sample in _luminance(segments, end_s=_END_S, span_s=_SPAN_S, fps=_FPS, duty=0.75)
+    ]
+    obs = _observe(
+        lit_only_stamps,
+        _evidence(segments, end_s=_END_S, span_s=_SPAN_S, hz=_FB_HZ, duty=0.75, liar=True),
+    )
+    assert obs is not None
+    assert obs.is_flashing is None
+    assert obs.state is SignalState.UNKNOWN
+
+
+def test_flashing_with_missing_dark_phase_samples_is_not_green() -> None:
+    """**回帰 (stage-2 ✗2)**: 消灯相のサンプルが**単に無い**（NaN ですらない）→ かつて `GREEN`。
+
+    `min_luminance_samples` は**件数**であって被覆ではない。点灯相に詰まった 45 本は
+    45 本のまま条件を満たすので、窓の「秒数」側（[04:307](.)）を `max_sample_gap_s` で
+    別に見ない限り、点滅が定常青に化ける。
+    """
+    segments = _whole_window(_FLASH)
+    full = _luminance(segments, end_s=_END_S, span_s=_SPAN_S, fps=_FPS, duty=0.75)
+    lit_only = [sample for sample in full if sample.green_ratio >= 0.5]
+    # 件数の下限は満たしている ── 落としているのは被覆だけ。
+    assert len(lit_only) >= _params().min_luminance_samples
+    obs = _observe(
+        lit_only,
+        _evidence(segments, end_s=_END_S, span_s=_SPAN_S, hz=_FB_HZ, duty=0.75, liar=True),
+    )
+    assert obs is not None
+    assert obs.is_flashing is None
+    assert obs.state is SignalState.UNKNOWN
+
+
+def test_unstamped_off_evidence_still_blocks_green() -> None:
+    """**回帰 (stage-2 ✗3)**: OFF 相 1 件の stamp が NaN → かつて `off=0` で `GREEN`。
+
+    読めない stamp を落とすと、GREEN を止めていた消灯相の証拠が消える。レート B の
+    窓はどのサンプルが窓内かを言えなくなるので、多数決も OFF 件数も信用できない。
+    """
+    segments = _whole_window(_GREEN)
+    evidence = _evidence(segments, end_s=_END_S, span_s=_SPAN_S, hz=_FB_HZ)
+    evidence[9] = EvidenceSample(
+        stamp_s=math.nan, evidence=LampEvidence.OFF_OR_UNLIT, roi_consistent=True
+    )
+    obs = _observe(_luminance(segments, end_s=_END_S, span_s=_SPAN_S, fps=_FPS), evidence)
+    assert obs is not None
+    assert obs.state is SignalState.UNKNOWN
+
+
+def test_sparse_luminance_cannot_claim_continuously_lit() -> None:
+    """被覆項の単体確認: 件数を満たしても穴が `max_sample_gap_s` を超えれば判定不能。
+
+    窓の前半だけ密に、後半に穴 ── 「窓ぜんぶ点いていた」は言えない。
+    """
+    dense_head = [
+        LuminanceSample(
+            stamp_s=_END_S - _SPAN_S + k / _FPS,
+            green_ratio=_LIT_RATIO,
+            red_ratio=_RED_BASE_RATIO,
+            exposure=_BASE_EXPOSURE,
+        )
+        for k in range(1, 21)  # 8.033..8.667 のみ（窓端 10.0 まで 1.33 s の穴）
+    ]
+    assert len(dense_head) >= _params().min_luminance_samples
+    assert _verdict(FlashDetector(_params()), dense_head).is_flashing is None
 
 
 def test_red_rising_in_sync_denies_flash_verdict() -> None:
@@ -478,7 +565,7 @@ def test_red_rising_in_sync_denies_flash_verdict() -> None:
                 exposure=_BASE_EXPOSURE,
             )
         )
-    verdict = FlashDetector(params).verdict(samples)
+    verdict = _verdict(FlashDetector(params), samples)
     assert verdict.is_flashing is None
     # 測った数値は隠さない（拒否の理由が見えるように）。
     assert verdict.measured_period_s == pytest.approx(0.5, abs=1e-9)
@@ -499,7 +586,7 @@ def test_alternation_off_the_statutory_period_is_undeterminable() -> None:
                 exposure=_BASE_EXPOSURE,
             )
         )
-    verdict = FlashDetector(params).verdict(samples)
+    verdict = _verdict(FlashDetector(params), samples)
     assert verdict.is_flashing is None
     assert verdict.measured_period_s == pytest.approx(0.2, abs=1e-9)
 
@@ -616,6 +703,9 @@ def test_parameters_have_no_defaults() -> None:
         {"red_sync_delta": -0.01},
         {"min_rising_edges": 1},
         {"min_luminance_samples": 1},
+        {"max_sample_gap_s": 0.0},
+        {"max_sample_gap_s": -0.1},
+        {"max_sample_gap_s": math.inf},
         {"classifier_rate_hz": 0.0},
         {"classifier_rate_hz": math.nan},
         {"window_span_s": "2.0"},
@@ -644,7 +734,8 @@ def test_evaluate_never_raises_on_data_anomalies() -> None:
     luminance = _luminance(segments, end_s=_END_S, span_s=_SPAN_S, fps=_FPS)
     evidence = _evidence(segments, end_s=_END_S, span_s=_SPAN_S, hz=_FB_HZ)
 
-    # (a) 非有限 stamp のサンプルは窓に置けない → 落ちるだけ。
+    # (a) 非有限 stamp は「落とすだけ」にしない ── そのレートを判定不能にする
+    #     （落とす実装は fail-open だった = stage-2 レビュー。下の 3 本で再現を固定）。
     poisoned_stamp = [
         LuminanceSample(stamp_s=math.nan, green_ratio=0.9, red_ratio=0.0, exposure=0.5),
         LuminanceSample(stamp_s=math.inf, green_ratio=0.9, red_ratio=0.0, exposure=0.5),
@@ -652,7 +743,8 @@ def test_evaluate_never_raises_on_data_anomalies() -> None:
     ]
     obs = _observe(poisoned_stamp, evidence)
     assert obs is not None
-    assert obs.state is SignalState.GREEN
+    assert obs.is_flashing is None
+    assert obs.state is SignalState.UNKNOWN
 
     # (b) NaN 比率は窓全体を判定不能にする（fail-closed）。
     poisoned_ratio = [
@@ -676,6 +768,8 @@ def test_evaluate_never_raises_on_data_anomalies() -> None:
     assert obs.state is SignalState.UNKNOWN
 
     # (d) 逆順で渡しても結果は同じ（窓は時刻で定義され、到着順ではない）。
+    #     ただし**同一 stamp のサンプルが 2 本ある場合だけ**は安定ソートゆえ
+    #     「最新」が入力順に依存する ── producer 側で同 stamp を出さないこと。
     reversed_obs = _observe(list(reversed(luminance)), list(reversed(evidence)))
     assert reversed_obs is not None
     assert reversed_obs.state is SignalState.GREEN
@@ -751,6 +845,34 @@ def test_hidden_window_reports_low_valid_fraction_and_unknown() -> None:
 # ──────────────────────────────────────────── 5. P-1 property（親 §7）
 
 
+def _with_dropout(
+    samples: list[LuminanceSample], mode: str, rng: random.Random
+) -> list[LuminanceSample]:
+    """レート A の欠落を模す（stage-2 の fail-open 系統を property 側に取り込む）。
+
+    `unlit_gone` = 消灯相のサンプルが丸ごと来ない／`unlit_nan` = 消灯相の stamp が読めない
+    ／`run_gone` = 任意の連続区間が抜ける。どれも「点灯相だけが残る」形を作れるので、
+    件数だけを見る実装はここで青信号を出してしまう。
+    """
+    if mode == "none" or len(samples) < 4:
+        return samples
+    if mode == "unlit_gone":
+        return [s for s in samples if s.green_ratio >= 0.5]
+    if mode == "unlit_nan":
+        return [
+            LuminanceSample(
+                stamp_s=(math.nan if s.green_ratio < 0.5 else s.stamp_s),
+                green_ratio=s.green_ratio,
+                red_ratio=s.red_ratio,
+                exposure=s.exposure,
+            )
+            for s in samples
+        ]
+    start = rng.randrange(0, len(samples) - 2)
+    stop = min(len(samples), start + rng.randint(3, 20))
+    return samples[:start] + samples[stop:]
+
+
 def _random_segments(rng: random.Random) -> list[_Segment]:
     """窓 (8.0, 10.0] を覆うランダムなセグメント列を作る。
 
@@ -784,11 +906,14 @@ def _random_segments(rng: random.Random) -> list[_Segment]:
 def test_p1_property_flashing_or_red_windows_never_yield_green() -> None:
     """親 §7 P-1: 真値が「点滅」または「赤」を含む窓の出力が GREEN = **0 件**。
 
-    seed 固定・N = 240。duty・jitter・分類器の嘘・露出ノイズをランダムに振る。
+    seed 固定・N = 240（危険窓 138 件・`GREEN` 25 件・`GREEN_FLASHING` 41 件）。
+    duty・jitter・分類器の嘘に加えて、**レート A の欠落**（stage-2 で
+    見つかった fail-open の系統: 消灯相の脱落・stamp が読めない・連続ドロップ）も振る。
+    点テスト 3 本（✗1〜✗3）と違い、ここでは欠落を**全シナリオ空間の上で**掛ける。
     """
     rng = random.Random(20260917)
     trials = 240
-    violations: list[tuple[int, list[_Segment]]] = []
+    violations: list[tuple[int, list[_Segment], str]] = []
     risky = 0
     greens = 0
     states: dict[SignalState, int] = {}
@@ -807,6 +932,8 @@ def test_p1_property_flashing_or_red_windows_never_yield_green() -> None:
             jitter_s=jitter,
             rng=rng,
         )
+        dropout = rng.choice(("none", "none", "unlit_gone", "unlit_nan", "run_gone"))
+        luminance = _with_dropout(luminance, dropout, rng)
         evidence = _evidence(
             segments,
             end_s=_END_S,
@@ -829,7 +956,7 @@ def test_p1_property_flashing_or_red_windows_never_yield_green() -> None:
         if truth_is_risky:
             risky += 1
             if obs.state is SignalState.GREEN:
-                violations.append((trial, segments))
+                violations.append((trial, segments, dropout))
 
     assert violations == [], f"P-1 違反 {len(violations)} 件: {violations[:3]}"
     # 非空虚性: 危険な窓を十分踏み、かつ GREEN を出す窓も存在する（常に UNKNOWN を返す
@@ -899,6 +1026,10 @@ def test_only_numeric_module_constant_is_the_nominal_flash_period() -> None:
     """モジュール定数として置いてよい数値は 0.5 s（[D] 04:305）ただ 1 つ。
 
     しきい値・許容幅・レート・窓長はすべて注入（既定なし）＝コードに数値を焼かない。
+
+    **検査対象は module-level の `ast.Assign` のみ**。関数内の数値リテラル（`0.5 < f <=
+    1.0`・`0 <= off < on <= 1` 等）は**調整可能なしきい値ではなく定義域の境界**で、
+    追補 ⑥ §2 の制約列に文書化されている ── これらを潰すと検証そのものが書けない。
     """
     numeric: dict[str, float] = {}
     for node in _core_tree().body:
