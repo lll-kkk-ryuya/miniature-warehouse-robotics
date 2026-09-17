@@ -491,7 +491,7 @@ X2 の入力型 `warehouse_safety.sensor_health.SourceObservation`（`stamp_s` /
 - `OQ-OD4Y-f` `normalization` / `resize_method` / `output_interpretation` を自由文字列のままにするか enum 化するか（実装が 1 本に決まってから）。
 - `OQ-OD4Y-g` `ModelManifest.evaluation` を**必須**にしたため、評価前の draft manifest を表現できない（1 採用単位 = [追補 ③ 最終行](04-perception-sidewalk-and-signals.md:385) を優先した）。draft 状態を別型にするか optional へ緩めるか。
 - `OQ-OD4Y-h` `reference` の**語彙**（`frame_id` か固定ラベルか）。docs は「車輪接地点・footprint」と言うが値を pin していない（[:176](04-perception-sidewalk-and-signals.md:176)）。
-- `OQ-OD4Y-i` **topic 名・QoS・publish 周期**は本追補の射程外（`/bot1/terrain/coverage` は案 = [:173](04-perception-sidewalk-and-signals.md:173)、灯器・地形グリッドは型未凍結 = [:202](04-perception-sidewalk-and-signals.md:202)）。`cliff_scan` の `source_timeout` は別件（[`OQ-OD44`](04-perception-sidewalk-and-signals.md:142)）。
+- `OQ-OD4Y-i` **topic 名・QoS・publish 周期**は本追補の射程外（`/bot1/terrain/coverage` は案 = [:173](04-perception-sidewalk-and-signals.md:173)、灯器・地形グリッドは型未凍結 = [:202](04-perception-sidewalk-and-signals.md:202)）。`cliff_scan` の `source_timeout` は別件（[`OQ-OD44`](04-perception-sidewalk-and-signals.md:142)）。 **→ 裁定済（2026-09-18）= [追補 ⑨](04-perception-sidewalk-and-signals.md:926)**（topic 名 `cliff_scan` / `terrain/coverage` を `/bot{n}` 相対名で凍結・QoS depth 10・周期 = depth frame ごとに 1 回。doc03 カタログ行は [03 末尾追補](../architecture/03-software-architecture.md:316)）。灯器・地形グリッドの topic は**依然 未凍結**（本裁定の射程外）。
 - `OQ-OD4Y-j` `LampEvidence` は型として置いたが、**per-frame 証拠を topic として外へ出すか**（04 内部に留めるか）は未決。出すなら `TrafficSignalObservation` に窓内の証拠列を additive で足すことになる。
 - `OQ-OD4Y-k` **重み hash のアルゴリズムを sha256 に固定するか**（正本は [追補 ③ 最終行](04-perception-sidewalk-and-signals.md:385) で「重み hash」としか言わず、アルゴリズムを指定していない）。v0 は field 名 `weights_sha256` に合わせて **64-hex を強制する暫定**で、blake3 等へ変えるなら field 名ごと contract PR で改める。
 
@@ -920,3 +920,88 @@ X2 の入力型 `warehouse_safety.sensor_health.SourceObservation`（`stamp_s` /
 ### 2. 数値ガード（追補 ⑤ §2 が書き落としていた定数）
 
 **数値ガード（しきい値ではない）**: 索引 floor/ceil の `1e-9`・退化標本の行列式下限 `1e-12`（`terrain_core.py` `_INDEX_EPS` / `_DEGENERATE_DET`）。浮動小数の丸め対策であり物理量の許容ではない。`_DEGENERATE_DET` は [追補 ⑧ §3](04-perception-sidewalk-and-signals.md:871)「共線標本は `ground_rejected_candidates` に数えない」の適用範囲を実際に定める。
+
+---
+
+## 【2026-09-18 追補 ⑨】07_Output_Adapters node v0（`terrain_publisher`）— `OQ-OD4Y-i` 裁定
+
+正本 = 本 doc（親 §3 [:49](04-perception-sidewalk-and-signals.md:49)〜[:66](04-perception-sidewalk-and-signals.md:66)・2026-09-14 追補 [:173](04-perception-sidewalk-and-signals.md:173)〜[:181](04-perception-sidewalk-and-signals.md:181)・追補 ② [:202](04-perception-sidewalk-and-signals.md:202)・追補 ④ [:390](04-perception-sidewalk-and-signals.md:390)・追補 ⑤ / ⑤-1 / ⑧）+ [09 §2-b / §2-i](09-external-review-v3-response.md:72)。本追補は **[`OQ-OD4Y-i`](04-perception-sidewalk-and-signals.md:494)（topic 名・QoS・publish 周期）を裁定**し、追補 ⑤ の純ロジック `terrain_core.py` を rclpy node として配線した記録を残す。実装 = `ws/src/warehouse_perception/warehouse_perception/terrain_node.py`（rclpy shell）+ `terrain_node_core.py`（rclpy 非依存の marshalling 核）。doc03 カタログ行 = [03 末尾追補](../architecture/03-software-architecture.md:316)。
+
+> **レイヤ注記**（[:7](04-perception-sidewalk-and-signals.md:7) と同軸・[追補 ⑧ :842](04-perception-sidewalk-and-signals.md:842) の `terrain_core.py` と同じ扱い）: `terrain_node.py` / `terrain_node_core.py` = **自律走行（安全層外）の producer**。consumer は L1 costmap / L1 `collision_monitor`（`cliff_scan`）と X2 / 06（`coverage`）。**`cmd_vel` / `stop_request` / `stop_state` / `speed_limit` の producer にならない**（AST pin `tests/unit/test_terrain_node_pins.py`）。GPU 非依存 = P1 原則（[23:37](../architecture/23-perception-and-localization.md:37)）。
+
+### 1. 裁定 1〜9（`OQ-OD4Y-i`・ユーザー委任 2026-09-18）
+
+| # | 項目 | 裁定 | 根拠 |
+|---|---|---|---|
+| 1 | **topic 名（凍結）** | 相対名 `cliff_scan` / `terrain/coverage` を `/bot{n}` namespace 下で解決（= `/bot1/cliff_scan` / `/bot1/terrain/coverage`）。**絶対名にしない**（namespace を跨ぐ） | 案の凍結 = [:59](04-perception-sidewalk-and-signals.md:59) / [:173](04-perception-sidewalk-and-signals.md:173)。相対名の理由 = [ADR-0012 決定 11](../adr/0012-speed-band-no-l2-best-effort.md) と同型 |
+| 2 | **型・frame** | `cliff_scan` = `sensor_msgs/LaserScan`・`header.frame_id = <ns>/base_link`（`warehouse_description.robot_dimensions.BASE_FRAME`＝許可された共有資産）。`terrain/coverage` = `std_msgs/String`（`TerrainCoverage.model_dump_json()`） | [:56](04-perception-sidewalk-and-signals.md:56) VirtualScan 器の流用・[virtual_scan.py:72](../../ws/src/warehouse_traffic/warehouse_traffic/virtual_scan.py:72) と同じ `{robot}/base_link` 形／型 = [追補 ④](04-perception-sidewalk-and-signals.md:390)・JSON over String = [doc16 §3](../architecture/16-repository-and-conventions.md) |
+| 3 | **stamp** | 両出力の時刻は**入力 depth Image の `header.stamp`**（`cliff_scan` は `header.stamp`、`coverage` は payload の `source_stamp_s`）。**`now()` を stamp に使わない**（`virtual_scan` は now() を使うが、あれは生成であり本 node は観測） | [:177](04-perception-sidewalk-and-signals.md:177)「変換後も元の計測時刻を維持」 |
+| 4 | **QoS** | publisher / subscription とも **depth 10**（既定 RELIABLE / KEEP_LAST）。**新しい数値ではなく既存 producer の踏襲**: [virtual_scan.py:42](../../ws/src/warehouse_traffic/warehouse_traffic/virtual_scan.py:42)（`create_publisher(LaserScan, .../virtual_scan, 10)`）と [speed_band_node.py:73](../../ws/src/warehouse_perception/warehouse_perception/speed_band_node.py:73)（`speed_limit`）が同じ深さ | consumer との advisory 合意規約 = [doc03:78](../architecture/03-software-architecture.md:78)。consumer は本スライスに存在しない（§4 hand-off） |
+| 5 | **周期** | **timer なし・depth frame ごとに 1 回**。再 publish しない（古い観測を新しい stamp で流さない）。`cliff_scan` の途絶＝停止は **X2 の義務**であり本 node は沈黙で表現する | [:66](04-perception-sidewalk-and-signals.md:66)（Humble CM は途絶 fail-open）/ [09 §2-b](09-external-review-v3-response.md:72) |
+| 6 | **入力** | `depth_topic` / `camera_info_topic`（param・既定 `""` = 購読しない = safe-OFF）。`enabled`（既定 `false`）が true で片方でも空なら**起動時 abort**。encoding は `16UC1`（mm → m）と `32FC1`（m）のみ・それ以外 / `step` 不足 / バッファ不足は **frame 全体を無効**（空 rows → `valid_fraction = 0.0` → 全 `UNKNOWN` → 全 `inf`）で**例外を上げない**。`CameraInfo.k` から `fx = k[0]`・`fy = k[4]`・`cx = k[2]`・`cy = k[5]`。**CameraInfo 未受信・未校正（`fx`/`fy` が正でない）の間は出力しない**（intrinsics 無しに幾何は立たない） | safe-OFF 規約 = [speed_band_node.py:37](../../ws/src/warehouse_perception/warehouse_perception/speed_band_node.py:37)・fail-closed abort = [ADR-0012 決定 4](../adr/0012-speed-band-no-l2-best-effort.md)／無効深度で raise しない = [:174](04-perception-sidewalk-and-signals.md:174) + [追補 ⑤](04-perception-sidewalk-and-signals.md:500) |
+| 7 | **サブサンプル** | `pixel_stride`（`int >= 1`・既定なし）で行・列を index 0 から間引き、intrinsics を `fx/s, fy/s, cx/s, cy/s` と**同じ比で縮小**する。pinhole の画像座標は線形ゆえ `(u − cx)/fx == (u/s − cx/s)/(fx/s)`＝**数学的に等価**で、`terrain_core` は不変更。numpy 経路は v0 に入れない | 純 python 性能は**未測**（`OQ-OD4Z-f` / 本追補 `OQ-OD4Y-i4`）。P1 = [23:37](../architecture/23-perception-and-localization.md:37) |
+| 8 | **パラメータ** | **全部注入・既定なし**。ROS param の宣言既定は**検証で落ちる sentinel**（`0.0` / `0` / `""`）にし、`terrain_core` の `__post_init__` が `ValueError` → abort。§2 の表が全 21 本。**config キー案 `perception.terrain.*`（`speed_bands.*` と同型）は本 PR で作らない**＝bringup へ hand-off | 既定なしの原則 = [追補 ⑤ §2](04-perception-sidewalk-and-signals.md:526) / [追補 ⑤-1 §1](04-perception-sidewalk-and-signals.md:907)。値の根拠は正本に無い（車体未組立・カメラ未購入） |
+| 9 | **hand-off** | nav-traffic / safety-state / bringup の 3 件（§4）。**本 PR では実装しない**（consumer 未配線） | [:214](04-perception-sidewalk-and-signals.md:214) 三分離・[:222](04-perception-sidewalk-and-signals.md:222) 判定点は X2 の 1 か所 |
+
+### 2. パラメータ表（全 21 本・**既定なし**・宣言既定 = 落ちる sentinel）
+
+| 束 | パラメータ | 単位 | 宣言 sentinel | 検証（落ちる理由） | 出典 |
+|---|---|---|---|---|---|
+| `MountingGeometry` | `camera_height_m` | m | `0.0` | `> 0`（`_positive`） | [:181](04-perception-sidewalk-and-signals.md:181) |
+| | `pitch_down_rad` | rad | `0.0` | `(0, π/2)` の開区間 | [:181](04-perception-sidewalk-and-signals.md:181) |
+| | `reference_offset_m` | m | `0.0` | 有限のみ（符号を拘束しない）＝**sentinel が正当値**（下記 ⚠） | [:176](04-perception-sidewalk-and-signals.md:176) |
+| `TerrainGridParams` | `cell_size_m` | m | `0.0` | `> 0` | [追補 ⑤ §2](04-perception-sidewalk-and-signals.md:526) |
+| | `corridor_half_width_m` | m | `0.0` | `> 0` ∧ `>= cell_size_m / 2` | [:175](04-perception-sidewalk-and-signals.md:175) |
+| | `forward_range_m` | m | `0.0` | `> 0` ∧ `>= cell_size_m` | [追補 ⑤ §2](04-perception-sidewalk-and-signals.md:526) |
+| | `min_points_per_cell` | 個 | `0` | `int >= 1`（0 は「誰も見ていない床」を確認してしまう） | [:56](04-perception-sidewalk-and-signals.md:56) `noDataObstacle` |
+| | `drop_threshold_m` | m | `0.0` | `> 0` ∧ `> plane_tolerance_m`（床帯と崖帯は disjoint） | [:196](04-perception-sidewalk-and-signals.md:196) / [`OQ-OD45` :143](04-perception-sidewalk-and-signals.md:143) |
+| | `min_valid_fraction` | 比 | `0.0` | `(0, 1]`（0 は有効画素ゼロの frame を受け入れる） | [:174](04-perception-sidewalk-and-signals.md:174) |
+| `GroundFitParams` | `plane_tolerance_m` | m | `0.0` | `> 0` | [追補 ⑤ §2](04-perception-sidewalk-and-signals.md:526) |
+| | `ransac_iterations` | 回 | `0` | `int >= 1` | [追補 ⑤ §2](04-perception-sidewalk-and-signals.md:526) |
+| | `ransac_seed` | — | `0` | `int`（どの値も合法）＝**sentinel が正当値**（下記 ⚠） | [追補 ⑤ §2](04-perception-sidewalk-and-signals.md:526) / [doc20:131](../architecture/20-dev-quality-and-testing.md:131) |
+| | `max_plane_tilt_rad` | rad | `0.0` | `> 0` | [追補 ⑧ §2](04-perception-sidewalk-and-signals.md:861) |
+| | `max_plane_offset_m` | m | `0.0` | `> 0` | [追補 ⑧ §2](04-perception-sidewalk-and-signals.md:861) |
+| `CliffScanParams` | `angle_min_rad` | rad | `0.0` | 有限＝**sentinel が正当値**（対で落ちる・下記 ⚠） | [追補 ⑤ §2](04-perception-sidewalk-and-signals.md:526) |
+| | `angle_max_rad` | rad | `0.0` | 有限 ∧ `> angle_min_rad`＝**sentinel が正当値**（対で落ちる） | 同上 |
+| | `ray_count` | 本 | `0` | `int >= 1` | 同上 |
+| | `range_min_m` | m | `0.0` | `> 0` | 同上 |
+| | `range_max_m` | m | `0.0` | `> 0` ∧ `> range_min_m` | 同上 |
+| node | `reference` | — | `""` | 非空（datum のラベル。語彙は [`OQ-OD4Y-h`](04-perception-sidewalk-and-signals.md:493) が未決ゆえ既定を発明しない） | [:176](04-perception-sidewalk-and-signals.md:176) |
+| node | `pixel_stride` | 画素 | `0` | `int >= 1` | 本追補 裁定 7 |
+
+> ⚠ **sentinel が正当値でもある 4 本**（隠さず記録する＝`OQ-OD4Y-i2`）: `reference_offset_m`・`angle_min_rad`・`angle_max_rad`・`ransac_seed`。`0` に物理的意味があるため単体では検証で落とせない。**「何も注入しない起動」は依然 abort する**（`camera_height_m = 0.0` が即落ちる）し、`angle_min` / `angle_max` は**両方 sentinel なら対として落ちる**、`ransac_seed` は同群の `ransac_iterations = 0` が落とす——よって起動ゲートとしての fail-closed は成立している。塞げないのは「他を全部注入したうえで、この 4 本のうち 1 本だけ注入し忘れる」場合だけで、その集合は unit で**列挙固定**した（`tests/unit/test_terrain_node_core.py`。増えたら赤くなる）。
+
+### 3. fail 方向（何が起きたとき、どちらへ倒れるか）
+
+| 場面 | 挙動 | 向き |
+|---|---|---|
+| `enabled` 未設定（既定） | subscription 0・publisher 0・timer 0（topic graph に現れない） | **safe-OFF** |
+| `enabled:=true` かつ param 未注入 | 起動時 `ValueError` → プロセス abort（推測しない） | **fail-closed** |
+| `enabled:=true` かつ `depth_topic` / `camera_info_topic` が空 | 起動時 abort（「有効なのに入力なし」で健康に見えたまま無言になるのを防ぐ） | **fail-closed** |
+| namespace が `/`（robot 名なし） | 起動時 abort（frame_id が誰の `base_link` か決まらない） | **fail-closed** |
+| CameraInfo 未受信 / 未校正 `k` | **何も publish しない**（警告ログのみ）。推測 intrinsics で幾何を立てない | **fail-closed**（観測の不在＝未観測 = 通行不可） |
+| 未対応 encoding・`step` 不足・バッファ不足 | frame 全体を無効化し、`UNKNOWN` / 全 `inf` を**出す**（例外は上げない） | **fail-closed**（未観測として届く） |
+| depth frame が来ない（カメラ死亡・USB 断） | 沈黙。本 node は補わない | 途絶の検出は **X2 の義務**（[:66](04-perception-sidewalk-and-signals.md:66) / [09 §2-b](09-external-review-v3-response.md:72)） |
+| 出力時刻 − 元計測時刻が**負**（時計取違え） | frame は publish し、`processing_latency_s = None`（証拠の不在として申告） | 自己申告のみ・判定は X2（`OQ-OD4Y-i3`） |
+| 崖が scan の方位窓 / 距離窓の外 | `CliffScan.omitted_cell_count` に計上（黙って捨てない・clamp しない） | 設定不備を consumer が見える（[追補 ⑤](04-perception-sidewalk-and-signals.md:500)） |
+
+### 4. hand-off（docs に明記・**本 PR では実装しない**）
+
+1. **nav-traffic**（`track:nav-traffic`・`nav2_params.yaml` / `collision_monitor.yaml` は nav-traffic 所有 = [12:552](../architecture/12-infrastructure-common.md:552)）: `nav2_params.yaml` に **崖専用 ObstacleLayer instance**（例 `cliff_layer`・source は `cliff_scan` のみ・`clearing` なし・max 合成）を足し、`collision_monitor.yaml` の `observation_sources` に `cliff_scan`（type `scan`）を足す。`clearing:false` だけでは**同一 layer 内の別 source の raytracing から守れない**（[追補 ③ #2](04-perception-sidewalk-and-signals.md:380) [D]）。consumer 側 costmap layer の所有裁定は [`OQ-OD4H`](04-perception-sidewalk-and-signals.md:345)、`source_timeout` の扱いは [`OQ-OD44`](04-perception-sidewalk-and-signals.md:142)。
+2. **safety-state**（`track:safety-state`・`warehouse_safety/sensor_health.py` は safety-state 所有）: X2 が `/bot{n}/terrain/coverage` を購読し、`TerrainCoverage.quality`（`ObservationQuality`）を `SourceObservation` へ写す。**field 名の差**（`frame_digest` ↔ `digest`・`source_stamp_s` ↔ `stamp_s`）はどちらへ寄せるかが [`OQ-OD4Y-a`](04-perception-sidewalk-and-signals.md:486)、`ground_*` 5 field の閾値化は [`OQ-OD4Z-d3`](04-perception-sidewalk-and-signals.md:899)。鮮度 `age = now − source_stamp_s` の検査は**消費側の義務**（[追補 ④ §2](04-perception-sidewalk-and-signals.md:475)）。
+3. **bringup**（`track:skeleton` / bringup 所有・`config/warehouse.base.yaml` = [environments.md](../../.claude/rules/environments.md)）: launch に `terrain_publisher` を足し、§2 の 21 param を **config キー `perception.terrain.*`（案・`speed_bands.*` と同型）**から注入する。値は**車体組立とカメラ取付の実測後**（[`OQ-OD45` :143](04-perception-sidewalk-and-signals.md:143) 縁石 2 cm・[`OQ-OD4Q` :354](04-perception-sidewalk-and-signals.md:354) MinZ・[`OQ-OD4Z-d1`](04-perception-sidewalk-and-signals.md:897) の 2 上限と**同じ実測**）。
+
+### 5. OPEN QUESTIONS（本追補で**発明せずに残した**もの・接頭辞は [`OQ-OD4Z-d6`](04-perception-sidewalk-and-signals.md:902) の採番衝突を避けて `-i1`〜`-i5`）
+
+- `OQ-OD4Y-i1` **`terrain/coverage` の時刻の運び方**。`std_msgs/String` は `header` を持たないため、時刻は payload の `source_stamp_s` だけにある。`cliff_scan` 側は `header.stamp` と `CliffScan.source_stamp_s` の**二重**になる（同じ値を書いている）。`.msg` 化（Phase 4・[doc16 §3](../architecture/16-repository-and-conventions.md)）の際にどちらを正にするかは未決。
+- `OQ-OD4Y-i2` **sentinel が正当値でもある 4 本**（§2 ⚠）。`reference_offset_m` / `angle_min_rad` / `angle_max_rad` / `ransac_seed` は「1 本だけ注入し忘れ」を検出できない。ROS 2 の**型のみ宣言**（`declare_parameter(name, Parameter.Type.DOUBLE)` = 未設定なら `get_parameter` が上げる）へ寄せれば塞げるが、**Humble rclpy での挙動を本レーンでは実機確認できていない**（host に rclpy が無い）ため v0 では採らなかった。ボードで確認したうえで裁定する。
+- `OQ-OD4Y-i3` **負の遅延の扱い**。出力時刻 − 元計測時刻が負のとき v0 は `processing_latency_s = None` で frame を出す（契約は非有限・負を拒否するため値としては載せられない）。「時計取違えの frame を**そもそも無効化**する」設計もあり得る。判定点は X2 の 1 か所（[:203](04-perception-sidewalk-and-signals.md:203)）という原則とどちらが整合するかは未決。[09 規則 (4)](09-external-review-v3-response.md:67)（元計測時刻 vs 受信側の単調時計）と同じ裁定に含める。
+- `OQ-OD4Y-i4` **実解像度・実周期での性能**。純 python の `struct` 逐次 unpack は**未測**（カメラ未購入・車体未走行）。`pixel_stride` で間引く前提だが、どの解像度・どの stride で何 Hz 出るかはボード実測でしか分からない（[`OQ-OD4Z-f`](04-perception-sidewalk-and-signals.md:594) と同じ穴）。numpy 経路の要否もその後。
+- `OQ-OD4Y-i5` **凍結フレームの検出**。[追補 ③ #5](04-perception-sidewalk-and-signals.md:383) は「同一画像は機器側フレーム番号・計測時刻・受信状態と併用して確定」と言うが、`sensor_msgs/Image` は機器フレーム番号を運ばない。v0 は `device_frame_seq=None`（持っていないものを申告しない）とし、`frame_digest` だけを出す。OAK 経由なら `i_get_base_device_timestamp` が時刻契約の実装点（[追補 ② §4](04-perception-sidewalk-and-signals.md:284)）だが、フレーム番号の経路は未定。
+
+### 6. 実装・テスト（本 PR）
+
+- `ws/src/warehouse_perception/warehouse_perception/terrain_node.py` — rclpy shell（`TerrainPublisher(Node)` + `main()`）。**終了 3 規則**（`KeyboardInterrupt` / `ExternalShutdownException` の両捕捉・best-effort・`rclpy.try_shutdown()`）を満たし、`tests/unit/test_node_shutdown_lifecycle.py` の `KNOWN_UNSAFE_STOP_ON_HUMBLE` baseline には**足していない**（最初から合格）。
+- `ws/src/warehouse_perception/warehouse_perception/terrain_node_core.py` — **rclpy / numpy 非依存**の marshalling 核（depth decode・intrinsics 抽出と縮小・param 束・LaserScan フィールド・coverage JSON・時刻）。`terrain_core.py` は**1 文字も変えていない**。
+- `tests/unit/test_terrain_node_core.py`（`unit` + `safety`）— 期待値は `struct.pack` 合成バッファからの**手計算リテラル**（mm → m・エンディアン・stride）。`tests/unit/test_terrain_node_pins.py` — AST pin（publish は 2 topic のみ・走行 / 停止系 topic 名を持たない・stamp は入力 msg の header 由来・safe-OFF の早期 return が全生成より前・param 宣言集合 == core が読む集合・QoS depth 10・終了 3 規則・numpy / torch 非 import）。
+- `setup.py` に console_script `terrain_publisher`、`package.xml` に `sensor_msgs` / `warehouse_description`。produce / consume は [`ws/src/warehouse_perception/CLAUDE.md`](../../ws/src/warehouse_perception/CLAUDE.md)。

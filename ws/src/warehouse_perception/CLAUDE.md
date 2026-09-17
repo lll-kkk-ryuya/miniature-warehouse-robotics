@@ -277,3 +277,112 @@ Mode Outdoor の 04_Perception（歩道知覚）の**家は本 package**（[docs
   （manifest 置き場・例示 JSONL・指標定義とキー案・比較手順・ライセンス/課金境界・残 OQ）
 - [docs/mode-outdoor/04 追補 ④](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md:452) — 型と fail 方向（凍結契約）
 - [ws/src/warehouse_perception/manifests/README.md](manifests/README.md) — manifest の置き場の規約
+
+## 【2026-09-18 追記・P5】terrain_publisher（07_Output_Adapters node v0）
+
+P1（`terrain_core.py`）を **rclpy node として配線**したスライス。`OQ-OD4Y-i` の裁定
+（topic 名・QoS・publish 周期）の正本は
+[04 追補 ⑨](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md:926)、
+topic カタログ行は
+[doc03 末尾追補](../../../docs/architecture/03-software-architecture.md:316)。
+
+**レイヤ**: `terrain_node.py` / `terrain_node_core.py` = **自律走行（安全層外）の
+producer**（`terrain_core.py` と同じ帰属＝
+[04 追補 ⑨ レイヤ注記](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md:926)・
+[productization/01 L1 行](../../../docs/productization/01-commercial-box-map.md:185)）。
+**0 actuation**: `cmd_vel` / `stop_request` / `stop_state` / `speed_limit` を
+publish しない（AST pin）。GPU・numpy 非依存（P1 原則 =
+[23:37](../../../docs/architecture/23-perception-and-localization.md:37)）。
+
+### 提供 (produce)
+
+- topic `cliff_scan`（**相対名**・`/bot{n}` 下で解決）: `sensor_msgs/LaserScan`・
+  QoS depth 10・`header.frame_id = {robot}/base_link`・`header.stamp` = **入力 depth
+  Image の `header.stamp`**（付け直さない）・`DROP_DETECTED` セル以外は `inf`・
+  **depth frame ごとに 1 回**（timer 無し）。
+- topic `terrain/coverage`（相対名）: `std_msgs/String`・QoS depth 10・payload =
+  `warehouse_interfaces.perception.TerrainCoverage` の `model_dump_json()`。
+  `header` を持たない型ゆえ時刻は payload の `source_stamp_s`。
+- console_script `terrain_publisher = warehouse_perception.terrain_node:main`。
+  既定 `enabled:=false` では **subscription も publisher も timer も作らない**
+  （topic graph に一切現れない）。
+- module `warehouse_perception.terrain_node_core`（**rclpy / numpy 非依存**）:
+  `decode_depth_image(...)`（`16UC1` mm→m / `32FC1` m のみ・不正 encoding / `step`
+  不足 / バッファ不足 / `pixel_stride < 1` は**空 rows**・例外を上げない・サンプルの
+  有効判定はしない＝`depth_validity` の仕事）／
+  `intrinsics_from_camera_info(k, *, pixel_stride)`（`fx=k[0] fy=k[4] cx=k[2] cy=k[5]`
+  を `1/stride` で縮小・9 要素でない / 非有限 / `fx,fy <= 0` は `None`）／
+  `params_from_mapping(mapping) -> TerrainNodeParams`（**21 param 全部必須・sentinel は
+  `ValueError`**。`.terrain_params(intrinsics)` が `TerrainParams` を組む＝床帯と崖帯の
+  disjoint 検査は `terrain_core` の 1 か所に残る）／`laser_scan_fields(cliff)`／
+  `coverage_json(coverage)`／`stamp_to_seconds(sec, nanosec)`／
+  `processing_latency_s(now_s, source_stamp_s)`（負・非有限は `None`）／
+  `resolve_frame_id(namespace, base_frame)`（`/` だけなら `ValueError`）／
+  定数 `PARAM_KEYS` / `MOUNTING_KEYS` / `DEPTH_ENCODINGS`。
+
+### 消費 (consume)
+
+- 契約: `warehouse_interfaces.perception.TerrainCoverage`（凍結・追補 ④。**1 文字も
+  変えていない**）。
+- 共有資産: `warehouse_description.robot_dimensions.BASE_FRAME`（frozen link 名・
+  読み取りのみ。`package.xml` に `<exec_depend>warehouse_description</exec_depend>`）。
+- 自パッケージ: `warehouse_perception.terrain_core`（**不変更**）。
+- topic（**param 注入・既定 `""` = 購読しない**）: `depth_topic`
+  （`sensor_msgs/Image`）・`camera_info_topic`（`sensor_msgs/CameraInfo`）。
+  `package.xml` に `<exec_depend>sensor_msgs</exec_depend>`。
+- ROS param 21 本（**既定なし**・宣言既定は落ちる sentinel）: 表は
+  [04 追補 ⑨ §2](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md:926)。
+
+### 前提・未確定 (TODO)
+
+- `# TODO(bringup)` **launch 未配線・config 未配線**。config キー
+  `perception.terrain.*`（`speed_bands.*` と同型）は**案**であり本スライスは
+  `config/` を触っていない（hand-off ③ = 04 追補 ⑨ §4）。
+- `# TODO(nav-traffic)` **consumer 未配線**: 崖専用 ObstacleLayer instance
+  （source = `cliff_scan` のみ・clearing なし）と `collision_monitor.yaml` の
+  `observation_sources`。`nav2_params.yaml` / `collision_monitor.yaml` は
+  nav-traffic 所有（hand-off ①）。
+- `# TODO(safety-state)` **X2 未配線**: `sensor_health` が `terrain/coverage` を
+  購読し `ObservationQuality → SourceObservation` へ写す。field 名差 =
+  `OQ-OD4Y-a`（hand-off ②）。
+- `# TODO(実測)` **param の値は 1 つも決まっていない**（カメラ未購入・車体未組立・
+  未走行）。`OQ-OD45`（縁石 2 cm の分離距離）・`OQ-OD4Q`（MinZ）・`OQ-OD4Z-d1`
+  （2 上限）と同じ実測ゲート。
+- `# TODO(性能)` **未測**（`OQ-OD4Y-i4`）。純 python の `struct` 逐次 unpack で
+  実解像度・実周期が出るかはボード実測でしか分からない。numpy 経路は v0 に無い。
+- `# TODO(OQ-OD4Y-i2)` **sentinel が正当値でもある 4 param**
+  （`reference_offset_m` / `angle_min_rad` / `angle_max_rad` / `ransac_seed`）。
+  「何も注入しない起動」は abort するが、「1 本だけ注入し忘れ」は検出できない。
+- `# TODO(rclpy 未検証)` node 本体は **host / CI で import できない**
+  （rclpy・sensor_msgs 不在）。実起動の確認はボード側でのみ可能。
+
+### テスト（P5）
+
+- `tests/unit/test_terrain_node_core.py`（marker `unit` + `safety`）: 期待値は
+  `struct.pack` 合成バッファからの**手計算リテラル**（mm→m・エンディアン・stride）。
+  sentinel 網羅（21 param の欠落・sentinel 残置）・不正 frame で例外を上げないこと・
+  `laser_scan_fields` の `inf` 保存・`coverage_json` の `model_validate_json` 往復。
+- `tests/unit/test_terrain_node_pins.py`（`unit` + `safety`・AST）: publish は 2 topic
+  のみ・相対名・型対応・走行 / 停止系 topic 名を**実行される文字列と識別子**から排除・
+  timer 0・`header.stamp` の右辺が入力 msg の header 由来（Call を含まない）・
+  `get_clock()` を読むのは `_now` だけ・safe-OFF の早期 return が全生成より前・
+  宣言 param 集合 == `PARAM_KEYS`・QoS depth 10・終了 3 規則・numpy / torch 非 import・
+  import root が共有契約パッケージのみ。
+- mutation（実測・全て赤）: mm→m 係数 1000→100 ／ endian フラグ無視 ／ intrinsics を
+  stride で縮小しない ／ `cx`/`cy` だけ縮小しない ／ 未対応 encoding で `KeyError` を
+  上げる ／ 負の遅延をそのまま返す ／ 非 DROP を `0.0` にする ／ stamp を `now()` に
+  する ／ `cmd_vel` publisher を足す。
+- `tests/unit/test_node_shutdown_lifecycle.py` のラチェットで discovered=True /
+  safe=True / baseline 非追加（`KNOWN_UNSAFE_STOP_ON_HUMBLE` を触っていない）。
+
+### 設計ドキュメント（P5）
+
+- [04 追補 ⑨](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md:926) —
+  裁定 1〜9・param 表・fail 方向・hand-off 3 件・残 OQ（正本）
+- [doc03 末尾追補](../../../docs/architecture/03-software-architecture.md:316) —
+  topic カタログ行（名前・型・一行責務）
+- [04 追補 ⑤](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md:500) /
+  [追補 ⑧](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md:838) —
+  純ロジックと constrained RANSAC（`terrain_core.py`）
+- [04 追補 ④](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md:390) —
+  型と fail 方向（凍結契約）

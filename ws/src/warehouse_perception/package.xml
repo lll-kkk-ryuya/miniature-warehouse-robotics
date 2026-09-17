@@ -12,6 +12,11 @@
   <exec_depend>rclpy</exec_depend>
   <exec_depend>std_msgs</exec_depend>
   <exec_depend>nav2_msgs</exec_depend>
+  <!-- 07_Output_Adapters terrain_publisher: sensor_msgs/{Image, CameraInfo,
+       LaserScan} (docs/mode-outdoor/04 追補 ⑨). warehouse_description supplies
+       the frozen BASE_FRAME name (a read-only shared asset, doc16 §9). -->
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>warehouse_description</exec_depend>
 
   <!-- Offline evaluation harness (10_Evaluation, docs/mode-outdoor/04 追補 ⑦):
        eval_sdk is the domain-free evaluation core the warehouse packages depend on
