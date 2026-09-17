@@ -171,7 +171,7 @@ L4 ER Adapter
   - **State Cache の box 帰属（F3）**: `warehouse_state/state_cache`（稼働 Mode A node）が doc01 の box 行に無い（暫定 `safety` box に subsume＝taxonomy 判断は未確定）。
   - **mode 自体が first-class でない（F4）**: 「これは Mode A」が profile 命名にしか encode されない。first-class な `mode`/`scenario` field は v2 議論（now-scope では blocker でない）。
 
-## レイヤ annotation 対応表（L0–L4 → 責務 → package / 主要ファイル）
+## レイヤ annotation 対応表（L4–L0 ＋ `L0'`（ホスト側物理安全）＋ `横断`（観測面）の 7 行 → 責務 → package / 主要ファイル）
 
 追記日: 2026-07-11
 

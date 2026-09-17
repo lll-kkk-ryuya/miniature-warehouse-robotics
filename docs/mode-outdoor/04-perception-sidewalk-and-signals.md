@@ -304,7 +304,7 @@ docs 内（file:line は執筆時に実 Read）:
 
 - 一次情報 [D]（本追補で PDF を実読）: 科警研 横関・森・矢野「歩行者用信号青点滅の明滅周期の違いによる心理的影響」交通工学論文集 5(2) B_17–B_23, 2019 <https://www.jstage.jst.go.jp/article/jste/5/2/5_B_17/_pdf/-char/ja>: 「現在の歩行者用信号青点滅の明滅周期は 0.5 秒…警察庁で定める信号の仕様書によって規定」「（車両用信号の）閃光の点滅周期は約 1 秒、歩行者青点滅の点滅周期は約 0.5 秒とする」（1972 年仕様書）。→ 親 §4 の「~1 Hz」は車両用の値だったため同一行で訂正済。
 - 帰結: **10 Hz 判定と 2 Hz 点滅は整数比（5 サンプル/周期）**で位相が回らない。duty 比は一次情報に無く未確定（50 % なら ON は最大 6/10 で 8/10 に届かないが、duty ≳ 80 %・10 Hz からの微小ドリフトによる低周波うなり・分類器が消灯相を GREEN と出す誤り、の 3 経路で崩れる）。多数決だけを防波堤にしない。
-- 二段レート方式（`OQ-OD4J`）: レート A = ROI 輝度サンプラ（カメラ fps・エッジ検出なので整数比でも可・CPU・緑 / 赤の hue 面積比 g_t / r_t と露出値 e_t）でヒステリシス二値化 → **立ち上がりエッジ間隔（= 周期）**の中央値が 0.5 s に一致（隣接エッジ間隔は 0.25 s） ∧ ON / OFF 両相あり ∧ 赤が同期して増えていない → `is_flashing`（2 Hz の Goertzel 1 点評価で補強可）。レート B = NN 分類器 10 Hz（TIER IV 3 クラス）で多数決。状態決定: `is_flashing` → GREEN_FLASHING／RED 多数決 → RED／GREEN 多数決 ∧ NOT flashing ∧ **窓内の OFF 相 0 件** ∧ stale < 0.5 s → GREEN／それ以外 UNKNOWN。GREEN 離脱は 1 フレーム（親 §4 の非対称を維持）。f_B は点滅周期と**非整数比**にする（例 9 Hz = 4.5 倍。12 Hz や 30 Hz は 2 Hz の整数倍で同じ罠）。窓 W は `source_stamp` 基準の秒数と有効サンプル数の下限で定義しフレーム数では定義しない。`OFF_OR_UNLIT`（消灯相）と `NOT_VISIBLE` / `UNKNOWN`（遮蔽・欠落・鮮度切れ）は別クラスで、UNKNOWN を消灯と同一視しない（追補 ③ #1）。
+- 二段レート方式（`OQ-OD4J`）: レート A = ROI 輝度サンプラ（カメラ fps・エッジ検出なので整数比でも可・CPU・緑 / 赤の hue 面積比 g_t / r_t と露出値 e_t）でヒステリシス二値化 → **立ち上がりエッジ間隔（= 周期）**の中央値が 0.5 s に一致（隣接エッジ間隔は 0.25 s） ∧ ON / OFF 両相あり ∧ 赤が同期して増えていない → `is_flashing`（2 Hz の Goertzel 1 点評価で補強可）。レート B = NN 分類器 10 Hz（TIER IV 3 クラス）で多数決（**この「10 Hz」は罠の説明であって設定値ではない** ── 同一行末と [:306](04-perception-sidewalk-and-signals.md:306) が要求するとおり f_B は点滅周期と**非整数比**にする〔例 9 Hz〕。実装 `signal_temporal_core.py` は 2 Hz の整数倍を構築時に拒否する = [追補 ⑥ `classifier_rate_hz`](04-perception-sidewalk-and-signals.md:630)）。状態決定: `is_flashing` → GREEN_FLASHING／RED 多数決 → RED／GREEN 多数決 ∧ NOT flashing ∧ **窓内の OFF 相 0 件** ∧ stale < 0.5 s → GREEN／それ以外 UNKNOWN。GREEN 離脱は 1 フレーム（親 §4 の非対称を維持）。f_B は点滅周期と**非整数比**にする（例 9 Hz = 4.5 倍。12 Hz や 30 Hz は 2 Hz の整数倍で同じ罠）。窓 W は `source_stamp` 基準の秒数と有効サンプル数の下限で定義しフレーム数では定義しない。`OFF_OR_UNLIT`（消灯相）と `NOT_VISIBLE` / `UNKNOWN`（遮蔽・欠落・鮮度切れ）は別クラスで、UNKNOWN を消灯と同一視しない（追補 ③ #1）。
 - 前提: **露出固定**（LED の PWM と自動露出のエイリアシングが偽 OFF を作る）＝`OQ-OD4L`。経過時間表示型は「バーが減っている」を GREEN 継続の否定材料にのみ使う。TIER IV 分類器の `unknown` は消灯相・逆光・遮蔽を潰すので周期性は連続量（レート A）で見る。Autoware 側の低視点に効く既存ノブ: `pedestrian_traffic_light_max_angle_range` 80°・露出しきい値 0.85 / −0.83 で UNKNOWN + conf 0.0 [D]。
 
 ### 6. NVIDIA スタックの世代の壁（レーン D・pin 表は [00 末尾追補](00-mission-and-scope.md) が正本）
@@ -517,13 +517,13 @@ X2 の入力型 `warehouse_safety.sensor_health.SourceObservation`（`stamp_s` /
 |---|---|---|---|---|
 | 1 | `depth_validity` | 深度画像（row-major・m） | `DepthValidity`（`valid_pixels` / `valid_fraction` / `frame_digest`） | 画素単位で `None` / `NaN` / `±inf` / `<= 0` / 非数値を無効化（[:174](04-perception-sidewalk-and-signals.md:174)）。`frame_digest` は payload **内容**の sha256 ＝ 凍結フレームの**材料**であって確定ではない（確定は X2 = [追補 ③ #5](04-perception-sidewalk-and-signals.md:383)） |
 | 2 | `back_project` | 有効画素 + 内部パラメータ + 取付幾何 | body 系点列（X 前・Y 左・Z 上・原点はカメラ直下の地面） | ピンホール逆投影。光軸は `Z = 0` と `h / tan θ` で交わる（[:181](04-perception-sidewalk-and-signals.md:181) の worked example と一致することを unit で確認） |
-| 3 | `ground_estimator` | 点列 | `GroundPlane`（`Z = aX + bY + c` + 支持 + `used_prior`） | RANSAC 平面（[案 B :44](04-perception-sidewalk-and-signals.md:44)）。**事前値 = 取付幾何が言う `Z = 0`**（h・θ は段 2 で既に適用済）で、フィットは観測で上書きする。`ransac_seed` 注入ゆえ決定的 |
+| 3 | `ground_estimator` | 点列 | `GroundPlane`（`Z = aX + bY + c` + 支持 + `used_prior`・**v0.1 で `rejected_candidates` 追加** = [追補 ⑧ §3](04-perception-sidewalk-and-signals.md:871)） | RANSAC 平面（[案 B :44](04-perception-sidewalk-and-signals.md:44)）。**事前値 = 取付幾何が言う `Z = 0`**（h・θ は段 2 で既に適用済）で、フィットは観測で上書きする。`ransac_seed` 注入ゆえ決定的 |
 | 4 | `classify_cells` | 点列 + 平面 | `TerrainGrid`（cell → `TerrainState` + 証拠数 + 最小残差） | 前方メトリックグリッド（`cell_size_m` 正方）。**横方向は無制限**＝回廊外の崖も `cliff_scan` 経由で costmap へ届く |
-| 5 | `terrain_coverage` | grid | `TerrainCoverage`（凍結契約・追補 ④） | **回廊内だけ**を見る。距離は datum 起点・`cell_size_m` 量子化 |
-| 6 | `cliff_ranges` | grid | `CliffScan`（LaserScan 形 dataclass・未 publish） | `DROP_DETECTED` cell **だけ**を方位別 range へ。**`UNKNOWN` は落とさない**（[:173](04-perception-sidewalk-and-signals.md:173)）。方位は cell 中心、**range は cell の手前端**（`ix × cell_size_m`）＝誤差は必ずロボット側へ `cell_size_m` 以内（中心を使うと仮想壁が観測した縁より最大で半 cell **奥**に立つ） |
+| 5 | `terrain_coverage` | grid（**v0.1 で `ground: GroundPlane` が必須 kwarg** = [追補 ⑧](04-perception-sidewalk-and-signals.md:838)。採用平面が無いと事前値フォールバックを申告できないため） | `TerrainCoverage`（凍結契約・追補 ④） | **回廊内だけ**を見る。距離は datum 起点・`cell_size_m` 量子化 |
+| 6 | `cliff_ranges` | grid | `CliffScan`（LaserScan 形 dataclass・未 publish） | `DROP_DETECTED` cell **だけ**を方位別 range へ。**`UNKNOWN` は落とさない**（[:173](04-perception-sidewalk-and-signals.md:173)）。方位は cell 中心、**range は cell の手前端**（`hypot(ix × cell_size_m, y_centre)` ＝ 手前端の X と cell 中心の Y までの**斜距離**。方位と整合させるため Y を落とさない）＝誤差は必ずロボット側へ `cell_size_m` 以内（中心を使うと仮想壁が観測した縁より最大で半 cell **奥**に立つ） |
 | 7 | `analyze_depth_frame` | 深度画像 | `TerrainObservation` | 1〜6 の順序と `source_stamp_s` / digest の受け渡しを 1 か所に固定（将来の node が包む seam） |
 
-### 2. パラメータ（**全て注入・既定なし**・違反は構築時 `ValueError`）
+### 2. パラメータ（**全て注入・既定なし**・違反は構築時 `ValueError`）（→ v0.1 で `GroundFitParams` に 2 param 追加 = [追補 ⑧ §2](04-perception-sidewalk-and-signals.md:861)。**本表には行を足さず**差分は末尾 [追補 ⑤-1](04-perception-sidewalk-and-signals.md:907) に置く＝下流 pin の行ズレ回避）
 
 既定を置かないのは、正本が数値を pin していないため（縁石 2 cm は実測ゲート [`OQ-OD45` :143](04-perception-sidewalk-and-signals.md:143)、下向き MinZ は [`OQ-OD4Q` :354](04-perception-sidewalk-and-signals.md:354) / [:301](04-perception-sidewalk-and-signals.md:301) で未実測）。流儀は [`sensor_health.py`](../../ws/src/warehouse_safety/warehouse_safety/sensor_health.py) と同じ（しきい値は constructor 引数・既定なし）。
 
@@ -666,7 +666,7 @@ X2 の入力型 `warehouse_safety.sensor_health.SourceObservation`（`stamp_s` /
 | 1 | `is_flashing is True` | `GREEN_FLASHING` |
 | 2 | RED 多数決（share >= `majority_fraction`） | `RED` |
 | 3 | GREEN 多数決 ∧ **`is_flashing is False`** ∧ `off_phase_count == 0` ∧ `roi_consistent`（最新証拠）∧ `sample_count >= min_samples` ∧ **最新証拠が `GREEN`** | `GREEN` |
-| 4 | 上記以外すべて | `UNKNOWN` |
+| 4 | 上記以外すべて（**本表の外側の規則**: レート B 入力に非有限 `stamp_s` があれば、**①が成立した窓を除き** `UNKNOWN` = §6 ②） | `UNKNOWN` |
 
 - **③ の `is_flashing is False`（`is not True` ではない）が本実装の裁定点**: docs はこの場合を明示していない（[:307](04-perception-sidewalk-and-signals.md:307) は「NOT flashing」とだけ書く）。**判定不能で GREEN を許すのは証拠の不在を否定と読むこと**（[追補 ④ §2 項目 3](04-perception-sidewalk-and-signals.md:479)）なので fail-closed に `UNKNOWN` へ倒した＝`OQ-OD4Z-a`。
 - **GREEN 離脱は最新 1 サンプル**（[:90](04-perception-sidewalk-and-signals.md:90) の非対称）: ③ の最後の AND 項がそれで、**状態を持たない**（履歴で GREEN を開いたままにできない）。
@@ -686,7 +686,7 @@ X2 の入力型 `warehouse_safety.sensor_health.SourceObservation`（`stamp_s` /
 #### 6. fail 方向（不変条件）
 
 - パラメータ・`crossing_id` の不正 → **構築時**に `SignalTemporalConfigError`。
-- **data では例外を上げない**。倒れ方は 3 種類で、**同一視しない**: ①**到着順は無関係**（窓は時刻で定義されるので逆順で渡しても結果は同じ。ただし**同一 stamp が 2 本ある場合だけ**は安定ソートゆえ「最新」が入力順に依存する ── producer 側で同 stamp を出さないこと）。②**判定不能**（レート A の非有限値〔比率・露出・**`stamp_s`**〕/ 露出変動 / 証拠不足 / **被覆不足**）→ `is_flashing=None` → GREEN は出ない。レート B 入力に非有限 `stamp_s` があれば**窓ごと `UNKNOWN`**（どのサンプルが窓内か言えない以上、多数決も OFF 件数も信用できない）。③**観測なし**（窓に有効 stamp のサンプルが 0 件・窓端が非有限）→ 出力しない（`None`）。使えない品質値（非 str digest・負の seq・負の latency）は品質 field を**不在**にして運ぶ。
+- **data では例外を上げない**。倒れ方は 3 種類で、**同一視しない**: ①**到着順は無関係**（窓は時刻で定義されるので逆順で渡しても結果は同じ。ただし**同一 stamp が 2 本ある場合だけ**は安定ソートゆえ「最新」が入力順に依存する ── producer 側で同 stamp を出さないこと）。②**判定不能**（レート A の非有限値〔比率・露出・**`stamp_s`**〕/ 露出変動 / 証拠不足 / **被覆不足**）→ `is_flashing=None` → GREEN は出ない。レート B 入力に非有限 `stamp_s` があれば**窓ごと `UNKNOWN`**（どのサンプルが窓内か言えない以上、多数決も OFF 件数も信用できない）── ただし**①`is_flashing is True` が成立した窓を除く**（点滅判定はレート A 単独で立つため、レート B の不読は `GREEN_FLASHING` を壊さない。§4 の真理表①が可読性検査より**先**に評価される = `signal_temporal_core.py` の同 docstring）。③**観測なし**（窓に有効 stamp のサンプルが 0 件・窓端が非有限）→ 出力しない（`None`）。使えない品質値（非 str digest・負の seq・負の latency）は品質 field を**不在**にして運ぶ。
 - **非有限 `stamp_s` を「落とすだけ」にしない**（[stage-2 レビュー B-1]）: 落とす実装は**両レートで fail-open** だった ── 点滅の消灯相が stamp を失うと「連続点灯」に見えて `GREEN`、`OFF_OR_UNLIT` 証拠が stamp を失うと GREEN を止めなくなる。比率の非有限は fail-closed なのに stamp の非有限が fail-open、という不整合を閉じた。
 - `state == GREEN` を代入する経路は**モジュール内で 1 か所**（AST pin で固定）。
 - `cmd_vel` / `stop_request` / `speed_limit` / `stop_state` のいずれにも触れない（L4 publish-only の AST pin）。
@@ -783,7 +783,7 @@ X2 の入力型 `warehouse_safety.sensor_health.SourceObservation`（`stamp_s` /
 | `latency.capture_to_consume_negative_count` / `_sample_count` | [:418](04-perception-sidewalk-and-signals.md:418) | **負の遅延は捨てずに別集計**。分位数からは除く |
 | `drive.false_stops_per_km` / `drive.travelled_m` | [:205](04-perception-sidewalk-and-signals.md:205) | 走行距離当たりの誤停止。**走行距離は引数**（サンプル列は走行を持たない。出所は run record = [jetson/03:223](../jetson/03-build-deploy-run-and-run-records.md:223)） |
 
-**設計上の 2 規律**（追補 ④ §2-3「証拠の不在を否定と読まない」の実装側対応）:
+**設計上の 3 規律**（追補 ④ §2-3「証拠の不在を否定と読まない」の実装側対応）:
 
 1. **`None` は 0 ではない**。母数 0 の率は `None` を返し、**metrics のキーごと落とす**。キーの不在は「計算できなかった」であって「0 だった」ではない。
 2. **サンプルを黙って捨てない**。帯に入らない・距離を持たないサンプルは件数として報告し、**負の遅延（時計取違え）は件数を別 key で返す**。分位数へ混ぜれば死んだ経路が「速い」に見え（[:418](04-perception-sidewalk-and-signals.md:418) が値として拒否するのと同じ故障）、黙って捨てれば同じ故障が隠れる。
@@ -812,7 +812,7 @@ X2 の入力型 `warehouse_safety.sensor_health.SourceObservation`（`stamp_s` /
 
 ### 6. レイヤ annotation 対応表に**行を足さない**理由
 
-[productization/01:174](../productization/01-commercial-box-map.md:174) の対応表は **L0–L4 の 5 行**しか持たない。09_Runtime_and_Models は「単一 layer に帰属させない基盤」、10_Evaluation は「横断（観測面）」であり（[:335](04-perception-sidewalk-and-signals.md:335)）、**どの L 行にも属さない**。無理に L4 行へ足すと [:189](04-perception-sidewalk-and-signals.md:189) が訂正した「全 sub-dir = L4」の自己矛盾を再導入する。よって本 PR では**行を足さず**、帰属の整理は [`OQ-OD4B`](04-perception-sidewalk-and-signals.md:339)（11 sub-dir の採否）へ申し送る。本追補の冒頭レイヤ注記と `ws/src/warehouse_perception/CLAUDE.md` の P3 節が、それまでの annotation の所在となる。
+[productization/01:174](../productization/01-commercial-box-map.md:174) の対応表は **L4–L0 の 5 行に加えて `L0'`（ホスト側物理安全）と `横断`（観測面）の計 7 行**を持つ（[01:182](../productization/01-commercial-box-map.md:182)〜[01:188](../productization/01-commercial-box-map.md:188)）。09_Runtime_and_Models は「単一 layer に帰属させない基盤」、10_Evaluation は「横断（観測面）」であり（[:335](04-perception-sidewalk-and-signals.md:335)）、**どの L 行にも属さない**。無理に L4 行へ足すと [:189](04-perception-sidewalk-and-signals.md:189) が訂正した「全 sub-dir = L4」の自己矛盾を再導入する。よって**新しい L 行は足さず**、既存の `横断` 行へ**行内 append** した（#712 = [01:188](../productization/01-commercial-box-map.md:188) に `ws/src/warehouse_perception/` の `model_manifest.py` / `evaluation_core.py` を追記し、理由として本節を back-link）。L 行の帰属の整理は [`OQ-OD4B`](04-perception-sidewalk-and-signals.md:339)（11 sub-dir の採否）へ申し送りのまま。本追補の冒頭レイヤ注記と `ws/src/warehouse_perception/CLAUDE.md` の P3 節が、それまでの annotation の所在となる。
 
 ### 7. OPEN QUESTIONS（本追補で**発明せずに残した**もの・接頭辞 `OQ-OD4Z`）
 
@@ -830,7 +830,7 @@ X2 の入力型 `warehouse_safety.sensor_health.SourceObservation`（`stamp_s` /
 
 - `warehouse_perception/model_manifest.py` — loader / `sha256_of_file` / `verify_weights` / CLI（console_script `perception_manifest`）。
 - `warehouse_perception/evaluation_core.py` — `EvalSample` / `read_jsonl` / `signal_confusion` / `p1_violations` / `p1_gate` / `unknown_rate` / `miss_rate_by_distance_band` / `false_stops_per_km` / `capture_to_consume_latency` / `compare` / `*_metrics` / `to_evaluation_record`。
-- `warehouse_perception/manifests/` — `README.md`（置き場の規約・engine 境界・AGPL 境界）+ `example.rf-detr-nano.yaml`（placeholder）。
+- `ws/src/warehouse_perception/manifests/`（**python パッケージ配下ではなく package root**） — `README.md`（置き場の規約・engine 境界・AGPL 境界）+ `example.rf-detr-nano.yaml`（placeholder）。
 - unit: `tests/unit/test_model_manifest.py` / `tests/unit/test_evaluation_core.py`（独立オラクル＋mutation 感度 = [doc20:139](../architecture/20-dev-quality-and-testing.md:139) / [doc20:140](../architecture/20-dev-quality-and-testing.md:140)。P-1 ゲートは `safety` marker 併記。**AST pin**: `rclpy` / `torch` / `tensorrt` / `numpy` / `requests` 非 import・走行系トピック名を含まない・ROS node クラス 0）。
 
 ---
@@ -899,5 +899,24 @@ X2 の入力型 `warehouse_safety.sensor_health.SourceObservation`（`stamp_s` /
 - `OQ-OD4Z-d3` **X2 側の閾値化**。§3 の 5 field を X2（`warehouse_safety.sensor_health`）がどう判定に使うか（`ground_from_prior = True` を INVALID とみなすか・`ground_inlier_fraction` の下限・`ground_rejected_candidates` の扱い）は**別レーン**。本追補は申告のみを決め、判定点は X2 の 1 か所のまま（[:203](04-perception-sidewalk-and-signals.md:203) / [09 §2-b](09-external-review-v3-response.md:72)）。`SourceObservation` への写し方は [追補 ④ 1-2](04-perception-sidewalk-and-signals.md:409) の対応表の拡張になる。
 - `OQ-OD4Z-d4` **`estimate_error_m` との関係**。`TerrainCoverage.estimate_error_m` は「どの量の誤差か・統計的意味」が未定のまま（[`OQ-OD4Y-c`](04-perception-sidewalk-and-signals.md:488)）で、本追補の `ground_inlier_fraction` / `ground_plane_tilt_rad` は**その空欄を埋めていない**（支持と傾きは誤差の推定量ではない）。両者の関係（平面 fit の残差分布から `estimate_error_m` を出すか）は `OQ-OD4Y-c` の裁定時に決める。
 - `OQ-OD4Z-d5` **`rejected_candidates` の意味の安定性**。件数は `ransac_iterations` に比例してスケールし、正規化されていない（率ではない）。X2 が閾値を置くなら率へ直す必要がある [I]。`ransac_iterations` は注入値ゆえ、件数だけを見て機器間・構成間で比較できない。
-- `OQ-OD4Z-d6` **`OQ-OD4Z-*` の採番衝突**（本追補 冒頭注記）。追補 ⑤ / ⑥ / ⑦ が同一接頭辞を独立に使っており `-a`〜`-j` が 3 重に存在する。本追補は衝突を避けて `-d1`〜`-d6` を使ったが、恒久的な採番規則（追補ごとの接頭辞分離）は未決。詰め替えは下流 pin を割るため**行わない**。
+- `OQ-OD4Z-d6` **`OQ-OD4Z-*` の採番衝突**（本追補 冒頭注記）。追補 ⑤ / ⑥ / ⑦ が同一接頭辞を独立に使っている（⑤ = `-a`〜`-j` [:589](04-perception-sidewalk-and-signals.md:589)〜[:598](04-perception-sidewalk-and-signals.md:598)・⑥ = `-a`〜`-g` [:710](04-perception-sidewalk-and-signals.md:710)〜[:716](04-perception-sidewalk-and-signals.md:716)・⑦ = `-a`〜`-i` [:819](04-perception-sidewalk-and-signals.md:819)〜[:827](04-perception-sidewalk-and-signals.md:827)）。したがって **`-a`〜`-g` が 3 重・`-h` / `-i` が 2 重（⑤ と ⑦）・`-j` は ⑤ のみ**で、一律 3 重ではない。本追補は衝突を避けて `-d1`〜`-d6` を使ったが、恒久的な採番規則（追補ごとの接頭辞分離）は未決。詰め替えは下流 pin を割るため**行わない**。
 - `OQ-OD4Z-d7` **`ground_from_prior` の厳格化（`Strict[bool]`）**。本追補は型を `bool | None` とだけ決めており、pydantic の既定（lax）モードの強制変換はそのまま継承する——`1` / `0` / `1.0` / `0.0` / `"yes"` / `"true"` / `"off"` は `bool` として通り、語彙の外（`2` / `0.5` / 任意の文字列）だけが `ValidationError` になる [D]（v0.1 の unit で実測確認）。「`bool` として読み戻せる」ことは保証されるが「`bool` しか書けない」ことは保証されない。2 状態（事前値 / 観測）しか無い flag なので実害は見えていないが、`Strict[bool]` を採るなら**ハブ全体の方針**（`schemas._Model` の `strict` 設定）になり本追補の射程を超える＝別 PR で裁定する。
+
+---
+
+## 【2026-09-18 追補 ⑤-1】追補 ⑤ §2 の v0.1 差分（表末尾 append の代替・行ズレ回避）
+
+正本 = [追補 ⑤ §2](04-perception-sidewalk-and-signals.md:526)。本節は追補 ⑤ §2 のパラメータ表に**行を足さずに**同じ内容を持つ。理由は**行ズレ回避**である ── `:546` 以降には追補 ⑥ / ⑦ / ⑧ を指す `04:NNN` 形の pin が **115 か所（実測）** あり（`grep -rnE "04-perception-sidewalk-and-signals\.md[:#]"` で本 doc 自身 110・`terrain_core.py` 8・`warehouse_interfaces/perception.py` 2・`productization/01` 2・`manifests/example.rf-detr-nano.yaml` 1・`GLOSSARY.md` 1）、§2 の表に 1 行でも挿入すると**そのすべてが同時に割れる**（[#165 教訓](../dev/03-retrospectives.md) / [status-maintenance.md :26 末尾追記原則](../../.claude/rules/status-maintenance.md:26)）。
+
+### 1. `GroundFitParams` の v0.1 追加パラメータ（出典 = [追補 ⑧ §2](04-perception-sidewalk-and-signals.md:861)）
+
+追補 ⑤ §2 の表は `GroundFitParams` を 3 param（[`plane_tolerance_m` :543](04-perception-sidewalk-and-signals.md:543) / [`ransac_iterations` :544](04-perception-sidewalk-and-signals.md:544) / [`ransac_seed` :545](04-perception-sidewalk-and-signals.md:545)）でしか書いていないが、[`OQ-OD4Z-d` 裁定（追補 ⑧）](04-perception-sidewalk-and-signals.md:838)で **5 param 必須**になった（実装 = `warehouse_perception/terrain_core.py` の `GroundFitParams`）。追加の 2 本も追補 ⑤ §2 と同じ流儀＝**注入・既定なし**・違反は構築時 `ValueError`:
+
+| dataclass | パラメータ | 単位 | 検証 | 備考・出典 |
+|---|---|---|---|---|
+| `GroundFitParams`（追加分） | `max_plane_tilt_rad` | rad | 有限・`> 0`（`0` / 負 / NaN は `ValueError`）・**既定なし** | 事前値 `Z = 0` の法線から候補平面が傾いてよい上限（候補の傾き = `atan(hypot(a, b))`）。値は pin しない＝[追補 ⑧ §2](04-perception-sidewalk-and-signals.md:861)・実測は [`OQ-OD4Z-d1`](04-perception-sidewalk-and-signals.md:897) |
+| | `max_plane_offset_m` | m | 有限・`> 0`（`0` / 負 / NaN は `ValueError`）・**既定なし** | 候補平面の原点高さ `c` の絶対値の上限＝取付高さ `h` の誤差・沈み込みの許容量。同じく値は pin しない＝[追補 ⑧ §2](04-perception-sidewalk-and-signals.md:861) |
+
+### 2. 数値ガード（追補 ⑤ §2 が書き落としていた定数）
+
+**数値ガード（しきい値ではない）**: 索引 floor/ceil の `1e-9`・退化標本の行列式下限 `1e-12`（`terrain_core.py` `_INDEX_EPS` / `_DEGENERATE_DET`）。浮動小数の丸め対策であり物理量の許容ではない。`_DEGENERATE_DET` は [追補 ⑧ §3](04-perception-sidewalk-and-signals.md:871)「共線標本は `ground_rejected_candidates` に数えない」の適用範囲を実際に定める。

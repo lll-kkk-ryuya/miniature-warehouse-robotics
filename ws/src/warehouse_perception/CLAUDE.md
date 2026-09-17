@@ -87,13 +87,13 @@ Mode Outdoor の 04_Perception（歩道知覚）の**家は本 package**（[docs
   （[04:382](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md:382)）。通行可否・許可・costmap 値は
   06 / 02 / 10 が持つ（三分離 = [04:214](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md:214)）。
 - **設計正本**: [docs/mode-outdoor/04 追補 ④](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md)（型・fail 方向・
-  消費側の義務・残 OQ `OQ-OD4Y-a`〜`-j`）。
+  消費側の義務・残 OQ `OQ-OD4Y-a`〜`-k`）。
 
 ## 【2026-09-17 追記・P1】01_Geometry / 07 coverage 純ロジック
 
 `warehouse_perception/terrain_core.py` が着地（**純ロジック・rclpy 非依存・numpy 非依存・0 node・0 `cmd_vel`**）。
 設計正本 = [docs/mode-outdoor/04 追補 ⑤](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md)（入出力・パラメータ表・
-状態決定規則・fail 方向・残 OQ `OQ-OD4Z-a`〜`-j`）。**layer = 自律走行（安全層外）の producer**
+状態決定規則・fail 方向・残 OQ `OQ-OD4Z-a`〜`-j`（**追補 ⑤ 系**））。**layer = 自律走行（安全層外）の producer**
 （consumer は L1 costmap / L1 collision_monitor と X2・09・06。停止距離の不等式の評価点は X2 / 09 の 1 か所 =
 [04:331](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md:331)。`.claude/rules/layer-annotation.md`）。
 
@@ -121,17 +121,17 @@ Mode Outdoor の 04_Perception（歩道知覚）の**家は本 package**（[docs
 ### 前提・未確定 (TODO)
 
 - `# TODO(node)` ROS node・topic・QoS・launch・config は**未実装**（本スライスの射程外）。配線時に
-  `frame_id` / TF 対応（`OQ-OD4Z-g`）と topic 契約（`OQ-OD4Y-i`）を決める。
-- `# DONE(OQ-OD4Z-d)` **裁定済（2026-09-17・[04 追補 ⑧](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md)）**。素の RANSAC は「多数派 = 真の地面」を
+  `frame_id` / TF 対応（追補 ⑤ `OQ-OD4Z-g`）と topic 契約（`OQ-OD4Y-i`）を決める。
+- `# DONE(追補⑤ OQ-OD4Z-d)` **裁定済（2026-09-17・[04 追補 ⑧](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md)）**。素の RANSAC は「多数派 = 真の地面」を
   仮定するため、回廊中ほどが欠測した下り段差シーンで傾いた平面が水平面より inlier を集め、崖が `FLOOR_CONFIRMED` に
   見える **fail-open** を実測で確認していた（裁定前の状態）。裁定で ①取付事前値 `Z = 0` からの傾き `atan(hypot(a,b))` /
   原点高さ `|c|` の上限を注入する constrained RANSAC ②`ObservationQuality` v0.1 の平面支持 5 field（＝下流 X2 から観測可能）
   により**解消済**。後継 test = `test_tilt_bound_keeps_the_horizontal_plane_so_the_cliff_reads_as_a_drop`。2 上限の値は実測待ち（`OQ-OD4Z-d1`）。
 - `# TODO(numpy 経路)` 純 python で全画素を走査する（CI の python に numpy が無い）。実解像度・実周期での
-  実行時間は未計測。numpy 経路 or 間引き param は `OQ-OD4Z-f`。
-- `# TODO(OQ-OD4Z-c)` `min_valid_fraction` が 04 側と X2 `warehouse_safety.sensor_health.SourceThresholds` の
+  実行時間は未計測。numpy 経路 or 間引き param は 追補 ⑤ `OQ-OD4Z-f`。
+- `# TODO(追補⑤ OQ-OD4Z-c)` `min_valid_fraction` が 04 側と X2 `warehouse_safety.sensor_health.SourceThresholds` の
   2 か所にある。v0 は「04 = 自分の主張の抑制のみ・判定はしない」で分けたが、正本の置き場は `OQ-OD4E` 待ち。
-- `# TODO(01_Geometry 残り)` `obstacle_geometry` / `terrain_features` は未実装（`OQ-OD4Z-j`）。
+- `# TODO(01_Geometry 残り)` `obstacle_geometry` / `terrain_features` は未実装（追補 ⑤ `OQ-OD4Z-j`）。
 - ハード（OAK-D）は未購入・車体は未走行 → `h` / `θ` / MinZ はすべて未実測。
 
 ### テスト
@@ -168,7 +168,7 @@ Mode Outdoor の 04_Perception（歩道知覚）の**家は本 package**（[docs
   mutation **5/5** で赤（傾き拘束を外す・原点高さ拘束を外す・棄却候補を最良比較に参加させる・棄却を数えない・傾き上限を 1000 倍）。
   **原点高さ拘束を外す変異は当初生き残り**、上限だけを動かして同一シーンを比較する unit を足して閉じた。
 - **未確定**: 2 上限の実運用値（`OQ-OD4Z-d1`）・縦断／横断の分解（`-d2`）・X2 側の閾値化（`-d3`）・
-  `estimate_error_m` との関係（`-d4`）・`rejected_candidates` の正規化（`-d5`）・`OQ-OD4Z-*` の採番衝突（`-d6`）。
+  `estimate_error_m` との関係（`-d4`）・`rejected_candidates` の正規化（`-d5`）・`OQ-OD4Z-*` の採番衝突（`-d6`）・`ground_from_prior` の `Strict[bool]` 化（`-d7`・[04 追補 ⑧ §5](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md:903)）。
 
 
 
@@ -180,7 +180,7 @@ Mode Outdoor の 04_Perception（歩道知覚）の**家は本 package**（[docs
 
 ## 【2026-09-17 追記・P2】03_Traffic_Signals 時系列判定 純ロジック
 
-`signal_temporal_core.py`（**L4** 知覚・publish-only・**0 actuation**）= 歩行者用信号の**二段レート時系列判定**の純ロジック。設計正本 = [docs/mode-outdoor/04 追補 ⑥](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md)（真理表・パラメータ表・残 OQ `OQ-OD4Z-a`〜`-g`）。契約 = 追補 ④（`Refs #673`・**契約変更なし**）。
+`signal_temporal_core.py`（**L4** 知覚・publish-only・**0 actuation**）= 歩行者用信号の**二段レート時系列判定**の純ロジック。設計正本 = [docs/mode-outdoor/04 追補 ⑥](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md)（真理表・パラメータ表・残 OQ `OQ-OD4Z-a`〜`-g`（**追補 ⑥ 系**・接頭辞は追補 ⑤ / ⑦ と衝突する = [04 追補 ⑧ `OQ-OD4Z-d6`](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md:902)））。契約 = 追補 ④（`Refs #673`・**契約変更なし**）。
 
 ## 提供 (produce)
 
@@ -197,9 +197,9 @@ Mode Outdoor の 04_Perception（歩道知覚）の**家は本 package**（[docs
 
 - `# TODO(rate A/B producer)` 輝度サンプラ・分類器・ROI 投影・露出固定（[`OQ-OD4L`](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md:349)）は未着手。OAK-D も未購入 → 現状のオラクルは**テスト側の合成時系列**のみで、実 bag での P-1 実測は P3 評価基盤 + ハード到着後
 - `# TODO(node 化)` publish する node・topic 名・QoS・周期は未決。`max_age` は**持たない**（鮮度は消費側の義務 = [04:382](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md:382)）ので、node 化する側も producer 側で鮮度判定を足さないこと（停止判定点が 2 つになる）
-- `# TODO(OQ-OD4Y-d)` `sample_count` / `off_phase_count` を**レート B で数える**のは暫定（[04:489](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md:489)）。`quality.valid_fraction` の分子「`NOT_VISIBLE` でない」も暫定（追補 ⑥ `OQ-OD4Z-f`）
-- `# TODO(OQ-OD4Z-d)` 読めない `stamp_s` は**黙って落とさない**（落とす実装は fail-open = stage-2 レビュー B-1）。レート A は窓ごと判定不能・レート B は窓ごと `UNKNOWN`。1 本の不読で窓全体を捨てる粒度は残 OQ ── 緩めるなら「穴として数えて被覆を再評価」する形で、黙って落とす形には戻さない
-- `# TODO(OQ-OD4Z-a)` `is_flashing is None`（判定不能）で GREEN を許さないのは**docs の沈黙を fail-closed で埋めた裁定**。緩めるなら doc PR 経由
+- `# TODO(OQ-OD4Y-d)` `sample_count` / `off_phase_count` を**レート B で数える**のは暫定（[04:489](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md:489)）。`quality.valid_fraction` の分子「`NOT_VISIBLE` でない」も暫定（追補 ⑥ `OQ-OD4Z-f`・追補 ⑤ の同名 `-f` とは別物）
+- `# TODO(追補⑥ OQ-OD4Z-d)` 読めない `stamp_s` は**黙って落とさない**（落とす実装は fail-open = stage-2 レビュー B-1）。レート A は窓ごと判定不能・レート B は窓ごと `UNKNOWN`（**ただし真理表①`is_flashing is True` が成立した窓は除く** ── 点滅判定はレート A 単独で立つため、レート B の不読は `GREEN_FLASHING` を壊さない = [04 追補 ⑥ §6 ②](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md:689)）。1 本の不読で窓全体を捨てる粒度は残 OQ ── 緩めるなら「穴として数えて被覆を再評価」する形で、黙って落とす形には戻さない
+- `# TODO(追補⑥ OQ-OD4Z-a)` `is_flashing is None`（判定不能）で GREEN を許さないのは**docs の沈黙を fail-closed で埋めた裁定**。緩めるなら doc PR 経由
 - パラメータに既定値は無い（docs が数値を決めていない）。構築時に `SignalTemporalConfigError` で落ちるので、config から注入する側が値を持つ
 
 ## テスト
@@ -248,7 +248,7 @@ Mode Outdoor の 04_Perception（歩道知覚）の**家は本 package**（[docs
   `package.xml` に `<exec_depend>eval_sdk</exec_depend>`）。
 - `python3-yaml`（manifest の parse。`package.xml` に追加）。
 - **入力データ**: 「他の何かが出した予測列 + 真値列」の JSONL。**例示・未凍結**（形は
-  [04 追補 ⑦ §2](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md:524)）。`warehouse_interfaces` に登録していない。
+  [04 追補 ⑦ §2](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md:751)）。`warehouse_interfaces` に登録していない。
 
 ### 前提・未確定 (TODO)
 
@@ -258,7 +258,7 @@ Mode Outdoor の 04_Perception（歩道知覚）の**家は本 package**（[docs
 - `# TODO(bag)` 実走 bag は**ゼロ**（記録基盤 = run record は配線済・未実走）。ゆえに `example.rf-detr-nano.yaml` の値は
   すべて placeholder で、`dataset_id: "example-bag-0000"` は存在しない bag。
 - `# TODO(OQ-OD4Y-e)` `EvaluationRecord.metrics` のキー語彙は**案**（`METRIC_*` 定数 1 か所に集約）。裁定は
-  [04 追補 ⑦ §3 / §7](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md:524)（`OQ-OD4Z-a`〜`-i`）。
+  [04 追補 ⑦ §3](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md:770) / [§7](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md:817)（**追補 ⑦ 系** `OQ-OD4Z-a`〜`-i`）。
 - `# TODO(課金ゲート)` VLM / SAM ラベリングと映像の外部送信は
   [`OQ-OD4V`](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md:359) の gate 対象（`WAREHOUSE_LIVE_ER` と同型）。
   本 package のコードは外部 API を叩かない。
@@ -273,7 +273,7 @@ Mode Outdoor の 04_Perception（歩道知覚）の**家は本 package**（[docs
 
 ### 設計ドキュメント（P3）
 
-- [docs/mode-outdoor/04 追補 ⑦](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md:524) — 実装記録の正本
+- [docs/mode-outdoor/04 追補 ⑦](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md:728) — 実装記録の正本
   （manifest 置き場・例示 JSONL・指標定義とキー案・比較手順・ライセンス/課金境界・残 OQ）
 - [docs/mode-outdoor/04 追補 ④](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md:452) — 型と fail 方向（凍結契約）
 - [ws/src/warehouse_perception/manifests/README.md](manifests/README.md) — manifest の置き場の規約
