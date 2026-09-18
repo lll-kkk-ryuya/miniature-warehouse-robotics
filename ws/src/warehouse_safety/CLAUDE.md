@@ -146,7 +146,7 @@ R-40 の `gc.disable()` / `gc.freeze()` は従来どおり `main()` 内に残す
 **消費 (consume)**
 
 - topic: **`/{bot}/terrain/coverage`**（`std_msgs/String` JSON = [doc03:323](../../../docs/architecture/03-software-architecture.md:323)）。QoS = **RELIABLE / KEEP_LAST / depth 10**（node 内の既存 `reliable_qos`）＝producer の既定 depth 10 プロファイルに合わせる（[doc03:325](../../../docs/architecture/03-software-architecture.md:325)）。sensor 系の BEST_EFFORT は**使わない**（落ちた message が「流れの欠け」に見えてしまう）。
-- config: **`perception.terrain.enabled`**（gate・producer / `collision_monitor` の `cliff_scan` source と**同一キー**を同じ `bool()` で読む＝[04 追補 ⑩](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md:1048)）＋ **`perception.terrain.health.{stale_after_s, min_valid_fraction, frozen_repeats}`**（gate が true のときだけ **hard-index**。欠落は起動時 `KeyError`・範囲外/非有限/`bool` は `SourceThresholds` が `ValueError`）。**base に実値は 1 つも無い**（コメントアウト placeholder のみ・`OQ-OD4Y-o1`）。
+- config: **`perception.terrain.enabled`**（gate・producer / `collision_monitor` の `cliff_scan` source と**同一キー**を同じ `bool()` で読む＝[04 追補 ⑫](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md:1244)）＋ **`perception.terrain.health.{stale_after_s, min_valid_fraction, frozen_repeats}`**（gate が true のときだけ **hard-index**。欠落は起動時 `KeyError`・範囲外/非有限/`bool` は `SourceThresholds` が `ValueError`）。**base に実値は 1 つも無い**（コメントアウト placeholder のみ・`OQ-OD4Y-o1`）。
 - module: `warehouse_safety.terrain_health.coverage_observation`（#722 アダプタ）/ `warehouse_safety.sensor_health.SensorHealthMonitor`・`SourceThresholds`（#680 判定核）。**どちらも 1 文字も変更していない**。
 
 **提供 (produce)**

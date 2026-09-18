@@ -739,8 +739,11 @@ def test_on_terrain_coverage_marshals_only() -> None:
 
 def test_bot_state_judges_once_on_the_ticks_own_clock() -> None:
     """One evaluate per bot per tick on the SAME `now` the tick sampled — the monitor's
-    health_epoch is stateful, so a second evaluation would double-advance it, and a fresh
-    clock read here would break the single-clock invariant the other guards rest on."""
+    every reason in one BotState then describes the same instant. (Calling evaluate twice
+    would NOT double-advance health_epoch — sensor_health.py:372 bumps it only when the
+    verdict map changes — so this is a clock-coherence rule, not a double-count guard.)
+    A fresh clock read here would break the single-clock invariant the other guards rest
+    on (test_guardian_displacement_gate.py §12 pins the same property for snapshot)."""
     fn = _function(_tree(), "_bot_state")
     evaluates = [
         n
@@ -768,6 +771,45 @@ def test_bot_state_judges_once_on_the_ticks_own_clock() -> None:
     assert len(calls) == 1
     kw = {k.arg for k in calls[0].keywords}
     assert {"terrain_source", "terrain_verdict", "terrain_health_epoch"} <= kw
+
+
+def test_bot_state_marshals_the_report_itself_not_a_constant() -> None:
+    """Pin the VALUE EXPRESSIONS, not just the kwarg names (the shape
+    ``test_guardian_scan_stale.py:410-424`` uses for scan_age / odom_seen).
+
+    Names alone are not a contract: with only a name check, ``…verdicts[…].name`` ->
+    ``.value`` (lower-case spellings, which rule (7) treats as unrecognised -> a PERMANENT
+    estop) and ``terrain_verdict=None if report is None else "OK"`` (the judgement thrown
+    away -> FAIL-OPEN, the exact hole this slice exists to close) both slip through the
+    whole suite. The pure half cannot see either one — it is handed a BotState — so the
+    marshalling has to be pinned here, character for character."""
+    fn = _function(_tree(), "_bot_state")
+    calls = [
+        c
+        for c in ast.walk(fn)
+        if isinstance(c, ast.Call)
+        and isinstance(c.func, ast.Attribute)
+        and c.func.attr == "BotState"
+    ]
+    assert len(calls) == 1
+    kwmap = {k.arg: ast.unparse(k.value) for k in calls[0].keywords}
+    assert kwmap["terrain_source"] == "None if report is None else TERRAIN_SOURCE"
+    assert (
+        kwmap["terrain_verdict"]
+        == "None if report is None else report.verdicts[TERRAIN_SOURCE].name"
+    ), "the verdict must be the monitor's own SourceVerdict.name for THIS source"
+    assert kwmap["terrain_health_epoch"] == "None if report is None else report.health_epoch"
+    # ... and `report` itself must be the monitor's judgement on the tick's `now`.
+    reports = [
+        s
+        for s in fn.body
+        if isinstance(s, ast.Assign)
+        and any(isinstance(t, ast.Name) and t.id == "report" for t in s.targets)
+    ]
+    assert len(reports) == 1
+    assert ast.unparse(reports[0].value) == "None if monitor is None else monitor.evaluate(now)", (
+        "report must come from monitor.evaluate(now), not a constant or a cached value"
+    )
 
 
 def test_check_safety_still_samples_one_now_and_calls_evaluate_once() -> None:

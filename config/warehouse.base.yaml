@@ -208,7 +208,7 @@ perception:
     # pixel_stride: <実測>           # int・>=1。行/列の間引き（裁定 7 :942・性能 OQ-OD4Y-i4）
     # ── X2 health しきい値（**Emergency Guardian が消費**・04 追補 ⑬ §4 :1270）
     #    上の 23 本と違い `terrain_publisher` の param **ではない**（消費者が別 = L1 Guardian）。
-    #    ここに置くのは ① arming が同じ `perception.terrain.enabled` 1 キーだから（04 追補 ⑩ :1048
+    #    ここに置くのは ① arming が同じ `perception.terrain.enabled` 1 キーだから（04 追補 ⑫ :1244
     #    「ON/OFF の真実は本キー 1 つ」）、② `safety:` 節への挿入は warehouse.base.yaml:35 以降を指す
     #    下流の行ピンを全部ずらすから（#165）。base 末尾への append は行ピンを 1 つも動かさない。
     #    `<…>` placeholder 記法には**混ぜない**: その記法の網羅性は

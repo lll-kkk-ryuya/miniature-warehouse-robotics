@@ -234,7 +234,7 @@ class EmergencyGuardian(Node):
         # --- X2 terrain-observation health (04 追補 ⑬ = the OQ-OD95 = A ruling) --------
         # Armed by the SAME config key that arms the producer (terrain_publisher) and the
         # collision_monitor cliff_scan source, read with the SAME bool() and never `is
-        # True` (04 追補 ⑩ :1048 "ON/OFF の真実は本キー 1 つ"): tightening it here would
+        # True` (04 追補 ⑫ :1244 "ON/OFF の真実は 1 つ"): tightening it here would
         # let a truthy non-bool arm the producer while leaving the health monitor blind.
         # OFF -> no monitor, no subscription, no new estop reason = bit-identical to
         # before this slice (and that is the base default: dev/Gazebo has no depth camera).
@@ -365,10 +365,14 @@ class EmergencyGuardian(Node):
         # scan_stale inputs (doc12 末尾【2026-09-16 追補】(3)): same `now` as pose_age.
         last_scan = self._last_scan_t[bot]
         scan_age = None if last_scan is None else now - last_scan
-        # 04 追補 ⑬: judge the terrain stream ONCE per bot per tick, on the tick's OWN
-        # `now` (no clock read here). evaluate() advances health_epoch when the verdict map
-        # changes, so a second call would double-count the version. Absent monitor (gate
-        # OFF) -> None everywhere = the safe absence the pure rule is silent on.
+        # 04 追補 ⑬: ONE CLOCK, ONE JUDGEMENT PER TICK. The terrain stream is judged
+        # here, on the tick's OWN `now` (no clock read in this method), so every reason in
+        # this tick's BotState describes the same instant — the same invariant the pose /
+        # odom / scan ages already rest on. (evaluate() is safe to call more than once:
+        # sensor_health.py:372-374 bumps health_epoch only when the verdict MAP changes.
+        # Once per tick is a clock-coherence rule, not a double-count guard.) Absent
+        # monitor (gate OFF) -> None everywhere = the safe absence the pure rule is
+        # silent on.
         monitor = self._terrain.get(bot)
         report = None if monitor is None else monitor.evaluate(now)
         return gl.BotState(
