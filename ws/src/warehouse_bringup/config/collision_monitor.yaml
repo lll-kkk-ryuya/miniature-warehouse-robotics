@@ -73,7 +73,7 @@ collision_monitor:
       enabled: true
     # scan = real MS200 (doc03:78); virtual_scan = the other robot as a virtual obstacle
     # (Mode A/B only, doc03:109). Both relative -> /bot{n}/{scan,virtual_scan}.
-    observation_sources: ["scan", "virtual_scan"]
+    observation_sources: ["scan", "virtual_scan", "cliff_scan"]
     scan:
       type: "scan"
       topic: "scan"
@@ -88,3 +88,23 @@ collision_monitor:
       # driving cannot false-STOP and no per-source key exists. The Jazzy-only override
       # `source_timeout: 0.0` (PR#229) was REMOVED (doc12 追補 (2)). On Jazzy+ (key declared, invalid
       # source = STOP) nav2_bringup.launch.py injects it from ROS_DISTRO (collision_monitor_distro.py) — not here.
+    cliff_scan:
+      type: "scan"
+      topic: "cliff_scan"
+      # DEFAULT-OFF, launch-armed. The producer (warehouse_perception terrain_publisher,
+      # docs/architecture/03-software-architecture.md:322) is itself default-OFF and the dev
+      # cockpit (Jazzy, Gazebo) has no depth camera at all, so declaring this source ENABLED
+      # would stop the cockpit: on Jazzy an enabled source with no data is an "invalid source"
+      # STOP (jazzy collision_monitor_node.cpp:437-447, 参照日 2026-09-18). BOTH distros skip a
+      # DISABLED source before that check (humble collision_monitor_node.cpp:357-360 / jazzy
+      # :436), so `enabled: false` is the safe default here; nav2_bringup.launch.py flips it to
+      # true from config `perception.terrain.enabled` (warehouse_bringup.collision_monitor_
+      # distro.cliff_sources) — same "yaml is the Humble truth, launch injects" shape as the
+      # virtual_scan override above.
+      enabled: false
+      # NO per-source `source_timeout` — deliberate (OQ-OD44 裁定 = scan 型, 04 追補 ⑩ §1):
+      # silence is NOT normal for a cliff sensor (unlike virtual_scan, which is silent by design
+      # when the robots are >1.0 m apart). On Jazzy+ the node-level 1.0 s therefore makes a dead
+      # cliff_scan a STOP (the wanted direction); on the Humble TARGET the same dropout is
+      # FAIL-OPEN (points are simply dropped, doc12 末尾【2026-09-16 追補】(1)) and the liveness
+      # duty stays OUTSIDE the monitor — X2 freshness (04:66) / Guardian scan_stale (doc12 追補 (3)).

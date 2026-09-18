@@ -25,7 +25,13 @@
 
 ## 【2026-09-18 追記】生産する契約 追補 — `config/nav2_params.yaml` 崖専用 layer ＋ `collision_monitor.yaml` source `cliff_scan`（レーン A `feat/nav-cliff-layer` が記入・stub 先置き）
 
-（未記入 — レーン A）
+**produce（追加）**: `config/nav2_params.yaml` の **`cliff_layer`**（`nav2_costmap_2d::ObstacleLayer` の**別 instance**・local `:247` / global `:293`・`plugins` は `:216` / `:259`）＝ source は `cliff_scan` 1 本のみ・`marking: true` / `clearing: false`・`obstacle_max_range: 2.5`・`max_obstacle_height: 2.0`（**どちらも Humble 既定 / 在ファイル `scan` と同値＝新しい数値ではない**。per-source `max_obstacle_height` の既定 0.0 は「TF 後に z が厳密 0.0 の点」しか通さない fail-open ゆえ明示）。`inflation_layer` は最後のまま＝崖セルも膨張対象。**別 instance にする理由**＝`clearing:false` だけでは同一 layer 内の別 source の raytracing から崖を守れない（[04:380](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md:380) [D]・instance ごとに grid 独立 → `updateCosts` が max 合成）。／ `config/collision_monitor.yaml` の **source `cliff_scan`**（`type: scan`・`topic: cliff_scan`（相対）・**`enabled: false` 既定**・per-source `source_timeout` **無し**＝`OQ-OD44` 裁定 = scan 型）。／ `warehouse_bringup.collision_monitor_distro.cliff_sources(config)`（純関数・`[]` か `[{"cliff_scan": {"enabled": True}}]`）。
+
+**consume（追加）**: `/bot{n}/cliff_scan`（`sensor_msgs/LaserScan`・producer = `warehouse_perception.terrain_publisher`・[doc03:322](../../../docs/architecture/03-software-architecture.md:322)）を **costmap `cliff_layer` と `collision_monitor` の dual-consumer** として購読。／ config キー **`perception.terrain.enabled`**（**レーン C が `config/warehouse.base.yaml` に置く。本パッケージは読むだけ・値を定義しない**）— `nav2_bringup.launch.py` が `load_config()` 経由で読み、真のときだけ CM source を arming する。
+
+**なぜ既定 OFF＋launch arming か**: producer は既定 OFF で、dev cockpit（Jazzy + Gazebo）には depth camera が無い。Jazzy は **enabled な source の無データ = `invalid source` STOP**（jazzy `collision_monitor_node.cpp:437-447`・参照日 2026-09-18）なので無条件に足すと cockpit が即停止する。**disabled な source は両 distro でその判定より前に skip**（humble `:357-360` / jazzy `:437`）＝既定 OFF は完全に不活性。costmap 側は gate 不要（`expected_update_rate` 既定 0.0 → `isCurrent()` 常時 true・空 grid は max 合成で無影響）＝**追加 gate を増やさない**。
+
+**残件（隠さない）**: 崖セルを clear する経路が無く（`FLOOR_CONFIRMED` は LaserScan に落ちない）**global costmap の偽 DROP は残り続ける**（local は rolling で流れる）＝`OQ-OD4Y-l2`。`obstacle_max_range` と producer `range_max_m` の整合点は未決＝`OQ-OD4Y-l1`。**ROS 無しの host 検証のみ**（YAML / AST / 純関数 unit）で、costmap が崖を marking する画は未観測＝`OQ-OD4Y-l5`。設計・裁定・一次情報の正本 = [04 追補 ⑩](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md:1013)。**テスト**: `tests/unit/test_cliff_layer_config.py`（`unit`+`safety`）。**凍結契約変更なし**。
 
 <!-- spacer: 並列 append の hunk 衝突回避（区画間 6 行超） -->
 <!-- spacer: 並列 append の hunk 衝突回避（区画間 6 行超） -->

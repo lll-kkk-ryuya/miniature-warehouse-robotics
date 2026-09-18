@@ -213,7 +213,7 @@ local_costmap:
       height: 3
       resolution: 0.01   # doc09:25
       robot_radius: 0.075   # = warehouse_description.robot_dimensions.ROBOT_RADIUS (R-42)
-      plugins: ["obstacle_layer", "inflation_layer"]
+      plugins: ["obstacle_layer", "cliff_layer", "inflation_layer"]
       # Multi-Robot Costmap Layer = virtual LaserScan injection (doc11a:269-301).
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
@@ -244,7 +244,7 @@ local_costmap:
         # plannable while wall-hugging stays penalised (#125 / R-42 "壁直近のみ高コスト").
         inflation_radius: 0.085
         cost_scaling_factor: 10.0
-
+      cliff_layer: {plugin: "nav2_costmap_2d::ObstacleLayer", enabled: true, observation_sources: cliff_scan, cliff_scan: {topic: cliff_scan, data_type: "LaserScan", marking: true, clearing: false, obstacle_max_range: 2.5, max_obstacle_height: 2.0}}   # 崖専用 ObstacleLayer instance（04:178/:380/:988）: 自分の grid と observation buffer を持つ別 instance なので obstacle_layer の raytracing では消えない。値は Humble 1.1.20 既定の明示（marking/clearing = obstacle_layer.cpp:145-146 / obstacle_max_range 2.5 = :147 / max_obstacle_height 2.0 = layer 既定 :82 ＋ in-file scan :227。per-source 既定 0.0 = :143 は z≠0 の点を全部落とす fail-open）。合成順は plugins 行・設計と残 OQ は 04 追補 ⑩。**FLOW 記法＋空行消費で NET-ZERO**＝:254/:256/:258/:259/:262/:274/:291/:300 の doc pin を割らない（#165）。
 global_costmap:
   global_costmap:
     ros__parameters:
@@ -256,7 +256,7 @@ global_costmap:
       resolution: 0.01   # doc09:25
       robot_radius: 0.075   # = ROBOT_RADIUS (R-42)
       track_unknown_space: true
-      plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
+      plugins: ["static_layer", "obstacle_layer", "cliff_layer", "inflation_layer"]
       static_layer:
         plugin: "nav2_costmap_2d::StaticLayer"
         map_subscribe_transient_local: true
@@ -290,7 +290,7 @@ global_costmap:
         plugin: "nav2_costmap_2d::InflationLayer"
         inflation_radius: 0.085   # R-42 bottleneck: see local_costmap.inflation_layer (#125)
         cost_scaling_factor: 10.0
-
+      cliff_layer: {plugin: "nav2_costmap_2d::ObstacleLayer", enabled: true, observation_sources: cliff_scan, cliff_scan: {topic: cliff_scan, data_type: "LaserScan", marking: true, clearing: false, obstacle_max_range: 2.5, max_obstacle_height: 2.0}}   # local と同一（04 追補 ⑩ §2）。global は rolling でないため崖セルは**残り続ける**（clearing source が無く 04:178 の「新しい床面観測でのみ clear」は LaserScan 単独では作れない＝OQ-OD4Y-l2）。planner を崖の上へ通さないためにこちらにも要る。NET-ZERO 行（同上）。
 planner_server:
   ros__parameters:
     use_sim_time: true

@@ -43,7 +43,7 @@ from launch.substitutions import LaunchConfiguration, PathJoinSubstitution, Pyth
 from launch_ros.actions import Node, PushRosNamespace, SetParameter
 from launch_ros.substitutions import FindPackageShare
 from nav2_common.launch import ReplaceString, RewrittenYaml
-from warehouse_bringup.collision_monitor_distro import virtual_scan_timeout_overrides
+from warehouse_bringup.collision_monitor_distro import cliff_sources, virtual_scan_timeout_overrides
 from warehouse_interfaces.config import load_config
 from warehouse_interfaces.safety import MAX_LINEAR_VELOCITY
 
@@ -210,13 +210,13 @@ def _per_robot_group(
             executable="collision_monitor",
             name="collision_monitor",
             output="screen",
-            # The yaml is the Humble truth (no per-source source_timeout there, #682). On Jazzy+
-            # the key IS declared and an invalid source is a STOP, so the by-design-silent
-            # virtual_scan needs `source_timeout: 0.0` — injected here from ROS_DISTRO, AFTER the
-            # file so it wins (doc12 追補 (2) 追記; warehouse_bringup.collision_monitor_distro).
+            # The yaml is the static Humble truth; everything CONDITIONAL is injected here,
+            # AFTER the file so it wins: the Jazzy-only `virtual_scan.source_timeout: 0.0`
+            # (ROS_DISTRO) and the `cliff_scan` arming (config, 04 追補 ⑩ §3). #682 / doc12 追補 (2).
             parameters=[
                 configured_collision_params,
                 *virtual_scan_timeout_overrides(os.environ.get("ROS_DISTRO")),
+                *cliff_sources(load_config()),
             ],
             condition=collision_active,
         ),
