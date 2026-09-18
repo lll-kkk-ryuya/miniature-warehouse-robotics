@@ -26,6 +26,7 @@ The pinned value 2.0 is not a new number: it is the Humble layer-level default
 ``test_nav2_params_safety.py`` (velocity / radius pins).
 """
 
+import re
 from pathlib import Path
 
 import pytest
@@ -129,4 +130,58 @@ def test_height_window_is_typed_double_for_the_rclcpp_declaration(which: str) ->
         value = params["max_obstacle_height"]
         assert isinstance(value, float) and not isinstance(value, bool), (
             f"{which}.{layer}.{source}: max_obstacle_height must be a YAML float, got {value!r}"
+        )
+
+
+# ── URDF-oracle window pin (PR #727: the measured follow-up to OQ-OD4Y-l4) ───────────────
+#
+# The pins above fix the VALUE (2.0). This block pins the PHYSICS the value has to satisfy:
+# the window must contain each source's projected z, where the real ``scan`` projects at the
+# LiDAR mount height (URDF ``lidar_joint`` origin — evaluated from the xacro properties, not
+# copied) and base_link-emitted sources (virtual_scan.py:72 / terrain_node.py:148) at 0.0.
+# Measured 2026-09-18 in the mwr-sim:jazzy container (standalone nav2_costmap_2d fed the
+# repo's global obstacle_layer block, static TF z = 0.080, 1 m fake scan ring at 10 Hz): with
+# the pre-#726 file the global scan marked 0/6400 cells; with 2.0 it marked 150/6400.
+
+_URDF = Path(__file__).resolve().parents[2] / "ws/src/warehouse_description/urdf/minicar.urdf.xacro"
+_PER_SOURCE_DEFAULT_MIN_OBSTACLE_HEIGHT = 0.0  # obstacle_layer.cpp:142 (humble) / :149 (jazzy)
+_REAL_SCAN_TOPIC = "scan"  # /bot{n}/scan, header.frame_id = bot{n}/lidar_link (doc03:78)
+
+
+def _lidar_z_above_base_link() -> float:
+    """Evaluate the URDF ``lidar_joint`` origin z with the xacro properties substituted."""
+    text = _URDF.read_text()
+    props = {
+        name: float(val)
+        for name, val in re.findall(r'<xacro:property name="(\w+)" value="([-+0-9.eE]+)"/>', text)
+    }
+    joint = re.search(r'<joint name="lidar_joint"[^>]*>(.*?)</joint>', text, re.S)
+    assert joint is not None, "lidar_joint missing from the URDF (frozen frame, doc09 TF tree)"
+    xyz = re.search(r'<origin[^>]*xyz="([^"]+)"', joint.group(1))
+    assert xyz is not None
+    resolved = re.sub(
+        r"\$\{([^}]+)\}",
+        lambda m: repr(eval(m.group(1), {"__builtins__": {}}, dict(props))),
+        xyz.group(1),
+    )
+    return float(resolved.split()[2])
+
+
+def test_urdf_lidar_sits_above_base_link() -> None:
+    # Premise of the window pin: the real scan's projected z is the mount height, which is > 0,
+    # i.e. exactly the value the 0.0 per-source default rejects (the measured 0/6400 case).
+    assert _lidar_z_above_base_link() > 0.0
+
+
+@pytest.mark.parametrize("which", _COSTMAPS)
+def test_height_window_contains_each_source_projected_z(which: str) -> None:
+    # A future min_obstacle_height > 0 (or a max below the mount) would re-open the trap while
+    # every value-only pin above stays green; the projected z is the thing that must fit.
+    lidar_z = _lidar_z_above_base_link()
+    for layer, source, params in _observation_sources(which):
+        z = lidar_z if params["topic"] == _REAL_SCAN_TOPIC else 0.0
+        lo = params.get("min_obstacle_height", _PER_SOURCE_DEFAULT_MIN_OBSTACLE_HEIGHT)
+        hi = params["max_obstacle_height"]
+        assert lo <= z <= hi, (
+            f"{which}.{layer}.{source}: window [{lo}, {hi}] excludes projected z={z}"
         )
