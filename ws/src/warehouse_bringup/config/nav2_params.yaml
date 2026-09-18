@@ -277,7 +277,7 @@ global_costmap:
           data_type: "LaserScan"
           marking: true
           clearing: true
-          max_obstacle_height: 2.0   # EXPLICIT (OQ-OD4Y-l4): with the 0.0 default a lidar_link mount height > 0 would drop EVERY point here (unmeasured; 04 追補 ⑩ §5). See the note below.
+          max_obstacle_height: 2.0   # EXPLICIT (OQ-OD4Y-l4): with the 0.0 default a lidar_link mount height > 0 dropped EVERY point here (measured: 0/6400 lethal cells pre-#726 -> 150/6400 after; PR #727, 04 追補 ⑩ §5). See the note below.
           obstacle_max_range: 2.5
           raytrace_max_range: 3.0
         # max_obstacle_height is EXPLICIT on EVERY source (OQ-OD4Y-l4 / 04 追補 ⑩ §5): the PER-SOURCE default is 0.0 (humble

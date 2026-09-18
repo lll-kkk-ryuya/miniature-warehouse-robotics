@@ -156,7 +156,7 @@
 
 ### 前提・未確定 (TODO)
 
-- `# TODO(実測)` global の実 `scan` が**修正前に**全点を落としていたか（`lidar_link` 取付高さ > 0 ＝
+- `# RESOLVED(実測 PR #727)` global の実 `scan` が**修正前に**全点を落としていたか（`lidar_link` 取付高さ > 0 ＝
   04:1070 の推定）は TF 実値で未確認。本 PR は罠を塞いだだけで「以前は落ちていた」とは言わない。 **→ 実測済（PR #727）**: Jazzy container の standalone costmap に修正前の本節を投入し lethal **0/6400**（実効 0.0・TF z 0.080）→ #726 後 **150/6400** [D]＝**落ちていた**（04:1069 に記録）。
 - `# TODO(OQ-OD4Y-l3)` 下側 `min_obstacle_height`（既定 0.0）は据え置き。TF 後の z が負になる構成
   （IMU 姿勢反映・`base_footprint` 導入）では別途裁定。
