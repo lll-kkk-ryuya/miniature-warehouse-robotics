@@ -116,7 +116,7 @@
   `_terrain_group` 呼び出し削除・config キー経路 typo・`cliff_scan` を `cmd_vel` へ remap・
   base の `enabled: true`）。
 
-## 【2026-09-18 追記】生産する契約 追補 — `config/nav2_params.yaml` 全 observation source の `max_obstacle_height` 明示（`OQ-OD4Y-l4` 解決・`feat/nav-costmap-height-window`）
+## 【2026-09-18 追記】生産する契約 追補 — `config/nav2_params.yaml` 全 observation source の `max_obstacle_height` 明示（`OQ-OD4Y-l4` 解決・`feat/nav-costmap-height-window`・PR #726）
 
 **レイヤ**: costmap 設定 = **06 Navigation** の consumer 側 config（[layer-annotation.md](../../../.claude/rules/layer-annotation.md)）。
 `cmd_vel` 経路・twist_mux 優先度・L2 / L1 / L0'・凍結契約 `warehouse_interfaces` は**不変**。
