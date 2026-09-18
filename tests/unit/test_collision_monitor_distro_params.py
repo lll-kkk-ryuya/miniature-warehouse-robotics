@@ -98,12 +98,17 @@ def test_launch_passes_ros_distro_env_into_the_collision_monitor_parameters() ->
     # the Humble-truth file comes FIRST so a later override wins where the key is declared
     first = params.elts[0]
     assert isinstance(first, ast.Name) and first.id == "configured_collision_params"
-    starred = [e for e in params.elts if isinstance(e, ast.Starred)]
+    # Other CONDITIONAL overrides may be spread alongside (the config-keyed cliff_scan arming,
+    # 04 追補 ⑩ §3 / tests/unit/test_cliff_layer_config.py); this one must appear exactly once.
+    starred = [
+        e
+        for e in params.elts
+        if isinstance(e, ast.Starred)
+        and isinstance(e.value, ast.Call)
+        and getattr(e.value.func, "id", None) == "virtual_scan_timeout_overrides"
+    ]
     assert len(starred) == 1, "expected exactly one *virtual_scan_timeout_overrides(...) entry"
     call = starred[0].value
-    assert isinstance(call, ast.Call) and getattr(call.func, "id", None) == (
-        "virtual_scan_timeout_overrides"
-    )
     assert [ast.unparse(a) for a in call.args] == ["os.environ.get('ROS_DISTRO')"]
 
 

@@ -25,7 +25,13 @@
 
 ## 【2026-09-18 追記】生産する契約 追補 — `config/nav2_params.yaml` 崖専用 layer ＋ `collision_monitor.yaml` source `cliff_scan`（レーン A `feat/nav-cliff-layer` が記入・stub 先置き）
 
-（未記入 — レーン A）
+**produce（追加）**: `config/nav2_params.yaml` の **`cliff_layer`**（`nav2_costmap_2d::ObstacleLayer` の**別 instance**・local `:247` / global `:293`・`plugins` は `:216` / `:259`）＝ source は `cliff_scan` 1 本のみ・`marking: true` / `clearing: false`・`obstacle_max_range: 2.5`・`max_obstacle_height: 2.0`（**どちらも Humble 既定 / 在ファイル `scan` と同値＝新しい数値ではない**。per-source `max_obstacle_height` の既定 0.0 は「TF 後に z が厳密 0.0 の点」しか通さない fail-open ゆえ明示）。`inflation_layer` は最後のまま＝崖セルも膨張対象。**別 instance にする理由**＝`clearing:false` だけでは同一 layer 内の別 source の raytracing から崖を守れない（[04:380](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md:380) [D]・instance ごとに grid 独立 → `updateCosts` が max 合成）。／ `config/collision_monitor.yaml` の **source `cliff_scan`**（`type: scan`・`topic: cliff_scan`（相対）・**`enabled: false` 既定**・per-source `source_timeout` **無し**＝`OQ-OD44` 裁定 = scan 型）。／ `warehouse_bringup.collision_monitor_distro.cliff_sources(config)`（純関数・`[]` か `[{"cliff_scan": {"enabled": True}}]`）。
+
+**consume（追加）**: `/bot{n}/cliff_scan`（`sensor_msgs/LaserScan`・producer = `warehouse_perception.terrain_publisher`・[doc03:322](../../../docs/architecture/03-software-architecture.md:322)）を **costmap `cliff_layer` と `collision_monitor` の dual-consumer** として購読。／ config キー **`perception.terrain.enabled`**（**レーン C が `config/warehouse.base.yaml` に置く。本パッケージは読むだけ・値を定義しない**）— `nav2_bringup.launch.py` が `load_config()` 経由で読み、真のときだけ CM source を arming する。
+
+**なぜ既定 OFF＋launch arming か**: producer は既定 OFF で、dev cockpit（Jazzy + Gazebo）には depth camera が無い。Jazzy は **enabled な source の無データ = `invalid source` STOP**（jazzy `collision_monitor_node.cpp:437-447`・参照日 2026-09-18）なので無条件に足すと cockpit が即停止する。**disabled な source は両 distro でその判定より前に skip**（humble `:357-360` / jazzy `:437`）＝既定 OFF は完全に不活性。costmap 側は gate 不要（`expected_update_rate` 既定 0.0 → `isCurrent()` 常時 true・空 grid は max 合成で無影響）＝**追加 gate を増やさない**。
+
+**残件（隠さない）**: 崖セルを clear する経路が無く（`FLOOR_CONFIRMED` は LaserScan に落ちない）**global costmap の偽 DROP は残り続ける**（local は rolling で流れる）＝`OQ-OD4Y-l2`。`obstacle_max_range` と producer `range_max_m` の整合点は未決＝`OQ-OD4Y-l1`。**ROS 無しの host 検証のみ**（YAML / AST / 純関数 unit）で、costmap が崖を marking する画は未観測＝`OQ-OD4Y-l5`。設計・裁定・一次情報の正本 = [04 追補 ⑩](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md:1009)。**テスト**: `tests/unit/test_cliff_layer_config.py`（`unit`+`safety`）。**凍結契約変更なし**。
 
 <!-- spacer: 並列 append の hunk 衝突回避（区画間 6 行超） -->
 <!-- spacer: 並列 append の hunk 衝突回避（区画間 6 行超） -->
@@ -38,4 +44,119 @@
 
 ## 【2026-09-18 追記】生産する契約 追補 — `nav2_bringup.launch.py` `terrain_publisher` 群 ＋ `config/warehouse.base.yaml` `perception.terrain.*`（レーン C `feat/bringup-terrain-publisher` が記入・stub 先置き）
 
-（未記入 — レーン C）
+**レイヤ**: launch / config = **配線**（正準対応表に行を持たない＝帰属未定・actuation なし。
+[layer-annotation.md](../../../.claude/rules/layer-annotation.md)）。起動する node は
+**自律走行（安全層外）の producer**。**L2 / L1 / L0' 不変更**・`twist_mux` 入力 2 本のまま。
+正本 = `docs/mode-outdoor/04-perception-sidewalk-and-signals.md` の **追補 ⑫**
+（hand-off ③ = [追補 ⑨ §4 :992](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md:992) の実装記録。
+追補 ⑫ 自体には行 pin を張らない＝同 doc 末尾はレーン A / B の stub 充填で動くため）。
+
+### 提供 (produce)
+
+- `launch/nav2_bringup.launch.py` に **`_terrain_config()` / `_terrain_group(robot, use_sim_time)`**
+  （`_speed_band_group` の後ろに append・呼び出しは per-robot ループの `_speed_band_group` 直後）。
+  per-bot で `GroupAction([PushRosNamespace(robot), SetParameter("use_sim_time", …),
+  Node(package="warehouse_perception", executable="terrain_publisher",
+  name="terrain_publisher", parameters=[…])])` を 1 本組む。`collision_monitor` 節
+  （nav-traffic / レーン A の区画）は**不変更**。
+- `config/warehouse.base.yaml` に **`perception.terrain.*`**（`speed_bands` の後ろに append）:
+  実キーは **`enabled: false` のみ**。続く **23 キーはコメントアウトの placeholder**
+  （入力 topic 2 本 ＋ ROS param 21 本 = `PARAM_KEYS`）で、各行に単位・検証条件・出典 file:line
+  を持つ。**実値は 1 つも無い**（カメラ未購入・車体未組立＝
+  [04:992](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md:992) の実測ゲート。
+  実値は env overlay `config/<env>/warehouse.yaml`＝[environments.md](../../../.claude/rules/environments.md)）。
+- **`perception.terrain.enabled` は ON/OFF の単一の真実**: producer（本 launch 群）と
+  consumer 側 gate（`collision_monitor` の `cliff_scan` source・レーン A）が同じキーを読む。
+
+### 消費 (consume)
+
+- `warehouse_interfaces.config.load_config`（既存依存・`perception` ブロックは**検証されない**＝
+  `_validate_safety` は `safety.*` のみ。検証は node 側 sentinel に一本化。契約 hub 不変更）。
+- `warehouse_perception.terrain_node_core.PARAM_KEYS`（rclpy 非依存・**21 param 名の単一ソース**。
+  本数もキー名も launch 側に再列挙しない）。import は **`enabled` が真の経路の中だけ**＝
+  perception 未ビルドでも terrain OFF なら Nav2 は起動する。
+- console_script `terrain_publisher = warehouse_perception.terrain_node:main`
+  （`warehouse_perception/setup.py`）。`package.xml` の `<exec_depend>warehouse_perception</exec_depend>`
+  は速度帯スライスで宣言済み（`:27`）＝**本スライスで package.xml は不変更**。
+- 型の正本は `terrain_node.py` の `_SENTINELS`（**21 本の内訳 = int 5 / double 15 / str 1**。
+  23 本の面で str が 3 本になるのは入力 topic 2 本を足した数）。rclpy は宣言値から param 型を
+  固定するため、launch は **`PARAM_KEYS` の 21 本だけ**をその型へ変換する（`_TERRAIN_INT_KEYS` /
+  `_TERRAIN_STR_KEYS` / 残りは double）。**これは型の表であって既定値ではない**。
+- **入力 topic 2 本は変換せず生のまま転送する**。`str(None) == "None"` は**非空**文字列なので、
+  `str()` で包むと overlay の `depth_topic:`（YAML null）が node の空文字ガード
+  （`terrain_node.py:134`）を**すり抜け** `/bot{n}/None` を購読し「健康に見えたまま無言」になる。
+  生で渡せば宣言型 STRING が非 str を拒み起動が止まる（fail-closed）。unit が pin。
+
+### 前提・未確定 (TODO)
+
+- `# TODO(実測)` **23 キーの値は 1 つも決まっていない**。overlay を書けるのは
+  `OQ-OD45`（縁石 2 cm の分離距離）/ `OQ-OD4Q`（MinZ）/ `OQ-OD4Z-d1`（2 上限）の実測後。
+- `# TODO(dev sim)` dev（Gazebo）に depth camera が無いので dev overlay も未記入
+  （OFF のまま）。`use_sim_time` と depth stamp の関係は `OQ-OD4Y-n1`。
+- `# TODO(OQ-OD4Y-n2)` overlay 値の検証は「起動して落ちる」まで分からない
+  （組み合わせ条件は特に）。起動前 lint に寄せるかは未決。
+- `# TODO(OQ-OD4Y-n3)` int キーは `int(value)` 変換ゆえ非整数値が**黙って丸まる**。
+- `# TODO(OQ-OD4Y-n4)` 2 台構成で 1 カメラを絶対名で指すと両 bot に同じ崖が出る
+  （`speed_bands.source_topic` と同型の未決）。
+- `# TODO(OQ-OD4Y-n5)` [productization/01 L1 行](../../../docs/productization/01-commercial-box-map.md:185)
+  の「launch / config / consumer 側は未配線」が本スライスで古くなる（編集境界外＝統合側の残件）。
+
+### テスト（レーン C）
+
+- `tests/unit/test_terrain_bringup_wiring.py`（marker `unit` + `safety`・**AST + YAML のみ**＝
+  `launch_ros` / `nav2_common` / rclpy 不要で pure CI でも走る。
+  `test_speed_band_bringup_wiring.py` と同型）: 配線の存在（per-robot ループから 1 回）／
+  namespace push と `use_sim_time`／OFF 時 `[]` が**生成より前**に返る／config キー経路
+  `perception` → `terrain`／転送キー集合 == node の宣言面（`PARAM_KEYS` と `_SENTINELS` に
+  機械照合・本数を再ハードコードしない）／欠落キーを埋めない／**数値リテラル 0 個**／
+  int・str 変換表 == `_SENTINELS` の型／`cmd_vel`・`stop_*`・`speed_limit`・`remappings` 不在／
+  base が `enabled: false` 単独／placeholder が 23 本を網羅。
+- mutation **9/9 KILLED**（`enabled` gate 除去・`ray_count` を double 転送・launch に
+  `pixel_stride: 1` の既定・`camera_info_topic` 不転送・欠落キーを既定で埋める・
+  `_terrain_group` 呼び出し削除・config キー経路 typo・`cliff_scan` を `cmd_vel` へ remap・
+  base の `enabled: true`）。
+
+## 【2026-09-18 追記】生産する契約 追補 — `config/nav2_params.yaml` 全 observation source の `max_obstacle_height` 明示（`OQ-OD4Y-l4` 解決・`feat/nav-costmap-height-window`・PR #726）
+
+**レイヤ**: costmap 設定 = **06 Navigation** の consumer 側 config（[layer-annotation.md](../../../.claude/rules/layer-annotation.md)）。
+`cmd_vel` 経路・twist_mux 優先度・L2 / L1 / L0'・凍結契約 `warehouse_interfaces` は**不変**。
+正本 = [04 追補 ⑩ §5 `OQ-OD4Y-l4`](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md:1069)（同一行に解決注記）。
+一次情報 = Nav2 `humble`（参照日 2026-09-18・[D] 原文取得）: `obstacle_layer.cpp:143`（per-source 既定 **0.0**）/
+`:82`（layer 既定 2.0＝別フィルタ）/ `observation_buffer.cpp:143-144`（TF 後に `min <= z <= max` だけ残す）。
+
+### 提供 (produce)
+
+- `config/nav2_params.yaml`: `nav2_costmap_2d::ObstacleLayer` の**全 instance × 全 source**が per-source
+  `max_obstacle_height: 2.0` を明示する。追加 3 本 = global `scan` `:280` / local `virtual_scan` `:235` /
+  global `virtual_scan` `:288`（既存の local `scan` `:227` と `cliff_scan` `:247` / `:293` は元から明示）。
+  値は Humble layer 既定（`obstacle_layer.cpp:82`）＝在ファイル `:227` と同値で**新数値なし**。高さ窓を広げる
+  意図ではなく、「省略 → per-source 既定 0.0 → TF 後 z が厳密に 0.0 の点しか通らない」罠（`lidar_link` の
+  取付高さ > 0 なら全点消失 = fail-open）を塞ぐだけ。
+- **記法**: global `virtual_scan` は 1 行 flow mapping ＋説明コメント 5 行（`:283-288`）、local は inflation
+  コメントの再折返し（6→5 行・`:240-244`）で **net-zero（342 行のまま）**＝`:245` / `:291` / `:293` / `:300`
+  ほかの下流 pin は不変（#165・同ファイル `:202` / `:247` / `:293` と同じ手法）。動いた pin は `:282`→`:288`
+  （04:1071）と `:239-246`→`:240-246`（doc23:589）の 2 か所のみ＝同 PR で再 pin 済。
+- flow mapping が rcl で読める根拠は `:247` / `:293` と同じ: `rcl_yaml_param_parser/src/parse.c:834`
+  （`YAML_MAPPING_START_EVENT` に style 判定なし・humble・参照日 2026-09-18）。
+
+### 消費 (consume)
+
+- 変更なし（topic / 型 / frame は不変: `/bot{n}/scan` = `bot{n}/lidar_link`、`/bot{n}/virtual_scan` =
+  `bot{n}/base_link`（`virtual_scan.py:72`）、`/bot{n}/cliff_scan` = `base_link`）。
+
+### テスト
+
+- `tests/unit/test_costmap_observation_height_window.py`（`unit` + `safety`・純 YAML・ROS 不要）:
+  `plugins` に列挙された ObstacleLayer instance を**source 名を列挙せず**掃引し、全 source に (a) キーの明示
+  (b) 値 == 2.0（layer 既定＝独立オラクル・実装読み返しでない） (c) `> 0.0`（per-source 既定の罠） (d) YAML
+  float（rclcpp は宣言型 double を強制＝int リテラルは起動時に落ちる）を pin。掃引が空にならないことを
+  別 test で pin（`OQ-OD4Y-l4` が対象にした 4 source を含む）。mutation **5/5 KILLED**（global
+  `virtual_scan` のキー削除・local `virtual_scan` = 0.0・global `scan` = `2`（int）・local `virtual_scan`
+  = 1.5・global `observation_sources` から `virtual_scan` を落とす）。
+
+### 前提・未確定 (TODO)
+
+- `# TODO(実測)` global の実 `scan` が**修正前に**全点を落としていたか（`lidar_link` 取付高さ > 0 ＝
+  04:1070 の推定）は TF 実値で未確認。本 PR は罠を塞いだだけで「以前は落ちていた」とは言わない。
+- `# TODO(OQ-OD4Y-l3)` 下側 `min_obstacle_height`（既定 0.0）は据え置き。TF 後の z が負になる構成
+  （IMU 姿勢反映・`base_footprint` 導入）では別途裁定。

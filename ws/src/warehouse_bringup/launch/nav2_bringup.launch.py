@@ -43,7 +43,7 @@ from launch.substitutions import LaunchConfiguration, PathJoinSubstitution, Pyth
 from launch_ros.actions import Node, PushRosNamespace, SetParameter
 from launch_ros.substitutions import FindPackageShare
 from nav2_common.launch import ReplaceString, RewrittenYaml
-from warehouse_bringup.collision_monitor_distro import virtual_scan_timeout_overrides
+from warehouse_bringup.collision_monitor_distro import cliff_sources, virtual_scan_timeout_overrides
 from warehouse_interfaces.config import load_config
 from warehouse_interfaces.safety import MAX_LINEAR_VELOCITY
 
@@ -210,13 +210,13 @@ def _per_robot_group(
             executable="collision_monitor",
             name="collision_monitor",
             output="screen",
-            # The yaml is the Humble truth (no per-source source_timeout there, #682). On Jazzy+
-            # the key IS declared and an invalid source is a STOP, so the by-design-silent
-            # virtual_scan needs `source_timeout: 0.0` — injected here from ROS_DISTRO, AFTER the
-            # file so it wins (doc12 追補 (2) 追記; warehouse_bringup.collision_monitor_distro).
+            # The yaml is the static Humble truth; everything CONDITIONAL is injected here,
+            # AFTER the file so it wins: the Jazzy-only `virtual_scan.source_timeout: 0.0`
+            # (ROS_DISTRO) and the `cliff_scan` arming (config, 04 追補 ⑩ §3). #682 / doc12 追補 (2).
             parameters=[
                 configured_collision_params,
                 *virtual_scan_timeout_overrides(os.environ.get("ROS_DISTRO")),
+                *cliff_sources(load_config()),
             ],
             condition=collision_active,
         ),
@@ -378,6 +378,8 @@ def generate_launch_description() -> LaunchDescription:
             ld.add_action(action)
         for action in _speed_band_group(robot, use_sim_time, vx_max):
             ld.add_action(action)
+        for action in _terrain_group(robot, use_sim_time):
+            ld.add_action(action)
     return ld
 
 
@@ -450,6 +452,117 @@ def _speed_band_group(robot: str, use_sim_time, vx_max) -> list:
                     name="speed_band_publisher",
                     output="screen",
                     parameters=[band_params],
+                ),
+            ]
+        )
+    ]
+
+
+# The terrain publisher's node parameters whose DECLARED sentinel is an int / a str
+# rather than a double (terrain_node.py:83-111 `_SENTINELS`). rclpy fixes a parameter's
+# type from the value it was declared with, so a YAML `ray_count: 360.0` or a
+# `reference_offset_m: 0` is rejected at declare time even though the number is sane;
+# the forwarding loop below coerces each value to the sentinel's OWN type instead.
+# These two tuples are the only place that split is written down here, and the R-26
+# unit pins them against the node's `_SENTINELS` (read by AST — importing terrain_node
+# needs rclpy) so the table cannot drift. Everything else in `PARAM_KEYS` is a double.
+# They are NOT defaults: no value is named here, only a type.
+_TERRAIN_INT_KEYS = (
+    "min_points_per_cell",
+    "ransac_iterations",
+    "ransac_seed",
+    "ray_count",
+    "pixel_stride",
+)
+_TERRAIN_STR_KEYS = ("reference",)
+# The two input topics, declared "" (= subscribe nothing) by the node. They are NOT
+# part of `PARAM_KEYS` (the geometry / threshold set the marshalling core reads) and,
+# unlike those, they are forwarded WITHOUT coercion — see the loop below.
+_TERRAIN_TOPIC_KEYS = ("depth_topic", "camera_info_topic")
+
+
+def _terrain_config() -> dict:
+    """Terrain (cliff) publisher block from config (additive / safe-OFF).
+
+    The 21 geometric / threshold VALUES are deliberately absent from
+    ``config/warehouse.base.yaml``: the depth camera is not bought and the base is not
+    assembled, so every one of them waits on the same measurement gates as the
+    hand-off that asked for this wiring
+    (``docs/mode-outdoor/04-perception-sidewalk-and-signals.md:992`` — ``OQ-OD45``
+    :143 / ``OQ-OD4Q`` :354 / ``OQ-OD4Z-d1`` :897). This launch therefore neither
+    invents nor defaults them: it forwards whatever an env overlay supplied and lets
+    ``terrain_publisher`` abort at startup on an incomplete set (04 追補 ⑨ 裁定 8
+    :943, the ADR-0012 Decision 4 shape already used by ``_speed_bands``).
+    """
+    perception = load_config().get("perception", {})
+    block = perception.get("terrain", {}) if isinstance(perception, dict) else {}
+    return block if isinstance(block, dict) else {}
+
+
+def _terrain_group(robot: str, use_sim_time) -> list:
+    """The per-bot terrain publisher (04 追補 ⑨ node v0), or [] when OFF.
+
+    A PRODUCER outside the driving-safety layers (04:189 / terrain_node.py:31-36): it
+    publishes ``cliff_scan`` (LaserScan, DROP_DETECTED only) and ``terrain/coverage``
+    (String JSON) under the robot namespace and holds no actuation authority — it
+    never touches cmd_vel, the stop topics or speed_limit, so twist_mux keeps exactly
+    its two inputs. Composed here rather than inside ``_per_robot_group`` for the same
+    reason as ``_speed_band_group``: it is not part of the Nav2 server stack, carries
+    its own namespace push and is gated independently.
+
+    Gating and fail direction (04 追補 ⑨ §3 :978-980): ``enabled`` false (the base
+    config default) starts nothing at all; ``enabled`` true with a missing parameter,
+    or with either input topic left empty, aborts the node at startup rather than
+    letting an enabled-looking node publish nothing. The SAME
+    ``perception.terrain.enabled`` key gates the consumer-side collision_monitor
+    source, so ON/OFF has one truth (ADR-0012 Decision 3's "no second source of
+    truth", applied to the wiring).
+    """
+    terrain = _terrain_config()
+    if not bool(terrain.get("enabled", False)):
+        return []
+
+    # Imported only on the enabled path: a workspace without the perception package
+    # built still brings Nav2 up while terrain is OFF (the lazy-resolution stance
+    # nav2_bringup.launch.py already takes for the sim-only package).
+    from warehouse_perception.terrain_node_core import PARAM_KEYS
+
+    terrain_params = {"enabled": True}
+    for key in _TERRAIN_TOPIC_KEYS:
+        if key in terrain:
+            # Forwarded RAW, deliberately un-coerced. `str(None) == "None"` is a
+            # NON-EMPTY string, so coercing here would turn a blank overlay entry
+            # (`depth_topic:` / `~` = YAML null) into a topic named "None": the node's
+            # empty-string guard would pass and it would subscribe /bot{n}/None and
+            # stay silent while looking healthy — the exact failure the parameter is
+            # meant to make impossible. Raw, the declared STRING type rejects it and
+            # startup aborts (fail-closed).
+            terrain_params[key] = terrain[key]
+    for key in PARAM_KEYS:
+        # Absent keys stay UNSET so the node aborts at startup on its own declared
+        # sentinel (fail-closed) instead of the launch inventing a value. Unknown
+        # config keys are NOT forwarded: the node declares only this set, and rclpy
+        # rejects an undeclared parameter at startup.
+        if key not in terrain:
+            continue
+        if key in _TERRAIN_INT_KEYS:
+            terrain_params[key] = int(terrain[key])
+        elif key in _TERRAIN_STR_KEYS:
+            terrain_params[key] = str(terrain[key])
+        else:
+            terrain_params[key] = float(terrain[key])
+
+    return [
+        GroupAction(
+            [
+                PushRosNamespace(robot),
+                SetParameter("use_sim_time", use_sim_time),
+                Node(
+                    package="warehouse_perception",
+                    executable="terrain_publisher",
+                    name="terrain_publisher",
+                    output="screen",
+                    parameters=[terrain_params],
                 ),
             ]
         )
