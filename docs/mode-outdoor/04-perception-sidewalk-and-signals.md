@@ -1005,3 +1005,39 @@ X2 の入力型 `warehouse_safety.sensor_health.SourceObservation`（`stamp_s` /
 - `ws/src/warehouse_perception/warehouse_perception/terrain_node_core.py` — **rclpy / numpy 非依存**の marshalling 核（depth decode・intrinsics 抽出と縮小・param 束・LaserScan フィールド・coverage JSON・時刻）。`terrain_core.py` は**1 文字も変えていない**。
 - `tests/unit/test_terrain_node_core.py`（`unit` + `safety`）— 期待値は `struct.pack` 合成バッファからの**手計算リテラル**（mm → m・エンディアン・stride）。`tests/unit/test_terrain_node_pins.py` — AST pin（publish は 2 topic のみ・走行 / 停止系 topic 名を持たない・stamp は入力 msg の header 由来・safe-OFF の早期 return が全生成より前・param 宣言集合 == core が読む集合・QoS depth 10・終了 3 規則・numpy / torch 非 import）。
 - `setup.py` に console_script `terrain_publisher`、`package.xml` に `sensor_msgs` / `warehouse_description`。produce / consume は [`ws/src/warehouse_perception/CLAUDE.md`](../../ws/src/warehouse_perception/CLAUDE.md)。
+
+## 【2026-09-18 追補 ⑩】nav-traffic consumer: 崖専用 ObstacleLayer instance ＋ `collision_monitor` source `cliff_scan`（実装記録・レーン A が記入）
+
+> **stub（先置き）**: 追補 ⑨ §4 hand-off の実装記録をレーン A（`feat/nav-cliff-layer`）が本節に記入する。先置きは並列 append の hunk 衝突と [#165](../dev/03-retrospectives.md) 行ズレの回避が目的（P0 #707 と同じ手法）。
+
+（未記入 — レーン A）
+
+<!-- spacer: 並列 append の hunk 衝突回避（区画間 6 行超） -->
+<!-- spacer: 並列 append の hunk 衝突回避（区画間 6 行超） -->
+<!-- spacer: 並列 append の hunk 衝突回避（区画間 6 行超） -->
+<!-- spacer: 並列 append の hunk 衝突回避（区画間 6 行超） -->
+<!-- spacer: 並列 append の hunk 衝突回避（区画間 6 行超） -->
+<!-- spacer: 並列 append の hunk 衝突回避（区画間 6 行超） -->
+<!-- spacer: 並列 append の hunk 衝突回避（区画間 6 行超） -->
+<!-- spacer: 並列 append の hunk 衝突回避（区画間 6 行超） -->
+
+## 【2026-09-18 追補 ⑪】safety-state consumer: `TerrainCoverage` → X2 `SourceObservation` アダプタ（`OQ-OD4Y-a` 裁定・node 配線は `OQ-OD95` 後）（実装記録・レーン B が記入）
+
+> **stub（先置き）**: 追補 ⑨ §4 hand-off の実装記録をレーン B（`feat/safety-x2-terrain-adapter`）が本節に記入する。先置きは並列 append の hunk 衝突と [#165](../dev/03-retrospectives.md) 行ズレの回避が目的（P0 #707 と同じ手法）。
+
+（未記入 — レーン B）
+
+<!-- spacer: 並列 append の hunk 衝突回避（区画間 6 行超） -->
+<!-- spacer: 並列 append の hunk 衝突回避（区画間 6 行超） -->
+<!-- spacer: 並列 append の hunk 衝突回避（区画間 6 行超） -->
+<!-- spacer: 並列 append の hunk 衝突回避（区画間 6 行超） -->
+<!-- spacer: 並列 append の hunk 衝突回避（区画間 6 行超） -->
+<!-- spacer: 並列 append の hunk 衝突回避（区画間 6 行超） -->
+<!-- spacer: 並列 append の hunk 衝突回避（区画間 6 行超） -->
+<!-- spacer: 並列 append の hunk 衝突回避（区画間 6 行超） -->
+
+## 【2026-09-18 追補 ⑫】bringup consumer: launch `terrain_publisher` ＋ config `perception.terrain.*` 注入（実装記録・レーン C が記入）
+
+> **stub（先置き）**: 追補 ⑨ §4 hand-off の実装記録をレーン C（`feat/bringup-terrain-publisher`）が本節に記入する。先置きは並列 append の hunk 衝突と [#165](../dev/03-retrospectives.md) 行ズレの回避が目的（P0 #707 と同じ手法）。
+
+（未記入 — レーン C）
