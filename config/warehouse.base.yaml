@@ -206,3 +206,22 @@ perception:
     # ── node（追補 ⑨ §2 :969-970）
     # reference: <datum のラベル>    # 非空 str。語彙は OQ-OD4Y-h :493 が未決＝既定を作らない
     # pixel_stride: <実測>           # int・>=1。行/列の間引き（裁定 7 :942・性能 OQ-OD4Y-i4）
+    # ── X2 health しきい値（**Emergency Guardian が消費**・04 追補 ⑬ §4 :1270）
+    #    上の 23 本と違い `terrain_publisher` の param **ではない**（消費者が別 = L1 Guardian）。
+    #    ここに置くのは ① arming が同じ `perception.terrain.enabled` 1 キーだから（04 追補 ⑩ :1048
+    #    「ON/OFF の真実は本キー 1 つ」）、② `safety:` 節への挿入は warehouse.base.yaml:35 以降を指す
+    #    下流の行ピンを全部ずらすから（#165）。base 末尾への append は行ピンを 1 つも動かさない。
+    #    `<…>` placeholder 記法には**混ぜない**: その記法の網羅性は
+    #    tests/unit/test_terrain_bringup_wiring.py が node の param 面と機械照合しており、
+    #    消費者の違う本 3 本を混ぜるとその不変条件が意味を失う。
+    #    ⚠️ 値は docs のどこにも無い（OQ-OD4Y-o1 / OQ-OD97）＝**ここで発明しない**。実値は env
+    #    overlay（config/<env>/warehouse.yaml）で供給する。enabled=true で 3 本のいずれかが欠ければ
+    #    Guardian は起動時 KeyError で落ちる（hard-index・fail-loud）。範囲外・非有限・bool・非数値は
+    #    SourceThresholds.__post_init__ が ValueError で落とす（sensor_health.py:151）。
+    # health:
+    #   stale_after_s:      有限 >0 [s]。受信側単調時計の age 上限（sensor_health.py:409）。
+    #                       scan 側 1.0s のような継承元が無い（coverage は depth frame ごと＝
+    #                       カメラ FPS 依存・カメラ未購入・OQ-OD4Y-i4 :999 未測）
+    #   min_valid_fraction: (0, 1]。有効観測率の下限（04:174）。04 側の同名キー（床の主張の抑制）
+    #                       とは**別概念**の健康判定（OQ-OD4Z-c :591）
+    #   frozen_repeats:     int >=2。同一 digest が stamp 前進を伴って続く回数（sensor_health.py:160）

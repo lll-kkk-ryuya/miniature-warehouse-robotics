@@ -45,6 +45,24 @@ class BotState:
     # (an un-wired caller never trips scan_stale), like pose_age / operator_stop_requested.
     scan_age: float | None = None
     odom_seen: bool = False
+    # --- terrain observation health (04 追補 ⑬ / OQ-OD95 = A) ------------------------
+    # The X2 judgement of this bot's /{bot}/terrain/coverage stream, as produced by
+    # ``sensor_health.SensorHealthMonitor`` and marshalled by the node:
+    #   terrain_source       the monitor slot the coverage represents. A LABEL for the
+    #                        event detail only — the name is a wiring fact, so it lives
+    #                        in the node (``emergency_guardian.TERRAIN_SOURCE``), not here.
+    #   terrain_verdict      ``SourceVerdict.name`` (OK / ABSENT / STALE / FROZEN /
+    #                        INVALID). Carried as a STRING, not the enum, so this pure
+    #                        reflex core keeps its single import: an UNRECOGNISED name is
+    #                        therefore not "OK" and fails CLOSED (estop).
+    #   terrain_health_epoch the monitor's version counter, put on the event detail so the
+    #                        epoch is observable before OQ-OD89 decides where it rides.
+    # All default to a safe absence (``None`` = the gate is OFF / the caller is not
+    # wired), like scan_age / operator_stop_requested, so an un-wired caller is
+    # bit-identical to the behaviour before this rule existed.
+    terrain_source: str | None = None
+    terrain_verdict: str | None = None
+    terrain_health_epoch: int | None = None
 
 
 @dataclass(frozen=True)
@@ -53,7 +71,9 @@ class Decision:
 
     bot: str
     action: str  # "estop" | "recovery"
-    reason: str  # near_collision|battery_critical|blocked_timeout|pose_stale|operator_stop_request|scan_stale
+    # near_collision|battery_critical|blocked_timeout|pose_stale|operator_stop_request|
+    # scan_stale|terrain_health
+    reason: str
     detail: dict | None = None  # optional doc12:322-339 block (proximity / pose_stale case)
 
 
@@ -242,6 +262,14 @@ def evaluate(
        (doc12 末尾【2026-09-16 追補】(3)): Humble's nav2_collision_monitor drops a stale
        source's points and passes cmd_vel through (fail-open), so lidar loss must stop
        the bot HERE. Level (auto-clears when scans resume), never latched.
+    7. per-bot X2 terrain-observation health: a non-OK ``terrain_verdict`` -> estop
+       ``terrain_health`` (04 追補 ⑬ = the ``OQ-OD95`` = A ruling). ``None`` (monitor not
+       wired) and ``"OK"`` are silent; ``"ABSENT"`` is a fault ONLY with the ``odom_seen``
+       witness (the same None-rule shape as (6)); every other spelling — including an
+       unrecognised one — estops, so a rename or a marshalling bug falls to the STOP side.
+       Where (6) watches the lidar's ARRIVAL, this watches the cliff sensor's CONTENT
+       (freshness / frozen frames / valid-observation ratio), which doc12 末尾【2026-09-16
+       追補】(3) ③ explicitly left to Mode Outdoor's X2. Level, never latched.
     """
     decisions: list[Decision] = []
 
@@ -353,6 +381,45 @@ def evaluate(
                     {"scan_age": reported, "freshness_timeout": scan_freshness_timeout},
                 )
             )
+
+    # (7) terrain observation health -> estop (04 追補 ⑬, the OQ-OD95 = A ruling). The X2
+    # monitor (sensor_health) judges the /{bot}/terrain/coverage stream's freshness /
+    # frozen frames / valid-observation ratio; HERE that verdict is just another LEVEL
+    # input, so the existing estop machinery (prio-100 zero Twist re-asserted every tick +
+    # goal cancel + edge-triggered event + /{bot}/stop_state feed) applies unchanged and
+    # the stop auto-clears when coverage recovers. Humble's collision_monitor drops a dead
+    # source's points and keeps driving (fail-open), so a blind cliff sensor must stop the
+    # bot HERE — the same argument as (6), applied to the payload instead of the arrival.
+    #
+    # No threshold reaches this function: the windows live in the monitor, and only its
+    # CONCLUSION crosses over. That is what keeps the two freshness vocabularies in this
+    # process apart (04 追補 ⑬ §3) — the scan_age / pose_age interval language above never
+    # mixes with the ABSENT/STALE/FROZEN/INVALID language here.
+    #
+    # Comparisons are on SPELLINGS so this module keeps its single import. An unrecognised
+    # verdict is therefore not "OK" and estops: fail-closed by construction. Likewise the
+    # ABSENT exemption is keyed on the exact documented name, so a near-miss spelling
+    # cannot buy silence.
+    for b in (bot_a, bot_b):
+        verdict = b.terrain_verdict
+        if verdict is None or verdict == "OK":
+            continue  # not wired / quality established
+        if verdict == "ABSENT" and not b.odom_seen:
+            continue  # absent bot (single-bot ADR-0006): no witness, no fault
+        decisions.append(
+            Decision(
+                b.bot,
+                "estop",
+                "terrain_health",
+                {
+                    # str / str / int|None by construction: no NaN or Infinity can reach
+                    # the JSON event (doc12:293), so no _reportable_age analogue is needed.
+                    "source": b.terrain_source,
+                    "verdict": verdict,
+                    "health_epoch": b.terrain_health_epoch,
+                },
+            )
+        )
 
     return decisions
 

@@ -3,7 +3,10 @@
 On a 50ms timer it estops on inter-robot proximity / critical battery / stale
 localization (#126 + doc23 A-5③ displacement gate) / a LATCHED operator stop
 request (``/operator/stop_request`` engage/clear JSON, doc05 §5 / OQ-OP2) / stale
-lidar (``scan_stale``: ``/{bot}/scan`` arrival age, doc12 末尾【2026-09-16 追補】(3)),
+lidar (``scan_stale``: ``/{bot}/scan`` arrival age, doc12 末尾【2026-09-16 追補】(3)) /
+unhealthy terrain observation (``terrain_health``: the X2 verdict on
+``/{bot}/terrain/coverage``, mode-outdoor/04 追補 ⑬ = the ``OQ-OD95`` = A ruling; OFF
+unless config ``perception.terrain.enabled``),
 and triggers a (low-harm) recovery event on blocked-timeout. An estop cancels Nav2
 goals, publishes a zero ``Twist`` to ``/{bot}/cmd_vel/emergency`` (twist_mux
 priority 100 — never ``/{bot}/cmd_vel`` directly, which races Nav2, doc15) and
@@ -46,8 +49,22 @@ from warehouse_interfaces.config import load_config
 from warehouse_interfaces.safety import BATTERY_PERCENTAGE_SCALE_DEFAULT, validate_battery_scale
 
 from warehouse_safety import guard_logic as gl
+from warehouse_safety import terrain_health
+from warehouse_safety.sensor_health import SensorHealthMonitor, SourceThresholds
 
 _BOTS: tuple[str, ...] = ("bot1", "bot2")
+
+#: 04 追補 ⑬ §6 — the ``SensorHealthMonitor`` slot that ``/{bot}/terrain/coverage``
+#: represents (the ``OQ-OD4Y-m1`` ruling): coverage is the QUALITY WITNESS for
+#: ``cliff_scan``. ``cliff_scan`` is a ``sensor_msgs/LaserScan`` and can carry neither a
+#: valid-observation ratio nor a content fingerprint, so on its own it cannot make a
+#: meaningful ``SourceObservation``; and the two topics are published as a PAIR from the
+#: same depth frame (doc03:322 / :323), so coverage arriving is also evidence that
+#: cliff_scan is alive. The name lives HERE and only here: ``terrain_health`` deliberately
+#: holds no source name (04 追補 ⑪), ``sensor_health`` is generic, and ``guard_logic``
+#: receives it as a label on ``BotState`` rather than knowing it — the name is a wiring
+#: fact, not a rule.
+TERRAIN_SOURCE: str = "cliff_scan"
 
 #: doc05 §4-1 producer window: how far ahead each published ``/bot{n}/stop_state``
 #: deadline sits on the shared CLOCK_MONOTONIC (``valid_until = now + this``). The
@@ -213,6 +230,45 @@ class EmergencyGuardian(Node):
         self.create_subscription(
             String, "/operator/stop_request", self._on_operator_stop, reliable_qos
         )
+
+        # --- X2 terrain-observation health (04 追補 ⑬ = the OQ-OD95 = A ruling) --------
+        # Armed by the SAME config key that arms the producer (terrain_publisher) and the
+        # collision_monitor cliff_scan source, read with the SAME bool() and never `is
+        # True` (04 追補 ⑩ :1048 "ON/OFF の真実は本キー 1 つ"): tightening it here would
+        # let a truthy non-bool arm the producer while leaving the health monitor blind.
+        # OFF -> no monitor, no subscription, no new estop reason = bit-identical to
+        # before this slice (and that is the base default: dev/Gazebo has no depth camera).
+        perception = cfg.get("perception")
+        terrain_cfg = perception.get("terrain") if isinstance(perception, dict) else None
+        terrain_cfg = terrain_cfg if isinstance(terrain_cfg, dict) else {}
+        self._terrain: dict[str, SensorHealthMonitor] = {}
+        if bool(terrain_cfg.get("enabled", False)):
+            # Hard-indexed, no .get default: with the gate ON a missing threshold must fail
+            # the node LOUDLY at startup (KeyError) rather than silently judging coverage
+            # against invented numbers — the docs fix no values (04 追補 ⑬ §4 / OQ-OD4Y-o1).
+            # SourceThresholds itself rejects non-finite / out-of-range / bool bounds, so
+            # no separate validate_* helper is needed (unlike scan_freshness_timeout, whose
+            # bare float had nowhere else to be checked).
+            health = cfg["perception"]["terrain"]["health"]
+            limits = SourceThresholds(
+                stale_after_s=health["stale_after_s"],
+                min_valid_fraction=health["min_valid_fraction"],
+                frozen_repeats=health["frozen_repeats"],
+            )
+            for bot in _BOTS:
+                # One monitor per bot: each bot's coverage stream is judged on its own
+                # (a healthy bot1 must not vouch for a dead bot2).
+                self._terrain[bot] = SensorHealthMonitor({TERRAIN_SOURCE: limits})
+                # RELIABLE/KEEP_LAST/depth 10 = the profile the producer publishes with
+                # (doc03:325), NOT the BEST_EFFORT sensor profile the raw feeds use: a
+                # dropped coverage message would otherwise read as a gap in the stream.
+                self.create_subscription(
+                    String,
+                    f"/{bot}/terrain/coverage",
+                    lambda msg, b=bot: self._on_terrain_coverage(b, msg),
+                    reliable_qos,
+                )
+
         self.create_timer(0.05, self._check_safety)  # 50ms reflex
         self.get_logger().info("emergency_guardian running (50ms reflex)")
 
@@ -242,6 +298,18 @@ class EmergencyGuardian(Node):
         # (never msg.header.stamp — sim/real clock offsets must not leak into the age).
         # Marshal only; the staleness rule lives in gl.evaluate (R-26).
         self._last_scan_t[bot] = time.monotonic()
+
+    def _on_terrain_coverage(self, bot: str, msg: String) -> None:
+        # 04 追補 ⑬ §2 input: stamp the ARRIVAL on the same monotonic clock as every other
+        # feed and hand the raw payload to the pure adapter. Marshal ONLY — no parsing, no
+        # verdict, no logging on this path (the judgement happens once per tick in
+        # _bot_state). terrain_health.coverage_observation never raises on a payload, so a
+        # wedged producer cannot throw into the executor; a broken message simply becomes a
+        # NaN observation that X2 verdicts INVALID (04 追補 ⑪ §3).
+        now = time.monotonic()
+        self._terrain[bot].observe(
+            TERRAIN_SOURCE, terrain_health.coverage_observation(msg.data, now)
+        )
 
     def _on_battery(self, bot: str, msg: BatteryState) -> None:
         # #44: marshal via the rclpy-free, unit-tested gl.marshal_battery (single
@@ -297,6 +365,12 @@ class EmergencyGuardian(Node):
         # scan_stale inputs (doc12 末尾【2026-09-16 追補】(3)): same `now` as pose_age.
         last_scan = self._last_scan_t[bot]
         scan_age = None if last_scan is None else now - last_scan
+        # 04 追補 ⑬: judge the terrain stream ONCE per bot per tick, on the tick's OWN
+        # `now` (no clock read here). evaluate() advances health_epoch when the verdict map
+        # changes, so a second call would double-count the version. Absent monitor (gate
+        # OFF) -> None everywhere = the safe absence the pure rule is silent on.
+        monitor = self._terrain.get(bot)
+        report = None if monitor is None else monitor.evaluate(now)
         return gl.BotState(
             bot,
             x,
@@ -309,6 +383,9 @@ class EmergencyGuardian(Node):
             self._op_latch.engaged,
             scan_age=scan_age,
             odom_seen=self._odom_seen[bot],
+            terrain_source=None if report is None else TERRAIN_SOURCE,
+            terrain_verdict=None if report is None else report.verdicts[TERRAIN_SOURCE].name,
+            terrain_health_epoch=None if report is None else report.health_epoch,
         )
 
     def _xy(self, bot: str) -> tuple[float | None, float | None]:
