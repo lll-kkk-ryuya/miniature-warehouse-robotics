@@ -339,7 +339,7 @@ Orin Nano Super 8GB の配置で足りるかは、カメラ 2 台 + Nav2 + 映�
 - `OQ-OD4B` 04 内部分解（00〜10 の 11 sub-dir）を責務ラベルとして採るか（ユーザー裁定 2026-09-16: 粒度は問題なし・採用方向。1 dir ≠ 1 node / process・家は `warehouse_perception`）。
 - `OQ-OD4C` terrain 出力の三分離（観測 = 04／通行可能形状 = **06 が 00 と照合 or 02 keepout マスク側**〔正本の沈黙・二重縮小禁止〕／運用許可 = 02・10）と `FLOOR_CONFIRMED` の意味限定・段差高・勾配・凹凸・推定誤差の別フィールド化（型は contract PR）。`UNKNOWN` ≠ `DROP_DETECTED`。**未観測 = 通行不可の判定 3 経路（cliff marking / costmap noDataObstacle / coverage → X2）の一本化**。型 v0 は**追補 ④**（`TerrainCoverage` = 段差高 / 勾配 / 凹凸 / 推定誤差を別 field 化・通行可否 field なし。裁定そのものは未決）。
 - `OQ-OD4D` 歩行者行の書換: 04 = 位置・速度・不確かさ・最終観測時刻のみ／減速 = 帯セレクタ入力（**距離 → 帯の入力契約は未定〔05 の `OQ-OD55` と同じ穴・05 担当へ申し送り〕・実装点の不一致 08 §3-4 vs productization/01**）／MRM 段 = 12／回避 = 06／停止 = 07（親 §5 と tree v2.1 04 行の同一行修正）。
-- `OQ-OD4E` 二重化回避の所有 2 件: 局所観測履歴（04 evidence grid）vs costmap obstacle 層の履歴／品質の自己申告（04）vs 判定（X2 の 1 か所・経路は `OQ-OD95` で一本化。判定 module は #680 `sensor_health.py` として着地済・置き場のみ未決）。
+- `OQ-OD4E` 二重化回避の所有 2 件: 局所観測履歴（04 evidence grid）vs costmap obstacle 層の履歴／品質の自己申告（04）vs 判定（X2 の 1 か所・経路は `OQ-OD95` で一本化。判定 module は #680 `sensor_health.py` として着地済・置き場のみ未決）。 **→ 品質の自己申告 vs 判定の件は裁定済（2026-09-18）= [追補 ⑬](04-perception-sidewalk-and-signals.md:1270)**: 判定点 = X2 `sensor_health` の 1 か所・それを停止に変える点 = Emergency Guardian の 1 か所（`OQ-OD95` = A）。局所観測履歴 vs costmap obstacle 層の件は**未決のまま**。
 - `OQ-OD4F` 信号 ROI の更新方式: **基本形 = 地図灯器 3D 位置 + カメラ内外パラメータ + 撮影時点の姿勢で候補領域を作り NN（TIER IV tlr YOLOX-S）で補正する併用**（RTK + 方位だけでは不足・再投影は NN の代替ではない = 追補 ③ #3）。NN 無しで足りるかは Phase 1 で実測、許容値（Autoware 既定 ±1° / ±0.5 m 相当）は M1 の実測誤差から決める。registry へ灯器 3D 位置を additive（置き場は `OQ-OD47`。#686 の L3 route schema は横断点レジストリを射程外と明記 = [03 末尾追補](03-localization-gnss-and-ekf.md)）。
 - `OQ-OD4G` NN 候補の Humble + JetPack 6.2.1 + TensorRT 10.3.0 での変換・入出力互換・自画角評価（`OQ-OD41` との関係 = 公開重みで開始し自前収集は弱点確認後）。
 - `OQ-OD4H` consumer 側実装（06 costmap layer・追跡物体 / 予測の評価処理）を 04 の実装範囲に含めるか（`nav2_params.yaml` / launch は nav-traffic 所有）。 **→ 崖 costmap layer 分は裁定済（2026-09-18）= [追補 ⑩ §1](04-perception-sidewalk-and-signals.md:1009)**: **nav-traffic 所有**（04 は producer のみ）。追跡物体 / 予測の評価処理は未決のまま。
@@ -1144,7 +1144,7 @@ X2 の入力型 `warehouse_safety.sensor_health.SourceObservation`（`stamp_s` /
 
 **鮮度の二重性に注意**: X2 が判定する staleness は**受信側の単調時計**で、`stamp_s` では判定しない（[09:67](09-external-review-v3-response.md:67) 規則 (4)）。したがって [追補 ④ §2 1.](04-perception-sidewalk-and-signals.md:477) が消費側に課す `age = now − source_stamp_s; 0 ≤ age < max_age`（＝**producer が古い計測を新しく見せていないか**）は、本アダプタでは**果たされない**。両者は別の検査（前者＝生存性、後者＝入力妥当性）で、後者の置き場は未決＝§5 `OQ-OD4Y-m2`。
 
-### 4. `OQ-OD95` の裁定資料 — Guardian 拡張（A）か新 node（B）か（**本 PR は実装しない**）
+### 4. `OQ-OD95` の裁定資料 — Guardian 拡張（A）か新 node（B）か（**本 PR は実装しない**） **→ 裁定済（2026-09-18・ユーザー）= A（Guardian 拡張）＝実装記録は [追補 ⑬](04-perception-sidewalk-and-signals.md:1270)**
 
 **先例**: `/{bot}/scan` の**途絶**停止は #679 で **Emergency Guardian の新理由 `scan_stale`** に着地した（[doc12 末尾追補 (3)](../architecture/12-infrastructure-common.md:698)）。同追補は **scan の「内容」異常（全 NaN・凍結・有効観測率）は対象外＝Mode Outdoor X2 に残す**と明記し、「本裁定は `OQ-OD95` に対して共通構成側の**先例**を与えるが、X2 の決定は mode-outdoor 側」と断っている（[doc12:709](../architecture/12-infrastructure-common.md:709) ③）。つまり A は「前例に倣う」、B は「前例と分岐する」選択である。
 
@@ -1162,7 +1162,7 @@ X2 の入力型 `warehouse_safety.sensor_health.SourceObservation`（`stamp_s` /
 
 ### 5. OPEN QUESTIONS（本追補で**発明せずに残した**もの・接頭辞は [`OQ-OD4Z-d6`](04-perception-sidewalk-and-signals.md:902) の採番衝突を避けて `-m1`〜`-m4`）
 
-- `OQ-OD4Y-m1` **coverage はどの source を代表するか**。`SensorHealthMonitor` は source 名で必須集合を作るが、[09:72](09-external-review-v3-response.md:72) の列挙（scan / cliff_scan / GNSS / depth）に coverage は無い。**推奨（採否は `OQ-OD95` / `OQ-OD91` と一緒に）= `cliff_scan` の品質証人として同じ source 名に入れる**: ① `cliff_scan`（`sensor_msgs/LaserScan`）は `valid_fraction` も指紋も運べず、そのままでは意味のある `SourceObservation` を作れない（[:173](04-perception-sidewalk-and-signals.md:173)）。② 2 本は**同じ depth frame から対で 1 回**出る（[doc03:322](../architecture/03-software-architecture.md:322) / [:323](../architecture/03-software-architecture.md:323)）ので、coverage の到着は cliff_scan の生存の証拠でもある。対立案 = coverage を独立 source として立て、`cliff_scan` は Guardian の `scan_stale` 同型（到着のみ）で見る。**module は名前を持たない**ので、どちらに決まってもアダプタは不変。
+- `OQ-OD4Y-m1` **coverage はどの source を代表するか**。`SensorHealthMonitor` は source 名で必須集合を作るが、[09:72](09-external-review-v3-response.md:72) の列挙（scan / cliff_scan / GNSS / depth）に coverage は無い。**推奨（採否は `OQ-OD95` / `OQ-OD91` と一緒に）= `cliff_scan` の品質証人として同じ source 名に入れる**: ① `cliff_scan`（`sensor_msgs/LaserScan`）は `valid_fraction` も指紋も運べず、そのままでは意味のある `SourceObservation` を作れない（[:173](04-perception-sidewalk-and-signals.md:173)）。② 2 本は**同じ depth frame から対で 1 回**出る（[doc03:322](../architecture/03-software-architecture.md:322) / [:323](../architecture/03-software-architecture.md:323)）ので、coverage の到着は cliff_scan の生存の証拠でもある。対立案 = coverage を独立 source として立て、`cliff_scan` は Guardian の `scan_stale` 同型（到着のみ）で見る。**module は名前を持たない**ので、どちらに決まってもアダプタは不変。 **→ 裁定済（2026-09-18）= [追補 ⑬ §6](04-perception-sidewalk-and-signals.md:1270)**: 推奨どおり **`cliff_scan`**（名前の置き場は `emergency_guardian.TERRAIN_SOURCE` 1 か所・module は引き続き名前を持たない）。
 - `OQ-OD4Y-m2` **`age = now − source_stamp_s` の置き場**。[追補 ④ §2 1.](04-perception-sidewalk-and-signals.md:477) は消費側に `0 ≤ age < max_age` を課すが、X2 の staleness は**受信側の単調時計**で測る（[09:67](09-external-review-v3-response.md:67) 規則 (4)）ため、本アダプタはこれを**行わない**（§3 末尾）。この検査は (a) 配線 node が別途行う、(b) `SourceObservation` に additive で持ち込む（契約変更）、(c) producer 側の `OQ-OD4Y-i3`（負の遅延）と同じ裁定に含める、のどれか。`max_age` は「その消費者の時間予算」由来ゆえ [`OQ-OD97`](09-external-review-v3-response.md:257) と同じ実測待ち。
 - `OQ-OD4Y-m3` **`state` を恒久的に health から外してよいか**。本追補は「`DROP_DETECTED` は健康なセンサの報告」として `state` を写さないと決めたが、`UNKNOWN` が**継続的に**出る（視野外・遮蔽・鮮度切れ・変換不成立＝[:174](04-perception-sidewalk-and-signals.md:174)）状態を「健康」と言い続けてよいかは別問題。`valid_fraction` がその役を担う想定だが、`UNKNOWN` を出しつつ `valid_fraction` が高い frame が有りうるかは実装（`terrain_core`）と実測で確かめる。走行可否としては 05（観測範囲外へ進ませない＝[:215](04-perception-sidewalk-and-signals.md:215)）が既に持っている論点で、**health へ二重に持ち込まない**のが現時点の判断。
 - `OQ-OD4Y-m4` **拒否された payload の可観測性**。アダプタは純関数ゆえ log を出さない（[:482](04-perception-sidewalk-and-signals.md:482) の「safety loop の外で捕捉」は満たすが、捕捉した事実を**どこにも記録しない**）。producer が壊れた JSON を出し続けても、下流には `INVALID` verdict としてしか現れず「なぜ INVALID か」が分からない。記録は X1 の担当（[:222](04-perception-sidewalk-and-signals.md:222)）だが、配線 node が parse 失敗を数える／`/emergency/event` の `detail` に載せる／何もしない、のどれを採るかは `OQ-OD95` の配線裁定と同時に決める。
@@ -1266,3 +1266,120 @@ X2 の入力型 `warehouse_safety.sensor_health.SourceObservation`（`stamp_s` /
 - `tests/unit/test_terrain_bringup_wiring.py`（`unit` + `safety`・**AST と YAML のみ**＝`launch_ros` / `nav2_common` / rclpy 不要で pure CI でも走る）: 配線の存在（per-robot ループから 1 回）・namespace push と `use_sim_time`・OFF 時 `[]` が**生成より前**に返る・config キー経路・転送キー集合 == node の宣言面（`PARAM_KEYS` ＋ `_SENTINELS` と機械照合・**本数を再ハードコードしない**）・欠落キーを埋めない・**数値リテラル 0 個**・int / str 変換表 == `_SENTINELS` の型・`cmd_vel` / `stop_*` / `speed_limit` / `remappings` 不在・base が `enabled: false` 単独・placeholder が 23 本を網羅。
 - mutation（実測・**9/9 KILLED**）: `enabled` gate 除去／`ray_count` を double 転送／launch に `pixel_stride: 1` の既定／`camera_info_topic` 不転送／欠落キーを既定で埋める／`_terrain_group` 呼び出し削除／config キー経路 typo／`cliff_scan` を `cmd_vel` へ remap／base の `enabled: true`。
 - `ws/src/warehouse_bringup/package.xml` は**不変更**: `warehouse_perception` の `exec_depend` は速度帯スライスで既に宣言済み（同 `:27`）。
+
+## 【2026-09-18 追補 ⑬】safety-state 配線: `OQ-OD95` = **A（Emergency Guardian 拡張）** — 新 estop 理由 `terrain_health`（実装記録・レーン D が記入）
+
+> **（記入済 = 本 PR・2026-09-18）** レーン D（`feat/safety-guardian-terrain-health`）。[追補 ⑪ §4](04-perception-sidewalk-and-signals.md:1147) が対称比較した A / B のうち **A をユーザーが裁定**し、その形をそのまま実装した記録。EOF append（[#165](../dev/03-retrospectives.md) 行ズレ回避＝追補 ⑩ / ⑫ と同じ作法）。
+
+正本 = [追補 ⑪ §4 :1147](04-perception-sidewalk-and-signals.md:1147)（A / B 対称比較と推奨）＋ [09 §7 `OQ-OD95` :255](09-external-review-v3-response.md:255)（裁定対象）＋ 先例の書き方 = [doc12 末尾【2026-09-16 追補】(3) :698](../architecture/12-infrastructure-common.md:698)（`scan_stale` の impl slice 仕様）。アダプタは [追補 ⑪ :1093](04-perception-sidewalk-and-signals.md:1093)（#722 `terrain_health.py`）、判定核は #680 `sensor_health.py`。
+
+> **レイヤ注記**（[.claude/rules/layer-annotation.md](../../.claude/rules/layer-annotation.md)）: `emergency_guardian.py` / `guard_logic.py` = **L1** Safety（物理停止の単一判定点）。本節の追加は**停止理由を 1 つ足すだけ**で、`cmd_vel` 経路・twist_mux 優先度（prio100）・`/emergency/event` コア形（`event_id/robot/type/severity/action_taken/timestamp/requires_llm_review` [+任意 `detail`]＝[doc12:512](../architecture/12-infrastructure-common.md:512) が `pose_stale` / `scan_stale` について「`type` に新値を足すのみ＝additive・コア形不変」と定めた形）・凍結契約 `warehouse_interfaces` は**すべて不変**（additive のみ）。producer 側（`terrain_publisher`）は自律走行＝安全層外（[:189](04-perception-sidewalk-and-signals.md:189)）で本 PR では触らない。**L1 変更ゆえレビューは重い扱い**（[layer-annotation.md](../../.claude/rules/layer-annotation.md) §原則）。
+
+### 1. 裁定 `OQ-OD95` = **A（Emergency Guardian 拡張）**
+
+**裁定（ユーザー・2026-09-18）**: X2 `sensor_health` → 停止の実装位置は **Emergency Guardian（`warehouse_safety`）の拡張**。新 node（B）は採らない。[追補 ⑪ §4 :1159](04-perception-sidewalk-and-signals.md:1159) の推奨どおりで、理由もそこに書いたとおり——同じ fail-open クラス・同じ layer・同じ箱で repo が既に一度この判断を下しており（[doc12:700](../architecture/12-infrastructure-common.md:700) ①〜④）、**停止権限を 1 か所に保てる**（[doc12:701](../architecture/12-infrastructure-common.md:701) が不採用にした「機械 producer をもう 1 本立てる」形を避ける）。
+
+- **本裁定の射程は停止側だけ**。[05 追補 1 :131](05-safety-envelope-and-intervention.md:131) が言う二重経路（Guardian prio100 ゼロ `Twist` ＋ **09 の期限付き許可の失効**）のうち、本 PR は前者のみを配線する。後者（permit 入力）は `OQ-OD89`（[09:249](09-external-review-v3-response.md:249)）の裁定待ちで、**二重化しない**。
+- **反転条件（隠さない・[追補 ⑪ :1161](04-perception-sidewalk-and-signals.md:1161) の再掲）**: `OQ-OD89` が「`health_epoch` は独自 topic で運び、停止ではなく許可の失効として効かせる」に決まった場合、health は stop の producer ではなく permit の入力になる。そのときも**本 PR の成果は捨てずに済む**——判定は `SensorHealthMonitor` に閉じており、Guardian 側にあるのは「購読 1・`observe` 1・`evaluate` 1・estop 理由 1」だけなので、permit 側へ移すのは `guard_logic` の (7) ブロックを外して `health_epoch` を wire に載せ替える作業になる。`health_epoch` は今回 `/emergency/event` の `detail` に載せて**観測可能にしてある**（§3）ので、移設前にその値を実測で確認できる。
+- **`OQ-OD4E`（[:342](04-perception-sidewalk-and-signals.md:342)）の「経路は `OQ-OD95` で一本化」はこれで閉じる**: 品質の**判定点**は X2 の 1 か所（`sensor_health`）、その結果を**停止に変える点**も 1 か所（Guardian）。04 側の `min_valid_fraction`（自分の主張の抑制＝[:570](04-perception-sidewalk-and-signals.md:570)）とは別概念のまま（[`OQ-OD4Z-c` :591](04-perception-sidewalk-and-signals.md:591)）。
+
+### 2. 配線（購読 1・monitor 1・純ブロック 1）
+
+```
+/bot{n}/terrain/coverage (std_msgs/String JSON, doc03:323)
+        │  QoS = RELIABLE / KEEP_LAST / depth 10（producer と同じ = doc03:325）
+        ▼  _on_terrain_coverage(bot, msg)          … 到着時刻を刻むだけ・判定なし
+   now = time.monotonic()
+   terrain_health.coverage_observation(msg.data, now)      … #722 純アダプタ（raise しない）
+        ▼
+   SensorHealthMonitor.observe("cliff_scan", obs)          … #680 判定核（per-bot 1 インスタンス）
+        ▼  _bot_state(bot, now)                    … tick の同じ now で 1 回だけ evaluate
+   report = monitor.evaluate(now) → verdicts["cliff_scan"].name / report.health_epoch
+        ▼
+   gl.BotState(..., terrain_source=, terrain_verdict=, terrain_health_epoch=)
+        ▼  gl.evaluate(...) の (7) ブロック（§3 の規則表）
+   Decision(bot, "estop", "terrain_health", detail)
+        ▼  既存の停止機構をそのまま使う（**何も新設しない**）
+   prio100 ゼロ Twist 再アサート / Nav2 goal cancel / EdgeLatch で event 1 回 /
+   stop_requested_for → /bot{n}/stop_state → L0' 停止上乗せ
+```
+
+- **時計は 1 本**（[doc12:700](../architecture/12-infrastructure-common.md:700) ②）。到着刻印も tick も `time.monotonic()` で、`SourceObservation.received_monotonic_s` にはそれをそのまま渡す（[09:67](09-external-review-v3-response.md:67) 規則 (4)「ROS の計測時刻と watchdog 用単調時計は役割を分ける」）。payload の `source_stamp_s` は鮮度に**使わない**（凍結検出のためだけに `stamp_s` へ写る＝[追補 ⑪ §2 :1110](04-perception-sidewalk-and-signals.md:1110)）。
+- **callback に logic を置かない**（node の「callbacks: store latest only, no logic」規律・`scan_stale` の `_on_scan` と同型 = [doc12:705](../architecture/12-infrastructure-common.md:705) 3.）。`coverage_observation` は壊れた payload で raise も log もしない（[追補 ⑪ §3 :1130](04-perception-sidewalk-and-signals.md:1130)）ので、safety loop に例外が上がる経路が無い。
+- **時計 1 本・判定 1 回**。`_bot_state` は tick の `now` で **bot ごとに 1 回だけ** `SensorHealthMonitor.evaluate` を呼ぶ。理由は**時計の一貫性**——1 つの `BotState` が載せる全理由（pose / odom / scan / terrain）が**同じ瞬間**を語る、という既存の不変条件をそのまま守るため。（`evaluate` 自体は複数回呼んでも壊れない: `health_epoch` が進むのは **verdict map が変化した評価**だけ＝[sensor_health.py:372](../../ws/src/warehouse_safety/warehouse_safety/sensor_health.py:372)。「2 回呼ぶと版が二重に進む」わけではない。）`_check_safety` 側には足さない（`gl.evaluate` の呼び出しは従来どおり tick に 1 回）。
+- **新 topic・新 node・新 launch エントリ・契約変更は無い**。`/bot{n}/terrain/coverage` は [doc03:323](../architecture/03-software-architecture.md:323) の既存カタログ行で、本節はその **consumer 欄を「未配線」から埋めた**だけ（同一行追記・行数不変）。
+
+### 3. 規則表（`guard_logic.evaluate` (7) `terrain_health` ブロック・**本表が unit のオラクル**）
+
+`BotState` に additive な 3 field（既定はすべて安全な不在）: `terrain_source: str | None`・`terrain_verdict: str | None`（[`SourceVerdict.name`](../../ws/src/warehouse_safety/warehouse_safety/sensor_health.py:86) の綴り）・`terrain_health_epoch: int | None`。
+
+| `terrain_verdict` | `odom_seen` | 判定 | 理由 |
+|---|---|---|---|
+| `None`（gate OFF＝監視していない） | 任意 | **無音** | 配線していない caller・`enabled: false` の構成は今日と bit 等価（安全な不在＝`scan_age` / `operator_stop_requested` と同じ既定の作法） |
+| `"OK"` | 任意 | **無音** | 全しきい値を満たした＝品質成立 |
+| `"ABSENT"` | `False` | **無音** | bot 不在（単騎 [ADR-0006](../adr/0006-single-bot-first.md) で `_BOTS` は 2 固定）。生きている証拠が無いものを故障と呼ばない＝`scan_stale` の `None` 規則と**同型**（[doc12:704](../architecture/12-infrastructure-common.md:704) 2.） |
+| `"ABSENT"` | `True` | **estop** | odom が bot の生存を証明しているのに coverage が一度も来ない＝故障（fail-closed） |
+| `"STALE"` | 任意 | **estop** | 受信側単調時計で `age < 0` または `age > stale_after_s`（[sensor_health.py:409](../../ws/src/warehouse_safety/warehouse_safety/sensor_health.py:409)）。負 age は「別の時計で記録された」印で fresh にしない |
+| `"FROZEN"` | 任意 | **estop** | 同一 `digest` が stamp 前進を伴って `frozen_repeats` 連続（[:415](../../ws/src/warehouse_safety/warehouse_safety/sensor_health.py:415)）＝「新しい stamp でも同一画像」（[:174](04-perception-sidewalk-and-signals.md:174)） |
+| `"INVALID"` | 任意 | **estop** | `valid_fraction` が NaN・`[0,1]` 外・`min_valid_fraction` 未満、または `stamp_s` 非有限（[:426](../../ws/src/warehouse_safety/warehouse_safety/sensor_health.py:426)）。壊れた payload もここに落ちる（[追補 ⑪ §3 :1135](04-perception-sidewalk-and-signals.md:1135)） |
+| 上記以外の文字列（未知の綴り） | 任意 | **estop** | `guard_logic` は enum を import せず綴りで判定する（純反射核の import を増やさない）。**未知は `"OK"` ではない**＝改名・marshalling バグは停止側へ倒れる（fail-closed by construction） |
+
+- **`detail`** = `{"source": <terrain_source>, "verdict": <verdict>, "health_epoch": <int | null>}`。3 値とも `str` / `int` / `null` で、**NaN・Infinity を JSON に出さない**（[doc12:293](../architecture/12-infrastructure-common.md:293) と同じ規律。`scan_stale` が `_reportable_age` で守っているのと同じ性質を、こちらは型で満たす）。`health_epoch` を載せるのは `OQ-OD89` 裁定前に**版を観測可能にする**ため（§1）。
+- **level・自動解除**。`EdgeLatch` は `(bot, reason)` で latch するので event は立ち上がりで 1 回、物理停止は条件が続く間 tick ごとに再アサート、coverage が健全に戻れば**自動で解除**（`pose_stale` / `scan_stale` と同じ＝[doc12:707](../architecture/12-infrastructure-common.md:707) 5.）。latch する停止は `/operator/stop_request` だけという既存の線引きを動かさない。
+- **additive**。(7) は他の 6 規則から独立に estop を**足す**だけで、(1) 近接や (2) 電池を抑止しない。`stop_requested_for` は `action == "estop"` で拾うので `/bot{n}/stop_state` へ自動伝播し、`stop_overlay_enabled: true` の構成では teleop 経路も止まる（[doc12:707](../architecture/12-infrastructure-common.md:707) 5. と同じ）。
+- **`evaluate` の署名に新しいしきい値引数を足さない**。3 本のしきい値は `SensorHealthMonitor` が持ち、純ロジックへは **verdict という結論だけ**が渡る。鮮度の語彙が 1 プロセスに 2 つ並ぶ（[追補 ⑪ §4 :1154](04-perception-sidewalk-and-signals.md:1154) が A の費用として名指しした点）ことへの回答がこれ——`guard_logic` 側は `terrain_*` について**閾値も時計も持たない**ので、「どちらで判定したか」は常に「X2（`sensor_health`）で判定し、Guardian は停止に変えただけ」と言える。`scan_age` / `pose_age` は従来どおり `guard_logic` の閉区間語彙のまま（reconcile は不要＝**混ぜない**ことで解いた）。
+
+### 4. config キー（**実値は 1 つも置かない**）
+
+**キー = `perception.terrain.health.{stale_after_s, min_valid_fraction, frozen_repeats}`**（`config/warehouse.base.yaml`・すべて**コメントアウトの placeholder**）。
+
+- **置き場の理由 ①（gate の隣に置く）**: 本 health は producer（`terrain_publisher`）・consumer（`collision_monitor` の `cliff_scan` source）と**同じ `perception.terrain.enabled` で arming される**（[追補 ⑫ :1244](04-perception-sidewalk-and-signals.md:1244)「ON/OFF の真実は 1 つ」）。しきい値をその gate の直下に置くと、「何を true にすると何が要るか」が 1 ブロックで読める。**意味的な所有は X2 / Guardian（L1）**であって `terrain_publisher` の param ではない——その区別は base config のコメントに明記した。
+- **置き場の理由 ②（行ピン保護・[#165](../dev/03-retrospectives.md)）**: `safety:` ブロック（`config/warehouse.base.yaml` の冒頭）へ 1 行でも挿入すると、`warehouse.base.yaml` の `:35` / `:41` / `:47` / `:77` / `:87` / `:104` / `:117` / `:126` を指す**下流 8 種類の行ピン**（[GLOSSARY](../GLOSSARY.md)・[mode-c/11c](../mode-c/11c-traffic-mode-c.md)・[architecture/22](../architecture/22-web-observability.md)・[architecture/23](../architecture/23-perception-and-localization.md)・[mode-x-er/09](../mode-x-er/09-hand-raise-summon.md)・[mode-x-er/10](../mode-x-er/10-room-scale-safety-review.md)・launch・unit）が**全部ずれる**。`perception.terrain` は base config の**末尾**（追補 ⑫ が append した区画 = [:1189](04-perception-sidewalk-and-signals.md:1189)）なので、そこへの append は**どの行ピンも動かさない**。着手前後に `grep -rnoE 'warehouse\.base\.yaml:[0-9]+' docs ws .claude tests scripts` で差分ゼロを確認した。
+- **placeholder の記法をあえて揃えていない**: 上の 23 本は `# key: <実測>` 形で、その**網羅性を `tests/unit/test_terrain_bringup_wiring.py` が node の param 面（`PARAM_KEYS`）と機械照合**している。本 3 本は消費者が違う（`terrain_publisher` の param ではない）ので同じ記法に混ぜず、`<…>` を使わない形で書いた。混ぜると「手引きの網羅性」という lane C の不変条件が意味を失う。
+- **値は発明しない**（[.claude/rules/docs-first.md](../../.claude/rules/docs-first.md)）。3 本とも docs のどこにも数値が無い:
+  - `stale_after_s` — `scan_freshness_timeout` が [`collision_monitor.yaml:58`](../../ws/src/warehouse_bringup/config/collision_monitor.yaml:58) の `source_timeout 1.0` を継承できたのは、`/bot{n}/scan` の**周期が既知**（T-mini Plus 6-12 Hz）だったから。coverage は **depth frame ごとに 1 回**（[追補 ⑨ :926](04-perception-sidewalk-and-signals.md:926)）＝カメラ FPS 依存で、カメラは未購入・`pixel_stride` の処理時間も未測（[`OQ-OD4Y-i4` :999](04-perception-sidewalk-and-signals.md:999)）。**同じ論法が使えないので値を置かない**。
+  - `min_valid_fraction` — 04 側の同名キー（床の主張を抑える per-frame gate）とは**別概念**（健康判定＝[`OQ-OD4Z-c` :591](04-perception-sidewalk-and-signals.md:591)）。値は docs に無い。
+  - `frozen_repeats` — docs は下限 `>= 2` しか言わない（[sensor_health.py:160](../../ws/src/warehouse_safety/warehouse_safety/sensor_health.py:160)）。
+- **fail 方向**: `perception.terrain.enabled: true` のとき Guardian は `cfg["perception"]["terrain"]["health"]` を **hard-index** する（`.get` 既定を置かない）ので、3 本のいずれかが欠ければ **起動時に `KeyError` で落ちる**。範囲外・非有限・`bool`・非数値は `SourceThresholds.__post_init__` が `ValueError` で落とす（[sensor_health.py:151](../../ws/src/warehouse_safety/warehouse_safety/sensor_health.py:151)）。**「enabled なのに黙って監視していない」状態を作らない**——`scan_freshness_timeout` の hard-index ＋ 起動時検証（[doc12:706](../architecture/12-infrastructure-common.md:706) 4.）と同じ作法。実値は env overlay（`config/<env>/warehouse.yaml`・[environments.md](../../.claude/rules/environments.md)）で供給する。
+
+### 5. fail 方向（場面別・**gate OFF は今日と bit 等価**）
+
+| 場面 | Guardian の挙動 | 向き |
+|---|---|---|
+| `perception.terrain.enabled` 欠落 / `false`（base 既定） | monitor も subscription も**作らない**。`BotState.terrain_verdict` は `None` のまま＝(7) は常に無音 | **今日と bit 等価**（既存 unit 全緑で担保。dev / Gazebo は depth camera 無しでこの経路） |
+| `enabled: true` ・しきい値 3 本のいずれか欠落 / 不正 | **起動拒否**（`KeyError` / `ValueError`）。node は上がらない | fail-loud（§4） |
+| 正常な coverage が周期どおり届く | `OK` → 無音 | — |
+| producer が沈黙（node 落ち・camera 断） | `stale_after_s` 超過で `STALE` → **estop**（level・再開で自動解除） | **fail-closed**（Humble CM は点が消えるだけで止まらない＝[09:71](09-external-review-v3-response.md:71) を Guardian が補う） |
+| coverage が一度も来ない ・ odom は来ている | `ABSENT` ＋ 証人 → **estop** | fail-closed |
+| coverage が一度も来ない ・ odom も来ない（bot 不在） | `ABSENT` だが証人なし → **無音** | 単騎運用で bot2 の恒久 estop を作らない（§3） |
+| 壊れた JSON / 空 / 型違い / UTF-8 不正 / 範囲外 | アダプタが `NaN` 観測を返す → `INVALID` → **estop** | **fail-closed**（[追補 ⑪ §3 :1135](04-perception-sidewalk-and-signals.md:1135)） |
+| 凍結ストリーム（同一 digest ＋ stamp 前進） | `FROZEN` → **estop**。壊れた frame が混ざっても `digest = None` ゆえ凍結証拠は消えない | fail-closed |
+| `frame_digest` を producer が付けない | 凍結検出のみ切れる（`digest = None` は**明示の無効化**＝[:416](04-perception-sidewalk-and-signals.md:416)）。鮮度・有効率の判定は生きる | 現状維持（新たな fail-open を作らない） |
+| Guardian 自身が落ちる | 反射と health 判定を**同時に**失う（A の既知の単一障害点） | **本裁定では縮まない**＝`stop_overlay_enabled: true` の L0' 上乗せ（無信号＝失権）が担う。[doc12:709](../architecture/12-infrastructure-common.md:709) ① / [追補 ⑪ §4 :1155](04-perception-sidewalk-and-signals.md:1155) と同じ結論 |
+| 配線順序（実機） | coverage producer を上げる**前**に `enabled: true` で Guardian を起動すると、odom 到着の瞬間から `ABSENT` 恒久 estop | **設計どおりの fail-closed**。`scan_stale` の配線順序（[doc12:709](../architecture/12-infrastructure-common.md:709) ⑥）と同じ注意＝**producer を先に上げる** |
+
+### 6. `OQ-OD4Y-m1` の裁定 — source 名は **`"cliff_scan"`**（closed）
+
+**裁定（2026-09-18・本 PR）**: coverage は **`cliff_scan` の品質証人**として、`SensorHealthMonitor` の source 名 `"cliff_scan"` に入れる（[追補 ⑪ §5 `OQ-OD4Y-m1` :1165](04-perception-sidewalk-and-signals.md:1165) の推奨をそのまま採用）。理由も同所のとおり: ① `cliff_scan`（`sensor_msgs/LaserScan`）は `valid_fraction` も指紋も運べず、それ単体では意味のある `SourceObservation` を作れない（[:173](04-perception-sidewalk-and-signals.md:173)）。② 2 本は**同じ depth frame から対で 1 回**出る（[doc03:322](../architecture/03-software-architecture.md:322) / [:323](../architecture/03-software-architecture.md:323)）ので、coverage の到着は `cliff_scan` の生存の証拠でもある。
+
+- **名前の置き場 = Guardian 側の定数 1 か所**（`emergency_guardian.TERRAIN_SOURCE`）。[追補 ⑪ :1128](04-perception-sidewalk-and-signals.md:1128) が決めたとおり `terrain_health.py` は**source 名を持たない**ままで、`sensor_health.py` も変更しない。`guard_logic` も名前を持たず、`BotState.terrain_source` として node から受け取って `detail` に載せるだけ——**名前は wiring の事実であって rule の事実ではない**、という分け方。
+- **`09:72` の 4 種（scan / cliff_scan / GNSS / depth）との関係**: 本 PR が必須集合に入れるのは `cliff_scan` **1 つだけ**。`scan` は Guardian の `scan_stale` が別途見ており（[doc12:698](../architecture/12-infrastructure-common.md:698)）、GNSS / depth は producer も配線も無い。モード別に何を必須にするかは `OQ-OD91`（[09:251](09-external-review-v3-response.md:251)）のまま**未決**で、本 PR は「呼び出し側が渡した集合が必須集合」という `sensor_health` の既存契約を動かさない。
+
+### 7. OPEN QUESTIONS（本節で**発明せずに残した**もの・接頭辞は `-m*` の採番衝突を避けて `-o1`〜`-o5`）
+
+- `OQ-OD4Y-o1` **3 本のしきい値の実値と導出根拠**。`stale_after_s` を [`OQ-OD97` :257](09-external-review-v3-response.md:257)（停止距離式 `d = v·T_total + v²/(2·a_min) + margin` からの期限の再導出）で決めるのが筋だが、同 OQ は heartbeat 途絶判定の再導出であって coverage の publish 周期を与えない。**カメラ FPS ＋ `pixel_stride` の処理時間（[`OQ-OD4Y-i4` :999](04-perception-sidewalk-and-signals.md:999)）の実測**が先で、`min_valid_fraction` / `frozen_repeats` に至っては導出元の式も無い。「`OQ-OD97` 待ち」と一言で片付けず、**何の実測が要るか**を本 OQ に分離した。
+- `OQ-OD4Y-o2` **producer gate と Guardian gate を分けるか**。現在は `perception.terrain.enabled` 1 つで producer・`collision_monitor` source・Guardian health の 3 つが同時に arming される（[追補 ⑫ :1244](04-perception-sidewalk-and-signals.md:1244) の「ON/OFF の真実は 1 つ」を素直に延長した結果）。**代償**: producer を試しに上げたいだけの場面でも Guardian のしきい値 3 本を overlay に書かないと起動できない。逆に分けると「producer は出しているが誰も健康を見ていない」構成が作れてしまう（fail-open の余地）。現状は**安全側に倒して 1 つのまま**にした。
+- `OQ-OD4Y-o3` **`health_epoch` を `/bot{n}/stop_state` に載せるか** = `OQ-OD89`（[09:249](09-external-review-v3-response.md:249)）。本 PR は `/emergency/event` の `detail` に載せる（観測可能にする）だけで、**wire（permit 側）には載せない**。裁定後に §1 の反転条件の作業が発生する。
+- `OQ-OD4Y-o4` **モード別の必須 source 集合**。「現在モードで必須の監視系の生存確認を伴う」ことを要求するのは [09:67](09-external-review-v3-response.md:67) 規則 (1) で、その「モード」を定義する運転状態機械 7 状態の採否が [`OQ-OD91` :251](09-external-review-v3-response.md:251)。AUTO / REMOTE / MANUAL で何が必須かは両者が決まるまで未裁定で、本 PR の必須集合は `{cliff_scan}` 固定。`scan` を同じ monitor に入れて `scan_stale` と統合するか（鮮度語彙の統一）も同時に決まる論点。
+- `OQ-OD4Y-o5` **拒否 payload の可観測性** = [`OQ-OD4Y-m4` :1168](04-perception-sidewalk-and-signals.md:1168) の積み残し。本 PR は「parse 失敗を数えない・log しない」を選び、`INVALID` verdict と `detail.health_epoch` の進みだけが外から見える証拠になる。「なぜ INVALID か」（壊れた JSON か・単に有効画素が少ないか）は依然区別できない。記録の担当は X1（[:222](04-perception-sidewalk-and-signals.md:222)）。
+- `OQ-OD4Y-m2`（`age = now − source_stamp_s` の置き場・[:1166](04-perception-sidewalk-and-signals.md:1166)）は**本 PR でも解いていない**。Guardian は受信側単調時計だけで判定し、producer が古い計測を新しく見せていないかは検査しない。
+
+### 8. 実装・テスト（本 PR）
+
+- `ws/src/warehouse_safety/warehouse_safety/guard_logic.py` — `BotState` に additive 3 field（既定 `None`）＋ `evaluate` に **(7) `terrain_health` ブロック**（§3 の表）＋ docstring 7. と `Decision.reason` の一覧を追記。**新しい import ゼロ・新しい引数ゼロ**。既存 6 規則のコードは 1 文字も変えていない。
+- `ws/src/warehouse_safety/warehouse_safety/emergency_guardian.py` — module 定数 `TERRAIN_SOURCE = "cliff_scan"`（§6）／`__init__` に gate（`bool(terrain.get("enabled", False))`＝producer と同じ読み方 = [追補 ⑫ :1244](04-perception-sidewalk-and-signals.md:1244)）＋ hard-index ＋ per-bot `SensorHealthMonitor` ＋ 購読（`reliable_qos` = RELIABLE / KEEP_LAST / depth 10 = [doc03:325](../architecture/03-software-architecture.md:325)）／`_on_terrain_coverage`（到着刻印と `observe` のみ）／`_bot_state` で tick の同じ `now` で 1 回 `evaluate`。`sensor_health.py` / `terrain_health.py` / `stop_distance.py` は**不変更**。
+- `config/warehouse.base.yaml` — `perception.terrain` 末尾に `health` の**コメントアウト placeholder 3 本**を append（§4）。実値ゼロ・**行ピン差分ゼロ**。
+- `tests/unit/test_guardian_terrain_health.py`（新規・`@pytest.mark.safety` + `unit`）— PURE 半分は §3 の表の**全行**を独立オラクル（表のリテラル）で検査し、手書き JSON → `coverage_observation` → `SensorHealthMonitor`（test-local しきい値）→ `evaluate` → `Decision` の **end-to-end 純経路**を沈黙 / 凍結 / 壊れた JSON の 3 シナリオで通す。AST 半分は node を pin（gate が無ければ購読も monitor も作らない・topic 文字列・callback が `evaluate` を呼ばない・hard-index・`TERRAIN_SOURCE` の値・`_bot_state` に時計読みが無い・`_check_safety` の `now` が 1 本のまま）。
+- mutation（実測・**12/12 KILLED**・実ファイル差替＋`git diff --quiet` で復元検証）: `ABSENT` を無条件 estop（odom 証人を落とす・2 赤）／証人規則を全 verdict へ拡大（証人が無ければ無音・10 赤）／`INVALID` を健康扱い（非 OK の allow-list 化・15 赤）／未知の綴りを fail-OPEN（既知 4 名のみ estop・7 赤）／gate を無視して常に購読・常に monitor 生成（1 赤）／しきい値を `.get` 既定で埋める（1 赤）／callback 内で `evaluate`（1 赤）／`_bot_state` が時計を読み直す（2 赤）／base config に実値を入れる（1 赤）／source ラベルを `guard_logic` 内で発明（2 赤）／**`_bot_state` の marshalling 2 体（#728 stage-2 レビュー指摘で追加）= `report.verdicts[…].name`→`.value`（小文字綴り＝規則 (7) から見て未知＝**恒久 estop**）／`terrain_verdict` を `"OK"` 固定（判定を捨てる＝**fail-OPEN**）**——どちらも kwarg 名だけの pin では全緑を素通りしており、値の式を pin して赤にした（各 1 赤）
+- 既存 `tests/unit/test_guardian_*` は**全緑のまま**（gate OFF の既定で (7) が沈黙するため非回帰）。`tests/unit/test_node_shutdown_lifecycle.py` のラチェット baseline は不変。
+
