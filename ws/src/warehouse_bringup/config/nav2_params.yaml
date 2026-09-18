@@ -232,16 +232,16 @@ local_costmap:
           data_type: "LaserScan"
           marking: true
           clearing: false        # inf rays must NOT erase real obstacles (doc11a:290)
+          max_obstacle_height: 2.0   # EXPLICIT (OQ-OD4Y-l4): per-source default is 0.0 -> only z==0.0 survives the TF. Rationale: global_costmap virtual_scan note.
           obstacle_max_range: 2.0
           raytrace_max_range: 2.0
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        # 200mm bottleneck aisle (R-42, doc07:252): robot Ø0.15 in a 0.2 m channel leaves
-        # ~25mm/side. inflation_radius 0.10 SATURATED the whole channel (centre is only 0.10 m
-        # from each wall) -> NavFn could not commit a path and bots stalled in inscribed cells
-        # (#125 live 2-bot run). Tightened to wall-proximity only: inflation_radius 0.085 (just
-        # over inscribed 0.075) + steep cost_scaling_factor 10 -> channel centre is low-cost and
-        # plannable while wall-hugging stays penalised (#125 / R-42 "壁直近のみ高コスト").
+        # 200mm bottleneck aisle (R-42, doc07:252): robot Ø0.15 in a 0.2 m channel leaves ~25mm/side. inflation_radius 0.10
+        # SATURATED the whole channel (centre is only 0.10 m from each wall) -> NavFn could not commit a path and bots stalled
+        # in inscribed cells (#125 live 2-bot run). Tightened to wall-proximity only: inflation_radius 0.085 (just over
+        # inscribed 0.075) + steep cost_scaling_factor 10 -> channel centre is low-cost and plannable while wall-hugging stays
+        # penalised (#125 / R-42 "壁直近のみ高コスト"). [re-wrapped 6->5 lines so :245/:246/:247 stay put after the height key above]
         inflation_radius: 0.085
         cost_scaling_factor: 10.0
       cliff_layer: {plugin: "nav2_costmap_2d::ObstacleLayer", enabled: true, observation_sources: cliff_scan, cliff_scan: {topic: cliff_scan, data_type: "LaserScan", marking: true, clearing: false, obstacle_max_range: 2.5, max_obstacle_height: 2.0}}   # 崖専用 ObstacleLayer instance（04:178/:380/:988）: 自分の grid と observation buffer を持つ別 instance なので obstacle_layer の raytracing では消えない。値は Humble 1.1.20 既定の明示（marking/clearing = obstacle_layer.cpp:145-146 / obstacle_max_range 2.5 = :147 / max_obstacle_height 2.0 = layer 既定 :82 ＋ in-file scan :227。per-source 既定 0.0 = :143 は z≠0 の点を全部落とす fail-open）。合成順は plugins 行・設計と残 OQ は 04 追補 ⑩。**FLOW 記法＋空行消費で NET-ZERO**＝:254/:256/:258/:259/:262/:274/:291/:300 の doc pin を割らない（#165）。
@@ -277,15 +277,15 @@ global_costmap:
           data_type: "LaserScan"
           marking: true
           clearing: true
+          max_obstacle_height: 2.0   # EXPLICIT (OQ-OD4Y-l4): with the 0.0 default a lidar_link mount height > 0 would drop EVERY point here (unmeasured; 04 追補 ⑩ §5). See the note below.
           obstacle_max_range: 2.5
           raytrace_max_range: 3.0
-        virtual_scan:
-          topic: virtual_scan
-          data_type: "LaserScan"
-          marking: true
-          clearing: false
-          obstacle_max_range: 2.0
-          raytrace_max_range: 2.0
+        # max_obstacle_height is EXPLICIT on EVERY source (OQ-OD4Y-l4 / 04 追補 ⑩ §5): the PER-SOURCE default is 0.0 (humble
+        # obstacle_layer.cpp:143; the layer-level 2.0 at :82 is a separate filter) and ObservationBuffer keeps only min<=z<=max
+        # AFTER the TF into this costmap's frame (observation_buffer.cpp:143-144), so an omitted key admits only points with z
+        # exactly 0.0 (a lidar_link mount height > 0 drops EVERY point = fail-open). 2.0 = Humble layer default = scan :227.
+        # virtual_scan is a 1-line flow mapping under this note so :291/:293/:300 doc pins stay put (NET-ZERO, #165; cf. :293).
+        virtual_scan: {topic: virtual_scan, data_type: "LaserScan", marking: true, clearing: false, max_obstacle_height: 2.0, obstacle_max_range: 2.0, raytrace_max_range: 2.0}
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         inflation_radius: 0.085   # R-42 bottleneck: see local_costmap.inflation_layer (#125)
