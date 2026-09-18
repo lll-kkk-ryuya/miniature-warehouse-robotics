@@ -483,7 +483,7 @@ X2 の入力型 `warehouse_safety.sensor_health.SourceObservation`（`stamp_s` /
 
 ### 3. OPEN QUESTIONS（本追補で**発明せずに残した**もの）
 
-- `OQ-OD4Y-a` `ObservationQuality.frame_digest` と X2 `SourceObservation.digest` の**名前差**（意味は同一）。配線時にどちらへ寄せるか（本 v0 は `frame_digest` のまま）。`source_stamp_s` ↔ `stamp_s` も同型。
+- `OQ-OD4Y-a` `ObservationQuality.frame_digest` と X2 `SourceObservation.digest` の**名前差**（意味は同一）。配線時にどちらへ寄せるか（本 v0 は `frame_digest` のまま）。`source_stamp_s` ↔ `stamp_s` も同型。 **→ 裁定済（2026-09-18）= [追補 ⑪ §1](04-perception-sidewalk-and-signals.md:1024)**: **どちらへも寄せない**（両側の field 名を据え置き・改名は破壊的＝[parallel-workflow.md §7.2](../../.claude/rules/parallel-workflow.md:192)）。綴りの差は `warehouse_safety.terrain_health`（アダプタ **1 か所**・L1 純ロジック）が吸収する。`source_stamp_s` ↔ `stamp_s` も同じ扱い。
 - `OQ-OD4Y-b` `valid_fraction` を**必須・非 NaN** にしたため、「比率を計算できない producer」の表現が無い（X2 側は NaN を「計算できなかった」として `INVALID` 扱いにできる）。送らない／`0.0` を送る／optional 化のどれを契約にするか。**範囲外値（例 `valid_fraction=1.5`）の扱いも方向が逆**: X2 は「送信者が実際に送った実数」として保持し `INVALID` と判定するが（[`SourceObservation` docstring](../../ws/src/warehouse_safety/warehouse_safety/sensor_health.py:206)）、04 契約は入口で拒否する。どちらを正にするかも同じ裁定に含める。
 - `OQ-OD4Y-c` `slope` の**単位**（rad / deg / 比）と `estimate_error_m` が**どの量の誤差**か（距離か高さか）・統計的意味（1σ か最大値か）。docs は field の存在だけを言い単位を pin していない（[:196](04-perception-sidewalk-and-signals.md:196)）。
 - `OQ-OD4Y-d` `sample_count` が**どのレートのサンプル**を数えるか（レート A = カメラ fps / レート B = 分類器 / 両方）。二段レート（[:307](04-perception-sidewalk-and-signals.md:307)）ゆえ `off_phase_count` との大小関係を契約にできない。
@@ -1025,7 +1025,86 @@ X2 の入力型 `warehouse_safety.sensor_health.SourceObservation`（`stamp_s` /
 
 > **stub（先置き）**: 追補 ⑨ §4 hand-off の実装記録をレーン B（`feat/safety-x2-terrain-adapter`）が本節に記入する。先置きは並列 append の hunk 衝突と [#165](../dev/03-retrospectives.md) 行ズレの回避が目的（P0 #707 と同じ手法）。
 
-（未記入 — レーン B）
+正本 = [追補 ⑨ §4 hand-off ②](04-perception-sidewalk-and-signals.md:991)（safety-state が `TerrainCoverage.quality` を `SourceObservation` へ写す）+ 型は [追補 ④](04-perception-sidewalk-and-signals.md:390)（凍結契約 `warehouse_interfaces.perception`）+ 判定側は `warehouse_safety/sensor_health.py`（#680・L1・未配線）。**レイヤ注記**（[.claude/rules/layer-annotation.md](../../.claude/rules/layer-annotation.md)）: 本節のアダプタは **L1 安全**（`warehouse_safety`・`sensor_health.py` と同じ箱）・**純ロジック・actuation なし**。producer 側（04 の `terrain_node`）は自律走行（安全層外）＝[:189](04-perception-sidewalk-and-signals.md:189)。**本 PR は rclpy 配線をしない**——誰が購読するか（Guardian 拡張か新 node か）は [`OQ-OD95`](09-external-review-v3-response.md:255) が未裁定で、§4 はその裁定資料である。
+
+### 1. 裁定 `OQ-OD4Y-a` — **どちらへも寄せない**（両側据え置き・差はアダプタ 1 か所で吸収）
+
+**裁定（2026-09-18）**: 契約側 `ObservationQuality.frame_digest` / `TerrainCoverage.source_stamp_s` と X2 側 `SourceObservation.digest` / `.stamp_s` の **どちらも改名しない**。名前差は新設 `ws/src/warehouse_safety/warehouse_safety/terrain_health.py`（L1・純ロジック）が吸収する。
+
+1. **改名は破壊的**。`warehouse_interfaces` は凍結契約で、既存 field の削除・改名・型変更は原則禁止＝additive-first（[parallel-workflow.md §7.2](../../.claude/rules/parallel-workflow.md:192)）。X2 側を寄せても同じで、`SourceObservation` は #680 で着地済み＝`sensor_health.py` の docstring・`warehouse_safety/CLAUDE.md`・148 unit がその綴りで書かれている。
+2. **買えるものが無い**。[追補 ④ 1-2](04-perception-sidewalk-and-signals.md:411) は 2 型の**意味**を既に揃えてある（「翻訳なしで渡せる意味に揃える」）。残っているのは綴りの差だけで、それを消すために凍結契約と 2 パッケージを同時に動かすのは交換として成立しない。
+3. **写す場所はどのみち 1 か所要る**。wire は `std_msgs/String` の JSON（[doc03:323](../architecture/03-software-architecture.md:323)）ゆえ、名前が一致していても「JSON → pydantic 検証 → dataclass」は必要で、その 1 か所に綴りの差も入る＝**名前差の解消は新しい仕事を作らない**。
+4. 逆に、`.msg` 化（Phase 4・[doc16 §3](../architecture/16-repository-and-conventions.md)）で改めて綴りを揃える機会はある。そのとき本節の写像表がそのまま移行表になる。
+
+→ [:486](04-perception-sidewalk-and-signals.md:486) に同一行で追記済（行数不変）。
+
+### 2. 写像表（`TerrainCoverage` → `SourceObservation`）
+
+| `TerrainCoverage`（04・凍結契約 v0.1） | `SourceObservation`（X2） | 出典 file:line |
+|---|---|---|
+| `.source_stamp_s` | `stamp_s`（**元計測時刻**。鮮度には使わない） | [:424](04-perception-sidewalk-and-signals.md:424) / [09 規則 (4)](09-external-review-v3-response.md:67) |
+| `.quality.valid_fraction` | `valid_fraction`（同名・同範囲 `[0,1]`） | [:415](04-perception-sidewalk-and-signals.md:415) |
+| `.quality.frame_digest` | `digest`（凍結フレーム指紋。`None` は**明示の無効化**） | [:416](04-perception-sidewalk-and-signals.md:416) |
+| （04 は持たない） | `received_monotonic_s` ＝ **呼び出し側の単調時計をそのまま通す** | [:411](04-perception-sidewalk-and-signals.md:411) / [09:67](09-external-review-v3-response.md:67) 規則 (4) |
+
+**写さない field と理由**（発明を避けるための明示）:
+
+| 写さない field | 理由 |
+|---|---|
+| `state`（`FLOOR_CONFIRMED` / `DROP_DETECTED` / `UNKNOWN`） | coverage は**品質の証人**であって停止判断ではない。判定点は X2 の 1 か所（[:203](04-perception-sidewalk-and-signals.md:203) / [:222](04-perception-sidewalk-and-signals.md:222)）で、`SourceObservation` に「床が落ちた」を意味する field は無い。`DROP_DETECTED` は**健康なセンサが世界について報告している**状態であり、これを health に畳むと正常なセンサが故障に見え（誤停止）、逆に沈黙が見えなくなる |
+| `quality.ground_*` 5 field | X2 側の閾値化は [`OQ-OD4Z-d3`](04-perception-sidewalk-and-signals.md:899) で**別レーン**。今写せば閾値を発明することになる |
+| `quality.device_frame_seq` / `quality.processing_latency_s` | X2 の入力は 4 field ちょうどで、対応物が無い。[追補 ③ #5](04-perception-sidewalk-and-signals.md:383) の「第 2 の材料」としての使い道は `OQ-OD4Y-m*` 未決 |
+| `confirmed_distance_m` / `nearest_drop_distance_m` / `step_height_m` / `slope` / `roughness_m` / `estimate_error_m` / `reference` | 幾何であって観測品質ではない。消費者は 06 / 05（[:214](04-perception-sidewalk-and-signals.md:214) / [:215](04-perception-sidewalk-and-signals.md:215)） |
+
+**source 名は持たない**: coverage が `SensorHealthMonitor` のどの source を代表するかは docs が沈黙する（[09:72](09-external-review-v3-response.md:72) は scan / cliff_scan / GNSS / depth を挙げるが coverage はそのどれでもない）。よって module は source 名の定数を**持たず**、呼び出し側（配線レーン）が `monitor.observe(<name>, obs)` で与える。推奨は §5 `OQ-OD4Y-m1`。
+
+### 3. fail 方向
+
+| 場面 | アダプタの挙動 | X2 の verdict | 向き |
+|---|---|---|---|
+| 正常 payload | 4 field を 1:1 で写す | しきい値次第（`OK` など） | — |
+| 壊れた JSON / 空文字 / 必須欠落 / 未知 `TerrainState` / `NaN`・`Infinity` トークン / `valid_fraction` 範囲外 / `reference` 空白 | `parse_terrain_coverage` → `None`。観測は `stamp_s = NaN` / `valid_fraction = NaN` / `digest = None`（**raise しない・log しない**＝純関数） | **`INVALID`** | **fail-closed** |
+| payload が `str` / `bytes` / `bytearray` ですらない（`None`・数値・list） | 同上（`ValidationError` は `ValueError` 派生・`TypeError` も捕捉） | **`INVALID`** | **fail-closed** |
+| `frame_digest` 省略 / `null` | `digest = None`＝**この message では凍結検出を切る明示の選択**（[:416](04-perception-sidewalk-and-signals.md:416)） | 凍結判定を行わない（`_advance_run` は run を**進めも消しもしない**） | 現状維持（fail-open を作らない） |
+| 凍結ストリームに壊れた frame が 1 本混ざる | `digest = None` ゆえ**既存の凍結証拠を消さない** | `FROZEN` のまま | **fail-closed**（合成 digest を返すと run が再開し `INVALID` へ格下げ＝診断が壊れる） |
+| `received_monotonic_s` が負 / `now` より未来 / 非数 | **そのまま通す**（アダプタは時計を読まない・補正しない） | `STALE` | **fail-closed**（補正すると時計取違えを検出する規則そのものを潰す） |
+| `received_monotonic_s` が `bool` | `SourceObservation` 構築時に `ValueError`（call-site の marshalling バグ） | — | 構築時に落とす（`evaluate` には持ち込まない） |
+| `state = DROP_DETECTED` / `UNKNOWN` かつ品質良好 | `state` は写さない | `OK`（＝センサは健康） | 設計どおり（§2 の表） |
+
+**鮮度の二重性に注意**: X2 が判定する staleness は**受信側の単調時計**で、`stamp_s` では判定しない（[09:67](09-external-review-v3-response.md:67) 規則 (4)）。したがって [追補 ④ §2 1.](04-perception-sidewalk-and-signals.md:477) が消費側に課す `age = now − source_stamp_s; 0 ≤ age < max_age`（＝**producer が古い計測を新しく見せていないか**）は、本アダプタでは**果たされない**。両者は別の検査（前者＝生存性、後者＝入力妥当性）で、後者の置き場は未決＝§5 `OQ-OD4Y-m2`。
+
+### 4. `OQ-OD95` の裁定資料 — Guardian 拡張（A）か新 node（B）か（**本 PR は実装しない**）
+
+**先例**: `/{bot}/scan` の**途絶**停止は #679 で **Emergency Guardian の新理由 `scan_stale`** に着地した（[doc12 末尾追補 (3)](../architecture/12-infrastructure-common.md:698)）。同追補は **scan の「内容」異常（全 NaN・凍結・有効観測率）は対象外＝Mode Outdoor X2 に残す**と明記し、「本裁定は `OQ-OD95` に対して共通構成側の**先例**を与えるが、X2 の決定は mode-outdoor 側」と断っている（[doc12:709](../architecture/12-infrastructure-common.md:709) ③）。つまり A は「前例に倣う」、B は「前例と分岐する」選択である。
+
+| 観点 | **A: Emergency Guardian 拡張** | **B: 新 node `sensor_health_node`** |
+|---|---|---|
+| 何が単純になるか | 停止の実行機構（prio100 ゼロ `Twist` の level 再アサート・Nav2 goal cancel・edge-trigger event・`/{bot}/stop_state` feed → L0' 上乗せ）が**既に R-26 で固定済み**。追加は「購読 1 本＋純ブロック 1 個」で、`scan_stale` と同型（[doc12:700](../architecture/12-infrastructure-common.md:700) ①）。時計が 1 本で済む（pose / odom / scan / coverage が同じ `time.monotonic()`＝同 ②）。層の整合＝CM の**入力の生存**を同じ L1 で見る（同 ③④） | **関心の分離**。Guardian は幾何・電池の 50 ms 反射に留まり、source ごとの状態（`(digest, run)`・`health_epoch`）を持つ**別種の判定**を独立させられる。Guardian を再起動しても `health_epoch` が巻き戻らない。[09:67](09-external-review-v3-response.md:67) 規則 (1) が要求する「監視系の生存確認」は、**別プロセスなら観測可能な事実**になる（同居だと「Guardian が生きている＝health も生きている」と暗黙に仮定することになる） |
+| 何が二重化するか | 1 プロセス内に**鮮度の語彙が 2 つ**並ぶ: `guard_logic`（閉区間 + `age_is_unknown`・[CLAUDE.md 追記②](../../ws/src/warehouse_safety/CLAUDE.md:115)）と `sensor_health`（`ABSENT/STALE/FROZEN/INVALID`）。どちらも正しいが規則が違うため、**どちらで判定したかを読者が追えなくなる**危険。統一するなら追加の reconcile 作業 | **停止経路が二重化しうる**。新 node に停止権限を与えれば第 2 の stop producer になり、[doc12:701](../architecture/12-infrastructure-common.md:701) が `/operator/stop_request` 互換 producer を**不採用**にしたのと同じ理由（単一 latch・人の意思表示専用）に抵触する。与えなければ health を topic で出すことになり、**その topic 自身の鮮度**を誰かが判定する必要がある（監視者を監視する再帰） |
+| fail-active 窓（[doc12:709](../architecture/12-infrastructure-common.md:709) ①）への影響 | **縮まない**。Guardian 単独死の窓は `stop_overlay_enabled: true` の L0' 上乗せ（無信号＝失権）が担う。A では Guardian の死が反射と health 判定を**同時に**奪う（単一障害点）が、それを塞ぐのは permit 側の生存確認であって配置ではない | **縮まない**が失敗の形が変わる。health node の死は反射を奪わない（良い）一方、health が沈黙する＝[09:67](09-external-review-v3-response.md:67) 規則 (1) により消費側が「health 不在＝not healthy」を**自分で実装しテストする**必要が増える（A では L0' の無信号＝失権と同じ形に畳める） |
+| 必要な追加契約 | `OQ-OD89`（`health_epoch` の wire）・`OQ-OD91`（モード別必須 source 集合）・`OQ-OD97`（しきい値）。**新 topic は不要**にできる（Guardian が既に出す `/{bot}/stop_state` の additive 拡張に相乗り可能） | 上記 3 つに加えて **node 名・launch エントリ・新 topic + QoS・その topic の鮮度規則**。`OQ-OD89` が「別 topic」に決まるなら、この追加は B では必然、A でも必要になる |
+| 実装コスト（本アダプタ着地後） | 購読 1・`SensorHealthMonitor` 1 インスタンス・`evaluate` への additive ブロック 1 | 新 package/node 骨格・終了 3 規則・launch・config・topic 契約・shutdown lifecycle ラチェットへの登録 |
+
+**推奨: A（Emergency Guardian 拡張）**。理由は「同じ fail-open クラス・同じ layer・同じ箱で、repo が既に一度この判断を下しており（[doc12:700](../architecture/12-infrastructure-common.md:700) ①〜④）、その理由がそのまま転用できる」こと。加えて A は**停止権限を 1 か所に保つ**——[doc12:701](../architecture/12-infrastructure-common.md:701) が明示的に不採用にした「機械 producer をもう 1 本立てる」形を避けられる——し、`OQ-OD89` が未裁定のうちに新 topic を切らずに済む。A が抱える費用（1 プロセス内に鮮度の語彙が 2 つ）は**名指しして片付ける作業**であって、プロセスを割る理由ではない。
+
+**この推奨が反転する条件（隠さない）**: `OQ-OD89` が「`health_epoch` は独自 topic で運び、停止ではなく **09 の期限付き許可の失効**として効かせる」に決まる場合、health は stop の producer ではなく permit の入力になる。そのとき B の「独立した監視系の生存を観測可能にする」（[09:67](09-external-review-v3-response.md:67) 規則 (1)）が主論点になり、B が優位になりうる。**したがって `OQ-OD95` は `OQ-OD89` より後に裁定するか、両者を同時に裁定するのが筋**であり、本節は A を推すが、`OQ-OD89` の裁定を待たずに node を書き始めることは推奨しない。
+
+### 5. OPEN QUESTIONS（本追補で**発明せずに残した**もの・接頭辞は [`OQ-OD4Z-d6`](04-perception-sidewalk-and-signals.md:902) の採番衝突を避けて `-m1`〜`-m4`）
+
+- `OQ-OD4Y-m1` **coverage はどの source を代表するか**。`SensorHealthMonitor` は source 名で必須集合を作るが、[09:72](09-external-review-v3-response.md:72) の列挙（scan / cliff_scan / GNSS / depth）に coverage は無い。**推奨（採否は `OQ-OD95` / `OQ-OD91` と一緒に）= `cliff_scan` の品質証人として同じ source 名に入れる**: ① `cliff_scan`（`sensor_msgs/LaserScan`）は `valid_fraction` も指紋も運べず、そのままでは意味のある `SourceObservation` を作れない（[:173](04-perception-sidewalk-and-signals.md:173)）。② 2 本は**同じ depth frame から対で 1 回**出る（[doc03:322](../architecture/03-software-architecture.md:322) / [:323](../architecture/03-software-architecture.md:323)）ので、coverage の到着は cliff_scan の生存の証拠でもある。対立案 = coverage を独立 source として立て、`cliff_scan` は Guardian の `scan_stale` 同型（到着のみ）で見る。**module は名前を持たない**ので、どちらに決まってもアダプタは不変。
+- `OQ-OD4Y-m2` **`age = now − source_stamp_s` の置き場**。[追補 ④ §2 1.](04-perception-sidewalk-and-signals.md:477) は消費側に `0 ≤ age < max_age` を課すが、X2 の staleness は**受信側の単調時計**で測る（[09:67](09-external-review-v3-response.md:67) 規則 (4)）ため、本アダプタはこれを**行わない**（§3 末尾）。この検査は (a) 配線 node が別途行う、(b) `SourceObservation` に additive で持ち込む（契約変更）、(c) producer 側の `OQ-OD4Y-i3`（負の遅延）と同じ裁定に含める、のどれか。`max_age` は「その消費者の時間予算」由来ゆえ [`OQ-OD97`](09-external-review-v3-response.md:257) と同じ実測待ち。
+- `OQ-OD4Y-m3` **`state` を恒久的に health から外してよいか**。本追補は「`DROP_DETECTED` は健康なセンサの報告」として `state` を写さないと決めたが、`UNKNOWN` が**継続的に**出る（視野外・遮蔽・鮮度切れ・変換不成立＝[:174](04-perception-sidewalk-and-signals.md:174)）状態を「健康」と言い続けてよいかは別問題。`valid_fraction` がその役を担う想定だが、`UNKNOWN` を出しつつ `valid_fraction` が高い frame が有りうるかは実装（`terrain_core`）と実測で確かめる。走行可否としては 05（観測範囲外へ進ませない＝[:215](04-perception-sidewalk-and-signals.md:215)）が既に持っている論点で、**health へ二重に持ち込まない**のが現時点の判断。
+- `OQ-OD4Y-m4` **拒否された payload の可観測性**。アダプタは純関数ゆえ log を出さない（[:482](04-perception-sidewalk-and-signals.md:482) の「safety loop の外で捕捉」は満たすが、捕捉した事実を**どこにも記録しない**）。producer が壊れた JSON を出し続けても、下流には `INVALID` verdict としてしか現れず「なぜ INVALID か」が分からない。記録は X1 の担当（[:222](04-perception-sidewalk-and-signals.md:222)）だが、配線 node が parse 失敗を数える／`/emergency/event` の `detail` に載せる／何もしない、のどれを採るかは `OQ-OD95` の配線裁定と同時に決める。
+
+### 6. 実装・テスト（本 PR）
+
+- `ws/src/warehouse_safety/warehouse_safety/terrain_health.py`（新規・**L1**・`rclpy` / `numpy` 非 import・時計を読まない・**しきい値と source 名を持たない**）。公開 IF は 2 つだけ:
+  - `parse_terrain_coverage(payload) -> TerrainCoverage | None` — `TerrainCoverage.model_validate_json` で検証し、契約が拒否したものは `None`（raise しない・log しない）。
+  - `coverage_observation(payload, received_monotonic_s) -> SourceObservation` — §2 の写像。parse 失敗時は `stamp_s = NaN` / `valid_fraction = NaN` / `digest = None`（§3）。`received_monotonic_s` は素通し。
+- 既存 module は**1 文字も変えていない**（`sensor_health.py` / `guard_logic.py` / `emergency_guardian.py` / `stop_distance.py`）。`warehouse_safety/package.xml` は `warehouse_interfaces` の `exec_depend` を**既に持っている**ため変更不要。topic・ROS parameter・launch・`setup.py` エントリの追加は**ゼロ**。
+- R-26: `tests/unit/test_terrain_health.py`（45 unit・`@pytest.mark.safety` + `unit`）。独立オラクル = **手書き JSON リテラル**（`model_dump_json()` で作らない）と docs の規則。`stamp_s` / `received_monotonic_s` の literal を ~7766 s 離して取り違えが必ず見えるようにし、`state` 違いの 2 payload が同一観測になること・`ground_*` 5 field が観測を動かさないことを等値で pin。構造 pin = import 集合（時計・ROS を持たない）とモジュール定数（`__all__` のみ＝source 名・しきい値を発明していない）。
+- **mutation 9 体すべて KILLED**（実ファイル差替・sha256 で復元検証）: `digest` に `state` を入れる／parse 失敗で raise／失敗時 `valid_fraction = 0.0`（NaN でなく）／`stamp_s` に `received_monotonic_s` を入れる／`bytes` を decode しない／失敗時に合成 `digest`（`""`）を返す／`ground_inlier_fraction` を `valid_fraction` の代用にする／受信時刻を `abs()` で補正する／失敗時 `stamp_s` に受信時刻を入れる。
+- produce / consume は [`ws/src/warehouse_safety/CLAUDE.md`](../../ws/src/warehouse_safety/CLAUDE.md) 末尾（本 PR で append）。
 
 <!-- spacer: 並列 append の hunk 衝突回避（区画間 6 行超） -->
 <!-- spacer: 並列 append の hunk 衝突回避（区画間 6 行超） -->
