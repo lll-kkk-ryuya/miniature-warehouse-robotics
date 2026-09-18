@@ -118,6 +118,44 @@ def _keyword(call: ast.Call, arg: str) -> ast.expr | None:
     return None
 
 
+def _dict_entry(scope: ast.AST, key: str) -> ast.expr:
+    """`scope` 配下の dict リテラルから `key` の値ノードを 1 つだけ取り出す。"""
+    hits = [
+        value
+        for node in ast.walk(scope)
+        if isinstance(node, ast.Dict)
+        for literal, value in zip(node.keys, node.values, strict=True)
+        if isinstance(literal, ast.Constant) and literal.value == key
+    ]
+    assert len(hits) == 1, f"キー {key!r} の出現が 1 回ではない（{len(hits)} 回）"
+    return hits[0]
+
+
+def _branch_on(tree: ast.Module, table: str) -> ast.If:
+    """`key in <table>` を条件に持つ `if` を `_terrain_group` から 1 つ取り出す。"""
+    hits = [
+        node
+        for node in ast.walk(_function(tree, "_terrain_group"))
+        if isinstance(node, ast.If)
+        and isinstance(node.test, ast.Compare)
+        and isinstance(node.test.comparators[0], ast.Name)
+        and node.test.comparators[0].id == table
+        and isinstance(node.test.ops[0], ast.In)
+    ]
+    assert len(hits) == 1, f"`key in {table}` の分岐が 1 つではない（{len(hits)}）"
+    return hits[0]
+
+
+def _assigned_call_name(body: list[ast.stmt]) -> str | None:
+    """枝の中の代入 1 本が呼んでいる変換関数名（`int` / `float` / `str`）。"""
+    assigns = [node for node in body if isinstance(node, ast.Assign)]
+    assert len(assigns) == 1, f"枝の代入が 1 つではない（{len(assigns)}）"
+    value = assigns[0].value
+    if isinstance(value, ast.Call) and isinstance(value.func, ast.Name):
+        return value.func.id
+    return None
+
+
 # ──────────────── 配線されていること（起動しなければ全機能が無い） ────────────────
 def test_the_terrain_group_is_added_once_per_robot_from_the_bringup_loop() -> None:
     """`_terrain_group` が per-robot ループから 1 回だけ呼ばれ、結果が ld に入る。
@@ -342,8 +380,55 @@ def test_int_and_str_coercions_match_the_nodes_declared_sentinel_types() -> None
         {k for k, v in sentinels.items() if type(v) is float}
     )
 
-    code = _executable_code(_function(tree, "_terrain_group"))
-    assert "int(" in code and "float(" in code and "str(" in code, "型変換が欠けている"
+    # 表が正しくても**枝が間違っていれば**同じ起動失敗になる。どの枝がどの変換を
+    # 呼ぶかまで固定する（「int( が本文に出現する」では枝の取り違えを見逃す）。
+    int_branch = _branch_on(tree, "_TERRAIN_INT_KEYS")
+    assert _assigned_call_name(int_branch.body) == "int", "int キーの枝が int() でない"
+    str_branch = _branch_on(tree, "_TERRAIN_STR_KEYS")
+    assert _assigned_call_name(str_branch.body) == "str", "str キーの枝が str() でない"
+    assert _assigned_call_name(str_branch.orelse) == "float", "既定の枝が float() でない"
+    # str 枝は int 枝の orelse でなければならない（並列の if にすると int キーが
+    # `key in _TERRAIN_STR_KEYS` も評価されて二重代入されうる）。
+    assert str_branch in int_branch.orelse, "int / str の分岐が elif 連鎖になっていない"
+
+
+def test_the_enabled_parameter_is_the_literal_true_not_the_config_value() -> None:
+    """`terrain_params["enabled"]` は**リテラル `True`**（config の値を写さない）。
+
+    ここを `terrain["enabled"]` にすると、gate を通った truthy 値（`1` / `"yes"`）が
+    そのまま bool 宣言の param へ流れ、declare 時に型不一致で落ちる。gate の判定と
+    node へ渡す値を**別物**に保つ（gate は truthy 判定・param は厳密な bool）。
+    """
+    group = _function(_launch_tree(), "_terrain_group")
+    value = _dict_entry(group, "enabled")
+    assert isinstance(value, ast.Constant) and value.value is True, ast.dump(value)
+
+
+def test_the_input_topics_are_forwarded_without_coercion() -> None:
+    """入力 topic は**生のまま**転送する（`str()` を通さない）。
+
+    `str(None) == "None"` は**非空**文字列なので、overlay の `depth_topic:`（YAML null）
+    を `str()` で包むと node の空文字ガード（`terrain_node.py:134`）を**すり抜け**、
+    `/bot{n}/None` を購読して「健康に見えたまま無言」になる——そのパラメータが防ぐ
+    はずの失敗そのもの。生で渡せば宣言型 STRING が非 str を拒み起動が止まる
+    （fail-closed・追補 ⑫ §2）。
+    """
+    group = _function(_launch_tree(), "_terrain_group")
+    loops = [
+        node
+        for node in ast.walk(group)
+        if isinstance(node, ast.For)
+        and isinstance(node.iter, ast.Name)
+        and node.iter.id == "_TERRAIN_TOPIC_KEYS"
+    ]
+    assert len(loops) == 1, "入力 topic の転送ループが 1 つではない"
+    assigns = [node for node in ast.walk(loops[0]) if isinstance(node, ast.Assign)]
+    assert len(assigns) == 1, "topic の代入が 1 つではない"
+    value = assigns[0].value
+    assert isinstance(value, ast.Subscript), (
+        f"入力 topic が変換されている: {ast.unparse(value)}（生の terrain[key] であること）"
+    )
+    assert isinstance(value.value, ast.Name) and value.value.id == "terrain"
 
 
 # ──────────────── 0 actuation（配線側でも走行系に触れない） ────────────────

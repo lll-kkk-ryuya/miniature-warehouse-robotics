@@ -1038,7 +1038,7 @@ X2 の入力型 `warehouse_safety.sensor_health.SourceObservation`（`stamp_s` /
 
 ## 【2026-09-18 追補 ⑫】bringup consumer: launch `terrain_publisher` ＋ config `perception.terrain.*` 注入（実装記録・レーン C が記入）
 
-> **stub（先置き）**: 追補 ⑨ §4 hand-off の実装記録をレーン C（`feat/bringup-terrain-publisher`）が本節に記入する。先置きは並列 append の hunk 衝突と [#165](../dev/03-retrospectives.md) 行ズレの回避が目的（P0 #707 と同じ手法）。
+> **（記入済 = PR #723・2026-09-18）** レーン C（`feat/bringup-terrain-publisher`）が記入した追補 ⑨ §4 **hand-off ③** の実装記録。
 
 正本 = [追補 ⑨ §4 hand-off ③ :992](04-perception-sidewalk-and-signals.md:992)。本節は **hand-off ③ の実装記録**である。追補 ⑨ が「config キー `perception.terrain.*`（`speed_bands.*` と同型）」を**案**として置いたのを bringup 側で**実体**にした（launch 群 ＋ base config ブロック）。実装 = [`ws/src/warehouse_bringup/launch/nav2_bringup.launch.py`](../../ws/src/warehouse_bringup/launch/nav2_bringup.launch.py)（`_terrain_config` / `_terrain_group` ＋ 型表 3 本）と [`config/warehouse.base.yaml`](../../config/warehouse.base.yaml) の `perception.terrain` ブロック。**値は 1 つも入れていない**（[裁定 8 :943](04-perception-sidewalk-and-signals.md:943) / [:992](04-perception-sidewalk-and-signals.md:992) の実測ゲート）。`warehouse_perception` / `warehouse_interfaces` は**不変更**。
 
@@ -1076,7 +1076,7 @@ X2 の入力型 `warehouse_safety.sensor_health.SourceObservation`（`stamp_s` /
 | 22 | `reference` | str | `""` | [§2 :969](04-perception-sidewalk-and-signals.md:969) / 語彙は `OQ-OD4Y-h` [:493](04-perception-sidewalk-and-signals.md:493) が未決 |
 | 23 | `pixel_stride` | **int** | `0` | [§2 :970](04-perception-sidewalk-and-signals.md:970) / [裁定 7 :942](04-perception-sidewalk-and-signals.md:942) |
 
-> 内訳 = **int 5・double 15・str 3**（`enabled` は gate ゆえ本表の外）。base config には 23 本すべてが**コメントアウトの placeholder** として並び、各行に単位・検証条件・出典が付く。`enabled: false` だけが実キーである。
+> 内訳 = **int 5・double 15・str 3**（`enabled` は gate ゆえ本表の外）。**型変換を掛けるのは`PARAM_KEYS` の 21 本だけ**で、入力 topic 2 本は**生のまま**転送する（§2 の null 行）。base config には 23 本すべてが**コメントアウトの placeholder** として並び、各行に単位・検証条件・出典が付く。`enabled: false` だけが実キーである。
 
 ### 2. gate と fail 方向（何がどちらへ倒れるか）
 
@@ -1087,6 +1087,8 @@ X2 の入力型 `warehouse_safety.sensor_health.SourceObservation`（`stamp_s` /
 | `enabled: true` ＋ 入力 topic が空 | node が起動時 abort（[§3 :980](04-perception-sidewalk-and-signals.md:980)） | **fail-closed** |
 | config に node が知らないキー（typo・将来キー） | launch が**転送しない**（`PARAM_KEYS` ＋ 入力 topic 2 本 ＋ `enabled` 以外は無視）。rclpy は未宣言 param を拒否するため、素通しさせると起動失敗になる | **黙って無視**（起動は守る） |
 | `perception` / `perception.terrain` が dict でない | 空 dict に倒す＝OFF（起動失敗の責任は node 側 fail-closed 検証に集約する） | **safe-OFF** |
+| `enabled: true` ＋ overlay の値が null / 非数値（`cell_size_m:` / `cell_size_m: auto`） | launch の `float()` / `int()` が **launch description を組んでいる最中**に上げる → `ros2 launch` 全体が起動しない（node だけでなく **両 bot の Nav2 も道連れ**）。`_speed_band_group` の `float(speed_bands[key])`（`nav2_bringup.launch.py` `:441-442`）と**同じ露出**であり、本節で明示しておく | **fail-closed**（ただし巻き添えは大きい） |
+| `enabled: true` ＋ 入力 topic が null（`depth_topic:` = YAML null） | 入力 topic は**変換せず生のまま**転送するので、宣言型 STRING が非 str を拒み起動が止まる。`str()` で包むと `str(None) == "None"` が**非空**になり node の空文字ガード（[:980](04-perception-sidewalk-and-signals.md:980) が守る条件）を**すり抜けて** `/bot{n}/None` を購読し「健康に見えたまま無言」になる | **fail-closed**（生転送がその条件） |
 | `warehouse_perception` が未ビルド ＋ terrain OFF | `PARAM_KEYS` の import は**有効経路の中だけ**なので Nav2 は従来どおり起動する | **safe-OFF** |
 
 **ON/OFF の真実は 1 つ**: 同じ `perception.terrain.enabled` を、レーン A の consumer 側 gate（`collision_monitor` の `cliff_scan` source）も読む。producer を止めて source だけ残す／その逆、という半端な構成を config 上作れないようにするため（[ADR-0012 決定 3](../adr/0012-speed-band-no-l2-best-effort.md:20) の「真実の源を 2 つにしない」を配線へ適用）。
@@ -1103,7 +1105,7 @@ X2 の入力型 `warehouse_safety.sensor_health.SourceObservation`（`stamp_s` /
 
 - `OQ-OD4Y-n1` **`use_sim_time` と depth stamp の関係**。`_terrain_group` は `speed_band` 群と同じく `SetParameter("use_sim_time", …)` を push するが、本 node は timer を持たず `get_clock()` を読むのは遅延自己申告（`processing_latency_s`）だけである。sim で depth frame の stamp が `/clock` 系、受信側が system clock、という取り違えが起きたとき「負の遅延」として現れる（[`OQ-OD4Y-i3` :998](04-perception-sidewalk-and-signals.md:998)）。sim に depth camera が入るまで実地で確認できない。
 - `OQ-OD4Y-n2` **overlay 値の検証を node 以外にも置くか**。現状「起動して落ちる」まで誤りが分からない（`corridor_half_width_m < cell_size_m / 2` のような**組み合わせ**の誤りは特に）。`speed_bands` 側は base config の値を `tests/unit/test_speed_band_bringup_wiring.py` が「値が入った瞬間に効く」形で検査しているが、terrain は値が **env overlay** に入るため同じ手は届かない（overlay は環境ごとに異なりリポジトリに無い環境もある）。起動前 lint（`check-hermes-live.sh` 相当の診断）に寄せるかは未決。
-- `OQ-OD4Y-n3` **int キーの丸め**。launch は `int(value)` で変換するので、overlay に `ray_count: 359.6` と書かれると**黙って 359** になる（`float("abc")` のような型違いは例外になるが、非整数の数値は通る）。「非整数なら起動を止める」ほうが本スライスの fail-closed 方針と揃うが、その検証規則は正本に無いので発明していない。
+- `OQ-OD4Y-n3` **int キーの丸め**。launch は `int(value)` で変換するので、overlay に `ray_count: 359.6` と書かれると**黙って 359** になる（`float("abc")` のような型違いは例外になるが、非整数の数値は通る）。「非整数なら起動を止める」ほうが本スライスの fail-closed 方針と揃うが、その検証規則は正本に無いので発明していない。**同じ穴が `reference` にもう 1 つ残る**: 入力 topic を生転送にした後、`str()` を通るのは `reference` だけで、`reference: 3` は**黙って `"3"`** になる（非空なので node の検証も通る）。語彙が [`OQ-OD4Y-h` :493](04-perception-sidewalk-and-signals.md:493) で未決である以上、「どんな文字列なら正しいか」を本レーンでは書けない。
 - `OQ-OD4Y-n4` **2 台構成での 1 カメラ**。`_terrain_group` は `ROBOTS` の各要素に同じ config を適用するので、`depth_topic` を絶対名で書くと 2 台が同じカメラを見て `/bot1/cliff_scan` と `/bot2/cliff_scan` に同じ崖が出る。`speed_bands` の `source_topic` が抱えるのと同じ未決（[`TODO(gesture_detector)`](../../ws/src/warehouse_bringup/launch/nav2_bringup.launch.py)）で、単騎運用（[ADR-0006](../adr/0006-single-bot-first.md)）の間は顕在化しない。
 - `OQ-OD4Y-n5` **正準対応表の記述の鮮度**。[productization/01 L1 行 :185](../productization/01-commercial-box-map.md:185) は `terrain_node.py` を「launch / config / consumer 側は**未配線**」と書いており、本節（bringup）とレーン A / B（consumer）の land でその一文が古くなる。`docs/productization/**` は本レーンの編集境界の外ゆえ触っていない＝**ラウンド統合側の残件**（同一 PR での対応表追記は「新規 component を実装したら」が条件で、配線は対応表に行を持たない＝[layer-annotation.md](../../.claude/rules/layer-annotation.md)）。
 

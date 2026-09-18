@@ -72,9 +72,14 @@
 - console_script `terrain_publisher = warehouse_perception.terrain_node:main`
   （`warehouse_perception/setup.py`）。`package.xml` の `<exec_depend>warehouse_perception</exec_depend>`
   は速度帯スライスで宣言済み（`:27`）＝**本スライスで package.xml は不変更**。
-- 型の正本は `terrain_node.py` の `_SENTINELS`（int 5 / double 15 / str 3）。rclpy は宣言値から
-  param 型を固定するため、launch は各値をその型へ変換する（`_TERRAIN_INT_KEYS` /
+- 型の正本は `terrain_node.py` の `_SENTINELS`（**21 本の内訳 = int 5 / double 15 / str 1**。
+  23 本の面で str が 3 本になるのは入力 topic 2 本を足した数）。rclpy は宣言値から param 型を
+  固定するため、launch は **`PARAM_KEYS` の 21 本だけ**をその型へ変換する（`_TERRAIN_INT_KEYS` /
   `_TERRAIN_STR_KEYS` / 残りは double）。**これは型の表であって既定値ではない**。
+- **入力 topic 2 本は変換せず生のまま転送する**。`str(None) == "None"` は**非空**文字列なので、
+  `str()` で包むと overlay の `depth_topic:`（YAML null）が node の空文字ガード
+  （`terrain_node.py:134`）を**すり抜け** `/bot{n}/None` を購読し「健康に見えたまま無言」になる。
+  生で渡せば宣言型 STRING が非 str を拒み起動が止まる（fail-closed）。unit が pin。
 
 ### 前提・未確定 (TODO)
 

@@ -475,9 +475,9 @@ _TERRAIN_INT_KEYS = (
     "pixel_stride",
 )
 _TERRAIN_STR_KEYS = ("reference",)
-# The two input topics, declared "" (= subscribe nothing) by the node and therefore
-# forwarded as strings; they are NOT part of `PARAM_KEYS` (which is the geometry /
-# threshold set the marshalling core reads).
+# The two input topics, declared "" (= subscribe nothing) by the node. They are NOT
+# part of `PARAM_KEYS` (the geometry / threshold set the marshalling core reads) and,
+# unlike those, they are forwarded WITHOUT coercion — see the loop below.
 _TERRAIN_TOPIC_KEYS = ("depth_topic", "camera_info_topic")
 
 
@@ -530,7 +530,14 @@ def _terrain_group(robot: str, use_sim_time) -> list:
     terrain_params = {"enabled": True}
     for key in _TERRAIN_TOPIC_KEYS:
         if key in terrain:
-            terrain_params[key] = str(terrain[key])
+            # Forwarded RAW, deliberately un-coerced. `str(None) == "None"` is a
+            # NON-EMPTY string, so coercing here would turn a blank overlay entry
+            # (`depth_topic:` / `~` = YAML null) into a topic named "None": the node's
+            # empty-string guard would pass and it would subscribe /bot{n}/None and
+            # stay silent while looking healthy — the exact failure the parameter is
+            # meant to make impossible. Raw, the declared STRING type rejects it and
+            # startup aborts (fail-closed).
+            terrain_params[key] = terrain[key]
     for key in PARAM_KEYS:
         # Absent keys stay UNSET so the node aborts at startup on its own declared
         # sentinel (fail-closed) instead of the launch inventing a value. Unknown
