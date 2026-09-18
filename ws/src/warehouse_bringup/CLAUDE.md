@@ -152,11 +152,11 @@
   float（rclcpp は宣言型 double を強制＝int リテラルは起動時に落ちる）を pin。掃引が空にならないことを
   別 test で pin（`OQ-OD4Y-l4` が対象にした 4 source を含む）。mutation **5/5 KILLED**（global
   `virtual_scan` のキー削除・local `virtual_scan` = 0.0・global `scan` = `2`（int）・local `virtual_scan`
-  = 1.5・global `observation_sources` から `virtual_scan` を落とす）。
+  = 1.5・global `observation_sources` から `virtual_scan` を落とす）。**＋ PR #727**: 同 unit に URDF 取付高さ（`lidar_joint` origin z を xacro property から評価＝独立オラクル）の高さ窓 pin を追加（実 `scan` = 0.08・base_link 発 = 0 を `min <= z <= max` で含む・`min_obstacle_height` 混入や取付未満の max も赤）。
 
 ### 前提・未確定 (TODO)
 
 - `# TODO(実測)` global の実 `scan` が**修正前に**全点を落としていたか（`lidar_link` 取付高さ > 0 ＝
-  04:1070 の推定）は TF 実値で未確認。本 PR は罠を塞いだだけで「以前は落ちていた」とは言わない。
+  04:1070 の推定）は TF 実値で未確認。本 PR は罠を塞いだだけで「以前は落ちていた」とは言わない。 **→ 実測済（PR #727）**: Jazzy container の standalone costmap に修正前の本節を投入し lethal **0/6400**（実効 0.0・TF z 0.080）→ #726 後 **150/6400** [D]＝**落ちていた**（04:1069 に記録）。
 - `# TODO(OQ-OD4Y-l3)` 下側 `min_obstacle_height`（既定 0.0）は据え置き。TF 後の z が負になる構成
   （IMU 姿勢反映・`base_footprint` 導入）では別途裁定。
