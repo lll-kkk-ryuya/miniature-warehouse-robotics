@@ -115,3 +115,48 @@
   `pixel_stride: 1` の既定・`camera_info_topic` 不転送・欠落キーを既定で埋める・
   `_terrain_group` 呼び出し削除・config キー経路 typo・`cliff_scan` を `cmd_vel` へ remap・
   base の `enabled: true`）。
+
+## 【2026-09-18 追記】生産する契約 追補 — `config/nav2_params.yaml` 全 observation source の `max_obstacle_height` 明示（`OQ-OD4Y-l4` 解決・`feat/nav-costmap-height-window`・PR #726）
+
+**レイヤ**: costmap 設定 = **06 Navigation** の consumer 側 config（[layer-annotation.md](../../../.claude/rules/layer-annotation.md)）。
+`cmd_vel` 経路・twist_mux 優先度・L2 / L1 / L0'・凍結契約 `warehouse_interfaces` は**不変**。
+正本 = [04 追補 ⑩ §5 `OQ-OD4Y-l4`](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md:1069)（同一行に解決注記）。
+一次情報 = Nav2 `humble`（参照日 2026-09-18・[D] 原文取得）: `obstacle_layer.cpp:143`（per-source 既定 **0.0**）/
+`:82`（layer 既定 2.0＝別フィルタ）/ `observation_buffer.cpp:143-144`（TF 後に `min <= z <= max` だけ残す）。
+
+### 提供 (produce)
+
+- `config/nav2_params.yaml`: `nav2_costmap_2d::ObstacleLayer` の**全 instance × 全 source**が per-source
+  `max_obstacle_height: 2.0` を明示する。追加 3 本 = global `scan` `:280` / local `virtual_scan` `:235` /
+  global `virtual_scan` `:288`（既存の local `scan` `:227` と `cliff_scan` `:247` / `:293` は元から明示）。
+  値は Humble layer 既定（`obstacle_layer.cpp:82`）＝在ファイル `:227` と同値で**新数値なし**。高さ窓を広げる
+  意図ではなく、「省略 → per-source 既定 0.0 → TF 後 z が厳密に 0.0 の点しか通らない」罠（`lidar_link` の
+  取付高さ > 0 なら全点消失 = fail-open）を塞ぐだけ。
+- **記法**: global `virtual_scan` は 1 行 flow mapping ＋説明コメント 5 行（`:283-288`）、local は inflation
+  コメントの再折返し（6→5 行・`:240-244`）で **net-zero（342 行のまま）**＝`:245` / `:291` / `:293` / `:300`
+  ほかの下流 pin は不変（#165・同ファイル `:202` / `:247` / `:293` と同じ手法）。動いた pin は `:282`→`:288`
+  （04:1071）と `:239-246`→`:240-246`（doc23:589）の 2 か所のみ＝同 PR で再 pin 済。
+- flow mapping が rcl で読める根拠は `:247` / `:293` と同じ: `rcl_yaml_param_parser/src/parse.c:834`
+  （`YAML_MAPPING_START_EVENT` に style 判定なし・humble・参照日 2026-09-18）。
+
+### 消費 (consume)
+
+- 変更なし（topic / 型 / frame は不変: `/bot{n}/scan` = `bot{n}/lidar_link`、`/bot{n}/virtual_scan` =
+  `bot{n}/base_link`（`virtual_scan.py:72`）、`/bot{n}/cliff_scan` = `base_link`）。
+
+### テスト
+
+- `tests/unit/test_costmap_observation_height_window.py`（`unit` + `safety`・純 YAML・ROS 不要）:
+  `plugins` に列挙された ObstacleLayer instance を**source 名を列挙せず**掃引し、全 source に (a) キーの明示
+  (b) 値 == 2.0（layer 既定＝独立オラクル・実装読み返しでない） (c) `> 0.0`（per-source 既定の罠） (d) YAML
+  float（rclcpp は宣言型 double を強制＝int リテラルは起動時に落ちる）を pin。掃引が空にならないことを
+  別 test で pin（`OQ-OD4Y-l4` が対象にした 4 source を含む）。mutation **5/5 KILLED**（global
+  `virtual_scan` のキー削除・local `virtual_scan` = 0.0・global `scan` = `2`（int）・local `virtual_scan`
+  = 1.5・global `observation_sources` から `virtual_scan` を落とす）。
+
+### 前提・未確定 (TODO)
+
+- `# TODO(実測)` global の実 `scan` が**修正前に**全点を落としていたか（`lidar_link` 取付高さ > 0 ＝
+  04:1070 の推定）は TF 実値で未確認。本 PR は罠を塞いだだけで「以前は落ちていた」とは言わない。
+- `# TODO(OQ-OD4Y-l3)` 下側 `min_obstacle_height`（既定 0.0）は据え置き。TF 後の z が負になる構成
+  （IMU 姿勢反映・`base_footprint` 導入）では別途裁定。
