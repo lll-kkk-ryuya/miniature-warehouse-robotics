@@ -38,4 +38,69 @@
 
 ## 【2026-09-18 追記】生産する契約 追補 — `nav2_bringup.launch.py` `terrain_publisher` 群 ＋ `config/warehouse.base.yaml` `perception.terrain.*`（レーン C `feat/bringup-terrain-publisher` が記入・stub 先置き）
 
-（未記入 — レーン C）
+**レイヤ**: launch / config = **配線**（正準対応表に行を持たない＝帰属未定・actuation なし。
+[layer-annotation.md](../../../.claude/rules/layer-annotation.md)）。起動する node は
+**自律走行（安全層外）の producer**。**L2 / L1 / L0' 不変更**・`twist_mux` 入力 2 本のまま。
+正本 = `docs/mode-outdoor/04-perception-sidewalk-and-signals.md` の **追補 ⑫**
+（hand-off ③ = [追補 ⑨ §4 :992](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md:992) の実装記録。
+追補 ⑫ 自体には行 pin を張らない＝同 doc 末尾はレーン A / B の stub 充填で動くため）。
+
+### 提供 (produce)
+
+- `launch/nav2_bringup.launch.py` に **`_terrain_config()` / `_terrain_group(robot, use_sim_time)`**
+  （`_speed_band_group` の後ろに append・呼び出しは per-robot ループの `_speed_band_group` 直後）。
+  per-bot で `GroupAction([PushRosNamespace(robot), SetParameter("use_sim_time", …),
+  Node(package="warehouse_perception", executable="terrain_publisher",
+  name="terrain_publisher", parameters=[…])])` を 1 本組む。`collision_monitor` 節
+  （nav-traffic / レーン A の区画）は**不変更**。
+- `config/warehouse.base.yaml` に **`perception.terrain.*`**（`speed_bands` の後ろに append）:
+  実キーは **`enabled: false` のみ**。続く **23 キーはコメントアウトの placeholder**
+  （入力 topic 2 本 ＋ ROS param 21 本 = `PARAM_KEYS`）で、各行に単位・検証条件・出典 file:line
+  を持つ。**実値は 1 つも無い**（カメラ未購入・車体未組立＝
+  [04:992](../../../docs/mode-outdoor/04-perception-sidewalk-and-signals.md:992) の実測ゲート。
+  実値は env overlay `config/<env>/warehouse.yaml`＝[environments.md](../../../.claude/rules/environments.md)）。
+- **`perception.terrain.enabled` は ON/OFF の単一の真実**: producer（本 launch 群）と
+  consumer 側 gate（`collision_monitor` の `cliff_scan` source・レーン A）が同じキーを読む。
+
+### 消費 (consume)
+
+- `warehouse_interfaces.config.load_config`（既存依存・`perception` ブロックは**検証されない**＝
+  `_validate_safety` は `safety.*` のみ。検証は node 側 sentinel に一本化。契約 hub 不変更）。
+- `warehouse_perception.terrain_node_core.PARAM_KEYS`（rclpy 非依存・**21 param 名の単一ソース**。
+  本数もキー名も launch 側に再列挙しない）。import は **`enabled` が真の経路の中だけ**＝
+  perception 未ビルドでも terrain OFF なら Nav2 は起動する。
+- console_script `terrain_publisher = warehouse_perception.terrain_node:main`
+  （`warehouse_perception/setup.py`）。`package.xml` の `<exec_depend>warehouse_perception</exec_depend>`
+  は速度帯スライスで宣言済み（`:27`）＝**本スライスで package.xml は不変更**。
+- 型の正本は `terrain_node.py` の `_SENTINELS`（int 5 / double 15 / str 3）。rclpy は宣言値から
+  param 型を固定するため、launch は各値をその型へ変換する（`_TERRAIN_INT_KEYS` /
+  `_TERRAIN_STR_KEYS` / 残りは double）。**これは型の表であって既定値ではない**。
+
+### 前提・未確定 (TODO)
+
+- `# TODO(実測)` **23 キーの値は 1 つも決まっていない**。overlay を書けるのは
+  `OQ-OD45`（縁石 2 cm の分離距離）/ `OQ-OD4Q`（MinZ）/ `OQ-OD4Z-d1`（2 上限）の実測後。
+- `# TODO(dev sim)` dev（Gazebo）に depth camera が無いので dev overlay も未記入
+  （OFF のまま）。`use_sim_time` と depth stamp の関係は `OQ-OD4Y-n1`。
+- `# TODO(OQ-OD4Y-n2)` overlay 値の検証は「起動して落ちる」まで分からない
+  （組み合わせ条件は特に）。起動前 lint に寄せるかは未決。
+- `# TODO(OQ-OD4Y-n3)` int キーは `int(value)` 変換ゆえ非整数値が**黙って丸まる**。
+- `# TODO(OQ-OD4Y-n4)` 2 台構成で 1 カメラを絶対名で指すと両 bot に同じ崖が出る
+  （`speed_bands.source_topic` と同型の未決）。
+- `# TODO(OQ-OD4Y-n5)` [productization/01 L1 行](../../../docs/productization/01-commercial-box-map.md:185)
+  の「launch / config / consumer 側は未配線」が本スライスで古くなる（編集境界外＝統合側の残件）。
+
+### テスト（レーン C）
+
+- `tests/unit/test_terrain_bringup_wiring.py`（marker `unit` + `safety`・**AST + YAML のみ**＝
+  `launch_ros` / `nav2_common` / rclpy 不要で pure CI でも走る。
+  `test_speed_band_bringup_wiring.py` と同型）: 配線の存在（per-robot ループから 1 回）／
+  namespace push と `use_sim_time`／OFF 時 `[]` が**生成より前**に返る／config キー経路
+  `perception` → `terrain`／転送キー集合 == node の宣言面（`PARAM_KEYS` と `_SENTINELS` に
+  機械照合・本数を再ハードコードしない）／欠落キーを埋めない／**数値リテラル 0 個**／
+  int・str 変換表 == `_SENTINELS` の型／`cmd_vel`・`stop_*`・`speed_limit`・`remappings` 不在／
+  base が `enabled: false` 単独／placeholder が 23 本を網羅。
+- mutation **9/9 KILLED**（`enabled` gate 除去・`ray_count` を double 転送・launch に
+  `pixel_stride: 1` の既定・`camera_info_topic` 不転送・欠落キーを既定で埋める・
+  `_terrain_group` 呼び出し削除・config キー経路 typo・`cliff_scan` を `cmd_vel` へ remap・
+  base の `enabled: true`）。

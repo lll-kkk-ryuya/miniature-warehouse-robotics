@@ -160,3 +160,49 @@ speed_bands:
   # v_floor_mps: 0.05                # 例示値（ADR-0012 §Open）。実測の「動く最遅速度」で確定
   # publish_rate_hz: 20.0            # 20Hz 周期送出（ADR-0012 決定 5）。node 既定と同値
   # hold_timeout_s: <OQ-T2 実測>     # T-5 保持窓。node 既定 0.0 は fail-closed（必ず与える）
+
+# 04_Perception 地形（崖）publisher = docs/mode-outdoor/04-perception-sidewalk-and-signals.md
+# 追補 ⑨（:926）の 07_Output_Adapters node v0（`terrain_publisher`）。additive / safe-OFF・
+# 既定 OFF＝未設定なら従来挙動（cliff_scan も terrain/coverage も topic graph に現れない）に
+# 落ちる（speed_bands と同規律。キー名は凍結契約ではない）。enabled=false のとき
+# nav2_bringup.launch.py は terrain_publisher を起動せず、collision_monitor の cliff_scan
+# source も入らない（ON/OFF の真実は本キー 1 つ）。キー名は node の param 名と 1:1
+# （追補 ⑨ §2 の表 :946-970）。
+# ⚠️ 値は **ここで発明しない**: カメラ未購入・車体未組立・未実測（追補 ⑨ 裁定 8 :943）。
+# 下の 23 行は実測確定後に env overlay（config/<env>/warehouse.yaml）で供給する
+# **プレースホルダ**でありコメントアウトのまま残す。enabled=true で 1 本でも欠ければ node が
+# 起動時に ValueError で落ちる（fail-closed・追補 ⑨ §3 :979-980）。dev（Gazebo）に depth
+# camera は無いので base は OFF のまま。
+perception:
+  terrain:
+    enabled: false           # true にする前に下の 23 キーすべてを overlay で与えること
+    # ── 入力 topic（既定 "" = 購読しない。空のまま enabled=true は起動時 abort・裁定 6 :941）
+    # depth_topic: <sensor_msgs/Image の topic>        # 例: camera/depth/image_raw（04:941）
+    # camera_info_topic: <sensor_msgs/CameraInfo>      # 同一カメラの intrinsics（04:941）
+    # ── MountingGeometry（取付幾何・04:181 / 追補 ⑨ §2 :950-952）
+    # camera_height_m: <実測>        # m・>0。取付高さ h（04:181・OQ-OD45 :143）
+    # pitch_down_rad: <実測>         # rad・開区間 (0, π/2)。俯角 θ（04:181。10〜20° は案）
+    # reference_offset_m: <実測>     # m・符号自由。カメラ原点→車輪接地点/footprint（04:176）
+    # ── TerrainGridParams（追補 ⑤ §2 :526 / 追補 ⑨ §2 :953-958）
+    # cell_size_m: <実測>            # m・>0。返す全距離の量子（04:537）
+    # corridor_half_width_m: <実測>  # m・>0 かつ >= cell_size_m/2。踏む領域の半幅（04:175）
+    # forward_range_m: <実測>        # m・>0・1 cell 以上。回廊長（04:539）
+    # min_points_per_cell: <実測>    # int・>=1。noDataObstacle の下限（04:56）※int で書く
+    # drop_threshold_m: <実測>       # m・>0 かつ > plane_tolerance_m。崖深さ（OQ-OD45 :143）
+    # min_valid_fraction: <実測>     # 比・(0, 1]。有効画素過少の下限（04:174）
+    # ── GroundFitParams（追補 ⑤ §2 :526 ＋ 追補 ⑤-1 :911 の 2 本・追補 ⑨ §2 :959-963）
+    # plane_tolerance_m: <実測>      # m・>0。RANSAC inlier 帯 ＝「床を観測できた」帯（04:543）
+    # ransac_iterations: <実測>      # int・>=1（04:544）※int で書く
+    # ransac_seed: <任意の int>      # 決定性のための種。どの値も合法（04:545）※int で書く
+    # max_plane_tilt_rad: <実測>     # rad・>0。事前値法線からの傾き上限（追補 ⑧ §2 :865）
+    # max_plane_offset_m: <実測>     # m・>0。候補平面 |c| の上限（追補 ⑧ §2 :866）
+    #                                #   上 2 本の実測は OQ-OD4Z-d1 :897（OQ-OD45 と同時）
+    # ── CliffScanParams（追補 ⑤ §2 :546-548・室内 VirtualScan の ±15°/2.0m/360 本はコピー禁止）
+    # angle_min_rad: <実測>          # rad・有限（04:546）
+    # angle_max_rad: <実測>          # rad・有限かつ > angle_min_rad（04:546）
+    # ray_count: <実測>              # int・>=1。angle_increment を決める（04:547）※int で書く
+    # range_min_m: <実測>            # m・>0（04:548）
+    # range_max_m: <実測>            # m・>0 かつ > range_min_m（04:548・MinZ は OQ-OD4Q :354）
+    # ── node（追補 ⑨ §2 :969-970）
+    # reference: <datum のラベル>    # 非空 str。語彙は OQ-OD4Y-h :493 が未決＝既定を作らない
+    # pixel_stride: <実測>           # int・>=1。行/列の間引き（裁定 7 :942・性能 OQ-OD4Y-i4）
