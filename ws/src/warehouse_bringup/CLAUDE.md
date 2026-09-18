@@ -22,3 +22,20 @@
 - **設計**: docs/shared/09（Nav2/AMCL/コストマップ）・mode-a/11a（TrafficManager/VirtualScan）・architecture/03・16（§5 config 単一ソース・§9 所有）・17。
 
 > #1 雛形（空の `bringup.launch.py`）に #68 が config/launch を追加 → #75 で skeleton が nav2_bringup の include 合成（nav2-only）→ **#156 slice1 でフルスタック合成（sim+nav2+state+safety+nav2_bridge+llm_bridge、MCP は in-process／Hermes は外部）。`tests/unit/test_bringup_launch.py` を full-stack 形（include×2・Node×4・mode/llm/sim gating）に更新**。
+
+## 【2026-09-18 追記】生産する契約 追補 — `config/nav2_params.yaml` 崖専用 layer ＋ `collision_monitor.yaml` source `cliff_scan`（レーン A `feat/nav-cliff-layer` が記入・stub 先置き）
+
+（未記入 — レーン A）
+
+<!-- spacer: 並列 append の hunk 衝突回避（区画間 6 行超） -->
+<!-- spacer: 並列 append の hunk 衝突回避（区画間 6 行超） -->
+<!-- spacer: 並列 append の hunk 衝突回避（区画間 6 行超） -->
+<!-- spacer: 並列 append の hunk 衝突回避（区画間 6 行超） -->
+<!-- spacer: 並列 append の hunk 衝突回避（区画間 6 行超） -->
+<!-- spacer: 並列 append の hunk 衝突回避（区画間 6 行超） -->
+<!-- spacer: 並列 append の hunk 衝突回避（区画間 6 行超） -->
+<!-- spacer: 並列 append の hunk 衝突回避（区画間 6 行超） -->
+
+## 【2026-09-18 追記】生産する契約 追補 — `nav2_bringup.launch.py` `terrain_publisher` 群 ＋ `config/warehouse.base.yaml` `perception.terrain.*`（レーン C `feat/bringup-terrain-publisher` が記入・stub 先置き）
+
+（未記入 — レーン C）
