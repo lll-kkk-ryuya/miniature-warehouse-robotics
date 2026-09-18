@@ -37,3 +37,70 @@ def virtual_scan_timeout_overrides(ros_distro: str | None) -> list[dict]:
     if ros_distro in NO_PER_SOURCE_TIMEOUT_DISTROS:
         return []
     return [{"virtual_scan": {"source_timeout": VIRTUAL_SCAN_NO_TIMEOUT_S}}]
+
+
+# ── cliff_scan source arming (04 追補 ⑩ §3) ───────────────────────────────────────────────
+# Second launch-time override of the same Node, and it lives here for the same reason the
+# virtual_scan one does: ``collision_monitor.yaml`` stays the static Humble truth and anything
+# CONDITIONAL is injected after the file so it wins. The condition differs — distro above,
+# CONFIG here (``perception.terrain.enabled``, the key the bringup lane puts in
+# ``config/warehouse.base.yaml``; read-only for us).
+#
+# Why the source is declared DISABLED in the yaml and armed here rather than simply always-on:
+# the cliff producer (``warehouse_perception.terrain_publisher``) is itself default-OFF and the
+# dev cockpit (Jazzy + Gazebo) has no depth camera, so an ENABLED source with no publisher is an
+# "invalid source" STOP on Jazzy (jazzy collision_monitor_node.cpp:437-447) — the cockpit would
+# stop the moment it starts. A DISABLED source is skipped BEFORE that check on both distros
+# (humble collision_monitor_node.cpp:357-360 ``if (source->getEnabled())`` / jazzy :437), so the
+# default-off yaml is inert everywhere and this override is the single arming point. 参照日
+# 2026-09-18.
+#
+# NOT here: a per-source ``source_timeout``. OQ-OD44 is ruled as "scan 型" (04 追補 ⑩ §1):
+# silence is not normal for a cliff sensor, so the node-level timeout must keep applying (on
+# Jazzy+ that makes a dead cliff_scan a STOP — the wanted direction). The Humble TARGET drops
+# the points instead (fail-open, doc12 末尾【2026-09-16 追補】(1)); that liveness duty is X2's
+# (04:66) / the Guardian's ``scan_stale`` (doc12 追補 (3)), not this monitor's.
+
+#: collision_monitor source name of the cliff virtual scan (doc03:322 / 04 追補 ⑨ hand-off ①).
+CLIFF_SOURCE_NAME: str = "cliff_scan"
+
+#: config path of the producer gate the arming follows (bringup lane owns the key's VALUE).
+TERRAIN_ENABLED_CONFIG_PATH: tuple[str, ...] = ("perception", "terrain", "enabled")
+
+
+def terrain_enabled(config: dict | None) -> bool:
+    """``perception.terrain.enabled`` from a loaded config, defaulting to False.
+
+    Mirrors ``nav2_bringup.launch.py::_speed_bands`` (missing / non-dict block -> treat as
+    absent). Absent config, absent section and a non-mapping section all mean OFF.
+
+    The value itself is coerced with ``bool()``, so a TRUTHY NON-BOOL opens the gate — a
+    quoted ``enabled: "false"`` in YAML is the string ``"false"`` and is truthy, exactly as
+    in ``_speed_band_group``. That looseness is DELIBERATE, not an oversight: the producer
+    gate ``_terrain_group`` (nav2_bringup.launch.py:522) reads the same key with the same
+    ``bool(...)`` and its docstring promises the key is ONE truth for producer and consumer.
+    A stricter rule here (``is True``) would desynchronise them for such a value and leave
+    the L1 source DISABLED while the cliff producer publishes — blind reflex, the one
+    direction that must not happen. Parity beats strictness; the shared looseness is
+    recorded in 04 追補 ⑩ §3 (OQ-OD4Y-l6) rather than papered over.
+    """
+    node: object = config
+    for key in TERRAIN_ENABLED_CONFIG_PATH[:-1]:
+        if not isinstance(node, dict):
+            return False
+        node = node.get(key, {})
+    if not isinstance(node, dict):
+        return False
+    return bool(node.get(TERRAIN_ENABLED_CONFIG_PATH[-1], False))
+
+
+def cliff_sources(config: dict | None) -> list[dict]:
+    """Extra collision_monitor ``parameters`` entries arming the ``cliff_scan`` source.
+
+    ``[]`` when the terrain producer is off (the yaml default ``enabled: false`` stands), else
+    ``[{"cliff_scan": {"enabled": True}}]``. Only ``enabled`` is touched: ``type`` / ``topic``
+    stay in the yaml, and no ``source_timeout`` is injected (see the note above).
+    """
+    if not terrain_enabled(config):
+        return []
+    return [{CLIFF_SOURCE_NAME: {"enabled": True}}]

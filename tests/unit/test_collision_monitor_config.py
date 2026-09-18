@@ -57,10 +57,13 @@ def test_never_touches_emergency_prio100_path() -> None:
 def test_dual_consumer_observation_sources() -> None:
     # doc12:534,547: scan (real MS200) + virtual_scan (other robot, Mode A/B). collision_monitor
     # is an ADDITIONAL subscriber of virtual_scan; the costmap keeps it for planning (not a move).
+    # cliff_scan joined the list as a DEFAULT-OFF third source (04 追補 ⑩ §3); its own pins live in
+    # tests/unit/test_cliff_layer_config.py, so here it is only kept from disturbing these two.
     p = _collision_params()
-    assert p["observation_sources"] == ["scan", "virtual_scan"]
+    assert p["observation_sources"] == ["scan", "virtual_scan", "cliff_scan"]
     assert p["scan"]["topic"] == "scan" and p["scan"]["type"] == "scan"
     assert p["virtual_scan"]["topic"] == "virtual_scan" and p["virtual_scan"]["type"] == "scan"
+    assert p["scan"]["enabled"] is True and p["virtual_scan"]["enabled"] is True
 
 
 @pytest.mark.unit
