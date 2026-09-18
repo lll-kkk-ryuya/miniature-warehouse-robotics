@@ -199,6 +199,46 @@ def test_c_a_refused_payload_is_invalid_in_the_monitor() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    ("json_value", "expected"),
+    [
+        pytest.param("true", 1.0, id="bool-true"),
+        pytest.param("false", 0.0, id="bool-false"),
+        pytest.param('"0.5"', 0.5, id="numeric-string"),
+        pytest.param('"1"', 1.0, id="integer-string"),
+        pytest.param("1", 1.0, id="int"),
+    ],
+)
+def test_c_the_contract_coerces_in_lax_mode_and_the_adapter_reports_what_it_got(
+    json_value: str, expected: float
+) -> None:
+    # [D] measured on pydantic 2.13.4. The hub is in pydantic's LAX mode, so
+    # these reach the adapter as legal floats — they are NOT refused and NOT
+    # INVALID. The adapter reports what the contract handed it; whether the hub
+    # should be strict is OQ-OD4Z-d7 (04:903), a hub-wide policy question. This
+    # pins the claim made in 04 追補 ⑪ §3 so the table cannot drift.
+    payload = (
+        '{"source_stamp_s": 1234.5, "reference": "bot1/wheel_contact",'
+        f' "state": "FLOOR_CONFIRMED", "quality": {{"valid_fraction": {json_value}}}}}'
+    )
+    obs = coverage_observation(payload, RECEIVED_S)
+    assert obs.valid_fraction == expected
+    assert isinstance(obs.valid_fraction, float)
+
+
+@pytest.mark.parametrize(
+    "json_value", ['"NaN"', '"1.5"', '"high"'], ids=["nan-string", "out-of-range-string", "word"]
+)
+def test_c_coercion_does_not_survive_the_range_and_finiteness_validators(json_value: str) -> None:
+    # Lax coercion happens BEFORE the field validators, so a string that would
+    # coerce to a non-finite or out-of-range number is still refused.
+    payload = (
+        '{"source_stamp_s": 1234.5, "reference": "bot1/wheel_contact",'
+        f' "state": "FLOOR_CONFIRMED", "quality": {{"valid_fraction": {json_value}}}}}'
+    )
+    assert parse_terrain_coverage(payload) is None
+
+
 # --- (d) payloads that are not coverage at all ------------------------------
 
 
@@ -223,6 +263,15 @@ def test_c_a_refused_payload_is_invalid_in_the_monitor() -> None:
             id="blank-reference",
         ),
         pytest.param(b"{not json", id="malformed-bytes"),
+        # Bytes that are valid JSON *shape* but not valid UTF-8. The contract
+        # refuses the payload; a decode that dropped the offending byte would
+        # silently repair ``"a\xff"`` into ``"a"`` and hand X2 an OK verdict for
+        # a message nobody can read. "Unreadable" must stay unreadable.
+        pytest.param(
+            b'{"source_stamp_s": 1234.5, "reference": "a\xff",'
+            b' "state": "FLOOR_CONFIRMED", "quality": {"valid_fraction": 0.93}}',
+            id="invalid-utf8-bytes",
+        ),
         pytest.param(None, id="payload-is-none"),
         pytest.param(12, id="payload-is-int"),
         pytest.param([1], id="payload-is-list"),

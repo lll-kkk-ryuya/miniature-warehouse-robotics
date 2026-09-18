@@ -1023,7 +1023,7 @@ X2 の入力型 `warehouse_safety.sensor_health.SourceObservation`（`stamp_s` /
 
 ## 【2026-09-18 追補 ⑪】safety-state consumer: `TerrainCoverage` → X2 `SourceObservation` アダプタ（`OQ-OD4Y-a` 裁定・node 配線は `OQ-OD95` 後）（実装記録・レーン B が記入）
 
-> **stub（先置き）**: 追補 ⑨ §4 hand-off の実装記録をレーン B（`feat/safety-x2-terrain-adapter`）が本節に記入する。先置きは並列 append の hunk 衝突と [#165](../dev/03-retrospectives.md) 行ズレの回避が目的（P0 #707 と同じ手法）。
+> **（記入済 = PR #722・2026-09-18）**: 追補 ⑨ §4 hand-off ② の実装記録をレーン B（`feat/safety-x2-terrain-adapter`）が本節に記入した。stub 先置き（#721）の目的は並列 append の hunk 衝突と [#165](../dev/03-retrospectives.md) 行ズレの回避（P0 #707 と同じ手法）で、本節は**その stub 区画を置換したもの**＝見出し `:1024` 以前の行は動いていない。
 
 正本 = [追補 ⑨ §4 hand-off ②](04-perception-sidewalk-and-signals.md:991)（safety-state が `TerrainCoverage.quality` を `SourceObservation` へ写す）+ 型は [追補 ④](04-perception-sidewalk-and-signals.md:390)（凍結契約 `warehouse_interfaces.perception`）+ 判定側は `warehouse_safety/sensor_health.py`（#680・L1・未配線）。**レイヤ注記**（[.claude/rules/layer-annotation.md](../../.claude/rules/layer-annotation.md)）: 本節のアダプタは **L1 安全**（`warehouse_safety`・`sensor_health.py` と同じ箱）・**純ロジック・actuation なし**。producer 側（04 の `terrain_node`）は自律走行（安全層外）＝[:189](04-perception-sidewalk-and-signals.md:189)。**本 PR は rclpy 配線をしない**——誰が購読するか（Guardian 拡張か新 node か）は [`OQ-OD95`](09-external-review-v3-response.md:255) が未裁定で、§4 はその裁定資料である。
 
@@ -1070,6 +1070,8 @@ X2 の入力型 `warehouse_safety.sensor_health.SourceObservation`（`stamp_s` /
 | `received_monotonic_s` が負 / `now` より未来 / 非数 | **そのまま通す**（アダプタは時計を読まない・補正しない） | `STALE` | **fail-closed**（補正すると時計取違えを検出する規則そのものを潰す） |
 | `received_monotonic_s` が `bool` | `SourceObservation` 構築時に `ValueError`（call-site の marshalling バグ） | — | 構築時に落とす（`evaluate` には持ち込まない） |
 | `state = DROP_DETECTED` / `UNKNOWN` かつ品質良好 | `state` は写さない | `OK`（＝センサは健康） | 設計どおり（§2 の表） |
+| payload が JSON として妥当だが **UTF-8 として不正**（例 `"reference": "a\xff"`） | `parse_terrain_coverage` → `None`（契約が decode 段で拒否） | **`INVALID`** | **fail-closed**（`errors="ignore"` 等で decode すると `"a\xff"` が `"a"` に**黙って修復**され、誰にも読めない message が `OK` になる。R-26 で pin 済＝`invalid-utf8-bytes`） |
+| `quality.valid_fraction` が `true` / `false` / `"0.5"` / `"1"` / `1`（**pydantic lax 強制変換**） | `1.0` / `0.0` / `0.5` / `1.0` / `1.0` として**そのまま写す** | しきい値次第（`OK` にもなる）＝**`INVALID` ではない** | 契約が受理した以上アダプタは**判定しない**（判定点は X2 の 1 か所）。`"NaN"` / `"1.5"` は変換後に有限性・範囲の validator が落とす＝`ValidationError`。`bool` が数値 field に化ける問題はハブ全体の `strict` 方針の話で **[`OQ-OD4Z-d7`](04-perception-sidewalk-and-signals.md:903) が未決**（同 OQ の `ground_from_prior` と同型・向きが逆）。**注意**: `source_stamp_s: true` も `1.0` になるため、X2 側 `SourceObservation` の `bool` 拒否は**この経路を見られない**（拒否は call-site の marshalling バグ用で、wire 上の `true` は契約通過時点で `float` になっている）。[D] pydantic 2.13.4 で実測・R-26 で pin 済 |
 
 **鮮度の二重性に注意**: X2 が判定する staleness は**受信側の単調時計**で、`stamp_s` では判定しない（[09:67](09-external-review-v3-response.md:67) 規則 (4)）。したがって [追補 ④ §2 1.](04-perception-sidewalk-and-signals.md:477) が消費側に課す `age = now − source_stamp_s; 0 ≤ age < max_age`（＝**producer が古い計測を新しく見せていないか**）は、本アダプタでは**果たされない**。両者は別の検査（前者＝生存性、後者＝入力妥当性）で、後者の置き場は未決＝§5 `OQ-OD4Y-m2`。
 
@@ -1102,8 +1104,8 @@ X2 の入力型 `warehouse_safety.sensor_health.SourceObservation`（`stamp_s` /
   - `parse_terrain_coverage(payload) -> TerrainCoverage | None` — `TerrainCoverage.model_validate_json` で検証し、契約が拒否したものは `None`（raise しない・log しない）。
   - `coverage_observation(payload, received_monotonic_s) -> SourceObservation` — §2 の写像。parse 失敗時は `stamp_s = NaN` / `valid_fraction = NaN` / `digest = None`（§3）。`received_monotonic_s` は素通し。
 - 既存 module は**1 文字も変えていない**（`sensor_health.py` / `guard_logic.py` / `emergency_guardian.py` / `stop_distance.py`）。`warehouse_safety/package.xml` は `warehouse_interfaces` の `exec_depend` を**既に持っている**ため変更不要。topic・ROS parameter・launch・`setup.py` エントリの追加は**ゼロ**。
-- R-26: `tests/unit/test_terrain_health.py`（45 unit・`@pytest.mark.safety` + `unit`）。独立オラクル = **手書き JSON リテラル**（`model_dump_json()` で作らない）と docs の規則。`stamp_s` / `received_monotonic_s` の literal を ~7766 s 離して取り違えが必ず見えるようにし、`state` 違いの 2 payload が同一観測になること・`ground_*` 5 field が観測を動かさないことを等値で pin。構造 pin = import 集合（時計・ROS を持たない）とモジュール定数（`__all__` のみ＝source 名・しきい値を発明していない）。
-- **mutation 9 体すべて KILLED**（実ファイル差替・sha256 で復元検証）: `digest` に `state` を入れる／parse 失敗で raise／失敗時 `valid_fraction = 0.0`（NaN でなく）／`stamp_s` に `received_monotonic_s` を入れる／`bytes` を decode しない／失敗時に合成 `digest`（`""`）を返す／`ground_inlier_fraction` を `valid_fraction` の代用にする／受信時刻を `abs()` で補正する／失敗時 `stamp_s` に受信時刻を入れる。
+- R-26: `tests/unit/test_terrain_health.py`（**54 unit**・`@pytest.mark.safety` + `unit`）。独立オラクル = **手書き JSON リテラル**（`model_dump_json()` で作らない）と docs の規則。`stamp_s` / `received_monotonic_s` の literal を ~7766 s 離して取り違えが必ず見えるようにし、`state` 違いの 2 payload が同一観測になること・`ground_*` 5 field が観測を動かさないことを等値で pin。UTF-8 不正 bytes（§3）と pydantic lax 強制変換（§3）も pin。構造 pin = import 集合（時計・ROS を持たない）とモジュール定数（`__all__` のみ＝source 名・しきい値を発明していない）。
+- **mutation 10 体すべて KILLED**（実ファイル差替・sha256 で復元検証）: `digest` に `state` を入れる／parse 失敗で raise／失敗時 `valid_fraction = 0.0`（NaN でなく）／`stamp_s` に `received_monotonic_s` を入れる／`bytes` を decode しない／**`bytes` を `errors="ignore"` で decode してから検証する**（#722 stage-2 レビュー指摘で追加。それまで 45 unit を素通りしていた＝§3 の UTF-8 行）／失敗時に合成 `digest`（`""`）を返す／`ground_inlier_fraction` を `valid_fraction` の代用にする／受信時刻を `abs()` で補正する／失敗時 `stamp_s` に受信時刻を入れる。
 - produce / consume は [`ws/src/warehouse_safety/CLAUDE.md`](../../ws/src/warehouse_safety/CLAUDE.md) 末尾（本 PR で append）。
 
 <!-- spacer: 並列 append の hunk 衝突回避（区画間 6 行超） -->
