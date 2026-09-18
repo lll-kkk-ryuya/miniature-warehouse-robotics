@@ -266,6 +266,28 @@ def test_absent_or_malformed_config_means_off(config) -> None:
 
 @pytest.mark.unit
 @pytest.mark.safety
+@pytest.mark.parametrize("value", ["false", "true", "no", 1, [0]])
+def test_truthy_non_bool_arms_because_the_producer_gate_does_the_same(value) -> None:
+    # NOT a "malformed means off" case: nav2_bringup.launch.py:522 (`_terrain_group`) reads the
+    # SAME key with the SAME bool(), and its docstring (:516-519) promises one truth for
+    # producer and consumer. A stricter rule here would leave the L1 source DISABLED while the
+    # producer publishes (blind reflex). The shared looseness is recorded as OQ-OD4Y-l6.
+    assert terrain_enabled({"perception": {"terrain": {"enabled": value}}}) is True
+    assert cliff_sources({"perception": {"terrain": {"enabled": value}}}) == [
+        {"cliff_scan": {"enabled": True}}
+    ]
+
+
+@pytest.mark.unit
+@pytest.mark.safety
+@pytest.mark.parametrize("value", [False, 0, "", [], None])
+def test_falsy_value_arms_nothing_like_the_producer_gate(value) -> None:
+    assert terrain_enabled({"perception": {"terrain": {"enabled": value}}}) is False
+    assert cliff_sources({"perception": {"terrain": {"enabled": value}}}) == []
+
+
+@pytest.mark.unit
+@pytest.mark.safety
 def test_the_distro_override_never_mentions_the_cliff_source() -> None:
     # The two overrides are independent: ROS_DISTRO must not arm cliff_scan, and config must
     # not change virtual_scan's timeout.
@@ -321,7 +343,9 @@ def test_launch_imports_the_pure_rule_instead_of_reimplementing_it() -> None:
         for alias in node.names
     }
     assert "cliff_sources" in imported
-    # the config KEY path lives in the pure module, never as a literal in the launch
+    # The collision_monitor SOURCE NAME and the override payload live in the pure module, never
+    # as launch literals. (The config key path itself is no longer exclusive: #723 wired the
+    # PRODUCER, whose `_terrain_group` legitimately reads `perception.terrain` in the launch —
+    # 04 追補 ⑫. What must not be duplicated is the arming rule, i.e. this source name.)
     literals = {n.value for n in ast.walk(tree) if isinstance(n, ast.Constant)}
-    assert "terrain" not in literals
     assert _CLIFF_TOPIC not in literals

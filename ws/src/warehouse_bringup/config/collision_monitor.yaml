@@ -97,7 +97,7 @@ collision_monitor:
       # would stop the cockpit: on Jazzy an enabled source with no data is an "invalid source"
       # STOP (jazzy collision_monitor_node.cpp:437-447, 参照日 2026-09-18). BOTH distros skip a
       # DISABLED source before that check (humble collision_monitor_node.cpp:357-360 / jazzy
-      # :436), so `enabled: false` is the safe default here; nav2_bringup.launch.py flips it to
+      # :437), so `enabled: false` is the safe default here; nav2_bringup.launch.py flips it to
       # true from config `perception.terrain.enabled` (warehouse_bringup.collision_monitor_
       # distro.cliff_sources) — same "yaml is the Humble truth, launch injects" shape as the
       # virtual_scan override above.

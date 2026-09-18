@@ -72,9 +72,17 @@ def terrain_enabled(config: dict | None) -> bool:
     """``perception.terrain.enabled`` from a loaded config, defaulting to False.
 
     Mirrors ``nav2_bringup.launch.py::_speed_bands`` (missing / non-dict block -> treat as
-    absent) and coerces with ``bool()`` like ``_speed_band_group``. Absent config, absent
-    section and a non-mapping section all mean OFF: the gate may only ever be opened by an
-    explicit value, never by a malformed one.
+    absent). Absent config, absent section and a non-mapping section all mean OFF.
+
+    The value itself is coerced with ``bool()``, so a TRUTHY NON-BOOL opens the gate — a
+    quoted ``enabled: "false"`` in YAML is the string ``"false"`` and is truthy, exactly as
+    in ``_speed_band_group``. That looseness is DELIBERATE, not an oversight: the producer
+    gate ``_terrain_group`` (nav2_bringup.launch.py:522) reads the same key with the same
+    ``bool(...)`` and its docstring promises the key is ONE truth for producer and consumer.
+    A stricter rule here (``is True``) would desynchronise them for such a value and leave
+    the L1 source DISABLED while the cliff producer publishes — blind reflex, the one
+    direction that must not happen. Parity beats strictness; the shared looseness is
+    recorded in 04 追補 ⑩ §3 (OQ-OD4Y-l6) rather than papered over.
     """
     node: object = config
     for key in TERRAIN_ENABLED_CONFIG_PATH[:-1]:
